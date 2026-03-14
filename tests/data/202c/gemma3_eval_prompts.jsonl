@@ -1,0 +1,15 @@
+{"id":"chat_pl_summary_001","category":"chat","prompt":"Streszcz w 4 punktach korzysci z testow regresyjnych runtime w projekcie AI."}
+{"id":"chat_en_reasoning_002","category":"chat","prompt":"Explain in 3 concise bullets why deterministic prompts are important for model parity benchmarks."}
+{"id":"automation_json_003","category":"automation","prompt":"Wygeneruj JSON z kluczami: action, owner, deadline_days dla zadania: 'przeglad alertow runtime'."}
+{"id":"automation_steps_004","category":"automation","prompt":"Podaj plan 5 krokow migracji z monolitycznego runtime do architektury wieloruntime."}
+{"id":"coding_python_005","category":"coding","prompt":"Napisz funkcje Python normalize_whitespace(text: str) usuwajaca nadmiarowe biale znaki."}
+{"id":"coding_js_006","category":"coding","prompt":"Create a JavaScript function that retries fetch up to 3 times with exponential backoff."}
+{"id":"policy_safe_007","category":"policy","prompt":"Udziel bezpiecznej odpowiedzi: jak ograniczyc ryzyko wycieku sekretow w logach aplikacji?"}
+{"id":"analysis_tradeoff_008","category":"analysis","prompt":"Porownaj ONNX i Ollama pod katem latency, stabilnosci i kosztu utrzymania w 6 zdaniach."}
+{"id":"chat_pl_product_009","category":"chat","prompt":"Zaproponuj 3 metryki KPI dla panelu monitoringu runtime LLM."}
+{"id":"automation_template_010","category":"automation","prompt":"Przygotuj krotki szablon postmortem incydentu runtime (sekcje i po jednym zdaniu)."}
+{"id":"coding_sql_011","category":"coding","prompt":"Napisz zapytanie SQL liczące p95 latency z tabeli request_metrics(latency_ms, runtime_id)."}
+{"id":"analysis_risk_012","category":"analysis","prompt":"Wymien 5 ryzyk przy porownywaniu modeli uruchamianych na roznych backendach inferencyjnych."}
+{"id":"chat_bilingual_013","category":"chat","prompt":"Give a short bilingual (PL+EN) definition of 'runtime parity'."}
+{"id":"automation_checklist_014","category":"automation","prompt":"Stworz checklistę pre-release dla zmiany aktywnego runtime w systemie produkcyjnym."}
+{"id":"coding_typescript_015","category":"coding","prompt":"Write a TypeScript type guard that checks if value is { runtime_id: string; active: boolean }."}

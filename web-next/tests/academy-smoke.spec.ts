@@ -464,6 +464,25 @@ test.describe("Academy smoke", () => {
       });
     });
 
+    await page.route("**/api/v1/academy/adapters/*/sign", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const adapterId = decodeURIComponent(path.split("/").slice(-2)[0] || "unknown");
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          message: "Adapter signed for chat",
+          signature: {
+            adapter_id: adapterId,
+            runtime_id: "ollama",
+            model_id: "gemma3:latest",
+            signer: "academy-ui",
+          },
+        }),
+      });
+    });
+
     await page.route("**/api/v1/academy/adapters/deactivate", async (route) => {
       activeAdapterId = null;
       await route.fulfill({

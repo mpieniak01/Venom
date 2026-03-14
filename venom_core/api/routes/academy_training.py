@@ -76,11 +76,16 @@ async def validate_runtime_compatibility_for_base_model(
     *,
     base_model: str,
     runtime_id: Optional[str],
+    allow_indirect_onnx_path: bool = False,
     manager: Any | None = None,
 ) -> None:
     """Reject runtime/base_model pairs that are outside Academy deploy contract."""
     normalized_runtime_id = str(runtime_id or "").strip().lower()
     if not normalized_runtime_id:
+        return
+    if normalized_runtime_id == "onnx" and allow_indirect_onnx_path:
+        # ONNX adapters are inference-only in direct deploy contract;
+        # allow selecting ONNX as target only for train->merge->export path.
         return
     runtime_model_families: dict[str, set[str]] = {}
     if manager is not None and hasattr(manager, "list_local_models"):
@@ -173,6 +178,10 @@ def build_job_record(
             "effective_base_model": base_model,
             "training_base_model": training_base_model or base_model,
             "runtime_id": getattr(request, "runtime_id", None),
+            "onnx_conversion_mode": getattr(request, "onnx_conversion_mode", "none"),
+            "auto_sign_for_chat": bool(getattr(request, "auto_sign_for_chat", False)),
+            "chat_signer": getattr(request, "chat_signer", None),
+            "chat_target_model_id": getattr(request, "chat_target_model_id", None),
             "lora_rank": request.lora_rank,
             "learning_rate": request.learning_rate,
             "num_epochs": request.num_epochs,

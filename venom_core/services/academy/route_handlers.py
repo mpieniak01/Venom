@@ -140,9 +140,15 @@ async def _resolve_training_models_for_request(
         None,
     )
     if callable(validate_runtime_pair):
+        onnx_conversion_mode = (
+            str(getattr(request, "onnx_conversion_mode", "none") or "none")
+            .strip()
+            .lower()
+        )
         await validate_runtime_pair(
             base_model=base_model,
             runtime_id=request.runtime_id,
+            allow_indirect_onnx_path=onnx_conversion_mode != "none",
             manager=academy._get_model_manager(),
         )
     resolve_training_base_model = getattr(
@@ -667,6 +673,14 @@ async def _prepare_adapter_activation(
         request=request,
         runtime_id=requested_runtime_id,
     )
+    if bool(getattr(request, "deploy_to_chat_runtime", False)) and bool(
+        getattr(request, "require_chat_signature", False)
+    ):
+        academy.academy_models.ensure_adapter_signed_for_chat(
+            adapter_id=str(getattr(request, "adapter_id", "") or "").strip(),
+            runtime_id=requested_runtime_id,
+            model_id=str(getattr(request, "model_id", "") or "").strip() or None,
+        )
 
 
 async def _activate_adapter(
@@ -777,6 +791,72 @@ def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:
                 message=f"Failed to deactivate adapter: {str(e)}",
             ),
         )
+
+
+def sign_adapter_for_chat_handler(
+    *,
+    adapter_id: str,
+    request: Any,
+    req: Request,
+    academy: Any,
+) -> Dict[str, Any]:
+    try:
+        academy._ensure_academy_enabled()
+        academy.require_localhost_request(req)
+        manager = academy._get_model_manager()
+        if not manager:
+            raise academy.AcademyRouteError(
+                status_code=503,
+                detail="ModelManager not available for adapter signing",
+            )
+        runtime_id = str(getattr(request, "runtime_id", "") or "").strip().lower()
+        if not runtime_id:
+            raise ValueError(
+                "ADAPTER_SIGNATURE_RUNTIME_REQUIRED: Select target runtime for adapter signature."
+            )
+        return academy.academy_models.sign_adapter_for_chat(
+            mgr=manager,
+            adapter_id=adapter_id,
+            runtime_id=runtime_id,
+            model_id=str(getattr(request, "model_id", "") or "").strip() or None,
+            signer=str(getattr(request, "signer", "") or "").strip() or None,
+            conversion_mode=str(getattr(request, "conversion_mode", "none") or "none")
+            .strip()
+            .lower(),
+        )
+    except academy.AcademyRouteError as e:
+        raise academy._to_http_exception(e) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=_value_error_detail_with_reason_code(
+                e,
+                adapter_id=adapter_id,
+                requested_runtime_id=str(
+                    getattr(request, "runtime_id", "") or ""
+                ).strip()
+                or None,
+                requested_model_id=str(getattr(request, "model_id", "") or "").strip()
+                or None,
+            ),
+        ) from e
+    except FileNotFoundError as e:
+        message = str(e).strip() or ADAPTER_NOT_FOUND_DETAIL
+        if message == ADAPTER_NOT_FOUND_DETAIL:
+            raise HTTPException(
+                status_code=404, detail=ADAPTER_NOT_FOUND_DETAIL
+            ) from None
+        raise HTTPException(status_code=500, detail=message) from e
+    except Exception as e:
+        academy.logger.error(f"Failed to sign adapter for chat: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="ADAPTER_SIGNATURE_FAILED",
+                message=f"Failed to sign adapter for chat: {str(e)}",
+                adapter_id=adapter_id,
+            ),
+        ) from e
 
 
 def cancel_training_handler(

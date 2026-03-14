@@ -61,6 +61,11 @@ test-perf:
 	pytest -m performance
 
 TEST_202B_GROUP ?= config/pytest-groups/202b-hotpaths.txt
+TEST_202C_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
+TEST_202C1_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
+TEST_202C2_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
+TEST_202C3_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
+TEST_202C4_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
 
 test-202b-gate:
 	@echo "🧪 Uruchamiam quality gate 202B (hot paths + performance regressions)..."
@@ -87,6 +92,161 @@ test-202b-web-perf:
 test-202b-global-p95:
 	@echo "🧪 Uruchamiam globalny pomiar p95 dla ścieżki 202B..."
 	@$(PYTEST_BIN) -q tests/test_202b_global_latency_hotpath.py
+
+test-202c-diagnostics-contract:
+	@echo "🧪 202C: kontrakt runtime + LoRA audit..."
+	@$(PYTHON_BIN) scripts/dev/202c_runtime_inventory.py
+	@$(PYTHON_BIN) scripts/dev/202c_lora_contract_audit.py
+
+test-202c-diagnostics-runtime:
+	@echo "🧪 202C: funkcjonalna parity + switch soak..."
+	@$(PYTHON_BIN) scripts/dev/202c_gemma3_functional_parity.py --prompts "$(TEST_202C_PROMPTS)"
+	@$(PYTHON_BIN) scripts/dev/202c_runtime_switch_soak.py
+
+test-202c-diagnostics-perf:
+	@echo "🧪 202C: benchmark latency/memory..."
+	@$(PYTHON_BIN) scripts/dev/202c_latency_memory_benchmark.py --prompts "$(TEST_202C_PROMPTS)"
+
+test-202c-diagnostics-report:
+	@echo "🧪 202C: agregacja raportu decyzyjnego..."
+	@$(PYTHON_BIN) scripts/dev/202c_decision_report.py
+
+test-202c-diagnostics-all:
+	@echo "🧪 202C: pełny pakiet diagnostyczny..."
+	@$(MAKE) --no-print-directory test-202c-diagnostics-contract
+	@$(MAKE) --no-print-directory test-202c-diagnostics-runtime
+	@$(MAKE) --no-print-directory test-202c-diagnostics-perf
+	@$(MAKE) --no-print-directory test-202c-diagnostics-report
+
+test-202c1-parity-semantic:
+	@echo "🧪 202C.1: semantic parity..."
+	@$(PYTHON_BIN) scripts/dev/202c_gemma3_functional_parity.py \
+		--prompts "$(TEST_202C1_PROMPTS)" \
+		--json-output test-results/202c1/functional_semantic_parity.json \
+		--semantic-match-threshold 0.55 \
+		--hard-semantic-kpi 0.90
+
+test-202c1-perf-warm:
+	@echo "🧪 202C.1: warm-vs-cold performance..."
+	@$(PYTHON_BIN) scripts/dev/202c_latency_memory_benchmark.py \
+		--prompts "$(TEST_202C1_PROMPTS)" \
+		--json-output test-results/202c1/perf_warm_vs_cold.json \
+		--md-output test-results/202c1/perf_warm_vs_cold.md \
+		--warmup 5
+
+test-202c1-model-selection:
+	@echo "🧪 202C.1: ONNX model selection audit..."
+	@$(PYTHON_BIN) scripts/dev/202c_onnx_model_selection_audit.py
+
+test-202c1-lora-path:
+	@echo "🧪 202C.1: LoRA->ONNX path PoC..."
+	@$(PYTHON_BIN) scripts/dev/202c_lora_to_onnx_path_poc.py
+
+test-202c1-all:
+	@echo "🧪 202C.1: pełny pakiet..."
+	@$(MAKE) --no-print-directory test-202c1-model-selection
+	@$(MAKE) --no-print-directory test-202c1-parity-semantic
+	@$(MAKE) --no-print-directory test-202c1-perf-warm
+	@$(MAKE) --no-print-directory test-202c1-lora-path
+
+test-202c2-parity-judge:
+	@echo "🧪 202C.2: parity z LLM-as-judge..."
+	@$(PYTHON_BIN) scripts/dev/202c_gemma3_functional_parity.py \
+		--prompts "$(TEST_202C2_PROMPTS)" \
+		--json-output test-results/202c2/functional_semantic_parity_judge.json \
+		--semantic-match-threshold 0.50 \
+		--hard-semantic-kpi 0.90 \
+		--judge-runtime ollama \
+		--judge-max-samples 12
+
+test-202c2-perf-tuning:
+	@echo "🧪 202C.2: tuning perf (krótsza generacja)..."
+	@$(PYTHON_BIN) scripts/dev/202c_latency_memory_benchmark.py \
+		--prompts "$(TEST_202C2_PROMPTS)" \
+		--json-output test-results/202c2/perf_warm_vs_cold_tuned.json \
+		--md-output test-results/202c2/perf_warm_vs_cold_tuned.md \
+		--max-tokens 128 \
+		--temperature 0.1 \
+		--warmup 5
+
+test-202c2-all:
+	@echo "🧪 202C.2: pakiet kalibracyjny..."
+	@$(MAKE) --no-print-directory test-202c2-parity-judge
+	@$(MAKE) --no-print-directory test-202c2-perf-tuning
+
+test-202c3-perf-profile:
+	@echo "🧪 202C.3: profilowanie perf per kategoria..."
+	@$(PYTHON_BIN) scripts/dev/202c_latency_memory_benchmark.py \
+		--prompts "$(TEST_202C3_PROMPTS)" \
+		--categories chat \
+		--repetitions 20 \
+		--warmup 3 \
+		--max-tokens 160 \
+		--temperature 0.1 \
+		--json-output test-results/202c3/perf_profile_chat.json \
+		--md-output test-results/202c3/perf_profile_chat.md
+	@$(PYTHON_BIN) scripts/dev/202c_latency_memory_benchmark.py \
+		--prompts "$(TEST_202C3_PROMPTS)" \
+		--categories automation \
+		--repetitions 20 \
+		--warmup 3 \
+		--max-tokens 96 \
+		--temperature 0.1 \
+		--json-output test-results/202c3/perf_profile_automation.json \
+		--md-output test-results/202c3/perf_profile_automation.md
+	@$(PYTHON_BIN) scripts/dev/202c_latency_memory_benchmark.py \
+		--prompts "$(TEST_202C3_PROMPTS)" \
+		--categories coding \
+		--repetitions 20 \
+		--warmup 3 \
+		--max-tokens 192 \
+		--temperature 0.1 \
+		--json-output test-results/202c3/perf_profile_coding.json \
+		--md-output test-results/202c3/perf_profile_coding.md
+
+test-202c3-all:
+	@echo "🧪 202C.3: pakiet workload-profile..."
+	@$(MAKE) --no-print-directory test-202c2-parity-judge
+	@$(MAKE) --no-print-directory test-202c3-perf-profile
+
+test-202c4-automation-matrix:
+	@echo "🧪 202C.4: macierz stabilizacji automation..."
+	@$(PYTHON_BIN) scripts/dev/202c_automation_perf_matrix.py \
+		--prompts "$(TEST_202C4_PROMPTS)" \
+		--category automation \
+		--repetitions 12 \
+		--warmup 3 \
+		--max-tokens-list 48,64,80,96 \
+		--temperature-list 0.0,0.1
+
+test-202c4-all:
+	@echo "🧪 202C.4: dalsza optymalizacja i stabilizacja..."
+	@$(MAKE) --no-print-directory test-202c2-parity-judge
+	@$(MAKE) --no-print-directory test-202c4-automation-matrix
+
+test-202c4-decision-refined:
+	@echo "🧪 202C.4: zrefinowany raport decyzyjny..."
+	@$(PYTHON_BIN) scripts/dev/202c_decision_report.py \
+		--functional-json test-results/202c1/functional_semantic_parity.json \
+		--functional-judge-json test-results/202c2/functional_semantic_parity_judge.json \
+		--perf-json test-results/202c1/perf_warm_vs_cold.json \
+		--automation-matrix-json test-results/202c4/automation_perf_matrix.json \
+		--json-output test-results/202c4/decision_report_refined.json \
+		--md-output test-results/202c4/decision_report_refined.md
+
+test-202c5-lora-runtime-gap:
+	@echo "🧪 202C.5/P0: baseline gap LoRA runtime ONNX (live probe)..."
+	@$(PYTHON_BIN) scripts/dev/202c_lora_contract_audit.py \
+		--probe-deploy \
+		--json-output test-results/202c5/lora_runtime_gap_baseline.json
+
+test-202c6-signature-contract-smoke:
+	@echo "🧪 202C.6: smoke kontraktu podpisu adaptera (live backend)..."
+	@$(PYTHON_BIN) scripts/dev/202c_signature_contract_smoke.py
+
+test-202c7-signed-activation-success:
+	@echo "🧪 202C.7: smoke pelnej aktywacji podpisanego adaptera (live backend)..."
+	@$(PYTHON_BIN) scripts/dev/202c_signed_activation_success_smoke.py
 
 test-llm-manual:
 	@echo "🧪 Manual LLM/runtime tests (operator-triggered only)"

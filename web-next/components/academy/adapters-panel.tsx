@@ -3,12 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { Zap, RefreshCw, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import {
   listAdapters,
   auditAdapters,
   activateAdapter,
   deactivateAdapter,
+  signAdapterForChat,
   getUnifiedModelCatalog,
   type AdapterInfo,
   type AdapterAuditItem,
@@ -32,6 +36,8 @@ export function AdaptersPanel() {
   const [adapterAuditById, setAdapterAuditById] = useState<Record<string, AdapterAuditItem>>(
     {},
   );
+  const [requireChatSignature, setRequireChatSignature] = useState(true);
+  const [chatSigner, setChatSigner] = useState("academy-ui");
   const [activationError, setActivationError] = useState<string>("");
 
   const loadRuntimeModels = useCallback(async (runtimeOverride?: string) => {
@@ -166,12 +172,20 @@ export function AdaptersPanel() {
     try {
       setActivationError("");
       setActivating(adapter.adapter_id);
+      if (requireChatSignature) {
+        await signAdapterForChat(adapter.adapter_id, {
+          runtime_id: selectedRuntime || undefined,
+          model_id: selectedModel || undefined,
+          signer: chatSigner.trim() || "academy-ui",
+        });
+      }
       await activateAdapter({
         adapter_id: adapter.adapter_id,
         adapter_path: adapter.adapter_path,
         runtime_id: selectedRuntime || undefined,
         model_id: selectedModel || undefined,
         deploy_to_chat_runtime: true,
+        require_chat_signature: requireChatSignature,
       });
       await loadAdapters();
       await loadAdapterAudit();
@@ -307,6 +321,38 @@ export function AdaptersPanel() {
             disabled={!selectedRuntime || modelOptions.length === 0}
           />
         </div>
+      </div>
+      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="academy-adapters-require-signature"
+            checked={requireChatSignature}
+            onCheckedChange={(value) => setRequireChatSignature(Boolean(value))}
+          />
+          <Label
+            htmlFor="academy-adapters-require-signature"
+            className="text-sm text-theme-secondary"
+          >
+            {t("academy.adapters.requireChatSignature")}
+          </Label>
+        </div>
+        <p className="mt-1 text-xs text-theme-muted">
+          {t("academy.adapters.requireChatSignatureHint")}
+        </p>
+        {requireChatSignature ? (
+          <div className="mt-3 max-w-md">
+            <Label htmlFor="academy-adapters-chat-signer" className="text-xs text-theme-muted">
+              {t("academy.adapters.chatSigner")}
+            </Label>
+            <Input
+              id="academy-adapters-chat-signer"
+              value={chatSigner}
+              onChange={(event) => setChatSigner(event.target.value)}
+              placeholder="academy-ui"
+              className="mt-2"
+            />
+          </div>
+        ) : null}
       </div>
       {!adapterDeploySupported && selectedRuntime ? (
         <p className="text-xs text-amber-300">

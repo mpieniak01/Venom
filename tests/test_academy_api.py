@@ -273,7 +273,9 @@ def test_start_training_rejects_ollama_without_matching_runtime_family(
     assert payload["reason_code"] == "MODEL_RUNTIME_INCOMPATIBLE"
     assert payload["requested_runtime_id"] == "ollama"
     assert payload["requested_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
-    assert payload["compatible_runtimes"] == ["vllm"]
+    # 202D: onnx is now a valid deploy target for unsloth/HF models (merge→export pipeline)
+    assert "vllm" in payload["compatible_runtimes"]
+    assert "onnx" in payload["compatible_runtimes"]
 
 
 @patch("venom_core.config.SETTINGS")

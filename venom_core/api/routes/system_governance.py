@@ -211,7 +211,6 @@ def get_autonomy_level():
 
 @router.get(
     "/system/autonomy/observability",
-    response_model=AutonomyObservabilityResponse,
     responses=AUTONOMY_OBSERVABILITY_RESPONSES,
 )
 def get_autonomy_observability() -> AutonomyObservabilityResponse:
@@ -238,7 +237,6 @@ def get_autonomy_observability() -> AutonomyObservabilityResponse:
 
 @router.get(
     "/system/autonomy/rollout-status",
-    response_model=AutonomyRolloutStatusResponse,
     responses=AUTONOMY_ROLLOUT_STATUS_RESPONSES,
 )
 def get_autonomy_rollout_status() -> AutonomyRolloutStatusResponse:

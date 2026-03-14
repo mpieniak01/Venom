@@ -368,6 +368,7 @@ def sign_adapter_for_chat(
     conversion_mode: str,
     settings_obj: Any,
 ) -> dict[str, Any]:
+    _ = mgr
     models_dir = _runtime_service._resolve_academy_models_dir(settings_obj=settings_obj)
     adapter_dir = _runtime_service._resolve_adapter_dir(
         models_dir=models_dir,

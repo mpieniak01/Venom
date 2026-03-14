@@ -28,6 +28,8 @@ from .trainable_catalog_service import (
 
 logger = get_logger(__name__)
 MODEL_CONFIG_FILENAME = "config.json"
+ONNX_GENAI_CONFIG_FILENAME = "genai_config.json"
+UNKNOWN_ERROR_DETAIL = "unknown error"
 
 _OLLAMA_GGUF_ADAPTER_CANDIDATES = (
     "Adapter-F16-LoRA.gguf",
@@ -259,7 +261,7 @@ def _restart_vllm_runtime(
         timeout=300,
     )
     if result.returncode != 0:
-        stderr = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        stderr = result.stderr.strip() or result.stdout.strip() or UNKNOWN_ERROR_DETAIL
         raise RuntimeError(f"Failed to restart vLLM runtime: {stderr}")
 
 
@@ -539,7 +541,7 @@ def _ensure_ollama_adapter_gguf(
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
         stdout = (result.stdout or "").strip()
-        details = stderr or stdout or "unknown error"
+        details = stderr or stdout or UNKNOWN_ERROR_DETAIL
         raise RuntimeError(
             f"Failed to convert LoRA adapter to GGUF for Ollama deployment: {details}"
         )
@@ -685,7 +687,7 @@ def _build_onnx_runtime_model_from_adapter(
         raise FileNotFoundError(f"Adapter path not found: {adapter_path}")
 
     runtime_dir = adapter_dir / "runtime_onnx"
-    if runtime_dir.exists() and (runtime_dir / "genai_config.json").exists():
+    if runtime_dir.exists() and (runtime_dir / ONNX_GENAI_CONFIG_FILENAME).exists():
         return runtime_dir
 
     # Step 1: merge LoRA into base model (reuse vLLM merge — produces HF merged dir)
@@ -723,11 +725,12 @@ def _build_onnx_runtime_model_from_adapter(
             stderr = (result.stderr or "").strip()
             stdout = (result.stdout or "").strip()
             raise RuntimeError(
-                "ONNX genai export failed: " + (stderr or stdout or "unknown error")
+                "ONNX genai export failed: "
+                + (stderr or stdout or UNKNOWN_ERROR_DETAIL)
             )
-        if not (tmp_dir / "genai_config.json").exists():
+        if not (tmp_dir / ONNX_GENAI_CONFIG_FILENAME).exists():
             raise RuntimeError(
-                "ONNX genai export finished but genai_config.json not found in output."
+                f"ONNX genai export finished but {ONNX_GENAI_CONFIG_FILENAME} not found in output."
             )
         (tmp_dir / "venom_runtime_onnx.json").write_text(
             json.dumps(
@@ -791,9 +794,9 @@ def _deploy_adapter_to_onnx_runtime(
         base_model=base_model,
         build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
     )
-    if not (runtime_onnx_dir / "genai_config.json").exists():
+    if not (runtime_onnx_dir / ONNX_GENAI_CONFIG_FILENAME).exists():
         raise RuntimeError(
-            f"ONNX export succeeded but genai_config.json missing: {runtime_onnx_dir}"
+            f"ONNX export succeeded but {ONNX_GENAI_CONFIG_FILENAME} missing: {runtime_onnx_dir}"
         )
 
     previous_model_key = "PREVIOUS_MODEL_ONNX"

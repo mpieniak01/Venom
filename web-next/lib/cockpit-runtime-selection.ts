@@ -70,6 +70,42 @@ type ActiveRuntimeInfo = {
   > | null;
 } | null;
 
+function findActiveCatalogRuntime(
+  catalogRuntimes: ReadonlyArray<CatalogRuntime>,
+  declaredRuntimeId: string,
+): CatalogRuntime | null {
+  let firstActiveRuntime: CatalogRuntime | null = null;
+  for (const runtime of catalogRuntimes) {
+    if (!firstActiveRuntime && runtime.active) {
+      firstActiveRuntime = runtime;
+    }
+    if (
+      declaredRuntimeId &&
+      normalizeRuntimeId(runtime.runtime_id) === declaredRuntimeId
+    ) {
+      return runtime;
+    }
+  }
+  return firstActiveRuntime;
+}
+
+function resolveCatalogActiveModel(
+  activeRuntime: CatalogRuntime | null,
+  catalog: UnifiedModelCatalogLike,
+  fallback: ActiveRuntimeInfo,
+  activeRuntimeId: string,
+  fallbackRuntimeId: string,
+): string | null {
+  const runtimeModels = activeRuntime?.models ?? [];
+  const declaredActiveModel = (catalog?.active?.active_model || "").trim();
+  const runtimeActiveModel = runtimeModels.find((model) => model.active)?.name || "";
+  const activeModelFromCatalog = declaredActiveModel || runtimeActiveModel.trim();
+  if (activeModelFromCatalog) {
+    return activeModelFromCatalog;
+  }
+  return fallbackRuntimeId === activeRuntimeId ? fallback?.active_model || null : null;
+}
+
 export function resolveCockpitActiveRuntimeInfo(
   catalog: UnifiedModelCatalogLike,
   fallback: ActiveRuntimeInfo,
@@ -79,50 +115,26 @@ export function resolveCockpitActiveRuntimeInfo(
     catalog?.active?.runtime_id || catalog?.active?.active_server,
   );
 
-  let activeRuntime: CatalogRuntime | null = null;
-  let firstActiveRuntime: CatalogRuntime | null = null;
-  if (catalogRuntimes.length > 0) {
-    for (const runtime of catalogRuntimes) {
-      if (!firstActiveRuntime && runtime.active) {
-        firstActiveRuntime = runtime;
-      }
-      if (
-        declaredRuntimeId &&
-        normalizeRuntimeId(runtime.runtime_id) === declaredRuntimeId
-      ) {
-        activeRuntime = runtime;
-        break;
-      }
-    }
-  }
-  if (!activeRuntime) {
-    activeRuntime = firstActiveRuntime;
-  }
+  let activeRuntime = findActiveCatalogRuntime(catalogRuntimes, declaredRuntimeId);
+  activeRuntime ??= null;
 
   const activeRuntimeNormalizedId = normalizeRuntimeId(activeRuntime?.runtime_id || "");
   const fallbackRuntimeId = normalizeRuntimeId(
     fallback?.active_server || fallback?.runtime_id || "",
   );
-  const activeRuntimeId =
-    declaredRuntimeId ||
-    activeRuntimeNormalizedId ||
-    fallbackRuntimeId;
+  const activeRuntimeId = declaredRuntimeId || activeRuntimeNormalizedId || fallbackRuntimeId;
 
   if (!activeRuntimeId) {
     return fallback;
   }
 
-  const runtimeModels = activeRuntime?.models ?? [];
-  const declaredActiveModel = (catalog?.active?.active_model || "").trim();
-  const runtimeActiveModel = runtimeModels.find((model) => model.active)?.name || "";
-  const activeModelFromCatalog = declaredActiveModel || runtimeActiveModel.trim();
-  const fallbackMatchesActiveRuntime = fallbackRuntimeId === activeRuntimeId;
-  let resolvedActiveModel: string | null = null;
-  if (activeModelFromCatalog) {
-    resolvedActiveModel = activeModelFromCatalog;
-  } else if (fallbackMatchesActiveRuntime) {
-    resolvedActiveModel = fallback?.active_model || null;
-  }
+  const resolvedActiveModel = resolveCatalogActiveModel(
+    activeRuntime,
+    catalog,
+    fallback,
+    activeRuntimeId,
+    fallbackRuntimeId,
+  );
 
   return {
     ...fallback,

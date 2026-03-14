@@ -133,6 +133,89 @@ export function getSelectedModelCompatibilityLabel(
   return compatibility.map((runtime) => getRuntimeDisplayName(runtime)).join(" • ");
 }
 
+type RuntimeOption = { id: string; label: string };
+type RuntimeCapabilityMap = Record<
+  string,
+  {
+    supports_native_training?: boolean;
+    supports_adapter_runtime_apply?: boolean;
+  }
+>;
+
+function buildTrainingRuntimeOptions(
+  runtimes: NonNullable<Awaited<ReturnType<typeof getUnifiedModelCatalog>>["runtimes"]>,
+  getRuntimeDisplayName: (runtimeId: string) => string,
+): RuntimeOption[] {
+  return runtimes
+    .filter(
+      (runtime) =>
+        runtime.source_type === "local-runtime" &&
+        runtime.configured &&
+        runtime.available,
+    )
+    .map((runtime) => ({
+      id: normalizeRuntimeId(runtime.runtime_id),
+      label: getRuntimeDisplayName(runtime.runtime_id),
+    }));
+}
+
+function buildTrainingRuntimeCapabilities(
+  runtimes: NonNullable<Awaited<ReturnType<typeof getUnifiedModelCatalog>>["runtimes"]>,
+): RuntimeCapabilityMap {
+  return runtimes.reduce<RuntimeCapabilityMap>((acc, runtime) => {
+    acc[runtime.runtime_id] = {
+      supports_native_training: runtime.supports_native_training,
+      supports_adapter_runtime_apply: runtime.supports_adapter_runtime_apply,
+    };
+    return acc;
+  }, {});
+}
+
+function resolvePreferredTrainingRuntime(
+  catalog: Awaited<ReturnType<typeof getUnifiedModelCatalog>>,
+  runtimeOverride: string | undefined,
+  selectedRuntime: string,
+): string {
+  const activeRuntimeId = normalizeRuntimeId(
+    String(catalog.active?.runtime_id || catalog.active?.active_server || ""),
+  );
+  return (
+    normalizeRuntimeId(runtimeOverride || "") ||
+    normalizeRuntimeId(selectedRuntime) ||
+    activeRuntimeId ||
+    ""
+  );
+}
+
+function filterTrainableModelsForRuntime(
+  catalog: Awaited<ReturnType<typeof getUnifiedModelCatalog>>,
+  preferredRuntime: string,
+): TrainableModelInfo[] {
+  const trainableCandidates =
+    catalog.trainable_base_models.length > 0
+      ? catalog.trainable_base_models
+      : catalog.trainable_models;
+  return trainableCandidates.filter(
+    (model) =>
+      model.trainable &&
+      (!preferredRuntime || Boolean(model.runtime_compatibility?.[preferredRuntime])),
+  );
+}
+
+function resetTrainingCatalogState(
+  setTrainableModels: React.Dispatch<React.SetStateAction<TrainableModelInfo[]>>,
+  setRuntimeOptions: React.Dispatch<React.SetStateAction<RuntimeOption[]>>,
+  setRuntimeCapabilities: React.Dispatch<React.SetStateAction<RuntimeCapabilityMap>>,
+  setSelectedRuntime: React.Dispatch<React.SetStateAction<string>>,
+  setSelectedBaseModel: React.Dispatch<React.SetStateAction<string>>,
+): void {
+  setTrainableModels([]);
+  setRuntimeOptions([]);
+  setRuntimeCapabilities({});
+  setSelectedRuntime("");
+  setSelectedBaseModel("");
+}
+
 export function getTrainingModelSectionKey(model: TrainableModelInfo): ModelSectionKey {
   if (model.installed_local) return "localFirst";
   if (model.cost_tier === "free") return "cloudFree";
@@ -198,16 +281,8 @@ export function TrainingPanel() {
   const [chatTargetModelId, setChatTargetModelId] = useState("");
   const [viewingLogs, setViewingLogs] = useState<string | null>(null);
   const [trainableModels, setTrainableModels] = useState<TrainableModelInfo[]>([]);
-  const [runtimeOptions, setRuntimeOptions] = useState<Array<{ id: string; label: string }>>([]);
-  const [runtimeCapabilities, setRuntimeCapabilities] = useState<
-    Record<
-      string,
-      {
-        supports_native_training?: boolean;
-        supports_adapter_runtime_apply?: boolean;
-      }
-    >
-  >({});
+  const [runtimeOptions, setRuntimeOptions] = useState<RuntimeOption[]>([]);
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<RuntimeCapabilityMap>({});
   const [selectedRuntime, setSelectedRuntime] = useState("");
   const [selectedBaseModel, setSelectedBaseModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -233,67 +308,36 @@ export function TrainingPanel() {
     try {
       setModelsLoading(true);
       const catalog = await getUnifiedModelCatalog();
-      const availableRuntimes = (catalog.runtimes ?? [])
-        .filter(
-          (runtime) =>
-            runtime.source_type === "local-runtime" &&
-            runtime.configured &&
-            runtime.available,
-        )
-        .map((runtime) => ({
-          id: normalizeRuntimeId(runtime.runtime_id),
-          label: getRuntimeDisplayName(runtime.runtime_id),
-        }));
-      const runtimeCapabilitiesMap = (catalog.runtimes ?? []).reduce<
-        Record<
-          string,
-          {
-            supports_native_training?: boolean;
-            supports_adapter_runtime_apply?: boolean;
-          }
-        >
-      >((acc, runtime) => {
-        acc[runtime.runtime_id] = {
-          supports_native_training: runtime.supports_native_training,
-          supports_adapter_runtime_apply: runtime.supports_adapter_runtime_apply,
-        };
-        return acc;
-      }, {});
+      const runtimes = catalog.runtimes ?? [];
+      const availableRuntimes = buildTrainingRuntimeOptions(
+        runtimes,
+        getRuntimeDisplayName,
+      );
+      const runtimeCapabilitiesMap = buildTrainingRuntimeCapabilities(runtimes);
       setRuntimeOptions(availableRuntimes);
       setRuntimeCapabilities(runtimeCapabilitiesMap);
-      const activeRuntimeId =
-        normalizeRuntimeId(
-          String(catalog.active?.runtime_id || catalog.active?.active_server || ""),
-        );
-      const preferredRuntime =
-        normalizeRuntimeId(runtimeOverride || "") ||
-        normalizeRuntimeId(selectedRuntime) ||
-        activeRuntimeId ||
-        "";
+      const preferredRuntime = resolvePreferredTrainingRuntime(
+        catalog,
+        runtimeOverride,
+        selectedRuntime,
+      );
       if (preferredRuntime && preferredRuntime !== selectedRuntime) {
         setSelectedRuntime(preferredRuntime);
       }
-      const trainableCandidates =
-        catalog.trainable_base_models.length > 0
-          ? catalog.trainable_base_models
-          : catalog.trainable_models;
-      const trainable = trainableCandidates.filter(
-        (model) =>
-          model.trainable &&
-          (!preferredRuntime ||
-            Boolean(model.runtime_compatibility?.[preferredRuntime])),
-      );
+      const trainable = filterTrainableModelsForRuntime(catalog, preferredRuntime);
       setTrainableModels(trainable);
       setSelectedBaseModel((current) =>
         resolveTrainingBaseModelSelection(current, trainable),
       );
     } catch (err) {
       console.error("Failed to load trainable models:", err);
-      setTrainableModels([]);
-      setRuntimeOptions([]);
-      setRuntimeCapabilities({});
-      setSelectedRuntime("");
-      setSelectedBaseModel("");
+      resetTrainingCatalogState(
+        setTrainableModels,
+        setRuntimeOptions,
+        setRuntimeCapabilities,
+        setSelectedRuntime,
+        setSelectedBaseModel,
+      );
     } finally {
       setModelsLoading(false);
     }

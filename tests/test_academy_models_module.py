@@ -764,6 +764,11 @@ def test_activate_adapter_with_chat_runtime_deploy_vllm(mock_settings, tmp_path)
 def test_activate_adapter_with_chat_runtime_deploy_onnx_skipped(
     mock_settings, tmp_path
 ):
+    """202D regression: ONNX deploy is no longer silently skipped.
+
+    Pre-202D: activate with runtime_id=onnx returned deployed=False, reason=runtime_not_supported:onnx.
+    Post-202D: the deploy is attempted; incomplete adapter fixture raises ADAPTER_METADATA_INCOMPLETE.
+    """
     mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
     mgr = MagicMock()
 
@@ -771,17 +776,17 @@ def test_activate_adapter_with_chat_runtime_deploy_onnx_skipped(
     adapter_dir.mkdir(parents=True)
     mgr.activate_adapter.return_value = True
 
-    payload = academy_models.activate_adapter(
-        mgr=mgr,
-        adapter_id="ok-adapter",
-        runtime_id="onnx",
-        model_id="phi3-onnx",
-        deploy_to_chat_runtime=True,
-    )
+    # With 202D, ONNX deploy is attempted — incomplete fixture raises ValueError
+    import pytest as _pytest
 
-    assert payload["success"] is True
-    assert payload["deployed"] is False
-    assert payload["reason"] == "runtime_not_supported:onnx"
+    with _pytest.raises(ValueError, match="ADAPTER_METADATA_INCOMPLETE"):
+        academy_models.activate_adapter(
+            mgr=mgr,
+            adapter_id="ok-adapter",
+            runtime_id="onnx",
+            model_id="phi3-onnx",
+            deploy_to_chat_runtime=True,
+        )
 
 
 @patch("venom_core.config.SETTINGS")

@@ -248,6 +248,17 @@ test-202c7-signed-activation-success:
 	@echo "🧪 202C.7: smoke pelnej aktywacji podpisanego adaptera (live backend)..."
 	@$(PYTHON_BIN) scripts/dev/202c_signed_activation_success_smoke.py
 
+test-202d-lora-onnx-deploy:
+	@echo "🧪 202D: unit tests — LoRA direct deploy do ONNX runtime (P0)"
+	@$(PYTHON_BIN) -m pytest tests/test_academy_202d_lora_onnx_deploy.py -v
+
+test-202d-lora-onnx-smoke:
+	@echo "🧪 202D: smoke P0 — onnx_compatibility_flag + direct_deploy + rollback"
+	@$(PYTHON_BIN) scripts/dev/202d_lora_onnx_direct_deploy_smoke.py
+
+test-202d-all: test-202d-lora-onnx-deploy test-202d-lora-onnx-smoke
+	@echo "✅ 202D complete"
+
 test-llm-manual:
 	@echo "🧪 Manual LLM/runtime tests (operator-triggered only)"
 	pytest -m manual_llm

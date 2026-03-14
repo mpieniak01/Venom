@@ -309,6 +309,18 @@
       "rationale": "202C signing/coverage PR gate kept in fast-lane new-code checks only."
     },
     {
+      "path": "tests/test_academy_202d_lora_onnx_deploy.py",
+      "domain": "academy",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code"
+      ],
+      "legacy_targeted": false,
+      "rationale": "202D ONNX direct deploy contract/regression coverage for new-code lane."
+    },
+    {
       "path": "tests/test_academy_adapter_runtime_service.py",
       "domain": "academy",
       "test_type": "service_contract",

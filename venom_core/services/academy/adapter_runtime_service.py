@@ -634,6 +634,221 @@ def _deploy_adapter_to_vllm_runtime(
     }
 
 
+def _resolve_onnx_builder_script(*, settings_obj: Any | None = None) -> Path:
+    """Resolve path to onnxruntime-genai builder.py script."""
+    import os as _os
+
+    settings = settings_obj or _get_settings()
+    default_rel = "third_party/onnxruntime-genai/src/python/py/models/builder.py"
+    env_script = _os.getenv("ONNX_GENAI_BUILDER_SCRIPT", "").strip()
+    candidates = [
+        env_script,
+        str(getattr(settings, "ONNX_BUILDER_SCRIPT", "") or ""),
+    ]
+    repo_root = _resolve_repo_root(settings_obj=settings)
+    for raw in candidates:
+        if not raw:
+            continue
+        p = Path(raw).expanduser()
+        if not p.is_absolute():
+            p = (repo_root / p).resolve()
+        if p.exists() and p.is_file():
+            return p
+    default_path = (repo_root / default_rel).resolve()
+    if default_path.exists() and default_path.is_file():
+        return default_path
+    tools_path = (repo_root / "tools" / "onnx_builder" / "builder.py").resolve()
+    if tools_path.exists() and tools_path.is_file():
+        return tools_path
+    raise FileNotFoundError(
+        "ONNX genai builder.py not found. Searched ONNX_GENAI_BUILDER_SCRIPT env var, "
+        "ONNX_BUILDER_SCRIPT setting, and default paths "
+        f"('{default_rel}', 'tools/onnx_builder/builder.py')."
+    )
+
+
+def _build_onnx_runtime_model_from_adapter(
+    *,
+    adapter_dir: Path,
+    base_model: str,
+    execution_provider: str = "cpu",
+    precision: str = "int4",
+    settings_obj: Any | None = None,
+    build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
+) -> Path:
+    """Merge LoRA adapter with base model and export to ONNX genai format.
+
+    Pipeline: adapter + base_model → HF merged model → onnxruntime-genai builder → runtime_onnx/
+    """
+    adapter_path = adapter_dir / "adapter"
+    if not adapter_path.exists():
+        raise FileNotFoundError(f"Adapter path not found: {adapter_path}")
+
+    runtime_dir = adapter_dir / "runtime_onnx"
+    if runtime_dir.exists() and (runtime_dir / "genai_config.json").exists():
+        return runtime_dir
+
+    # Step 1: merge LoRA into base model (reuse vLLM merge — produces HF merged dir)
+    merged_dir = build_vllm_runtime_model_from_adapter_fn(
+        adapter_dir=adapter_dir,
+        base_model=base_model,
+    )
+
+    # Step 2: export merged HF model to onnxruntime-genai format via builder.py
+    builder_script = _resolve_onnx_builder_script(settings_obj=settings_obj)
+    tmp_dir = adapter_dir / "runtime_onnx_tmp"
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(builder_script),
+                "-m",
+                str(merged_dir),
+                "-e",
+                execution_provider,
+                "-p",
+                precision,
+                "-o",
+                str(tmp_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            stdout = (result.stdout or "").strip()
+            raise RuntimeError(
+                "ONNX genai export failed: " + (stderr or stdout or "unknown error")
+            )
+        if not (tmp_dir / "genai_config.json").exists():
+            raise RuntimeError(
+                "ONNX genai export finished but genai_config.json not found in output."
+            )
+        (tmp_dir / "venom_runtime_onnx.json").write_text(
+            json.dumps(
+                {
+                    "base_model": base_model,
+                    "adapter_path": str(adapter_path),
+                    "runtime": "onnx",
+                    "execution_provider": execution_provider,
+                    "precision": precision,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+
+    if runtime_dir.exists():
+        shutil.rmtree(runtime_dir, ignore_errors=True)
+    try:
+        tmp_dir.rename(runtime_dir)
+    except Exception:
+        # Keep workspace clean if final move fails after successful export.
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+    return runtime_dir
+
+
+def _deploy_adapter_to_onnx_runtime(
+    *,
+    adapter_id: str,
+    settings_obj: Any | None = None,
+    config_manager_obj: Any = config_manager,
+    compute_llm_config_hash_fn: Any = compute_llm_config_hash,
+    runtime_endpoint_for_hash_fn: Any = _runtime_endpoint_for_hash,
+    build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
+    build_onnx_runtime_model_from_adapter_fn: Any | None = None,
+    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
+) -> Dict[str, Any]:
+    """Deploy LoRA adapter to ONNX runtime via merge → ONNX export pipeline."""
+    settings = settings_obj or _get_settings()
+    models_dir = _resolve_academy_models_dir(settings_obj=settings)
+    adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
+    adapter_path = adapter_dir / "adapter"
+    if not adapter_path.exists():
+        raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
+    base_model = _require_trusted_adapter_base_model(
+        adapter_dir=adapter_dir,
+    ).strip()
+    if not base_model:
+        raise RuntimeError("Adapter base model is empty; cannot deploy to ONNX")
+
+    build_fn = (
+        build_onnx_runtime_model_from_adapter_fn
+        or _build_onnx_runtime_model_from_adapter
+    )
+    runtime_onnx_dir = build_fn(
+        adapter_dir=adapter_dir,
+        base_model=base_model,
+        build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
+    )
+    if not (runtime_onnx_dir / "genai_config.json").exists():
+        raise RuntimeError(
+            f"ONNX export succeeded but genai_config.json missing: {runtime_onnx_dir}"
+        )
+
+    previous_model_key = "PREVIOUS_MODEL_ONNX"
+    active_runtime = get_active_llm_runtime_fn()
+    active_runtime_id, active_model = _resolve_current_runtime_state(
+        active_runtime=active_runtime,
+        settings_obj=settings,
+    )
+    selected_model = f"venom-adapter-{adapter_id}"
+    previous_onnx_model_path = str(
+        getattr(settings, "ONNX_LLM_MODEL_PATH", "") or ""
+    ).strip()
+    updates: Dict[str, Any] = {
+        "ACTIVE_LLM_SERVER": "onnx",
+        "LLM_SERVICE_TYPE": "onnx",
+        "LLM_LOCAL_ENDPOINT": "",
+        "LLM_MODEL_NAME": selected_model,
+        "HYBRID_LOCAL_MODEL": selected_model,
+        "ONNX_LLM_MODEL_PATH": str(runtime_onnx_dir),
+        "ONNX_LLM_ENABLED": True,
+        "LAST_MODEL_ONNX": selected_model,
+        "PREVIOUS_ONNX_LLM_MODEL_PATH": previous_onnx_model_path,
+    }
+    if active_runtime_id == "onnx" and active_model and active_model != selected_model:
+        updates[previous_model_key] = active_model
+    endpoint = runtime_endpoint_for_hash_fn("onnx", settings_obj=settings)
+    config_hash = compute_llm_config_hash_fn("onnx", endpoint or "", selected_model)
+    updates["LLM_CONFIG_HASH"] = config_hash
+    update_result = config_manager_obj.update_config(updates)
+    if isinstance(update_result, dict) and not bool(update_result.get("success", True)):
+        raise RuntimeError(
+            "Failed to persist ONNX adapter deploy config: "
+            f"{update_result.get('message', 'unknown error')}"
+        )
+    try:
+        settings.ACTIVE_LLM_SERVER = "onnx"
+        settings.LLM_SERVICE_TYPE = "onnx"
+        settings.LLM_LOCAL_ENDPOINT = ""
+        settings.LLM_MODEL_NAME = selected_model
+        settings.HYBRID_LOCAL_MODEL = selected_model
+        settings.ONNX_LLM_MODEL_PATH = str(runtime_onnx_dir)
+        settings.ONNX_LLM_ENABLED = True
+        settings.LAST_MODEL_ONNX = selected_model
+        settings.LLM_CONFIG_HASH = config_hash
+    except Exception:
+        logger.warning("Failed to update SETTINGS for ONNX adapter deploy.")
+    return {
+        "deployed": True,
+        "runtime_id": "onnx",
+        "chat_model": selected_model,
+        "config_hash": config_hash,
+        "runtime_model_path": str(runtime_onnx_dir),
+    }
+
+
 def _handle_non_ollama_runtime_deploy(
     *,
     runtime_local_id: str,
@@ -646,14 +861,21 @@ def _handle_non_ollama_runtime_deploy(
     is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
     restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
     deploy_adapter_to_vllm_runtime_fn: Any | None = None,
+    deploy_adapter_to_onnx_runtime_fn: Any | None = None,
     get_active_llm_runtime_fn: Any = get_active_llm_runtime,
 ) -> Dict[str, Any]:
     if runtime_local_id == "onnx":
-        return {
-            "deployed": False,
-            "reason": f"runtime_not_supported:{runtime_local_id}",
-            "runtime_id": runtime_local_id,
-        }
+        if deploy_adapter_to_onnx_runtime_fn is not None:
+            return deploy_adapter_to_onnx_runtime_fn(adapter_id=adapter_id)
+        return _deploy_adapter_to_onnx_runtime(
+            adapter_id=adapter_id,
+            settings_obj=settings_obj,
+            config_manager_obj=config_manager_obj,
+            compute_llm_config_hash_fn=compute_llm_config_hash_fn,
+            runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
+            build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
+            get_active_llm_runtime_fn=get_active_llm_runtime_fn,
+        )
     if runtime_local_id == "vllm":
         if deploy_adapter_to_vllm_runtime_fn is not None:
             return deploy_adapter_to_vllm_runtime_fn(adapter_id=adapter_id)
@@ -688,6 +910,7 @@ def _resolve_chat_runtime_deploy_deps(
         "restart_vllm_runtime_fn": _restart_vllm_runtime,
         "get_active_llm_runtime_fn": get_active_llm_runtime,
         "deploy_adapter_to_vllm_runtime_fn": None,
+        "deploy_adapter_to_onnx_runtime_fn": None,
     }
     resolved = dict(defaults)
     if deploy_deps:
@@ -745,6 +968,7 @@ def _deploy_adapter_to_chat_runtime(
         restart_vllm_runtime_fn=deps["restart_vllm_runtime_fn"],
         deploy_adapter_to_vllm_runtime_fn=deps["deploy_adapter_to_vllm_runtime_fn"],
         get_active_llm_runtime_fn=deps["get_active_llm_runtime_fn"],
+        deploy_adapter_to_onnx_runtime_fn=deps["deploy_adapter_to_onnx_runtime_fn"],
     )
     if non_ollama_payload:
         return non_ollama_payload
@@ -847,6 +1071,81 @@ def _deploy_adapter_to_chat_runtime(
     }
 
 
+def _rollback_onnx_adapter_deploy(
+    *,
+    config: Dict[str, Any],
+    settings_obj: Any | None = None,
+    config_manager_obj: Any = config_manager,
+    compute_llm_config_hash_fn: Any = compute_llm_config_hash,
+    runtime_endpoint_for_hash_fn: Any = _runtime_endpoint_for_hash,
+) -> Dict[str, Any]:
+    """Roll back ONNX adapter deploy: restore previous ONNX model path and settings."""
+    settings = settings_obj or _get_settings()
+    previous_onnx_path = str(config.get("PREVIOUS_ONNX_LLM_MODEL_PATH") or "").strip()
+    previous_model = str(config.get("PREVIOUS_MODEL_ONNX") or "").strip()
+    fallback_model = (
+        previous_model or str(getattr(settings, "LAST_MODEL_ONNX", "") or "").strip()
+    )
+
+    if not fallback_model and not previous_onnx_path:
+        return {
+            "rolled_back": False,
+            "reason": "previous_model_missing",
+            "runtime_id": "onnx",
+        }
+    if fallback_model and not previous_onnx_path:
+        logger.warning(
+            "ONNX adapter rollback requested but no previous ONNX_LLM_MODEL_PATH was recorded; "
+            "leaving configuration unchanged."
+        )
+        return {
+            "rolled_back": False,
+            "reason": "previous_path_missing",
+            "runtime_id": "onnx",
+            "chat_model": fallback_model,
+        }
+
+    updates: Dict[str, Any] = {
+        "ACTIVE_LLM_SERVER": "onnx",
+        "LLM_SERVICE_TYPE": "onnx",
+        "LLM_LOCAL_ENDPOINT": "",
+        "LLM_MODEL_NAME": fallback_model,
+        "HYBRID_LOCAL_MODEL": fallback_model,
+        "LAST_MODEL_ONNX": fallback_model,
+        "PREVIOUS_MODEL_ONNX": "",
+        "PREVIOUS_ONNX_LLM_MODEL_PATH": "",
+    }
+    updates["ONNX_LLM_MODEL_PATH"] = previous_onnx_path
+    updates["ONNX_LLM_ENABLED"] = True
+    endpoint = runtime_endpoint_for_hash_fn("onnx", settings_obj=settings)
+    config_hash = compute_llm_config_hash_fn("onnx", endpoint or "", fallback_model)
+    updates["LLM_CONFIG_HASH"] = config_hash
+    update_result = config_manager_obj.update_config(updates)
+    if isinstance(update_result, dict) and not bool(update_result.get("success", True)):
+        raise RuntimeError(
+            "Failed to persist ONNX adapter rollback config: "
+            f"{update_result.get('message', 'unknown error')}"
+        )
+    try:
+        settings.ACTIVE_LLM_SERVER = "onnx"
+        settings.LLM_SERVICE_TYPE = "onnx"
+        settings.LLM_LOCAL_ENDPOINT = ""
+        settings.LLM_MODEL_NAME = fallback_model
+        settings.HYBRID_LOCAL_MODEL = fallback_model
+        settings.LAST_MODEL_ONNX = fallback_model
+        settings.LLM_CONFIG_HASH = config_hash
+        settings.ONNX_LLM_MODEL_PATH = previous_onnx_path
+        settings.ONNX_LLM_ENABLED = True
+    except Exception:
+        logger.warning("Failed to update SETTINGS during ONNX adapter rollback.")
+    return {
+        "rolled_back": True,
+        "runtime_id": "onnx",
+        "chat_model": fallback_model,
+        "config_hash": config_hash,
+    }
+
+
 def _rollback_chat_runtime_after_adapter_deactivation(
     *,
     mgr: Any,
@@ -874,11 +1173,13 @@ def _rollback_chat_runtime_after_adapter_deactivation(
         }
 
     if runtime_local_id == "onnx":
-        return {
-            "rolled_back": False,
-            "reason": f"runtime_not_supported:{runtime_local_id}",
-            "runtime_id": runtime_local_id,
-        }
+        return _rollback_onnx_adapter_deploy(
+            config=config,
+            settings_obj=settings,
+            config_manager_obj=config_manager_obj,
+            compute_llm_config_hash_fn=compute_llm_config_hash_fn,
+            runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
+        )
 
     runtime_local_id, previous_key, fallback_model = (
         _resolve_fallback_model_for_rollback(

@@ -403,6 +403,116 @@ def test_activate_adapter_rejects_runtime_model_family_mismatch_without_side_eff
 
 
 @patch("venom_core.config.SETTINGS")
+def test_sign_adapter_for_chat_success(mock_settings, client_with_deps, tmp_path):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")
+
+    adapter_root = Path(mock_settings.ACADEMY_MODELS_DIR) / "training_sign_001"
+    (adapter_root / "adapter").mkdir(parents=True)
+
+    response = client_with_deps.post(
+        "/api/v1/academy/adapters/training_sign_001/sign",
+        json={
+            "runtime_id": "ollama",
+            "model_id": "gemma3:latest",
+            "signer": "tests",
+            "conversion_mode": "gguf",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["adapter_id"] == "training_sign_001"
+    assert payload["signature"]["signed"] is True
+    assert payload["signature"]["runtime_id"] == "ollama"
+    assert payload["signature"]["model_id"] == "gemma3:latest"
+    assert payload["signature"]["signer"] == "tests"
+    assert payload["signature"]["conversion_mode"] == "gguf"
+
+
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_require_chat_signature_rejects_unsigned(
+    mock_settings, client_with_deps, tmp_path
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")
+
+    adapter_root = Path(mock_settings.ACADEMY_MODELS_DIR) / "training_unsigned_001"
+    adapter_dir = adapter_root / "adapter"
+    adapter_dir.mkdir(parents=True)
+
+    with patch(
+        "venom_core.api.routes.academy_models.validate_adapter_runtime_compatibility",
+        new=AsyncMock(return_value=None),
+    ):
+        response = client_with_deps.post(
+            "/api/v1/academy/adapters/activate",
+            json={
+                "adapter_id": "training_unsigned_001",
+                "adapter_path": str(adapter_dir),
+                "runtime_id": "ollama",
+                "model_id": "gemma3:latest",
+                "deploy_to_chat_runtime": True,
+                "require_chat_signature": True,
+            },
+        )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "ADAPTER_NOT_SIGNED_FOR_CHAT"
+    assert detail["adapter_id"] == "training_unsigned_001"
+    assert detail["requested_runtime_id"] == "ollama"
+    assert detail["requested_model_id"] == "gemma3:latest"
+
+
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_require_chat_signature_rejects_model_mismatch(
+    mock_settings, client_with_deps, tmp_path
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")
+
+    adapter_root = Path(mock_settings.ACADEMY_MODELS_DIR) / "training_signed_001"
+    adapter_dir = adapter_root / "adapter"
+    adapter_dir.mkdir(parents=True)
+
+    sign_response = client_with_deps.post(
+        "/api/v1/academy/adapters/training_signed_001/sign",
+        json={
+            "runtime_id": "ollama",
+            "model_id": "gemma3:latest",
+            "signer": "tests",
+            "conversion_mode": "gguf",
+        },
+    )
+    assert sign_response.status_code == 200
+
+    with patch(
+        "venom_core.api.routes.academy_models.validate_adapter_runtime_compatibility",
+        new=AsyncMock(return_value=None),
+    ):
+        response = client_with_deps.post(
+            "/api/v1/academy/adapters/activate",
+            json={
+                "adapter_id": "training_signed_001",
+                "adapter_path": str(adapter_dir),
+                "runtime_id": "ollama",
+                "model_id": "gemma3:4b",
+                "deploy_to_chat_runtime": True,
+                "require_chat_signature": True,
+            },
+        )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "ADAPTER_SIGNATURE_MODEL_MISMATCH"
+    assert detail["adapter_id"] == "training_signed_001"
+    assert detail["requested_runtime_id"] == "ollama"
+    assert detail["requested_model_id"] == "gemma3:4b"
+
+
+@patch("venom_core.config.SETTINGS")
 def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tmp_path):
     mock_settings.ENABLE_ACADEMY = True
     mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")

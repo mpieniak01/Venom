@@ -103,6 +103,19 @@ export const academy = {
     loraHint: "4-64 (higher = more parameters)",
     learningRate: "Learning Rate",
     batchSizeHint: "1-32 (smaller = less VRAM)",
+    onnxConversionMode: "ONNX conversion mode",
+    onnxConversionNone: "No conversion",
+    onnxConversionMergeExport: "Merge adapter and export ONNX",
+    onnxConversionHint:
+      "The conversion option is persisted in the training job and can be used after training when publishing artifacts.",
+    onnxConversionHintOnnx:
+      "For ONNX runtime, the 'Merge adapter and export ONNX' mode is recommended.",
+    autoSignForChat: "Automatically sign adapter for chat",
+    autoSignForChatHint:
+      "After training, Academy signs the adapter so signature-required activation works without manual steps.",
+    chatSigner: "Signer",
+    chatTargetModelId: "Target chat model",
+    chatTargetModelIdPlaceholder: "e.g. gemma3:latest",
     starting: "Starting...",
     start: "Start Training",
     history: "Training History ({{count}})",
@@ -139,6 +152,10 @@ export const academy = {
     blocked: "Blocked for current selection",
     runtimeSelectionRequired: "Choose a server before activating the adapter.",
     modelSelectionRequired: "Choose a runtime model before activating the adapter.",
+    requireChatSignature: "Require adapter signature on activation",
+    requireChatSignatureHint:
+      "If enabled, the panel signs the adapter for selected runtime/model first, then sends activation with signature enforcement.",
+    chatSigner: "Signature signer",
     metadataIncomplete: "Adapter requires a new canonical manifest",
     metadataIncompleteDescription:
       "This adapter does not have a complete metadata.json in the new format and is not treated as a valid activation artifact.",

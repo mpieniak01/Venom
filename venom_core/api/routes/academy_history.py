@@ -103,6 +103,18 @@ def save_adapter_metadata(job: dict[str, Any], adapter_path: Path) -> None:
         ),
     )
     metadata["job_id"] = job.get("job_id")
+    parameters = (
+        job.get("parameters", {}) if isinstance(job.get("parameters"), dict) else {}
+    )
+    onnx_conversion_mode = (
+        str(parameters.get("onnx_conversion_mode") or "none").strip().lower()
+    )
+    if onnx_conversion_mode != "none":
+        metadata["onnx_conversion_plan"] = {
+            "mode": onnx_conversion_mode,
+            "status": "planned",
+            "target_runtime": "onnx",
+        }
     if runtime_id == "ollama":
         gguf_path = _adapter_runtime._ensure_ollama_adapter_gguf(
             adapter_dir=adapter_path.parent,
@@ -110,3 +122,16 @@ def save_adapter_metadata(job: dict[str, Any], adapter_path: Path) -> None:
         )
         metadata["ollama_adapter_gguf_path"] = str(gguf_path)
     write_canonical_adapter_metadata(adapter_dir=adapter_path.parent, payload=metadata)
+    if bool(parameters.get("auto_sign_for_chat")):
+        from venom_core.services.academy.adapter_metadata_service import (
+            write_adapter_chat_signature,
+        )
+
+        write_adapter_chat_signature(
+            adapter_dir=adapter_path.parent,
+            runtime_id=runtime_id or "vllm",
+            model_id=str(parameters.get("chat_target_model_id") or "").strip() or None,
+            signer=str(parameters.get("chat_signer") or "system").strip() or "system",
+            conversion_mode=("gguf" if runtime_id == "ollama" else onnx_conversion_mode)
+            or "none",
+        )

@@ -18,7 +18,7 @@ describe("academy adapter signing api client", () => {
       return new Response(
         JSON.stringify({
           success: true,
-          message: "signed",
+          adapter_id: "adapter-1",
           signature: { adapter_id: "adapter-1" },
         }),
         {
@@ -36,6 +36,7 @@ describe("academy adapter signing api client", () => {
       });
 
       assert.equal(response.success, true);
+      assert.equal(response.adapter_id, "adapter-1");
       assert.equal(calls.length, 1);
       assert.equal(calls[0]?.url.includes("/api/v1/academy/adapters/adapter-1/sign"), true);
       assert.equal(calls[0]?.method, "POST");

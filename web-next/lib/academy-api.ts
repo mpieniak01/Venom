@@ -270,12 +270,12 @@ export async function signAdapterForChat(
   },
 ): Promise<{
   success: boolean;
-  message: string;
+  adapter_id: string;
   signature: Record<string, unknown>;
 }> {
   return apiFetch<{
     success: boolean;
-    message: string;
+    adapter_id: string;
     signature: Record<string, unknown>;
   }>(`/api/v1/academy/adapters/${encodeURIComponent(adapterId)}/sign`, {
     method: "POST",

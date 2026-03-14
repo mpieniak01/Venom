@@ -297,6 +297,18 @@
       "rationale": "Performance scenario kept outside fast lanes."
     },
     {
+      "path": "tests/test_academy_202c_signing_coverage.py",
+      "domain": "academy",
+      "test_type": "gate",
+      "intent": "legacy_coverage",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code"
+      ],
+      "legacy_targeted": true,
+      "rationale": "202C signing/coverage PR gate kept in fast-lane new-code checks only."
+    },
+    {
       "path": "tests/test_academy_adapter_runtime_service.py",
       "domain": "academy",
       "test_type": "service_contract",

@@ -655,10 +655,10 @@ def _resolve_onnx_builder_script(*, settings_obj: Any | None = None) -> Path:
         if p.exists() and p.is_file():
             return p
     default_path = (repo_root / default_rel).resolve()
-    if default_path.exists():
+    if default_path.exists() and default_path.is_file():
         return default_path
     tools_path = (repo_root / "tools" / "onnx_builder" / "builder.py").resolve()
-    if tools_path.exists():
+    if tools_path.exists() and tools_path.is_file():
         return tools_path
     raise FileNotFoundError(
         "ONNX genai builder.py not found. Searched ONNX_GENAI_BUILDER_SCRIPT env var, "
@@ -749,7 +749,12 @@ def _build_onnx_runtime_model_from_adapter(
 
     if runtime_dir.exists():
         shutil.rmtree(runtime_dir, ignore_errors=True)
-    tmp_dir.rename(runtime_dir)
+    try:
+        tmp_dir.rename(runtime_dir)
+    except Exception:
+        # Keep workspace clean if final move fails after successful export.
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
     return runtime_dir
 
 
@@ -803,6 +808,8 @@ def _deploy_adapter_to_onnx_runtime(
     ).strip()
     updates: Dict[str, Any] = {
         "ACTIVE_LLM_SERVER": "onnx",
+        "LLM_SERVICE_TYPE": "onnx",
+        "LLM_LOCAL_ENDPOINT": "",
         "LLM_MODEL_NAME": selected_model,
         "HYBRID_LOCAL_MODEL": selected_model,
         "ONNX_LLM_MODEL_PATH": str(runtime_onnx_dir),
@@ -815,9 +822,16 @@ def _deploy_adapter_to_onnx_runtime(
     endpoint = runtime_endpoint_for_hash_fn("onnx", settings_obj=settings)
     config_hash = compute_llm_config_hash_fn("onnx", endpoint or "", selected_model)
     updates["LLM_CONFIG_HASH"] = config_hash
-    config_manager_obj.update_config(updates)
+    update_result = config_manager_obj.update_config(updates)
+    if isinstance(update_result, dict) and not bool(update_result.get("success", True)):
+        raise RuntimeError(
+            "Failed to persist ONNX adapter deploy config: "
+            f"{update_result.get('message', 'unknown error')}"
+        )
     try:
         settings.ACTIVE_LLM_SERVER = "onnx"
+        settings.LLM_SERVICE_TYPE = "onnx"
+        settings.LLM_LOCAL_ENDPOINT = ""
         settings.LLM_MODEL_NAME = selected_model
         settings.HYBRID_LOCAL_MODEL = selected_model
         settings.ONNX_LLM_MODEL_PATH = str(runtime_onnx_dir)
@@ -896,7 +910,6 @@ def _resolve_chat_runtime_deploy_deps(
         "restart_vllm_runtime_fn": _restart_vllm_runtime,
         "get_active_llm_runtime_fn": get_active_llm_runtime,
         "deploy_adapter_to_vllm_runtime_fn": None,
-        "build_onnx_runtime_model_from_adapter_fn": None,
         "deploy_adapter_to_onnx_runtime_fn": None,
     }
     resolved = dict(defaults)
@@ -1080,35 +1093,49 @@ def _rollback_onnx_adapter_deploy(
             "reason": "previous_model_missing",
             "runtime_id": "onnx",
         }
+    if fallback_model and not previous_onnx_path:
+        logger.warning(
+            "ONNX adapter rollback requested but no previous ONNX_LLM_MODEL_PATH was recorded; "
+            "leaving configuration unchanged."
+        )
+        return {
+            "rolled_back": False,
+            "reason": "previous_path_missing",
+            "runtime_id": "onnx",
+            "chat_model": fallback_model,
+        }
 
     updates: Dict[str, Any] = {
         "ACTIVE_LLM_SERVER": "onnx",
+        "LLM_SERVICE_TYPE": "onnx",
+        "LLM_LOCAL_ENDPOINT": "",
         "LLM_MODEL_NAME": fallback_model,
         "HYBRID_LOCAL_MODEL": fallback_model,
         "LAST_MODEL_ONNX": fallback_model,
         "PREVIOUS_MODEL_ONNX": "",
         "PREVIOUS_ONNX_LLM_MODEL_PATH": "",
     }
-    if previous_onnx_path:
-        updates["ONNX_LLM_MODEL_PATH"] = previous_onnx_path
-        updates["ONNX_LLM_ENABLED"] = True
-    else:
-        updates["ONNX_LLM_ENABLED"] = False
+    updates["ONNX_LLM_MODEL_PATH"] = previous_onnx_path
+    updates["ONNX_LLM_ENABLED"] = True
     endpoint = runtime_endpoint_for_hash_fn("onnx", settings_obj=settings)
     config_hash = compute_llm_config_hash_fn("onnx", endpoint or "", fallback_model)
     updates["LLM_CONFIG_HASH"] = config_hash
-    config_manager_obj.update_config(updates)
+    update_result = config_manager_obj.update_config(updates)
+    if isinstance(update_result, dict) and not bool(update_result.get("success", True)):
+        raise RuntimeError(
+            "Failed to persist ONNX adapter rollback config: "
+            f"{update_result.get('message', 'unknown error')}"
+        )
     try:
         settings.ACTIVE_LLM_SERVER = "onnx"
+        settings.LLM_SERVICE_TYPE = "onnx"
+        settings.LLM_LOCAL_ENDPOINT = ""
         settings.LLM_MODEL_NAME = fallback_model
         settings.HYBRID_LOCAL_MODEL = fallback_model
         settings.LAST_MODEL_ONNX = fallback_model
         settings.LLM_CONFIG_HASH = config_hash
-        if previous_onnx_path:
-            settings.ONNX_LLM_MODEL_PATH = previous_onnx_path
-            settings.ONNX_LLM_ENABLED = True
-        else:
-            settings.ONNX_LLM_ENABLED = False
+        settings.ONNX_LLM_MODEL_PATH = previous_onnx_path
+        settings.ONNX_LLM_ENABLED = True
     except Exception:
         logger.warning("Failed to update SETTINGS during ONNX adapter rollback.")
     return {

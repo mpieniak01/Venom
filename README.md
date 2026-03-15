@@ -45,6 +45,8 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - Rollout verification script was delivered: `scripts/ops/verify_policy_rollout.py`.
 - Runtime path was simplified to runtime-only governance (legacy submit-level policy block path removed from execution flow).
 - Permissions UI in `/config` was expanded with the `Permissions` tab and autonomy/audit controls aligned with the same audit stream.
+- Academy ONNX direct deploy path was closed end-to-end for Gemma-3 LoRA (`merge_export -> activate -> inference -> deactivate`) with live artifacted validation.
+- Recommended WSL2 profile for ONNX Academy E2E on 32 GB / 12 GB hosts was raised to `memory=30GB`, `swap=16GB` (see `docs/RUNTIME_PROFILES.md`).
 
 ## Documentation
 ### Start and operations

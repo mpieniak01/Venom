@@ -422,7 +422,7 @@ class ConfigUpdateRequest(BaseModel):
                 errors.append(f"AI_MODE musi być jednym z: {', '.join(valid_modes)}")
 
         if "LLM_SERVICE_TYPE" in updates:
-            valid_types = ["local", "openai", "google", "ollama", "vllm"]
+            valid_types = ["local", "openai", "google", "ollama", "vllm", "onnx"]
             if str(updates["LLM_SERVICE_TYPE"]).lower() not in valid_types:
                 errors.append(
                     f"LLM_SERVICE_TYPE musi być jednym z: {', '.join(valid_types)}"

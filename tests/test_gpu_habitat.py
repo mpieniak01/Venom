@@ -460,3 +460,10 @@ def test_local_runtime_training_execution(tmp_path, monkeypatch):
             assert result["status"] == "running"
             assert result["job_name"] == "local-job"
             assert popen_mock.called
+            popen_kwargs = popen_mock.call_args.kwargs
+            env = popen_kwargs["env"]
+            assert env["WANDB_DISABLED"] == "true"
+            assert env["WANDB_MODE"] == "disabled"
+            assert env["HF_HOME"].endswith("/.hf-cache")
+            assert env["HF_DATASETS_CACHE"].endswith("/.hf-cache/datasets")
+            assert env["HUGGINGFACE_HUB_CACHE"].endswith("/.hf-cache/hub")

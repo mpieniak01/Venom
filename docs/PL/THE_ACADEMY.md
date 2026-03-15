@@ -273,6 +273,25 @@ Uwaga operacyjna:
 2. Kanoniczne `metadata.json` jest obowiązkowe.
 3. Adapter bez kompletnego `metadata.json` jest nieważnym artefaktem i powinien zostać usunięty albo wygenerowany ponownie, a nie naprawiany ręcznie.
 
+## Ścieżka deployu LoRA do ONNX (Direct Adapter Deploy)
+
+Academy wspiera bezpośredni deploy adapterów LoRA do runtime ONNX przez pipeline merge/export:
+
+1. Wynik treningu:
+   - artefakty adaptera w `data/models/<job_id>/adapter`.
+2. Pipeline deploy:
+   - merge LoRA do katalogu HF runtime (`runtime_vllm`),
+   - eksport ONNX przez `onnxruntime-genai` builder (`-i <merged_path>`),
+   - aktywacja runtime: `runtime_id=onnx`, `deploy_to_chat_runtime=true`.
+3. Normalizacja kontraktu Gemma-3:
+   - ścieżka eksportu przygotowuje tymczasowy text-only config wejściowy dla buildera,
+   - wygenerowany config runtime jest normalizowany do `model.type=gemma3_text`,
+   - kontrakt wejścia dekodera używa `input_ids` (zamiast `inputs_embeds`) dla inferencji runtime.
+
+Zweryfikowane E2E (live):
+- pełny cykl `activate -> inference SSE -> deactivate` zakończony kodami HTTP `200/200/200`
+- artefakt runu: `test-results/202d/full_cycle_20260315_093542`
+
 ## Konfiguracja
 
 ### Wymagania systemowe

@@ -62,6 +62,129 @@ def _allowed_dataset_roots(settings: Any, training_base_dir: Path) -> list[Path]
     return unique_roots
 
 
+def _resolve_use_unsloth_for_training(*, manager: Any) -> bool:
+    # Local runtime must detect optional Unsloth support before script selection.
+    # Without this preflight, first-run fallback can incorrectly pick Unsloth path
+    # and crash with `ModuleNotFoundError: unsloth`.
+    use_unsloth = manager.enable_gpu and getattr(manager, "_has_unsloth", True)
+    if not manager.use_local_runtime:
+        return bool(use_unsloth)
+    check_local_dependencies = getattr(manager, "_check_local_dependencies", None)
+    if callable(check_local_dependencies):
+        check_local_dependencies()
+    return bool(manager.enable_gpu and getattr(manager, "_has_unsloth", False))
+
+
+def _write_training_script(
+    *,
+    manager: Any,
+    request: TrainingJobRequest,
+    dataset_path_obj: Path,
+    output_dir_obj: Path,
+    use_unsloth: bool,
+) -> Path:
+    training_script = manager._generate_training_script(
+        dataset_path=str(dataset_path_obj)
+        if manager.use_local_runtime
+        else "/workspace/dataset.jsonl",
+        base_model=request.base_model,
+        output_dir=str(output_dir_obj)
+        if manager.use_local_runtime
+        else "/workspace/output",
+        lora_rank=request.lora_rank,
+        learning_rate=request.learning_rate,
+        num_epochs=request.num_epochs,
+        max_seq_length=request.max_seq_length,
+        batch_size=request.batch_size,
+        use_unsloth=use_unsloth,
+    )
+    script_path = output_dir_obj / "train_script.py"
+    with open(script_path, "w", encoding="utf-8") as script_handle:
+        script_handle.write(training_script)
+    return script_path
+
+
+def _ensure_training_image_available(
+    *,
+    manager: Any,
+    logger: Any,
+    image_not_found_error: type[BaseException],
+) -> None:
+    try:
+        manager.client.images.get(manager.training_image)
+        logger.info(f"Obraz {manager.training_image} już istnieje")
+    except image_not_found_error:
+        logger.info(f"Pobieranie obrazu {manager.training_image}...")
+        manager.client.images.pull(manager.training_image)
+
+
+def _build_docker_device_requests(*, manager: Any, docker_module: Any) -> Any:
+    if not manager.enable_gpu:
+        return None
+    return [docker_module.types.DeviceRequest(count=-1, capabilities=[["gpu"]])]
+
+
+def _launch_docker_training_container(
+    *,
+    manager: Any,
+    deps: TrainingJobDeps,
+    resolved_job_name: str,
+    dataset_path_obj: Path,
+    output_dir_obj: Path,
+) -> Any:
+    _ensure_training_image_available(
+        manager=manager,
+        logger=deps.logger,
+        image_not_found_error=deps.image_not_found_error,
+    )
+    volumes = {
+        str(dataset_path_obj): {
+            "bind": "/workspace/dataset.jsonl",
+            "mode": "ro",
+        },
+        str(output_dir_obj): {
+            "bind": "/workspace/output",
+            "mode": "rw",
+        },
+    }
+    device_requests = _build_docker_device_requests(
+        manager=manager,
+        docker_module=deps.docker_module,
+    )
+    safe_job_name = "".join(
+        c if c.isalnum() or c in ("-", "_") else "_" for c in resolved_job_name
+    )
+    return manager.client.containers.run(
+        image=manager.training_image,
+        command="python /workspace/output/train_script.py",
+        volumes=volumes,
+        device_requests=device_requests,
+        detach=True,
+        remove=False,
+        name=f"venom-training-{safe_job_name}",
+        environment={
+            "CUDA_VISIBLE_DEVICES": "0" if manager.enable_gpu else "",
+        },
+    )
+
+
+def _register_training_container(
+    *,
+    manager: Any,
+    resolved_job_name: str,
+    container: Any,
+    dataset_path_obj: Path,
+    output_dir_obj: Path,
+) -> None:
+    manager.training_containers[resolved_job_name] = {
+        "container_id": container.id,
+        "container": container,
+        "dataset_path": str(dataset_path_obj),
+        "output_dir": str(output_dir_obj),
+        "status": "running",
+    }
+
+
 def run_training_job(
     *,
     manager: Any,
@@ -97,27 +220,14 @@ def run_training_job(
     )
 
     try:
-        use_unsloth = manager.enable_gpu and getattr(manager, "_has_unsloth", True)
-
-        training_script = manager._generate_training_script(
-            dataset_path=str(dataset_path_obj)
-            if manager.use_local_runtime
-            else "/workspace/dataset.jsonl",
-            base_model=request.base_model,
-            output_dir=str(output_dir_obj)
-            if manager.use_local_runtime
-            else "/workspace/output",
-            lora_rank=request.lora_rank,
-            learning_rate=request.learning_rate,
-            num_epochs=request.num_epochs,
-            max_seq_length=request.max_seq_length,
-            batch_size=request.batch_size,
+        use_unsloth = _resolve_use_unsloth_for_training(manager=manager)
+        script_path = _write_training_script(
+            manager=manager,
+            request=request,
+            dataset_path_obj=dataset_path_obj,
+            output_dir_obj=output_dir_obj,
             use_unsloth=use_unsloth,
         )
-
-        script_path = output_dir_obj / "train_script.py"
-        with open(script_path, "w", encoding="utf-8") as script_handle:
-            script_handle.write(training_script)
 
         if manager.use_local_runtime:
             return manager._run_local_training_job(
@@ -127,53 +237,20 @@ def run_training_job(
                 dataset_path_obj,
             )
 
-        try:
-            manager.client.images.get(manager.training_image)
-            deps.logger.info(f"Obraz {manager.training_image} już istnieje")
-        except deps.image_not_found_error:
-            deps.logger.info(f"Pobieranie obrazu {manager.training_image}...")
-            manager.client.images.pull(manager.training_image)
-
-        volumes = {
-            str(dataset_path_obj): {
-                "bind": "/workspace/dataset.jsonl",
-                "mode": "ro",
-            },
-            str(output_dir_obj): {
-                "bind": "/workspace/output",
-                "mode": "rw",
-            },
-        }
-
-        device_requests = None
-        if manager.enable_gpu:
-            device_requests = [
-                deps.docker_module.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
-            ]
-
-        safe_job_name = "".join(
-            c if c.isalnum() or c in ("-", "_") else "_" for c in resolved_job_name
+        container = _launch_docker_training_container(
+            manager=manager,
+            deps=deps,
+            resolved_job_name=resolved_job_name,
+            dataset_path_obj=dataset_path_obj,
+            output_dir_obj=output_dir_obj,
         )
-        container = manager.client.containers.run(
-            image=manager.training_image,
-            command="python /workspace/output/train_script.py",
-            volumes=volumes,
-            device_requests=device_requests,
-            detach=True,
-            remove=False,
-            name=f"venom-training-{safe_job_name}",
-            environment={
-                "CUDA_VISIBLE_DEVICES": "0" if manager.enable_gpu else "",
-            },
+        _register_training_container(
+            manager=manager,
+            resolved_job_name=resolved_job_name,
+            container=container,
+            dataset_path_obj=dataset_path_obj,
+            output_dir_obj=output_dir_obj,
         )
-
-        manager.training_containers[resolved_job_name] = {
-            "container_id": container.id,
-            "container": container,
-            "dataset_path": str(dataset_path_obj),
-            "output_dir": str(output_dir_obj),
-            "status": "running",
-        }
 
         deps.logger.info(
             f"Kontener treningowy uruchomiony: {container.id[:12]} (job={resolved_job_name})"
@@ -212,6 +289,18 @@ def run_local_training_job(
     # Local Academy training must run without external experiment tracking setup.
     env.setdefault("WANDB_DISABLED", "true")
     env.setdefault("WANDB_MODE", "disabled")
+    # Force writable HuggingFace cache in local runtime to avoid inheriting
+    # non-writable defaults (for example /root/.cache in service environments).
+    hf_cache_root = output_dir / ".hf-cache"
+    hf_datasets_cache = hf_cache_root / "datasets"
+    hf_hub_cache = hf_cache_root / "hub"
+    hf_assets_cache = hf_cache_root / "assets"
+    for cache_dir in (hf_cache_root, hf_datasets_cache, hf_hub_cache, hf_assets_cache):
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    env.setdefault("HF_HOME", str(hf_cache_root))
+    env.setdefault("HF_DATASETS_CACHE", str(hf_datasets_cache))
+    env.setdefault("HUGGINGFACE_HUB_CACHE", str(hf_hub_cache))
+    env.setdefault("HF_ASSETS_CACHE", str(hf_assets_cache))
 
     executable = (python_bin or "").strip() or sys.executable or "python3"
 

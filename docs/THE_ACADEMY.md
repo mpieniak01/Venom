@@ -273,6 +273,25 @@ Operational note:
 2. Canonical adapter metadata is mandatory.
 3. Adapters without complete `metadata.json` are invalid artifacts and should be deleted/regenerated, not patched in place.
 
+## ONNX LoRA Deployment Path (Direct Adapter Deploy)
+
+Academy supports direct ONNX runtime deployment for LoRA adapters through merge/export pipeline:
+
+1. Training output:
+   - adapter artifacts in `data/models/<job_id>/adapter`.
+2. Deploy pipeline:
+   - LoRA merge to HF runtime directory (`runtime_vllm`),
+   - ONNX export with `onnxruntime-genai` builder (`-i <merged_path>`),
+   - runtime activation: `runtime_id=onnx`, `deploy_to_chat_runtime=true`.
+3. Gemma-3 contract normalization:
+   - export path prepares a temporary text-only input config for builder,
+   - generated runtime config is normalized to `model.type=gemma3_text`,
+   - decoder input contract uses `input_ids` (not `inputs_embeds`) for runtime generation.
+
+Validated E2E (live):
+- full cycle `activate -> inference SSE -> deactivate` completed with HTTP `200/200/200`
+- artifact run: `test-results/202d/full_cycle_20260315_093542`
+
 ## Configuration
 
 ### System Requirements

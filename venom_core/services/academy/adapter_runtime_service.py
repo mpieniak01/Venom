@@ -996,9 +996,7 @@ def _resolve_onnx_builder_script(*, settings_obj: Any | None = None) -> Path:
     )
 
 
-def _prepare_runtime_tmp_dir(*, adapter_dir: Path, name: str) -> Path:
-    if not adapter_dir.exists() or not adapter_dir.is_dir():
-        raise ValueError(f"Adapter directory does not exist: {adapter_dir}")
+def _prepare_runtime_tmp_dir(*, name: str) -> Path:
     # Use OS-managed temp location to avoid deriving writable temp paths from
     # adapter identifiers coming from API/user input.
     return Path(tempfile.mkdtemp(prefix=f"{name}_"))
@@ -1092,19 +1090,14 @@ def _ensure_onnx_export_result(
     return genai_config_path
 
 
-def _normalize_onnx_model_type(*, genai_config_path: Path) -> None:
+def _normalize_onnx_model_type(*, tmp_dir: Path) -> None:
     # onnxruntime-genai builder may emit `model.type=gemma3` for text-only Gemma-3.
     # Runtime loaders in our stack expect `gemma3_text` for this path.
     try:
-        parent_real = os.path.realpath(str(genai_config_path.parent))
-        safe_genai_real = os.path.realpath(
-            os.path.join(parent_real, ONNX_GENAI_CONFIG_FILENAME)
+        safe_genai_config_path = _resolve_safe_child_file_path(
+            parent_dir=tmp_dir,
+            file_name=ONNX_GENAI_CONFIG_FILENAME,
         )
-        if os.path.dirname(safe_genai_real) != parent_real:
-            raise ValueError(
-                f"Invalid ONNX config path '{safe_genai_real}': outside '{parent_real}'."
-            )
-        safe_genai_config_path = Path(safe_genai_real)
         payload = json.loads(safe_genai_config_path.read_text(encoding="utf-8"))
         model_obj = payload.get("model")
         model_type = (
@@ -1183,13 +1176,10 @@ def _build_onnx_runtime_model_from_adapter(
         adapter_dir=adapter_dir,
         base_model=base_model,
     )
-    export_input_dir = _prepare_gemma3_text_export_input_dir(
-        adapter_dir=adapter_dir,
-        merged_dir=merged_dir,
-    )
+    export_input_dir = _prepare_gemma3_text_export_input_dir(merged_dir=merged_dir)
     export_input = export_input_dir or merged_dir
     builder_script = _resolve_onnx_builder_script(settings_obj=settings_obj)
-    tmp_dir = _prepare_runtime_tmp_dir(adapter_dir=adapter_dir, name="runtime_onnx_tmp")
+    tmp_dir = _prepare_runtime_tmp_dir(name="runtime_onnx_tmp")
 
     try:
         export_cmd = _build_onnx_export_cmd(
@@ -1204,8 +1194,8 @@ def _build_onnx_runtime_model_from_adapter(
             adapter_dir=adapter_dir,
             settings_obj=settings_obj,
         )
-        genai_config_path = _ensure_onnx_export_result(result=result, tmp_dir=tmp_dir)
-        _normalize_onnx_model_type(genai_config_path=genai_config_path)
+        _ensure_onnx_export_result(result=result, tmp_dir=tmp_dir)
+        _normalize_onnx_model_type(tmp_dir=tmp_dir)
         _write_onnx_runtime_manifest(
             tmp_dir=tmp_dir,
             base_model=base_model,
@@ -1279,7 +1269,6 @@ def _populate_export_input_dir(*, merged_dir: Path, tmp_input_dir: Path) -> None
 
 def _prepare_gemma3_text_export_input_dir(
     *,
-    adapter_dir: Path,
     merged_dir: Path,
 ) -> Path | None:
     """Prepare temporary text-only HF layout for Gemma-3 ONNX export."""
@@ -1293,8 +1282,6 @@ def _prepare_gemma3_text_export_input_dir(
     if export_cfg is None:
         return None
 
-    if not adapter_dir.exists() or not adapter_dir.is_dir():
-        raise ValueError(f"Adapter directory does not exist: {adapter_dir}")
     # Use OS-managed temp location to avoid deriving writable temp paths from
     # adapter identifiers coming from API/user input.
     tmp_input_dir = Path(tempfile.mkdtemp(prefix="runtime_onnx_export_input_tmp_"))

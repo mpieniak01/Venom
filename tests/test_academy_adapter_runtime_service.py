@@ -551,7 +551,6 @@ def test_prepare_gemma3_text_export_input_dir_invalid_input_returns_none(
 
     assert (
         ars._prepare_gemma3_text_export_input_dir(
-            adapter_dir=adapter_dir,
             merged_dir=merged_dir,
         )
         is None
@@ -581,7 +580,6 @@ def test_prepare_gemma3_text_export_input_dir_falls_back_to_copy(
 
     with patch.object(Path, "symlink_to", side_effect=OSError("symlink disabled")):
         out_dir = ars._prepare_gemma3_text_export_input_dir(
-            adapter_dir=adapter_dir,
             merged_dir=merged_dir,
         )
 
@@ -614,7 +612,6 @@ def test_prepare_gemma3_text_export_input_dir_cleans_temp_on_copy_failure(
     ):
         with pytest.raises(RuntimeError, match="copy failed"):
             ars._prepare_gemma3_text_export_input_dir(
-                adapter_dir=adapter_dir,
                 merged_dir=merged_dir,
             )
     assert not list(adapter_dir.glob("runtime_onnx_export_input_tmp_*"))

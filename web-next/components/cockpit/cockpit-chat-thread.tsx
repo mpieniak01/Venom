@@ -496,6 +496,7 @@ function resolveApplySelectedModelCallback({
 }
 
 function createTextareaKeyDownHandler({
+  event,
   slashSuggestions,
   slashIndex,
   setSlashIndex,
@@ -503,6 +504,7 @@ function createTextareaKeyDownHandler({
   setSlashSuggestions,
   handleSendClick,
 }: {
+  event: KeyboardEvent<HTMLTextAreaElement>;
   slashSuggestions: SlashCommand[];
   slashIndex: number;
   setSlashIndex: (value: number | ((prev: number) => number)) => void;
@@ -511,38 +513,36 @@ function createTextareaKeyDownHandler({
     value: SlashCommand[] | ((prev: SlashCommand[]) => SlashCommand[]),
   ) => void;
   handleSendClick: () => void;
-}) {
-  return (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (slashSuggestions.length > 0) {
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setSlashIndex((prev) => (prev + 1) % slashSuggestions.length);
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setSlashIndex((prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length);
-        return;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        applySlashSuggestion(slashSuggestions[slashIndex]);
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setSlashSuggestions([]);
-        setSlashIndex(0);
-        return;
-      }
-    }
-    const isEnterWithModifier =
-      event.key === "Enter" && (event.ctrlKey || event.metaKey);
-    if (isEnterWithModifier) {
+}): void {
+  if (slashSuggestions.length > 0) {
+    if (event.key === "ArrowDown") {
       event.preventDefault();
-      handleSendClick();
+      setSlashIndex((prev) => (prev + 1) % slashSuggestions.length);
+      return;
     }
-  };
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSlashIndex((prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      applySlashSuggestion(slashSuggestions[slashIndex]);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSlashSuggestions([]);
+      setSlashIndex(0);
+      return;
+    }
+  }
+  const isEnterWithModifier =
+    event.key === "Enter" && (event.ctrlKey || event.metaKey);
+  if (isEnterWithModifier) {
+    event.preventDefault();
+    handleSendClick();
+  }
 }
 
 type ActiveAdapterRuntimeCardProps = Readonly<{
@@ -695,16 +695,18 @@ export const ChatComposer = memo(
       setSlashIndex(0);
     }, []);
 
-    const handleTextareaKeyDown = useMemo(
-      () =>
+    const handleTextareaKeyDown = useCallback(
+      (event: KeyboardEvent<HTMLTextAreaElement>) => {
         createTextareaKeyDownHandler({
+          event,
           slashSuggestions,
           slashIndex,
           setSlashIndex,
           applySlashSuggestion,
           setSlashSuggestions,
           handleSendClick,
-        }),
+        });
+      },
       [applySlashSuggestion, handleSendClick, slashIndex, slashSuggestions],
     );
 

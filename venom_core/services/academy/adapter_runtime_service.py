@@ -191,7 +191,7 @@ def _communicate_or_raise_timeout(
         return process.communicate(timeout=timeout_sec)
     except subprocess.TimeoutExpired:
         _kill_process_safely(process=process)
-        stdout, stderr = process.communicate()
+        _, _ = process.communicate()
         raise RuntimeError(f"{stage} timed out after {timeout_sec}s.") from None
 
 
@@ -1009,6 +1009,27 @@ def _cleanup_optional_dir(path: Path | None) -> None:
         shutil.rmtree(path, ignore_errors=True)
 
 
+def _resolve_safe_child_file_path(*, parent_dir: Path, file_name: str) -> Path:
+    """
+    Resolve a file path under a trusted directory and reject traversal.
+
+    This is used before writes to avoid constructing paths from untrusted inputs.
+    """
+    if Path(file_name).name != file_name:
+        raise ValueError(f"Invalid file name '{file_name}'.")
+    parent_resolved = parent_dir.resolve()
+    if not parent_resolved.exists() or not parent_resolved.is_dir():
+        raise ValueError(f"Parent directory does not exist: {parent_dir}")
+    file_path = (parent_resolved / file_name).resolve()
+    try:
+        file_path.relative_to(parent_resolved)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid file path '{file_path}': outside parent directory '{parent_resolved}'."
+        ) from exc
+    return file_path
+
+
 def _build_onnx_export_cmd(
     *,
     builder_script: Path,
@@ -1060,7 +1081,10 @@ def _ensure_onnx_export_result(
         raise RuntimeError(
             "ONNX genai export failed: " + (stderr or stdout or UNKNOWN_ERROR_DETAIL)
         )
-    genai_config_path = tmp_dir / ONNX_GENAI_CONFIG_FILENAME
+    genai_config_path = _resolve_safe_child_file_path(
+        parent_dir=tmp_dir,
+        file_name=ONNX_GENAI_CONFIG_FILENAME,
+    )
     if not genai_config_path.exists():
         raise RuntimeError(
             f"ONNX genai export finished but {ONNX_GENAI_CONFIG_FILENAME} not found in output."
@@ -1072,7 +1096,11 @@ def _normalize_onnx_model_type(*, genai_config_path: Path) -> None:
     # onnxruntime-genai builder may emit `model.type=gemma3` for text-only Gemma-3.
     # Runtime loaders in our stack expect `gemma3_text` for this path.
     try:
-        payload = json.loads(genai_config_path.read_text(encoding="utf-8"))
+        safe_genai_config_path = _resolve_safe_child_file_path(
+            parent_dir=genai_config_path.parent,
+            file_name=genai_config_path.name,
+        )
+        payload = json.loads(safe_genai_config_path.read_text(encoding="utf-8"))
         model_obj = payload.get("model")
         model_type = (
             str(model_obj.get("type") or "").strip().lower()
@@ -1082,7 +1110,7 @@ def _normalize_onnx_model_type(*, genai_config_path: Path) -> None:
         if model_type != "gemma3":
             return
         model_obj["type"] = "gemma3_text"
-        genai_config_path.write_text(
+        safe_genai_config_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -1265,7 +1293,11 @@ def _prepare_gemma3_text_export_input_dir(
     )
     try:
         _populate_export_input_dir(merged_dir=merged_dir, tmp_input_dir=tmp_input_dir)
-        (tmp_input_dir / MODEL_CONFIG_FILENAME).write_text(
+        tmp_model_config_path = _resolve_safe_child_file_path(
+            parent_dir=tmp_input_dir,
+            file_name=MODEL_CONFIG_FILENAME,
+        )
+        tmp_model_config_path.write_text(
             json.dumps(export_cfg, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )

@@ -337,6 +337,26 @@ def test_runtime_target_payload_contains_adapter_deploy_capability() -> None:
     assert payload["supports_adapter_runtime_apply"] is True
 
 
+def test_runtime_target_payload_contains_onnx_adapter_deploy_capability() -> None:
+    active_runtime = SimpleNamespace(provider="onnx")
+    payload = system_llm._runtime_target_payload(  # noqa: SLF001
+        runtime_id="onnx",
+        source_type="local-runtime",
+        configured=True,
+        available=True,
+        status="online",
+        reason=None,
+        models=[],
+        active_runtime=active_runtime,
+    )
+    assert payload["adapter_deploy_supported"] is True
+    assert payload["adapter_deploy_mode"] == "onnx_merge_export_runtime_model"
+    assert payload["supports_native_training"] is False
+    assert payload["supports_adapter_import_safetensors"] is False
+    assert payload["supports_adapter_import_gguf"] is False
+    assert payload["supports_adapter_runtime_apply"] is True
+
+
 def test_apply_vllm_runtime_autofix_updates_invalid_config(tmp_path: Path) -> None:
     runtime_dir = tmp_path / "runtime-vllm"
     runtime_dir.mkdir(parents=True)

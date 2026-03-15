@@ -156,6 +156,66 @@ def _append_resource_monitor_entry(
         logger.warning("Failed to append adapter resource monitor entry.")
 
 
+def _kill_process_safely(*, process: subprocess.Popen[str]) -> None:
+    try:
+        process.kill()
+    except OSError:
+        pass
+
+
+def _terminate_process_with_grace(
+    *,
+    process: subprocess.Popen[str],
+    stop_event: threading.Event,
+) -> None:
+    try:
+        process.send_signal(signal.SIGTERM)
+    except OSError:
+        pass
+    grace_deadline = time.monotonic() + _MEMORY_GUARD_SIGTERM_GRACE_SEC
+    while process.poll() is None and time.monotonic() < grace_deadline:
+        if stop_event.is_set():
+            break
+        time.sleep(0.1)
+    if process.poll() is None:
+        _kill_process_safely(process=process)
+
+
+def _communicate_or_raise_timeout(
+    *,
+    process: subprocess.Popen[str],
+    timeout_sec: int,
+    stage: str,
+) -> tuple[str, str]:
+    try:
+        return process.communicate(timeout=timeout_sec)
+    except subprocess.TimeoutExpired:
+        _kill_process_safely(process=process)
+        stdout, stderr = process.communicate()
+        raise RuntimeError(f"{stage} timed out after {timeout_sec}s.") from None
+
+
+def _monitor_subprocess_memory(
+    *,
+    process: subprocess.Popen[str],
+    state: Dict[str, Any],
+    stop_event: threading.Event,
+    max_rss_mb: int,
+    monitor_interval_sec: float,
+) -> None:
+    while not stop_event.is_set():
+        if process.poll() is not None:
+            return
+        rss_mb = _read_process_rss_mb(pid=process.pid)
+        if rss_mb > float(state["peak_rss_mb"]):
+            state["peak_rss_mb"] = rss_mb
+        if max_rss_mb > 0 and rss_mb > float(max_rss_mb):
+            state["exceeded"] = True
+            _terminate_process_with_grace(process=process, stop_event=stop_event)
+            return
+        time.sleep(max(monitor_interval_sec, 0.1))
+
+
 def _run_subprocess_with_memory_guard(
     *,
     cmd: list[str],
@@ -175,44 +235,24 @@ def _run_subprocess_with_memory_guard(
     )
     state: Dict[str, Any] = {"peak_rss_mb": 0.0, "exceeded": False}
     stop_event = threading.Event()
-
-    def _monitor() -> None:
-        while not stop_event.is_set():
-            if process.poll() is not None:
-                break
-            rss_mb = _read_process_rss_mb(pid=process.pid)
-            if rss_mb > float(state["peak_rss_mb"]):
-                state["peak_rss_mb"] = rss_mb
-            if max_rss_mb > 0 and rss_mb > float(max_rss_mb):
-                state["exceeded"] = True
-                try:
-                    process.send_signal(signal.SIGTERM)
-                except OSError:
-                    pass
-                grace_deadline = time.monotonic() + _MEMORY_GUARD_SIGTERM_GRACE_SEC
-                while process.poll() is None and time.monotonic() < grace_deadline:
-                    if stop_event.is_set():
-                        break
-                    time.sleep(0.1)
-                if process.poll() is None:
-                    try:
-                        process.kill()
-                    except OSError:
-                        pass
-                break
-            time.sleep(max(monitor_interval_sec, 0.1))
-
-    monitor_thread = threading.Thread(target=_monitor, daemon=True)
+    monitor_thread = threading.Thread(
+        target=_monitor_subprocess_memory,
+        kwargs={
+            "process": process,
+            "state": state,
+            "stop_event": stop_event,
+            "max_rss_mb": max_rss_mb,
+            "monitor_interval_sec": monitor_interval_sec,
+        },
+        daemon=True,
+    )
     monitor_thread.start()
     try:
-        stdout, stderr = process.communicate(timeout=timeout_sec)
-    except subprocess.TimeoutExpired:
-        try:
-            process.kill()
-        except OSError:
-            pass
-        stdout, stderr = process.communicate()
-        raise RuntimeError(f"{stage} timed out after {timeout_sec}s.") from None
+        stdout, stderr = _communicate_or_raise_timeout(
+            process=process,
+            timeout_sec=timeout_sec,
+            stage=stage,
+        )
     finally:
         stop_event.set()
         monitor_thread.join(timeout=2.0)
@@ -899,44 +939,193 @@ def _deploy_adapter_to_vllm_runtime(
     }
 
 
-def _resolve_onnx_builder_script(*, settings_obj: Any | None = None) -> Path:
-    """Resolve path to onnxruntime-genai builder.py script."""
-    import os as _os
+def _resolve_file_candidate(*, repo_root: Path, raw: str) -> Path | None:
+    candidate = raw.strip()
+    if not candidate:
+        return None
+    path = Path(candidate).expanduser()
+    if not path.is_absolute():
+        path = (repo_root / path).resolve()
+    if path.exists() and path.is_file():
+        return path
+    return None
 
-    settings = settings_obj or _get_settings()
-    default_rel = "third_party/onnxruntime-genai/src/python/py/models/builder.py"
-    env_script = _os.getenv("ONNX_GENAI_BUILDER_SCRIPT", "").strip()
-    candidates = [
-        env_script,
-        str(getattr(settings, "ONNX_BUILDER_SCRIPT", "") or ""),
-    ]
-    repo_root = _resolve_repo_root(settings_obj=settings)
+
+def _resolve_first_existing_file(
+    *, repo_root: Path, candidates: list[str]
+) -> Path | None:
     for raw in candidates:
-        if not raw:
-            continue
-        p = Path(raw).expanduser()
-        if not p.is_absolute():
-            p = (repo_root / p).resolve()
-        if p.exists() and p.is_file():
-            return p
-    default_path = (repo_root / default_rel).resolve()
-    if default_path.exists() and default_path.is_file():
-        return default_path
-    tools_path = (repo_root / "tools" / "onnx_builder" / "builder.py").resolve()
-    if tools_path.exists() and tools_path.is_file():
-        return tools_path
+        resolved = _resolve_file_candidate(repo_root=repo_root, raw=raw)
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _resolve_installed_onnx_builder() -> Path | None:
     try:
         installed_builder = importlib.import_module("onnxruntime_genai.models.builder")
-        installed_builder_file = Path(str(getattr(installed_builder, "__file__", "")))
-        if installed_builder_file.exists() and installed_builder_file.is_file():
-            return installed_builder_file.resolve()
     except Exception:
-        pass
+        return None
+    installed_builder_file = Path(str(getattr(installed_builder, "__file__", "")))
+    if installed_builder_file.exists() and installed_builder_file.is_file():
+        return installed_builder_file.resolve()
+    return None
+
+
+def _resolve_onnx_builder_script(*, settings_obj: Any | None = None) -> Path:
+    """Resolve path to onnxruntime-genai builder.py script."""
+    settings = settings_obj or _get_settings()
+    default_rel = "third_party/onnxruntime-genai/src/python/py/models/builder.py"
+    repo_root = _resolve_repo_root(settings_obj=settings)
+    candidates = [
+        str(os.getenv("ONNX_GENAI_BUILDER_SCRIPT", "") or ""),
+        str(getattr(settings, "ONNX_BUILDER_SCRIPT", "") or ""),
+        default_rel,
+        "tools/onnx_builder/builder.py",
+    ]
+    resolved = _resolve_first_existing_file(repo_root=repo_root, candidates=candidates)
+    if resolved is not None:
+        return resolved
+    installed = _resolve_installed_onnx_builder()
+    if installed is not None:
+        return installed
     raise FileNotFoundError(
         "ONNX genai builder.py not found. Searched ONNX_GENAI_BUILDER_SCRIPT env var, "
         "ONNX_BUILDER_SCRIPT setting, and default paths "
         f"('{default_rel}', 'tools/onnx_builder/builder.py', installed onnxruntime_genai package)."
     )
+
+
+def _prepare_runtime_tmp_dir(*, adapter_dir: Path, name: str) -> Path:
+    tmp_dir = adapter_dir / name
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir
+
+
+def _cleanup_optional_dir(path: Path | None) -> None:
+    if path is not None:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def _build_onnx_export_cmd(
+    *,
+    builder_script: Path,
+    export_input: Path,
+    execution_provider: str,
+    precision: str,
+    tmp_dir: Path,
+) -> list[str]:
+    return [
+        sys.executable,
+        str(builder_script),
+        "-i",
+        str(export_input),
+        "-e",
+        execution_provider,
+        "-p",
+        precision,
+        "-o",
+        str(tmp_dir),
+    ]
+
+
+def _run_onnx_export(
+    *,
+    export_cmd: list[str],
+    adapter_dir: Path,
+    settings_obj: Any | None,
+) -> subprocess.CompletedProcess[str]:
+    return _run_subprocess_with_memory_guard(
+        cmd=export_cmd,
+        stage="onnx_export",
+        adapter_dir=adapter_dir,
+        timeout_sec=1800,
+        max_rss_mb=_resolve_merge_memory_limit_mb(settings_obj=settings_obj),
+        monitor_interval_sec=_resolve_memory_monitor_interval_sec(
+            settings_obj=settings_obj
+        ),
+    )
+
+
+def _ensure_onnx_export_result(
+    *,
+    result: subprocess.CompletedProcess[str],
+    tmp_dir: Path,
+) -> Path:
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        raise RuntimeError(
+            "ONNX genai export failed: " + (stderr or stdout or UNKNOWN_ERROR_DETAIL)
+        )
+    genai_config_path = tmp_dir / ONNX_GENAI_CONFIG_FILENAME
+    if not genai_config_path.exists():
+        raise RuntimeError(
+            f"ONNX genai export finished but {ONNX_GENAI_CONFIG_FILENAME} not found in output."
+        )
+    return genai_config_path
+
+
+def _normalize_onnx_model_type(*, genai_config_path: Path) -> None:
+    # onnxruntime-genai builder may emit `model.type=gemma3` for text-only Gemma-3.
+    # Runtime loaders in our stack expect `gemma3_text` for this path.
+    try:
+        payload = json.loads(genai_config_path.read_text(encoding="utf-8"))
+        model_obj = payload.get("model")
+        model_type = (
+            str(model_obj.get("type") or "").strip().lower()
+            if isinstance(model_obj, dict)
+            else ""
+        )
+        if model_type != "gemma3":
+            return
+        model_obj["type"] = "gemma3_text"
+        genai_config_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info(
+            "Normalized ONNX GenAI config model.type from gemma3 to gemma3_text"
+        )
+    except Exception as exc:
+        logger.warning("Failed to normalize ONNX GenAI config model.type (%s)", exc)
+
+
+def _write_onnx_runtime_manifest(
+    *,
+    tmp_dir: Path,
+    base_model: str,
+    adapter_path: Path,
+    execution_provider: str,
+    precision: str,
+) -> None:
+    (tmp_dir / "venom_runtime_onnx.json").write_text(
+        json.dumps(
+            {
+                "base_model": base_model,
+                "adapter_path": str(adapter_path),
+                "runtime": "onnx",
+                "execution_provider": execution_provider,
+                "precision": precision,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _promote_tmp_runtime_dir(*, tmp_dir: Path, runtime_dir: Path) -> None:
+    if runtime_dir.exists():
+        shutil.rmtree(runtime_dir, ignore_errors=True)
+    try:
+        tmp_dir.rename(runtime_dir)
+    except Exception:
+        # Keep workspace clean if final move fails after successful export.
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
 
 
 def _build_onnx_runtime_model_from_adapter(
@@ -948,10 +1137,7 @@ def _build_onnx_runtime_model_from_adapter(
     settings_obj: Any | None = None,
     build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
 ) -> Path:
-    """Merge LoRA adapter with base model and export to ONNX genai format.
-
-    Pipeline: adapter + base_model → HF merged model → onnxruntime-genai builder → runtime_onnx/
-    """
+    """Merge LoRA adapter with base model and export to ONNX genai format."""
     adapter_path = adapter_dir / "adapter"
     if not adapter_path.exists():
         raise FileNotFoundError(f"Adapter path not found: {adapter_path}")
@@ -960,7 +1146,6 @@ def _build_onnx_runtime_model_from_adapter(
     if runtime_dir.exists() and (runtime_dir / ONNX_GENAI_CONFIG_FILENAME).exists():
         return runtime_dir
 
-    # Step 1: merge LoRA into base model (reuse vLLM merge — produces HF merged dir)
     merged_dir = build_vllm_runtime_model_from_adapter_fn(
         adapter_dir=adapter_dir,
         base_model=base_model,
@@ -970,129 +1155,53 @@ def _build_onnx_runtime_model_from_adapter(
         merged_dir=merged_dir,
     )
     export_input = export_input_dir or merged_dir
-
-    # Step 2: export merged HF model to onnxruntime-genai format via builder.py
     builder_script = _resolve_onnx_builder_script(settings_obj=settings_obj)
-    tmp_dir = adapter_dir / "runtime_onnx_tmp"
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir = _prepare_runtime_tmp_dir(adapter_dir=adapter_dir, name="runtime_onnx_tmp")
 
     try:
-        export_cmd = [
-            sys.executable,
-            str(builder_script),
-            "-i",
-            str(export_input),
-            "-e",
-            execution_provider,
-            "-p",
-            precision,
-            "-o",
-            str(tmp_dir),
-        ]
-        result = _run_subprocess_with_memory_guard(
-            cmd=export_cmd,
-            stage="onnx_export",
+        export_cmd = _build_onnx_export_cmd(
+            builder_script=builder_script,
+            export_input=export_input,
+            execution_provider=execution_provider,
+            precision=precision,
+            tmp_dir=tmp_dir,
+        )
+        result = _run_onnx_export(
+            export_cmd=export_cmd,
             adapter_dir=adapter_dir,
-            timeout_sec=1800,
-            max_rss_mb=_resolve_merge_memory_limit_mb(settings_obj=settings_obj),
-            monitor_interval_sec=_resolve_memory_monitor_interval_sec(
-                settings_obj=settings_obj
-            ),
+            settings_obj=settings_obj,
         )
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip()
-            stdout = (result.stdout or "").strip()
-            raise RuntimeError(
-                "ONNX genai export failed: "
-                + (stderr or stdout or UNKNOWN_ERROR_DETAIL)
-            )
-        genai_config_path = tmp_dir / ONNX_GENAI_CONFIG_FILENAME
-        if not genai_config_path.exists():
-            raise RuntimeError(
-                f"ONNX genai export finished but {ONNX_GENAI_CONFIG_FILENAME} not found in output."
-            )
-        # onnxruntime-genai builder may emit `model.type=gemma3` for text-only Gemma-3.
-        # Runtime loaders in our stack expect `gemma3_text` for this path.
-        try:
-            payload = json.loads(genai_config_path.read_text(encoding="utf-8"))
-            model_obj = payload.get("model")
-            model_type = (
-                str(model_obj.get("type") or "").strip().lower()
-                if isinstance(model_obj, dict)
-                else ""
-            )
-            if model_type == "gemma3":
-                model_obj["type"] = "gemma3_text"
-                genai_config_path.write_text(
-                    json.dumps(payload, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                logger.info(
-                    "Normalized ONNX GenAI config model.type from gemma3 to gemma3_text"
-                )
-        except Exception as exc:
-            logger.warning(
-                "Failed to normalize ONNX GenAI config model.type (%s)",
-                exc,
-            )
-        (tmp_dir / "venom_runtime_onnx.json").write_text(
-            json.dumps(
-                {
-                    "base_model": base_model,
-                    "adapter_path": str(adapter_path),
-                    "runtime": "onnx",
-                    "execution_provider": execution_provider,
-                    "precision": precision,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        genai_config_path = _ensure_onnx_export_result(result=result, tmp_dir=tmp_dir)
+        _normalize_onnx_model_type(genai_config_path=genai_config_path)
+        _write_onnx_runtime_manifest(
+            tmp_dir=tmp_dir,
+            base_model=base_model,
+            adapter_path=adapter_path,
+            execution_provider=execution_provider,
+            precision=precision,
         )
+        _promote_tmp_runtime_dir(tmp_dir=tmp_dir, runtime_dir=runtime_dir)
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        if export_input_dir is not None:
-            shutil.rmtree(export_input_dir, ignore_errors=True)
         raise
-
-    if runtime_dir.exists():
-        shutil.rmtree(runtime_dir, ignore_errors=True)
-    try:
-        tmp_dir.rename(runtime_dir)
-    except Exception:
-        # Keep workspace clean if final move fails after successful export.
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        if export_input_dir is not None:
-            shutil.rmtree(export_input_dir, ignore_errors=True)
-        raise
-    if export_input_dir is not None:
-        shutil.rmtree(export_input_dir, ignore_errors=True)
+    finally:
+        _cleanup_optional_dir(export_input_dir)
     return runtime_dir
 
 
-def _prepare_gemma3_text_export_input_dir(
-    *,
-    adapter_dir: Path,
-    merged_dir: Path,
-) -> Path | None:
-    """Prepare temporary text-only HF layout for Gemma-3 ONNX export.
-
-    Builder may emit decoder contract with `inputs_embeds` for multimodal Gemma-3
-    (`model_type=gemma3`). For runtime generation we need token-based contract.
-    We generate a temporary input directory with a text-only config while reusing
-    merged weights/tokenizer files via symlinks.
-    """
-    config_path = merged_dir / "config.json"
-    if not config_path.exists():
-        return None
+def _load_json_dict(path: Path) -> dict[str, Any] | None:
     try:
-        merged_cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
-    if not isinstance(merged_cfg, dict):
-        return None
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _build_gemma3_text_export_config(
+    merged_cfg: dict[str, Any],
+) -> dict[str, Any] | None:
     if str(merged_cfg.get("model_type") or "").strip().lower() != "gemma3":
         return None
     text_cfg = merged_cfg.get("text_config")
@@ -1111,27 +1220,52 @@ def _prepare_gemma3_text_export_input_dir(
     ):
         if key in merged_cfg and key not in export_cfg:
             export_cfg[key] = merged_cfg[key]
+    return export_cfg
+
+
+def _copy_or_link_merged_item(*, item: Path, target: Path) -> None:
+    if item.is_symlink() or item.is_file():
+        try:
+            target.symlink_to(item.resolve())
+        except (OSError, AttributeError):
+            shutil.copy2(item, target)
+        return
+    if item.is_dir():
+        try:
+            target.symlink_to(item.resolve(), target_is_directory=True)
+        except (OSError, AttributeError):
+            shutil.copytree(item, target, dirs_exist_ok=True)
+
+
+def _populate_export_input_dir(*, merged_dir: Path, tmp_input_dir: Path) -> None:
+    for item in merged_dir.iterdir():
+        if item.name == MODEL_CONFIG_FILENAME:
+            continue
+        _copy_or_link_merged_item(item=item, target=(tmp_input_dir / item.name))
+
+
+def _prepare_gemma3_text_export_input_dir(
+    *,
+    adapter_dir: Path,
+    merged_dir: Path,
+) -> Path | None:
+    """Prepare temporary text-only HF layout for Gemma-3 ONNX export."""
+    config_path = merged_dir / MODEL_CONFIG_FILENAME
+    if not config_path.exists():
+        return None
+    merged_cfg = _load_json_dict(config_path)
+    if merged_cfg is None:
+        return None
+    export_cfg = _build_gemma3_text_export_config(merged_cfg)
+    if export_cfg is None:
+        return None
 
     tmp_input_dir = Path(
         tempfile.mkdtemp(prefix="runtime_onnx_export_input_tmp_", dir=str(adapter_dir))
     )
     try:
-        for item in merged_dir.iterdir():
-            target = tmp_input_dir / item.name
-            if item.name == "config.json":
-                continue
-            if item.is_symlink() or item.is_file():
-                try:
-                    target.symlink_to(item.resolve())
-                except (OSError, AttributeError):
-                    shutil.copy2(item, target)
-            elif item.is_dir():
-                try:
-                    target.symlink_to(item.resolve(), target_is_directory=True)
-                except (OSError, AttributeError):
-                    shutil.copytree(item, target, dirs_exist_ok=True)
-
-        (tmp_input_dir / "config.json").write_text(
+        _populate_export_input_dir(merged_dir=merged_dir, tmp_input_dir=tmp_input_dir)
+        (tmp_input_dir / MODEL_CONFIG_FILENAME).write_text(
             json.dumps(export_cfg, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -1140,6 +1274,79 @@ def _prepare_gemma3_text_export_input_dir(
         raise
     logger.info("Prepared Gemma-3 text-only ONNX export input dir: %s", tmp_input_dir)
     return tmp_input_dir
+
+
+def _resolve_onnx_deploy_base_model(*, adapter_dir: Path) -> str:
+    trusted_base_model = _require_trusted_adapter_base_model(
+        adapter_dir=adapter_dir
+    ).strip()
+    if not trusted_base_model:
+        raise RuntimeError("Adapter base model is empty; cannot deploy to ONNX")
+    return (
+        _resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
+        or trusted_base_model
+    )
+
+
+def _resolve_onnx_export_options(*, settings: Any) -> tuple[str, str]:
+    execution_provider = (
+        str(getattr(settings, "ONNX_LLM_EXECUTION_PROVIDER", "cpu") or "cpu").strip()
+        or "cpu"
+    )
+    precision = (
+        str(getattr(settings, "ONNX_LLM_PRECISION", "int4") or "int4").strip() or "int4"
+    )
+    return execution_provider, precision
+
+
+def _build_onnx_runtime_updates(
+    *,
+    settings: Any,
+    adapter_id: str,
+    runtime_onnx_dir: Path,
+    active_runtime_id: str,
+    active_model: str,
+    config_hash: str,
+) -> tuple[Dict[str, Any], str]:
+    selected_model = f"venom-adapter-{adapter_id}"
+    updates: Dict[str, Any] = {
+        "ACTIVE_LLM_SERVER": "onnx",
+        "LLM_SERVICE_TYPE": "onnx",
+        "LLM_LOCAL_ENDPOINT": "",
+        "LLM_MODEL_NAME": selected_model,
+        "HYBRID_LOCAL_MODEL": selected_model,
+        "ONNX_LLM_MODEL_PATH": str(runtime_onnx_dir),
+        "ONNX_LLM_ENABLED": True,
+        "LAST_MODEL_ONNX": selected_model,
+        "PREVIOUS_ONNX_LLM_MODEL_PATH": str(
+            getattr(settings, "ONNX_LLM_MODEL_PATH", "") or ""
+        ).strip(),
+        "LLM_CONFIG_HASH": config_hash,
+    }
+    if active_runtime_id == "onnx" and active_model and active_model != selected_model:
+        updates["PREVIOUS_MODEL_ONNX"] = active_model
+    return updates, selected_model
+
+
+def _apply_runtime_settings_for_onnx_deploy(
+    *,
+    settings: Any,
+    selected_model: str,
+    runtime_onnx_dir: Path,
+    config_hash: str,
+) -> None:
+    try:
+        settings.ACTIVE_LLM_SERVER = "onnx"
+        settings.LLM_SERVICE_TYPE = "onnx"
+        settings.LLM_LOCAL_ENDPOINT = ""
+        settings.LLM_MODEL_NAME = selected_model
+        settings.HYBRID_LOCAL_MODEL = selected_model
+        settings.ONNX_LLM_MODEL_PATH = str(runtime_onnx_dir)
+        settings.ONNX_LLM_ENABLED = True
+        settings.LAST_MODEL_ONNX = selected_model
+        settings.LLM_CONFIG_HASH = config_hash
+    except Exception:
+        logger.warning("Failed to update SETTINGS for ONNX adapter deploy.")
 
 
 def _deploy_adapter_to_onnx_runtime(
@@ -1157,29 +1364,14 @@ def _deploy_adapter_to_onnx_runtime(
     settings = settings_obj or _get_settings()
     models_dir = _resolve_academy_models_dir(settings_obj=settings)
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
-    adapter_path = adapter_dir / "adapter"
-    if not adapter_path.exists():
+    if not (adapter_dir / "adapter").exists():
         raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
-    trusted_base_model = _require_trusted_adapter_base_model(
-        adapter_dir=adapter_dir,
-    ).strip()
-    if not trusted_base_model:
-        raise RuntimeError("Adapter base model is empty; cannot deploy to ONNX")
-    base_model = (
-        _resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
-        or trusted_base_model
-    )
+    base_model = _resolve_onnx_deploy_base_model(adapter_dir=adapter_dir)
+    execution_provider, precision = _resolve_onnx_export_options(settings=settings)
 
     build_fn = (
         build_onnx_runtime_model_from_adapter_fn
         or _build_onnx_runtime_model_from_adapter
-    )
-    execution_provider = (
-        str(getattr(settings, "ONNX_LLM_EXECUTION_PROVIDER", "cpu") or "cpu").strip()
-        or "cpu"
-    )
-    precision = (
-        str(getattr(settings, "ONNX_LLM_PRECISION", "int4") or "int4").strip() or "int4"
     )
     runtime_onnx_dir = build_fn(
         adapter_dir=adapter_dir,
@@ -1193,50 +1385,34 @@ def _deploy_adapter_to_onnx_runtime(
             f"ONNX export succeeded but {ONNX_GENAI_CONFIG_FILENAME} missing: {runtime_onnx_dir}"
         )
 
-    previous_model_key = "PREVIOUS_MODEL_ONNX"
     active_runtime = get_active_llm_runtime_fn()
     active_runtime_id, active_model = _resolve_current_runtime_state(
         active_runtime=active_runtime,
         settings_obj=settings,
     )
     selected_model = f"venom-adapter-{adapter_id}"
-    previous_onnx_model_path = str(
-        getattr(settings, "ONNX_LLM_MODEL_PATH", "") or ""
-    ).strip()
-    updates: Dict[str, Any] = {
-        "ACTIVE_LLM_SERVER": "onnx",
-        "LLM_SERVICE_TYPE": "onnx",
-        "LLM_LOCAL_ENDPOINT": "",
-        "LLM_MODEL_NAME": selected_model,
-        "HYBRID_LOCAL_MODEL": selected_model,
-        "ONNX_LLM_MODEL_PATH": str(runtime_onnx_dir),
-        "ONNX_LLM_ENABLED": True,
-        "LAST_MODEL_ONNX": selected_model,
-        "PREVIOUS_ONNX_LLM_MODEL_PATH": previous_onnx_model_path,
-    }
-    if active_runtime_id == "onnx" and active_model and active_model != selected_model:
-        updates[previous_model_key] = active_model
     endpoint = runtime_endpoint_for_hash_fn("onnx", settings_obj=settings)
     config_hash = compute_llm_config_hash_fn("onnx", endpoint or "", selected_model)
-    updates["LLM_CONFIG_HASH"] = config_hash
+    updates, selected_model = _build_onnx_runtime_updates(
+        settings=settings,
+        adapter_id=adapter_id,
+        runtime_onnx_dir=runtime_onnx_dir,
+        active_runtime_id=active_runtime_id,
+        active_model=active_model,
+        config_hash=config_hash,
+    )
     update_result = config_manager_obj.update_config(updates)
     if isinstance(update_result, dict) and not bool(update_result.get("success", True)):
         raise RuntimeError(
             "Failed to persist ONNX adapter deploy config: "
             f"{update_result.get('message', 'unknown error')}"
         )
-    try:
-        settings.ACTIVE_LLM_SERVER = "onnx"
-        settings.LLM_SERVICE_TYPE = "onnx"
-        settings.LLM_LOCAL_ENDPOINT = ""
-        settings.LLM_MODEL_NAME = selected_model
-        settings.HYBRID_LOCAL_MODEL = selected_model
-        settings.ONNX_LLM_MODEL_PATH = str(runtime_onnx_dir)
-        settings.ONNX_LLM_ENABLED = True
-        settings.LAST_MODEL_ONNX = selected_model
-        settings.LLM_CONFIG_HASH = config_hash
-    except Exception:
-        logger.warning("Failed to update SETTINGS for ONNX adapter deploy.")
+    _apply_runtime_settings_for_onnx_deploy(
+        settings=settings,
+        selected_model=selected_model,
+        runtime_onnx_dir=runtime_onnx_dir,
+        config_hash=config_hash,
+    )
     return {
         "deployed": True,
         "runtime_id": "onnx",

@@ -73,6 +73,7 @@ type ChatComposerProps = Readonly<{
   llmServerOptions: SelectMenuOption[];
   setSelectedLlmServer: (value: string) => void;
   selectedLlmModel: string;
+  activeRuntimeModel?: string;
   llmModelOptions: SelectMenuOption[];
   llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
   setSelectedLlmModel: (value: string) => void;
@@ -199,7 +200,6 @@ function useChatAdapterSelection({
   llmModelMetadata,
   selectedLlmModel,
   selectedRuntimeId,
-  setSelectedLlmModel,
   t,
 }: {
   adapterDeploySupported: boolean;
@@ -207,7 +207,6 @@ function useChatAdapterSelection({
   llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
   selectedLlmModel: string;
   selectedRuntimeId: string;
-  setSelectedLlmModel: (value: string) => void;
   t: ReturnType<typeof useTranslation>;
 }) {
   const baseModelAdapterValue = "__base_model__";
@@ -336,9 +335,6 @@ function useChatAdapterSelection({
           selectedRuntimeId,
           selectedLlmModel,
         });
-        if (value !== baseModelAdapterValue && selectedLlmModel) {
-          setSelectedLlmModel("");
-        }
         await loadAdapters();
       } catch (error) {
         console.error("Failed to switch Academy adapter from chat selector:", error);
@@ -358,7 +354,6 @@ function useChatAdapterSelection({
       loadAdapters,
       selectedLlmModel,
       selectedRuntimeId,
-      setSelectedLlmModel,
       t,
     ],
   );
@@ -513,6 +508,7 @@ export const ChatComposer = memo(
       llmServerOptions,
       setSelectedLlmServer,
       selectedLlmModel,
+      activeRuntimeModel,
       llmModelOptions,
       llmModelMetadata,
       setSelectedLlmModel,
@@ -565,7 +561,6 @@ export const ChatComposer = memo(
       llmModelMetadata,
       selectedLlmModel,
       selectedRuntimeId,
-      setSelectedLlmModel,
       t,
     });
 
@@ -652,6 +647,26 @@ export const ChatComposer = memo(
     const showAdapterRuntimeContext = Boolean(
       adapterDeploySupported && selectedRuntimeId && selectedLlmModel,
     );
+    const activeRuntimeModelValue = (activeRuntimeModel || "").trim();
+    const selectedBaseModelValue = (selectedLlmModel || "").trim();
+    const showActiveRuntimeModelContext = Boolean(activeRuntimeModelValue);
+    const llmModelOptionsWithRuntimeContext = useMemo(() => {
+      if (selectedBaseModelValue || !activeRuntimeModelValue) {
+        return llmModelOptions;
+      }
+      const noSelectionLabel = `${t("cockpit.models.noneSelected")} · ${t("cockpit.models.activeRuntimeModelLabel")}: ${activeRuntimeModelValue}`;
+      return llmModelOptions.map((option) =>
+        option.value === noModelOptionValue
+          ? { ...option, label: noSelectionLabel }
+          : option,
+      );
+    }, [
+      selectedBaseModelValue,
+      activeRuntimeModelValue,
+      llmModelOptions,
+      noModelOptionValue,
+      t,
+    ]);
     const adapterUnsupportedReason = adapterDeployReason
       || t("cockpit.models.adapterRuntimeNotSupported", { runtime: selectedLlmServer });
     const adapterSelectionHint = selectedAdapter === baseModelAdapterValue
@@ -738,7 +753,7 @@ export const ChatComposer = memo(
               <label className={labelClassName}>{t("cockpit.models.model")}</label>
               <SelectMenu
                 value={selectedLlmModel || noModelOptionValue}
-                options={llmModelOptions}
+                options={llmModelOptionsWithRuntimeContext}
                 onChange={handleModelSelect}
                 ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"
@@ -800,6 +815,19 @@ export const ChatComposer = memo(
             </div>
           </div>
           <div className={secondaryRowClassName}>
+            {showActiveRuntimeModelContext ? (
+              <p className="text-[11px] text-hint">
+                <span className="font-medium">{t("cockpit.models.activeRuntimeModelLabel")}:</span>{" "}
+                <span className="font-mono text-[color:var(--text-primary)]">{activeRuntimeModelValue}</span>
+                {selectedBaseModelValue ? (
+                  <>
+                    {" "}
+                    <span className="font-medium">{t("cockpit.models.selectedBaseModelLabel")}:</span>{" "}
+                    <span className="font-mono text-[color:var(--text-primary)]">{selectedBaseModelValue}</span>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
             {modelAuditIssuesCount > 0 ? (
               <p className="text-[11px] text-amber-300">
                 {t("cockpit.models.runtimeModelAuditWarning", {

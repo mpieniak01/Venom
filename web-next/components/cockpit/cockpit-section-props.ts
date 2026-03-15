@@ -158,6 +158,15 @@ export function useCockpitSectionProps() {
       data.unifiedModelCatalog?.active?.active_server ||
       "",
   );
+  const activeRuntimeModel = useMemo(
+    () =>
+      (
+        data.activeServerInfo?.active_model ||
+        data.unifiedModelCatalog?.active?.active_model ||
+        ""
+      ).trim(),
+    [data.activeServerInfo?.active_model, data.unifiedModelCatalog?.active?.active_model],
+  );
   const selectedRuntimeModels = useMemo(() => {
     if (!resolvedServerId) return [];
     const target = runtimeTargets.find(
@@ -510,6 +519,7 @@ export function useCockpitSectionProps() {
     llmServerOptions,
     setSelectedLlmServer: handleSelectLlmServer,
     selectedLlmModel,
+    activeRuntimeModel,
     llmModelOptions,
     llmModelMetadata,
     setSelectedLlmModel,
@@ -538,6 +548,7 @@ export function useCockpitSectionProps() {
     onSend,
     handleSelectLlmServer,
     selectedLlmModel,
+    activeRuntimeModel,
     normalizedSelectedLlmServer,
     sending,
     setChatMode,

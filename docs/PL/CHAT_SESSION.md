@@ -89,6 +89,16 @@ Panel „Szczegóły requestu” pokazuje kluczowe metryki ścieżki krytycznej:
 - **Backend timings:** `LLM.start` (krok tracera), `first_token.elapsed_ms`, `streaming.first_chunk_ms`, `streaming.chunk_count`, `streaming.last_emit_ms`.
 To pozwala ocenić, czy streaming działa przyrostowo oraz gdzie powstaje opóźnienie.
 
+## Kontrakt modelu runtime w Cockpit (202D/203)
+- W Cockpit są rozróżnione dwa pojęcia modelu:
+  - **Wybrany model bazowy**: model z selektora (edytowalny przez użytkownika).
+  - **Model wykonawczy runtime**: model faktycznie obsługujący odpowiedź (readonly), który może być artefaktem adaptera (np. `venom-adapter-...`).
+- Po włączeniu deploy adaptera ONNX, wybór modelu bazowego nie jest już zerowany do pustej wartości przy aktywnym modelu adapterowym.
+- Panel szczegółów requestu pokazuje jawnie oba pola:
+  - `Model wykonawczy runtime`
+  - `Wybrany model bazowy`
+- Dla runtime ONNX diagram diagnostyczny może być krótszy niż dla Ollama, bo ONNX może działać dedykowaną ścieżką taskową (`OnnxTask`) zamiast pełnej ścieżki orkiestratora.
+
 ## Wzorzec ścieżki krytycznej (UI → LLM → UI)
 Cel: wszystko poza wysłaniem promptu i pierwszym chunkem ma działać w tle.
 - **Na ścieżce:** submit → TTFT → streaming/odpowiedź.

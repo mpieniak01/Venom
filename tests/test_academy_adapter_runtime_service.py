@@ -440,3 +440,181 @@ def test_format_adapter_merge_error_maps_missing_dependency() -> None:
     )
     assert "Missing Python dependency 'torch'" in err
     assert "Install 'torch'" in err
+
+
+def test_parse_helpers_return_defaults_for_invalid_values() -> None:
+    assert ars._parse_positive_float("not-a-number", default=0.25) == pytest.approx(
+        0.25
+    )
+    assert ars._parse_positive_int("not-a-number", default=15360) == 15360
+
+
+def test_resolve_limits_fall_back_to_defaults(monkeypatch) -> None:
+    monkeypatch.delenv("ACADEMY_ADAPTER_MERGE_MAX_RSS_MB", raising=False)
+    monkeypatch.delenv("VENOM_ADAPTER_MERGE_MAX_RSS_MB", raising=False)
+    monkeypatch.delenv("ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC", raising=False)
+    monkeypatch.delenv("VENOM_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC", raising=False)
+
+    settings = SimpleNamespace(
+        ACADEMY_ADAPTER_MERGE_MAX_RSS_MB=0,
+        ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC=0,
+    )
+    assert ars._resolve_merge_memory_limit_mb(settings_obj=settings) == 15360
+    assert ars._resolve_memory_monitor_interval_sec(
+        settings_obj=settings
+    ) == pytest.approx(0.25)
+
+
+def test_read_process_rss_mb_returns_zero_for_missing_pid() -> None:
+    assert ars._read_process_rss_mb(pid=999_999_999) == pytest.approx(0.0)
+
+
+def test_format_adapter_merge_error_passthrough_and_unknown_dependency() -> None:
+    assert (
+        ars._format_adapter_merge_error(stderr="regular stderr", stdout="")
+        == "regular stderr"
+    )
+    unknown = ars._format_adapter_merge_error(
+        stderr="ModuleNotFoundError: No module named 'custom_dep'",
+        stdout="",
+    )
+    assert unknown == "ModuleNotFoundError: No module named 'custom_dep'"
+
+
+def test_resolve_local_training_base_model_for_merge_invalid_cases(
+    tmp_path: Path,
+) -> None:
+    adapter_dir = _make_adapter_dir(tmp_path, metadata={})
+
+    with patch.object(
+        ars,
+        "_load_adapter_metadata",
+        return_value={"parameters": {}},
+    ):
+        assert (
+            ars._resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
+            == ""
+        )
+
+    bad_local = tmp_path / "bad-local"
+    bad_local.mkdir(parents=True, exist_ok=True)
+    with patch.object(
+        ars,
+        "_load_adapter_metadata",
+        return_value={"parameters": {"training_base_model": str(bad_local)}},
+    ):
+        assert (
+            ars._resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
+            == ""
+        )
+
+
+def test_resolve_onnx_builder_script_uses_installed_module_path(tmp_path: Path) -> None:
+    installed_file = tmp_path / "installed_builder.py"
+    installed_file.write_text("# installed builder", encoding="utf-8")
+
+    settings = SimpleNamespace(ONNX_BUILDER_SCRIPT="", REPO_ROOT=str(tmp_path))
+    with (
+        patch.dict("os.environ", {"ONNX_GENAI_BUILDER_SCRIPT": ""}),
+        patch.object(ars, "_resolve_repo_root", return_value=tmp_path),
+        patch.object(
+            ars.importlib,
+            "import_module",
+            return_value=SimpleNamespace(__file__=str(installed_file)),
+        ),
+    ):
+        resolved = ars._resolve_onnx_builder_script(settings_obj=settings)
+
+    assert resolved == installed_file.resolve()
+
+
+@pytest.mark.parametrize(
+    "config_payload",
+    [
+        None,
+        "{bad-json",
+        json.dumps([]),
+        json.dumps({"model_type": "gemma3", "text_config": []}),
+    ],
+)
+def test_prepare_gemma3_text_export_input_dir_invalid_input_returns_none(
+    tmp_path: Path,
+    config_payload: str | None,
+) -> None:
+    adapter_dir = tmp_path / "adapter"
+    merged_dir = tmp_path / "merged"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    merged_dir.mkdir(parents=True, exist_ok=True)
+    config_path = merged_dir / "config.json"
+    if config_payload is not None:
+        config_path.write_text(config_payload, encoding="utf-8")
+
+    assert (
+        ars._prepare_gemma3_text_export_input_dir(
+            adapter_dir=adapter_dir,
+            merged_dir=merged_dir,
+        )
+        is None
+    )
+
+
+def test_prepare_gemma3_text_export_input_dir_falls_back_to_copy(
+    tmp_path: Path,
+) -> None:
+    adapter_dir = tmp_path / "adapter"
+    merged_dir = tmp_path / "merged"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    merged_dir.mkdir(parents=True, exist_ok=True)
+    (merged_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "gemma3",
+                "text_config": {"hidden_size": 2560, "vocab_size": 262208},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (merged_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    subdir = merged_dir / "assets"
+    subdir.mkdir(parents=True, exist_ok=True)
+    (subdir / "vocab.txt").write_text("vocab", encoding="utf-8")
+
+    with patch.object(Path, "symlink_to", side_effect=OSError("symlink disabled")):
+        out_dir = ars._prepare_gemma3_text_export_input_dir(
+            adapter_dir=adapter_dir,
+            merged_dir=merged_dir,
+        )
+
+    assert out_dir is not None
+    assert (out_dir / "tokenizer.json").exists()
+    assert (out_dir / "assets" / "vocab.txt").exists()
+
+
+def test_prepare_gemma3_text_export_input_dir_cleans_temp_on_copy_failure(
+    tmp_path: Path,
+) -> None:
+    adapter_dir = tmp_path / "adapter"
+    merged_dir = tmp_path / "merged"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    merged_dir.mkdir(parents=True, exist_ok=True)
+    (merged_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "gemma3",
+                "text_config": {"hidden_size": 2560, "vocab_size": 262208},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (merged_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+
+    with (
+        patch.object(Path, "symlink_to", side_effect=OSError("symlink disabled")),
+        patch.object(ars.shutil, "copy2", side_effect=RuntimeError("copy failed")),
+    ):
+        with pytest.raises(RuntimeError, match="copy failed"):
+            ars._prepare_gemma3_text_export_input_dir(
+                adapter_dir=adapter_dir,
+                merged_dir=merged_dir,
+            )
+    assert not list(adapter_dir.glob("runtime_onnx_export_input_tmp_*"))

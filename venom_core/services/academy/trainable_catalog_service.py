@@ -913,8 +913,6 @@ def resolve_effective_training_base_model(
     selected_model_id = model_id.strip()
     if not selected_model_id:
         return ""
-    if _looks_like_hf_repo_id(selected_model_id):
-        return selected_model_id
 
     canonical_model_id = _canonical_runtime_model_id(selected_model_id)
     resolved_local_path = _resolve_local_hf_training_path(
@@ -924,6 +922,9 @@ def resolve_effective_training_base_model(
     )
     if resolved_local_path:
         return resolved_local_path
+
+    if _looks_like_hf_repo_id(selected_model_id):
+        return selected_model_id
 
     preferred = _CANONICAL_TO_PREFERRED_TRAINING_BASE.get(canonical_model_id)
     if preferred:

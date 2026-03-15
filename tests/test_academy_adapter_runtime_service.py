@@ -409,3 +409,34 @@ def test_run_subprocess_with_memory_guard_raises_on_limit(tmp_path: Path):
                 max_rss_mb=32,
                 monitor_interval_sec=0.1,
             )
+
+
+def test_resolve_merge_memory_limit_mb_prefers_academy_env(monkeypatch) -> None:
+    monkeypatch.setenv("ACADEMY_ADAPTER_MERGE_MAX_RSS_MB", "12345")
+    monkeypatch.setenv("VENOM_ADAPTER_MERGE_MAX_RSS_MB", "99999")
+
+    value = ars._resolve_merge_memory_limit_mb(
+        settings_obj=SimpleNamespace(ACADEMY_ADAPTER_MERGE_MAX_RSS_MB=7777)
+    )
+
+    assert value == 12345
+
+
+def test_resolve_memory_monitor_interval_prefers_academy_env(monkeypatch) -> None:
+    monkeypatch.setenv("ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC", "0.33")
+    monkeypatch.setenv("VENOM_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC", "0.75")
+
+    value = ars._resolve_memory_monitor_interval_sec(
+        settings_obj=SimpleNamespace(ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC=0.5)
+    )
+
+    assert value == pytest.approx(0.33)
+
+
+def test_format_adapter_merge_error_maps_missing_dependency() -> None:
+    err = ars._format_adapter_merge_error(
+        stderr="ModuleNotFoundError: No module named 'torch'",
+        stdout="",
+    )
+    assert "Missing Python dependency 'torch'" in err
+    assert "Install 'torch'" in err

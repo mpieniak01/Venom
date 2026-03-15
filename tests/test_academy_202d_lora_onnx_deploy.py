@@ -278,7 +278,8 @@ class TestBuildOnnxRuntimeModelFromAdapter:
             )
 
         assert captured_input_path is not None
-        assert not (adapter_dir / "runtime_onnx_export_input_tmp").exists()
+        assert captured_input_path.name.startswith("runtime_onnx_export_input_tmp_")
+        assert not list(adapter_dir.glob("runtime_onnx_export_input_tmp*"))
 
     def test_raises_on_missing_adapter_path(self, tmp_path: Path) -> None:
         adapter_dir = tmp_path / "no-adapter"

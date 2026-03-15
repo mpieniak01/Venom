@@ -32,7 +32,9 @@ describe("ModelInfoSection", () => {
   it("shows runtime execution model and selected base model separately", () => {
     const detail = {
       llm_model: "venom-adapter-training_20260314_164432",
-      model: "gemma-3-4b-it",
+      routing_decision: {
+        model: "gemma-3-4b-it",
+      },
       llm_provider: "onnx",
       llm_endpoint: "local",
       llm_runtime_id: "onnx",
@@ -51,7 +53,9 @@ describe("ModelInfoSection", () => {
   it("shows full runtime id and ONNX flow note", () => {
     const detail = {
       llm_model: "venom-adapter-training_20260314_164432",
-      model: "gemma-3-4b-it",
+      routing_decision: {
+        model: "gemma-3-4b-it",
+      },
       llm_runtime_id: "onnx@local-task-flow",
       adapter_applied: true,
     } as unknown as HistoryRequestDetail;

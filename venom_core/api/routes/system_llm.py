@@ -1334,14 +1334,7 @@ def _runtime_capabilities(*, runtime_id: str, source_type: str) -> dict[str, boo
             "supports_adapter_import_gguf": True,
             "supports_adapter_runtime_apply": True,
         }
-    if runtime == "vllm":
-        return {
-            "supports_native_training": False,
-            "supports_adapter_import_safetensors": False,
-            "supports_adapter_import_gguf": False,
-            "supports_adapter_runtime_apply": True,
-        }
-    if runtime == "onnx":
+    if runtime in {"vllm", "onnx"}:
         return {
             "supports_native_training": False,
             "supports_adapter_import_safetensors": False,

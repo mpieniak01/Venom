@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownPreview } from "@/components/ui/markdown";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import { statusTone } from "@/lib/status";
 import type { HistoryRequestDetail, HistoryStep } from "@/lib/types";
 import {
@@ -188,11 +189,13 @@ export function DiagnosticsSection({
 
 export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, string | number>) => string }>) {
     const selectedBaseModel = String(
-        (historyDetail as HistoryRequestDetail & { model?: string | null }).model ?? "",
+        historyDetail.routing_decision?.model ??
+        (historyDetail as HistoryRequestDetail & { model?: string | null }).model ??
+        "",
     ).trim();
     const runtimeExecutionModel = String(historyDetail.llm_model ?? "").trim();
     const runtimeId = String(historyDetail.llm_runtime_id ?? "").trim();
-    const isOnnxRuntime = runtimeId.toLowerCase().startsWith("onnx");
+    const isOnnxRuntime = normalizeRuntimeId(runtimeId) === "onnx";
     const adapterApplied = historyDetail.adapter_applied;
     const adapterId = historyDetail.adapter_id ?? null;
     const hasAdapterFlag = adapterApplied !== null && adapterApplied !== undefined;

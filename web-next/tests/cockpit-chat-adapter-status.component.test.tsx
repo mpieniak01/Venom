@@ -12,6 +12,7 @@ function renderComposer(params?: {
   server?: string;
   selectedModel?: string;
   activeRuntimeModel?: string;
+  adapterDeploySupported?: boolean;
 }) {
   const selectedServer = params?.server ?? "ollama";
   const selectedModel = params?.selectedModel ?? "gemma3:latest";
@@ -44,7 +45,7 @@ function renderComposer(params?: {
         hasModels
         onOpenTuning={() => {}}
         tuningLabel="Tune"
-        adapterDeploySupported
+        adapterDeploySupported={params?.adapterDeploySupported ?? true}
       />
     </LanguageProvider>,
   );
@@ -245,6 +246,22 @@ describe("ChatComposer adapter status", () => {
     assert.equal(
       screen.queryByText(/chat adapter deploy is not supported for runtime/i),
       null,
+    );
+  });
+
+  it("shows runtime-not-supported warning when adapter apply capability is disabled", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    installFetchMock({
+      auditCategory: "compatible",
+      auditMessage: "Adapter metadata is consistent",
+      runtimeId: "onnx",
+    });
+
+    renderComposer({ server: "onnx", adapterDeploySupported: false });
+    await flushEffects();
+
+    assert.ok(
+      screen.getByText(/chat adapter deploy is not supported for runtime/i),
     );
   });
 

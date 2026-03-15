@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -34,11 +35,14 @@ logger = get_logger(__name__)
 MODEL_CONFIG_FILENAME = "config.json"
 ONNX_GENAI_CONFIG_FILENAME = "genai_config.json"
 UNKNOWN_ERROR_DETAIL = "unknown error"
-_MERGE_MEMORY_LIMIT_ENV = "VENOM_ADAPTER_MERGE_MAX_RSS_MB"
-_MEMORY_MONITOR_INTERVAL_ENV = "VENOM_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC"
-_DEFAULT_MERGE_MEMORY_LIMIT_MB = 14336
-_DEFAULT_MEMORY_MONITOR_INTERVAL_SEC = 0.5
+_ACADEMY_MERGE_MEMORY_LIMIT_ENV = "ACADEMY_ADAPTER_MERGE_MAX_RSS_MB"
+_VENOM_MERGE_MEMORY_LIMIT_ENV = "VENOM_ADAPTER_MERGE_MAX_RSS_MB"
+_ACADEMY_MEMORY_MONITOR_INTERVAL_ENV = "ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC"
+_VENOM_MEMORY_MONITOR_INTERVAL_ENV = "VENOM_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC"
+_DEFAULT_MERGE_MEMORY_LIMIT_MB = 15360
+_DEFAULT_MEMORY_MONITOR_INTERVAL_SEC = 0.25
 _RESOURCE_MONITOR_FILENAME = "resource_monitor.jsonl"
+_MEMORY_GUARD_SIGTERM_GRACE_SEC = 5.0
 
 _OLLAMA_GGUF_ADAPTER_CANDIDATES = (
     "Adapter-F16-LoRA.gguf",
@@ -80,7 +84,9 @@ def _parse_positive_int(raw: Any, *, default: int) -> int:
 
 def _resolve_merge_memory_limit_mb(*, settings_obj: Any | None = None) -> int:
     settings = settings_obj or _get_settings()
-    env_value = str(os.getenv(_MERGE_MEMORY_LIMIT_ENV, "")).strip()
+    env_value = str(os.getenv(_ACADEMY_MERGE_MEMORY_LIMIT_ENV, "")).strip()
+    if not env_value:
+        env_value = str(os.getenv(_VENOM_MERGE_MEMORY_LIMIT_ENV, "")).strip()
     if env_value:
         return _parse_positive_int(env_value, default=_DEFAULT_MERGE_MEMORY_LIMIT_MB)
     settings_value = getattr(settings, "ACADEMY_ADAPTER_MERGE_MAX_RSS_MB", None)
@@ -93,7 +99,9 @@ def _resolve_merge_memory_limit_mb(*, settings_obj: Any | None = None) -> int:
 
 def _resolve_memory_monitor_interval_sec(*, settings_obj: Any | None = None) -> float:
     settings = settings_obj or _get_settings()
-    env_value = str(os.getenv(_MEMORY_MONITOR_INTERVAL_ENV, "")).strip()
+    env_value = str(os.getenv(_ACADEMY_MEMORY_MONITOR_INTERVAL_ENV, "")).strip()
+    if not env_value:
+        env_value = str(os.getenv(_VENOM_MEMORY_MONITOR_INTERVAL_ENV, "")).strip()
     if env_value:
         return _parse_positive_float(
             env_value, default=_DEFAULT_MEMORY_MONITOR_INTERVAL_SEC
@@ -179,8 +187,18 @@ def _run_subprocess_with_memory_guard(
                 state["exceeded"] = True
                 try:
                     process.send_signal(signal.SIGTERM)
-                except Exception:
+                except OSError:
                     pass
+                grace_deadline = time.monotonic() + _MEMORY_GUARD_SIGTERM_GRACE_SEC
+                while process.poll() is None and time.monotonic() < grace_deadline:
+                    if stop_event.is_set():
+                        break
+                    time.sleep(0.1)
+                if process.poll() is None:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
                 break
             time.sleep(max(monitor_interval_sec, 0.1))
 
@@ -191,7 +209,7 @@ def _run_subprocess_with_memory_guard(
     except subprocess.TimeoutExpired:
         try:
             process.kill()
-        except Exception:
+        except OSError:
             pass
         stdout, stderr = process.communicate()
         raise RuntimeError(f"{stage} timed out after {timeout_sec}s.") from None
@@ -437,6 +455,31 @@ def _restart_vllm_runtime(
         raise RuntimeError(f"Failed to restart vLLM runtime: {stderr}")
 
 
+def _format_adapter_merge_error(stderr: str, stdout: str) -> str:
+    """Normalize adapter-merge subprocess errors to actionable operator hints."""
+    combined = (stderr or "").strip() or (stdout or "").strip() or UNKNOWN_ERROR_DETAIL
+    lower_combined = combined.lower()
+    if "modulenotfounderror" not in lower_combined:
+        return combined
+
+    missing_deps = {
+        "torch": "torch",
+        "transformers": "transformers",
+        "peft": "peft",
+    }
+    for module_name, package_name in missing_deps.items():
+        if (
+            f"no module named '{module_name}'" in lower_combined
+            or f'no module named "{module_name}"' in lower_combined
+        ):
+            return (
+                f"Missing Python dependency '{module_name}' for adapter merge. "
+                f"Install '{package_name}' in the runtime environment. "
+                f"Original error: {combined}"
+            )
+    return combined
+
+
 def _build_vllm_runtime_model_from_adapter(
     *,
     adapter_dir: Path,
@@ -510,11 +553,11 @@ tokenizer.save_pretrained(output_dir)
             env=merge_env,
         )
         if merge_result.returncode != 0:
-            stderr = (merge_result.stderr or "").strip()
-            stdout = (merge_result.stdout or "").strip()
+            stderr = merge_result.stderr or ""
+            stdout = merge_result.stdout or ""
+            normalized_error = _format_adapter_merge_error(stderr, stdout)
             raise RuntimeError(
-                "Failed to merge adapter with base model: "
-                + (stderr or stdout or UNKNOWN_ERROR_DETAIL)
+                "Failed to merge adapter with base model: " + normalized_error
             )
         (tmp_dir / "venom_runtime_vllm.json").write_text(
             json.dumps(
@@ -1069,30 +1112,32 @@ def _prepare_gemma3_text_export_input_dir(
         if key in merged_cfg and key not in export_cfg:
             export_cfg[key] = merged_cfg[key]
 
-    tmp_input_dir = adapter_dir / "runtime_onnx_export_input_tmp"
-    if tmp_input_dir.exists():
-        shutil.rmtree(tmp_input_dir, ignore_errors=True)
-    tmp_input_dir.mkdir(parents=True, exist_ok=True)
-
-    for item in merged_dir.iterdir():
-        target = tmp_input_dir / item.name
-        if item.name == "config.json":
-            continue
-        if item.is_symlink() or item.is_file():
-            try:
-                target.symlink_to(item.resolve())
-            except Exception:
-                shutil.copy2(item, target)
-        elif item.is_dir():
-            try:
-                target.symlink_to(item.resolve(), target_is_directory=True)
-            except Exception:
-                shutil.copytree(item, target, dirs_exist_ok=True)
-
-    (tmp_input_dir / "config.json").write_text(
-        json.dumps(export_cfg, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    tmp_input_dir = Path(
+        tempfile.mkdtemp(prefix="runtime_onnx_export_input_tmp_", dir=str(adapter_dir))
     )
+    try:
+        for item in merged_dir.iterdir():
+            target = tmp_input_dir / item.name
+            if item.name == "config.json":
+                continue
+            if item.is_symlink() or item.is_file():
+                try:
+                    target.symlink_to(item.resolve())
+                except (OSError, AttributeError):
+                    shutil.copy2(item, target)
+            elif item.is_dir():
+                try:
+                    target.symlink_to(item.resolve(), target_is_directory=True)
+                except (OSError, AttributeError):
+                    shutil.copytree(item, target, dirs_exist_ok=True)
+
+        (tmp_input_dir / "config.json").write_text(
+            json.dumps(export_cfg, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        shutil.rmtree(tmp_input_dir, ignore_errors=True)
+        raise
     logger.info("Prepared Gemma-3 text-only ONNX export input dir: %s", tmp_input_dir)
     return tmp_input_dir
 

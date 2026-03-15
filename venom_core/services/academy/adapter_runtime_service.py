@@ -1028,6 +1028,37 @@ def _resolve_safe_child_file_path(*, parent_dir: Path, file_name: str) -> Path:
     return file_path
 
 
+def _write_json_file_in_dir(
+    *,
+    directory: Path,
+    file_name: str,
+    payload: Dict[str, Any],
+) -> None:
+    """
+    Write JSON into a file located directly in `directory` using dir_fd APIs.
+
+    This avoids constructing writable paths from runtime/user-influenced strings.
+    """
+    if Path(file_name).name != file_name:
+        raise ValueError(f"Invalid file name '{file_name}'.")
+    directory_resolved = directory.resolve()
+    if not directory_resolved.exists() or not directory_resolved.is_dir():
+        raise ValueError(f"Directory does not exist: {directory}")
+
+    dir_fd = os.open(str(directory_resolved), os.O_RDONLY)
+    try:
+        file_fd = os.open(
+            file_name,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
+            dir_fd=dir_fd,
+        )
+        with os.fdopen(file_fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+    finally:
+        os.close(dir_fd)
+
+
 def _build_onnx_export_cmd(
     *,
     builder_script: Path,
@@ -1108,9 +1139,10 @@ def _normalize_onnx_model_type(*, tmp_dir: Path) -> None:
         if model_type != "gemma3":
             return
         model_obj["type"] = "gemma3_text"
-        safe_genai_config_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        _write_json_file_in_dir(
+            directory=tmp_dir,
+            file_name=ONNX_GENAI_CONFIG_FILENAME,
+            payload=payload,
         )
         logger.info(
             "Normalized ONNX GenAI config model.type from gemma3 to gemma3_text"
@@ -1287,17 +1319,10 @@ def _prepare_gemma3_text_export_input_dir(
     tmp_input_dir = Path(tempfile.mkdtemp(prefix="runtime_onnx_export_input_tmp_"))
     try:
         _populate_export_input_dir(merged_dir=merged_dir, tmp_input_dir=tmp_input_dir)
-        tmp_input_real = os.path.realpath(str(tmp_input_dir))
-        tmp_model_config_real = os.path.realpath(
-            os.path.join(tmp_input_real, MODEL_CONFIG_FILENAME)
-        )
-        if os.path.dirname(tmp_model_config_real) != tmp_input_real:
-            raise ValueError(
-                f"Invalid export config path '{tmp_model_config_real}': outside '{tmp_input_real}'."
-            )
-        Path(tmp_model_config_real).write_text(
-            json.dumps(export_cfg, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        _write_json_file_in_dir(
+            directory=tmp_input_dir,
+            file_name=MODEL_CONFIG_FILENAME,
+            payload=export_cfg,
         )
     except Exception:
         shutil.rmtree(tmp_input_dir, ignore_errors=True)

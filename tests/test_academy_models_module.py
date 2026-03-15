@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import types
 from pathlib import Path
 from types import SimpleNamespace
@@ -262,6 +261,28 @@ def test_resolve_effective_training_base_model_prefers_local_hf_path(tmp_path):
 
     resolved = academy_models.resolve_effective_training_base_model(
         "gemma-3-4b-it",
+        local_models=[
+            {
+                "name": "gemma-3-4b-it",
+                "provider": "vllm",
+                "runtime": "vllm",
+                "path": str(model_dir),
+            }
+        ],
+    )
+    assert resolved == str(model_dir.resolve())
+
+
+def test_resolve_effective_training_base_model_prefers_local_path_for_hf_repo_id(
+    tmp_path,
+):
+    model_dir = tmp_path / "gemma-3-4b-it"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+
+    resolved = academy_models.resolve_effective_training_base_model(
+        "google/gemma-3-4b-it",
         local_models=[
             {
                 "name": "gemma-3-4b-it",
@@ -1744,51 +1765,21 @@ def test_build_vllm_runtime_model_from_adapter_happy_path(tmp_path: Path):
     adapter_path.mkdir(parents=True)
     (adapter_path / "tokenizer.json").write_text("{}", encoding="utf-8")
 
-    class _Cuda:
-        @staticmethod
-        def is_available() -> bool:
-            return False
-
-    fake_torch = types.SimpleNamespace(cuda=_Cuda(), float16="fp16", float32="fp32")
-
-    class _Merged:
-        @staticmethod
-        def save_pretrained(path: str, safe_serialization: bool = True) -> None:
-            path_obj = Path(path)
-            path_obj.mkdir(parents=True, exist_ok=True)
-            (path_obj / "config.json").write_text("{}", encoding="utf-8")
-            (path_obj / "model.safetensors").write_text("x", encoding="utf-8")
-
-    class _Peft:
-        @staticmethod
-        def from_pretrained(_base: object, _adapter: str):
-            return types.SimpleNamespace(merge_and_unload=lambda: _Merged())
-
-    class _AutoModel:
-        @staticmethod
-        def from_pretrained(_model: str, **_kwargs):
-            return object()
-
-    class _AutoTokenizer:
-        @staticmethod
-        def from_pretrained(_source: str):
-            return types.SimpleNamespace(
-                save_pretrained=lambda path: Path(path, "tokenizer.json").write_text(
-                    "{}",
-                    encoding="utf-8",
-                )
-            )
-
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-    monkeypatch.setitem(sys.modules, "peft", types.SimpleNamespace(PeftModel=_Peft))
-    monkeypatch.setitem(
-        sys.modules,
-        "transformers",
-        types.SimpleNamespace(
-            AutoModelForCausalLM=_AutoModel,
-            AutoTokenizer=_AutoTokenizer,
-        ),
+
+    def _fake_merge_guard(*, env: dict[str, str], **_kwargs):
+        payload = json.loads(env["VENOM_ADAPTER_MERGE_PAYLOAD"])
+        out_dir = Path(payload["output_dir"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "config.json").write_text("{}", encoding="utf-8")
+        (out_dir / "model.safetensors").write_text("x", encoding="utf-8")
+        (out_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        academy_models._runtime_service,
+        "_run_subprocess_with_memory_guard",
+        _fake_merge_guard,
     )
     try:
         runtime_dir = academy_models._build_vllm_runtime_model_from_adapter(

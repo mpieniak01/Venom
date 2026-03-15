@@ -97,7 +97,19 @@ def run_training_job(
     )
 
     try:
+        # Local runtime must detect optional Unsloth support before script selection.
+        # Without this preflight, first-run fallback can incorrectly pick Unsloth path
+        # and crash with `ModuleNotFoundError: unsloth`.
         use_unsloth = manager.enable_gpu and getattr(manager, "_has_unsloth", True)
+        if manager.use_local_runtime:
+            check_local_dependencies = getattr(
+                manager, "_check_local_dependencies", None
+            )
+            if callable(check_local_dependencies):
+                check_local_dependencies()
+            use_unsloth = bool(
+                manager.enable_gpu and getattr(manager, "_has_unsloth", False)
+            )
 
         training_script = manager._generate_training_script(
             dataset_path=str(dataset_path_obj)
@@ -212,6 +224,18 @@ def run_local_training_job(
     # Local Academy training must run without external experiment tracking setup.
     env.setdefault("WANDB_DISABLED", "true")
     env.setdefault("WANDB_MODE", "disabled")
+    # Force writable HuggingFace cache in local runtime to avoid inheriting
+    # non-writable defaults (for example /root/.cache in service environments).
+    hf_cache_root = output_dir / ".hf-cache"
+    hf_datasets_cache = hf_cache_root / "datasets"
+    hf_hub_cache = hf_cache_root / "hub"
+    hf_assets_cache = hf_cache_root / "assets"
+    for cache_dir in (hf_cache_root, hf_datasets_cache, hf_hub_cache, hf_assets_cache):
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    env.setdefault("HF_HOME", str(hf_cache_root))
+    env.setdefault("HF_DATASETS_CACHE", str(hf_datasets_cache))
+    env.setdefault("HUGGINGFACE_HUB_CACHE", str(hf_hub_cache))
+    env.setdefault("HF_ASSETS_CACHE", str(hf_assets_cache))
 
     executable = (python_bin or "").strip() or sys.executable or "python3"
 

@@ -45,6 +45,8 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - Dostarczono skrypt walidacji rollout: `scripts/ops/verify_policy_rollout.py`.
 - Uproszczono ścieżkę wykonawczą do governance runtime-only (usunięto legacy submit-level policy block ze ścieżki wykonania).
 - Rozszerzono UI `/config` o zakładkę `Uprawnienia` i sterowanie autonomią/audytem na tym samym strumieniu zdarzeń.
+- Domknięto E2E ścieżkę direct deploy ONNX w Academy dla Gemma-3 LoRA (`merge_export -> activate -> inference -> deactivate`) z walidacją live i artefaktami.
+- Podniesiono rekomendowany profil WSL2 dla Academy ONNX E2E na hostach 32 GB / 12 GB do `memory=30GB`, `swap=16GB` (szczegóły: `docs/PL/RUNTIME_PROFILES.md`).
 
 ## Dokumentacja
 ### Start i operacje

@@ -407,6 +407,71 @@ def test_run_training_job_local_runtime_and_validation(tmp_path: Path) -> None:
         )
 
 
+def test_run_training_job_local_runtime_resolves_unsloth_after_dependency_check(
+    tmp_path: Path,
+) -> None:
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    dataset = training_dir / "dataset.jsonl"
+    dataset.write_text("{}", encoding="utf-8")
+    settings = SimpleNamespace(
+        ACADEMY_TRAINING_DIR=str(training_dir),
+        ACADEMY_MODELS_DIR=str(models_dir),
+    )
+    logger = _Logger()
+    calls: dict[str, object] = {}
+
+    manager = SimpleNamespace(
+        use_local_runtime=True,
+        enable_gpu=True,
+        _is_path_within_base=lambda path, base: path.is_relative_to(base),
+    )
+
+    def _check_local_dependencies() -> None:
+        calls["checked"] = True
+        manager._has_unsloth = False
+
+    def _generate_training_script(**kwargs: object) -> str:
+        calls["use_unsloth"] = kwargs.get("use_unsloth")
+        return "print('ok')"
+
+    manager._check_local_dependencies = _check_local_dependencies
+    manager._generate_training_script = _generate_training_script
+    manager._run_local_training_job = lambda *_args: {
+        "container_id": "local-4",
+        "job_name": "job-deps",
+        "status": "running",
+        "adapter_path": "x/adapter",
+    }
+
+    result = runtime.run_training_job(
+        manager=manager,
+        request=runtime.TrainingJobRequest(
+            dataset_path=str(dataset),
+            base_model="phi",
+            output_dir="out-deps",
+            lora_rank=8,
+            learning_rate=0.0002,
+            num_epochs=1,
+            max_seq_length=512,
+            batch_size=1,
+            job_name="job-deps",
+        ),
+        deps=runtime.TrainingJobDeps(
+            settings=settings,
+            logger=logger,
+            docker_module=SimpleNamespace(types=SimpleNamespace(DeviceRequest=object)),
+            image_not_found_error=RuntimeError,
+        ),
+    )
+
+    assert result["job_name"] == "job-deps"
+    assert calls["checked"] is True
+    assert calls["use_unsloth"] is False
+
+
 def test_run_training_job_accepts_self_learning_storage_dataset(tmp_path: Path) -> None:
     storage_prefix = tmp_path / "storage"
     training_dir = storage_prefix / "data" / "training"

@@ -89,6 +89,10 @@ class TestResolveOnnxBuilderScript:
                 "venom_core.services.academy.adapter_runtime_service._resolve_repo_root",
                 return_value=tmp_path,
             ),
+            patch(
+                "venom_core.services.academy.adapter_runtime_service.importlib.import_module",
+                side_effect=ImportError("missing onnxruntime_genai"),
+            ),
         ):
             with pytest.raises(FileNotFoundError, match="ONNX genai builder"):
                 _resolve_onnx_builder_script()
@@ -119,10 +123,12 @@ class TestBuildOnnxRuntimeModelFromAdapter:
     def test_runs_merge_then_onnx_export(self, tmp_path: Path) -> None:
         adapter_dir = _make_adapter_dir(tmp_path)
         merged_dir = _make_fake_merged_dir(adapter_dir)
+        captured_cmd: list[str] = []
 
-        def _fake_builder_subprocess(*args, **kwargs):
+        def _fake_builder_subprocess(**kwargs):
             # Simulate builder creating genai_config.json in output dir
-            cmd = args[0]
+            cmd = kwargs["cmd"]
+            captured_cmd[:] = cmd
             output_idx = cmd.index("-o") + 1
             out_dir = Path(cmd[output_idx])
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -145,7 +151,7 @@ class TestBuildOnnxRuntimeModelFromAdapter:
                 return_value=fake_script,
             ),
             patch(
-                "venom_core.services.academy.adapter_runtime_service.subprocess.run",
+                "venom_core.services.academy.adapter_runtime_service._run_subprocess_with_memory_guard",
                 side_effect=_fake_builder_subprocess,
             ),
         ):
@@ -161,6 +167,118 @@ class TestBuildOnnxRuntimeModelFromAdapter:
         meta = json.loads((result / "venom_runtime_onnx.json").read_text())
         assert meta["runtime"] == "onnx"
         assert meta["base_model"] == "google/gemma-3-4b-it"
+        assert "-i" in captured_cmd
+        assert "-m" not in captured_cmd
+
+    def test_normalizes_gemma3_model_type_in_genai_config(self, tmp_path: Path) -> None:
+        adapter_dir = _make_adapter_dir(tmp_path)
+        merged_dir = _make_fake_merged_dir(adapter_dir)
+
+        def _fake_builder_subprocess(**kwargs):
+            cmd = kwargs["cmd"]
+            output_idx = cmd.index("-o") + 1
+            out_dir = Path(cmd[output_idx])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "genai_config.json").write_text(
+                json.dumps({"model": {"type": "gemma3"}}),
+                encoding="utf-8",
+            )
+            (out_dir / "model.onnx").write_bytes(b"\x00")
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        from venom_core.services.academy.adapter_runtime_service import (
+            _build_onnx_runtime_model_from_adapter,
+        )
+
+        fake_script = tmp_path / "builder.py"
+        fake_script.write_text("")
+
+        with (
+            patch(
+                "venom_core.services.academy.adapter_runtime_service._resolve_onnx_builder_script",
+                return_value=fake_script,
+            ),
+            patch(
+                "venom_core.services.academy.adapter_runtime_service._run_subprocess_with_memory_guard",
+                side_effect=_fake_builder_subprocess,
+            ),
+        ):
+            result = _build_onnx_runtime_model_from_adapter(
+                adapter_dir=adapter_dir,
+                base_model="google/gemma-3-4b-it",
+                build_vllm_runtime_model_from_adapter_fn=lambda **_: merged_dir,
+            )
+
+        genai_config = json.loads((result / "genai_config.json").read_text())
+        assert genai_config["model"]["type"] == "gemma3_text"
+
+    def test_prepares_text_only_export_input_for_gemma3(self, tmp_path: Path) -> None:
+        adapter_dir = _make_adapter_dir(tmp_path)
+        merged_dir = _make_fake_merged_dir(adapter_dir)
+        (merged_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "model_type": "gemma3",
+                    "architectures": ["Gemma3ForConditionalGeneration"],
+                    "text_config": {
+                        "model_type": "gemma3_text",
+                        "hidden_size": 2560,
+                        "vocab_size": 262208,
+                    },
+                    "eos_token_id": [1, 106],
+                    "pad_token_id": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (merged_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+        captured_input_path: Path | None = None
+
+        def _fake_builder_subprocess(**kwargs):
+            nonlocal captured_input_path
+            cmd = kwargs["cmd"]
+            input_idx = cmd.index("-i") + 1
+            captured_input_path = Path(cmd[input_idx])
+            cfg = json.loads((captured_input_path / "config.json").read_text())
+            assert cfg["model_type"] == "gemma3_text"
+            assert cfg["architectures"] == ["Gemma3ForCausalLM"]
+            assert cfg["eos_token_id"] == [1, 106]
+            output_idx = cmd.index("-o") + 1
+            out_dir = Path(cmd[output_idx])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "genai_config.json").write_text("{}")
+            (out_dir / "model.onnx").write_bytes(b"\x00")
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        from venom_core.services.academy.adapter_runtime_service import (
+            _build_onnx_runtime_model_from_adapter,
+        )
+
+        fake_script = tmp_path / "builder.py"
+        fake_script.write_text("")
+
+        with (
+            patch(
+                "venom_core.services.academy.adapter_runtime_service._resolve_onnx_builder_script",
+                return_value=fake_script,
+            ),
+            patch(
+                "venom_core.services.academy.adapter_runtime_service._run_subprocess_with_memory_guard",
+                side_effect=_fake_builder_subprocess,
+            ),
+        ):
+            _build_onnx_runtime_model_from_adapter(
+                adapter_dir=adapter_dir,
+                base_model="google/gemma-3-4b-it",
+                build_vllm_runtime_model_from_adapter_fn=lambda **_: merged_dir,
+            )
+
+        assert captured_input_path is not None
+        assert not (adapter_dir / "runtime_onnx_export_input_tmp").exists()
 
     def test_raises_on_missing_adapter_path(self, tmp_path: Path) -> None:
         adapter_dir = tmp_path / "no-adapter"
@@ -181,7 +299,7 @@ class TestBuildOnnxRuntimeModelFromAdapter:
         fake_script = tmp_path / "builder.py"
         fake_script.write_text("")
 
-        def _fail_subprocess(*args, **kwargs):
+        def _fail_subprocess(**kwargs):
             result = MagicMock()
             result.returncode = 1
             result.stderr = "mock export error"
@@ -198,7 +316,7 @@ class TestBuildOnnxRuntimeModelFromAdapter:
                 return_value=fake_script,
             ),
             patch(
-                "venom_core.services.academy.adapter_runtime_service.subprocess.run",
+                "venom_core.services.academy.adapter_runtime_service._run_subprocess_with_memory_guard",
                 side_effect=_fail_subprocess,
             ),
         ):
@@ -325,6 +443,52 @@ class TestDeployAdapterToOnnxRuntime:
                 build_onnx_runtime_model_from_adapter_fn=MagicMock(),
                 get_active_llm_runtime_fn=lambda: MagicMock(provider="ollama"),
             )
+
+    def test_deploy_prefers_local_training_base_model_for_merge(
+        self, tmp_path: Path
+    ) -> None:
+        adapter_dir = _make_adapter_dir(tmp_path)
+        local_base = tmp_path / "local-gemma-base"
+        local_base.mkdir(parents=True, exist_ok=True)
+        (local_base / "config.json").write_text("{}", encoding="utf-8")
+        metadata = json.loads(
+            (adapter_dir / "metadata.json").read_text(encoding="utf-8")
+        )
+        metadata["parameters"] = {"training_base_model": str(local_base)}
+        (adapter_dir / "metadata.json").write_text(
+            json.dumps(metadata), encoding="utf-8"
+        )
+        onnx_dir = _make_fake_onnx_dir(adapter_dir)
+        received_base_model: dict[str, str] = {}
+
+        def _fake_build_fn(**kwargs):
+            received_base_model["value"] = str(kwargs.get("base_model") or "")
+            return onnx_dir
+
+        import venom_core.services.academy.adapter_runtime_service as _svc4
+        from venom_core.services.academy.adapter_runtime_service import (
+            _deploy_adapter_to_onnx_runtime,
+        )
+
+        with (
+            patch.object(_svc4, "_resolve_academy_models_dir", return_value=tmp_path),
+            patch.object(
+                _svc4,
+                "_require_trusted_adapter_base_model",
+                return_value="google/gemma-3-4b-it",
+            ),
+        ):
+            _deploy_adapter_to_onnx_runtime(
+                adapter_id="test-adapter-001",
+                settings_obj=MagicMock(ONNX_LLM_MODEL_PATH=""),
+                config_manager_obj=MagicMock(),
+                compute_llm_config_hash_fn=lambda *a: "h",
+                runtime_endpoint_for_hash_fn=lambda *a, **kw: None,
+                build_onnx_runtime_model_from_adapter_fn=_fake_build_fn,
+                get_active_llm_runtime_fn=lambda: MagicMock(provider="ollama"),
+            )
+
+        assert received_base_model.get("value") == str(local_base.resolve())
 
 
 # ---------------------------------------------------------------------------

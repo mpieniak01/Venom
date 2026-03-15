@@ -73,6 +73,7 @@ type ChatComposerProps = Readonly<{
   llmServerOptions: SelectMenuOption[];
   setSelectedLlmServer: (value: string) => void;
   selectedLlmModel: string;
+  activeRuntimeModel?: string;
   llmModelOptions: SelectMenuOption[];
   llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
   setSelectedLlmModel: (value: string) => void;
@@ -199,7 +200,6 @@ function useChatAdapterSelection({
   llmModelMetadata,
   selectedLlmModel,
   selectedRuntimeId,
-  setSelectedLlmModel,
   t,
 }: {
   adapterDeploySupported: boolean;
@@ -207,7 +207,6 @@ function useChatAdapterSelection({
   llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
   selectedLlmModel: string;
   selectedRuntimeId: string;
-  setSelectedLlmModel: (value: string) => void;
   t: ReturnType<typeof useTranslation>;
 }) {
   const baseModelAdapterValue = "__base_model__";
@@ -336,9 +335,6 @@ function useChatAdapterSelection({
           selectedRuntimeId,
           selectedLlmModel,
         });
-        if (value !== baseModelAdapterValue && selectedLlmModel) {
-          setSelectedLlmModel("");
-        }
         await loadAdapters();
       } catch (error) {
         console.error("Failed to switch Academy adapter from chat selector:", error);
@@ -358,7 +354,6 @@ function useChatAdapterSelection({
       loadAdapters,
       selectedLlmModel,
       selectedRuntimeId,
-      setSelectedLlmModel,
       t,
     ],
   );
@@ -456,6 +451,100 @@ function suggestionOptionClassName(isActive: boolean): string {
   return "flex w-full items-center justify-between px-3 py-2 text-left text-xs transition text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface-hover)]";
 }
 
+function withRuntimeModelContextOption({
+  options,
+  selectedBaseModelValue,
+  activeRuntimeModelValue,
+  noModelOptionValue,
+  noModelLabel,
+  activeRuntimeModelLabel,
+}: {
+  options: SelectMenuOption[];
+  selectedBaseModelValue: string;
+  activeRuntimeModelValue: string;
+  noModelOptionValue: string;
+  noModelLabel: string;
+  activeRuntimeModelLabel: string;
+}): SelectMenuOption[] {
+  if (selectedBaseModelValue || !activeRuntimeModelValue) {
+    return options;
+  }
+  const noSelectionLabel = `${noModelLabel} · ${activeRuntimeModelLabel}: ${activeRuntimeModelValue}`;
+  return options.map((option) =>
+    option.value === noModelOptionValue
+      ? { ...option, label: noSelectionLabel }
+      : option,
+  );
+}
+
+function resolveApplySelectedModelCallback({
+  onActivateModel,
+  selectedLlmModel,
+}: {
+  onActivateModel?: (value: string) => Promise<boolean> | boolean;
+  selectedLlmModel: string;
+}): (() => Promise<boolean>) | undefined {
+  if (!onActivateModel) {
+    return undefined;
+  }
+  return async () => {
+    if (!selectedLlmModel) {
+      return false;
+    }
+    return Boolean(await onActivateModel(selectedLlmModel));
+  };
+}
+
+function createTextareaKeyDownHandler({
+  event,
+  slashSuggestions,
+  slashIndex,
+  setSlashIndex,
+  applySlashSuggestion,
+  setSlashSuggestions,
+  handleSendClick,
+}: {
+  event: KeyboardEvent<HTMLTextAreaElement>;
+  slashSuggestions: SlashCommand[];
+  slashIndex: number;
+  setSlashIndex: (value: number | ((prev: number) => number)) => void;
+  applySlashSuggestion: (suggestion: SlashCommand) => void;
+  setSlashSuggestions: (
+    value: SlashCommand[] | ((prev: SlashCommand[]) => SlashCommand[]),
+  ) => void;
+  handleSendClick: () => void;
+}): void {
+  if (slashSuggestions.length > 0) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSlashIndex((prev) => (prev + 1) % slashSuggestions.length);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSlashIndex((prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      applySlashSuggestion(slashSuggestions[slashIndex]);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSlashSuggestions([]);
+      setSlashIndex(0);
+      return;
+    }
+  }
+  const isEnterWithModifier =
+    event.key === "Enter" && (event.ctrlKey || event.metaKey);
+  if (isEnterWithModifier) {
+    event.preventDefault();
+    handleSendClick();
+  }
+}
+
 type ActiveAdapterRuntimeCardProps = Readonly<{
   activeAdapterAudit: AdapterAuditItem | null;
   activeAdapterBlocked: boolean;
@@ -513,6 +602,7 @@ export const ChatComposer = memo(
       llmServerOptions,
       setSelectedLlmServer,
       selectedLlmModel,
+      activeRuntimeModel,
       llmModelOptions,
       llmModelMetadata,
       setSelectedLlmModel,
@@ -541,6 +631,15 @@ export const ChatComposer = memo(
       () => normalizeRuntimeId(selectedLlmServer).toLowerCase(),
       [selectedLlmServer],
     );
+    const applySelectedModel = useMemo(
+      () =>
+        resolveApplySelectedModelCallback({
+          onActivateModel,
+          selectedLlmModel,
+        }),
+      [onActivateModel, selectedLlmModel],
+    );
+
     const {
       adapterOptions,
       adapterSelectLoading,
@@ -554,18 +653,10 @@ export const ChatComposer = memo(
       noModelOptionValue,
     } = useChatAdapterSelection({
       adapterDeploySupported,
-      applySelectedModel: onActivateModel
-        ? async () => {
-          if (!selectedLlmModel) {
-            return false;
-          }
-          return Boolean(await onActivateModel(selectedLlmModel));
-        }
-        : undefined,
+      applySelectedModel,
       llmModelMetadata,
       selectedLlmModel,
       selectedRuntimeId,
-      setSelectedLlmModel,
       t,
     });
 
@@ -606,35 +697,15 @@ export const ChatComposer = memo(
 
     const handleTextareaKeyDown = useCallback(
       (event: KeyboardEvent<HTMLTextAreaElement>) => {
-        if (slashSuggestions.length > 0) {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            setSlashIndex((prev) => (prev + 1) % slashSuggestions.length);
-            return;
-          }
-          if (event.key === "ArrowUp") {
-            event.preventDefault();
-            setSlashIndex((prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length);
-            return;
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            applySlashSuggestion(slashSuggestions[slashIndex]);
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            setSlashSuggestions([]);
-            setSlashIndex(0);
-            return;
-          }
-        }
-        const isEnter = event.key === "Enter";
-        const isModifier = event.ctrlKey || event.metaKey;
-        if (isEnter && isModifier) {
-          event.preventDefault();
-          handleSendClick();
-        }
+        createTextareaKeyDownHandler({
+          event,
+          slashSuggestions,
+          slashIndex,
+          setSlashIndex,
+          applySlashSuggestion,
+          setSlashSuggestions,
+          handleSendClick,
+        });
       },
       [applySlashSuggestion, handleSendClick, slashIndex, slashSuggestions],
     );
@@ -651,6 +722,27 @@ export const ChatComposer = memo(
     const adapterDeployUnsupported = adapterDeploySupported === false;
     const showAdapterRuntimeContext = Boolean(
       adapterDeploySupported && selectedRuntimeId && selectedLlmModel,
+    );
+    const activeRuntimeModelValue = (activeRuntimeModel || "").trim();
+    const selectedBaseModelValue = (selectedLlmModel || "").trim();
+    const showActiveRuntimeModelContext = Boolean(activeRuntimeModelValue);
+    const llmModelOptionsWithRuntimeContext = useMemo(
+      () =>
+        withRuntimeModelContextOption({
+          options: llmModelOptions,
+          selectedBaseModelValue,
+          activeRuntimeModelValue,
+          noModelOptionValue,
+          noModelLabel: t("cockpit.models.noneSelected"),
+          activeRuntimeModelLabel: t("cockpit.models.activeRuntimeModelLabel"),
+        }),
+      [
+        selectedBaseModelValue,
+        activeRuntimeModelValue,
+        llmModelOptions,
+        noModelOptionValue,
+        t,
+      ],
     );
     const adapterUnsupportedReason = adapterDeployReason
       || t("cockpit.models.adapterRuntimeNotSupported", { runtime: selectedLlmServer });
@@ -738,7 +830,7 @@ export const ChatComposer = memo(
               <label className={labelClassName}>{t("cockpit.models.model")}</label>
               <SelectMenu
                 value={selectedLlmModel || noModelOptionValue}
-                options={llmModelOptions}
+                options={llmModelOptionsWithRuntimeContext}
                 onChange={handleModelSelect}
                 ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"
@@ -800,6 +892,19 @@ export const ChatComposer = memo(
             </div>
           </div>
           <div className={secondaryRowClassName}>
+            {showActiveRuntimeModelContext ? (
+              <p className="text-[11px] text-hint">
+                <span className="font-medium">{t("cockpit.models.activeRuntimeModelLabel")}:</span>{" "}
+                <span className="font-mono text-[color:var(--text-primary)]">{activeRuntimeModelValue}</span>
+                {selectedBaseModelValue ? (
+                  <>
+                    {" "}
+                    <span className="font-medium">{t("cockpit.models.selectedBaseModelLabel")}:</span>{" "}
+                    <span className="font-mono text-[color:var(--text-primary)]">{selectedBaseModelValue}</span>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
             {modelAuditIssuesCount > 0 ? (
               <p className="text-[11px] text-amber-300">
                 {t("cockpit.models.runtimeModelAuditWarning", {

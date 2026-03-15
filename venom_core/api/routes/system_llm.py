@@ -106,6 +106,8 @@ def _runtime_adapter_deploy_capability(runtime_id: str) -> tuple[bool, str]:
         return True, "ollama_modelfile"
     if runtime == "vllm":
         return True, "vllm_exported_runtime_model"
+    if runtime == "onnx":
+        return True, "onnx_merge_export_runtime_model"
     return False, "none"
 
 
@@ -1332,7 +1334,7 @@ def _runtime_capabilities(*, runtime_id: str, source_type: str) -> dict[str, boo
             "supports_adapter_import_gguf": True,
             "supports_adapter_runtime_apply": True,
         }
-    if runtime == "vllm":
+    if runtime in {"vllm", "onnx"}:
         return {
             "supports_native_training": False,
             "supports_adapter_import_safetensors": False,

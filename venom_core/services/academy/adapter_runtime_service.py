@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -30,6 +34,11 @@ logger = get_logger(__name__)
 MODEL_CONFIG_FILENAME = "config.json"
 ONNX_GENAI_CONFIG_FILENAME = "genai_config.json"
 UNKNOWN_ERROR_DETAIL = "unknown error"
+_MERGE_MEMORY_LIMIT_ENV = "VENOM_ADAPTER_MERGE_MAX_RSS_MB"
+_MEMORY_MONITOR_INTERVAL_ENV = "VENOM_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC"
+_DEFAULT_MERGE_MEMORY_LIMIT_MB = 14336
+_DEFAULT_MEMORY_MONITOR_INTERVAL_SEC = 0.5
+_RESOURCE_MONITOR_FILENAME = "resource_monitor.jsonl"
 
 _OLLAMA_GGUF_ADAPTER_CANDIDATES = (
     "Adapter-F16-LoRA.gguf",
@@ -47,6 +56,169 @@ _CANONICAL_TO_OLLAMA_FROM_MODEL: Dict[str, str] = {
     "qwen/qwen2.5-coder-3b-instruct": "qwen2.5-coder:3b",
     "qwen/qwen2.5-coder-7b-instruct": "qwen2.5-coder:7b",
 }
+
+
+def _parse_positive_float(raw: Any, *, default: float) -> float:
+    try:
+        value = float(str(raw).strip())
+        if value > 0:
+            return value
+    except Exception:
+        pass
+    return default
+
+
+def _parse_positive_int(raw: Any, *, default: int) -> int:
+    try:
+        value = int(str(raw).strip())
+        if value > 0:
+            return value
+    except Exception:
+        pass
+    return default
+
+
+def _resolve_merge_memory_limit_mb(*, settings_obj: Any | None = None) -> int:
+    settings = settings_obj or _get_settings()
+    env_value = str(os.getenv(_MERGE_MEMORY_LIMIT_ENV, "")).strip()
+    if env_value:
+        return _parse_positive_int(env_value, default=_DEFAULT_MERGE_MEMORY_LIMIT_MB)
+    settings_value = getattr(settings, "ACADEMY_ADAPTER_MERGE_MAX_RSS_MB", None)
+    if settings_value:
+        return _parse_positive_int(
+            settings_value, default=_DEFAULT_MERGE_MEMORY_LIMIT_MB
+        )
+    return _DEFAULT_MERGE_MEMORY_LIMIT_MB
+
+
+def _resolve_memory_monitor_interval_sec(*, settings_obj: Any | None = None) -> float:
+    settings = settings_obj or _get_settings()
+    env_value = str(os.getenv(_MEMORY_MONITOR_INTERVAL_ENV, "")).strip()
+    if env_value:
+        return _parse_positive_float(
+            env_value, default=_DEFAULT_MEMORY_MONITOR_INTERVAL_SEC
+        )
+    settings_value = getattr(
+        settings, "ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC", None
+    )
+    if settings_value:
+        return _parse_positive_float(
+            settings_value, default=_DEFAULT_MEMORY_MONITOR_INTERVAL_SEC
+        )
+    return _DEFAULT_MEMORY_MONITOR_INTERVAL_SEC
+
+
+def _read_process_rss_mb(*, pid: int) -> float:
+    try:
+        status_file = Path("/proc") / str(pid) / "status"
+        lines = status_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for line in lines:
+            if line.startswith("VmRSS:"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    kb = float(parts[1])
+                    return kb / 1024.0
+    except Exception:
+        return 0.0
+    return 0.0
+
+
+def _append_resource_monitor_entry(
+    *,
+    adapter_dir: Path,
+    stage: str,
+    pid: int,
+    peak_rss_mb: float,
+    max_rss_mb: int,
+    exceeded: bool,
+) -> None:
+    payload = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "stage": stage,
+        "pid": pid,
+        "peak_rss_mb": round(float(peak_rss_mb), 2),
+        "max_rss_mb": int(max_rss_mb),
+        "exceeded": bool(exceeded),
+    }
+    try:
+        monitor_file = adapter_dir / _RESOURCE_MONITOR_FILENAME
+        with monitor_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        logger.warning("Failed to append adapter resource monitor entry.")
+
+
+def _run_subprocess_with_memory_guard(
+    *,
+    cmd: list[str],
+    stage: str,
+    adapter_dir: Path,
+    timeout_sec: int,
+    max_rss_mb: int,
+    monitor_interval_sec: float,
+    env: Dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    state: Dict[str, Any] = {"peak_rss_mb": 0.0, "exceeded": False}
+    stop_event = threading.Event()
+
+    def _monitor() -> None:
+        while not stop_event.is_set():
+            if process.poll() is not None:
+                break
+            rss_mb = _read_process_rss_mb(pid=process.pid)
+            if rss_mb > float(state["peak_rss_mb"]):
+                state["peak_rss_mb"] = rss_mb
+            if max_rss_mb > 0 and rss_mb > float(max_rss_mb):
+                state["exceeded"] = True
+                try:
+                    process.send_signal(signal.SIGTERM)
+                except Exception:
+                    pass
+                break
+            time.sleep(max(monitor_interval_sec, 0.1))
+
+    monitor_thread = threading.Thread(target=_monitor, daemon=True)
+    monitor_thread.start()
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_sec)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except Exception:
+            pass
+        stdout, stderr = process.communicate()
+        raise RuntimeError(f"{stage} timed out after {timeout_sec}s.") from None
+    finally:
+        stop_event.set()
+        monitor_thread.join(timeout=2.0)
+
+    peak_rss_mb = float(state.get("peak_rss_mb") or 0.0)
+    _append_resource_monitor_entry(
+        adapter_dir=adapter_dir,
+        stage=stage,
+        pid=process.pid,
+        peak_rss_mb=peak_rss_mb,
+        max_rss_mb=max_rss_mb,
+        exceeded=bool(state.get("exceeded")),
+    )
+    if bool(state.get("exceeded")):
+        raise RuntimeError(
+            f"{stage} exceeded memory guard ({max_rss_mb} MiB). "
+            f"Peak RSS: {peak_rss_mb:.1f} MiB."
+        )
+    return subprocess.CompletedProcess(
+        args=cmd,
+        returncode=int(process.returncode or 0),
+        stdout=stdout,
+        stderr=stderr,
+    )
 
 
 def _get_settings() -> Any:
@@ -284,39 +456,66 @@ def _build_vllm_runtime_model_from_adapter(
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        import torch
-        from peft import PeftModel
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-    except ImportError as exc:  # pragma: no cover - environment-dependent
-        raise RuntimeError(
-            "Missing dependencies required for vLLM adapter deploy. "
-            "Install: pip install transformers peft torch"
-        ) from exc
+        merge_payload = {
+            "base_model": str(base_model),
+            "adapter_path": str(adapter_path),
+            "output_dir": str(tmp_dir),
+        }
+        merge_script = r"""
+import json
+import os
+import torch
+from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    has_cuda = bool(torch.cuda.is_available())
-    model_kwargs: Dict[str, Any] = {
-        "torch_dtype": torch.float16 if has_cuda else torch.float32,
+payload = json.loads(os.environ["VENOM_ADAPTER_MERGE_PAYLOAD"])
+base_model = str(payload["base_model"])
+adapter_path = str(payload["adapter_path"])
+output_dir = str(payload["output_dir"])
+has_cuda = bool(torch.cuda.is_available())
+if has_cuda:
+    model_kwargs = {"torch_dtype": torch.float16, "device_map": "auto"}
+else:
+    model_kwargs = {
+        "torch_dtype": "auto",
+        "device_map": "cpu",
+        "low_cpu_mem_usage": True,
     }
-    if has_cuda:
-        model_kwargs["device_map"] = "auto"
-    else:
-        model_kwargs["low_cpu_mem_usage"] = True
 
-    try:
-        base_model_obj = AutoModelForCausalLM.from_pretrained(
-            base_model, **model_kwargs
-        )
-        peft_model = PeftModel.from_pretrained(base_model_obj, str(adapter_path))
-        merged_model = peft_model.merge_and_unload()
-        merged_model.save_pretrained(str(tmp_dir), safe_serialization=True)
+base_model_obj = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
+peft_model = PeftModel.from_pretrained(base_model_obj, adapter_path)
+merged_model = peft_model.merge_and_unload()
+merged_model.save_pretrained(output_dir, safe_serialization=True)
 
-        tokenizer_source = (
-            str(adapter_path)
-            if (adapter_path / "tokenizer.json").exists()
-            else base_model
+tokenizer_source = (
+    adapter_path if os.path.exists(os.path.join(adapter_path, "tokenizer.json"))
+    else base_model
+)
+tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
+tokenizer.save_pretrained(output_dir)
+"""
+        merge_env = dict(os.environ)
+        merge_env["VENOM_ADAPTER_MERGE_PAYLOAD"] = json.dumps(
+            merge_payload, ensure_ascii=False
         )
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
-        tokenizer.save_pretrained(str(tmp_dir))
+        merge_limit_mb = _resolve_merge_memory_limit_mb()
+        monitor_interval = _resolve_memory_monitor_interval_sec()
+        merge_result = _run_subprocess_with_memory_guard(
+            cmd=[sys.executable, "-c", merge_script],
+            stage="adapter_merge",
+            adapter_dir=adapter_dir,
+            timeout_sec=3600,
+            max_rss_mb=merge_limit_mb,
+            monitor_interval_sec=monitor_interval,
+            env=merge_env,
+        )
+        if merge_result.returncode != 0:
+            stderr = (merge_result.stderr or "").strip()
+            stdout = (merge_result.stdout or "").strip()
+            raise RuntimeError(
+                "Failed to merge adapter with base model: "
+                + (stderr or stdout or UNKNOWN_ERROR_DETAIL)
+            )
         (tmp_dir / "venom_runtime_vllm.json").write_text(
             json.dumps(
                 {
@@ -457,6 +656,23 @@ def _resolve_adapter_training_base_for_ollama_gguf(
     )
 
 
+def _resolve_local_training_base_model_for_merge(*, adapter_dir: Path) -> str:
+    """Resolve local training base model path for merge/export when available."""
+    metadata = _load_adapter_metadata(adapter_dir)
+    parameters = metadata.get("parameters")
+    if not isinstance(parameters, dict):
+        return ""
+    training_base_model = str(parameters.get("training_base_model") or "").strip()
+    if not training_base_model:
+        return ""
+    candidate = Path(training_base_model).expanduser()
+    if not candidate.exists() or not candidate.is_dir():
+        return ""
+    if not (candidate / MODEL_CONFIG_FILENAME).exists():
+        return ""
+    return str(candidate.resolve())
+
+
 def _resolve_llama_cpp_convert_script(*, settings_obj: Any | None = None) -> Path:
     settings = settings_obj or _get_settings()
     explicit_script = str(os.getenv("VENOM_LLAMA_CPP_CONVERT_SCRIPT", "")).strip()
@@ -571,11 +787,15 @@ def _deploy_adapter_to_vllm_runtime(
     adapter_path = adapter_dir / "adapter"
     if not adapter_path.exists():
         raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
-    base_model = _require_trusted_adapter_base_model(
+    trusted_base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
     ).strip()
-    if not base_model:
+    if not trusted_base_model:
         raise RuntimeError("Adapter base model is empty; cannot deploy to vLLM")
+    base_model = (
+        _resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
+        or trusted_base_model
+    )
 
     runtime_model_dir = build_vllm_runtime_model_from_adapter_fn(
         adapter_dir=adapter_dir,
@@ -662,10 +882,17 @@ def _resolve_onnx_builder_script(*, settings_obj: Any | None = None) -> Path:
     tools_path = (repo_root / "tools" / "onnx_builder" / "builder.py").resolve()
     if tools_path.exists() and tools_path.is_file():
         return tools_path
+    try:
+        installed_builder = importlib.import_module("onnxruntime_genai.models.builder")
+        installed_builder_file = Path(str(getattr(installed_builder, "__file__", "")))
+        if installed_builder_file.exists() and installed_builder_file.is_file():
+            return installed_builder_file.resolve()
+    except Exception:
+        pass
     raise FileNotFoundError(
         "ONNX genai builder.py not found. Searched ONNX_GENAI_BUILDER_SCRIPT env var, "
         "ONNX_BUILDER_SCRIPT setting, and default paths "
-        f"('{default_rel}', 'tools/onnx_builder/builder.py')."
+        f"('{default_rel}', 'tools/onnx_builder/builder.py', installed onnxruntime_genai package)."
     )
 
 
@@ -695,6 +922,11 @@ def _build_onnx_runtime_model_from_adapter(
         adapter_dir=adapter_dir,
         base_model=base_model,
     )
+    export_input_dir = _prepare_gemma3_text_export_input_dir(
+        adapter_dir=adapter_dir,
+        merged_dir=merged_dir,
+    )
+    export_input = export_input_dir or merged_dir
 
     # Step 2: export merged HF model to onnxruntime-genai format via builder.py
     builder_script = _resolve_onnx_builder_script(settings_obj=settings_obj)
@@ -704,22 +936,27 @@ def _build_onnx_runtime_model_from_adapter(
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(builder_script),
-                "-m",
-                str(merged_dir),
-                "-e",
-                execution_provider,
-                "-p",
-                precision,
-                "-o",
-                str(tmp_dir),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=1800,
+        export_cmd = [
+            sys.executable,
+            str(builder_script),
+            "-i",
+            str(export_input),
+            "-e",
+            execution_provider,
+            "-p",
+            precision,
+            "-o",
+            str(tmp_dir),
+        ]
+        result = _run_subprocess_with_memory_guard(
+            cmd=export_cmd,
+            stage="onnx_export",
+            adapter_dir=adapter_dir,
+            timeout_sec=1800,
+            max_rss_mb=_resolve_merge_memory_limit_mb(settings_obj=settings_obj),
+            monitor_interval_sec=_resolve_memory_monitor_interval_sec(
+                settings_obj=settings_obj
+            ),
         )
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()
@@ -728,9 +965,34 @@ def _build_onnx_runtime_model_from_adapter(
                 "ONNX genai export failed: "
                 + (stderr or stdout or UNKNOWN_ERROR_DETAIL)
             )
-        if not (tmp_dir / ONNX_GENAI_CONFIG_FILENAME).exists():
+        genai_config_path = tmp_dir / ONNX_GENAI_CONFIG_FILENAME
+        if not genai_config_path.exists():
             raise RuntimeError(
                 f"ONNX genai export finished but {ONNX_GENAI_CONFIG_FILENAME} not found in output."
+            )
+        # onnxruntime-genai builder may emit `model.type=gemma3` for text-only Gemma-3.
+        # Runtime loaders in our stack expect `gemma3_text` for this path.
+        try:
+            payload = json.loads(genai_config_path.read_text(encoding="utf-8"))
+            model_obj = payload.get("model")
+            model_type = (
+                str(model_obj.get("type") or "").strip().lower()
+                if isinstance(model_obj, dict)
+                else ""
+            )
+            if model_type == "gemma3":
+                model_obj["type"] = "gemma3_text"
+                genai_config_path.write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                logger.info(
+                    "Normalized ONNX GenAI config model.type from gemma3 to gemma3_text"
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to normalize ONNX GenAI config model.type (%s)",
+                exc,
             )
         (tmp_dir / "venom_runtime_onnx.json").write_text(
             json.dumps(
@@ -748,6 +1010,8 @@ def _build_onnx_runtime_model_from_adapter(
         )
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+        if export_input_dir is not None:
+            shutil.rmtree(export_input_dir, ignore_errors=True)
         raise
 
     if runtime_dir.exists():
@@ -757,8 +1021,80 @@ def _build_onnx_runtime_model_from_adapter(
     except Exception:
         # Keep workspace clean if final move fails after successful export.
         shutil.rmtree(tmp_dir, ignore_errors=True)
+        if export_input_dir is not None:
+            shutil.rmtree(export_input_dir, ignore_errors=True)
         raise
+    if export_input_dir is not None:
+        shutil.rmtree(export_input_dir, ignore_errors=True)
     return runtime_dir
+
+
+def _prepare_gemma3_text_export_input_dir(
+    *,
+    adapter_dir: Path,
+    merged_dir: Path,
+) -> Path | None:
+    """Prepare temporary text-only HF layout for Gemma-3 ONNX export.
+
+    Builder may emit decoder contract with `inputs_embeds` for multimodal Gemma-3
+    (`model_type=gemma3`). For runtime generation we need token-based contract.
+    We generate a temporary input directory with a text-only config while reusing
+    merged weights/tokenizer files via symlinks.
+    """
+    config_path = merged_dir / "config.json"
+    if not config_path.exists():
+        return None
+    try:
+        merged_cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(merged_cfg, dict):
+        return None
+    if str(merged_cfg.get("model_type") or "").strip().lower() != "gemma3":
+        return None
+    text_cfg = merged_cfg.get("text_config")
+    if not isinstance(text_cfg, dict):
+        return None
+
+    export_cfg = dict(text_cfg)
+    export_cfg["model_type"] = "gemma3_text"
+    export_cfg["architectures"] = ["Gemma3ForCausalLM"]
+    for key in (
+        "bos_token_id",
+        "eos_token_id",
+        "pad_token_id",
+        "torch_dtype",
+        "transformers_version",
+    ):
+        if key in merged_cfg and key not in export_cfg:
+            export_cfg[key] = merged_cfg[key]
+
+    tmp_input_dir = adapter_dir / "runtime_onnx_export_input_tmp"
+    if tmp_input_dir.exists():
+        shutil.rmtree(tmp_input_dir, ignore_errors=True)
+    tmp_input_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in merged_dir.iterdir():
+        target = tmp_input_dir / item.name
+        if item.name == "config.json":
+            continue
+        if item.is_symlink() or item.is_file():
+            try:
+                target.symlink_to(item.resolve())
+            except Exception:
+                shutil.copy2(item, target)
+        elif item.is_dir():
+            try:
+                target.symlink_to(item.resolve(), target_is_directory=True)
+            except Exception:
+                shutil.copytree(item, target, dirs_exist_ok=True)
+
+    (tmp_input_dir / "config.json").write_text(
+        json.dumps(export_cfg, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    logger.info("Prepared Gemma-3 text-only ONNX export input dir: %s", tmp_input_dir)
+    return tmp_input_dir
 
 
 def _deploy_adapter_to_onnx_runtime(
@@ -779,19 +1115,32 @@ def _deploy_adapter_to_onnx_runtime(
     adapter_path = adapter_dir / "adapter"
     if not adapter_path.exists():
         raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
-    base_model = _require_trusted_adapter_base_model(
+    trusted_base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
     ).strip()
-    if not base_model:
+    if not trusted_base_model:
         raise RuntimeError("Adapter base model is empty; cannot deploy to ONNX")
+    base_model = (
+        _resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
+        or trusted_base_model
+    )
 
     build_fn = (
         build_onnx_runtime_model_from_adapter_fn
         or _build_onnx_runtime_model_from_adapter
     )
+    execution_provider = (
+        str(getattr(settings, "ONNX_LLM_EXECUTION_PROVIDER", "cpu") or "cpu").strip()
+        or "cpu"
+    )
+    precision = (
+        str(getattr(settings, "ONNX_LLM_PRECISION", "int4") or "int4").strip() or "int4"
+    )
     runtime_onnx_dir = build_fn(
         adapter_dir=adapter_dir,
         base_model=base_model,
+        execution_provider=execution_provider,
+        precision=precision,
         build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
     )
     if not (runtime_onnx_dir / ONNX_GENAI_CONFIG_FILENAME).exists():

@@ -120,6 +120,8 @@ class Settings(BaseSettings):
     ONNX_LLM_PRECISION: str = "int4"  # int4|fp16
     ONNX_LLM_MAX_NEW_TOKENS: int = 512
     ONNX_LLM_TEMPERATURE: float = 0.2
+    ACADEMY_ADAPTER_MERGE_MAX_RSS_MB: int = 15360
+    ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC: float = 0.25
 
     # Konfiguracja LLM (Local-First Brain)
     VENOM_RUNTIME_PROFILE: str = "light"  # full|light|llm_off

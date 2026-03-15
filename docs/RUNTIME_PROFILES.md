@@ -167,6 +167,23 @@ WSL note:
 - Historical environment audits showed `vmmem` can retain high memory reservations after workload bursts.
 - Keep WSL limits and restart procedures documented in `docs/WINDOWS_WSL_D_DRIVE_INSTALL.md`.
 
+### ONNX Academy E2E Environment Profile (2026-03-15)
+
+Validated profile for full Academy ONNX path (`merge_export -> activate -> inference -> deactivate`) on host class `32 GB RAM / 12 GB VRAM`:
+
+- WSL2:
+  - `memory=30GB`
+  - `swap=16GB`
+- Academy ONNX export guard:
+  - `ACADEMY_ADAPTER_MERGE_MAX_RSS_MB=23040`
+- ONNX runtime:
+  - `ONNX_LLM_EXECUTION_PROVIDER=cuda`
+  - `ONNX_LLM_PRECISION=int4`
+
+Operational notes:
+- Gemma-3 `merge_export` is RAM/CPU-heavy (peak RSS around 22-23 GB in this profile).
+- Keep this profile as the recommended baseline for 4B Gemma-3 LoRA -> ONNX direct deploy in WSL2.
+
 ### Ollama feedback-loop profile guidance (PR 187)
 - Target coding class alias: `OpenCodeInterpreter-Qwen2.5-7B`.
 - Primary/fallback policy:

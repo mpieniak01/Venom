@@ -375,3 +375,37 @@ def test_deploy_adapter_to_chat_runtime_ollama_uses_resolved_from_model_and_expe
         use_experimental=True,
     )
     config_manager_obj.update_config.assert_called_once()
+
+
+def test_run_subprocess_with_memory_guard_writes_monitor_file(tmp_path: Path):
+    adapter_dir = _make_adapter_dir(tmp_path, metadata={})
+    result = ars._run_subprocess_with_memory_guard(
+        cmd=["/bin/bash", "-lc", "python3 - <<'PY'\nprint('ok')\nPY"],
+        stage="unit_test",
+        adapter_dir=adapter_dir,
+        timeout_sec=10,
+        max_rss_mb=1024,
+        monitor_interval_sec=0.1,
+    )
+    assert result.returncode == 0
+    monitor_file = adapter_dir / "resource_monitor.jsonl"
+    assert monitor_file.exists()
+    assert "unit_test" in monitor_file.read_text(encoding="utf-8")
+
+
+def test_run_subprocess_with_memory_guard_raises_on_limit(tmp_path: Path):
+    adapter_dir = _make_adapter_dir(tmp_path, metadata={})
+    with patch.object(ars, "_read_process_rss_mb", return_value=128.0):
+        with pytest.raises(RuntimeError, match="exceeded memory guard"):
+            ars._run_subprocess_with_memory_guard(
+                cmd=[
+                    "/bin/bash",
+                    "-lc",
+                    "python3 - <<'PY'\nimport time\ntime.sleep(2)\nprint('done')\nPY",
+                ],
+                stage="unit_test_limit",
+                adapter_dir=adapter_dir,
+                timeout_sec=15,
+                max_rss_mb=32,
+                monitor_interval_sec=0.1,
+            )

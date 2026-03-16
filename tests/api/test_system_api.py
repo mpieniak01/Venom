@@ -121,6 +121,37 @@ def test_get_api_map_connects_to_service_monitor():
             assert lancedb_conn.status == ConnectionStatus.DEGRADED
 
 
+def test_api_map_works_when_service_monitor_has_no_get_all_services():
+    """Endpoint should not fail when injected monitor is a non-compatible object."""
+    from unittest.mock import patch
+
+    with patch(
+        "venom_core.api.routes.system_deps.get_service_monitor",
+        return_value=object(),
+    ):
+        response = client.get("/api/v1/system/api-map")
+    assert response.status_code == 200
+    payload = ApiMapResponse(**response.json())
+    assert len(payload.internal_connections) > 0
+
+
+def test_api_map_works_when_service_monitor_get_all_services_raises():
+    """Endpoint should tolerate monitor read errors and still return contract payload."""
+    from unittest.mock import MagicMock, patch
+
+    monitor = MagicMock()
+    monitor.get_all_services.side_effect = RuntimeError("monitor unavailable")
+
+    with patch(
+        "venom_core.api.routes.system_deps.get_service_monitor",
+        return_value=monitor,
+    ):
+        response = client.get("/api/v1/system/api-map")
+    assert response.status_code == 200
+    payload = ApiMapResponse(**response.json())
+    assert len(payload.external_connections) >= 0
+
+
 def test_api_map_openapi_response_model_binding():
     """Kontrakt OpenAPI: /api/v1/system/api-map musi wskazywać ApiMapResponse."""
     schema = app.openapi()

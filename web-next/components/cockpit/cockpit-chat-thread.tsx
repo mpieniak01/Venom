@@ -201,6 +201,7 @@ async function switchCockpitAdapterSelection({
 function useChatAdapterSelection({
   adapterDeploySupported,
   applySelectedModel,
+  hasExplicitBaseModelSelection,
   llmModelMetadata,
   selectedLlmModel,
   selectedRuntimeId,
@@ -208,6 +209,7 @@ function useChatAdapterSelection({
 }: {
   adapterDeploySupported: boolean;
   applySelectedModel?: () => Promise<boolean>;
+  hasExplicitBaseModelSelection: boolean;
   llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
   selectedLlmModel: string;
   selectedRuntimeId: string;
@@ -255,7 +257,9 @@ function useChatAdapterSelection({
     try {
       setAdapterSelectLoading(true);
       const catalog = await getUnifiedModelCatalog();
-      const selectedCanonical = resolveSelectedCanonicalModel(selectedLlmModel, llmModelMetadata);
+      const selectedCanonical = hasExplicitBaseModelSelection
+        ? resolveSelectedCanonicalModel(selectedLlmModel, llmModelMetadata)
+        : "";
       const next = resolveScopedAdapters(catalog, selectedRuntimeId, selectedCanonical);
       setAdapters(next);
       const active = next.find((adapter) => adapter.is_active);
@@ -265,7 +269,13 @@ function useChatAdapterSelection({
     } finally {
       setAdapterSelectLoading(false);
     }
-  }, [baseModelAdapterValue, llmModelMetadata, selectedLlmModel, selectedRuntimeId]);
+  }, [
+    baseModelAdapterValue,
+    hasExplicitBaseModelSelection,
+    llmModelMetadata,
+    selectedLlmModel,
+    selectedRuntimeId,
+  ]);
 
   useEffect(() => {
     loadAdapters().catch((error) => {
@@ -280,7 +290,11 @@ function useChatAdapterSelection({
   }, [adapterDeploySupported, baseModelAdapterValue, selectedAdapter]);
 
   useEffect(() => {
-    if (!adapterDeploySupported || !selectedRuntimeId || !selectedLlmModel) {
+    if (
+      !adapterDeploySupported ||
+      !selectedRuntimeId ||
+      !hasExplicitBaseModelSelection
+    ) {
       setAdapterAuditById({});
       setSelectedAdapter(baseModelAdapterValue);
       return;
@@ -307,6 +321,7 @@ function useChatAdapterSelection({
   }, [
     adapterDeploySupported,
     baseModelAdapterValue,
+    hasExplicitBaseModelSelection,
     selectedLlmModel,
     selectedRuntimeId,
   ]);
@@ -635,6 +650,13 @@ export const ChatComposer = memo(
       () => normalizeRuntimeId(selectedLlmServer).toLowerCase(),
       [selectedLlmServer],
     );
+    const hasExplicitBaseModelSelection = useMemo(() => {
+      const selectedModel = (selectedLlmModel || "").trim();
+      if (!selectedModel) {
+        return false;
+      }
+      return llmModelOptions.some((option) => option.value === selectedModel);
+    }, [llmModelOptions, selectedLlmModel]);
     const applySelectedModel = useMemo(
       () =>
         resolveApplySelectedModelCallback({
@@ -658,6 +680,7 @@ export const ChatComposer = memo(
     } = useChatAdapterSelection({
       adapterDeploySupported,
       applySelectedModel,
+      hasExplicitBaseModelSelection,
       llmModelMetadata,
       selectedLlmModel,
       selectedRuntimeId,
@@ -725,10 +748,12 @@ export const ChatComposer = memo(
     } = useMemo(() => resolveComposerLayoutClasses(compactControls), [compactControls]);
     const adapterDeployUnsupported = adapterDeploySupported === false;
     const showAdapterRuntimeContext = Boolean(
-      adapterDeploySupported && selectedRuntimeId && selectedLlmModel,
+      adapterDeploySupported && selectedRuntimeId && hasExplicitBaseModelSelection,
     );
     const activeRuntimeModelValue = (activeRuntimeModel || "").trim();
-    const selectedBaseModelValue = (selectedLlmModel || "").trim();
+    const selectedBaseModelValue = hasExplicitBaseModelSelection
+      ? (selectedLlmModel || "").trim()
+      : "";
     const showActiveRuntimeModelContext = Boolean(activeRuntimeModelValue);
     const llmModelOptionsWithRuntimeContext = useMemo(
       () =>

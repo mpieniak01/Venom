@@ -286,4 +286,25 @@ describe("ChatComposer adapter status", () => {
       ),
     );
   });
+
+  it("does not mark adapter as blocked when base model is not explicitly selected", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    installFetchMock({
+      auditCategory: "blocked_mismatch",
+      auditMessage: "Adapter base model does not match selected runtime model",
+      runtimeId: "onnx",
+    });
+
+    renderComposer({
+      server: "onnx",
+      selectedModel: "",
+      activeRuntimeModel: "/runtime/onnx/venom-adapter-1234",
+    });
+    await flushEffects();
+
+    assert.equal(
+      screen.queryByText(/does not match selected runtime model/i),
+      null,
+    );
+  });
 });

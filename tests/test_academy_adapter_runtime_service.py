@@ -377,6 +377,65 @@ def test_deploy_adapter_to_chat_runtime_ollama_uses_resolved_from_model_and_expe
     config_manager_obj.update_config.assert_called_once()
 
 
+def test_deploy_adapter_to_chat_runtime_ollama_raises_runtime_unavailable_when_daemon_offline(
+    tmp_path: Path,
+):
+    models_dir = tmp_path / "models"
+    adapter_id = "adapter-offline"
+    adapter_dir = models_dir / adapter_id
+    (adapter_dir / "adapter").mkdir(parents=True, exist_ok=True)
+    (adapter_dir / "metadata.json").write_text(
+        json.dumps({"parameters": {"training_base_model": "gemma3:4b"}}),
+        encoding="utf-8",
+    )
+
+    settings_obj = SimpleNamespace(ACADEMY_MODELS_DIR=str(models_dir))
+    mgr = MagicMock()
+    mgr.create_ollama_modelfile.return_value = None
+
+    with (
+        patch.object(
+            ars,
+            "_ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "adapter" / "Adapter-F16-LoRA.gguf",
+        ),
+        patch.object(
+            ars.subprocess,
+            "run",
+            return_value=SimpleNamespace(
+                returncode=1,
+                stdout="",
+                stderr="could not connect to ollama server",
+            ),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="ADAPTER_RUNTIME_SERVICE_UNAVAILABLE"):
+            ars._deploy_adapter_to_chat_runtime(
+                mgr=mgr,
+                adapter_id=adapter_id,
+                runtime_id="ollama",
+                model_id="gemma3:4b",
+                settings_obj=settings_obj,
+                deploy_deps={
+                    "require_trusted_adapter_base_model_fn": lambda **_kw: "gemma-3-4b-it",
+                    "canonical_runtime_model_id_fn": lambda value: (
+                        "gemma-3-4b-it"
+                        if value.strip().lower() in {"gemma3:latest", "gemma3:4b"}
+                        else value.strip().lower()
+                    ),
+                    "config_manager_obj": MagicMock(),
+                    "compute_llm_config_hash_fn": lambda *_args: "hash-offline",
+                    "runtime_endpoint_for_hash_fn": lambda *_args,
+                    **_kwargs: "http://localhost:11434/v1",
+                    "is_runtime_model_dir_fn": lambda _path: False,
+                    "get_active_llm_runtime_fn": lambda: SimpleNamespace(
+                        provider="ollama",
+                        model_name="gemma3:4b",
+                    ),
+                },
+            )
+
+
 def test_run_subprocess_with_memory_guard_writes_monitor_file(tmp_path: Path):
     adapter_dir = _make_adapter_dir(tmp_path, metadata={})
     result = ars._run_subprocess_with_memory_guard(

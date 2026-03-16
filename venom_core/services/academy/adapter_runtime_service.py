@@ -884,6 +884,37 @@ def _ensure_ollama_adapter_gguf(
     return resolved.resolve()
 
 
+def _probe_ollama_runtime_unavailable_reason() -> str | None:
+    """Return actionable reason when Ollama daemon is unavailable."""
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        return (
+            "Ollama CLI is not available in PATH. Install Ollama and ensure the "
+            "`ollama` command is accessible for the backend process."
+        )
+    except subprocess.TimeoutExpired:
+        return "Ollama runtime probe timed out; service may be unresponsive."
+    except Exception as exc:
+        return f"Ollama runtime probe failed: {exc}"
+
+    if result.returncode == 0:
+        return None
+
+    stderr = (result.stderr or "").strip()
+    stdout = (result.stdout or "").strip()
+    details = stderr or stdout or UNKNOWN_ERROR_DETAIL
+    return (
+        "Ollama runtime is offline or unreachable. Start `ollama serve` and retry. "
+        f"Details: {details}"
+    )
+
+
 def _deploy_adapter_to_vllm_runtime(
     *,
     adapter_id: str,
@@ -1705,7 +1736,14 @@ def _deploy_adapter_to_chat_runtime(
         use_experimental=use_experimental,
     )
     if not deployed_model:
-        raise RuntimeError("Failed to create Ollama model for adapter deployment")
+        unavailable_reason = _probe_ollama_runtime_unavailable_reason()
+        if unavailable_reason:
+            raise RuntimeError(
+                f"ADAPTER_RUNTIME_SERVICE_UNAVAILABLE: {unavailable_reason}"
+            )
+        raise RuntimeError(
+            "ADAPTER_RUNTIME_DEPLOY_FAILED: Failed to create Ollama model for adapter deployment."
+        )
 
     last_model_key = "LAST_MODEL_OLLAMA"
     previous_model_key = previous_model_key_for_server(runtime_local_id)

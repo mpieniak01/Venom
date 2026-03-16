@@ -150,6 +150,8 @@ export const cockpitLocale = {
         "Adapter ausgewählt: Requests sollten über den aktiven Adapter für diesen Server und dieses Modell laufen.",
       adapterIncompatible: "nicht kompatibel mit Runtime {{runtime}}",
       adapterRuntimeNotSupported: "Adapter-Deploy in den Chat wird für Runtime {{runtime}} nicht unterstützt",
+      adapterRuntimeOffline:
+        "Runtime {{runtime}} ist offline - starte die Runtime vor dem Adapter-Deploy in den Chat",
       runtimeModelAuditWarning:
         "Der Runtime-Katalog hat {{count}} lokale(s) Modell(e) herausgefiltert, die von der gewählten Runtime nicht geladen werden können.",
       noModels: "Keine Modelle",

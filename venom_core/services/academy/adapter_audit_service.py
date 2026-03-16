@@ -26,6 +26,7 @@ from .trainable_catalog_service import (
 
 ADAPTER_RUNTIME_INCOMPATIBLE = "ADAPTER_RUNTIME_INCOMPATIBLE"
 _RUNTIME_ADAPTER_MODEL_PREFIX = "venom-adapter-"
+_RUNTIME_ADAPTER_OWNS_MODEL_CONTRACT = {"onnx"}
 
 
 def _get_settings() -> Any:
@@ -203,6 +204,11 @@ async def _assert_selected_runtime_model_compatible_with_adapter_base(
 ) -> None:
     selected_model = str(model_id or "").strip()
     if not selected_model:
+        return
+    if runtime_local_id in _RUNTIME_ADAPTER_OWNS_MODEL_CONTRACT:
+        # For ONNX deploy pipeline, adapter activation performs merge/export and
+        # produces dedicated runtime model artifact. The transient selector model
+        # should not block activation if runtime itself is compatible.
         return
 
     await _assert_runtime_model_available(

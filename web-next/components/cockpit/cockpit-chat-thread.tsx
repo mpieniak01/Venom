@@ -159,7 +159,11 @@ async function switchCockpitAdapterSelection({
   const adapterBaseModel = String(
     adapter.canonical_base_model_id || adapter.base_model || "",
   ).trim();
-  const requestedModel = selectedModel || adapterBaseModel;
+  const runtimeKey = requestedRuntime.toLowerCase();
+  const requestedModel =
+    runtimeKey === "onnx"
+      ? adapterBaseModel || selectedModel
+      : selectedModel || adapterBaseModel;
   if (!requestedRuntime) {
     throw new Error("ADAPTER_RUNTIME_REQUIRED: Select target runtime before adapter activation.");
   }

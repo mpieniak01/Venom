@@ -362,6 +362,11 @@ class TestDeployAdapterToOnnxRuntime:
                 "_require_trusted_adapter_base_model",
                 return_value="google/gemma-3-4b-it",
             ),
+            patch.object(
+                _svc,
+                "_resolve_hf_cache_snapshot_for_repo_id",
+                return_value=str((tmp_path / "hf-snapshot").resolve()),
+            ),
         ):
             result = _deploy_adapter_to_onnx_runtime(
                 adapter_id="test-adapter-001",
@@ -407,6 +412,11 @@ class TestDeployAdapterToOnnxRuntime:
                     _svc2,
                     "_require_trusted_adapter_base_model",
                     return_value="google/gemma-3-4b-it",
+                ),
+                patch.object(
+                    _svc2,
+                    "_resolve_hf_cache_snapshot_for_repo_id",
+                    return_value=str((tmp_path / "hf-snapshot").resolve()),
                 ),
             ):
                 _deploy_adapter_to_onnx_runtime(

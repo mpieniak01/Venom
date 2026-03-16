@@ -1370,10 +1370,30 @@ def _resolve_onnx_deploy_base_model(*, adapter_dir: Path) -> str:
     ).strip()
     if not trusted_base_model:
         raise RuntimeError("Adapter base model is empty; cannot deploy to ONNX")
-    return (
-        _resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
-        or trusted_base_model
+    local_training_base = _resolve_local_training_base_model_for_merge(
+        adapter_dir=adapter_dir
     )
+    if local_training_base:
+        return local_training_base
+
+    trusted_path = Path(trusted_base_model).expanduser()
+    if trusted_path.exists() and trusted_path.is_dir():
+        if (trusted_path / MODEL_CONFIG_FILENAME).exists():
+            return str(trusted_path.resolve())
+
+    cached_snapshot = _resolve_hf_cache_snapshot_for_repo_id(repo_id=trusted_base_model)
+    if cached_snapshot:
+        return cached_snapshot
+
+    if "/" in trusted_base_model and "://" not in trusted_base_model:
+        raise ValueError(
+            "ADAPTER_BASE_MODEL_NOT_AVAILABLE_LOCALLY: "
+            f"Base model '{trusted_base_model}' is not available in local HF cache. "
+            "Download/cache the base model first or retrain adapter with local "
+            "training_base_model path."
+        )
+
+    return trusted_base_model
 
 
 def _resolve_onnx_export_options(*, settings: Any) -> tuple[str, str]:

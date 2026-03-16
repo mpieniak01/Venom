@@ -351,7 +351,11 @@ function useChatAdapterSelection({
         });
         await loadAdapters();
       } catch (error) {
-        console.error("Failed to switch Academy adapter from chat selector:", error);
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+          console.warn("Adapter switch rejected by API contract:", error);
+        } else {
+          console.error("Failed to switch Academy adapter from chat selector:", error);
+        }
         const resolved = resolveAcademyApiErrorMessage(error);
         setAdapterMutationError(resolved || t("academy.common.unknownError"));
         await loadAdapters();

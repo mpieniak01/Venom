@@ -550,6 +550,59 @@ def test_build_hf_cache_env_sets_local_cache_paths(tmp_path: Path) -> None:
     )
 
 
+def test_resolve_onnx_deploy_base_model_prefers_cached_snapshot(tmp_path: Path) -> None:
+    adapter_dir = _make_adapter_dir(tmp_path, metadata={})
+    snapshot = tmp_path / "hf-snapshot"
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    with (
+        patch.object(
+            ars,
+            "_require_trusted_adapter_base_model",
+            return_value="unsloth/gemma-2-2b-it",
+        ),
+        patch.object(
+            ars,
+            "_resolve_local_training_base_model_for_merge",
+            return_value="",
+        ),
+        patch.object(
+            ars,
+            "_resolve_hf_cache_snapshot_for_repo_id",
+            return_value=str(snapshot.resolve()),
+        ),
+    ):
+        resolved = ars._resolve_onnx_deploy_base_model(adapter_dir=adapter_dir)
+    assert resolved == str(snapshot.resolve())
+
+
+def test_resolve_onnx_deploy_base_model_raises_for_missing_local_repo_id(
+    tmp_path: Path,
+) -> None:
+    adapter_dir = _make_adapter_dir(tmp_path, metadata={})
+    with (
+        patch.object(
+            ars,
+            "_require_trusted_adapter_base_model",
+            return_value="unsloth/gemma-2-2b-it",
+        ),
+        patch.object(
+            ars,
+            "_resolve_local_training_base_model_for_merge",
+            return_value="",
+        ),
+        patch.object(
+            ars,
+            "_resolve_hf_cache_snapshot_for_repo_id",
+            return_value="",
+        ),
+    ):
+        with pytest.raises(
+            ValueError, match="ADAPTER_BASE_MODEL_NOT_AVAILABLE_LOCALLY"
+        ):
+            ars._resolve_onnx_deploy_base_model(adapter_dir=adapter_dir)
+
+
 def test_resolve_onnx_builder_script_uses_installed_module_path(tmp_path: Path) -> None:
     installed_file = tmp_path / "installed_builder.py"
     installed_file.write_text("# installed builder", encoding="utf-8")

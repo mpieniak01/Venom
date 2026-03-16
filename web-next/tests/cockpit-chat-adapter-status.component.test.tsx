@@ -211,7 +211,7 @@ describe("ChatComposer adapter status", () => {
     assert.ok(screen.getByText("Adapter metadata is consistent"));
   });
 
-  it("shows active adapter as blocked when runtime model mismatches", async () => {
+  it("treats runtime-model mismatch as informational in cockpit adapter flow", async () => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
     installFetchMock({
       auditCategory: "blocked_mismatch",
@@ -222,14 +222,11 @@ describe("ChatComposer adapter status", () => {
     renderComposer();
     await flushEffects();
 
-    assert.ok(
-      screen.getByText("active adapter does not match the current runtime model"),
+    assert.equal(
+      screen.queryByText("active adapter does not match the current runtime model"),
+      null,
     );
-    assert.ok(
-      screen.getByText(
-        "Switch runtime model to one compatible with the adapter base or disable the adapter before continuing.",
-      ),
-    );
+    assert.ok(screen.getByText("Adapter base model does not match selected runtime model"));
   });
 
   it("does not show runtime-not-supported warning for ONNX when adapter apply capability is enabled", async () => {

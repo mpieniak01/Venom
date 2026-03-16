@@ -159,11 +159,7 @@ async function switchCockpitAdapterSelection({
   const adapterBaseModel = String(
     adapter.canonical_base_model_id || adapter.base_model || "",
   ).trim();
-  const runtimeKey = requestedRuntime.toLowerCase();
-  const requestedModel =
-    runtimeKey === "onnx"
-      ? adapterBaseModel || selectedModel
-      : selectedModel || adapterBaseModel;
+  const requestedModel = adapterBaseModel || selectedModel;
   if (!requestedRuntime) {
     throw new Error("ADAPTER_RUNTIME_REQUIRED: Select target runtime before adapter activation.");
   }
@@ -296,14 +292,13 @@ function useChatAdapterSelection({
       !hasExplicitBaseModelSelection
     ) {
       setAdapterAuditById({});
-      setSelectedAdapter(baseModelAdapterValue);
       return;
     }
     async function loadAdapterAudit() {
       try {
         const payload = await auditAdapters({
           runtime_id: selectedRuntimeId,
-          model_id: selectedLlmModel,
+          model_id: hasExplicitBaseModelSelection ? selectedLlmModel : undefined,
         });
         const auditedAdapters = payload.adapters ?? [];
         setAdapterAuditById(buildAdapterAuditMap(auditedAdapters));

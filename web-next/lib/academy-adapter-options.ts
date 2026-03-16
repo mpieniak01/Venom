@@ -24,10 +24,10 @@ type BuildCockpitAdapterOptionsParams = {
 export function isBlockedCockpitAdapterAudit(
   audit: AdapterAuditItem | null | undefined,
 ): boolean {
-  return (
-    audit?.category === "blocked_mismatch" ||
-    audit?.category === "blocked_unknown_base"
-  );
+  // Runtime/base model mismatch is informational in Cockpit adapter flow:
+  // selected adapter is the deploy target and can override currently selected
+  // base model. Only unknown/incomplete metadata should hard-block selection.
+  return audit?.category === "blocked_unknown_base";
 }
 
 export function buildCockpitAdapterOptions({

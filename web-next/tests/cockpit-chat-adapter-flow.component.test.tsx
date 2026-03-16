@@ -204,7 +204,7 @@ function installFetchMock(state: CatalogState) {
       assert.equal(init?.method, "POST");
       const payload = JSON.parse(String(init?.body || "{}")) as Record<string, string>;
       assert.equal(payload.runtime_id, "ollama");
-      assert.equal(payload.model_id, "gemma3:latest");
+      assert.equal(payload.model_id, "gemma-3-4b-it");
       assert.equal(payload.adapter_id, "adapter-gemma");
       state.activeAdapterId = "adapter-gemma";
       activationCount += 1;

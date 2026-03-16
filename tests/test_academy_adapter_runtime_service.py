@@ -509,6 +509,47 @@ def test_resolve_local_training_base_model_for_merge_invalid_cases(
         )
 
 
+def test_resolve_local_training_base_model_for_merge_uses_hf_snapshot_fallback(
+    tmp_path: Path,
+) -> None:
+    adapter_dir = _make_adapter_dir(tmp_path, metadata={})
+    snapshot = tmp_path / "snapshot-ok"
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+
+    with (
+        patch.object(
+            ars,
+            "_load_adapter_metadata",
+            return_value={
+                "parameters": {"training_base_model": "unsloth/gemma-2-2b-it"}
+            },
+        ),
+        patch.object(
+            ars,
+            "_resolve_hf_cache_snapshot_for_repo_id",
+            return_value=str(snapshot.resolve()),
+        ),
+    ):
+        assert ars._resolve_local_training_base_model_for_merge(
+            adapter_dir=adapter_dir
+        ) == str(snapshot.resolve())
+
+
+def test_build_hf_cache_env_sets_local_cache_paths(tmp_path: Path) -> None:
+    settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
+    env = ars._build_hf_cache_env(base_env={}, settings_obj=settings)
+    assert env["HF_HOME"] == str(
+        (tmp_path / "models" / "cache" / "huggingface").resolve()
+    )
+    assert env["HUGGINGFACE_HUB_CACHE"] == str(
+        (tmp_path / "models" / "cache" / "huggingface" / "hub").resolve()
+    )
+    assert env["TRANSFORMERS_CACHE"] == str(
+        (tmp_path / "models" / "cache" / "huggingface" / "hub").resolve()
+    )
+
+
 def test_resolve_onnx_builder_script_uses_installed_module_path(tmp_path: Path) -> None:
     installed_file = tmp_path / "installed_builder.py"
     installed_file.write_text("# installed builder", encoding="utf-8")

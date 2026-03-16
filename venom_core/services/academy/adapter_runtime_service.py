@@ -577,7 +577,7 @@ tokenizer_source = (
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
 tokenizer.save_pretrained(output_dir)
 """
-        merge_env = dict(os.environ)
+        merge_env = _build_hf_cache_env(base_env=os.environ)
         merge_env["VENOM_ADAPTER_MERGE_PAYLOAD"] = json.dumps(
             merge_payload, ensure_ascii=False
         )
@@ -702,6 +702,33 @@ def _resolve_hf_cache_snapshot_for_repo_id(
     return ""
 
 
+def _resolve_local_hf_cache_dirs(
+    *, settings_obj: Any | None = None
+) -> tuple[Path, Path]:
+    repo_root = _resolve_repo_root(settings_obj=settings_obj)
+    hf_home = repo_root / "models" / "cache" / "huggingface"
+    hub_cache = hf_home / "hub"
+    return hf_home, hub_cache
+
+
+def _build_hf_cache_env(
+    *,
+    base_env: Dict[str, str] | None = None,
+    settings_obj: Any | None = None,
+) -> Dict[str, str]:
+    env = dict(base_env or os.environ)
+    hf_home, hub_cache = _resolve_local_hf_cache_dirs(settings_obj=settings_obj)
+    try:
+        hf_home.mkdir(parents=True, exist_ok=True)
+        hub_cache.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        logger.warning("Failed to ensure local Hugging Face cache directories.")
+    env["HF_HOME"] = str(hf_home)
+    env["HUGGINGFACE_HUB_CACHE"] = str(hub_cache)
+    env.setdefault("TRANSFORMERS_CACHE", str(hub_cache))
+    return env
+
+
 def _resolve_adapter_training_base_for_ollama_gguf(
     *,
     adapter_dir: Path,
@@ -748,6 +775,11 @@ def _resolve_local_training_base_model_for_merge(*, adapter_dir: Path) -> str:
     training_base_model = str(parameters.get("training_base_model") or "").strip()
     if not training_base_model:
         return ""
+    cached_snapshot = _resolve_hf_cache_snapshot_for_repo_id(
+        repo_id=training_base_model
+    )
+    if cached_snapshot:
+        return cached_snapshot
     candidate = Path(training_base_model).expanduser()
     if not candidate.exists() or not candidate.is_dir():
         return ""
@@ -1096,6 +1128,7 @@ def _run_onnx_export(
         monitor_interval_sec=_resolve_memory_monitor_interval_sec(
             settings_obj=settings_obj
         ),
+        env=_build_hf_cache_env(base_env=os.environ, settings_obj=settings_obj),
     )
 
 

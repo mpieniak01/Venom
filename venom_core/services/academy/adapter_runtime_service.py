@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from venom_core.services.config_manager import config_manager
 from venom_core.services.system_llm_service import previous_model_key_for_server
@@ -1632,6 +1632,50 @@ def _resolve_chat_runtime_deploy_deps(
     return resolved
 
 
+def _validate_ollama_adapter_base_model_compatibility(
+    *,
+    adapter_id: str,
+    adapter_base_model: str,
+    requested_model: str,
+    canonical_runtime_model_id_fn: Callable[[str | None], str],
+) -> None:
+    requested_model_is_runtime_adapter = requested_model.lower().startswith(
+        _RUNTIME_ADAPTER_MODEL_PREFIX
+    )
+    if (
+        not adapter_base_model
+        or not requested_model
+        or requested_model_is_runtime_adapter
+    ):
+        return
+    adapter_canonical = canonical_runtime_model_id_fn(adapter_base_model)
+    requested_canonical = canonical_runtime_model_id_fn(requested_model)
+    if requested_canonical and requested_canonical != adapter_canonical:
+        message = (
+            "Adapter base model does not match selected Ollama runtime FROM model. "
+            f"runtime_model='{requested_model}', adapter_base_model='{adapter_base_model}'."
+        )
+        logger.warning(
+            "Blocking Ollama adapter deploy due to ADAPTER_BASE_MODEL_MISMATCH "
+            "(adapter_id=%s, runtime_model=%s, adapter_base_model=%s)",
+            adapter_id,
+            requested_model,
+            adapter_base_model,
+        )
+        raise ValueError(f"ADAPTER_BASE_MODEL_MISMATCH: {message}")
+
+
+def _ensure_ollama_adapter_model_created(*, deployed_model: str | None) -> str:
+    if deployed_model:
+        return str(deployed_model)
+    unavailable_reason = _probe_ollama_runtime_unavailable_reason()
+    if unavailable_reason:
+        raise RuntimeError(f"ADAPTER_RUNTIME_SERVICE_UNAVAILABLE: {unavailable_reason}")
+    raise RuntimeError(
+        "ADAPTER_RUNTIME_DEPLOY_FAILED: Failed to create Ollama model for adapter deployment."
+    )
+
+
 def _deploy_adapter_to_chat_runtime(
     *,
     mgr: Any,
@@ -1690,29 +1734,15 @@ def _deploy_adapter_to_chat_runtime(
     adapter_base_model = deps["require_trusted_adapter_base_model_fn"](
         adapter_dir=adapter_dir,
     ).strip()
+    _validate_ollama_adapter_base_model_compatibility(
+        adapter_id=adapter_id,
+        adapter_base_model=adapter_base_model,
+        requested_model=requested_model,
+        canonical_runtime_model_id_fn=deps["canonical_runtime_model_id_fn"],
+    )
     requested_model_is_runtime_adapter = requested_model.lower().startswith(
         _RUNTIME_ADAPTER_MODEL_PREFIX
     )
-    if (
-        adapter_base_model
-        and requested_model
-        and not requested_model_is_runtime_adapter
-    ):
-        adapter_canonical = deps["canonical_runtime_model_id_fn"](adapter_base_model)
-        requested_canonical = deps["canonical_runtime_model_id_fn"](requested_model)
-        if requested_canonical and requested_canonical != adapter_canonical:
-            message = (
-                "Adapter base model does not match selected Ollama runtime FROM model. "
-                f"runtime_model='{requested_model}', adapter_base_model='{adapter_base_model}'."
-            )
-            logger.warning(
-                "Blocking Ollama adapter deploy due to ADAPTER_BASE_MODEL_MISMATCH "
-                "(adapter_id=%s, runtime_model=%s, adapter_base_model=%s)",
-                adapter_id,
-                requested_model,
-                adapter_base_model,
-            )
-            raise ValueError(f"ADAPTER_BASE_MODEL_MISMATCH: {message}")
 
     ollama_model_name = f"venom-adapter-{adapter_id}"
     requested_from_model = (
@@ -1735,15 +1765,7 @@ def _deploy_adapter_to_chat_runtime(
         from_model=from_model,
         use_experimental=use_experimental,
     )
-    if not deployed_model:
-        unavailable_reason = _probe_ollama_runtime_unavailable_reason()
-        if unavailable_reason:
-            raise RuntimeError(
-                f"ADAPTER_RUNTIME_SERVICE_UNAVAILABLE: {unavailable_reason}"
-            )
-        raise RuntimeError(
-            "ADAPTER_RUNTIME_DEPLOY_FAILED: Failed to create Ollama model for adapter deployment."
-        )
+    selected_model = _ensure_ollama_adapter_model_created(deployed_model=deployed_model)
 
     last_model_key = "LAST_MODEL_OLLAMA"
     previous_model_key = previous_model_key_for_server(runtime_local_id)
@@ -1752,7 +1774,6 @@ def _deploy_adapter_to_chat_runtime(
         active_runtime=active_runtime,
         settings_obj=settings,
     )
-    selected_model = str(deployed_model)
     updates: Dict[str, Any] = {
         "ACTIVE_LLM_SERVER": runtime_local_id,
         "LLM_MODEL_NAME": selected_model,

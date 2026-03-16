@@ -190,18 +190,22 @@ export function useCockpitSectionProps() {
   const runtimeStatus = String(selectedRuntimeTarget?.status || "")
     .trim()
     .toLowerCase();
-  const runtimeOnlineForAdapterDeploy = runtimeStatus !== "offline";
+  const runtimeOfflineForAdapterDeploy = runtimeStatus === "offline";
+  const runtimeOnlineForAdapterDeploy = !runtimeOfflineForAdapterDeploy;
   const adapterDeploySupported =
     adapterDeployCapability && runtimeOnlineForAdapterDeploy;
-  const adapterDeployReason = adapterDeploySupported
-    ? null
-    : !adapterDeployCapability
-      ? t("cockpit.models.adapterRuntimeNotSupported", {
-          runtime: resolvedServerId || "unknown",
-        })
-      : t("cockpit.models.adapterRuntimeOffline", {
-          runtime: resolvedServerId || "unknown",
-        });
+  let adapterDeployReason: string | null = null;
+  if (!adapterDeploySupported) {
+    if (!adapterDeployCapability) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeNotSupported", {
+        runtime: resolvedServerId || "unknown",
+      });
+    } else if (runtimeOfflineForAdapterDeploy) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeOffline", {
+        runtime: resolvedServerId || "unknown",
+      });
+    }
+  }
   const modelAuditIssuesCount = Number(
     data.unifiedModelCatalog?.model_audit?.issues_count ?? 0,
   );

@@ -6,6 +6,7 @@ import { marked } from "marked";
 import { useMemo } from "react";
 import {
   formatComputationContent,
+  isOnlyMarkdownFenceMarkers,
   normalizeModelTextArtifacts,
   softlyWrapMathLines,
   tokenizeMath,
@@ -25,6 +26,9 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
     }
     try {
       const normalizedInput = normalizeModelTextArtifacts(content);
+      if (isOnlyMarkdownFenceMarkers(normalizedInput)) {
+        return "";
+      }
       const formatted =
         mode === "final" ? formatComputationContent(normalizedInput) : normalizedInput;
       const wrappedMath =

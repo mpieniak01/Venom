@@ -1295,6 +1295,10 @@ def test_runtime_helper_alias_and_provider_inference():
         academy_models._canonical_runtime_model_id("qwen2.5-coder:3b")
         == "qwen/qwen2.5-coder-3b-instruct"
     )
+    assert (
+        academy_models._canonical_runtime_model_id("gemma-3-4b-it-onnx-build-test")
+        == "gemma-3-4b-it"
+    )
     assert academy_models._canonical_runtime_model_id("  ") == ""
 
     assert (

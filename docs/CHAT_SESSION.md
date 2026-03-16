@@ -89,6 +89,16 @@ In chat UI there are three modes. Retention mechanisms and semantic cache implem
 - **Backend timings:** `LLM.start` (tracer step), `first_token.elapsed_ms`, `streaming.first_chunk_ms`, `streaming.chunk_count`, `streaming.last_emit_ms`.
 This allows assessing whether streaming works incrementally and where delays occur.
 
+## Runtime Model Contract in Cockpit (202D/203)
+- Cockpit uses two distinct model notions:
+  - **Selected base model**: user-facing model from the selector (editable).
+  - **Runtime execution model**: model actually serving responses at runtime (read-only), which can be an adapter artifact (for example `venom-adapter-...`).
+- With ONNX adapter deploy enabled, selected base model is no longer reset to empty when adapter runtime model is active.
+- Request details panel now exposes both fields explicitly:
+  - `Runtime execution model`
+  - `Selected base model`
+- For ONNX runtime, diagnostics graph can be shorter than Ollama because ONNX may run a dedicated task flow (`OnnxTask`) instead of full orchestrator path.
+
 ## Critical Path Pattern (UI → LLM → UI)
 Goal: everything besides sending prompt and first chunk should work in background.
 - **On path:** submit → TTFT → streaming/response.

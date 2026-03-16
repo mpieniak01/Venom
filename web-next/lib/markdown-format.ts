@@ -5,6 +5,16 @@ const MATH_INLINE_REGEX = /\\\(((?:.|\n)+?)\\\)/g;
 const MATH_HINT_REGEX = /(?:=|\^|\\frac|\\sqrt|sqrt\(|≤|≥|<|>)/;
 const MATH_ALLOWED_REGEX = /^[-0-9a-zA-Z\s+*/=^_().,:√π∑∫<>≤≥\\]+$/;
 
+export function isOnlyMarkdownFenceMarkers(content: string) {
+  if (!content) return true;
+  const nonEmptyLines = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (nonEmptyLines.length === 0) return true;
+  return nonEmptyLines.every((line) => /^```[a-zA-Z0-9_-]*$/.test(line));
+}
+
 export function normalizeModelTextArtifacts(content: string) {
   if (!content) return content;
   const hasOnnxArtifacts =

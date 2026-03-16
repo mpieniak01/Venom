@@ -478,24 +478,23 @@ class ModelManagerDiscoveryMixin:
                     self._save_ollama_cache(entries)
                 else:
                     logger.warning(
-                        "Nie udało się pobrać listy modeli z Ollama: %s",
-                        response.status_code,
+                        f"Nie udało się pobrać listy modeli z Ollama: "
+                        f"{response.status_code}",
                     )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             now = time.time()
             if now - self._last_ollama_warning > 60:
-                logger.warning("Ollama nie jest dostępne: %s", exc)
+                logger.warning(f"Ollama nie jest dostępne: {exc}")
                 self._last_ollama_warning = now
         except httpx.HTTPError as exc:
-            logger.error("Błąd HTTP podczas pobierania modeli z Ollama: %s", exc)
+            logger.error(f"Błąd HTTP podczas pobierania modeli z Ollama: {exc}")
         except ValueError as exc:
             logger.error(
-                "Błędna odpowiedź JSON podczas pobierania modeli z Ollama: %s", exc
+                f"Błędna odpowiedź JSON podczas pobierania modeli z Ollama: {exc}"
             )
         except Exception as exc:
             logger.warning(
-                "Nie udało się pobrać modeli z Ollama (fallback do lokalnego skanu): %s",
-                exc,
+                f"Nie udało się pobrać modeli z Ollama (fallback do lokalnego skanu): {exc}"
             )
 
         return list(models.values())

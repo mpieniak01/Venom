@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from venom_core.services.config_manager import config_manager
 from venom_core.services.system_llm_service import previous_model_key_for_server
@@ -577,7 +577,7 @@ tokenizer_source = (
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
 tokenizer.save_pretrained(output_dir)
 """
-        merge_env = dict(os.environ)
+        merge_env = _build_hf_cache_env(base_env=os.environ)
         merge_env["VENOM_ADAPTER_MERGE_PAYLOAD"] = json.dumps(
             merge_payload, ensure_ascii=False
         )
@@ -702,6 +702,33 @@ def _resolve_hf_cache_snapshot_for_repo_id(
     return ""
 
 
+def _resolve_local_hf_cache_dirs(
+    *, settings_obj: Any | None = None
+) -> tuple[Path, Path]:
+    repo_root = _resolve_repo_root(settings_obj=settings_obj)
+    hf_home = repo_root / "models" / "cache" / "huggingface"
+    hub_cache = hf_home / "hub"
+    return hf_home, hub_cache
+
+
+def _build_hf_cache_env(
+    *,
+    base_env: Dict[str, str] | None = None,
+    settings_obj: Any | None = None,
+) -> Dict[str, str]:
+    env = dict(base_env or os.environ)
+    hf_home, hub_cache = _resolve_local_hf_cache_dirs(settings_obj=settings_obj)
+    try:
+        hf_home.mkdir(parents=True, exist_ok=True)
+        hub_cache.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        logger.warning("Failed to ensure local Hugging Face cache directories.")
+    env["HF_HOME"] = str(hf_home)
+    env["HUGGINGFACE_HUB_CACHE"] = str(hub_cache)
+    env.setdefault("TRANSFORMERS_CACHE", str(hub_cache))
+    return env
+
+
 def _resolve_adapter_training_base_for_ollama_gguf(
     *,
     adapter_dir: Path,
@@ -748,6 +775,11 @@ def _resolve_local_training_base_model_for_merge(*, adapter_dir: Path) -> str:
     training_base_model = str(parameters.get("training_base_model") or "").strip()
     if not training_base_model:
         return ""
+    cached_snapshot = _resolve_hf_cache_snapshot_for_repo_id(
+        repo_id=training_base_model
+    )
+    if cached_snapshot:
+        return cached_snapshot
     candidate = Path(training_base_model).expanduser()
     if not candidate.exists() or not candidate.is_dir():
         return ""
@@ -850,6 +882,37 @@ def _ensure_ollama_adapter_gguf(
             "LoRA->GGUF conversion finished but no *.gguf file found in adapter dir."
         )
     return resolved.resolve()
+
+
+def _probe_ollama_runtime_unavailable_reason() -> str | None:
+    """Return actionable reason when Ollama daemon is unavailable."""
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        return (
+            "Ollama CLI is not available in PATH. Install Ollama and ensure the "
+            "`ollama` command is accessible for the backend process."
+        )
+    except subprocess.TimeoutExpired:
+        return "Ollama runtime probe timed out; service may be unresponsive."
+    except Exception as exc:
+        return f"Ollama runtime probe failed: {exc}"
+
+    if result.returncode == 0:
+        return None
+
+    stderr = (result.stderr or "").strip()
+    stdout = (result.stdout or "").strip()
+    details = stderr or stdout or UNKNOWN_ERROR_DETAIL
+    return (
+        "Ollama runtime is offline or unreachable. Start `ollama serve` and retry. "
+        f"Details: {details}"
+    )
 
 
 def _deploy_adapter_to_vllm_runtime(
@@ -1096,6 +1159,7 @@ def _run_onnx_export(
         monitor_interval_sec=_resolve_memory_monitor_interval_sec(
             settings_obj=settings_obj
         ),
+        env=_build_hf_cache_env(base_env=os.environ, settings_obj=settings_obj),
     )
 
 
@@ -1337,10 +1401,30 @@ def _resolve_onnx_deploy_base_model(*, adapter_dir: Path) -> str:
     ).strip()
     if not trusted_base_model:
         raise RuntimeError("Adapter base model is empty; cannot deploy to ONNX")
-    return (
-        _resolve_local_training_base_model_for_merge(adapter_dir=adapter_dir)
-        or trusted_base_model
+    local_training_base = _resolve_local_training_base_model_for_merge(
+        adapter_dir=adapter_dir
     )
+    if local_training_base:
+        return local_training_base
+
+    trusted_path = Path(trusted_base_model).expanduser()
+    if trusted_path.exists() and trusted_path.is_dir():
+        if (trusted_path / MODEL_CONFIG_FILENAME).exists():
+            return str(trusted_path.resolve())
+
+    cached_snapshot = _resolve_hf_cache_snapshot_for_repo_id(repo_id=trusted_base_model)
+    if cached_snapshot:
+        return cached_snapshot
+
+    if "/" in trusted_base_model and "://" not in trusted_base_model:
+        raise ValueError(
+            "ADAPTER_BASE_MODEL_NOT_AVAILABLE_LOCALLY: "
+            f"Base model '{trusted_base_model}' is not available in local HF cache. "
+            "Download/cache the base model first or retrain adapter with local "
+            "training_base_model path."
+        )
+
+    return trusted_base_model
 
 
 def _resolve_onnx_export_options(*, settings: Any) -> tuple[str, str]:
@@ -1548,6 +1632,50 @@ def _resolve_chat_runtime_deploy_deps(
     return resolved
 
 
+def _validate_ollama_adapter_base_model_compatibility(
+    *,
+    adapter_id: str,
+    adapter_base_model: str,
+    requested_model: str,
+    canonical_runtime_model_id_fn: Callable[[str | None], str],
+) -> None:
+    requested_model_is_runtime_adapter = requested_model.lower().startswith(
+        _RUNTIME_ADAPTER_MODEL_PREFIX
+    )
+    if (
+        not adapter_base_model
+        or not requested_model
+        or requested_model_is_runtime_adapter
+    ):
+        return
+    adapter_canonical = canonical_runtime_model_id_fn(adapter_base_model)
+    requested_canonical = canonical_runtime_model_id_fn(requested_model)
+    if requested_canonical and requested_canonical != adapter_canonical:
+        message = (
+            "Adapter base model does not match selected Ollama runtime FROM model. "
+            f"runtime_model='{requested_model}', adapter_base_model='{adapter_base_model}'."
+        )
+        logger.warning(
+            "Blocking Ollama adapter deploy due to ADAPTER_BASE_MODEL_MISMATCH "
+            "(adapter_id=%s, runtime_model=%s, adapter_base_model=%s)",
+            adapter_id,
+            requested_model,
+            adapter_base_model,
+        )
+        raise ValueError(f"ADAPTER_BASE_MODEL_MISMATCH: {message}")
+
+
+def _ensure_ollama_adapter_model_created(*, deployed_model: str | None) -> str:
+    if deployed_model:
+        return str(deployed_model)
+    unavailable_reason = _probe_ollama_runtime_unavailable_reason()
+    if unavailable_reason:
+        raise RuntimeError(f"ADAPTER_RUNTIME_SERVICE_UNAVAILABLE: {unavailable_reason}")
+    raise RuntimeError(
+        "ADAPTER_RUNTIME_DEPLOY_FAILED: Failed to create Ollama model for adapter deployment."
+    )
+
+
 def _deploy_adapter_to_chat_runtime(
     *,
     mgr: Any,
@@ -1606,29 +1734,15 @@ def _deploy_adapter_to_chat_runtime(
     adapter_base_model = deps["require_trusted_adapter_base_model_fn"](
         adapter_dir=adapter_dir,
     ).strip()
+    _validate_ollama_adapter_base_model_compatibility(
+        adapter_id=adapter_id,
+        adapter_base_model=adapter_base_model,
+        requested_model=requested_model,
+        canonical_runtime_model_id_fn=deps["canonical_runtime_model_id_fn"],
+    )
     requested_model_is_runtime_adapter = requested_model.lower().startswith(
         _RUNTIME_ADAPTER_MODEL_PREFIX
     )
-    if (
-        adapter_base_model
-        and requested_model
-        and not requested_model_is_runtime_adapter
-    ):
-        adapter_canonical = deps["canonical_runtime_model_id_fn"](adapter_base_model)
-        requested_canonical = deps["canonical_runtime_model_id_fn"](requested_model)
-        if requested_canonical and requested_canonical != adapter_canonical:
-            message = (
-                "Adapter base model does not match selected Ollama runtime FROM model. "
-                f"runtime_model='{requested_model}', adapter_base_model='{adapter_base_model}'."
-            )
-            logger.warning(
-                "Blocking Ollama adapter deploy due to ADAPTER_BASE_MODEL_MISMATCH "
-                "(adapter_id=%s, runtime_model=%s, adapter_base_model=%s)",
-                adapter_id,
-                requested_model,
-                adapter_base_model,
-            )
-            raise ValueError(f"ADAPTER_BASE_MODEL_MISMATCH: {message}")
 
     ollama_model_name = f"venom-adapter-{adapter_id}"
     requested_from_model = (
@@ -1651,8 +1765,7 @@ def _deploy_adapter_to_chat_runtime(
         from_model=from_model,
         use_experimental=use_experimental,
     )
-    if not deployed_model:
-        raise RuntimeError("Failed to create Ollama model for adapter deployment")
+    selected_model = _ensure_ollama_adapter_model_created(deployed_model=deployed_model)
 
     last_model_key = "LAST_MODEL_OLLAMA"
     previous_model_key = previous_model_key_for_server(runtime_local_id)
@@ -1661,7 +1774,6 @@ def _deploy_adapter_to_chat_runtime(
         active_runtime=active_runtime,
         settings_obj=settings,
     )
-    selected_model = str(deployed_model)
     updates: Dict[str, Any] = {
         "ACTIVE_LLM_SERVER": runtime_local_id,
         "LLM_MODEL_NAME": selected_model,

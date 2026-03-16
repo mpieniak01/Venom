@@ -236,6 +236,33 @@ def test_raise_adapter_activation_http_exception_maps_runtime_error() -> None:
     }
 
 
+def test_raise_adapter_activation_http_exception_maps_runtime_unavailable_to_http_503() -> (
+    None
+):
+    academy = _build_academy_base()
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers._raise_adapter_activation_http_exception(
+            academy=academy,
+            exc=RuntimeError(
+                "ADAPTER_RUNTIME_SERVICE_UNAVAILABLE: Ollama runtime is offline"
+            ),
+            adapter_id="a1",
+            requested_runtime_id="ollama",
+            requested_model_id="gemma3:latest",
+        )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == {
+        "adapter_id": "a1",
+        "error": "ADAPTER_RUNTIME_SERVICE_UNAVAILABLE",
+        "message": "Ollama runtime is offline",
+        "reason_code": "ADAPTER_RUNTIME_SERVICE_UNAVAILABLE",
+        "requested_model_id": "gemma3:latest",
+        "requested_runtime_id": "ollama",
+    }
+
+
 def test_raise_adapter_activation_http_exception_maps_generic_error() -> None:
     academy = _build_academy_base()
 

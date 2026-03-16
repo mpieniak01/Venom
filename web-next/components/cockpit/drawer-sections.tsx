@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownPreview } from "@/components/ui/markdown";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import { statusTone } from "@/lib/status";
 import type { HistoryRequestDetail, HistoryStep } from "@/lib/types";
 import {
@@ -187,11 +188,18 @@ export function DiagnosticsSection({
 }
 
 export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, string | number>) => string }>) {
-    const modelName = (historyDetail as HistoryRequestDetail & { model?: string | null }).model ?? historyDetail.llm_model ?? null;
+    const selectedBaseModel = String(
+        historyDetail.routing_decision?.model ??
+        (historyDetail as HistoryRequestDetail & { model?: string | null }).model ??
+        "",
+    ).trim();
+    const runtimeExecutionModel = String(historyDetail.llm_model ?? "").trim();
+    const runtimeId = String(historyDetail.llm_runtime_id ?? "").trim();
+    const isOnnxRuntime = normalizeRuntimeId(runtimeId) === "onnx";
     const adapterApplied = historyDetail.adapter_applied;
     const adapterId = historyDetail.adapter_id ?? null;
     const hasAdapterFlag = adapterApplied !== null && adapterApplied !== undefined;
-    if (!modelName && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id && !hasAdapterFlag && !adapterId) return null;
+    if (!selectedBaseModel && !runtimeExecutionModel && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id && !hasAdapterFlag && !adapterId) return null;
 
     return (
         <div className="mt-4 rounded-2xl box-muted p-4">
@@ -199,11 +207,19 @@ export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail:
                 {t("cockpit.requestDetails.modelInfoTitle")}
             </p>
             <div className="mt-3 grid gap-2 text-xs text-theme-secondary sm:grid-cols-2">
-                {modelName && (
+                {runtimeExecutionModel && (
                     <div className="overflow-hidden">
-                        <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.modelLabel")}</span>
-                        <div className="text-sm text-theme-primary truncate" title={modelName}>
-                            {modelName}
+                        <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.runtimeExecutionModelLabel")}</span>
+                        <div className="text-sm text-theme-primary truncate font-mono" title={runtimeExecutionModel}>
+                            {runtimeExecutionModel}
+                        </div>
+                    </div>
+                )}
+                {selectedBaseModel && (
+                    <div className="overflow-hidden">
+                        <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.selectedBaseModelLabel")}</span>
+                        <div className="text-sm text-theme-primary truncate font-mono" title={selectedBaseModel}>
+                            {selectedBaseModel}
                         </div>
                     </div>
                 )}
@@ -227,7 +243,7 @@ export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail:
                     <div className="overflow-hidden">
                         <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.runtimeIdLabel")}</span>
                         <div className="text-sm text-theme-primary truncate font-mono" title={historyDetail.llm_runtime_id}>
-                            {historyDetail.llm_runtime_id.slice(0, 8)}...
+                            {historyDetail.llm_runtime_id}
                         </div>
                     </div>
                 )}
@@ -250,6 +266,11 @@ export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail:
                     </div>
                 )}
             </div>
+            {isOnnxRuntime ? (
+                <p className="mt-3 text-[11px] text-theme-muted">
+                    {t("cockpit.requestDetails.runtimeFlowOnnxNote")}
+                </p>
+            ) : null}
         </div>
     );
 }

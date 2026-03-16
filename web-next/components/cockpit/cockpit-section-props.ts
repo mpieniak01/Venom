@@ -158,6 +158,15 @@ export function useCockpitSectionProps() {
       data.unifiedModelCatalog?.active?.active_server ||
       "",
   );
+  const activeRuntimeModel = useMemo(
+    () =>
+      (
+        data.activeServerInfo?.active_model ||
+        data.unifiedModelCatalog?.active?.active_model ||
+        ""
+      ).trim(),
+    [data.activeServerInfo?.active_model, data.unifiedModelCatalog?.active?.active_model],
+  );
   const selectedRuntimeModels = useMemo(() => {
     if (!resolvedServerId) return [];
     const target = runtimeTargets.find(
@@ -174,13 +183,29 @@ export function useCockpitSectionProps() {
       ) ?? null,
     [resolvedServerId, runtimeTargets],
   );
-  const adapterDeploySupported = Boolean(
+  const adapterDeployCapability = Boolean(
     selectedRuntimeTarget?.supports_adapter_runtime_apply ??
       selectedRuntimeTarget?.adapter_deploy_supported,
   );
-  const adapterDeployReason = adapterDeploySupported
-    ? null
-    : t("cockpit.models.adapterRuntimeNotSupported", { runtime: resolvedServerId || "unknown" });
+  const runtimeStatus = String(selectedRuntimeTarget?.status || "")
+    .trim()
+    .toLowerCase();
+  const runtimeOfflineForAdapterDeploy = runtimeStatus === "offline";
+  const runtimeOnlineForAdapterDeploy = !runtimeOfflineForAdapterDeploy;
+  const adapterDeploySupported =
+    adapterDeployCapability && runtimeOnlineForAdapterDeploy;
+  let adapterDeployReason: string | null = null;
+  if (!adapterDeploySupported) {
+    if (!adapterDeployCapability) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeNotSupported", {
+        runtime: resolvedServerId || "unknown",
+      });
+    } else if (runtimeOfflineForAdapterDeploy) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeOffline", {
+        runtime: resolvedServerId || "unknown",
+      });
+    }
+  }
   const modelAuditIssuesCount = Number(
     data.unifiedModelCatalog?.model_audit?.issues_count ?? 0,
   );
@@ -510,6 +535,7 @@ export function useCockpitSectionProps() {
     llmServerOptions,
     setSelectedLlmServer: handleSelectLlmServer,
     selectedLlmModel,
+    activeRuntimeModel,
     llmModelOptions,
     llmModelMetadata,
     setSelectedLlmModel,
@@ -538,6 +564,7 @@ export function useCockpitSectionProps() {
     onSend,
     handleSelectLlmServer,
     selectedLlmModel,
+    activeRuntimeModel,
     normalizedSelectedLlmServer,
     sending,
     setChatMode,

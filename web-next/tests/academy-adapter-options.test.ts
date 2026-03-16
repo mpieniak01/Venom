@@ -7,7 +7,7 @@ import {
 } from "../lib/academy-adapter-options";
 
 describe("academy-adapter-options", () => {
-  it("disables blocked adapters and keeps base option first", () => {
+  it("keeps base option first and treats mismatch as informational", () => {
     const options = buildCockpitAdapterOptions({
       adapters: [
         {
@@ -64,8 +64,8 @@ describe("academy-adapter-options", () => {
     assert.equal(options[0]?.value, "__base__");
     assert.equal(options[1]?.disabled, false);
     assert.match(options[1]?.description ?? "", /compatible/);
-    assert.equal(options[2]?.disabled, true);
-    assert.match(options[2]?.description ?? "", /blocked/);
+    assert.equal(options[2]?.disabled, false);
+    assert.match(options[2]?.description ?? "", /compatible/);
   });
 
   it("treats blocked categories as non-selectable", () => {
@@ -84,6 +84,22 @@ describe("academy-adapter-options", () => {
         manual_repair_hint: null,
       }),
       true,
+    );
+    assert.equal(
+      isBlockedCockpitAdapterAudit({
+        adapter_id: "adapter-mismatch",
+        adapter_path: "/tmp/adapter-mismatch",
+        base_model: "gemma-2-2b-it",
+        canonical_base_model: "gemma-2-2b-it",
+        trusted_metadata: true,
+        category: "blocked_mismatch",
+        reason_code: "ADAPTER_BASE_MODEL_MISMATCH",
+        message: "Adapter base model does not match selected runtime model",
+        is_active: false,
+        sources: [],
+        manual_repair_hint: null,
+      }),
+      false,
     );
     assert.equal(
       isBlockedCockpitAdapterAudit({

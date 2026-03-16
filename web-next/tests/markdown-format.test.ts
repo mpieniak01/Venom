@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   formatComputationContent,
+  isOnlyMarkdownFenceMarkers,
   looksLikeMathLine,
   normalizeModelTextArtifacts,
   softlyWrapMathLines,
@@ -58,4 +59,13 @@ test("normalizeModelTextArtifacts removes spaces before punctuation", () => {
   const output = normalizeModelTextArtifacts(input);
 
   assert.equal(output, '"Test zdanie, z błędem!');
+});
+
+test("isOnlyMarkdownFenceMarkers detects empty fence-only output", () => {
+  const input = "```\n```\n```\n```";
+  assert.equal(isOnlyMarkdownFenceMarkers(input), true);
+  assert.equal(
+    isOnlyMarkdownFenceMarkers("```ts\nconst x = 1;\n```"),
+    false,
+  );
 });

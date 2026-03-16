@@ -32,6 +32,8 @@ from venom_core.services.academy.adapter_metadata_service import (
 )
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
+_RUNTIME_UNAVAILABLE_REASON_CODES = {"ADAPTER_RUNTIME_SERVICE_UNAVAILABLE"}
+
 
 def _value_error_detail_with_reason_code(
     exc: ValueError,
@@ -768,9 +770,12 @@ def _raise_adapter_activation_http_exception(
             ),
         ) from exc
     if isinstance(exc, RuntimeError):
+        runtime_detail = _runtime_error_detail_with_reason_code(exc, **context)
+        reason_code = str(runtime_detail.get("reason_code") or "").strip()
+        status_code = 503 if reason_code in _RUNTIME_UNAVAILABLE_REASON_CODES else 500
         raise HTTPException(
-            status_code=500,
-            detail=_runtime_error_detail_with_reason_code(exc, **context),
+            status_code=status_code,
+            detail=runtime_detail,
         ) from exc
     if isinstance(exc, HTTPException):
         raise exc

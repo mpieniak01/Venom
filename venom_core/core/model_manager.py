@@ -354,9 +354,8 @@ PARAMETER top_k 40
                 stdout = (result.stdout or "").strip()
                 details = stderr or stdout or "unknown error"
                 logger.error(
-                    "❌ Błąd podczas tworzenia modelu w Ollama (code=%s): %s",
-                    result.returncode,
-                    details,
+                    f"❌ Błąd podczas tworzenia modelu w Ollama "
+                    f"(code={result.returncode}): {details}"
                 )
                 return None
 

@@ -53,6 +53,16 @@ def test_evaluate_adapter_audit_status_branches() -> None:
     assert category == "blocked_mismatch"
     assert reason is not None
 
+    category, reason, _ = svc._evaluate_adapter_audit_status(
+        assessment={"trusted": True},
+        base_model="google/gemma-3-4b-it",
+        runtime_local_id="onnx",
+        selected_model="gemma-3-4b-it-onnx-build-test",
+        selected_model_canonical="gemma-3-4b-it",
+    )
+    assert category == "compatible"
+    assert reason is None
+
 
 def test_build_adapter_audit_item_populates_expected_fields(tmp_path: Path) -> None:
     training_dir = tmp_path / "adapter-1"

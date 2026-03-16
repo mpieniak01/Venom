@@ -1157,6 +1157,54 @@ async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_mo
 
 @pytest.mark.asyncio
 @patch("venom_core.config.SETTINGS")
+async def test_validate_adapter_runtime_compatibility_accepts_missing_selected_model_for_onnx(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "gemma-3-4b-it"
+
+    adapter_dir = tmp_path / "adapter-1"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"metadata_version":2,"base_model":"gemma-3-4b-it","effective_base_model":"gemma-3-4b-it","created_at":"2026-03-07T12:00:00+00:00","source_flow":"training"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma-3-4b-it-onnx-int4",
+                "provider": "onnx",
+                "path": str(tmp_path / "gemma-onnx"),
+            }
+        ]
+    )
+    with patch(
+        "venom_core.api.routes.academy_models.list_trainable_models",
+        AsyncMock(
+            return_value=[
+                TrainableModelInfo(
+                    model_id="gemma-3-4b-it",
+                    label="Gemma 3 4B",
+                    provider="huggingface",
+                    trainable=True,
+                    runtime_compatibility={"vllm": True, "onnx": True},
+                )
+            ]
+        ),
+    ):
+        await academy_models.validate_adapter_runtime_compatibility(
+            mgr=mgr,
+            adapter_id="adapter-1",
+            runtime_id="onnx",
+            model_id="unsloth/gemma-2-2b-it",
+        )
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
 async def test_validate_adapter_runtime_compatibility_accepts_runtime_adapter_model(
     mock_settings, tmp_path
 ):
@@ -1246,6 +1294,10 @@ def test_runtime_helper_alias_and_provider_inference():
     assert (
         academy_models._canonical_runtime_model_id("qwen2.5-coder:3b")
         == "qwen/qwen2.5-coder-3b-instruct"
+    )
+    assert (
+        academy_models._canonical_runtime_model_id("gemma-3-4b-it-onnx-build-test")
+        == "gemma-3-4b-it"
     )
     assert academy_models._canonical_runtime_model_id("  ") == ""
 

@@ -869,7 +869,18 @@ def _canonical_runtime_model_id(model_id: str) -> str:
     normalized = model_id.strip().lower()
     if not normalized:
         return ""
-    return _TRAINABLE_MODEL_ALIAS_TO_CANONICAL.get(normalized, normalized)
+    mapped = _TRAINABLE_MODEL_ALIAS_TO_CANONICAL.get(normalized)
+    if mapped:
+        return mapped
+    # Runtime ONNX artifacts often carry suffixes like:
+    #   gemma-3-4b-it-onnx-build-test / gemma-3-4b-it-onnx-int4
+    # Canonicalize them back to their base model family to keep adapter
+    # compatibility checks stable across ONNX artifact naming variants.
+    onnx_marker_index = normalized.find("-onnx")
+    if onnx_marker_index > 0:
+        base_candidate = normalized[:onnx_marker_index]
+        return _TRAINABLE_MODEL_ALIAS_TO_CANONICAL.get(base_candidate, base_candidate)
+    return normalized
 
 
 def _resolve_local_runtime_id(runtime_id: str) -> Optional[str]:

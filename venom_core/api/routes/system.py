@@ -449,10 +449,13 @@ def _generate_external_map() -> List[ApiConnection]:
 
 def _update_runtime_statuses(connections: List[ApiConnection], service_monitor) -> None:
     """Updates the status of connections based on the ServiceMonitor."""
-    if not service_monitor:
+    if not service_monitor or not hasattr(service_monitor, "get_all_services"):
         return
 
-    real_services = {s.name: s for s in service_monitor.get_all_services()}
+    try:
+        real_services = {s.name: s for s in service_monitor.get_all_services()}
+    except Exception:
+        return
     target_to_service = {target: service for service, target in _SERVICE_MAP.items()}
 
     for conn in connections:

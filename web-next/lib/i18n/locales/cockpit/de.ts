@@ -71,6 +71,8 @@ export const cockpitLocale = {
       contextTruncated: "Kontextvorschau gekürzt.",
       modelInfoTitle: "Model-Info",
       modelLabel: "Modell",
+      runtimeExecutionModelLabel: "Runtime-Ausführungsmodell",
+      selectedBaseModelLabel: "Ausgewähltes Basismodell",
       providerLabel: "Server / Provider",
       endpointLabel: "Endpoint",
       runtimeIdLabel: "Runtime ID",
@@ -78,6 +80,8 @@ export const cockpitLocale = {
       adapterAppliedYes: "ja (Request über Adapter)",
       adapterAppliedNo: "nein (Basismodell)",
       adapterIdLabel: "Adapter-ID",
+      runtimeFlowOnnxNote:
+        "ONNX-Requests können einen dedizierten Task-Flow (OnnxTask) nutzen, daher kann das Diagnosediagramm kürzer sein als bei Ollama.",
       uiTimingsTitle: "UI-Timings",
       uiTimingHistory: "submit → Verlauf",
       feedbackTitle: "Feedback",
@@ -132,6 +136,8 @@ export const cockpitLocale = {
       adapterCompatible: "mit aktuellem Modell kompatibel",
       adapterBlocked: "für aktuelles Modell blockiert",
       adapterStatusUnknown: "Audit-Status unbekannt",
+      activeRuntimeModelLabel: "Aktives Runtime-Modell",
+      selectedBaseModelLabel: "Ausgewähltes Basismodell",
       activeAdapterLabel: "Aktiver Adapter",
       activeAdapterCompatible: "aktiver Adapter passt zur aktuellen Auswahl",
       activeAdapterBlocked: "aktiver Adapter passt nicht zum aktuellen Runtime-Modell",
@@ -144,6 +150,8 @@ export const cockpitLocale = {
         "Adapter ausgewählt: Requests sollten über den aktiven Adapter für diesen Server und dieses Modell laufen.",
       adapterIncompatible: "nicht kompatibel mit Runtime {{runtime}}",
       adapterRuntimeNotSupported: "Adapter-Deploy in den Chat wird für Runtime {{runtime}} nicht unterstützt",
+      adapterRuntimeOffline:
+        "Runtime {{runtime}} ist offline - starte die Runtime vor dem Adapter-Deploy in den Chat",
       runtimeModelAuditWarning:
         "Der Runtime-Katalog hat {{count}} lokale(s) Modell(e) herausgefiltert, die von der gewählten Runtime nicht geladen werden können.",
       noModels: "Keine Modelle",

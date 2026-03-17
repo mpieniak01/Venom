@@ -362,12 +362,18 @@ function ProviderEditor({
 }>) {
   const provider = (data.provider as { active?: string; sourceType?: SourceTypeLike } | undefined) ?? {};
   const providerBySource = options.providersBySource ?? DEFAULT_OPTIONS.providersBySource;
+  const nodeSourceType = data.sourceType as SourceTypeLike | undefined;
+  const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
   const inferSource = (value: string | undefined): SourceType => {
     if (value && providerBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
   const sourceType: SourceType = provider.sourceType
     ? normalizeSourceType(provider.sourceType)
+    : nodeSourceType
+      ? normalizeSourceType(nodeSourceType)
+      : nodeSourceTag
+        ? normalizeSourceType(nodeSourceTag)
     : inferSource(provider.active);
   const sourceProviders = providerBySource[sourceType];
   const safeActive = provider.active && sourceProviders.includes(provider.active) ? provider.active : "";
@@ -434,12 +440,15 @@ function EmbeddingEditor({
   t: (path: string) => string;
 }>) {
   const modelsBySource = options.modelsBySource ?? DEFAULT_OPTIONS.modelsBySource;
+  const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
   const inferSource = (value: string | undefined): SourceType => {
     if (value && modelsBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
   const sourceType: SourceType = (data.sourceType as SourceTypeLike | undefined)
     ? normalizeSourceType(data.sourceType as SourceTypeLike)
+    : nodeSourceTag
+      ? normalizeSourceType(nodeSourceTag)
     : inferSource(data.model as string | undefined);
   const sourceModels = modelsBySource[sourceType];
   const safeModel = (data.model as string | undefined) && sourceModels.includes(data.model as string) ? (data.model as string) : "";

@@ -60,6 +60,11 @@ export const workflowControl =
       selectProvider: "Select provider",
       draftSetup: "Draft Setup",
       runtimeControl: "Process Control",
+      runtimeContext: "Runtime Context",
+      requestId: "Request ID",
+      runtimeId: "Runtime ID",
+      provider: "Provider",
+      model: "Model",
     },
     strategies: {
       standard: "Standard",
@@ -128,6 +133,10 @@ export const workflowControl =
       edit: "Edit",
       details: "Details",
       stop: "Stop",
+      planReady: "Plan is ready",
+      planReadyHint: "Review the changes and confirm apply.",
+      apply: "Apply",
+      discard: "Discard",
     },
     operations: {
       title: "Workflow Operations",
@@ -170,5 +179,6 @@ export const workflowControl =
       dryRunSuccess: "Dry run completed",
       dryRunError: "Failed to perform dry run",
       invalidStatePayload: "Invalid workflow state payload from API",
+      noActiveRequest: "No active request available for operation",
     },
   };

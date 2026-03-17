@@ -115,7 +115,11 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
       id: "provider",
       type: "provider",
       data: {
-        provider: systemState.provider,
+        provider: {
+          ...(systemState.provider ?? {}),
+          sourceType: providerSourceTag,
+        },
+        sourceType: providerSourceTag,
         sourceTag: providerSourceTag,
       },
       position: { x: 0, y: 0 },
@@ -125,6 +129,7 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
       type: "embedding",
       data: {
         model: systemState.embedding_model,
+        sourceType: embeddingSourceTag,
         sourceTag: embeddingSourceTag,
       },
       position: { x: 0, y: 0 },

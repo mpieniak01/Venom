@@ -14,29 +14,40 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Ścieżki błędów mają być jawne i, gdzie sensowne, pokryte testami.
 - Przed uruchamianiem narzędzi Pythona aktywuj środowisko repo: `source .venv/bin/activate`.
 
-## Kontrakt Dostarczenia w 1h (obowiązkowy)
+## Domyślna Komenda Testów (zacznij od tego)
+
+Gdy zakres testów nie jest jeszcze doprecyzowany, zacznij od:
+
+```bash
+source .venv/bin/activate
+pytest -q
+```
+
+## Kontrakt Dostarczania Bez Limitów Czasu (obowiązkowy)
 
 To jest domyślny tryb pracy dla GitHub Coding Agent i ma pierwszeństwo przed długą eksploracją.
 
-Limity czasu:
+Obietnice oparte o minuty są zabronione. Agent może być wznawiany/wstrzymywany z zewnątrz, więc limity minutowe nie są wiarygodnym mechanizmem kontroli.
 
-1. `0-5 min`: tylko preflight (`git status`, pliki docelowe, wymagane narzędzia/env).
-2. `5-25 min`: implementacja minimalnego zakresu end-to-end.
-3. `<=30 min`: pierwszy commit (WIP dozwolony, nawet jeśli gate jeszcze nie są zielone).
-4. `30-50 min`: domknięcie zakresu + testy celowane.
-5. `50-60 min`: `make pr-fast`, poprawki blockerów, raport końcowy.
+Checkpointy postępu:
+
+1. tylko preflight (`git status`, pliki docelowe, wymagane narzędzia/env),
+2. implementacja minimalnego zakresu end-to-end,
+3. pierwszy commit od razu po przygotowaniu pierwszego spójnego wycinka zmian (WIP dozwolony, nawet jeśli gate nie są jeszcze zielone),
+4. domknięcie zakresu + testy celowane,
+5. `make pr-fast`, poprawki blockerów, raport końcowy.
 
 Twarde zasady stop:
 
 1. Brak ponownej eksploracji repo po rozpoczęciu implementacji.
 2. Maksymalnie jedno wywołanie subagenta na fazę (explore/implement/verify).
-3. Jeśli przez 15 minut nie powstaje zmiana w kodzie, przerwij i zgłoś bloker.
+3. Jeśli dwie kolejne iteracje pracy nie wnoszą zmiany w kodzie ani zmiany w testach, przerwij i zgłoś bloker.
 4. Jeśli ten sam gate failuje 2 razy bez zmiany kodu/środowiska, przerwij i zgłoś bloker.
 5. Nie uruchamiaj ciężkich checków nieobowiązkowych przed zielonym `make pr-fast`.
 
 Dyscyplina commitów:
 
-1. Pierwszy commit musi pojawić się do 30 min od startu sesji.
+1. Pierwszy commit ma powstać od razu po pierwszym spójnym wycinku zmian; nie odkładaj wszystkiego na koniec.
 2. Preferuj 1-3 małe commity zamiast jednego dużego na końcu.
 3. Nie odkładaj wszystkich commitów na koniec długiej pętli debugowania.
 
@@ -96,7 +107,7 @@ Wzorzec rekomendowany:
 
 ```bash
 set -euo pipefail
-cd /home/runner/work/Venom/Venom
+cd "$(git rev-parse --show-toplevel)"
 make pr-fast
 ```
 
@@ -104,7 +115,7 @@ Wzorzec z `tail` (nadal poprawny):
 
 ```bash
 set -euo pipefail
-cd /home/runner/work/Venom/Venom
+cd "$(git rev-parse --show-toplevel)"
 make pr-fast 2>&1 | tail -n 200
 test ${PIPESTATUS[0]} -eq 0
 ```
@@ -113,6 +124,107 @@ Ważne:
 
 1. `... | tail ...` domyślnie zwraca status `tail`, nie komendy źródłowej.
 2. Zawsze używaj `set -o pipefail` i sprawdzaj `PIPESTATUS[0]`, gdy log jest pipowany.
+
+## Playbook Uruchamiania Testów (obowiązkowy, dokładna kolejność)
+
+Testy uruchamiaj z roota repo i z aktywnym virtualenv:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+source .venv/bin/activate
+```
+
+1. Bootstrap backendu (gdy środowisko jest świeże/zmienione):
+
+```bash
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-ci-lite.txt
+```
+
+2. Bootstrap frontendu (obowiązkowo, jeśli zmieniasz `web-next`):
+
+```bash
+npm --prefix web-next ci
+```
+
+3. Testy celowane przed hard gate:
+   - zakres backend:
+
+```bash
+pytest -q tests/<path_or_file>.py
+```
+
+   - zakres frontend:
+
+```bash
+make test-web-unit
+```
+
+   - gdy dotykasz zakresu e2e:
+
+```bash
+make test-web-e2e
+```
+
+4. Diagnostyka metadanych/coverage dla zmienionego kodu/testów Python:
+
+```bash
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+```
+
+5. Finalna bramka obowiązkowa (dla każdego zakresu poza markdown-only):
+
+```bash
+make pr-fast
+```
+
+Domyślne profile komend (wybierz dokładnie jeden, zgodnie z zakresem):
+
+Zakres tylko Python:
+
+```bash
+source .venv/bin/activate
+make test-ci-lite
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+make pr-fast
+```
+
+Zakres tylko frontend:
+
+```bash
+source .venv/bin/activate
+npm --prefix web-next ci
+make test-web-unit
+make pr-fast
+```
+
+Zakres mieszany backend+frontend:
+
+```bash
+source .venv/bin/activate
+npm --prefix web-next ci
+make test-web-unit
+make test-ci-lite
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+make pr-fast
+```
+
+Recovery przy failu metadanych testów:
+
+```bash
+make test-catalog-sync
+make test-groups-sync
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+```
 
 ## Polityka Hard Gate (obowiązkowa)
 
@@ -140,12 +252,12 @@ Tryb "partial done" przy failujących gate'ach jest zabroniony.
 
 ## Dwustopniowy Przepływ Jakości (GitHub Agent + Nadzorca)
 
-Aby sesje GitHub Coding Agent domykały się w 1h, stosujemy 2 etapy:
+Aby sesje GitHub Coding Agent były przewidywalne i domykane deterministycznie, stosujemy 2 etapy:
 
 Etap A: Bramka sesji (GitHub Coding Agent, obowiązkowa przed handoffem)
 
 1. realizacja zakresu bez pętli re-eksploracji,
-2. co najmniej jeden commit do 30 min,
+2. co najmniej jeden commit od razu po pierwszym spójnym wycinku zmian,
 3. testy celowane dla zmienionych modułów,
 4. uruchomienie:
    - `make test-groups-check`

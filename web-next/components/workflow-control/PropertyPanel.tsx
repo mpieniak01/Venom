@@ -25,6 +25,7 @@ interface PropertyPanelProps {
   onUpdateNode: (nodeId: string, data: unknown) => void;
   availableOptions?: {
     strategies?: string[];
+    intentModes?: string[];
     kernels?: string[];
     providers?: string[];
     models?: string[];
@@ -46,6 +47,7 @@ type NodeVisualMeta = {
 
 const DEFAULT_OPTIONS: Required<NonNullable<PropertyPanelProps["availableOptions"]>> = {
   strategies: ["standard", "advanced", "heuristic"],
+  intentModes: ["simple", "advanced", "expert"],
   kernels: ["default", "optimized", "legacy"],
   providers: ["openai", "google", "anthropic", "ollama"],
   models: ["gpt-4", "gemini-pro", "claude-3-opus", "llama3"],
@@ -65,6 +67,7 @@ function resolveAvailableOptions(
   if (!options) return DEFAULT_OPTIONS;
   return {
     strategies: Array.isArray(options.strategies) ? options.strategies : DEFAULT_OPTIONS.strategies,
+    intentModes: Array.isArray(options.intentModes) ? options.intentModes : DEFAULT_OPTIONS.intentModes,
     kernels: Array.isArray(options.kernels) ? options.kernels : DEFAULT_OPTIONS.kernels,
     providers: Array.isArray(options.providers) ? options.providers : DEFAULT_OPTIONS.providers,
     models: Array.isArray(options.models) ? options.models : DEFAULT_OPTIONS.models,
@@ -185,6 +188,13 @@ function normalizeSourceType(value: SourceTypeLike | undefined): SourceType {
   return "local";
 }
 
+function withCurrentOption(options: string[], current: unknown): string[] {
+  if (typeof current !== "string") return options;
+  const normalizedCurrent = current.trim();
+  if (!normalizedCurrent || options.includes(normalizedCurrent)) return options;
+  return [normalizedCurrent, ...options];
+}
+
 function SectionCard({
   type,
   icon: Icon,
@@ -225,6 +235,10 @@ function DecisionEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }>) {
+  const strategyOptions = withCurrentOption(
+    options.strategies,
+    data.strategy as string | undefined
+  );
   return (
     <SectionCard
       type="decision"
@@ -240,7 +254,7 @@ function DecisionEditor({
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="bg-slate-900 border-cyan-500/30 text-cyan-100">
-          {options.strategies.map((opt) => (
+          {strategyOptions.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-cyan-500/20 focus:text-cyan-100">
               {translateOption(t, `workflowControl.strategies.${opt}`, opt)}
             </SelectItem>
@@ -253,13 +267,19 @@ function DecisionEditor({
 
 function IntentEditor({
   data,
+  options,
   onUpdate,
   t,
 }: Readonly<{
   data: Record<string, unknown>;
+  options: Required<NonNullable<PropertyPanelProps["availableOptions"]>>;
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }>) {
+  const intentModeOptions = withCurrentOption(
+    options.intentModes,
+    data.intentMode as string | undefined
+  );
   return (
     <SectionCard
       type="intent"
@@ -275,8 +295,11 @@ function IntentEditor({
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="bg-slate-900 border-yellow-500/30 text-yellow-100">
-          <SelectItem value="strict" className="focus:bg-yellow-500/20">{t("workflowControl.intentModes.strict")}</SelectItem>
-          <SelectItem value="flexible" className="focus:bg-yellow-500/20">{t("workflowControl.intentModes.flexible")}</SelectItem>
+          {intentModeOptions.map((opt) => (
+            <SelectItem key={opt} value={opt} className="focus:bg-yellow-500/20">
+              {translateOption(t, `workflowControl.intentModes.${opt}`, opt)}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </SectionCard>
@@ -294,6 +317,7 @@ function KernelEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }>) {
+  const kernelOptions = withCurrentOption(options.kernels, data.kernel as string | undefined);
   return (
     <SectionCard
       type="kernel"
@@ -309,7 +333,7 @@ function KernelEditor({
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="bg-slate-900 border-green-500/30 text-green-100">
-          {options.kernels.map((opt) => (
+          {kernelOptions.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-green-500/20">
               {translateOption(t, `workflowControl.kernelTypes.${opt}`, opt)}
             </SelectItem>
@@ -362,15 +386,24 @@ function ProviderEditor({
 }>) {
   const provider = (data.provider as { active?: string; sourceType?: SourceTypeLike } | undefined) ?? {};
   const providerBySource = options.providersBySource ?? DEFAULT_OPTIONS.providersBySource;
+  const nodeSourceType = data.sourceType as SourceTypeLike | undefined;
+  const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
   const inferSource = (value: string | undefined): SourceType => {
     if (value && providerBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
-  const sourceType: SourceType = provider.sourceType
-    ? normalizeSourceType(provider.sourceType)
-    : inferSource(provider.active);
-  const sourceProviders = providerBySource[sourceType];
-  const safeActive = provider.active && sourceProviders.includes(provider.active) ? provider.active : "";
+  let sourceType: SourceType;
+  if (provider.sourceType) {
+    sourceType = normalizeSourceType(provider.sourceType);
+  } else if (nodeSourceType) {
+    sourceType = normalizeSourceType(nodeSourceType);
+  } else if (nodeSourceTag) {
+    sourceType = normalizeSourceType(nodeSourceTag);
+  } else {
+    sourceType = inferSource(provider.active);
+  }
+  const sourceProviders = withCurrentOption(providerBySource[sourceType], provider.active);
+  const safeActive = provider.active ?? "";
 
   return (
     <SectionCard
@@ -434,15 +467,22 @@ function EmbeddingEditor({
   t: (path: string) => string;
 }>) {
   const modelsBySource = options.modelsBySource ?? DEFAULT_OPTIONS.modelsBySource;
+  const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
   const inferSource = (value: string | undefined): SourceType => {
     if (value && modelsBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
-  const sourceType: SourceType = (data.sourceType as SourceTypeLike | undefined)
-    ? normalizeSourceType(data.sourceType as SourceTypeLike)
-    : inferSource(data.model as string | undefined);
-  const sourceModels = modelsBySource[sourceType];
-  const safeModel = (data.model as string | undefined) && sourceModels.includes(data.model as string) ? (data.model as string) : "";
+  const dataSourceType = data.sourceType as SourceTypeLike | undefined;
+  let sourceType: SourceType;
+  if (dataSourceType) {
+    sourceType = normalizeSourceType(dataSourceType);
+  } else if (nodeSourceTag) {
+    sourceType = normalizeSourceType(nodeSourceTag);
+  } else {
+    sourceType = inferSource(data.model as string | undefined);
+  }
+  const sourceModels = withCurrentOption(modelsBySource[sourceType], data.model as string | undefined);
+  const safeModel = (data.model as string | undefined) ?? "";
 
   return (
     <SectionCard
@@ -459,9 +499,11 @@ function EmbeddingEditor({
         onValueChange={(val) => {
           const nextSource = normalizeSourceType(val as SourceTypeLike);
           const nextModels = modelsBySource[nextSource];
-          const nextModel = (data.model as string | undefined) && nextModels.includes(data.model as string)
-            ? (data.model as string)
-            : "";
+          const currentModel = data.model as string | undefined;
+          let nextModel = "";
+          if (currentModel && nextModels.includes(currentModel)) {
+            nextModel = currentModel;
+          }
           onUpdate("sourceType", nextSource);
           onUpdate("model", nextModel);
         }}
@@ -531,7 +573,7 @@ export function PropertyPanel({
       return <DecisionEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
     }
     if (nodeType === "intent") {
-      return <IntentEditor data={data} onUpdate={handleUpdate} t={t} />;
+      return <IntentEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
     }
     if (nodeType === "kernel") {
       return <KernelEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;

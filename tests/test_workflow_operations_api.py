@@ -35,8 +35,7 @@ class TestPauseEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Now pause via API
         request = {"workflow_id": workflow_id, "operation": "pause", "metadata": {}}
@@ -52,7 +51,7 @@ class TestPauseEndpoint:
         assert "successfully" in data["message"].lower()
 
     def test_pause_idle_workflow_returns_error(self, client, workflow_id):
-        """Test that pausing IDLE workflow returns proper error response."""
+        """Pausing an unregistered workflow returns resource_not_found (PR 204)."""
         request = {"workflow_id": workflow_id, "operation": "pause", "metadata": {}}
 
         response = client.post("/api/v1/workflow/operations/pause", json=request)
@@ -61,7 +60,7 @@ class TestPauseEndpoint:
         data = response.json()
 
         assert data["status"] == WorkflowStatus.IDLE.value
-        assert data["reason_code"] == "forbidden_transition"
+        assert data["reason_code"] == "resource_not_found"
 
 
 class TestResumeEndpoint:
@@ -75,8 +74,7 @@ class TestResumeEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.PAUSED.value
+        service.register_workflow(workflow_id, WorkflowStatus.PAUSED)
 
         # Resume via API
         request = {"workflow_id": workflow_id, "operation": "resume", "metadata": {}}
@@ -98,8 +96,7 @@ class TestResumeEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         request = {"workflow_id": workflow_id, "operation": "resume", "metadata": {}}
 
@@ -121,8 +118,7 @@ class TestCancelEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Cancel via API
         request = {"workflow_id": workflow_id, "operation": "cancel", "metadata": {}}
@@ -144,8 +140,7 @@ class TestCancelEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.PAUSED.value
+        service.register_workflow(workflow_id, WorkflowStatus.PAUSED)
 
         request = {"workflow_id": workflow_id, "operation": "cancel", "metadata": {}}
 
@@ -167,8 +162,7 @@ class TestRetryEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.FAILED.value
+        service.register_workflow(workflow_id, WorkflowStatus.FAILED)
 
         # Retry via API
         request = {"workflow_id": workflow_id, "operation": "retry", "metadata": {}}
@@ -190,8 +184,7 @@ class TestRetryEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.FAILED.value
+        service.register_workflow(workflow_id, WorkflowStatus.FAILED)
 
         # Retry from specific step
         request = {
@@ -217,8 +210,7 @@ class TestRetryEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.CANCELLED.value
+        service.register_workflow(workflow_id, WorkflowStatus.CANCELLED)
 
         request = {"workflow_id": workflow_id, "operation": "retry", "metadata": {}}
 
@@ -234,6 +226,14 @@ class TestDryRunEndpoint:
 
     def test_dry_run_execution(self, client, workflow_id):
         """Test dry-run execution via API."""
+        # Register workflow first (unregistered UUIDs are now rejected)
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
+
+        service = get_workflow_operation_service()
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
+
         request = {"workflow_id": workflow_id, "operation": "dry_run", "metadata": {}}
 
         response = client.post("/api/v1/workflow/operations/dry-run", json=request)
@@ -254,8 +254,7 @@ class TestDryRunEndpoint:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Perform dry-run
         request = {"workflow_id": workflow_id, "operation": "dry_run", "metadata": {}}
@@ -281,9 +280,8 @@ class TestWorkflowOperationsIntegration:
 
         service = get_workflow_operation_service()
 
-        # Start workflow
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        # Register and start workflow
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Pause
         pause_request = {
@@ -316,8 +314,7 @@ class TestWorkflowOperationsIntegration:
         )
 
         service = get_workflow_operation_service()
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Pause with metadata
         request = {

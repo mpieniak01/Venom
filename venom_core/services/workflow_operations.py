@@ -176,7 +176,11 @@ class WorkflowOperationService:
             )
 
         with self._lock:
-            workflow = self._get_or_create_workflow(workflow_id)
+            workflow = self._get_workflow(workflow_id)
+            if workflow is None:
+                return self._workflow_not_found_response(
+                    workflow_uuid, WorkflowOperation.PAUSE, workflow_id, metadata
+                )
             current_state = WorkflowStatus(workflow["status"])
 
             # Validate transition
@@ -262,7 +266,11 @@ class WorkflowOperationService:
             )
 
         with self._lock:
-            workflow = self._get_or_create_workflow(workflow_id)
+            workflow = self._get_workflow(workflow_id)
+            if workflow is None:
+                return self._workflow_not_found_response(
+                    workflow_uuid, WorkflowOperation.RESUME, workflow_id, metadata
+                )
             current_state = WorkflowStatus(workflow["status"])
 
             if not WorkflowStateMachine.is_valid_transition(
@@ -345,7 +353,11 @@ class WorkflowOperationService:
             )
 
         with self._lock:
-            workflow = self._get_or_create_workflow(workflow_id)
+            workflow = self._get_workflow(workflow_id)
+            if workflow is None:
+                return self._workflow_not_found_response(
+                    workflow_uuid, WorkflowOperation.CANCEL, workflow_id, metadata
+                )
             current_state = WorkflowStatus(workflow["status"])
 
             if not WorkflowStateMachine.is_valid_transition(
@@ -432,7 +444,14 @@ class WorkflowOperationService:
             )
 
         with self._lock:
-            workflow = self._get_or_create_workflow(workflow_id)
+            workflow = self._get_workflow(workflow_id)
+            if workflow is None:
+                return self._workflow_not_found_response(
+                    workflow_uuid,
+                    WorkflowOperation.RETRY,
+                    workflow_id,
+                    {"step_id": step_id, **(metadata or {})},
+                )
             current_state = WorkflowStatus(workflow["status"])
 
             if not WorkflowStateMachine.is_valid_transition(
@@ -520,7 +539,11 @@ class WorkflowOperationService:
             )
 
         with self._lock:
-            workflow = self._get_or_create_workflow(workflow_id)
+            workflow = self._get_workflow(workflow_id)
+            if workflow is None:
+                return self._workflow_not_found_response(
+                    workflow_uuid, WorkflowOperation.DRY_RUN, workflow_id, metadata
+                )
             current_state = WorkflowStatus(workflow["status"])
 
             self._audit_trail.log_operation(
@@ -558,10 +581,12 @@ class WorkflowOperationService:
             workflow_id: UUID of the workflow
 
         Returns:
-            Current WorkflowStatus
+            Current WorkflowStatus, or IDLE if workflow is not registered
         """
         with self._lock:
-            workflow = self._get_or_create_workflow(workflow_id)
+            workflow = self._get_workflow(workflow_id)
+            if workflow is None:
+                return WorkflowStatus.IDLE
             return WorkflowStatus(workflow["status"])
 
     def get_latest_workflow_status(self) -> WorkflowStatus:
@@ -579,23 +604,85 @@ class WorkflowOperationService:
             except (KeyError, ValueError):
                 return WorkflowStatus.IDLE
 
-    def _get_or_create_workflow(self, workflow_id: str) -> dict[str, Any]:
-        """Get or create workflow record.
+    def _get_workflow(self, workflow_id: str) -> Optional[dict[str, Any]]:
+        """Get existing workflow record, or None if not registered.
 
         Args:
             workflow_id: UUID of the workflow
 
         Returns:
-            Workflow record dictionary
+            Workflow record dictionary, or None if workflow is not registered
         """
-        if workflow_id not in self._workflows:
-            self._workflows[workflow_id] = {
-                "id": workflow_id,
-                "status": WorkflowStatus.IDLE.value,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-        return self._workflows[workflow_id]
+        return self._workflows.get(workflow_id)
+
+    def register_workflow(
+        self,
+        workflow_id: str,
+        initial_status: WorkflowStatus = WorkflowStatus.IDLE,
+    ) -> None:
+        """Register a new workflow record (explicit creation only).
+
+        Args:
+            workflow_id: UUID of the workflow to register
+            initial_status: Initial status for the workflow (default IDLE)
+        """
+        with self._lock:
+            if workflow_id not in self._workflows:
+                self._workflows[workflow_id] = {
+                    "id": workflow_id,
+                    "status": initial_status.value,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+    def sync_workflow_status(
+        self,
+        workflow_id: str,
+        new_status: WorkflowStatus,
+    ) -> None:
+        """Sync workflow status from external trace — always overwrites existing state.
+
+        Unlike register_workflow (which is idempotent), this method forces a status
+        update so that terminal trace states (COMPLETED, FAILED) are reflected even
+        when the workflow record was previously RUNNING or PAUSED.
+
+        Args:
+            workflow_id: UUID of the workflow to update
+            new_status: New status to apply (typically a terminal WorkflowStatus)
+        """
+        with self._lock:
+            now = datetime.now(timezone.utc).isoformat()
+            if workflow_id in self._workflows:
+                self._workflows[workflow_id]["status"] = new_status.value
+                self._workflows[workflow_id]["updated_at"] = now
+            else:
+                self._workflows[workflow_id] = {
+                    "id": workflow_id,
+                    "status": new_status.value,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+
+    def _workflow_not_found_response(
+        self,
+        workflow_uuid: uuid.UUID,
+        operation: WorkflowOperation,
+        workflow_id: str,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> WorkflowOperationResponse:
+        """Return a structured response when workflow is not registered."""
+        return WorkflowOperationResponse(
+            workflow_id=workflow_uuid,
+            operation=operation,
+            status=WorkflowStatus.IDLE,
+            reason_code=ReasonCode.RESOURCE_NOT_FOUND,
+            message=(
+                f"Workflow {workflow_id} is not registered. "
+                "Only registered workflows can be operated on."
+            ),
+            timestamp=datetime.now(timezone.utc),
+            metadata=metadata or {},
+        )
 
 
 # Singleton instance

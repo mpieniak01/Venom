@@ -60,6 +60,11 @@ export const workflowControl =
       selectProvider: "Provider wählen",
       draftSetup: "Entwurfskonfiguration",
       runtimeControl: "Prozesssteuerung",
+      runtimeContext: "Runtime-Kontext",
+      requestId: "Anfrage-ID",
+      runtimeId: "Runtime-ID",
+      provider: "Provider",
+      model: "Modell",
     },
     strategies: {
       standard: "Standard",
@@ -128,6 +133,10 @@ export const workflowControl =
       edit: "Bearbeiten",
       details: "Details",
       stop: "Stoppen",
+      planReady: "Plan ist bereit",
+      planReadyHint: "Prüfe die Änderungen und bestätige das Anwenden.",
+      apply: "Anwenden",
+      discard: "Verwerfen",
     },
     operations: {
       title: "Workflow-Operationen",
@@ -170,5 +179,6 @@ export const workflowControl =
       dryRunSuccess: "Probelauf abgeschlossen",
       dryRunError: "Fehler beim Probelauf",
       invalidStatePayload: "Ungültige Workflow-Statusdaten aus der API",
+      noActiveRequest: "Keine aktive Anfrage für diese Operation verfügbar",
     },
   };

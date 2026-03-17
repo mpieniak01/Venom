@@ -6,7 +6,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.api.model_schemas.workflow_control import ApplyMode, ReasonCode
+from venom_core.api.model_schemas.workflow_control import (
+    ApplyMode,
+    ReasonCode,
+    WorkflowStatus,
+)
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.main import app
 
@@ -409,6 +413,123 @@ class TestStateEndpoint:
         assert state["provider"]["active"] == "ollama"
         assert state["health"]["overall"] in {"healthy", "degraded", "critical"}
 
+    def test_state_exposes_pr204_fields_with_defaults(self, client, monkeypatch):
+        """PR 204 real-state parity fields must be present in state response.
+
+        Without an active tracer the fields default to None/empty-list,
+        not omitted, to keep the frontend contract stable.
+        """
+        import venom_core.services.control_plane as control_plane_module
+
+        # Simulate environment with no tracer (no request history)
+        monkeypatch.setattr(control_plane_module, "get_request_tracer", lambda: None)
+
+        response = client.get("/api/v1/workflow/control/state")
+        assert response.status_code == 200
+        state = response.json()["system_state"]
+
+        # New PR 204 fields: null when no tracer is active
+        assert "active_request_id" in state
+        assert "active_task_status" in state
+        assert "llm_runtime_id" in state
+        assert "llm_provider_name" in state
+        assert "llm_model" in state
+        assert state["active_request_id"] is None
+        assert state["active_task_status"] is None
+        assert state["llm_runtime_id"] is None
+        assert state["llm_provider_name"] is None
+        assert state["llm_model"] is None
+
+        # allowed_operations must be present and empty when no active request
+        assert "allowed_operations" in state
+        assert isinstance(state["allowed_operations"], list)
+        assert state["allowed_operations"] == []
+
+    def test_state_allows_retry_for_failed_workflow(self, client, monkeypatch):
+        """FAILED workflow should expose retry in allowed_operations."""
+        import venom_core.services.control_plane as control_plane_module
+        import venom_core.services.workflow_operations as workflow_operations_module
+
+        class FakeTracer:
+            def get_all_traces(self, limit=1):
+                assert limit == 1
+                return [
+                    SimpleNamespace(
+                        request_id="1e18dd58-6f3e-4efe-95da-8c5c33ee1871",
+                        status=SimpleNamespace(value="FAILED"),
+                        llm_runtime_id="ollama@http://localhost:11434/v1",
+                        llm_provider="ollama",
+                        llm_model="deepseek-r1:8b",
+                    )
+                ]
+
+        class FakeWorkflowService:
+            def register_workflow(self, workflow_id: str, status: WorkflowStatus):
+                self.workflow_id = workflow_id
+                self.status = status
+
+            def sync_workflow_status(self, workflow_id: str, status: WorkflowStatus):
+                self.workflow_id = workflow_id
+                self.status = status
+
+            def get_workflow_status(self, _workflow_id: str) -> WorkflowStatus:
+                return WorkflowStatus.FAILED
+
+            def get_latest_workflow_status(self) -> WorkflowStatus:
+                return WorkflowStatus.IDLE
+
+        monkeypatch.setattr(
+            control_plane_module, "get_request_tracer", lambda: FakeTracer()
+        )
+        monkeypatch.setattr(
+            workflow_operations_module,
+            "get_workflow_service",
+            lambda: FakeWorkflowService(),
+        )
+
+        response = client.get("/api/v1/workflow/control/state")
+        assert response.status_code == 200
+        state = response.json()["system_state"]
+        assert state["workflow_status"] == WorkflowStatus.FAILED.value
+        assert state["allowed_operations"] == ["retry", "dry_run"]
+
+    def test_state_handles_runtime_tracer_errors(self, client, monkeypatch):
+        """Tracer runtime errors should not fail state endpoint."""
+        import venom_core.services.control_plane as control_plane_module
+        import venom_core.services.workflow_operations as workflow_operations_module
+
+        class BrokenTracer:
+            def get_all_traces(self, limit=1):
+                raise RuntimeError("tracer backend unavailable")
+
+        class FakeWorkflowService:
+            def get_latest_workflow_status(self) -> WorkflowStatus:
+                return WorkflowStatus.IDLE
+
+            def get_workflow_status(self, _workflow_id: str) -> WorkflowStatus:
+                return WorkflowStatus.IDLE
+
+            def register_workflow(self, _workflow_id: str, _status: WorkflowStatus):
+                return None
+
+            def sync_workflow_status(self, _workflow_id: str, _status: WorkflowStatus):
+                return None
+
+        monkeypatch.setattr(
+            control_plane_module, "get_request_tracer", lambda: BrokenTracer()
+        )
+        monkeypatch.setattr(
+            workflow_operations_module,
+            "get_workflow_service",
+            lambda: FakeWorkflowService(),
+        )
+
+        response = client.get("/api/v1/workflow/control/state")
+        assert response.status_code == 200
+        state = response.json()["system_state"]
+        assert state["workflow_status"] == WorkflowStatus.IDLE.value
+        assert state["allowed_operations"] == []
+
 
 class TestOptionsEndpoint:
     """Test /api/v1/workflow/control/options endpoint."""
@@ -418,6 +539,9 @@ class TestOptionsEndpoint:
         assert response.status_code == 200
 
         data = response.json()
+        assert "decision_strategies" in data
+        assert "intent_modes" in data
+        assert "kernels" in data
         assert data["provider_sources"] == ["local", "cloud"]
         assert data["embedding_sources"] == ["local", "cloud"]
 
@@ -429,6 +553,9 @@ class TestOptionsEndpoint:
         assert isinstance(data["providers"]["cloud"], list)
         assert isinstance(data["embeddings"]["local"], list)
         assert isinstance(data["embeddings"]["cloud"], list)
+        assert isinstance(data["decision_strategies"], list)
+        assert isinstance(data["intent_modes"], list)
+        assert isinstance(data["kernels"], list)
 
         assert data["active"]["provider_source"] in {"local", "cloud"}
         assert data["active"]["embedding_source"] in {"local", "cloud"}

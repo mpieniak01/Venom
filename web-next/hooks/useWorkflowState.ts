@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getApiBaseUrl } from "@/lib/env";
 import type {
@@ -11,49 +11,13 @@ import type {
   WorkflowControlOptions,
 } from "@/types/workflow-control";
 
-const WORKFLOW_STORAGE_KEY = "workflow_control_id";
 const WORKFLOW_STATE_CACHE_KEY = "workflow_control_state_cache_v1";
 const WORKFLOW_OPTIONS_CACHE_KEY = "workflow_control_options_cache_v1";
 const WORKFLOW_CACHE_TTL_MS = 60_000;
-const DEFAULT_WORKFLOW_ID = "00000000-0000-0000-0000-000000000001";
 
 const buildApiUrl = (path: string): string => {
   const baseUrl = getApiBaseUrl();
   return baseUrl ? `${baseUrl}${path}` : path;
-};
-
-function createUuidV4(): string {
-  const cryptoApi = globalThis.crypto;
-  if (!cryptoApi) return DEFAULT_WORKFLOW_ID;
-
-  if (typeof cryptoApi.randomUUID === "function") {
-    return cryptoApi.randomUUID();
-  }
-
-  if (typeof cryptoApi.getRandomValues === "function") {
-    const bytes = new Uint8Array(16);
-    cryptoApi.getRandomValues(bytes);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-  }
-
-  return DEFAULT_WORKFLOW_ID;
-}
-
-// Generate a valid UUID v4 for the workflow
-// In production, this should come from the backend or be persisted
-const getOrCreateWorkflowId = (): string => {
-  if (globalThis.window === undefined) return DEFAULT_WORKFLOW_ID;
-
-  const stored = globalThis.window.localStorage.getItem(WORKFLOW_STORAGE_KEY);
-  if (stored) return stored;
-
-  const uuid = createUuidV4();
-  globalThis.window.localStorage.setItem(WORKFLOW_STORAGE_KEY, uuid);
-  return uuid;
 };
 
 export async function readApiErrorMessage(response: Response, fallback: string): Promise<string> {
@@ -246,145 +210,68 @@ export function useWorkflowState() {
     }
   }, [t]);
 
-  // Pause workflow
-  const pauseWorkflow = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const workflowId = getOrCreateWorkflowId();
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/pause"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "pause",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.pauseError")));
+  // Shared helper for all runtime workflow operations — avoids copy-pasting
+  // the workflowId guard, loading flag, and error handling across 5 callbacks.
+  const executeWorkflowOperation = useCallback(
+    async (urlSegment: string, operation: string, errorKey: string): Promise<void> => {
+      const workflowId = systemState?.active_request_id;
+      if (!workflowId) {
+        setError(t("workflowControl.messages.noActiveRequest"));
+        return;
       }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.pauseError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchSystemState, t]);
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/v1/workflow/operations/${urlSegment}`),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workflow_id: workflowId, operation }),
+          }
+        );
+        if (!response.ok) {
+          throw new Error(await readApiErrorMessage(response, t(errorKey)));
+        }
+        await fetchSystemState();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t(errorKey));
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [systemState, fetchSystemState, t]
+  );
+
+  // Pause workflow
+  const pauseWorkflow = useCallback(
+    () => executeWorkflowOperation("pause", "pause", "workflowControl.messages.pauseError"),
+    [executeWorkflowOperation]
+  );
 
   // Resume workflow
-  const resumeWorkflow = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const workflowId = getOrCreateWorkflowId();
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/resume"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "resume",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.resumeError")));
-      }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.resumeError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchSystemState, t]);
+  const resumeWorkflow = useCallback(
+    () => executeWorkflowOperation("resume", "resume", "workflowControl.messages.resumeError"),
+    [executeWorkflowOperation]
+  );
 
   // Cancel workflow
-  const cancelWorkflow = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const workflowId = getOrCreateWorkflowId();
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/cancel"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "cancel",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.cancelError")));
-      }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.cancelError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchSystemState, t]);
+  const cancelWorkflow = useCallback(
+    () => executeWorkflowOperation("cancel", "cancel", "workflowControl.messages.cancelError"),
+    [executeWorkflowOperation]
+  );
 
   // Retry workflow
-  const retryWorkflow = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const workflowId = getOrCreateWorkflowId();
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/retry"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "retry",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.retryError")));
-      }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.retryError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchSystemState, t]);
+  const retryWorkflow = useCallback(
+    () => executeWorkflowOperation("retry", "retry", "workflowControl.messages.retryError"),
+    [executeWorkflowOperation]
+  );
 
   // Dry run
-  const dryRun = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const workflowId = getOrCreateWorkflowId();
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/dry-run"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "dry_run",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.dryRunError")));
-      }
-      await response.json();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.dryRunError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [t]);
+  const dryRun = useCallback(
+    () => executeWorkflowOperation("dry-run", "dry_run", "workflowControl.messages.dryRunError"),
+    [executeWorkflowOperation]
+  );
 
   // Initial load and polling
   useEffect(() => {
@@ -406,15 +293,48 @@ export function useWorkflowState() {
 
   // Draft State Management
   const [draftState, setDraftState] = useState<SystemState | null>(null);
+  // Snapshot helper: include only user-configurable fields (exclude telemetry).
+  // Used consistently for both rebase detection and hasChanges to keep them in sync.
+  const snapshotConfig = useCallback((s: SystemState) => ({
+    decision_strategy: s.decision_strategy,
+    intent_mode: s.intent_mode,
+    kernel: s.kernel,
+    embedding_model: s.embedding_model,
+    provider_active: s.provider?.active,
+    provider_source: s.provider_source,
+    embedding_source: s.embedding_source,
+  }), []);
+  // Tracks the last server configuration snapshot that draft was initialized/rebased to.
+  // Stores only user-configurable fields so telemetry changes don't falsely block rebase.
+  const lastServerStateRef = useRef<string | null>(null);
 
-  // Sync draft with system state initially
+  // Sync draft with system state: rebase only when user has no local edits.
   useEffect(() => {
-    if (systemState && !draftState) {
+    if (!systemState) return;
+    const serializedNew = stableSerialize(snapshotConfig(systemState));
+    if (!draftState) {
+      // First load: initialize draft from server state
+      setDraftState(cloneState(systemState));
+      lastServerStateRef.current = serializedNew;
+      return;
+    }
+    // If draft's configuration still matches the previous server snapshot, user hasn't edited — rebase.
+    if (stableSerialize(snapshotConfig(draftState)) === lastServerStateRef.current) {
       setDraftState(cloneState(systemState));
     }
-  }, [systemState, draftState]);
+    // Always advance the reference regardless of rebase decision.
+    lastServerStateRef.current = serializedNew;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [systemState]);
 
-  const hasChanges = JSON.stringify(systemState) !== JSON.stringify(draftState);
+  // hasChanges: compare only user-configurable fields, not telemetry.
+  const hasChanges = (() => {
+    if (!systemState || !draftState) return false;
+    return (
+      stableSerialize(snapshotConfig(systemState)) !==
+      stableSerialize(snapshotConfig(draftState))
+    );
+  })();
 
   const updateNode = useCallback((nodeId: string, data: unknown) => {
     setDraftState((prev) => {

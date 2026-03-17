@@ -35,6 +35,9 @@ export type PlanRequest = ApiSchemas["ControlPlanRequest"];
 export type WorkflowControlSourceCatalog = ApiSchemas["ControlOptionsCatalog"];
 
 export type WorkflowControlOptions = ApiSchemas["ControlOptionsResponse"] & {
+  decision_strategies?: string[];
+  intent_modes?: string[];
+  kernels?: string[];
   active: {
     provider_source: SourceType;
     embedding_source: SourceType;

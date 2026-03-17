@@ -971,6 +971,13 @@ class ControlPlaneService:
         embedding_compatibility = (
             self._compatibility_validator.matrix.embedding_compatibility
         )
+        decision_strategies = ["standard", "advanced", "heuristic"]
+        intent_modes = sorted(
+            list(self._compatibility_validator.matrix.intent_mode_requirements.keys())
+        )
+        kernels = sorted(
+            list(self._compatibility_validator.matrix.kernel_runtime.keys())
+        )
 
         providers_local: list[str] = []
         providers_cloud: list[str] = []
@@ -998,6 +1005,9 @@ class ControlPlaneService:
         active_embedding = str(state.embedding_model or "")
 
         return {
+            "decision_strategies": decision_strategies,
+            "intent_modes": intent_modes,
+            "kernels": kernels,
             "provider_sources": ["local", "cloud"],
             "embedding_sources": ["local", "cloud"],
             "providers": {

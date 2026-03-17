@@ -539,6 +539,9 @@ class TestOptionsEndpoint:
         assert response.status_code == 200
 
         data = response.json()
+        assert "decision_strategies" in data
+        assert "intent_modes" in data
+        assert "kernels" in data
         assert data["provider_sources"] == ["local", "cloud"]
         assert data["embedding_sources"] == ["local", "cloud"]
 
@@ -550,6 +553,9 @@ class TestOptionsEndpoint:
         assert isinstance(data["providers"]["cloud"], list)
         assert isinstance(data["embeddings"]["local"], list)
         assert isinstance(data["embeddings"]["cloud"], list)
+        assert isinstance(data["decision_strategies"], list)
+        assert isinstance(data["intent_modes"], list)
+        assert isinstance(data["kernels"], list)
 
         assert data["active"]["provider_source"] in {"local", "cloud"}
         assert data["active"]["embedding_source"] in {"local", "cloud"}

@@ -9,6 +9,7 @@ import { ApplyResultsModal } from "./ApplyResultsModal";
 import { useWorkflowState } from "@/hooks/useWorkflowState";
 import { useTranslation } from "@/lib/i18n";
 import { shouldShowApplyResultsModal, generatePlanRequest } from "@/lib/workflow-control-ui-helpers";
+import { buildPropertyPanelOptions } from "@/lib/workflow-control-options";
 import type { ApplyResults, PlanResponse } from "@/types/workflow-control";
 import type { Node } from "@xyflow/react";
 
@@ -37,6 +38,11 @@ export function WorkflowControlView() {
   const [applyResults, setApplyResults] = useState<ApplyResults | null>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [pendingPlanResult, setPendingPlanResult] = useState<PlanResponse | null>(null);
+  const propertyPanelOptions = buildPropertyPanelOptions(
+    controlOptions,
+    systemState,
+    draftState
+  );
 
   const handleUpdateNode = useCallback(
     (nodeId: string, data: unknown) => {
@@ -116,16 +122,7 @@ export function WorkflowControlView() {
             <PropertyPanel
               selectedNode={selectedNode}
               onUpdateNode={handleUpdateNode}
-              availableOptions={controlOptions ? {
-                providersBySource: {
-                  local: controlOptions.providers.local ?? [],
-                  cloud: controlOptions.providers.cloud ?? [],
-                },
-                modelsBySource: {
-                  local: controlOptions.embeddings.local ?? [],
-                  cloud: controlOptions.embeddings.cloud ?? [],
-                },
-              } : undefined}
+              availableOptions={propertyPanelOptions}
             />
           </div>
           <WorkflowConsole

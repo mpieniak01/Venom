@@ -223,6 +223,9 @@ class ControlOptionsActive(BaseModel):
 class ControlOptionsResponse(BaseModel):
     """Response with workflow control option catalogs."""
 
+    decision_strategies: list[str] = Field(default_factory=list)
+    intent_modes: list[str] = Field(default_factory=list)
+    kernels: list[str] = Field(default_factory=list)
     provider_sources: list[str] = Field(default_factory=lambda: ["local", "cloud"])
     embedding_sources: list[str] = Field(default_factory=lambda: ["local", "cloud"])
     providers: ControlOptionsCatalog

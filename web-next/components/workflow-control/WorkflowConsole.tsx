@@ -59,7 +59,7 @@ export function WorkflowConsole({
     const canPause = allowedOperations.includes("pause");
     const canResume = allowedOperations.includes("resume");
     const canCancel = allowedOperations.includes("cancel");
-    const canRetry = allowedOperations.includes("retry") || isFailed;
+    const canRetry = allowedOperations.includes("retry");
 
     let statusColorClass = "text-slate-400";
     if (isRunning) {
@@ -225,7 +225,7 @@ export function WorkflowConsole({
                         size="sm"
                         className="w-full text-xs h-10 border border-white/5 hover:bg-white/5 col-span-2 mt-1"
                         onClick={onDryRun}
-                        disabled={isLoading || !activeRequestId}
+                        disabled={isLoading || !(allowedOperations.includes("dry-run") || allowedOperations.includes("dry_run"))}
                     >
                         <Bug className="w-3.5 h-3.5 mr-2" />
                         {t("workflowControl.actions.dryRun")}

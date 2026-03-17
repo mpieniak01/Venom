@@ -9,7 +9,7 @@ import { ApplyResultsModal } from "./ApplyResultsModal";
 import { useWorkflowState } from "@/hooks/useWorkflowState";
 import { useTranslation } from "@/lib/i18n";
 import { shouldShowApplyResultsModal, generatePlanRequest } from "@/lib/workflow-control-ui-helpers";
-import type { ApplyResults } from "@/types/workflow-control";
+import type { ApplyResults, PlanResponse } from "@/types/workflow-control";
 import type { Node } from "@xyflow/react";
 
 export function WorkflowControlView() {
@@ -36,11 +36,13 @@ export function WorkflowControlView() {
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [applyResults, setApplyResults] = useState<ApplyResults | null>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [pendingPlanResult, setPendingPlanResult] = useState<import("@/types/workflow-control").PlanResponse | null>(null);
+  const [pendingPlanResult, setPendingPlanResult] = useState<PlanResponse | null>(null);
 
   const handleUpdateNode = useCallback(
     (nodeId: string, data: unknown) => {
       updateNode(nodeId, data);
+      // Any edit to the draft invalidates the previously planned result.
+      setPendingPlanResult(null);
       setSelectedNode((prev) => {
         if (prev?.id !== nodeId) return prev;
         return {
@@ -49,7 +51,7 @@ export function WorkflowControlView() {
         };
       });
     },
-    [updateNode]
+    [updateNode, setPendingPlanResult]
   );
 
   // Step 1: Plan — only computes diff and stores result for user review.
@@ -57,14 +59,18 @@ export function WorkflowControlView() {
     if (!systemState || !draftState) return;
 
     const planReq = generatePlanRequest(systemState, draftState);
-    if (planReq.changes.length === 0) return;
+    if (planReq.changes.length === 0) {
+      // No changes for this draft; clear any previously pending plan.
+      setPendingPlanResult(null);
+      return;
+    }
 
     const planResult = await planChanges(planReq);
     if (planResult?.valid) {
       // Store result; user must explicitly confirm to Apply.
       setPendingPlanResult(planResult);
     }
-  }, [systemState, draftState, planChanges]);
+  }, [systemState, draftState, planChanges, setPendingPlanResult]);
 
   // Step 2: Apply — only called after explicit user confirmation.
   const handleApplyConfirmed = useCallback(async () => {
@@ -76,12 +82,19 @@ export function WorkflowControlView() {
     refresh();
   }, [pendingPlanResult, applyChanges, refresh]);
 
+  // Wrap reset so any pending plan is also cleared (reset reverts draft to server
+  // state, making a previously computed plan obsolete immediately).
+  const handleReset = useCallback(() => {
+    reset();
+    setPendingPlanResult(null);
+  }, [reset]);
+
   return (
     <div className="flex flex-col bg-background">
       <WorkflowHeader
         hasChanges={hasChanges}
         onPlanRequest={handlePlanRequest}
-        onReset={reset}
+        onReset={handleReset}
         isLoading={isLoading}
       />
 

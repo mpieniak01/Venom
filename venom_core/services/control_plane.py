@@ -563,15 +563,18 @@ class ControlPlaneService:
                     # Sync trace lifecycle with workflow service so that WF operations
                     # (pause/resume/cancel) target the real active request.
                     if active_task_status == "PROCESSING":
+                        # Only register if new — preserves PAUSED state set by user ops.
                         workflow_service.register_workflow(
                             active_request_id, WorkflowStatus.RUNNING
                         )
                     elif active_task_status == "COMPLETED":
-                        workflow_service.register_workflow(
+                        # Force-sync terminal state so WF service doesn't stay RUNNING.
+                        workflow_service.sync_workflow_status(
                             active_request_id, WorkflowStatus.COMPLETED
                         )
                     elif active_task_status == "FAILED":
-                        workflow_service.register_workflow(
+                        # Force-sync terminal state so WF service doesn't stay RUNNING.
+                        workflow_service.sync_workflow_status(
                             active_request_id, WorkflowStatus.FAILED
                         )
         except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
@@ -704,7 +707,9 @@ class ControlPlaneService:
         if workflow_status == WorkflowStatus.PAUSED:
             return ["resume", "cancel"]
         if workflow_status in {WorkflowStatus.FAILED, WorkflowStatus.CANCELLED}:
-            return ["retry"]
+            return ["retry", "dry-run"]
+        if workflow_status == WorkflowStatus.COMPLETED:
+            return ["dry-run"]
         return []
 
     def _validate_change(self, change: ResourceChange) -> dict[str, Any]:

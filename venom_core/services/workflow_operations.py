@@ -635,6 +635,34 @@ class WorkflowOperationService:
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
 
+    def sync_workflow_status(
+        self,
+        workflow_id: str,
+        new_status: WorkflowStatus,
+    ) -> None:
+        """Sync workflow status from external trace — always overwrites existing state.
+
+        Unlike register_workflow (which is idempotent), this method forces a status
+        update so that terminal trace states (COMPLETED, FAILED) are reflected even
+        when the workflow record was previously RUNNING or PAUSED.
+
+        Args:
+            workflow_id: UUID of the workflow to update
+            new_status: New status to apply (typically a terminal WorkflowStatus)
+        """
+        with self._lock:
+            now = datetime.now(timezone.utc).isoformat()
+            if workflow_id in self._workflows:
+                self._workflows[workflow_id]["status"] = new_status.value
+                self._workflows[workflow_id]["updated_at"] = now
+            else:
+                self._workflows[workflow_id] = {
+                    "id": workflow_id,
+                    "status": new_status.value,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+
     def _workflow_not_found_response(
         self,
         workflow_uuid: uuid.UUID,

@@ -413,6 +413,38 @@ class TestStateEndpoint:
         assert state["provider"]["active"] == "ollama"
         assert state["health"]["overall"] in {"healthy", "degraded", "critical"}
 
+    def test_state_exposes_pr204_fields_with_defaults(self, client, monkeypatch):
+        """PR 204 real-state parity fields must be present in state response.
+
+        Without an active tracer the fields default to None/empty-list,
+        not omitted, to keep the frontend contract stable.
+        """
+        import venom_core.services.control_plane as control_plane_module
+
+        # Simulate environment with no tracer (no request history)
+        monkeypatch.setattr(control_plane_module, "get_request_tracer", lambda: None)
+
+        response = client.get("/api/v1/workflow/control/state")
+        assert response.status_code == 200
+        state = response.json()["system_state"]
+
+        # New PR 204 fields: null when no tracer is active
+        assert "active_request_id" in state
+        assert "active_task_status" in state
+        assert "llm_runtime_id" in state
+        assert "llm_provider_name" in state
+        assert "llm_model" in state
+        assert state["active_request_id"] is None
+        assert state["active_task_status"] is None
+        assert state["llm_runtime_id"] is None
+        assert state["llm_provider_name"] is None
+        assert state["llm_model"] is None
+
+        # allowed_operations must be present and empty when no active request
+        assert "allowed_operations" in state
+        assert isinstance(state["allowed_operations"], list)
+        assert state["allowed_operations"] == []
+
     def test_state_allows_retry_for_failed_workflow(self, client, monkeypatch):
         """FAILED workflow should expose retry in allowed_operations."""
         import venom_core.services.control_plane as control_plane_module
@@ -436,6 +468,10 @@ class TestStateEndpoint:
                 self.workflow_id = workflow_id
                 self.status = status
 
+            def sync_workflow_status(self, workflow_id: str, status: WorkflowStatus):
+                self.workflow_id = workflow_id
+                self.status = status
+
             def get_workflow_status(self, _workflow_id: str) -> WorkflowStatus:
                 return WorkflowStatus.FAILED
 
@@ -455,7 +491,7 @@ class TestStateEndpoint:
         assert response.status_code == 200
         state = response.json()["system_state"]
         assert state["workflow_status"] == WorkflowStatus.FAILED.value
-        assert state["allowed_operations"] == ["retry"]
+        assert state["allowed_operations"] == ["retry", "dry-run"]
 
     def test_state_handles_runtime_tracer_errors(self, client, monkeypatch):
         """Tracer runtime errors should not fail state endpoint."""
@@ -474,6 +510,9 @@ class TestStateEndpoint:
                 return WorkflowStatus.IDLE
 
             def register_workflow(self, _workflow_id: str, _status: WorkflowStatus):
+                return None
+
+            def sync_workflow_status(self, _workflow_id: str, _status: WorkflowStatus):
                 return None
 
         monkeypatch.setattr(

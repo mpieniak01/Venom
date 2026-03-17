@@ -390,22 +390,33 @@ export function useWorkflowState() {
 
   // Draft State Management
   const [draftState, setDraftState] = useState<SystemState | null>(null);
-  // Tracks the last server-state that draft was initialized/rebased to.
-  // Used to detect whether the user has made local edits since the last poll.
+  // Snapshot helper: include only user-configurable fields (exclude telemetry).
+  // Used consistently for both rebase detection and hasChanges to keep them in sync.
+  const snapshotConfig = useCallback((s: SystemState) => ({
+    decision_strategy: s.decision_strategy,
+    intent_mode: s.intent_mode,
+    kernel: s.kernel,
+    embedding_model: s.embedding_model,
+    provider_active: s.provider?.active,
+    provider_source: s.provider_source,
+    embedding_source: s.embedding_source,
+  }), []);
+  // Tracks the last server configuration snapshot that draft was initialized/rebased to.
+  // Stores only user-configurable fields so telemetry changes don't falsely block rebase.
   const lastServerStateRef = useRef<string | null>(null);
 
   // Sync draft with system state: rebase only when user has no local edits.
   useEffect(() => {
     if (!systemState) return;
-    const serializedNew = stableSerialize(systemState);
+    const serializedNew = stableSerialize(snapshotConfig(systemState));
     if (!draftState) {
       // First load: initialize draft from server state
       setDraftState(cloneState(systemState));
       lastServerStateRef.current = serializedNew;
       return;
     }
-    // If draft still matches the previous server snapshot, user hasn't edited — rebase.
-    if (stableSerialize(draftState) === lastServerStateRef.current) {
+    // If draft's configuration still matches the previous server snapshot, user hasn't edited — rebase.
+    if (stableSerialize(snapshotConfig(draftState)) === lastServerStateRef.current) {
       setDraftState(cloneState(systemState));
     }
     // Always advance the reference regardless of rebase decision.
@@ -416,16 +427,10 @@ export function useWorkflowState() {
   // hasChanges: compare only user-configurable fields, not telemetry.
   const hasChanges = (() => {
     if (!systemState || !draftState) return false;
-    const snap = (s: SystemState) => ({
-      decision_strategy: s.decision_strategy,
-      intent_mode: s.intent_mode,
-      kernel: s.kernel,
-      embedding_model: s.embedding_model,
-      provider_active: s.provider?.active,
-      provider_source: s.provider_source,
-      embedding_source: s.embedding_source,
-    });
-    return stableSerialize(snap(systemState)) !== stableSerialize(snap(draftState));
+    return (
+      stableSerialize(snapshotConfig(systemState)) !==
+      stableSerialize(snapshotConfig(draftState))
+    );
   })();
 
   const updateNode = useCallback((nodeId: string, data: unknown) => {

@@ -707,9 +707,9 @@ class ControlPlaneService:
         if workflow_status == WorkflowStatus.PAUSED:
             return ["resume", "cancel"]
         if workflow_status in {WorkflowStatus.FAILED, WorkflowStatus.CANCELLED}:
-            return ["retry", "dry-run"]
+            return ["retry", "dry_run"]
         if workflow_status == WorkflowStatus.COMPLETED:
-            return ["dry-run"]
+            return ["dry_run"]
         return []
 
     def _validate_change(self, change: ResourceChange) -> dict[str, Any]:

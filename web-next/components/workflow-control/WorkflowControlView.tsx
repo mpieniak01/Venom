@@ -128,7 +128,7 @@ export function WorkflowControlView() {
           <WorkflowConsole
             hasChanges={hasChanges}
             onPlanRequest={handlePlanRequest}
-            onReset={reset}
+            onReset={handleReset}
             status={systemState?.workflow_status ?? "unknown"}
             allowedOperations={systemState?.allowed_operations ?? []}
             activeRequestId={systemState?.active_request_id ?? null}

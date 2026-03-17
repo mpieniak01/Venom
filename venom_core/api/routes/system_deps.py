@@ -5,9 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from venom_core.services.runtime_dependencies import (
-    get_request_tracer as _get_runtime_request_tracer,
-)
-from venom_core.services.runtime_dependencies import (
     set_request_tracer as _set_runtime_request_tracer,
 )
 
@@ -76,7 +73,7 @@ def get_model_manager():
 
 
 def get_request_tracer():
-    return _get_runtime_request_tracer()
+    return _request_tracer
 
 
 def get_hardware_bridge():

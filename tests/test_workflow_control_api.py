@@ -491,7 +491,7 @@ class TestStateEndpoint:
         assert response.status_code == 200
         state = response.json()["system_state"]
         assert state["workflow_status"] == WorkflowStatus.FAILED.value
-        assert state["allowed_operations"] == ["retry", "dry-run"]
+        assert state["allowed_operations"] == ["retry", "dry_run"]
 
     def test_state_handles_runtime_tracer_errors(self, client, monkeypatch):
         """Tracer runtime errors should not fail state endpoint."""

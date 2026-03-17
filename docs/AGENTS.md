@@ -14,29 +14,40 @@ If you are looking for the list of Venom system agents, use:
 - Make error paths explicit and covered by tests where practical.
 - Before running Python tooling, activate the repository virtualenv with `source .venv/bin/activate`.
 
-## One-Hour Delivery Contract (Mandatory)
+## Default Test Command (Use First)
+
+When test scope is unclear, start from this baseline:
+
+```bash
+source .venv/bin/activate
+pytest -q
+```
+
+## Delivery Contract Without Timeboxes (Mandatory)
 
 This section is the default execution mode for GitHub Coding Agent and takes priority over verbose exploration.
 
-Timeboxes:
+Wall-clock promises are forbidden for coding agents. Agent execution can be paused/resumed externally, so minute-based deadlines are not a reliable control mechanism.
 
-1. `0-5 min`: preflight only (`git status`, target files, required env/tool check).
-2. `5-25 min`: implement minimal end-to-end slice.
-3. `<=30 min`: create first commit (WIP is allowed if tests are not green yet).
-4. `30-50 min`: finish scope + targeted tests.
-5. `50-60 min`: run `make pr-fast`, fix blockers, publish final report.
+Progress checkpoints:
+
+1. preflight only (`git status`, target files, required env/tool check),
+2. implement minimal end-to-end slice,
+3. create first commit as soon as the first coherent slice is ready (WIP is allowed if tests are not green yet),
+4. finish scope + targeted tests,
+5. run `make pr-fast`, fix blockers, publish final report.
 
 Hard stop rules:
 
 1. No repeated repository exploration after implementation started.
 2. Max one sub-agent invocation per phase (explore/implement/verify).
-3. If no code change is produced within 15 minutes, stop and report blocker.
+3. If two consecutive work iterations produce no code change and no test delta, stop and report blocker.
 4. If the same gate fails twice without code/environment change, stop and report blocker.
 5. Do not run non-required heavy checks before `make pr-fast` is green.
 
 Commit discipline:
 
-1. First commit must appear within 30 minutes from session start.
+1. First commit must appear right after the first coherent slice is ready; do not batch everything at the end.
 2. Prefer 1-3 focused commits over one final giant commit.
 3. Do not postpone all commits until after long debugging loops.
 
@@ -96,7 +107,7 @@ Recommended pattern:
 
 ```bash
 set -euo pipefail
-cd /home/runner/work/Venom/Venom
+cd "$(git rev-parse --show-toplevel)"
 make pr-fast
 ```
 
@@ -104,7 +115,7 @@ Pattern with log tail (still safe):
 
 ```bash
 set -euo pipefail
-cd /home/runner/work/Venom/Venom
+cd "$(git rev-parse --show-toplevel)"
 make pr-fast 2>&1 | tail -n 200
 test ${PIPESTATUS[0]} -eq 0
 ```
@@ -113,6 +124,107 @@ Important:
 
 1. `... | tail ...` returns tail's status by default, not the original command status.
 2. Always use `set -o pipefail` and check `PIPESTATUS[0]` when command output is piped.
+
+## Test Execution Playbook (Mandatory, Exact Order)
+
+Run tests from repository root with active virtualenv:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+source .venv/bin/activate
+```
+
+1. Backend bootstrap (if environment is fresh/changed):
+
+```bash
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-ci-lite.txt
+```
+
+2. Frontend bootstrap (mandatory when `web-next` scope is touched):
+
+```bash
+npm --prefix web-next ci
+```
+
+3. Targeted test pass before hard gate:
+   - backend scope:
+
+```bash
+pytest -q tests/<path_or_file>.py
+```
+
+   - frontend scope:
+
+```bash
+make test-web-unit
+```
+
+   - when e2e scope is touched:
+
+```bash
+make test-web-e2e
+```
+
+4. Metadata/coverage diagnostics for changed Python code/tests:
+
+```bash
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+```
+
+5. Final mandatory gate (all non-markdown scopes):
+
+```bash
+make pr-fast
+```
+
+Default command profiles (use exactly one, based on scope):
+
+Python-only scope:
+
+```bash
+source .venv/bin/activate
+make test-ci-lite
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+make pr-fast
+```
+
+Frontend-only scope:
+
+```bash
+source .venv/bin/activate
+npm --prefix web-next ci
+make test-web-unit
+make pr-fast
+```
+
+Mixed backend+frontend scope:
+
+```bash
+source .venv/bin/activate
+npm --prefix web-next ci
+make test-web-unit
+make test-ci-lite
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+make pr-fast
+```
+
+Failure recovery for test metadata:
+
+```bash
+make test-catalog-sync
+make test-groups-sync
+make test-catalog-check
+make test-groups-check
+make check-new-code-coverage-diagnostics
+```
 
 ## Hard Gate Policy (Mandatory)
 
@@ -140,12 +252,12 @@ Environment blocker path:
 
 ## Two-Stage Quality Flow (GitHub Agent + Supervisor)
 
-To keep one-hour GitHub Coding Agent sessions productive, use two stages:
+To keep GitHub Coding Agent sessions productive and deterministic, use two stages:
 
 Stage A: Session Gate (GitHub Coding Agent, mandatory before handoff)
 
 1. implement the requested scope (no endless re-exploration),
-2. create at least one commit within 30 minutes,
+2. create at least one commit as soon as the first coherent slice is ready,
 3. run targeted tests for touched modules,
 4. run:
    - `make test-groups-check`

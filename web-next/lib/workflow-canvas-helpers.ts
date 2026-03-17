@@ -115,10 +115,9 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
       id: "provider",
       type: "provider",
       data: {
-        provider: {
-          ...(systemState.provider ?? {}),
-          sourceType: providerSourceTag,
-        },
+        provider: systemState.provider
+          ? { ...systemState.provider, sourceType: providerSourceTag }
+          : { sourceType: providerSourceTag },
         sourceType: providerSourceTag,
         sourceTag: providerSourceTag,
       },

@@ -368,13 +368,16 @@ function ProviderEditor({
     if (value && providerBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
-  const sourceType: SourceType = provider.sourceType
-    ? normalizeSourceType(provider.sourceType)
-    : nodeSourceType
-      ? normalizeSourceType(nodeSourceType)
-      : nodeSourceTag
-        ? normalizeSourceType(nodeSourceTag)
-    : inferSource(provider.active);
+  let sourceType: SourceType;
+  if (provider.sourceType) {
+    sourceType = normalizeSourceType(provider.sourceType);
+  } else if (nodeSourceType) {
+    sourceType = normalizeSourceType(nodeSourceType);
+  } else if (nodeSourceTag) {
+    sourceType = normalizeSourceType(nodeSourceTag);
+  } else {
+    sourceType = inferSource(provider.active);
+  }
   const sourceProviders = providerBySource[sourceType];
   const safeActive = provider.active && sourceProviders.includes(provider.active) ? provider.active : "";
 
@@ -445,11 +448,15 @@ function EmbeddingEditor({
     if (value && modelsBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
-  const sourceType: SourceType = (data.sourceType as SourceTypeLike | undefined)
-    ? normalizeSourceType(data.sourceType as SourceTypeLike)
-    : nodeSourceTag
-      ? normalizeSourceType(nodeSourceTag)
-    : inferSource(data.model as string | undefined);
+  const dataSourceType = data.sourceType as SourceTypeLike | undefined;
+  let sourceType: SourceType;
+  if (dataSourceType) {
+    sourceType = normalizeSourceType(dataSourceType);
+  } else if (nodeSourceTag) {
+    sourceType = normalizeSourceType(nodeSourceTag);
+  } else {
+    sourceType = inferSource(data.model as string | undefined);
+  }
   const sourceModels = modelsBySource[sourceType];
   const safeModel = (data.model as string | undefined) && sourceModels.includes(data.model as string) ? (data.model as string) : "";
 
@@ -468,9 +475,11 @@ function EmbeddingEditor({
         onValueChange={(val) => {
           const nextSource = normalizeSourceType(val as SourceTypeLike);
           const nextModels = modelsBySource[nextSource];
-          const nextModel = (data.model as string | undefined) && nextModels.includes(data.model as string)
-            ? (data.model as string)
-            : "";
+          const currentModel = data.model as string | undefined;
+          let nextModel = "";
+          if (currentModel && nextModels.includes(currentModel)) {
+            nextModel = currentModel;
+          }
           onUpdate("sourceType", nextSource);
           onUpdate("model", nextModel);
         }}

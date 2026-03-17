@@ -403,7 +403,7 @@ function ProviderEditor({
     sourceType = inferSource(provider.active);
   }
   const sourceProviders = withCurrentOption(providerBySource[sourceType], provider.active);
-  const safeActive = (provider.active as string | undefined) ?? "";
+  const safeActive = provider.active ?? "";
 
   return (
     <SectionCard

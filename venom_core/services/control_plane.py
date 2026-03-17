@@ -973,11 +973,9 @@ class ControlPlaneService:
         )
         decision_strategies = ["standard", "advanced", "heuristic"]
         intent_modes = sorted(
-            list(self._compatibility_validator.matrix.intent_mode_requirements.keys())
+            self._compatibility_validator.matrix.intent_mode_requirements.keys()
         )
-        kernels = sorted(
-            list(self._compatibility_validator.matrix.kernel_runtime.keys())
-        )
+        kernels = sorted(self._compatibility_validator.matrix.kernel_runtime.keys())
 
         providers_local: list[str] = []
         providers_cloud: list[str] = []

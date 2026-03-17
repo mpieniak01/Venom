@@ -60,8 +60,8 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
   compareAndPush("intent_mode", "intent", original.intent_mode, draft.intent_mode);
   compareAndPush("kernel", "kernel", original.kernel, draft.kernel);
 
-  // Deep compare for objects (simplified json stringify for MVP)
-  compareAndPush("runtime", "runtime", original.runtime, draft.runtime);
+  // Exclude runtime — it contains telemetry fields (uptime_seconds, status) that
+  // change on every poll and must not be treated as user-driven config changes.
   compareAndPush(
     "provider",
     "provider",

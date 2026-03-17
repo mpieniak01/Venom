@@ -34,6 +34,7 @@ class ReasonCode(str, Enum):
     SERVICE_UNAVAILABLE = "service_unavailable"
     FORBIDDEN_TRANSITION = "forbidden_transition"
     INVALID_STATE = "invalid_state"
+    RESOURCE_NOT_FOUND = "resource_not_found"
 
     # Validation codes
     KERNEL_RUNTIME_MISMATCH = "kernel_runtime_mismatch"
@@ -188,6 +189,13 @@ class SystemState(BaseModel):
     workflow_status: WorkflowStatus
     active_operations: list[str] = Field(default_factory=list)
     health: dict[str, Any] = Field(default_factory=dict)
+    # Real-state parity fields (PR 204)
+    active_request_id: Optional[str] = None
+    active_task_status: Optional[str] = None
+    llm_runtime_id: Optional[str] = None
+    llm_provider_name: Optional[str] = None
+    llm_model: Optional[str] = None
+    allowed_operations: list[str] = Field(default_factory=list)
 
 
 class ControlStateResponse(BaseModel):

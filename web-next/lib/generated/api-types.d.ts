@@ -7454,6 +7454,18 @@ export interface components {
             health?: {
                 [key: string]: unknown;
             };
+            /** Active Request Id */
+            active_request_id?: string | null;
+            /** Active Task Status */
+            active_task_status?: string | null;
+            /** Llm Runtime Id */
+            llm_runtime_id?: string | null;
+            /** Llm Provider Name */
+            llm_provider_name?: string | null;
+            /** Llm Model */
+            llm_model?: string | null;
+            /** Allowed Operations */
+            allowed_operations?: string[];
         };
         /**
          * TaskExtraContext

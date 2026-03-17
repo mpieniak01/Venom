@@ -25,6 +25,7 @@ from venom_core.api.schemas.workflow_control import (
     ResourceChange,
     ResourceType,
     SystemState,
+    WorkflowStatus,
 )
 from venom_core.services.config_manager import config_manager
 from venom_core.services.control_plane_audit import get_control_plane_audit_trail
@@ -537,7 +538,57 @@ class ControlPlaneService:
         from venom_core.services.workflow_operations import get_workflow_service
 
         workflow_service = get_workflow_service()
-        workflow_status = workflow_service.get_latest_workflow_status()
+
+        # --- Real-state parity (PR 204) ---
+        # Pull the most recent request trace to expose actual runtime/provider/model context.
+        active_request_id: str | None = None
+        active_task_status: str | None = None
+        llm_runtime_id: str | None = None
+        llm_provider_name: str | None = None
+        llm_model: str | None = None
+
+        try:
+            from venom_core.api.routes.system_deps import get_request_tracer
+
+            tracer = get_request_tracer()
+            if tracer is not None:
+                recent_traces = tracer.get_all_traces(limit=1)
+                if recent_traces:
+                    trace = recent_traces[0]
+                    active_request_id = str(trace.request_id)
+                    active_task_status = trace.status.value
+                    llm_runtime_id = trace.llm_runtime_id
+                    llm_provider_name = trace.llm_provider
+                    llm_model = trace.llm_model
+
+                    # Sync trace lifecycle with workflow service so that WF operations
+                    # (pause/resume/cancel) target the real active request.
+                    if active_task_status == "PROCESSING":
+                        workflow_service.register_workflow(
+                            active_request_id, WorkflowStatus.RUNNING
+                        )
+                    elif active_task_status == "COMPLETED":
+                        workflow_service.register_workflow(
+                            active_request_id, WorkflowStatus.COMPLETED
+                        )
+                    elif active_task_status == "FAILED":
+                        workflow_service.register_workflow(
+                            active_request_id, WorkflowStatus.FAILED
+                        )
+        except Exception:
+            # Tracer unavailable — proceed with no real-state data
+            pass
+
+        # Derive workflow_status: real trace status takes precedence over
+        # the synthetic workflow service status.
+        workflow_status = self._derive_workflow_status(
+            active_task_status, active_request_id, workflow_service
+        )
+
+        # Compute allowed operations based on real task state.
+        allowed_operations = self._compute_allowed_operations(
+            active_task_status, active_request_id, workflow_service
+        )
 
         # Build state
         derived_runtime = self._resolve_runtime_from_config(config)
@@ -594,9 +645,64 @@ class ControlPlaneService:
                 "checks": health_checks,
                 "compatibility_issues": compatibility_issues,
             },
+            active_request_id=active_request_id,
+            active_task_status=active_task_status,
+            llm_runtime_id=llm_runtime_id,
+            llm_provider_name=llm_provider_name,
+            llm_model=llm_model,
+            allowed_operations=allowed_operations,
         )
 
         return state
+
+    def _derive_workflow_status(
+        self,
+        active_task_status: str | None,
+        active_request_id: str | None,
+        workflow_service: Any,
+    ) -> WorkflowStatus:
+        """Derive workflow_status from real trace status, falling back to WF service.
+
+        Args:
+            active_task_status: Trace status string (PROCESSING/COMPLETED/FAILED/…)
+            active_request_id: Active request UUID string
+            workflow_service: WorkflowOperationService instance
+
+        Returns:
+            WorkflowStatus reflecting real execution state
+        """
+        if active_task_status == "PROCESSING" and active_request_id:
+            # Use WF service state which may be RUNNING or PAUSED after ops
+            return workflow_service.get_workflow_status(active_request_id)
+        if active_task_status == "COMPLETED":
+            return WorkflowStatus.COMPLETED
+        if active_task_status == "FAILED":
+            return WorkflowStatus.FAILED
+        # Fallback to synthetic WF service status
+        return workflow_service.get_latest_workflow_status()
+
+    def _compute_allowed_operations(
+        self,
+        active_task_status: str | None,
+        active_request_id: str | None,
+        workflow_service: Any,
+    ) -> list[str]:
+        """Compute which WF operations are currently permitted.
+
+        Args:
+            active_task_status: Trace status string
+            active_request_id: Active request UUID string
+            workflow_service: WorkflowOperationService instance
+
+        Returns:
+            List of allowed operation names
+        """
+        if active_task_status != "PROCESSING" or not active_request_id:
+            return []
+        wf_state = workflow_service.get_workflow_status(active_request_id)
+        if wf_state == WorkflowStatus.PAUSED:
+            return ["resume", "cancel"]
+        return ["pause", "cancel"]
 
     def _validate_change(self, change: ResourceChange) -> dict[str, Any]:
         """Validate a single resource change.

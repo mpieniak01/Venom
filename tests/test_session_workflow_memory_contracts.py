@@ -312,8 +312,7 @@ class TestWorkflowOperationsEdgeCases:
     # ------------------------------------------------------------------
     def test_get_latest_status_with_workflows(self, service):
         wf_id = str(uuid4())
-        wf = service._get_or_create_workflow(wf_id)
-        wf["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(wf_id, WorkflowStatus.RUNNING)
         status = service.get_latest_workflow_status()
         assert status == WorkflowStatus.RUNNING
 
@@ -322,8 +321,8 @@ class TestWorkflowOperationsEdgeCases:
     # ------------------------------------------------------------------
     def test_get_latest_status_bad_status_value_returns_idle(self, service):
         wf_id = str(uuid4())
-        wf = service._get_or_create_workflow(wf_id)
-        wf["status"] = "INVALID_STATUS_VALUE"
+        service.register_workflow(wf_id)
+        service._workflows[wf_id]["status"] = "INVALID_STATUS_VALUE"
         status = service.get_latest_workflow_status()
         assert status == WorkflowStatus.IDLE
 
@@ -344,6 +343,7 @@ class TestWorkflowOperationsEdgeCases:
     # ------------------------------------------------------------------
     def test_pause_idle_workflow_triggers_audit_failure_log(self, service, mock_audit):
         wf_id = str(uuid4())
+        service.register_workflow(wf_id)
         resp = service.pause_workflow(wf_id, "system")
         assert resp.reason_code == ReasonCode.FORBIDDEN_TRANSITION
         # Audit log_operation should have been called with result="failure"

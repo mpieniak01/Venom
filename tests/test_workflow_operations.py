@@ -98,8 +98,7 @@ class TestWorkflowOperationService:
     def test_pause_running_workflow(self, service, workflow_id):
         """Test pausing a running workflow."""
         # Set workflow to RUNNING state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Pause the workflow
         response = service.pause_workflow(workflow_id, "test_user")
@@ -112,20 +111,26 @@ class TestWorkflowOperationService:
         assert response.reason_code == ReasonCode.OPERATION_COMPLETED
         assert "successfully" in response.message.lower()
 
-    def test_pause_idle_workflow_fails(self, service, workflow_id):
-        """Test that pausing an IDLE workflow fails."""
-        # Workflow starts in IDLE state
+    def test_pause_idle_registered_workflow_fails(self, service, workflow_id):
+        """Test that pausing a registered IDLE workflow returns FORBIDDEN_TRANSITION."""
+        service.register_workflow(workflow_id, WorkflowStatus.IDLE)
         response = service.pause_workflow(workflow_id, "test_user")
 
         assert response.status == WorkflowStatus.IDLE
         assert response.reason_code == ReasonCode.FORBIDDEN_TRANSITION
         assert "cannot pause" in response.message.lower()
 
+    def test_pause_unregistered_workflow_returns_not_found(self, service, workflow_id):
+        """Test that pausing an unregistered workflow returns RESOURCE_NOT_FOUND (PR 204)."""
+        response = service.pause_workflow(workflow_id, "test_user")
+
+        assert response.status == WorkflowStatus.IDLE
+        assert response.reason_code == ReasonCode.RESOURCE_NOT_FOUND
+
     def test_resume_paused_workflow(self, service, workflow_id):
         """Test resuming a paused workflow."""
         # Set workflow to PAUSED state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.PAUSED.value
+        service.register_workflow(workflow_id, WorkflowStatus.PAUSED)
 
         # Resume the workflow
         response = service.resume_workflow(workflow_id, "test_user")
@@ -137,8 +142,7 @@ class TestWorkflowOperationService:
     def test_resume_running_workflow_fails(self, service, workflow_id):
         """Test that resuming a RUNNING workflow fails."""
         # Set workflow to RUNNING state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Try to resume
         response = service.resume_workflow(workflow_id, "test_user")
@@ -149,8 +153,7 @@ class TestWorkflowOperationService:
     def test_cancel_running_workflow(self, service, workflow_id):
         """Test cancelling a running workflow."""
         # Set workflow to RUNNING state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Cancel the workflow
         response = service.cancel_workflow(workflow_id, "test_user")
@@ -162,8 +165,7 @@ class TestWorkflowOperationService:
     def test_cancel_paused_workflow(self, service, workflow_id):
         """Test cancelling a paused workflow."""
         # Set workflow to PAUSED state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.PAUSED.value
+        service.register_workflow(workflow_id, WorkflowStatus.PAUSED)
 
         # Cancel the workflow
         response = service.cancel_workflow(workflow_id, "test_user")
@@ -171,18 +173,25 @@ class TestWorkflowOperationService:
         assert response.status == WorkflowStatus.CANCELLED
         assert response.reason_code == ReasonCode.OPERATION_CANCELLED
 
-    def test_cancel_idle_workflow_fails(self, service, workflow_id):
-        """Test that cancelling an IDLE workflow fails."""
+    def test_cancel_idle_registered_workflow_fails(self, service, workflow_id):
+        """Test that cancelling a registered IDLE workflow returns FORBIDDEN_TRANSITION."""
+        service.register_workflow(workflow_id, WorkflowStatus.IDLE)
         response = service.cancel_workflow(workflow_id, "test_user")
 
         assert response.status == WorkflowStatus.IDLE
         assert response.reason_code == ReasonCode.FORBIDDEN_TRANSITION
 
+    def test_cancel_unregistered_workflow_returns_not_found(self, service, workflow_id):
+        """Cancelling an unregistered workflow returns RESOURCE_NOT_FOUND (PR 204)."""
+        response = service.cancel_workflow(workflow_id, "test_user")
+
+        assert response.status == WorkflowStatus.IDLE
+        assert response.reason_code == ReasonCode.RESOURCE_NOT_FOUND
+
     def test_retry_failed_workflow(self, service, workflow_id):
         """Test retrying a failed workflow."""
         # Set workflow to FAILED state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.FAILED.value
+        service.register_workflow(workflow_id, WorkflowStatus.FAILED)
 
         # Retry the workflow
         response = service.retry_workflow(workflow_id, "test_user")
@@ -194,8 +203,7 @@ class TestWorkflowOperationService:
     def test_retry_cancelled_workflow(self, service, workflow_id):
         """Test retrying a cancelled workflow."""
         # Set workflow to CANCELLED state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.CANCELLED.value
+        service.register_workflow(workflow_id, WorkflowStatus.CANCELLED)
 
         # Retry the workflow
         response = service.retry_workflow(workflow_id, "test_user")
@@ -206,8 +214,7 @@ class TestWorkflowOperationService:
     def test_retry_with_step_id(self, service, workflow_id):
         """Test retrying from a specific step."""
         # Set workflow to FAILED state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.FAILED.value
+        service.register_workflow(workflow_id, WorkflowStatus.FAILED)
 
         # Retry from specific step
         response = service.retry_workflow(workflow_id, "test_user", step_id="step_123")
@@ -219,8 +226,7 @@ class TestWorkflowOperationService:
     def test_retry_running_workflow_fails(self, service, workflow_id):
         """Test that retrying a RUNNING workflow fails."""
         # Set workflow to RUNNING state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Try to retry
         response = service.retry_workflow(workflow_id, "test_user")
@@ -230,6 +236,7 @@ class TestWorkflowOperationService:
 
     def test_dry_run_execution(self, service, workflow_id):
         """Test dry-run execution."""
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
         response = service.dry_run(workflow_id, "test_user")
 
         assert response.operation == WorkflowOperation.DRY_RUN
@@ -240,8 +247,7 @@ class TestWorkflowOperationService:
     def test_dry_run_does_not_change_state(self, service, workflow_id):
         """Test that dry-run doesn't change workflow state."""
         # Set workflow to RUNNING state
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Perform dry-run
         response = service.dry_run(workflow_id, "test_user")
@@ -252,20 +258,17 @@ class TestWorkflowOperationService:
 
     def test_get_workflow_status(self, service, workflow_id):
         """Test getting workflow status."""
-        # Initially IDLE
+        # Unregistered workflow => IDLE
         assert service.get_workflow_status(workflow_id) == WorkflowStatus.IDLE
 
-        # Change to RUNNING
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
-
+        # Register as RUNNING
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
         assert service.get_workflow_status(workflow_id) == WorkflowStatus.RUNNING
 
     def test_workflow_metadata_tracking(self, service, workflow_id):
         """Test that workflow operations track metadata."""
         # Set workflow to RUNNING
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Pause with metadata
         response = service.pause_workflow(
@@ -304,17 +307,17 @@ class TestWorkflowOperationService:
         assert service.get_latest_workflow_status() == WorkflowStatus.IDLE
 
         workflow_id = str(uuid4())
-        record = service._get_or_create_workflow(workflow_id)
-        record["status"] = "NOT_A_STATUS"
+        service.register_workflow(workflow_id)
+        service._workflows[workflow_id]["status"] = "NOT_A_STATUS"
 
         assert service.get_latest_workflow_status() == WorkflowStatus.IDLE
 
     def test_get_latest_workflow_status_handles_missing_status_key(self, service):
         """Missing status key in latest record should safely fall back to IDLE."""
         workflow_id = str(uuid4())
-        record = service._get_or_create_workflow(workflow_id)
-        record.pop("status", None)
-        record["updated_at"] = "9999-01-01T00:00:00+00:00"
+        service.register_workflow(workflow_id)
+        service._workflows[workflow_id].pop("status", None)
+        service._workflows[workflow_id]["updated_at"] = "9999-01-01T00:00:00+00:00"
 
         assert service.get_latest_workflow_status() == WorkflowStatus.IDLE
 
@@ -348,22 +351,20 @@ class TestWorkflowLifecycle:
 
     def test_normal_workflow_lifecycle(self, service, workflow_id):
         """Test normal workflow: IDLE -> RUNNING -> COMPLETED."""
-        # Start in IDLE
+        # Unregistered => IDLE
         assert service.get_workflow_status(workflow_id) == WorkflowStatus.IDLE
 
-        # Start workflow (manually set to RUNNING for this test)
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        # Register and set to RUNNING
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Complete workflow
-        workflow["status"] = WorkflowStatus.COMPLETED.value
+        service._workflows[workflow_id]["status"] = WorkflowStatus.COMPLETED.value
         assert service.get_workflow_status(workflow_id) == WorkflowStatus.COMPLETED
 
     def test_pause_resume_lifecycle(self, service, workflow_id):
-        """Test pause/resume: IDLE -> RUNNING -> PAUSED -> RUNNING."""
+        """Test pause/resume: RUNNING -> PAUSED -> RUNNING."""
         # Start workflow
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Pause
         response = service.pause_workflow(workflow_id, "test_user")
@@ -376,8 +377,7 @@ class TestWorkflowLifecycle:
     def test_failure_retry_lifecycle(self, service, workflow_id):
         """Test failure/retry: RUNNING -> FAILED -> RUNNING."""
         # Start and fail workflow
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.FAILED.value
+        service.register_workflow(workflow_id, WorkflowStatus.FAILED)
 
         # Retry
         response = service.retry_workflow(workflow_id, "test_user")
@@ -386,9 +386,106 @@ class TestWorkflowLifecycle:
     def test_cancel_lifecycle(self, service, workflow_id):
         """Test cancel: RUNNING -> CANCELLED."""
         # Start workflow
-        workflow = service._get_or_create_workflow(workflow_id)
-        workflow["status"] = WorkflowStatus.RUNNING.value
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
 
         # Cancel
         response = service.cancel_workflow(workflow_id, "test_user")
         assert response.status == WorkflowStatus.CANCELLED
+
+
+class TestPR204WorkflowOperationsContract:
+    """PR 204: Operations require real/registered workflow IDs.
+
+    Verifies that auto-create phantom workflow behaviour is eliminated.
+    """
+
+    @pytest.fixture
+    def service(self):
+        return WorkflowOperationService()
+
+    @pytest.fixture
+    def workflow_id(self):
+        return str(uuid4())
+
+    def test_resume_on_unregistered_id_returns_not_found(self, service, workflow_id):
+        """Resume on an unregistered UUID must NOT create a phantom RUNNING workflow (PR 204)."""
+        response = service.resume_workflow(workflow_id, "test_user")
+
+        assert response.reason_code == ReasonCode.RESOURCE_NOT_FOUND
+        assert response.status == WorkflowStatus.IDLE
+        # Workflow must NOT have been created in internal state
+        assert workflow_id not in service._workflows
+
+    def test_completed_workflow_cannot_be_resumed(self, service, workflow_id):
+        """A COMPLETED task must not transition to RUNNING via resume (PR 204)."""
+        service.register_workflow(workflow_id, WorkflowStatus.COMPLETED)
+
+        response = service.resume_workflow(workflow_id, "test_user")
+
+        assert response.reason_code == ReasonCode.FORBIDDEN_TRANSITION
+        assert response.status == WorkflowStatus.COMPLETED
+        # Status must remain COMPLETED
+        assert service.get_workflow_status(workflow_id) == WorkflowStatus.COMPLETED
+
+    def test_pause_on_unregistered_id_returns_not_found(self, service, workflow_id):
+        """Pause on unregistered UUID returns resource_not_found."""
+        response = service.pause_workflow(workflow_id, "test_user")
+
+        assert response.reason_code == ReasonCode.RESOURCE_NOT_FOUND
+        assert workflow_id not in service._workflows
+
+    def test_cancel_on_unregistered_id_returns_not_found(self, service, workflow_id):
+        """Cancel on unregistered UUID returns resource_not_found."""
+        response = service.cancel_workflow(workflow_id, "test_user")
+
+        assert response.reason_code == ReasonCode.RESOURCE_NOT_FOUND
+        assert workflow_id not in service._workflows
+
+    def test_retry_on_unregistered_id_returns_not_found(self, service, workflow_id):
+        """Retry on unregistered UUID returns resource_not_found."""
+        response = service.retry_workflow(workflow_id, "test_user")
+
+        assert response.reason_code == ReasonCode.RESOURCE_NOT_FOUND
+        assert workflow_id not in service._workflows
+
+    def test_dry_run_on_unregistered_id_returns_not_found(self, service, workflow_id):
+        """Dry-run on unregistered UUID returns resource_not_found."""
+        response = service.dry_run(workflow_id, "test_user")
+
+        assert response.reason_code == ReasonCode.RESOURCE_NOT_FOUND
+        assert workflow_id not in service._workflows
+
+    def test_register_workflow_creates_entry(self, service, workflow_id):
+        """register_workflow creates an entry that can be operated on."""
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
+
+        assert workflow_id in service._workflows
+        assert service.get_workflow_status(workflow_id) == WorkflowStatus.RUNNING
+
+    def test_register_workflow_is_idempotent(self, service, workflow_id):
+        """Calling register_workflow twice does not overwrite existing state."""
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
+        # Pause to change state
+        service.pause_workflow(workflow_id, "test_user")
+        # Re-registering should not reset to RUNNING
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
+
+        # State must remain PAUSED
+        assert service.get_workflow_status(workflow_id) == WorkflowStatus.PAUSED
+
+    def test_allowed_operations_for_running_workflow(self, service, workflow_id):
+        """RUNNING workflow allows pause and cancel; stop auto-create check."""
+        service.register_workflow(workflow_id, WorkflowStatus.RUNNING)
+        allowed = WorkflowStateMachine.get_allowed_transitions(WorkflowStatus.RUNNING)
+        assert WorkflowStatus.PAUSED in allowed
+        assert WorkflowStatus.CANCELLED in allowed
+        assert (
+            WorkflowStatus.RUNNING not in allowed
+        )  # Cannot stay in RUNNING via a single transition
+
+    def test_allowed_operations_for_completed_workflow(self, service, workflow_id):
+        """COMPLETED workflow has no path to RUNNING (only IDLE restart)."""
+        service.register_workflow(workflow_id, WorkflowStatus.COMPLETED)
+        allowed = WorkflowStateMachine.get_allowed_transitions(WorkflowStatus.COMPLETED)
+        assert WorkflowStatus.RUNNING not in allowed
+        assert WorkflowStatus.IDLE in allowed

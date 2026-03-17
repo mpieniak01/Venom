@@ -11,7 +11,8 @@ import {
     RefreshCw,
     Bug,
     Settings2,
-    Activity
+    Activity,
+    Cpu
 } from "lucide-react";
 
 interface WorkflowConsoleProps {
@@ -19,6 +20,11 @@ interface WorkflowConsoleProps {
     onPlanRequest: () => void;
     onReset: () => void;
     status: string;
+    allowedOperations?: string[];
+    activeRequestId?: string | null;
+    llmRuntimeId?: string | null;
+    llmProvider?: string | null;
+    llmModel?: string | null;
     onPause: () => void;
     onResume: () => void;
     onCancel: () => void;
@@ -32,6 +38,11 @@ export function WorkflowConsole({
     onPlanRequest,
     onReset,
     status,
+    allowedOperations = [],
+    activeRequestId,
+    llmRuntimeId,
+    llmProvider,
+    llmModel,
     onPause,
     onResume,
     onCancel,
@@ -44,7 +55,13 @@ export function WorkflowConsole({
     const isRunning = status === "running";
     const isPaused = status === "paused";
     const isFailed = status === "failed";
-    const showResume = isRunning === false;
+
+    // Button visibility driven by backend-declared allowed_operations
+    const canPause = allowedOperations.includes("pause");
+    const canResume = allowedOperations.includes("resume");
+    const canCancel = allowedOperations.includes("cancel");
+    const canRetry = allowedOperations.includes("retry") || isFailed;
+
     let statusColorClass = "text-slate-400";
     if (isRunning) {
         statusColorClass = "text-green-500";
@@ -68,6 +85,48 @@ export function WorkflowConsole({
                 </div>
             </div>
             <div className="h-px w-full bg-white/5 -mt-4 mb-2" />
+
+            {/* Runtime Context */}
+            {(activeRequestId || llmRuntimeId || llmProvider || llmModel) && (
+                <div className="space-y-1.5">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                        <Cpu className="w-3 h-3" />
+                        {t("workflowControl.labels.runtimeContext")}
+                    </span>
+                    <div className="bg-slate-800/60 rounded-lg p-2.5 space-y-1">
+                        {activeRequestId && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-slate-500">{t("workflowControl.labels.requestId")}</span>
+                                <span className="text-slate-300 font-mono truncate max-w-[120px]" title={activeRequestId}>
+                                    {activeRequestId.slice(0, 8)}…
+                                </span>
+                            </div>
+                        )}
+                        {llmRuntimeId && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-slate-500">{t("workflowControl.labels.runtimeId")}</span>
+                                <span className="text-slate-300 font-mono truncate max-w-[120px]" title={llmRuntimeId}>
+                                    {llmRuntimeId}
+                                </span>
+                            </div>
+                        )}
+                        {llmProvider && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-slate-500">{t("workflowControl.labels.provider")}</span>
+                                <span className="text-slate-300 font-mono">{llmProvider}</span>
+                            </div>
+                        )}
+                        {llmModel && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-slate-500">{t("workflowControl.labels.model")}</span>
+                                <span className="text-slate-300 font-mono truncate max-w-[120px]" title={llmModel}>
+                                    {llmModel}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Setup Actions (Draft Mode) */}
             <div className="space-y-3">
@@ -109,14 +168,14 @@ export function WorkflowConsole({
             <div className="space-y-3">
                 <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{t("workflowControl.labels.runtimeControl")}</span>
                 <div className="grid grid-cols-2 gap-3">
-                    {showResume ? (
+                    {canResume ? (
                         <Button
                             id="workflow-action-resume"
                             variant="secondary"
                             size="sm"
                             className="w-full text-xs h-10"
                             onClick={onResume}
-                            disabled={isLoading || isRunning}
+                            disabled={isLoading}
                         >
                             <Play className="w-3.5 h-3.5 mr-2" />
                             {t("workflowControl.actions.resume")}
@@ -128,7 +187,7 @@ export function WorkflowConsole({
                             size="sm"
                             className="w-full text-xs h-10 border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
                             onClick={onPause}
-                            disabled={isLoading || isPaused}
+                            disabled={isLoading || !canPause}
                         >
                             <Pause className="w-3.5 h-3.5 mr-2" />
                             {t("workflowControl.actions.pause")}
@@ -141,13 +200,13 @@ export function WorkflowConsole({
                         size="sm"
                         className="w-full text-xs h-10"
                         onClick={onCancel}
-                        disabled={isLoading || (!isRunning && !isPaused)}
+                        disabled={isLoading || !canCancel}
                     >
                         <Square className="w-3.5 h-3.5 mr-2" />
                         {t("workflowControl.actions.stop")}
                     </Button>
 
-                    {isFailed && (
+                    {canRetry && (
                         <Button
                             id="workflow-action-retry"
                             variant="primary"
@@ -167,7 +226,7 @@ export function WorkflowConsole({
                         size="sm"
                         className="w-full text-xs h-10 border border-white/5 hover:bg-white/5 col-span-2 mt-1"
                         onClick={onDryRun}
-                        disabled={isLoading}
+                        disabled={isLoading || !activeRequestId}
                     >
                         <Bug className="w-3.5 h-3.5 mr-2" />
                         {t("workflowControl.actions.dryRun")}

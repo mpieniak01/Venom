@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from venom_core.services.runtime_dependencies import (
+    get_request_tracer as _get_runtime_request_tracer,
+)
+from venom_core.services.runtime_dependencies import (
+    set_request_tracer as _set_runtime_request_tracer,
+)
+
 _background_scheduler: Any = None
 _service_monitor: Any = None
 _state_manager: Any = None
@@ -39,6 +46,7 @@ def set_dependencies(
     _llm_controller = llm_controller
     _model_manager = model_manager
     _request_tracer = request_tracer
+    _set_runtime_request_tracer(request_tracer)
     _hardware_bridge = hardware_bridge
     _orchestrator = orchestrator
 
@@ -68,7 +76,7 @@ def get_model_manager():
 
 
 def get_request_tracer():
-    return _request_tracer
+    return _get_runtime_request_tracer()
 
 
 def get_hardware_bridge():

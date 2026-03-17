@@ -53,7 +53,6 @@ export function WorkflowConsole({
     const t = useTranslation();
 
     const isRunning = status === "running";
-    const isPaused = status === "paused";
     const isFailed = status === "failed";
 
     // Button visibility driven by backend-declared allowed_operations

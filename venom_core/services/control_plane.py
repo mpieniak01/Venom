@@ -31,6 +31,7 @@ from venom_core.services.config_manager import config_manager
 from venom_core.services.control_plane_audit import get_control_plane_audit_trail
 from venom_core.services.control_plane_compatibility import get_compatibility_validator
 from venom_core.services.runtime_controller import runtime_controller
+from venom_core.services.runtime_dependencies import get_request_tracer
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -548,8 +549,6 @@ class ControlPlaneService:
         llm_model: str | None = None
 
         try:
-            from venom_core.api.routes.system_deps import get_request_tracer
-
             tracer = get_request_tracer()
             if tracer is not None:
                 recent_traces = tracer.get_all_traces(limit=1)

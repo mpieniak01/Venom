@@ -210,165 +210,68 @@ export function useWorkflowState() {
     }
   }, [t]);
 
-  // Pause workflow
-  const pauseWorkflow = useCallback(async () => {
-    const workflowId = systemState?.active_request_id;
-    if (!workflowId) {
-      setError(t("workflowControl.messages.noActiveRequest"));
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/pause"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "pause",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.pauseError")));
+  // Shared helper for all runtime workflow operations — avoids copy-pasting
+  // the workflowId guard, loading flag, and error handling across 5 callbacks.
+  const executeWorkflowOperation = useCallback(
+    async (urlSegment: string, operation: string, errorKey: string): Promise<void> => {
+      const workflowId = systemState?.active_request_id;
+      if (!workflowId) {
+        setError(t("workflowControl.messages.noActiveRequest"));
+        return;
       }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.pauseError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [systemState, fetchSystemState, t]);
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/v1/workflow/operations/${urlSegment}`),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workflow_id: workflowId, operation }),
+          }
+        );
+        if (!response.ok) {
+          throw new Error(await readApiErrorMessage(response, t(errorKey)));
+        }
+        await fetchSystemState();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t(errorKey));
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [systemState, fetchSystemState, t]
+  );
+
+  // Pause workflow
+  const pauseWorkflow = useCallback(
+    () => executeWorkflowOperation("pause", "pause", "workflowControl.messages.pauseError"),
+    [executeWorkflowOperation]
+  );
 
   // Resume workflow
-  const resumeWorkflow = useCallback(async () => {
-    const workflowId = systemState?.active_request_id;
-    if (!workflowId) {
-      setError(t("workflowControl.messages.noActiveRequest"));
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/resume"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "resume",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.resumeError")));
-      }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.resumeError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [systemState, fetchSystemState, t]);
+  const resumeWorkflow = useCallback(
+    () => executeWorkflowOperation("resume", "resume", "workflowControl.messages.resumeError"),
+    [executeWorkflowOperation]
+  );
 
   // Cancel workflow
-  const cancelWorkflow = useCallback(async () => {
-    const workflowId = systemState?.active_request_id;
-    if (!workflowId) {
-      setError(t("workflowControl.messages.noActiveRequest"));
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/cancel"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "cancel",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.cancelError")));
-      }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.cancelError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [systemState, fetchSystemState, t]);
+  const cancelWorkflow = useCallback(
+    () => executeWorkflowOperation("cancel", "cancel", "workflowControl.messages.cancelError"),
+    [executeWorkflowOperation]
+  );
 
   // Retry workflow
-  const retryWorkflow = useCallback(async () => {
-    const workflowId = systemState?.active_request_id;
-    if (!workflowId) {
-      setError(t("workflowControl.messages.noActiveRequest"));
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/retry"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "retry",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.retryError")));
-      }
-      await fetchSystemState();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.retryError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [systemState, fetchSystemState, t]);
+  const retryWorkflow = useCallback(
+    () => executeWorkflowOperation("retry", "retry", "workflowControl.messages.retryError"),
+    [executeWorkflowOperation]
+  );
 
   // Dry run
-  const dryRun = useCallback(async () => {
-    const workflowId = systemState?.active_request_id;
-    if (!workflowId) {
-      setError(t("workflowControl.messages.noActiveRequest"));
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/v1/workflow/operations/dry-run"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workflow_id: workflowId,
-            operation: "dry_run",
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.dryRunError")));
-      }
-      await response.json();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("workflowControl.messages.dryRunError"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [systemState, t]);
+  const dryRun = useCallback(
+    () => executeWorkflowOperation("dry-run", "dry_run", "workflowControl.messages.dryRunError"),
+    [executeWorkflowOperation]
+  );
 
   // Initial load and polling
   useEffect(() => {

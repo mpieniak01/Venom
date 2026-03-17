@@ -6,7 +6,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.api.model_schemas.workflow_control import ApplyMode, ReasonCode
+from venom_core.api.model_schemas.workflow_control import (
+    ApplyMode,
+    ReasonCode,
+    WorkflowStatus,
+)
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.main import app
 
@@ -408,6 +412,84 @@ class TestStateEndpoint:
         state = response.json()["system_state"]
         assert state["provider"]["active"] == "ollama"
         assert state["health"]["overall"] in {"healthy", "degraded", "critical"}
+
+    def test_state_allows_retry_for_failed_workflow(self, client, monkeypatch):
+        """FAILED workflow should expose retry in allowed_operations."""
+        import venom_core.services.control_plane as control_plane_module
+        import venom_core.services.workflow_operations as workflow_operations_module
+
+        class FakeTracer:
+            def get_all_traces(self, limit=1):
+                assert limit == 1
+                return [
+                    SimpleNamespace(
+                        request_id="1e18dd58-6f3e-4efe-95da-8c5c33ee1871",
+                        status=SimpleNamespace(value="FAILED"),
+                        llm_runtime_id="ollama@http://localhost:11434/v1",
+                        llm_provider="ollama",
+                        llm_model="deepseek-r1:8b",
+                    )
+                ]
+
+        class FakeWorkflowService:
+            def register_workflow(self, workflow_id: str, status: WorkflowStatus):
+                self.workflow_id = workflow_id
+                self.status = status
+
+            def get_workflow_status(self, _workflow_id: str) -> WorkflowStatus:
+                return WorkflowStatus.FAILED
+
+            def get_latest_workflow_status(self) -> WorkflowStatus:
+                return WorkflowStatus.IDLE
+
+        monkeypatch.setattr(
+            control_plane_module, "get_request_tracer", lambda: FakeTracer()
+        )
+        monkeypatch.setattr(
+            workflow_operations_module,
+            "get_workflow_service",
+            lambda: FakeWorkflowService(),
+        )
+
+        response = client.get("/api/v1/workflow/control/state")
+        assert response.status_code == 200
+        state = response.json()["system_state"]
+        assert state["workflow_status"] == WorkflowStatus.FAILED.value
+        assert state["allowed_operations"] == ["retry"]
+
+    def test_state_handles_runtime_tracer_errors(self, client, monkeypatch):
+        """Tracer runtime errors should not fail state endpoint."""
+        import venom_core.services.control_plane as control_plane_module
+        import venom_core.services.workflow_operations as workflow_operations_module
+
+        class BrokenTracer:
+            def get_all_traces(self, limit=1):
+                raise RuntimeError("tracer backend unavailable")
+
+        class FakeWorkflowService:
+            def get_latest_workflow_status(self) -> WorkflowStatus:
+                return WorkflowStatus.IDLE
+
+            def get_workflow_status(self, _workflow_id: str) -> WorkflowStatus:
+                return WorkflowStatus.IDLE
+
+            def register_workflow(self, _workflow_id: str, _status: WorkflowStatus):
+                return None
+
+        monkeypatch.setattr(
+            control_plane_module, "get_request_tracer", lambda: BrokenTracer()
+        )
+        monkeypatch.setattr(
+            workflow_operations_module,
+            "get_workflow_service",
+            lambda: FakeWorkflowService(),
+        )
+
+        response = client.get("/api/v1/workflow/control/state")
+        assert response.status_code == 200
+        state = response.json()["system_state"]
+        assert state["workflow_status"] == WorkflowStatus.IDLE.value
+        assert state["allowed_operations"] == []
 
 
 class TestOptionsEndpoint:

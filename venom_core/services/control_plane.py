@@ -574,9 +574,12 @@ class ControlPlaneService:
                         workflow_service.register_workflow(
                             active_request_id, WorkflowStatus.FAILED
                         )
-        except Exception:
-            # Tracer unavailable — proceed with no real-state data
-            pass
+        except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
+            # Tracer unavailable or malformed — proceed with no real-state data.
+            logger.warning(
+                "Request tracer unavailable while building control-plane state: %s",
+                exc,
+            )
 
         # Derive workflow_status: real trace status takes precedence over
         # the synthetic workflow service status.
@@ -584,9 +587,9 @@ class ControlPlaneService:
             active_task_status, active_request_id, workflow_service
         )
 
-        # Compute allowed operations based on real task state.
+        # Compute allowed operations based on resolved workflow status.
         allowed_operations = self._compute_allowed_operations(
-            active_task_status, active_request_id, workflow_service
+            workflow_status, active_request_id
         )
 
         # Build state
@@ -682,26 +685,27 @@ class ControlPlaneService:
 
     def _compute_allowed_operations(
         self,
-        active_task_status: str | None,
+        workflow_status: WorkflowStatus,
         active_request_id: str | None,
-        workflow_service: Any,
     ) -> list[str]:
         """Compute which WF operations are currently permitted.
 
         Args:
-            active_task_status: Trace status string
+            workflow_status: Resolved workflow status for active request
             active_request_id: Active request UUID string
-            workflow_service: WorkflowOperationService instance
 
         Returns:
             List of allowed operation names
         """
-        if active_task_status != "PROCESSING" or not active_request_id:
+        if not active_request_id:
             return []
-        wf_state = workflow_service.get_workflow_status(active_request_id)
-        if wf_state == WorkflowStatus.PAUSED:
+        if workflow_status == WorkflowStatus.RUNNING:
+            return ["pause", "cancel"]
+        if workflow_status == WorkflowStatus.PAUSED:
             return ["resume", "cancel"]
-        return ["pause", "cancel"]
+        if workflow_status in {WorkflowStatus.FAILED, WorkflowStatus.CANCELLED}:
+            return ["retry"]
+        return []
 
     def _validate_change(self, change: ResourceChange) -> dict[str, Any]:
         """Validate a single resource change.

@@ -32,10 +32,17 @@ function toDisplayString(value: unknown, emptyFallback = "(empty)"): string {
   ) {
     return String(value);
   }
+  if (typeof value === "symbol" || typeof value === "function") {
+    return "[unsupported value]";
+  }
   try {
-    return JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    if (typeof serialized === "string") {
+      return serialized;
+    }
+    return "[unsupported value]";
   } catch {
-    return String(value);
+    return "[unsupported value]";
   }
 }
 
@@ -56,11 +63,12 @@ function ConfigFieldCard({
 }>) {
   const hasOptions = (field.options?.length ?? 0) > 0;
   const options = field.options ?? [];
-  const displayValue = draftValue !== undefined ? draftValue : field.value;
+  const hasDraftValue = typeof draftValue !== "undefined";
+  const displayValue = hasDraftValue ? draftValue : field.value;
   const displayValueText = toDisplayString(displayValue);
   const effectiveValueText = toDisplayString(field.effective_value);
-  const editable = field.editable !== false;
-  const readOnly = editable === false;
+  const readOnly = field.editable === false;
+  const editable = readOnly ? false : true;
 
   return (
     <div className="border border-slate-700 rounded-lg bg-slate-900/40 overflow-hidden hover:border-slate-600 transition-colors">
@@ -204,7 +212,7 @@ export function ConfigFieldsEditor({
     onUpdateField(field, value);
   };
 
-  const editableFields = configFields.filter((f) => f.editable !== false);
+  const editableFields = configFields.filter((f) => (f.editable === false ? false : true));
   const readOnlyFields = configFields.filter((f) => f.editable === false);
 
   return (

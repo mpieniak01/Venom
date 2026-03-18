@@ -515,6 +515,22 @@ class TestExecutionStepAggregation:
             for attr in required_attrs:
                 assert attr in step, f"Missing attribute '{attr}' in execution step"
 
+    def test_missing_execution_step_timestamp_is_null(
+        self, client, isolated_control_plane, sample_trace
+    ):
+        """Missing source timestamp should remain null in API response."""
+        request_id = str(uuid4())
+        sample_trace.steps[0].timestamp = None
+        isolated_control_plane.add_trace(request_id, sample_trace)
+
+        response = client.get(f"/api/v1/workflow/control/state?request_id={request_id}")
+        assert response.status_code == 200
+        data = response.json()
+
+        execution_steps = data["execution_steps"]
+        assert len(execution_steps) > 0
+        assert execution_steps[0]["timestamp"] is None
+
 
 class TestCanonicalGraphBuilder:
     """Tests for canonical operator graph builder."""

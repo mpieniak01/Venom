@@ -81,17 +81,21 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
       const draftField = draftByKey.get(key);
       const originalValue = originalField?.value;
       const draftValue = draftField?.value;
+      const entityId = draftField?.entity_id ?? originalField?.entity_id;
+      const field = draftField?.field ?? originalField?.field;
 
       if (JSON.stringify(originalValue) !== JSON.stringify(draftValue)) {
         changes.push({
           resource_type: "config",
           resource_id: key,
+          entity_id: entityId,
+          field,
           action: "update",
           current_value: originalValue ?? null,
           new_value: draftValue ?? null,
           metadata: {
-            entity_id: draftField?.entity_id ?? originalField?.entity_id,
-            field: draftField?.field ?? originalField?.field,
+            entity_id: entityId,
+            field,
           },
         });
       }

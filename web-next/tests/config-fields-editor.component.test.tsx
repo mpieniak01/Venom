@@ -39,8 +39,13 @@ describe("ConfigFieldsEditor", () => {
 
     assert.equal(onUpdateField.mock.callCount(), 1);
     const firstCall = onUpdateField.mock.calls[0];
-    assert.equal(firstCall.arguments[0].key, "AI_MODE");
-    assert.equal(firstCall.arguments[1], "advanced");
+    assert.ok(firstCall);
+    const [updatedField, updatedValue] = ((firstCall.arguments ?? []) as unknown) as [
+      { key: string },
+      unknown,
+    ];
+    assert.equal(updatedField.key, "AI_MODE");
+    assert.equal(updatedValue, "advanced");
   });
 
   it("renders restart and affected services metadata for expanded field", () => {
@@ -71,5 +76,33 @@ describe("ConfigFieldsEditor", () => {
     assert.ok(screen.getByText("Affected Services"));
     assert.ok(screen.getByText("backend"));
     assert.ok(screen.getByText("ui"));
+  });
+
+  it("disables controls for read-only config fields", () => {
+    const onUpdateField = mock.fn(() => undefined);
+
+    render(
+      <ConfigFieldsEditor
+        configFields={[
+          {
+            entity_id: "config:ACTIVE_PROVIDER",
+            field: "ACTIVE_PROVIDER",
+            key: "ACTIVE_PROVIDER",
+            value: "ollama",
+            effective_value: "ollama",
+            source: "env",
+            editable: false,
+            restart_required: false,
+            affected_services: ["backend"],
+          },
+        ]}
+        onUpdateField={onUpdateField}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /ACTIVE_PROVIDER/i }));
+    const input = screen.getByLabelText("Set Value") as HTMLInputElement;
+    assert.equal(input.disabled, true);
+    assert.equal(onUpdateField.mock.callCount(), 0);
   });
 });

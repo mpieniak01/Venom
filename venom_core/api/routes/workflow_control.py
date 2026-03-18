@@ -150,7 +150,7 @@ async def apply_changes(
         500: {"description": "Internal server error"},
     },
 )
-async def get_system_state(
+async def get_control_state(
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
     request_id: Optional[str] = Query(default=None),
 ):

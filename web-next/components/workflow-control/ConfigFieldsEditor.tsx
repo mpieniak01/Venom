@@ -88,7 +88,12 @@ function ConfigFieldCard({
               Set Value
             </Label>
             {hasOptions ? (
-              <Select value={String(displayValue ?? "")} onValueChange={(val) => onUpdateValue(val)}>
+              <Select
+                value={String(displayValue ?? "")}
+                onValueChange={field.editable === false ? undefined : (val) => onUpdateValue(val)}
+                disabled={field.editable === false}
+                aria-disabled={field.editable === false}
+              >
                 <SelectTrigger id={`cfg-${field.key}`} className="bg-slate-800/60 border-cyan-500/30 text-cyan-100 focus:ring-cyan-500/50">
                   <SelectValue />
                 </SelectTrigger>
@@ -105,7 +110,9 @@ function ConfigFieldCard({
                 id={`cfg-${field.key}`}
                 type="text"
                 value={String(displayValue ?? "")}
-                onChange={(e) => onUpdateValue(e.target.value)}
+                onChange={field.editable === false ? undefined : (e) => onUpdateValue(e.target.value)}
+                disabled={field.editable === false}
+                aria-disabled={field.editable === false}
                 className="bg-slate-800/60 border-cyan-500/30 text-cyan-100 placeholder-slate-600 focus:ring-cyan-500/50"
                 placeholder={`Enter value for ${field.key}`}
               />

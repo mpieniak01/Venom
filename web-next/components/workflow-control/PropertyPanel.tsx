@@ -25,7 +25,7 @@ import type { OperatorConfigField } from "@/types/workflow-control";
 interface PropertyPanelProps {
   selectedNode: Node | null;
   onUpdateNode: (nodeId: string, data: unknown) => void;
-    configFields?: OperatorConfigField[];
+  configFields?: OperatorConfigField[];
   availableOptions?: {
     strategies?: string[];
     intentModes?: string[];
@@ -123,11 +123,11 @@ const NODE_VISUALS: Record<WorkflowNodeType, NodeVisualMeta> = {
     icon: Database,
     iconColorClass: "text-pink-400",
     headerBgClass: "bg-pink-500/20 border-pink-500 shadow-pink-500/20",
-    config: {
-      icon: Settings2,
-      iconColorClass: "text-cyan-400",
-      headerBgClass: "bg-cyan-500/20 border-cyan-500 shadow-cyan-500/20",
-    },
+  },
+  config: {
+    icon: Settings2,
+    iconColorClass: "text-cyan-400",
+    headerBgClass: "bg-cyan-500/20 border-cyan-500 shadow-cyan-500/20",
   },
 };
 
@@ -593,25 +593,25 @@ export function PropertyPanel({
     if (nodeType === "runtime") {
       return <RuntimeEditor data={data} t={t} />;
     }
+    if (nodeType === "config") {
+      const nodeConfigFields =
+        Array.isArray((data as { configFields?: unknown[] }).configFields)
+          ? ((data as { configFields?: OperatorConfigField[] }).configFields ?? [])
+          : configFields ?? [];
+      return (
+        <ConfigFieldsEditor
+          configFields={nodeConfigFields}
+          onUpdateField={(field, value) => {
+            const nextConfigFields = nodeConfigFields.map((item) =>
+              item.key === field.key ? { ...item, value } : item
+            );
+            handleUpdate("configFields", nextConfigFields);
+          }}
+        />
+      );
+    }
     if (nodeType === "provider") {
       return <ProviderEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
-        if (nodeType === "config") {
-          const nodeConfigFields =
-            (Array.isArray((data as { configFields?: unknown[] }).configFields)
-              ? ((data as { configFields?: OperatorConfigField[] }).configFields ?? [])
-              : configFields ?? []);
-          return (
-            <ConfigFieldsEditor
-              configFields={nodeConfigFields}
-              onUpdateField={(field, value) => {
-                const nextConfigFields = nodeConfigFields.map((item) =>
-                  item.key === field.key ? { ...item, value } : item
-                );
-                handleUpdate("configFields", nextConfigFields);
-              }}
-            />
-          );
-        }
     }
     return <EmbeddingEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
   })();

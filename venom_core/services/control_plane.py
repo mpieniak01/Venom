@@ -880,7 +880,7 @@ class ControlPlaneService:
                     component=str(getattr(step, "component", "unknown")),
                     action=str(getattr(step, "action", "step")),
                     status=str(getattr(step, "status", "unknown")),
-                    timestamp=getattr(step, "timestamp", datetime.now(timezone.utc)),
+                    timestamp=getattr(step, "timestamp", None),
                     details=getattr(step, "details", None),
                 )
             )

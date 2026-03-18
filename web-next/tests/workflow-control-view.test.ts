@@ -61,6 +61,8 @@ describe("workflow-control view helpers", () => {
 
     assert.equal(configChanges.length, 1);
     assert.equal(configChanges[0].resource_id, "AI_MODE");
+    assert.equal(configChanges[0].entity_id, "config:AI_MODE");
+    assert.equal(configChanges[0].field, "AI_MODE");
     assert.equal(configChanges[0].new_value, "advanced");
     assert.equal(configChanges[0].action, "update");
   });

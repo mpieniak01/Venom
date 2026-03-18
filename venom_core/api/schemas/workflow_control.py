@@ -235,7 +235,7 @@ class OperatorExecutionStep(BaseModel):
     component: str
     action: str
     status: str
-    timestamp: datetime
+    timestamp: Optional[datetime] = None
     details: Optional[str] = None
 
 

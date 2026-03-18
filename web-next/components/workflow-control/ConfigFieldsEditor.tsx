@@ -63,12 +63,12 @@ function ConfigFieldCard({
 }>) {
   const hasOptions = (field.options?.length ?? 0) > 0;
   const options = field.options ?? [];
-  const hasDraftValue = typeof draftValue !== "undefined";
+  const hasDraftValue = draftValue !== undefined;
   const displayValue = hasDraftValue ? draftValue : field.value;
   const displayValueText = toDisplayString(displayValue);
   const effectiveValueText = toDisplayString(field.effective_value);
   const readOnly = field.editable === false;
-  const editable = readOnly ? false : true;
+  const editable = !readOnly;
 
   return (
     <div className="border border-slate-700 rounded-lg bg-slate-900/40 overflow-hidden hover:border-slate-600 transition-colors">
@@ -212,7 +212,7 @@ export function ConfigFieldsEditor({
     onUpdateField(field, value);
   };
 
-  const editableFields = configFields.filter((f) => (f.editable === false ? false : true));
+  const editableFields = configFields.filter((f) => f.editable !== false);
   const readOnlyFields = configFields.filter((f) => f.editable === false);
 
   return (

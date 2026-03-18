@@ -18,6 +18,27 @@ interface ConfigFieldsEditorProps {
   onUpdateField: (field: OperatorConfigField, value: unknown) => void;
 }
 
+function toDisplayString(value: unknown, emptyFallback = "(empty)"): string {
+  if (value == null || value === "") {
+    return emptyFallback;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function ConfigFieldCard({
   field,
   isExpanded,
@@ -36,6 +57,10 @@ function ConfigFieldCard({
   const hasOptions = (field.options?.length ?? 0) > 0;
   const options = field.options ?? [];
   const displayValue = draftValue !== undefined ? draftValue : field.value;
+  const displayValueText = toDisplayString(displayValue);
+  const effectiveValueText = toDisplayString(field.effective_value);
+  const editable = field.editable !== false;
+  const readOnly = editable === false;
 
   return (
     <div className="border border-slate-700 rounded-lg bg-slate-900/40 overflow-hidden hover:border-slate-600 transition-colors">
@@ -68,7 +93,7 @@ function ConfigFieldCard({
                 Current Value
               </Label>
               <div id={`current-${field.key}`} className="mt-1.5 text-xs font-mono bg-slate-800/50 border border-slate-700 rounded px-2 py-1.5 text-slate-300 break-all">
-                {String(displayValue ?? "(empty)")}
+                {displayValueText}
               </div>
             </div>
             {field.effective_value !== field.value && (
@@ -77,7 +102,7 @@ function ConfigFieldCard({
                   Effective Value
                 </Label>
                 <div id={`effective-${field.key}`} className="mt-1.5 text-xs font-mono bg-slate-800/50 border border-slate-700 rounded px-2 py-1.5 text-cyan-300 break-all">
-                  {String(field.effective_value ?? "(empty)")}
+                  {effectiveValueText}
                 </div>
               </div>
             )}
@@ -89,10 +114,10 @@ function ConfigFieldCard({
             </Label>
             {hasOptions ? (
               <Select
-                value={String(displayValue ?? "")}
-                onValueChange={field.editable === false ? undefined : (val) => onUpdateValue(val)}
-                disabled={field.editable === false}
-                aria-disabled={field.editable === false}
+                value={toDisplayString(displayValue, "")}
+                onValueChange={editable ? (val) => onUpdateValue(val) : undefined}
+                disabled={readOnly}
+                aria-disabled={readOnly}
               >
                 <SelectTrigger id={`cfg-${field.key}`} className="bg-slate-800/60 border-cyan-500/30 text-cyan-100 focus:ring-cyan-500/50">
                   <SelectValue />
@@ -109,10 +134,10 @@ function ConfigFieldCard({
               <Input
                 id={`cfg-${field.key}`}
                 type="text"
-                value={String(displayValue ?? "")}
-                onChange={field.editable === false ? undefined : (e) => onUpdateValue(e.target.value)}
-                disabled={field.editable === false}
-                aria-disabled={field.editable === false}
+                value={toDisplayString(displayValue, "")}
+                onChange={editable ? (e) => onUpdateValue(e.target.value) : undefined}
+                disabled={readOnly}
+                aria-disabled={readOnly}
                 className="bg-slate-800/60 border-cyan-500/30 text-cyan-100 placeholder-slate-600 focus:ring-cyan-500/50"
                 placeholder={`Enter value for ${field.key}`}
               />
@@ -145,7 +170,7 @@ function ConfigFieldCard({
             </div>
           )}
 
-          {!field.editable && (
+          {field.editable === false && (
             <div className="p-2.5 rounded-lg bg-slate-700/50 border border-slate-600 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
               <p className="text-[11px] text-slate-400">This field is read-only.</p>
@@ -164,7 +189,7 @@ export function ConfigFieldsEditor({
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [editingValues, setEditingValues] = useState<Record<string, unknown>>({});
 
-  if (!configFields || configFields.length === 0) {
+  if (configFields.length === 0) {
     return null;
   }
 
@@ -179,8 +204,8 @@ export function ConfigFieldsEditor({
     onUpdateField(field, value);
   };
 
-  const editableFields = configFields.filter((f) => f.editable);
-  const readOnlyFields = configFields.filter((f) => !f.editable);
+  const editableFields = configFields.filter((f) => f.editable !== false);
+  const readOnlyFields = configFields.filter((f) => f.editable === false);
 
   return (
     <div className="p-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 shadow-[0_4px_25px_rgba(6,182,212,0.05)]">

@@ -153,7 +153,9 @@ async def apply_changes(
 )
 async def get_control_state(
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
-    request_id: Optional[str] = Query(default=None),
+    request_id: Annotated[
+        Optional[str], Query(description="Optional explicit request selector")
+    ] = None,
 ):
     """Get canonical operator state for workflow-control.
 

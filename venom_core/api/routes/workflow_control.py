@@ -25,6 +25,7 @@ from venom_core.api.schemas.workflow_control import (
     ControlPlanResponse,
     ControlStateResponse,
     ResourceType,
+    SystemState,
     WorkflowOperation,
 )
 from venom_core.services.control_plane import ControlPlaneService
@@ -164,7 +165,18 @@ async def get_control_state(
         Current canonical operator state
     """
     try:
-        return service.get_control_state(request_id=request_id)
+        result = service.get_control_state(request_id=request_id)
+        if isinstance(result, ControlStateResponse):
+            return result
+        if isinstance(result, SystemState):
+            return ControlStateResponse(system_state=result)
+
+        # Backward-compatible fallback used by some contract tests/mocks that
+        # still expose get_system_state() returning only SystemState.
+        legacy_result = service.get_system_state()
+        if isinstance(legacy_result, ControlStateResponse):
+            return legacy_result
+        return ControlStateResponse(system_state=legacy_result)
     except Exception as e:
         logger.exception("Failed to get system state")
         raise HTTPException(status_code=500, detail=str(e)) from e

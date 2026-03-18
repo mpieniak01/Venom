@@ -3,6 +3,7 @@
 
 tests/ollama_bench/test_common_and_scoreboard.py
 tests/ollama_bench/test_scheduler.py
+tests/test_204a_canonical_control_state.py
 tests/test_academy_202c_signing_coverage.py
 tests/test_academy_202d_lora_onnx_deploy.py
 tests/test_academy_adapter_runtime_service.py

@@ -90,7 +90,7 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 5);
+    assert.equal(initialEdgesCount, 6);
 
     await act(async () => {
       captured.props?.onConnect?.({ source: "runtime", target: "decision" });
@@ -112,7 +112,7 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 5);
+    assert.equal(initialEdgesCount, 6);
 
     await act(async () => {
       captured.props?.onConnect?.({ source: "runtime", target: "provider" });
@@ -131,7 +131,7 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 5);
+    assert.equal(initialEdgesCount, 6);
 
     await act(async () => {
       captured.props?.onConnect?.({ source: "runtime", target: "provider" });

@@ -174,46 +174,115 @@ Applies previously planned changes using execution ticket.
 }
 ```
 
-### 3. Get System State
+### 3. Get System State (Canonical Operator State)
 
 **Endpoint:** `GET /state`
 
-Returns current state of the entire system.
+Returns canonical operator state for Workflow Control.
 
-**Response:**
+**Query Parameters:**
+- `request_id` (optional) - explicit workflow target selector.
+
+Without `request_id`, backend uses selector fallback:
+1. latest active request,
+2. latest request,
+3. no request target.
+
+**Response (shape):**
 ```json
 {
   "system_state": {
-    "timestamp": "2024-01-01T00:00:00Z",
+    "timestamp": "2026-03-18T12:00:00Z",
     "decision_strategy": "standard",
     "intent_mode": "simple",
     "kernel": "standard",
-    "runtime": {
-      "services": [
-        {
-          "name": "backend",
-          "status": "running",
-          "uptime_seconds": 1234
-        }
-      ]
-    },
-    "provider": {
-      "active": "ollama",
-      "available": ["ollama", "huggingface", "openai"]
-    },
+    "runtime": {},
+    "provider": { "active": "ollama" },
     "embedding_model": "sentence-transformers",
-    "workflow_status": "idle",
-    "active_operations": [],
-    "health": {
-      "overall": "healthy"
-    }
+    "workflow_status": "running"
   },
+  "meta": {
+    "timestamp": "2026-03-18T12:00:00Z",
+    "request_selector": "latest_active"
+  },
+  "workflow_target": {
+    "request_id": "uuid",
+    "task_status": "PROCESSING",
+    "workflow_status": "running",
+    "runtime_id": "ollama@http://localhost:11434/v1",
+    "provider": "ollama",
+    "model": "llama3",
+    "allowed_operations": ["pause", "cancel", "dry_run"]
+  },
+  "config_fields": [
+    {
+      "entity_id": "config:AI_MODE",
+      "field": "AI_MODE",
+      "key": "AI_MODE",
+      "value": "standard",
+      "effective_value": "standard",
+      "source": "env",
+      "editable": true,
+      "restart_required": false,
+      "affected_services": ["backend"],
+      "options": ["standard", "advanced", "heuristic"]
+    }
+  ],
+  "runtime_services": [
+    {
+      "id": "backend",
+      "name": "backend",
+      "kind": "backend",
+      "status": "running",
+      "allowed_actions": ["stop", "restart"],
+      "dependencies": []
+    }
+  ],
+  "execution_steps": [
+    {
+      "id": "uuid:0",
+      "component": "intent",
+      "action": "classify",
+      "status": "ok",
+      "timestamp": "2026-03-18T12:00:01Z",
+      "details": "..."
+    }
+  ],
+  "graph": {
+    "nodes": [],
+    "edges": []
+  },
+  "allowed_actions": ["pause", "cancel", "dry_run", "runtime:backend:restart"],
   "last_operation": null,
   "pending_changes": []
 }
 ```
 
-### 4. Get Audit Trail
+### 4. Runtime Service Action Gateway
+
+**Endpoint:** `POST /runtime/{service_id}/{action}`
+
+Unified runtime control gateway for actionable services.
+
+Supported actions:
+1. `start`
+2. `stop`
+3. `restart`
+
+### 5. Workflow Operation Gateway
+
+**Endpoint:** `POST /workflow/{request_id}/{operation}`
+
+Unified workflow operation gateway for target request.
+
+Supported operations:
+1. `pause`
+2. `resume`
+3. `cancel`
+4. `retry`
+5. `dry_run`
+
+### 6. Get Audit Trail
 
 **Endpoint:** `GET /audit`
 
@@ -319,4 +388,4 @@ All operations are logged with:
 
 ## Version
 
-API Version: v1 (2024)
+API Version: v1 (updated for canonical 204A contract, 2026)

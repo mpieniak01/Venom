@@ -25,9 +25,13 @@ from venom_core.api.schemas.workflow_control import (
     ControlPlanResponse,
     ControlStateResponse,
     ResourceType,
+    SystemState,
+    WorkflowOperation,
 )
 from venom_core.services.control_plane import ControlPlaneService
 from venom_core.services.control_plane_audit import ControlPlaneAuditTrail
+from venom_core.services.runtime_controller import ServiceType, runtime_controller
+from venom_core.services.workflow_operations import get_workflow_operation_service
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -147,32 +151,34 @@ async def apply_changes(
         500: {"description": "Internal server error"},
     },
 )
-async def get_system_state(
+async def get_control_state(
     service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
+    request_id: Annotated[
+        Optional[str], Query(description="Optional explicit request selector")
+    ] = None,
 ):
-    """Get current state of the entire system.
-
-    Returns comprehensive system state including:
-    - Decision strategy and intent mode
-    - Kernel and runtime configuration
-    - Provider and model status
-    - Embedding configuration
-    - Workflow status
-    - Active operations
+    """Get canonical operator state for workflow-control.
 
     Args:
         service: Control plane service injected via Depends
+        request_id: Optional explicit request selector
 
     Returns:
-        Current system state
+        Current canonical operator state
     """
     try:
-        system_state = service.get_system_state()
-        return ControlStateResponse(
-            system_state=system_state,
-            last_operation=None,
-            pending_changes=[],
-        )
+        result = service.get_control_state(request_id=request_id)
+        if isinstance(result, ControlStateResponse):
+            return result
+        if isinstance(result, SystemState):
+            return ControlStateResponse(system_state=result)
+
+        # Backward-compatible fallback used by some contract tests/mocks that
+        # still expose get_system_state() returning only SystemState.
+        legacy_result = service.get_system_state()
+        if isinstance(legacy_result, ControlStateResponse):
+            return legacy_result
+        return ControlStateResponse(system_state=legacy_result)
     except Exception as e:
         logger.exception("Failed to get system state")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -198,6 +204,93 @@ async def get_control_options(
         return ControlOptionsResponse(**options)
     except Exception as e:
         logger.exception("Failed to get control options")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post(
+    "/runtime/{service_id}/{action}",
+    responses={
+        400: {"description": "Invalid service or runtime action"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def runtime_service_action(
+    service_id: str,
+    action: str,
+):
+    """Execute runtime service action via workflow-control gateway."""
+    try:
+        try:
+            service_type = ServiceType(service_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown service_id '{service_id}'",
+            ) from exc
+
+        if action not in {"start", "stop", "restart"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown runtime action '{action}'",
+            )
+
+        if action == "start":
+            return runtime_controller.start_service(service_type)
+        if action == "stop":
+            return runtime_controller.stop_service(service_type)
+        return runtime_controller.restart_service(service_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            "Failed runtime action for service_id=%s action=%s", service_id, action
+        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post(
+    "/workflow/{request_id}/{operation}",
+    responses={
+        400: {"description": "Invalid workflow operation"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def workflow_operation_gateway(
+    request: Request,
+    request_id: str,
+    operation: WorkflowOperation,
+):
+    """Execute workflow operation via workflow-control gateway."""
+    try:
+        user = _extract_user_from_request(request)
+        service = get_workflow_operation_service()
+
+        if operation == WorkflowOperation.PAUSE:
+            return service.pause_workflow(
+                workflow_id=request_id, triggered_by=user, metadata={}
+            )
+        if operation == WorkflowOperation.RESUME:
+            return service.resume_workflow(
+                workflow_id=request_id, triggered_by=user, metadata={}
+            )
+        if operation == WorkflowOperation.CANCEL:
+            return service.cancel_workflow(
+                workflow_id=request_id, triggered_by=user, metadata={}
+            )
+        if operation == WorkflowOperation.RETRY:
+            return service.retry_workflow(
+                workflow_id=request_id,
+                triggered_by=user,
+                step_id=None,
+                metadata={},
+            )
+        return service.dry_run(workflow_id=request_id, triggered_by=user, metadata={})
+    except Exception as e:
+        logger.exception(
+            "Failed workflow gateway operation=%s request_id=%s",
+            operation,
+            request_id,
+        )
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

@@ -297,6 +297,19 @@
       "rationale": "Performance scenario kept outside fast lanes."
     },
     {
+      "path": "tests/test_204a_canonical_control_state.py",
+      "domain": "workflow",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_academy_202c_signing_coverage.py",
       "domain": "academy",
       "test_type": "gate",

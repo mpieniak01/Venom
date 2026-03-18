@@ -55,7 +55,49 @@ Aplikuje wcześniej zaplanowane zmiany używając biletu wykonania (execution ti
 
 **Endpoint:** `GET /state`
 
-Zwraca aktualny stan całego systemu (runtime, provider, config).
+Zwraca kanoniczny stan operatorski dla Workflow Control.
+
+**Parametry zapytania:**
+- `request_id` (opcjonalny) - jawny wybór targetu requestu.
+
+Bez `request_id` backend stosuje fallback:
+1. najnowszy aktywny request,
+2. ostatni request,
+3. brak aktywnego targetu.
+
+**Sekcje odpowiedzi (204A):**
+1. `system_state`
+2. `meta`
+3. `workflow_target`
+4. `config_fields[]`
+5. `runtime_services[]`
+6. `execution_steps[]`
+7. `graph.nodes[]` / `graph.edges[]`
+8. `allowed_actions`
+
+### 4. Brama akcji runtime
+
+**Endpoint:** `POST /runtime/{service_id}/{action}`
+
+Wspólna brama sterowania usługami runtime.
+
+Dostępne akcje:
+1. `start`
+2. `stop`
+3. `restart`
+
+### 5. Brama operacji workflow
+
+**Endpoint:** `POST /workflow/{request_id}/{operation}`
+
+Wspólna brama operacji workflow dla wskazanego requestu.
+
+Dostępne operacje:
+1. `pause`
+2. `resume`
+3. `cancel`
+4. `retry`
+5. `dry_run`
 
 ## Macierz Kompatybilności
 
@@ -66,4 +108,5 @@ Control Plane waliduje kompatybilność między:
 3. **Provider × Model**
 4. **Embedding × Provider**
 
-Szczegóły payloadów JSON znajdują się w wersji angielskiej dokumentacji.
+Szczegóły pełnych payloadów JSON oraz przykłady odpowiedzi znajdują się w:
+`docs/WORKFLOW_CONTROL_PLANE_API.md`.

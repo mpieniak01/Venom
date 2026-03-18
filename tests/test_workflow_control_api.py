@@ -34,6 +34,13 @@ class InMemoryConfigManager:
     def get_config(self, mask_secrets: bool = False) -> dict[str, Any]:
         return dict(self._config)
 
+    def get_effective_config_with_sources(
+        self, mask_secrets: bool = True
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        config = dict(self._config)
+        sources = {key: "env" for key in config.keys()}
+        return config, sources
+
     def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
         self.history.append(dict(updates))
         if "FAIL_ON_UPDATE" in updates:
@@ -743,7 +750,7 @@ def test_workflow_control_routes_return_500_when_dependencies_raise(client):
         def apply_changes(self, *_args, **_kwargs):
             raise RuntimeError("apply-error")
 
-        def get_system_state(self):
+        def get_control_state(self, *args, **kwargs):
             raise RuntimeError("state-error")
 
         def get_control_options(self):

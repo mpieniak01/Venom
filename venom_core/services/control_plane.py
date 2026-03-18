@@ -12,6 +12,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from venom_core.api.schemas.workflow_control import (
     AppliedChange,
@@ -21,13 +22,22 @@ from venom_core.api.schemas.workflow_control import (
     ControlApplyResponse,
     ControlPlanRequest,
     ControlPlanResponse,
+    ControlStateResponse,
+    OperatorConfigField,
+    OperatorExecutionStep,
+    OperatorGraph,
+    OperatorGraphEdge,
+    OperatorGraphNode,
+    OperatorMeta,
+    OperatorRuntimeService,
     ReasonCode,
     ResourceChange,
     ResourceType,
     SystemState,
     WorkflowStatus,
+    WorkflowTargetState,
 )
-from venom_core.services.config_manager import config_manager
+from venom_core.services.config_manager import RESTART_REQUIREMENTS, config_manager
 from venom_core.services.control_plane_audit import get_control_plane_audit_trail
 from venom_core.services.control_plane_compatibility import get_compatibility_validator
 from venom_core.services.runtime_controller import runtime_controller
@@ -68,6 +78,17 @@ class ControlPlaneService:
         "groq",
         "bedrock",
         "gemini",
+    }
+    SERVICE_DEPENDENCIES: dict[str, list[str]] = {
+        "backend": [],
+        "ui": ["backend"],
+        "llm_ollama": ["backend"],
+        "llm_vllm": ["backend"],
+        "hive": ["backend"],
+        "nexus": ["backend"],
+        "background_tasks": ["backend"],
+        "academy": ["backend"],
+        "intent_embedding_router": ["backend"],
     }
 
     def plan_changes(
@@ -660,6 +681,356 @@ class ControlPlaneService:
 
         return state
 
+    def get_control_state(self, request_id: str | None = None) -> ControlStateResponse:
+        """Build canonical operator payload for workflow-control."""
+        base_state = self.get_system_state()
+        selected_trace, request_selector = self._select_trace(request_id)
+
+        if selected_trace is not None:
+            # Import here to avoid circular dependency.
+            from venom_core.services.workflow_operations import get_workflow_service
+
+            workflow_service = get_workflow_service()
+            selected_request_id = str(selected_trace.request_id)
+            selected_task_status = selected_trace.status.value
+            selected_workflow_status = self._derive_workflow_status(
+                selected_task_status,
+                selected_request_id,
+                workflow_service,
+            )
+            selected_allowed_operations = self._compute_allowed_operations(
+                selected_workflow_status,
+                selected_request_id,
+            )
+            base_state = base_state.model_copy(
+                update={
+                    "active_request_id": selected_request_id,
+                    "active_task_status": selected_task_status,
+                    "llm_runtime_id": selected_trace.llm_runtime_id,
+                    "llm_provider_name": selected_trace.llm_provider,
+                    "llm_model": selected_trace.llm_model,
+                    "workflow_status": selected_workflow_status,
+                    "allowed_operations": selected_allowed_operations,
+                }
+            )
+
+        config_fields = self._build_operator_config_fields()
+        runtime_services = self._build_operator_runtime_services()
+        execution_steps = self._build_execution_steps(selected_trace)
+        workflow_target = WorkflowTargetState(
+            request_id=base_state.active_request_id,
+            task_status=base_state.active_task_status,
+            workflow_status=base_state.workflow_status.value,
+            runtime_id=base_state.llm_runtime_id,
+            provider=base_state.llm_provider_name,
+            model=base_state.llm_model,
+            allowed_operations=base_state.allowed_operations,
+        )
+        graph = self._build_operator_graph(
+            system_state=base_state,
+            config_fields=config_fields,
+            runtime_services=runtime_services,
+            execution_steps=execution_steps,
+        )
+        runtime_actions: list[str] = []
+        for service in runtime_services:
+            for action in service.allowed_actions:
+                runtime_actions.append(f"runtime:{service.id}:{action}")
+
+        return ControlStateResponse(
+            system_state=base_state,
+            meta=OperatorMeta(
+                timestamp=base_state.timestamp,
+                request_selector=request_selector,
+            ),
+            workflow_target=workflow_target,
+            config_fields=config_fields,
+            runtime_services=runtime_services,
+            execution_steps=execution_steps,
+            graph=graph,
+            allowed_actions=sorted(
+                set(base_state.allowed_operations + runtime_actions)
+            ),
+            last_operation=None,
+            pending_changes=[],
+        )
+
+    def _select_trace(self, request_id: str | None = None) -> tuple[Any | None, str]:
+        """Select request trace from explicit request_id or canonical auto strategy."""
+        tracer = get_request_tracer()
+        if tracer is None:
+            return None, "none"
+
+        if request_id:
+            try:
+                trace = tracer.get_trace(UUID(request_id))
+                if trace is not None:
+                    return trace, "request_id"
+            except (ValueError, TypeError, AttributeError):
+                logger.warning(
+                    "Invalid request_id for workflow-control state selector: %s",
+                    request_id,
+                )
+
+        try:
+            traces = tracer.get_all_traces(limit=200)
+        except Exception:
+            return None, "none"
+
+        for trace in traces:
+            trace_status = getattr(getattr(trace, "status", None), "value", "")
+            if trace_status == "PROCESSING":
+                return trace, "latest_active"
+
+        if traces:
+            return traces[0], "latest"
+        return None, "none"
+
+    def _build_operator_config_fields(self) -> list[OperatorConfigField]:
+        config, sources = config_manager.get_effective_config_with_sources(
+            mask_secrets=True
+        )
+        options = self.get_control_options()
+        result: list[OperatorConfigField] = []
+        for key in sorted(config.keys()):
+            restart_services = RESTART_REQUIREMENTS.get(key, [])
+            result.append(
+                OperatorConfigField(
+                    entity_id=f"config:{key}",
+                    field="value",
+                    key=key,
+                    value=config.get(key),
+                    effective_value=config.get(key),
+                    source=sources.get(key, "default"),
+                    editable=True,
+                    restart_required=bool(restart_services),
+                    affected_services=list(restart_services),
+                    options=self._get_config_options_for_key(key, options),
+                )
+            )
+        return result
+
+    def _get_config_options_for_key(
+        self, key: str, options: dict[str, Any]
+    ) -> list[str]:
+        mapping: dict[str, list[str]] = {
+            "AI_MODE": options.get("decision_strategies", []),
+            "INTENT_MODE": options.get("intent_modes", []),
+            "KERNEL": options.get("kernels", []),
+            "ACTIVE_PROVIDER": [
+                *options.get("providers", {}).get("local", []),
+                *options.get("providers", {}).get("cloud", []),
+            ],
+            "EMBEDDING_MODEL": [
+                *options.get("embeddings", {}).get("local", []),
+                *options.get("embeddings", {}).get("cloud", []),
+            ],
+        }
+        return mapping.get(key, [])
+
+    def _build_operator_runtime_services(self) -> list[OperatorRuntimeService]:
+        statuses = runtime_controller.get_all_services_status()
+        result: list[OperatorRuntimeService] = []
+        for status in statuses:
+            status_value = str(
+                getattr(getattr(status, "status", None), "value", "unknown")
+            )
+            service_name = str(getattr(status, "name", ""))
+            actionable = bool(getattr(status, "actionable", False))
+            allowed_actions: list[str] = []
+            if actionable:
+                if status_value == "running":
+                    allowed_actions = ["stop", "restart"]
+                else:
+                    allowed_actions = ["start"]
+            result.append(
+                OperatorRuntimeService(
+                    id=service_name,
+                    name=service_name,
+                    kind=str(
+                        getattr(
+                            getattr(status, "service_type", None), "value", "runtime"
+                        )
+                    ),
+                    status=status_value,
+                    pid=getattr(status, "pid", None),
+                    port=getattr(status, "port", None),
+                    cpu_percent=float(getattr(status, "cpu_percent", 0.0) or 0.0),
+                    memory_mb=float(getattr(status, "memory_mb", 0.0) or 0.0),
+                    uptime_seconds=getattr(status, "uptime_seconds", None),
+                    runtime_version=getattr(status, "runtime_version", None),
+                    actionable=actionable,
+                    allowed_actions=allowed_actions,
+                    dependencies=self.SERVICE_DEPENDENCIES.get(service_name, []),
+                )
+            )
+        return result
+
+    def _build_execution_steps(self, trace: Any | None) -> list[OperatorExecutionStep]:
+        if trace is None:
+            return []
+
+        steps = getattr(trace, "steps", []) or []
+        trace_id = str(getattr(trace, "request_id", "unknown"))
+        result: list[OperatorExecutionStep] = []
+        for index, step in enumerate(steps):
+            result.append(
+                OperatorExecutionStep(
+                    id=f"{trace_id}:{index}",
+                    component=str(getattr(step, "component", "unknown")),
+                    action=str(getattr(step, "action", "step")),
+                    status=str(getattr(step, "status", "unknown")),
+                    timestamp=getattr(step, "timestamp", datetime.now(timezone.utc)),
+                    details=getattr(step, "details", None),
+                )
+            )
+        return result
+
+    def _build_operator_graph(
+        self,
+        system_state: SystemState,
+        config_fields: list[OperatorConfigField],
+        runtime_services: list[OperatorRuntimeService],
+        execution_steps: list[OperatorExecutionStep],
+    ) -> OperatorGraph:
+        nodes: list[OperatorGraphNode] = [
+            OperatorGraphNode(
+                id="decision",
+                type="decision",
+                label="Decision",
+                data={"strategy": system_state.decision_strategy},
+                position={"x": 0.0, "y": 0.0},
+            ),
+            OperatorGraphNode(
+                id="intent",
+                type="intent",
+                label="Intent",
+                data={"intentMode": system_state.intent_mode},
+                position={"x": 220.0, "y": 120.0},
+            ),
+            OperatorGraphNode(
+                id="kernel",
+                type="kernel",
+                label="Kernel",
+                data={"kernel": system_state.kernel},
+                position={"x": 440.0, "y": 240.0},
+            ),
+            OperatorGraphNode(
+                id="runtime",
+                type="runtime",
+                label="Runtime",
+                data={"runtime": system_state.runtime},
+                position={"x": 660.0, "y": 360.0},
+            ),
+            OperatorGraphNode(
+                id="embedding",
+                type="embedding",
+                label="Embedding",
+                data={
+                    "model": system_state.embedding_model,
+                    "sourceType": system_state.embedding_source,
+                    "sourceTag": system_state.embedding_source,
+                },
+                position={"x": 880.0, "y": 480.0},
+            ),
+            OperatorGraphNode(
+                id="provider",
+                type="provider",
+                label="Provider",
+                data={
+                    "provider": system_state.provider,
+                    "sourceType": system_state.provider_source,
+                    "sourceTag": system_state.provider_source,
+                },
+                position={"x": 1100.0, "y": 600.0},
+            ),
+            OperatorGraphNode(
+                id="config",
+                type="config",
+                label="Config",
+                data={
+                    "configFields": [
+                        field.model_dump(mode="json") for field in config_fields
+                    ],
+                    "fieldCount": len(config_fields),
+                },
+                position={"x": 990.0, "y": 540.0},
+            ),
+        ]
+        edges: list[OperatorGraphEdge] = [
+            OperatorGraphEdge(
+                id="e1", source="decision", target="intent", animated=True
+            ),
+            OperatorGraphEdge(id="e2", source="intent", target="kernel", animated=True),
+            OperatorGraphEdge(
+                id="e3", source="kernel", target="runtime", animated=True
+            ),
+            OperatorGraphEdge(
+                id="e4", source="runtime", target="embedding", animated=True
+            ),
+            OperatorGraphEdge(
+                id="e5", source="embedding", target="config", animated=True
+            ),
+            OperatorGraphEdge(
+                id="e6", source="config", target="provider", animated=True
+            ),
+        ]
+
+        for index, service in enumerate(runtime_services):
+            node_id = f"runtime-service:{service.id}"
+            nodes.append(
+                OperatorGraphNode(
+                    id=node_id,
+                    type="runtime_service",
+                    label=service.name,
+                    data=service.model_dump(mode="json"),
+                    position={
+                        "x": 660.0 + (index % 3) * 240.0,
+                        "y": 520.0 + (index // 3) * 120.0,
+                    },
+                )
+            )
+            edges.append(
+                OperatorGraphEdge(
+                    id=f"runtime-link:{service.id}",
+                    source="runtime",
+                    target=node_id,
+                    animated=False,
+                )
+            )
+
+        previous_step_id: str | None = None
+        for index, step in enumerate(execution_steps):
+            step_node_id = f"step:{step.id}"
+            nodes.append(
+                OperatorGraphNode(
+                    id=step_node_id,
+                    type="execution_step",
+                    label=f"{step.component}:{step.action}",
+                    data=step.model_dump(mode="json"),
+                    position={"x": 200.0 + index * 220.0, "y": 760.0},
+                )
+            )
+            if previous_step_id is None:
+                edges.append(
+                    OperatorGraphEdge(
+                        id=f"step-link:start:{index}",
+                        source="runtime",
+                        target=step_node_id,
+                    )
+                )
+            else:
+                edges.append(
+                    OperatorGraphEdge(
+                        id=f"step-link:{index}",
+                        source=previous_step_id,
+                        target=step_node_id,
+                    )
+                )
+            previous_step_id = step_node_id
+
+        return OperatorGraph(nodes=nodes, edges=edges)
+
     def _derive_workflow_status(
         self,
         active_task_status: str | None,
@@ -887,9 +1258,20 @@ class ControlPlaneService:
         )
 
         if change.resource_type == ResourceType.CONFIG:
-            if not change.resource_id:
-                raise ValueError("CONFIG changes require resource_id as config key")
-            return {change.resource_id: effective_new_value}
+            config_key = change.resource_id
+            if (
+                not config_key
+                and change.entity_id
+                and change.entity_id.startswith("config:")
+            ):
+                config_key = change.entity_id.split(":", 1)[1]
+            if not config_key and change.field:
+                config_key = change.field
+            if not config_key:
+                raise ValueError(
+                    "CONFIG changes require resource_id or entity_id/field as config key"
+                )
+            return {config_key: effective_new_value}
 
         if change.resource_type == ResourceType.WORKFLOW:
             raise ValueError(

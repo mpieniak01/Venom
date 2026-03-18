@@ -70,5 +70,32 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
   );
   compareAndPush("embedding_model", "embedding", original.embedding_model, draft.embedding_model);
 
+    const originalConfigFields = original.config_fields ?? [];
+    const draftConfigFields = draft.config_fields ?? [];
+    const originalByKey = new Map(originalConfigFields.map((field) => [field.key, field]));
+    const draftByKey = new Map(draftConfigFields.map((field) => [field.key, field]));
+    const allConfigKeys = new Set([...originalByKey.keys(), ...draftByKey.keys()]);
+
+    for (const key of allConfigKeys) {
+      const originalField = originalByKey.get(key);
+      const draftField = draftByKey.get(key);
+      const originalValue = originalField?.value;
+      const draftValue = draftField?.value;
+
+      if (JSON.stringify(originalValue) !== JSON.stringify(draftValue)) {
+        changes.push({
+          resource_type: "config",
+          resource_id: key,
+          action: "update",
+          current_value: originalValue ?? null,
+          new_value: draftValue ?? null,
+          metadata: {
+            entity_id: draftField?.entity_id ?? originalField?.entity_id,
+            field: draftField?.field ?? originalField?.field,
+          },
+        });
+      }
+    }
+
   return { changes, dry_run: false, force: false };
 }

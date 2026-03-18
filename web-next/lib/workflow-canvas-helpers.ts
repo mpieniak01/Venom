@@ -1,5 +1,9 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { SystemState } from "@/types/workflow-control";
+import type {
+  OperatorGraphEdge,
+  OperatorGraphNode,
+  SystemState,
+} from "@/types/workflow-control";
 
 type SourceTag = "local" | "cloud";
 
@@ -61,12 +65,49 @@ function resolveEmbeddingSource(
   return "local";
 }
 
+function hasBackendGraph(systemState: SystemState): boolean {
+  return Boolean(
+    systemState.graph?.nodes &&
+      systemState.graph?.edges &&
+      systemState.graph.nodes.length > 0
+  );
+}
+
+function mapBackendNodes(nodes: OperatorGraphNode[]): Node[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    type: node.type,
+    data: node.data ?? {},
+    position: {
+      x: node.position?.x ?? 0,
+      y: node.position?.y ?? 0,
+    },
+  }));
+}
+
+function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
+  return edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    animated: edge.animated ?? false,
+    label: edge.label,
+  }));
+}
+
 export function buildWorkflowGraph(systemState: SystemState | null): {
   nodes: Node[];
   edges: Edge[];
 } {
   if (!systemState) {
     return { nodes: [], edges: [] };
+  }
+
+  if (hasBackendGraph(systemState)) {
+    return {
+      nodes: mapBackendNodes(systemState.graph?.nodes ?? []),
+      edges: mapBackendEdges(systemState.graph?.edges ?? []),
+    };
   }
 
   const activeProvider = systemState.provider?.active;
@@ -133,6 +174,15 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
       },
       position: { x: 0, y: 0 },
     },
+    {
+      id: "config",
+      type: "config",
+      data: {
+        configFields: systemState.config_fields ?? [],
+        fieldCount: (systemState.config_fields ?? []).length,
+      },
+      position: { x: 0, y: 0 },
+    },
   ];
 
   const edges: Edge[] = [
@@ -140,7 +190,8 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
     { id: "e2", source: "intent", target: "kernel", animated: true },
     { id: "e3", source: "kernel", target: "runtime", animated: true },
     { id: "e4", source: "runtime", target: "embedding", animated: true },
-    { id: "e5", source: "embedding", target: "provider", animated: true },
+    { id: "e5", source: "embedding", target: "config", animated: true },
+    { id: "e6", source: "config", target: "provider", animated: true },
   ];
 
   return { nodes, edges };

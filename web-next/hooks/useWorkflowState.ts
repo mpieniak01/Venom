@@ -9,6 +9,7 @@ import type {
   PlanResponse,
   ApplyResults,
   WorkflowControlOptions,
+  WorkflowControlStatePayload,
 } from "@/types/workflow-control";
 
 const WORKFLOW_STATE_CACHE_KEY = "workflow_control_state_cache_v1";
@@ -38,10 +39,34 @@ export async function readApiErrorMessage(response: Response, fallback: string):
 }
 
 export function extractSystemStateFromPayload(payload: unknown): SystemState | null {
-  if (payload && typeof payload === "object" && "system_state" in payload) {
-    return (payload as { system_state: SystemState }).system_state;
+  if (!payload || typeof payload !== "object" || !("system_state" in payload)) {
+    return null;
   }
-  return null;
+
+  const typedPayload = payload as WorkflowControlStatePayload;
+  const baseState = typedPayload.system_state;
+  if (!baseState) return null;
+
+  return {
+    ...baseState,
+    config_fields: typedPayload.config_fields ?? baseState.config_fields,
+    runtime_services: typedPayload.runtime_services ?? baseState.runtime_services,
+    execution_steps: typedPayload.execution_steps ?? baseState.execution_steps,
+    graph: typedPayload.graph ?? baseState.graph,
+    active_request_id:
+      typedPayload.workflow_target?.request_id ?? baseState.active_request_id,
+    active_task_status:
+      typedPayload.workflow_target?.task_status ?? baseState.active_task_status,
+    workflow_status:
+      typedPayload.workflow_target?.workflow_status ?? baseState.workflow_status,
+    llm_runtime_id:
+      typedPayload.workflow_target?.runtime_id ?? baseState.llm_runtime_id,
+    llm_provider_name:
+      typedPayload.workflow_target?.provider ?? baseState.llm_provider_name,
+    llm_model: typedPayload.workflow_target?.model ?? baseState.llm_model,
+    allowed_operations:
+      typedPayload.workflow_target?.allowed_operations ?? baseState.allowed_operations,
+  };
 }
 
 function cloneState(state: SystemState): SystemState {
@@ -213,7 +238,7 @@ export function useWorkflowState() {
   // Shared helper for all runtime workflow operations — avoids copy-pasting
   // the workflowId guard, loading flag, and error handling across 5 callbacks.
   const executeWorkflowOperation = useCallback(
-    async (urlSegment: string, operation: string, errorKey: string): Promise<void> => {
+    async (operation: string, errorKey: string): Promise<void> => {
       const workflowId = systemState?.active_request_id;
       if (!workflowId) {
         setError(t("workflowControl.messages.noActiveRequest"));
@@ -223,11 +248,9 @@ export function useWorkflowState() {
       setError(null);
       try {
         const response = await fetch(
-          buildApiUrl(`/api/v1/workflow/operations/${urlSegment}`),
+          buildApiUrl(`/api/v1/workflow/control/workflow/${workflowId}/${operation}`),
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workflow_id: workflowId, operation }),
           }
         );
         if (!response.ok) {
@@ -245,31 +268,31 @@ export function useWorkflowState() {
 
   // Pause workflow
   const pauseWorkflow = useCallback(
-    () => executeWorkflowOperation("pause", "pause", "workflowControl.messages.pauseError"),
+    () => executeWorkflowOperation("pause", "workflowControl.messages.pauseError"),
     [executeWorkflowOperation]
   );
 
   // Resume workflow
   const resumeWorkflow = useCallback(
-    () => executeWorkflowOperation("resume", "resume", "workflowControl.messages.resumeError"),
+    () => executeWorkflowOperation("resume", "workflowControl.messages.resumeError"),
     [executeWorkflowOperation]
   );
 
   // Cancel workflow
   const cancelWorkflow = useCallback(
-    () => executeWorkflowOperation("cancel", "cancel", "workflowControl.messages.cancelError"),
+    () => executeWorkflowOperation("cancel", "workflowControl.messages.cancelError"),
     [executeWorkflowOperation]
   );
 
   // Retry workflow
   const retryWorkflow = useCallback(
-    () => executeWorkflowOperation("retry", "retry", "workflowControl.messages.retryError"),
+    () => executeWorkflowOperation("retry", "workflowControl.messages.retryError"),
     [executeWorkflowOperation]
   );
 
   // Dry run
   const dryRun = useCallback(
-    () => executeWorkflowOperation("dry-run", "dry_run", "workflowControl.messages.dryRunError"),
+    () => executeWorkflowOperation("dry_run", "workflowControl.messages.dryRunError"),
     [executeWorkflowOperation]
   );
 
@@ -361,6 +384,9 @@ export function useWorkflowState() {
         if (typeof typedData.sourceType === "string") {
           next.embedding_source = typedData.sourceType;
         }
+      }
+      if (nodeId === "config" && Array.isArray(typedData.configFields)) {
+        next.config_fields = typedData.configFields as typeof next.config_fields;
       }
 
       return next;

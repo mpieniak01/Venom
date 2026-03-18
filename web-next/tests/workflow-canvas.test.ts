@@ -23,11 +23,11 @@ describe("workflow canvas graph builder", () => {
     const nodeIds = graph.nodes.map((n) => n.id).sort();
     assert.deepEqual(
       nodeIds,
-      ["decision", "intent", "embedding", "kernel", "provider", "runtime"].sort()
+      ["decision", "intent", "embedding", "config", "kernel", "provider", "runtime"].sort()
     );
 
     const edgeIds = graph.edges.map((e) => e.id).sort();
-    assert.deepEqual(edgeIds, ["e1", "e2", "e3", "e4", "e5"]);
+    assert.deepEqual(edgeIds, ["e1", "e2", "e3", "e4", "e5", "e6"]);
 
     const providerNode = graph.nodes.find((node) => node.id === "provider");
     const embeddingNode = graph.nodes.find((node) => node.id === "embedding");
@@ -105,5 +105,34 @@ describe("workflow canvas graph builder", () => {
       (embeddingNode?.data as { sourceType?: string } | undefined)?.sourceType,
       "local"
     );
+  });
+
+  it("uses backend graph when canonical graph payload is present", () => {
+    const graph = buildWorkflowGraph({
+      graph: {
+        nodes: [
+          {
+            id: "runtime-service:backend",
+            type: "runtime_service",
+            data: { name: "backend", status: "running" },
+            position: { x: 123, y: 456 },
+          },
+        ],
+        edges: [
+          {
+            id: "runtime-link:backend",
+            source: "runtime",
+            target: "runtime-service:backend",
+            animated: false,
+          },
+        ],
+      },
+    });
+
+    assert.equal(graph.nodes.length, 1);
+    assert.equal(graph.nodes[0]?.id, "runtime-service:backend");
+    assert.equal(graph.nodes[0]?.position.x, 123);
+    assert.equal(graph.edges.length, 1);
+    assert.equal(graph.edges[0]?.id, "runtime-link:backend");
   });
 });

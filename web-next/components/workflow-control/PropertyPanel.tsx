@@ -19,10 +19,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { ConfigFieldsEditor } from "./ConfigFieldsEditor";
+import type { OperatorConfigField } from "@/types/workflow-control";
 
 interface PropertyPanelProps {
   selectedNode: Node | null;
   onUpdateNode: (nodeId: string, data: unknown) => void;
+    configFields?: OperatorConfigField[];
   availableOptions?: {
     strategies?: string[];
     intentModes?: string[];
@@ -35,7 +38,7 @@ interface PropertyPanelProps {
 }
 
 type RuntimeService = string | { name?: string; id?: string; [key: string]: unknown };
-type WorkflowNodeType = "decision" | "intent" | "kernel" | "runtime" | "provider" | "embedding";
+type WorkflowNodeType = "decision" | "intent" | "kernel" | "runtime" | "provider" | "embedding" | "config";
 type SourceType = "local" | "cloud";
 type SourceTypeLike = SourceType | "installed_local" | "installed-local";
 
@@ -120,6 +123,11 @@ const NODE_VISUALS: Record<WorkflowNodeType, NodeVisualMeta> = {
     icon: Database,
     iconColorClass: "text-pink-400",
     headerBgClass: "bg-pink-500/20 border-pink-500 shadow-pink-500/20",
+    config: {
+      icon: Settings2,
+      iconColorClass: "text-cyan-400",
+      headerBgClass: "bg-cyan-500/20 border-cyan-500 shadow-cyan-500/20",
+    },
   },
 };
 
@@ -130,6 +138,7 @@ const SECTION_STYLES: Record<WorkflowNodeType, string> = {
   runtime: "border-purple-500/20 bg-purple-500/5 shadow-[0_4px_25px_rgba(168,85,247,0.05)]",
   provider: "border-orange-500/20 bg-orange-500/5 shadow-[0_4px_25px_rgba(249,115,22,0.05)]",
   embedding: "border-pink-500/20 bg-pink-500/5 shadow-[0_4px_25px_rgba(236,72,153,0.05)]",
+  config: "border-cyan-500/20 bg-cyan-500/5 shadow-[0_4px_25px_rgba(6,182,212,0.05)]",
 };
 
 const SECTION_ICON_STYLES: Record<WorkflowNodeType, string> = {
@@ -139,6 +148,7 @@ const SECTION_ICON_STYLES: Record<WorkflowNodeType, string> = {
   runtime: "bg-purple-500/10 text-purple-400",
   provider: "bg-orange-500/10 text-orange-400",
   embedding: "bg-pink-500/10 text-pink-400",
+  config: "bg-cyan-500/10 text-cyan-400",
 };
 
 const SECTION_TEXT_STYLES: Record<WorkflowNodeType, string> = {
@@ -148,6 +158,7 @@ const SECTION_TEXT_STYLES: Record<WorkflowNodeType, string> = {
   runtime: "text-purple-400",
   provider: "text-orange-400",
   embedding: "text-pink-400",
+  config: "text-cyan-400",
 };
 
 function formatRuntimeService(service: RuntimeService): string {
@@ -171,7 +182,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function isWorkflowNodeType(value: string | undefined): value is WorkflowNodeType {
-  return value === "decision" || value === "intent" || value === "kernel" || value === "runtime" || value === "provider" || value === "embedding";
+  return value === "decision" || value === "intent" || value === "kernel" || value === "runtime" || value === "provider" || value === "embedding" || value === "config";
 }
 
 function normalizeSourceType(value: SourceTypeLike | undefined): SourceType {
@@ -542,6 +553,7 @@ function EmbeddingEditor({
 export function PropertyPanel({
   selectedNode,
   onUpdateNode,
+  configFields,
   availableOptions,
 }: Readonly<PropertyPanelProps>) {
   const t = useTranslation();
@@ -583,6 +595,23 @@ export function PropertyPanel({
     }
     if (nodeType === "provider") {
       return <ProviderEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
+        if (nodeType === "config") {
+          const nodeConfigFields =
+            (Array.isArray((data as { configFields?: unknown[] }).configFields)
+              ? ((data as { configFields?: OperatorConfigField[] }).configFields ?? [])
+              : configFields ?? []);
+          return (
+            <ConfigFieldsEditor
+              configFields={nodeConfigFields}
+              onUpdateField={(field, value) => {
+                const nextConfigFields = nodeConfigFields.map((item) =>
+                  item.key === field.key ? { ...item, value } : item
+                );
+                handleUpdate("configFields", nextConfigFields);
+              }}
+            />
+          );
+        }
     }
     return <EmbeddingEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
   })();

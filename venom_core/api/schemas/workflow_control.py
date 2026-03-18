@@ -94,6 +94,8 @@ class ResourceChange(BaseModel):
     action: str  # update, create, delete, restart
     current_value: Optional[Any] = None
     new_value: Optional[Any] = None
+    entity_id: Optional[str] = None
+    field: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -174,6 +176,96 @@ class ControlApplyResponse(BaseModel):
     rollback_available: bool = False
 
 
+class OperatorMeta(BaseModel):
+    """Metadata for canonical operator state payload."""
+
+    timestamp: datetime
+    request_selector: str = "auto"
+
+
+class WorkflowTargetState(BaseModel):
+    """Selected workflow request target and operation context."""
+
+    request_id: Optional[str] = None
+    task_status: Optional[str] = None
+    workflow_status: str = "idle"
+    runtime_id: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    allowed_operations: list[str] = Field(default_factory=list)
+
+
+class OperatorConfigField(BaseModel):
+    """Single editable config field exposed to workflow-control."""
+
+    entity_id: str
+    field: str
+    key: str
+    value: Any = None
+    effective_value: Any = None
+    source: str = "default"
+    editable: bool = True
+    restart_required: bool = False
+    affected_services: list[str] = Field(default_factory=list)
+    options: list[str] = Field(default_factory=list)
+
+
+class OperatorRuntimeService(BaseModel):
+    """Canonical runtime service entry for operator UI."""
+
+    id: str
+    name: str
+    kind: str
+    status: str
+    pid: Optional[int] = None
+    port: Optional[int] = None
+    cpu_percent: float = 0.0
+    memory_mb: float = 0.0
+    uptime_seconds: Optional[int] = None
+    runtime_version: Optional[str] = None
+    actionable: bool = False
+    allowed_actions: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+
+
+class OperatorExecutionStep(BaseModel):
+    """Execution trace step for selected workflow request."""
+
+    id: str
+    component: str
+    action: str
+    status: str
+    timestamp: datetime
+    details: Optional[str] = None
+
+
+class OperatorGraphNode(BaseModel):
+    """Graph node descriptor for frontend canvas."""
+
+    id: str
+    type: str
+    label: str
+    data: dict[str, Any] = Field(default_factory=dict)
+    position: dict[str, float] = Field(default_factory=dict)
+
+
+class OperatorGraphEdge(BaseModel):
+    """Graph edge descriptor for frontend canvas."""
+
+    id: str
+    source: str
+    target: str
+    animated: bool = False
+    label: Optional[str] = None
+
+
+class OperatorGraph(BaseModel):
+    """Canonical graph payload for workflow canvas."""
+
+    nodes: list[OperatorGraphNode] = Field(default_factory=list)
+    edges: list[OperatorGraphEdge] = Field(default_factory=list)
+
+
 class SystemState(BaseModel):
     """Current state of the entire system."""
 
@@ -202,6 +294,13 @@ class ControlStateResponse(BaseModel):
     """Response from state endpoint."""
 
     system_state: SystemState
+    meta: Optional[OperatorMeta] = None
+    workflow_target: Optional[WorkflowTargetState] = None
+    config_fields: list[OperatorConfigField] = Field(default_factory=list)
+    runtime_services: list[OperatorRuntimeService] = Field(default_factory=list)
+    execution_steps: list[OperatorExecutionStep] = Field(default_factory=list)
+    graph: Optional[OperatorGraph] = None
+    allowed_actions: list[str] = Field(default_factory=list)
     last_operation: Optional[str] = None
     pending_changes: list[str] = Field(default_factory=list)
 

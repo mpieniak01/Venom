@@ -12,23 +12,6 @@ import { shouldShowApplyResultsModal, generatePlanRequest } from "@/lib/workflow
 import { buildPropertyPanelOptions } from "@/lib/workflow-control-options";
 import type { ApplyResults, PlanResponse } from "@/types/workflow-control";
 import type { Node } from "@xyflow/react";
-
-export function WorkflowControlView() {
-  const t = useTranslation();
-  const {
-    systemState,
-    draftState,
-    controlOptions,
-    hasChanges,
-    isLoading,
-    error,
-    refresh,
-    updateNode,
-    reset,
-    planChanges,
-    applyChanges,
-    pauseWorkflow,
-    resumeWorkflow,
     cancelWorkflow,
     retryWorkflow,
     dryRun,
@@ -63,7 +46,6 @@ export function WorkflowControlView() {
   // Step 1: Plan — only computes diff and stores result for user review.
   const handlePlanRequest = useCallback(async () => {
     if (!systemState || !draftState) return;
-
     const planReq = generatePlanRequest(systemState, draftState);
     if (planReq.changes.length === 0) {
       // No changes for this draft; clear any previously pending plan.
@@ -123,6 +105,7 @@ export function WorkflowControlView() {
               selectedNode={selectedNode}
               onUpdateNode={handleUpdateNode}
               availableOptions={propertyPanelOptions}
+              configFields={systemState?.config_fields}
             />
           </div>
           <WorkflowConsole

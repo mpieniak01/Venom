@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import type { Node } from "@xyflow/react";
 import {
+  AlertTriangle,
   GitFork,
   Compass,
   Cpu,
@@ -21,6 +22,12 @@ import {
 import type { ReactNode } from "react";
 import { ConfigFieldsEditor } from "./ConfigFieldsEditor";
 import type { OperatorConfigField } from "@/types/workflow-control";
+import {
+  getCompatibleEmbeddings,
+  getCompatibleIntentModes,
+  getCompatibleKernels,
+  getCompatibleProviders,
+} from "@/lib/workflow-control-options";
 
 interface PropertyPanelProps {
   selectedNode: Node | null;
@@ -34,6 +41,10 @@ interface PropertyPanelProps {
     models?: string[];
     providersBySource?: { local: string[]; cloud: string[] };
     modelsBySource?: { local: string[]; cloud: string[] };
+    kernelRuntimes?: Record<string, string[]>;
+    intentRequirements?: Record<string, { requires_embedding?: boolean; min_model_size?: string }>;
+    providerEmbeddings?: Record<string, string[]>;
+    embeddingProviders?: Record<string, string[]>;
   };
 }
 
@@ -46,6 +57,7 @@ type NodeVisualMeta = {
   icon: LucideIcon;
   iconColorClass: string;
   headerBgClass: string;
+  accentClass: string;
 };
 
 const DEFAULT_OPTIONS: Required<NonNullable<PropertyPanelProps["availableOptions"]>> = {
@@ -62,6 +74,10 @@ const DEFAULT_OPTIONS: Required<NonNullable<PropertyPanelProps["availableOptions
     local: ["sentence-transformers"],
     cloud: ["openai-embeddings", "google-embeddings"],
   },
+  kernelRuntimes: {},
+  intentRequirements: {},
+  providerEmbeddings: {},
+  embeddingProviders: {},
 };
 
 function resolveAvailableOptions(
@@ -90,76 +106,103 @@ function resolveAvailableOptions(
         ? options.modelsBySource.cloud
         : DEFAULT_OPTIONS.modelsBySource.cloud,
     },
+    kernelRuntimes:
+      options.kernelRuntimes && typeof options.kernelRuntimes === "object"
+        ? options.kernelRuntimes
+        : DEFAULT_OPTIONS.kernelRuntimes,
+    intentRequirements:
+      options.intentRequirements && typeof options.intentRequirements === "object"
+        ? options.intentRequirements
+        : DEFAULT_OPTIONS.intentRequirements,
+    providerEmbeddings:
+      options.providerEmbeddings && typeof options.providerEmbeddings === "object"
+        ? options.providerEmbeddings
+        : DEFAULT_OPTIONS.providerEmbeddings,
+    embeddingProviders:
+      options.embeddingProviders && typeof options.embeddingProviders === "object"
+        ? options.embeddingProviders
+        : DEFAULT_OPTIONS.embeddingProviders,
   };
 }
 
 const NODE_VISUALS: Record<WorkflowNodeType, NodeVisualMeta> = {
   decision: {
     icon: GitFork,
-    iconColorClass: "text-blue-400",
-    headerBgClass: "bg-blue-500/20 border-blue-500 shadow-blue-500/20",
+    iconColorClass: "text-cyan-300",
+    headerBgClass: "bg-cyan-500/10 border-cyan-400/30",
+    accentClass: "text-cyan-300",
   },
   intent: {
     icon: Compass,
-    iconColorClass: "text-yellow-400",
-    headerBgClass: "bg-yellow-500/20 border-yellow-500 shadow-yellow-500/20",
+    iconColorClass: "text-amber-300",
+    headerBgClass: "bg-amber-500/10 border-amber-400/30",
+    accentClass: "text-amber-300",
   },
   kernel: {
     icon: Cpu,
-    iconColorClass: "text-green-400",
-    headerBgClass: "bg-green-500/20 border-green-500 shadow-green-500/20",
+    iconColorClass: "text-emerald-300",
+    headerBgClass: "bg-emerald-500/10 border-emerald-400/30",
+    accentClass: "text-emerald-300",
   },
   runtime: {
     icon: Server,
-    iconColorClass: "text-purple-400",
-    headerBgClass: "bg-purple-500/20 border-purple-500 shadow-purple-500/20",
+    iconColorClass: "text-violet-300",
+    headerBgClass: "bg-violet-500/10 border-violet-400/30",
+    accentClass: "text-violet-300",
   },
   provider: {
     icon: Cloud,
-    iconColorClass: "text-orange-400",
-    headerBgClass: "bg-orange-500/20 border-orange-500 shadow-orange-500/20",
+    iconColorClass: "text-orange-300",
+    headerBgClass: "bg-orange-500/10 border-orange-400/30",
+    accentClass: "text-orange-300",
   },
   embedding: {
     icon: Database,
-    iconColorClass: "text-pink-400",
-    headerBgClass: "bg-pink-500/20 border-pink-500 shadow-pink-500/20",
+    iconColorClass: "text-fuchsia-300",
+    headerBgClass: "bg-fuchsia-500/10 border-fuchsia-400/30",
+    accentClass: "text-fuchsia-300",
   },
   config: {
     icon: Settings2,
-    iconColorClass: "text-cyan-400",
-    headerBgClass: "bg-cyan-500/20 border-cyan-500 shadow-cyan-500/20",
+    iconColorClass: "text-sky-300",
+    headerBgClass: "bg-sky-500/10 border-sky-400/30",
+    accentClass: "text-sky-300",
   },
 };
 
 const SECTION_STYLES: Record<WorkflowNodeType, string> = {
-  decision: "border-cyan-500/20 bg-cyan-500/5 shadow-[0_4px_25px_rgba(6,182,212,0.05)]",
-  intent: "border-yellow-500/20 bg-yellow-500/5 shadow-[0_4px_25px_rgba(234,179,8,0.05)]",
-  kernel: "border-green-500/20 bg-green-500/5 shadow-[0_4px_25px_rgba(34,197,94,0.05)]",
-  runtime: "border-purple-500/20 bg-purple-500/5 shadow-[0_4px_25px_rgba(168,85,247,0.05)]",
-  provider: "border-orange-500/20 bg-orange-500/5 shadow-[0_4px_25px_rgba(249,115,22,0.05)]",
-  embedding: "border-pink-500/20 bg-pink-500/5 shadow-[0_4px_25px_rgba(236,72,153,0.05)]",
-  config: "border-cyan-500/20 bg-cyan-500/5 shadow-[0_4px_25px_rgba(6,182,212,0.05)]",
+  decision: "border-cyan-400/20 bg-slate-900/80",
+  intent: "border-amber-400/20 bg-slate-900/80",
+  kernel: "border-emerald-400/20 bg-slate-900/80",
+  runtime: "border-violet-400/20 bg-slate-900/80",
+  provider: "border-orange-400/20 bg-slate-900/80",
+  embedding: "border-fuchsia-400/20 bg-slate-900/80",
+  config: "border-sky-400/20 bg-slate-900/80",
 };
 
 const SECTION_ICON_STYLES: Record<WorkflowNodeType, string> = {
-  decision: "bg-cyan-500/10 text-cyan-400",
-  intent: "bg-yellow-500/10 text-yellow-400",
-  kernel: "bg-green-500/10 text-green-400",
-  runtime: "bg-purple-500/10 text-purple-400",
-  provider: "bg-orange-500/10 text-orange-400",
-  embedding: "bg-pink-500/10 text-pink-400",
-  config: "bg-cyan-500/10 text-cyan-400",
+  decision: "bg-cyan-500/10 text-cyan-300 border border-cyan-400/20",
+  intent: "bg-amber-500/10 text-amber-300 border border-amber-400/20",
+  kernel: "bg-emerald-500/10 text-emerald-300 border border-emerald-400/20",
+  runtime: "bg-violet-500/10 text-violet-300 border border-violet-400/20",
+  provider: "bg-orange-500/10 text-orange-300 border border-orange-400/20",
+  embedding: "bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-400/20",
+  config: "bg-sky-500/10 text-sky-300 border border-sky-400/20",
 };
 
 const SECTION_TEXT_STYLES: Record<WorkflowNodeType, string> = {
-  decision: "text-cyan-400",
-  intent: "text-yellow-400",
-  kernel: "text-green-400",
-  runtime: "text-purple-400",
-  provider: "text-orange-400",
-  embedding: "text-pink-400",
-  config: "text-cyan-400",
+  decision: "text-cyan-300",
+  intent: "text-amber-300",
+  kernel: "text-emerald-300",
+  runtime: "text-violet-300",
+  provider: "text-orange-300",
+  embedding: "text-fuchsia-300",
+  config: "text-sky-300",
 };
+
+const SELECT_TRIGGER_BASE =
+  "bg-slate-950/70 border-white/10 text-slate-100 focus:ring-cyan-500/30";
+const SELECT_CONTENT_BASE = "bg-slate-950 border-white/10 text-slate-100";
 
 function formatRuntimeService(service: RuntimeService): string {
   if (typeof service === "string") return service;
@@ -220,17 +263,84 @@ function SectionCard({
   children: ReactNode;
 }>) {
   return (
-    <div className={`p-4 rounded-2xl border ${SECTION_STYLES[type]}`}>
-      <div className="flex items-center gap-3 mb-3 border-b border-white/10 pb-2">
+    <div className={`rounded-[24px] border p-4 shadow-[0_12px_40px_rgba(2,6,23,0.28)] ${SECTION_STYLES[type]}`}>
+      <div className="mb-4 flex items-center gap-3 border-b border-white/10 pb-3">
         <div className={`p-2 rounded-lg ${SECTION_ICON_STYLES[type]}`}>
           <Icon className="w-4 h-4" />
         </div>
         <div>
-          <h3 className={`text-[10px] font-bold uppercase tracking-widest ${SECTION_TEXT_STYLES[type]}`}>{title}</h3>
-          <p className={`text-[9px] uppercase tracking-tight mt-0.5 ${SECTION_TEXT_STYLES[type]}/50`}>{description}</p>
+          <h3 className={`text-[11px] font-semibold uppercase tracking-[0.24em] ${SECTION_TEXT_STYLES[type]}`}>{title}</h3>
+          <p className="mt-1 text-[11px] text-slate-500">{description}</p>
         </div>
       </div>
       {children}
+    </div>
+  );
+}
+
+function GuardNotice({
+  tone = "warning",
+  text,
+}: Readonly<{
+  tone?: "warning" | "neutral";
+  text: string;
+}>) {
+  return (
+    <div
+      className={[
+        "mt-3 flex items-start gap-2 rounded-2xl border px-3 py-2 text-xs",
+        tone === "warning"
+          ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+          : "border-white/10 bg-slate-950/60 text-slate-400",
+      ].join(" ")}
+    >
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function OptionRail({
+  label,
+  value,
+  options,
+  onChange,
+  renderOption,
+  toneClass,
+}: Readonly<{
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  renderOption?: (option: string) => string;
+  toneClass: string;
+}>) {
+  if (options.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+        {label}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const isActive = option === value;
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onChange(option)}
+              className={[
+                "rounded-full border px-3 py-1.5 text-xs transition",
+                isActive
+                  ? `${toneClass} border-current shadow-[0_0_20px_rgba(15,23,42,0.18)]`
+                  : "border-white/10 bg-slate-950/70 text-slate-400 hover:border-white/20 hover:text-slate-200",
+              ].join(" ")}
+            >
+              {renderOption ? renderOption(option) : option}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -257,16 +367,24 @@ function DecisionEditor({
       title={t("workflowControl.sections.decision")}
       description={t("workflowControl.descriptions.decision")}
     >
+      <OptionRail
+        label={t("workflowControl.labels.stepAlternatives")}
+        value={(data.strategy as string) ?? ""}
+        options={strategyOptions}
+        onChange={(val) => onUpdate("strategy", val)}
+        renderOption={(opt) => translateOption(t, `workflowControl.strategies.${opt}`, opt)}
+        toneClass="bg-cyan-500/10 text-cyan-200"
+      />
       <Label htmlFor="strategy" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
-        {t("workflowControl.labels.strategy")}
+        {t("workflowControl.labels.stepConfiguration")}
       </Label>
       <Select value={(data.strategy as string) ?? ""} onValueChange={(val) => onUpdate("strategy", val)}>
-        <SelectTrigger id="strategy" className="bg-slate-900/80 border-cyan-500/30 text-cyan-100 focus:ring-cyan-500/50">
+        <SelectTrigger id="strategy" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="bg-slate-900 border-cyan-500/30 text-cyan-100">
+        <SelectContent className={SELECT_CONTENT_BASE}>
           {strategyOptions.map((opt) => (
-            <SelectItem key={opt} value={opt} className="focus:bg-cyan-500/20 focus:text-cyan-100">
+            <SelectItem key={opt} value={opt} className="focus:bg-cyan-500/15 focus:text-slate-100">
               {translateOption(t, `workflowControl.strategies.${opt}`, opt)}
             </SelectItem>
           ))}
@@ -287,9 +405,15 @@ function IntentEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }>) {
+  const hasEmbedding =
+    typeof data.embeddingModel === "string" && data.embeddingModel.trim().length > 0;
   const intentModeOptions = withCurrentOption(
-    options.intentModes,
+    getCompatibleIntentModes(options, hasEmbedding),
     data.intentMode as string | undefined
+  );
+  const currentIntentMode = data.intentMode as string | undefined;
+  const requiresEmbedding = Boolean(
+    currentIntentMode && options.intentRequirements[currentIntentMode]?.requires_embedding,
   );
   return (
     <SectionCard
@@ -298,21 +422,32 @@ function IntentEditor({
       title={t("workflowControl.sections.intent")}
       description={t("workflowControl.descriptions.intent")}
     >
+      <OptionRail
+        label={t("workflowControl.labels.stepAlternatives")}
+        value={(data.intentMode as string) ?? ""}
+        options={intentModeOptions}
+        onChange={(val) => onUpdate("intentMode", val)}
+        renderOption={(opt) => translateOption(t, `workflowControl.intentModes.${opt}`, opt)}
+        toneClass="bg-amber-500/10 text-amber-200"
+      />
       <Label htmlFor="intentMode" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
-        {t("workflowControl.labels.intentMode")}
+        {t("workflowControl.labels.stepConfiguration")}
       </Label>
       <Select value={(data.intentMode as string) ?? ""} onValueChange={(val) => onUpdate("intentMode", val)}>
-        <SelectTrigger id="intentMode" className="bg-slate-900/80 border-yellow-500/30 text-yellow-100 focus:ring-yellow-500/50">
+        <SelectTrigger id="intentMode" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="bg-slate-900 border-yellow-500/30 text-yellow-100">
+        <SelectContent className={SELECT_CONTENT_BASE}>
           {intentModeOptions.map((opt) => (
-            <SelectItem key={opt} value={opt} className="focus:bg-yellow-500/20">
+            <SelectItem key={opt} value={opt} className="focus:bg-amber-500/15">
               {translateOption(t, `workflowControl.intentModes.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+      {requiresEmbedding && !hasEmbedding ? (
+        <GuardNotice text={t("workflowControl.messages.intentCompatibilityHint")} />
+      ) : null}
     </SectionCard>
   );
 }
@@ -328,7 +463,15 @@ function KernelEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }>) {
-  const kernelOptions = withCurrentOption(options.kernels, data.kernel as string | undefined);
+  const workflowRuntime =
+    typeof data.workflowRuntime === "string" ? data.workflowRuntime : "";
+  const compatibleKernels = getCompatibleKernels(options, workflowRuntime);
+  const kernelOptions = withCurrentOption(
+    compatibleKernels,
+    data.kernel as string | undefined,
+  );
+  const hadCompatibilityFilter =
+    Boolean(workflowRuntime) && compatibleKernels.length < options.kernels.length;
   return (
     <SectionCard
       type="kernel"
@@ -336,21 +479,37 @@ function KernelEditor({
       title={t("workflowControl.sections.kernel")}
       description={t("workflowControl.descriptions.kernel")}
     >
+      <OptionRail
+        label={t("workflowControl.labels.stepAlternatives")}
+        value={(data.kernel as string) ?? ""}
+        options={kernelOptions}
+        onChange={(val) => onUpdate("kernel", val)}
+        renderOption={(opt) => translateOption(t, `workflowControl.kernelTypes.${opt}`, opt)}
+        toneClass="bg-emerald-500/10 text-emerald-200"
+      />
       <Label htmlFor="kernel" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
-        {t("workflowControl.labels.currentKernel")}
+        {t("workflowControl.labels.stepConfiguration")}
       </Label>
       <Select value={(data.kernel as string) ?? ""} onValueChange={(val) => onUpdate("kernel", val)}>
-        <SelectTrigger id="kernel" className="bg-slate-900/80 border-green-500/30 text-green-100 focus:ring-green-500/50">
+        <SelectTrigger id="kernel" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="bg-slate-900 border-green-500/30 text-green-100">
+        <SelectContent className={SELECT_CONTENT_BASE}>
           {kernelOptions.map((opt) => (
-            <SelectItem key={opt} value={opt} className="focus:bg-green-500/20">
+            <SelectItem key={opt} value={opt} className="focus:bg-emerald-500/15">
               {translateOption(t, `workflowControl.kernelTypes.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+      {hadCompatibilityFilter ? (
+        <GuardNotice
+          text={t("workflowControl.messages.kernelCompatibilityHint").replace(
+            "{{value}}",
+            workflowRuntime,
+          )}
+        />
+      ) : null}
     </SectionCard>
   );
 }
@@ -372,7 +531,7 @@ function RuntimeEditor({ data, t }: Readonly<{ data: Record<string, unknown>; t:
       <div id="runtime-services" className="flex flex-wrap gap-2">
         {services.length > 0 ? (
           services.map((svc: RuntimeService, index: number) => (
-            <span key={`${formatRuntimeService(svc)}-${index}`} className="text-xs font-mono bg-purple-500/20 text-purple-200 px-2 py-1.5 rounded border border-purple-500/40 shadow-[0_0_5px_rgba(168,85,247,0.2)]">
+            <span key={`${formatRuntimeService(svc)}-${index}`} className="rounded-full border border-white/10 bg-slate-950/70 px-2.5 py-1 text-xs font-mono text-slate-300">
               {formatRuntimeService(svc)}
             </span>
           ))
@@ -396,6 +555,8 @@ function ProviderEditor({
   t: (path: string) => string;
 }>) {
   const provider = (data.provider as { active?: string; sourceType?: SourceTypeLike } | undefined) ?? {};
+  const activeEmbeddingModel =
+    typeof data.embeddingModel === "string" ? data.embeddingModel : "";
   const providerBySource = options.providersBySource ?? DEFAULT_OPTIONS.providersBySource;
   const nodeSourceType = data.sourceType as SourceTypeLike | undefined;
   const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
@@ -413,8 +574,16 @@ function ProviderEditor({
   } else {
     sourceType = inferSource(provider.active);
   }
-  const sourceProviders = withCurrentOption(providerBySource[sourceType], provider.active);
+  const compatibleProviders = getCompatibleProviders(
+    options,
+    sourceType,
+    activeEmbeddingModel,
+  );
+  const sourceProviders = withCurrentOption(compatibleProviders, provider.active);
   const safeActive = provider.active ?? "";
+  const hadCompatibilityFilter =
+    Boolean(activeEmbeddingModel) &&
+    compatibleProviders.length < (providerBySource[sourceType] ?? []).length;
 
   return (
     <SectionCard
@@ -423,8 +592,25 @@ function ProviderEditor({
       title={t("workflowControl.sections.provider")}
       description={t("workflowControl.descriptions.provider")}
     >
+      <OptionRail
+        label={t("workflowControl.labels.stepAlternatives")}
+        value={sourceType}
+        options={["local", "cloud"]}
+        onChange={(val) => {
+          const nextSource = normalizeSourceType(val as SourceTypeLike);
+          const nextProviders = providerBySource[nextSource];
+          const nextActive = provider.active && nextProviders.includes(provider.active) ? provider.active : "";
+          onUpdate("provider", { active: nextActive, sourceType: nextSource });
+        }}
+        renderOption={(opt) =>
+          opt === "local"
+            ? t("workflowControl.labels.installedLocal")
+            : t("workflowControl.labels.cloud")
+        }
+        toneClass="bg-orange-500/10 text-orange-200"
+      />
       <Label htmlFor="provider" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
-        {t("workflowControl.labels.sourceType")}
+        {t("workflowControl.labels.stepConfiguration")}
       </Label>
       <Select
         value={sourceType}
@@ -435,33 +621,49 @@ function ProviderEditor({
           onUpdate("provider", { active: nextActive, sourceType: nextSource });
         }}
       >
-        <SelectTrigger id="provider-source" className="bg-slate-900/80 border-orange-500/30 text-orange-100 focus:ring-orange-500/50 mb-2.5">
+        <SelectTrigger id="provider-source" className={`${SELECT_TRIGGER_BASE} mb-2.5`}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="bg-slate-900 border-orange-500/30 text-orange-100">
-          <SelectItem value="local" className="focus:bg-orange-500/20">
+        <SelectContent className={SELECT_CONTENT_BASE}>
+          <SelectItem value="local" className="focus:bg-orange-500/15">
             {t("workflowControl.labels.installedLocal")}
           </SelectItem>
-          <SelectItem value="cloud" className="focus:bg-orange-500/20">
+          <SelectItem value="cloud" className="focus:bg-orange-500/15">
             {t("workflowControl.labels.cloud")}
           </SelectItem>
         </SelectContent>
       </Select>
+      <OptionRail
+        label={t("workflowControl.labels.availableVariants")}
+        value={safeActive}
+        options={sourceProviders}
+        onChange={(val) => onUpdate("provider", { active: val, sourceType })}
+        renderOption={(opt) => translateOption(t, `workflowControl.providers.${opt}`, opt)}
+        toneClass="bg-orange-500/10 text-orange-200"
+      />
       <Label htmlFor="provider" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
         {t("workflowControl.labels.activeProvider")}
       </Label>
       <Select value={safeActive} onValueChange={(val) => onUpdate("provider", { active: val, sourceType })}>
-        <SelectTrigger id="provider" className="bg-slate-900/80 border-orange-500/30 text-orange-100 focus:ring-orange-500/50">
+        <SelectTrigger id="provider" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="bg-slate-900 border-orange-500/30 text-orange-100">
+        <SelectContent className={SELECT_CONTENT_BASE}>
           {sourceProviders.map((opt) => (
-            <SelectItem key={opt} value={opt} className="focus:bg-orange-500/20">
+            <SelectItem key={opt} value={opt} className="focus:bg-orange-500/15">
               {translateOption(t, `workflowControl.providers.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+      {hadCompatibilityFilter ? (
+        <GuardNotice
+          text={t("workflowControl.messages.providerCompatibilityHint").replace(
+            "{{value}}",
+            activeEmbeddingModel,
+          )}
+        />
+      ) : null}
     </SectionCard>
   );
 }
@@ -478,6 +680,8 @@ function EmbeddingEditor({
   t: (path: string) => string;
 }>) {
   const modelsBySource = options.modelsBySource ?? DEFAULT_OPTIONS.modelsBySource;
+  const activeProvider =
+    typeof data.providerActive === "string" ? data.providerActive : "";
   const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
   const inferSource = (value: string | undefined): SourceType => {
     if (value && modelsBySource.cloud.includes(value)) return "cloud";
@@ -492,8 +696,19 @@ function EmbeddingEditor({
   } else {
     sourceType = inferSource(data.model as string | undefined);
   }
-  const sourceModels = withCurrentOption(modelsBySource[sourceType], data.model as string | undefined);
+  const compatibleEmbeddings = getCompatibleEmbeddings(
+    options,
+    sourceType,
+    activeProvider,
+  );
+  const sourceModels = withCurrentOption(
+    compatibleEmbeddings,
+    data.model as string | undefined,
+  );
   const safeModel = (data.model as string | undefined) ?? "";
+  const hadCompatibilityFilter =
+    Boolean(activeProvider) &&
+    compatibleEmbeddings.length < (modelsBySource[sourceType] ?? []).length;
 
   return (
     <SectionCard
@@ -502,8 +717,30 @@ function EmbeddingEditor({
       title={t("workflowControl.sections.embedding")}
       description={t("workflowControl.descriptions.embedding")}
     >
+      <OptionRail
+        label={t("workflowControl.labels.stepAlternatives")}
+        value={sourceType}
+        options={["local", "cloud"]}
+        onChange={(val) => {
+          const nextSource = normalizeSourceType(val as SourceTypeLike);
+          const nextModels = modelsBySource[nextSource];
+          const currentModel = data.model as string | undefined;
+          let nextModel = "";
+          if (currentModel && nextModels.includes(currentModel)) {
+            nextModel = currentModel;
+          }
+          onUpdate("sourceType", nextSource);
+          onUpdate("model", nextModel);
+        }}
+        renderOption={(opt) =>
+          opt === "local"
+            ? t("workflowControl.labels.installedLocal")
+            : t("workflowControl.labels.cloud")
+        }
+        toneClass="bg-fuchsia-500/10 text-fuchsia-200"
+      />
       <Label htmlFor="model" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
-        {t("workflowControl.labels.sourceType")}
+        {t("workflowControl.labels.stepConfiguration")}
       </Label>
       <Select
         value={sourceType}
@@ -519,33 +756,49 @@ function EmbeddingEditor({
           onUpdate("model", nextModel);
         }}
       >
-        <SelectTrigger id="embedding-source" className="bg-slate-900/80 border-pink-500/30 text-pink-100 focus:ring-pink-500/50 mb-2.5">
+        <SelectTrigger id="embedding-source" className={`${SELECT_TRIGGER_BASE} mb-2.5`}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="bg-slate-900 border-pink-500/30 text-pink-100">
-          <SelectItem value="local" className="focus:bg-pink-500/20">
+        <SelectContent className={SELECT_CONTENT_BASE}>
+          <SelectItem value="local" className="focus:bg-fuchsia-500/15">
             {t("workflowControl.labels.installedLocal")}
           </SelectItem>
-          <SelectItem value="cloud" className="focus:bg-pink-500/20">
+          <SelectItem value="cloud" className="focus:bg-fuchsia-500/15">
             {t("workflowControl.labels.cloud")}
           </SelectItem>
         </SelectContent>
       </Select>
+      <OptionRail
+        label={t("workflowControl.labels.availableVariants")}
+        value={safeModel}
+        options={sourceModels}
+        onChange={(val) => onUpdate("model", val)}
+        renderOption={(opt) => translateOption(t, `workflowControl.embeddingModels.${opt}`, opt)}
+        toneClass="bg-fuchsia-500/10 text-fuchsia-200"
+      />
       <Label htmlFor="model" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
         {t("workflowControl.labels.currentEmbedding")}
       </Label>
       <Select value={safeModel} onValueChange={(val) => onUpdate("model", val)}>
-        <SelectTrigger id="model" className="bg-slate-900/80 border-pink-500/30 text-pink-100 focus:ring-pink-500/50">
+        <SelectTrigger id="model" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="bg-slate-900 border-pink-500/30 text-pink-100">
+        <SelectContent className={SELECT_CONTENT_BASE}>
           {sourceModels.map((opt) => (
-            <SelectItem key={opt} value={opt} className="focus:bg-pink-500/20">
+            <SelectItem key={opt} value={opt} className="focus:bg-fuchsia-500/15">
               {translateOption(t, `workflowControl.embeddingModels.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+      {hadCompatibilityFilter ? (
+        <GuardNotice
+          text={t("workflowControl.messages.embeddingCompatibilityHint").replace(
+            "{{value}}",
+            activeProvider,
+          )}
+        />
+      ) : null}
     </SectionCard>
   );
 }
@@ -561,7 +814,7 @@ export function PropertyPanel({
 
   if (!selectedNode) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground p-4 text-center text-sm">
+      <div className="rounded-[28px] border border-white/10 bg-slate-950/90 p-6 text-center text-sm text-slate-400 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
         {t("workflowControl.messages.selectNode")}
       </div>
     );
@@ -617,37 +870,38 @@ export function PropertyPanel({
   })();
 
   return (
-    <div className="h-full border border-white/10 bg-slate-950/95 backdrop-blur-xl pt-0 p-4 relative overflow-hidden flex flex-col gap-4 rounded-xl shadow-2xl">
-      <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[100px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-64 h-64 bg-violet-500/10 blur-[100px] rounded-full pointer-events-none" />
-
-      <div className="relative z-10 px-2 py-4">
-        <h2 className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2 mb-3">
+    <div className="rounded-[28px] border border-white/10 bg-slate-950/90 p-5 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
+      <div className="px-1 py-1">
+        <h2 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-400">
           <Settings2 className="w-3.5 h-3.5" />
           {t("workflowControl.panels.propertyInspector")}
         </h2>
-        <div className="h-px w-full bg-white/5 mb-6" />
+        <div className="mb-6 h-px w-full bg-white/10" />
 
-        <div className="flex items-center gap-4 mb-5 px-1">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center border shadow-[0_4px_20px_rgba(0,0,0,0.4)] ${visual.headerBgClass} ${visual.iconColorClass}`}>
+        <div className="mb-5 flex items-center gap-4 px-1">
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${visual.headerBgClass} ${visual.iconColorClass}`}>
             <IconComponent className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-[10px] text-slate-500 font-mono tracking-tight mb-0.5">{selectedNode.id}</div>
-            <div className="text-sm font-bold uppercase tracking-wider text-slate-400">
+            <div className="mb-0.5 text-[10px] font-mono tracking-tight text-slate-500">{selectedNode.id}</div>
+            <div className={`text-sm font-semibold uppercase tracking-[0.22em] ${visual.accentClass}`}>
               {nodeType} {t("workflowControl.labels.node")}
             </div>
           </div>
         </div>
 
-        <div className="space-y-2 relative z-10">
+        <div className="mb-4 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-xs text-slate-400">
+          {t("workflowControl.messages.stepComposerHint")}
+        </div>
+
+        <div className="space-y-3">
           {editor}
           {!editor && (
-            <div className="p-4 rounded-xl border border-slate-700 bg-slate-800/30">
+            <div className="rounded-[24px] border border-white/10 bg-slate-900/80 p-4">
               <Label htmlFor="raw-data" className="text-slate-400 mb-2 block">
                 {t("workflowControl.labels.rawData")}
               </Label>
-              <pre id="raw-data" className="text-xs bg-slate-950/80 p-3 rounded-lg border border-white/5 overflow-auto max-h-60 font-mono text-slate-300 shadow-inner">
+              <pre id="raw-data" className="max-h-60 overflow-auto rounded-2xl border border-white/10 bg-slate-950/80 p-3 text-xs font-mono text-slate-300">
                 {JSON.stringify(data, null, 2)}
               </pre>
             </div>

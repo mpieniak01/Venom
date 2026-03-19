@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { Handle, NodeToolbar, Position, type Node, type NodeProps, type NodeTypes } from "@xyflow/react";
-import { Info, Settings } from "lucide-react";
+import { ChevronDown, ChevronRight, Info, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
@@ -13,6 +13,38 @@ type IntentNodeData = { intentMode?: string };
 type KernelNodeData = { kernel?: string };
 type RuntimeNodeData = { runtime?: { services?: string[] } };
 type SourceNodeData = { sourceTag?: string };
+type ControlDomainNodeData = {
+  domainId?: string;
+  label?: string;
+  variant?: string;
+  optionsCount?: number;
+  sourceTag?: string;
+};
+type RuntimeServiceNodeData = {
+  serviceId?: string;
+  label?: string;
+  kind?: string;
+  status?: string;
+  dependencyCount?: number;
+};
+type ExecutionStepNodeData = {
+  stepId?: string;
+  label?: string;
+  variant?: string;
+  status?: string;
+  stage?: string;
+  relatedConfigKeys?: string[];
+  relatedServiceId?: string;
+  sequenceIndex?: number;
+  alternativeVariants?: string[];
+  alternativeCount?: number;
+  collapsedStepCount?: number;
+  groupKey?: string;
+  canExpand?: boolean;
+  isExpanded?: boolean;
+  groupSize?: number;
+  onToggleGroup?: (groupKey: string) => void;
+};
 type SwimlaneNodeData = { label: string; index: number };
 
 type DecisionFlowNode = Node<DecisionNodeData, "decision">;
@@ -20,6 +52,9 @@ type IntentFlowNode = Node<IntentNodeData, "intent">;
 type KernelFlowNode = Node<KernelNodeData, "kernel">;
 type RuntimeFlowNode = Node<RuntimeNodeData, "runtime">;
 type SourceFlowNode = Node<SourceNodeData, "provider" | "embedding">;
+type ControlDomainFlowNode = Node<ControlDomainNodeData, "control_domain">;
+type RuntimeServiceFlowNode = Node<RuntimeServiceNodeData, "runtime_service">;
+type ExecutionStepFlowNode = Node<ExecutionStepNodeData, "execution_step">;
 type SwimlaneFlowNode = Node<SwimlaneNodeData, "swimlane">;
 
 function NodeActions() {
@@ -84,6 +119,17 @@ function SourceBadge({ sourceTag }: Readonly<{ sourceTag: "local" | "cloud" }>) 
 function ValueBadge({ value }: Readonly<{ value: string }>) {
   return (
     <span className="absolute right-2 top-2 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-100">
+      {value}
+    </span>
+  );
+}
+
+function MetaBadge({
+  value,
+  className,
+}: Readonly<{ value: string; className?: string }>) {
+  return (
+    <span className={["rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-slate-300", className].join(" ")}>
       {value}
     </span>
   );
@@ -161,7 +207,7 @@ export function SwimlaneNode({
           className="w-[200px] -rotate-90 text-center text-[10px] font-extrabold uppercase tracking-widest opacity-90"
           style={{ color: "inherit" }}
         >
-          <span className={style.text}>{t(`workflowControl.sections.${data.label}`)}</span>
+          <span className={style.text}>{t(`workflowControl.canvas.${data.label}`)}</span>
         </div>
       </div>
       <div
@@ -279,6 +325,143 @@ export function ProviderNode({ selected = false, data }: NodeProps<SourceFlowNod
   );
 }
 
+export function ControlDomainNode({
+  selected = false,
+  data,
+}: NodeProps<ControlDomainFlowNode>) {
+  const theme = WORKFLOW_NODE_THEME.control_domain;
+  const sourceTag = readSourceTag(data);
+  return (
+    <NodeShell selected={selected} glowClass={theme.glowClass} className={theme.shellClass}>
+      {data.sourceTag ? <SourceBadge sourceTag={sourceTag} /> : null}
+      <Handle type="source" position={Position.Right} className={theme.handleClass} />
+      <NodeTitle type="control_domain" label={data.label ?? "Control"} />
+      <div className="mt-2 text-center text-sm font-semibold text-slate-100">
+        {data.variant ?? "N/A"}
+      </div>
+      <div className="mt-2 flex justify-center gap-2">
+        <MetaBadge value={data.domainId ?? "domain"} />
+        {typeof data.optionsCount === "number" && data.optionsCount > 0 ? (
+          <MetaBadge value={`${data.optionsCount} alt`} className="text-cyan-200" />
+        ) : null}
+      </div>
+    </NodeShell>
+  );
+}
+
+export function RuntimeServiceNode({
+  selected = false,
+  data,
+}: NodeProps<RuntimeServiceFlowNode>) {
+  const theme = WORKFLOW_NODE_THEME.runtime_service;
+  return (
+    <NodeShell selected={selected} glowClass={theme.glowClass} className={theme.shellClass}>
+      {data.status ? <ValueBadge value={data.status} /> : null}
+      <Handle type="target" position={Position.Left} className={theme.handleClass} />
+      <Handle type="source" position={Position.Right} className={theme.handleClass} />
+      <NodeTitle type="runtime_service" label={data.label ?? "runtime"} />
+      <div className="mt-2 text-center text-[11px] uppercase tracking-[0.2em] text-slate-400">
+        {data.kind ?? "service"}
+      </div>
+      <div className="mt-2 flex justify-center gap-2">
+        <MetaBadge value={data.serviceId ?? "svc"} />
+        <MetaBadge value={`deps ${data.dependencyCount ?? 0}`} className="text-violet-200" />
+      </div>
+    </NodeShell>
+  );
+}
+
+export function ExecutionStepNode({
+  selected = false,
+  data,
+}: NodeProps<ExecutionStepFlowNode>) {
+  const t = useTranslation();
+  const theme = WORKFLOW_NODE_THEME.execution_step;
+  const configKeys = (data.relatedConfigKeys ?? []).slice(0, 2);
+  const visibleAlternatives = data.alternativeVariants ?? [];
+  const remainingAlternatives = Math.max(
+    0,
+    (data.alternativeCount ?? visibleAlternatives.length) - visibleAlternatives.length,
+  );
+  const collapsedStepCount = data.collapsedStepCount ?? 0;
+  const canExpand = Boolean(data.canExpand && data.groupKey);
+  return (
+    <NodeShell selected={selected} glowClass={theme.glowClass} className={theme.shellClass}>
+      {data.status ? <ValueBadge value={data.status} /> : null}
+      {canExpand ? (
+        <button
+          type="button"
+          className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (data.groupKey) {
+              data.onToggleGroup?.(data.groupKey);
+            }
+          }}
+        >
+          {data.isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {data.isExpanded
+            ? t("workflowControl.actions.collapse")
+            : t("workflowControl.actions.expand")}
+        </button>
+      ) : null}
+      <Handle type="target" position={Position.Left} className={theme.handleClass} />
+      <Handle type="source" position={Position.Right} className={theme.handleClass} />
+      <NodeTitle type="execution_step" label={data.label ?? "step"} />
+      <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.26em] text-emerald-300">
+        {t("workflowControl.labels.activeVariant")}
+      </div>
+      <div className="mt-1 text-center text-sm font-semibold text-slate-100">
+        {data.variant ?? "action"}
+      </div>
+      {visibleAlternatives.length > 0 ? (
+        <>
+          <div className="mt-3 text-center text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-400">
+            {t("workflowControl.labels.availableVariants")}
+          </div>
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
+            {visibleAlternatives.map((variant) => (
+              <MetaBadge
+                key={variant}
+                value={variant}
+                className="border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+              />
+            ))}
+            {remainingAlternatives > 0 ? (
+              <MetaBadge
+                value={`+${remainingAlternatives}`}
+                className="border-white/10 bg-white/5 text-slate-200"
+              />
+            ) : null}
+          </div>
+        </>
+      ) : null}
+      <div className="mt-3 flex flex-wrap justify-center gap-2">
+        {typeof data.sequenceIndex === "number" ? (
+          <MetaBadge value={`#${data.sequenceIndex}`} className="text-emerald-200" />
+        ) : null}
+        {collapsedStepCount > 0 ? (
+          <MetaBadge
+            value={`+${collapsedStepCount} ${t("workflowControl.labels.branches")}`}
+            className="border-amber-400/20 bg-amber-500/10 text-amber-100"
+          />
+        ) : null}
+        {data.isExpanded && (data.groupSize ?? 0) > 1 ? (
+          <MetaBadge
+            value={`${data.groupSize} ${t("workflowControl.labels.branches")}`}
+            className="border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
+          />
+        ) : null}
+        {data.stage ? <MetaBadge value={data.stage} /> : null}
+        {data.relatedServiceId ? <MetaBadge value={data.relatedServiceId} /> : null}
+        {configKeys.map((configKey) => (
+          <MetaBadge key={configKey} value={configKey} />
+        ))}
+      </div>
+    </NodeShell>
+  );
+}
+
 export const workflowCanvasNodeTypes: NodeTypes = {
   decision: DecisionNode,
   intent: IntentNode,
@@ -286,5 +469,8 @@ export const workflowCanvasNodeTypes: NodeTypes = {
   runtime: RuntimeNode,
   provider: ProviderNode,
   embedding: EmbeddingNode,
+  control_domain: ControlDomainNode,
+  runtime_service: RuntimeServiceNode,
+  execution_step: ExecutionStepNode,
   swimlane: SwimlaneNode,
 };

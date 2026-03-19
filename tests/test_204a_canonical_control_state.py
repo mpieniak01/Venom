@@ -509,7 +509,19 @@ class TestExecutionStepAggregation:
         data = response.json()
 
         execution_steps = data["execution_steps"]
-        required_attrs = ["id", "component", "action", "status", "timestamp", "details"]
+        required_attrs = [
+            "id",
+            "component",
+            "action",
+            "status",
+            "timestamp",
+            "details",
+            "stage",
+            "related_service_id",
+            "related_config_keys",
+            "depends_on_step_id",
+            "severity",
+        ]
 
         for step in execution_steps:
             for attr in required_attrs:
@@ -530,6 +542,39 @@ class TestExecutionStepAggregation:
         execution_steps = data["execution_steps"]
         assert len(execution_steps) > 0
         assert execution_steps[0]["timestamp"] is None
+
+    def test_execution_steps_include_operator_relations(
+        self, client, isolated_control_plane, sample_trace
+    ):
+        """Execution steps should expose service/config relations for 204B UI."""
+        request_id = str(uuid4())
+        isolated_control_plane.add_trace(request_id, sample_trace)
+
+        response = client.get(f"/api/v1/workflow/control/state?request_id={request_id}")
+        assert response.status_code == 200
+        data = response.json()
+
+        steps = data["execution_steps"]
+        assert len(steps) == 3
+
+        first_step = steps[0]
+        second_step = steps[1]
+        third_step = steps[2]
+
+        assert first_step["stage"] == "decision"
+        assert first_step["related_service_id"] == "backend"
+        assert "AI_MODE" in first_step["related_config_keys"]
+        assert first_step["depends_on_step_id"] is None
+        assert first_step["severity"] == "normal"
+
+        assert second_step["stage"] == "intent"
+        assert "INTENT_MODE" in second_step["related_config_keys"]
+        assert second_step["depends_on_step_id"] == first_step["id"]
+
+        assert third_step["stage"] == "execution"
+        assert "KERNEL" in third_step["related_config_keys"]
+        assert third_step["depends_on_step_id"] == second_step["id"]
+        assert third_step["severity"] == "info"
 
 
 class TestCanonicalGraphBuilder:

@@ -237,6 +237,11 @@ class OperatorExecutionStep(BaseModel):
     status: str
     timestamp: Optional[datetime] = None
     details: Optional[str] = None
+    stage: str = "execution"
+    related_service_id: Optional[str] = None
+    related_config_keys: list[str] = Field(default_factory=list)
+    depends_on_step_id: Optional[str] = None
+    severity: str = "normal"
 
 
 class OperatorGraphNode(BaseModel):
@@ -329,6 +334,10 @@ class ControlOptionsResponse(BaseModel):
     embedding_sources: list[str] = Field(default_factory=lambda: ["local", "cloud"])
     providers: ControlOptionsCatalog
     embeddings: ControlOptionsCatalog
+    kernel_runtimes: dict[str, list[str]] = Field(default_factory=dict)
+    intent_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    provider_embeddings: dict[str, list[str]] = Field(default_factory=dict)
+    embedding_providers: dict[str, list[str]] = Field(default_factory=dict)
     active: ControlOptionsActive
 
 

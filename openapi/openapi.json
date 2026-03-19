@@ -566,6 +566,34 @@
         }
       }
     },
+    "/api/v1/metrics/execution-mode": {
+      "get": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "Get Execution Mode Kpi",
+        "description": "Zwraca KPI i alerty planera execution_mode dla dashboardu operacyjnego.",
+        "operationId": "get_execution_mode_kpi_api_v1_metrics_execution_mode_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionModeKPIResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Metrics collector nie jest dostępny"
+          },
+          "500": {
+            "description": "Błąd podczas pobierania metryk systemowych"
+          }
+        }
+      }
+    },
     "/api/v1/metrics": {
       "get": {
         "tags": [
@@ -2452,6 +2480,73 @@
         }
       }
     },
+    "/api/v1/academy/adapters/{adapter_id}/sign": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Sign Adapter For Chat",
+        "operationId": "sign_adapter_for_chat_api_v1_academy_adapters__adapter_id__sign_post",
+        "parameters": [
+          {
+            "name": "adapter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Adapter Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdapterChatSignRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterChatSignResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload."
+          },
+          "403": {
+            "description": "Access denied for non-localhost administrative operation."
+          },
+          "404": {
+            "description": "Adapter not found."
+          },
+          "500": {
+            "description": "Internal server error."
+          },
+          "503": {
+            "description": "Academy is unavailable or not initialized."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/adapters/deactivate": {
       "post": {
         "tags": [
@@ -3554,6 +3649,164 @@
         }
       }
     },
+    "/api/v1/knowledge/entries": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Get Knowledge Entries",
+        "operationId": "get_knowledge_entries_api_v1_knowledge_entries_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtr po session_id",
+              "title": "Session Id"
+            },
+            "description": "Filtr po session_id"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/KnowledgeEntryScope"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtr zakresu wpisów: session/global/task",
+              "title": "Scope"
+            },
+            "description": "Filtr zakresu wpisów: session/global/task"
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/KnowledgeSourceOrigin"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtr źródła: session/lesson/vector/graph/training/external",
+              "title": "Source"
+            },
+            "description": "Filtr źródła: session/lesson/vector/graph/training/external"
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lista tagów oddzielona przecinkami (OR logic)",
+              "title": "Tags"
+            },
+            "description": "Lista tagów oddzielona przecinkami (OR logic)"
+          },
+          {
+            "name": "created_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Początek okna czasowego ISO-8601",
+              "title": "Created From"
+            },
+            "description": "Początek okna czasowego ISO-8601"
+          },
+          {
+            "name": "created_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Koniec okna czasowego ISO-8601",
+              "title": "Created To"
+            },
+            "description": "Koniec okna czasowego ISO-8601"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maksymalna liczba wpisów",
+              "default": 200,
+              "title": "Limit"
+            },
+            "description": "Maksymalna liczba wpisów"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntriesResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Błąd wewnętrzny"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/graph/summary": {
       "get": {
         "tags": [
@@ -4269,6 +4522,107 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/ghost/status": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Get Ghost Status",
+        "description": "Zwraca status wykonania zadań Ghost Agent.",
+        "operationId": "get_ghost_status_api_v1_ghost_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "description": "Ghost API lub Ghost Agent nie jest dostępny"
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas pobierania statusu"
+          }
+        }
+      }
+    },
+    "/api/v1/ghost/start": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Start Ghost Task",
+        "description": "Uruchamia zadanie Ghost Agent w tle.",
+        "operationId": "start_ghost_task_api_v1_ghost_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GhostRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Mutacje są zablokowane przez policy/autonomy"
+          },
+          "409": {
+            "description": "Ghost Agent wykonuje już zadanie"
+          },
+          "503": {
+            "description": "Ghost API lub Ghost Agent nie jest dostępny"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ghost/cancel": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Cancel Ghost Task",
+        "description": "Anuluje aktywne zadanie Ghost Agent i aktywuje emergency stop.",
+        "operationId": "cancel_ghost_task_api_v1_ghost_cancel_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Mutacje są zablokowane przez policy/autonomy"
+          },
+          "503": {
+            "description": "Ghost API lub Ghost Agent nie jest dostępny"
           }
         }
       }
@@ -5167,6 +5521,59 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/system/autonomy/observability": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Get Autonomy Observability",
+        "description": "Zwraca dedykowany snapshot observability policy/autonomy dla operacji (SRE/ops).",
+        "operationId": "get_autonomy_observability_api_v1_system_autonomy_observability_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyObservabilityResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Metrics collector nie jest dostępny"
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas pobierania observability policy"
+          }
+        }
+      }
+    },
+    "/api/v1/system/autonomy/rollout-status": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Get Autonomy Rollout Status",
+        "description": "Zwraca status gotowości rollout runtime-only policy gate.",
+        "operationId": "get_autonomy_rollout_status_api_v1_system_autonomy_rollout_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyRolloutStatusResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas pobierania statusu rollout policy"
           }
         }
       }
@@ -7892,9 +8299,29 @@
         "tags": [
           "workflow-control"
         ],
-        "summary": "Get System State",
-        "description": "Get current state of the entire system.\n\nReturns comprehensive system state including:\n- Decision strategy and intent mode\n- Kernel and runtime configuration\n- Provider and model status\n- Embedding configuration\n- Workflow status\n- Active operations\n\nArgs:\n    service: Control plane service injected via Depends\n\nReturns:\n    Current system state",
-        "operationId": "get_system_state_api_v1_workflow_control_state_get",
+        "summary": "Get Control State",
+        "description": "Get canonical operator state for workflow-control.\n\nArgs:\n    service: Control plane service injected via Depends\n    request_id: Optional explicit request selector\n\nReturns:\n    Current canonical operator state",
+        "operationId": "get_control_state_api_v1_workflow_control_state_get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional explicit request selector",
+              "title": "Request Id"
+            },
+            "description": "Optional explicit request selector"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7908,6 +8335,16 @@
           },
           "500": {
             "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -7933,6 +8370,117 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/workflow/control/runtime/{service_id}/{action}": {
+      "post": {
+        "tags": [
+          "workflow-control"
+        ],
+        "summary": "Runtime Service Action",
+        "description": "Execute runtime service action via workflow-control gateway.",
+        "operationId": "runtime_service_action_api_v1_workflow_control_runtime__service_id___action__post",
+        "parameters": [
+          {
+            "name": "service_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Service Id"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid service or runtime action"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflow/control/workflow/{request_id}/{operation}": {
+      "post": {
+        "tags": [
+          "workflow-control"
+        ],
+        "summary": "Workflow Operation Gateway",
+        "description": "Execute workflow operation via workflow-control gateway.",
+        "operationId": "workflow_operation_gateway_api_v1_workflow_control_workflow__request_id___operation__post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowOperation"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid workflow operation"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -10134,6 +10682,11 @@
             "type": "boolean",
             "title": "Deploy To Chat Runtime",
             "default": false
+          },
+          "require_chat_signature": {
+            "type": "boolean",
+            "title": "Require Chat Signature",
+            "default": false
           }
         },
         "type": "object",
@@ -10199,6 +10752,77 @@
         ],
         "title": "ActiveLlmServerRequest",
         "description": "Request for activating an LLM server."
+      },
+      "AdapterChatSignRequest": {
+        "properties": {
+          "runtime_id": {
+            "type": "string",
+            "title": "Runtime Id"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "signer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signer"
+          },
+          "conversion_mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "merge_export",
+              "gguf"
+            ],
+            "title": "Conversion Mode",
+            "default": "none"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runtime_id"
+        ],
+        "title": "AdapterChatSignRequest",
+        "description": "Request to sign adapter for chat runtime usage."
+      },
+      "AdapterChatSignResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "adapter_id": {
+            "type": "string",
+            "title": "Adapter Id"
+          },
+          "signature": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Signature"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "adapter_id"
+        ],
+        "title": "AdapterChatSignResponse",
+        "description": "Response after signing adapter for chat usage."
       },
       "AdapterInfo": {
         "properties": {
@@ -10911,6 +11535,112 @@
         ],
         "title": "AutonomyLevelsResponse",
         "description": "Response for all autonomy levels."
+      },
+      "AutonomyObservabilityPayload": {
+        "properties": {
+          "blocked_count": {
+            "type": "integer",
+            "title": "Blocked Count",
+            "default": 0
+          },
+          "deny_rate": {
+            "type": "number",
+            "title": "Deny Rate",
+            "default": 0.0
+          },
+          "top_reason_codes": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyReasonStat"
+            },
+            "type": "array",
+            "title": "Top Reason Codes"
+          },
+          "false_positive_triage": {
+            "$ref": "#/components/schemas/PolicyFalsePositiveTriage"
+          }
+        },
+        "type": "object",
+        "title": "AutonomyObservabilityPayload",
+        "description": "Operational policy/autonomy observability payload."
+      },
+      "AutonomyObservabilityResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "success"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "runtime_policy_gate"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AutonomyObservabilityPayload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "policy"
+        ],
+        "title": "AutonomyObservabilityResponse",
+        "description": "Response for dedicated policy/autonomy observability endpoint."
+      },
+      "AutonomyRolloutStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "success"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "runtime_policy_gate"
+          },
+          "readiness": {
+            "type": "string",
+            "title": "Readiness"
+          },
+          "runtime_only_architecture": {
+            "type": "boolean",
+            "title": "Runtime Only Architecture"
+          },
+          "policy_gate_enabled": {
+            "type": "boolean",
+            "title": "Policy Gate Enabled"
+          },
+          "global_checkpoint_phase": {
+            "type": "string",
+            "title": "Global Checkpoint Phase",
+            "default": "global_pre_execution"
+          },
+          "legacy_submit_stage_removed": {
+            "type": "boolean",
+            "title": "Legacy Submit Stage Removed"
+          },
+          "observability_endpoint_available": {
+            "type": "boolean",
+            "title": "Observability Endpoint Available"
+          },
+          "required_next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Next Actions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "readiness",
+          "runtime_only_architecture",
+          "policy_gate_enabled",
+          "legacy_submit_stage_removed",
+          "observability_endpoint_available"
+        ],
+        "title": "AutonomyRolloutStatusResponse",
+        "description": "Response for runtime-only policy gate rollout readiness."
       },
       "BenchmarkDeleteResponse": {
         "properties": {
@@ -12522,6 +13252,27 @@
       },
       "ControlOptionsResponse": {
         "properties": {
+          "decision_strategies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Decision Strategies"
+          },
+          "intent_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Intent Modes"
+          },
+          "kernels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kernels"
+          },
           "provider_sources": {
             "items": {
               "type": "string"
@@ -12541,6 +13292,44 @@
           },
           "embeddings": {
             "$ref": "#/components/schemas/ControlOptionsCatalog"
+          },
+          "kernel_runtimes": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Kernel Runtimes"
+          },
+          "intent_requirements": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Intent Requirements"
+          },
+          "provider_embeddings": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Provider Embeddings"
+          },
+          "embedding_providers": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Embedding Providers"
           },
           "active": {
             "$ref": "#/components/schemas/ControlOptionsActive"
@@ -12658,6 +13447,64 @@
         "properties": {
           "system_state": {
             "$ref": "#/components/schemas/SystemState"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperatorMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workflow_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowTargetState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "config_fields": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorConfigField"
+            },
+            "type": "array",
+            "title": "Config Fields"
+          },
+          "runtime_services": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorRuntimeService"
+            },
+            "type": "array",
+            "title": "Runtime Services"
+          },
+          "execution_steps": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorExecutionStep"
+            },
+            "type": "array",
+            "title": "Execution Steps"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperatorGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Actions"
           },
           "last_operation": {
             "anyOf": [
@@ -13226,6 +14073,35 @@
         "title": "EventsResponse",
         "description": "Model odpowiedzi z listą wydarzeń."
       },
+      "ExecutionModeKPIResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "kpi": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Kpi"
+          },
+          "alerts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Alerts"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "ExecutionModeKPIResponse",
+        "description": "Execution mode planner KPI payload for operational dashboarding."
+      },
       "FeedbackLogsResponse": {
         "properties": {
           "count": {
@@ -13420,6 +14296,33 @@
         ],
         "title": "FlowTraceResponse",
         "description": "Odpowiedź zawierająca pełny ślad przepływu dla Flow Inspector."
+      },
+      "GhostRunRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content"
+          },
+          "runtime_profile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Profile"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "GhostRunRequest"
       },
       "GitStatusResponse": {
         "properties": {
@@ -14449,6 +15352,186 @@
         ],
         "title": "KnowledgeContextMapV1"
       },
+      "KnowledgeEntriesResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "success"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "KnowledgeEntriesResponse"
+      },
+      "KnowledgeEntry": {
+        "properties": {
+          "entry_id": {
+            "type": "string",
+            "title": "Entry Id"
+          },
+          "entry_type": {
+            "type": "string",
+            "title": "Entry Type"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/KnowledgeEntryScope"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "ttl_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl At"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "quality_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Score"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "v1"
+          },
+          "source_meta": {
+            "$ref": "#/components/schemas/KnowledgeSourceMeta"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry_id",
+          "entry_type",
+          "scope",
+          "source",
+          "content",
+          "created_at",
+          "source_meta"
+        ],
+        "title": "KnowledgeEntry"
+      },
+      "KnowledgeEntryScope": {
+        "type": "string",
+        "enum": [
+          "session",
+          "global",
+          "task"
+        ],
+        "title": "KnowledgeEntryScope"
+      },
       "KnowledgeKind": {
         "type": "string",
         "enum": [
@@ -14571,6 +15654,46 @@
           "orchestrator"
         ],
         "title": "KnowledgeSource"
+      },
+      "KnowledgeSourceMeta": {
+        "properties": {
+          "origin": {
+            "$ref": "#/components/schemas/KnowledgeSourceOrigin"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Provenance"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "origin"
+        ],
+        "title": "KnowledgeSourceMeta"
+      },
+      "KnowledgeSourceOrigin": {
+        "type": "string",
+        "enum": [
+          "session",
+          "lesson",
+          "vector",
+          "graph",
+          "training",
+          "external"
+        ],
+        "title": "KnowledgeSourceOrigin"
       },
       "LearningStatusResponse": {
         "properties": {
@@ -15186,8 +16309,33 @@
               }
             ],
             "title": "Block Rate"
+          },
+          "deny_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deny Rate"
+          },
+          "top_reason_codes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Top Reason Codes"
+          },
+          "false_positive_triage": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "False Positive Triage"
           }
         },
+        "additionalProperties": true,
         "type": "object",
         "title": "MetricsPolicySection",
         "description": "Policy-related metrics section."
@@ -15584,6 +16732,423 @@
         "title": "OnnxBuildRequest",
         "description": "Request do budowania modelu ONNX przez onnxruntime-genai builder."
       },
+      "OperatorConfigField": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "effective_value": {
+            "title": "Effective Value"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "default"
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "default": true
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required",
+            "default": false
+          },
+          "affected_services": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Affected Services"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "field",
+          "key"
+        ],
+        "title": "OperatorConfigField",
+        "description": "Single editable config field exposed to workflow-control."
+      },
+      "OperatorExecutionStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "component": {
+            "type": "string",
+            "title": "Component"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "default": "execution"
+          },
+          "related_service_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Service Id"
+          },
+          "related_config_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Related Config Keys"
+          },
+          "depends_on_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depends On Step Id"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "normal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "component",
+          "action",
+          "status"
+        ],
+        "title": "OperatorExecutionStep",
+        "description": "Execution trace step for selected workflow request."
+      },
+      "OperatorGraph": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorGraphNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorGraphEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "title": "OperatorGraph",
+        "description": "Canonical graph payload for workflow canvas."
+      },
+      "OperatorGraphEdge": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "animated": {
+            "type": "boolean",
+            "title": "Animated",
+            "default": false
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "target"
+        ],
+        "title": "OperatorGraphEdge",
+        "description": "Graph edge descriptor for frontend canvas."
+      },
+      "OperatorGraphNode": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "position": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "label"
+        ],
+        "title": "OperatorGraphNode",
+        "description": "Graph node descriptor for frontend canvas."
+      },
+      "OperatorMeta": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "request_selector": {
+            "type": "string",
+            "title": "Request Selector",
+            "default": "auto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp"
+        ],
+        "title": "OperatorMeta",
+        "description": "Metadata for canonical operator state payload."
+      },
+      "OperatorRuntimeService": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "cpu_percent": {
+            "type": "number",
+            "title": "Cpu Percent",
+            "default": 0.0
+          },
+          "memory_mb": {
+            "type": "number",
+            "title": "Memory Mb",
+            "default": 0.0
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          },
+          "runtime_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Version"
+          },
+          "actionable": {
+            "type": "boolean",
+            "title": "Actionable",
+            "default": false
+          },
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Actions"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dependencies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "status"
+        ],
+        "title": "OperatorRuntimeService",
+        "description": "Canonical runtime service entry for operator UI."
+      },
+      "PolicyFalsePositiveTriage": {
+        "properties": {
+          "candidate_count": {
+            "type": "integer",
+            "title": "Candidate Count",
+            "default": 0
+          },
+          "candidate_rate": {
+            "type": "number",
+            "title": "Candidate Rate",
+            "default": 0.0
+          },
+          "top_candidate_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyReasonStat"
+            },
+            "type": "array",
+            "title": "Top Candidate Reasons"
+          }
+        },
+        "type": "object",
+        "title": "PolicyFalsePositiveTriage",
+        "description": "Triage snapshot for potential false-positive policy blocks."
+      },
+      "PolicyReasonStat": {
+        "properties": {
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "share_rate": {
+            "type": "number",
+            "title": "Share Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason_code",
+          "count",
+          "share_rate"
+        ],
+        "title": "PolicyReasonStat",
+        "description": "Single reason code statistic for policy/autonomy blocks."
+      },
       "ProvenanceV1": {
         "properties": {
           "source": {
@@ -15799,6 +17364,7 @@
           "service_unavailable",
           "forbidden_transition",
           "invalid_state",
+          "resource_not_found",
           "kernel_runtime_mismatch",
           "provider_model_mismatch",
           "embedding_incompatible",
@@ -15841,6 +17407,28 @@
               }
             ],
             "title": "New Value"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
           },
           "metadata": {
             "additionalProperties": true,
@@ -17069,6 +18657,68 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Health"
+          },
+          "active_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Request Id"
+          },
+          "active_task_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Task Status"
+          },
+          "llm_runtime_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Runtime Id"
+          },
+          "llm_provider_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Provider Name"
+          },
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Model"
+          },
+          "allowed_operations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Operations"
           }
         },
         "type": "object",
@@ -17337,6 +18987,11 @@
             "type": "string",
             "title": "Status"
           },
+          "decision": {
+            "type": "string",
+            "title": "Decision",
+            "default": "allow"
+          },
           "llm_provider": {
             "anyOf": [
               {
@@ -17396,6 +19051,51 @@
               }
             ],
             "title": "User Message"
+          },
+          "remediation_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remediation Hint"
+          },
+          "technical_context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Context"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
           }
         },
         "type": "object",
@@ -17513,6 +19213,44 @@
               }
             ],
             "title": "Runtime Id"
+          },
+          "onnx_conversion_mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "merge_export"
+            ],
+            "title": "Onnx Conversion Mode",
+            "default": "none"
+          },
+          "auto_sign_for_chat": {
+            "type": "boolean",
+            "title": "Auto Sign For Chat",
+            "default": false
+          },
+          "chat_signer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Signer"
+          },
+          "chat_target_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Target Model Id"
           },
           "lora_rank": {
             "type": "integer",
@@ -18670,6 +20408,80 @@
         ],
         "title": "WorkflowStatus",
         "description": "Status of a workflow execution."
+      },
+      "WorkflowTargetState": {
+        "properties": {
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "task_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Status"
+          },
+          "workflow_status": {
+            "type": "string",
+            "title": "Workflow Status",
+            "default": "idle"
+          },
+          "runtime_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "allowed_operations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Operations"
+          }
+        },
+        "type": "object",
+        "title": "WorkflowTargetState",
+        "description": "Selected workflow request target and operation context."
       }
     }
   }

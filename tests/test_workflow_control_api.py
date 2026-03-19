@@ -554,18 +554,30 @@ class TestOptionsEndpoint:
 
         assert "providers" in data
         assert "embeddings" in data
+        assert "kernel_runtimes" in data
+        assert "intent_requirements" in data
+        assert "provider_embeddings" in data
+        assert "embedding_providers" in data
         assert "active" in data
 
         assert isinstance(data["providers"]["local"], list)
         assert isinstance(data["providers"]["cloud"], list)
         assert isinstance(data["embeddings"]["local"], list)
         assert isinstance(data["embeddings"]["cloud"], list)
+        assert isinstance(data["kernel_runtimes"], dict)
+        assert isinstance(data["intent_requirements"], dict)
+        assert isinstance(data["provider_embeddings"], dict)
+        assert isinstance(data["embedding_providers"], dict)
         assert isinstance(data["decision_strategies"], list)
         assert isinstance(data["intent_modes"], list)
         assert isinstance(data["kernels"], list)
 
         assert data["active"]["provider_source"] in {"local", "cloud"}
         assert data["active"]["embedding_source"] in {"local", "cloud"}
+        assert "standard" in data["kernel_runtimes"]
+        assert "advanced" in data["intent_requirements"]
+        assert "ollama" in data["provider_embeddings"]
+        assert "sentence-transformers" in data["embedding_providers"]
 
 
 class TestAuditEndpoint:

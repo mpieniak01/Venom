@@ -1,41 +1,52 @@
 import { MarkerType, type DefaultEdgeOptions, type Node } from "@xyflow/react";
 
-export const SWIMLANE_HEIGHT = 130;
-export const SWIMLANE_WIDTH = 1400;
+export const SWIMLANE_HEIGHT = 300;
+export const SWIMLANE_WIDTH = 1800;
 
 export const SWIMLANE_ORDER = [
-  "decision",
-  "intent",
-  "kernel",
-  "runtime",
-  "embedding",
-  "provider",
+  "control_domain",
+  "runtime_service",
+  "execution_step",
 ] as const;
 
-export type WorkflowCanvasNodeType = (typeof SWIMLANE_ORDER)[number];
+export type WorkflowCanvasNodeType =
+  | "decision"
+  | "intent"
+  | "kernel"
+  | "runtime"
+  | "provider"
+  | "embedding"
+  | "control_domain"
+  | "runtime_service"
+  | "execution_step";
 
-export const STRICT_LAYOUT: Record<string, { x: number; y: number }> = {
-  decision: { x: 0, y: 0 },
-  intent: { x: 1, y: 1 },
-  kernel: { x: 2, y: 2 },
-  runtime: { x: 3, y: 3 },
-  embedding: { x: 4, y: 4 },
-  provider: { x: 5, y: 5 },
+export const STRICT_LAYOUT: Record<string, { x: number; lane: (typeof SWIMLANE_ORDER)[number]; row?: number }> = {
+  decision: { x: 0, lane: "control_domain", row: 0 },
+  intent: { x: 0, lane: "control_domain", row: 1 },
+  kernel: { x: 0, lane: "control_domain", row: 2 },
+  provider: { x: 0, lane: "control_domain", row: 3 },
+  embedding: { x: 0, lane: "control_domain", row: 4 },
+  config: { x: 0, lane: "control_domain", row: 5 },
+  runtime: { x: 1, lane: "runtime_service", row: 0 },
+  runtime_service: { x: 1, lane: "runtime_service", row: 0 },
+  execution_step: { x: 2, lane: "execution_step", row: 0 },
 };
 
-export const LAYOUT_X_START = 60;
-export const LAYOUT_X_OFFSET = 210;
+export const LAYOUT_X_START = 140;
+export const LAYOUT_X_OFFSET = 260;
+export const LAYOUT_Y_START = 40;
+export const LAYOUT_Y_OFFSET = 88;
 
 export const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
-  type: "smoothstep",
+  type: "workflow_relation",
   markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
-  animated: true,
-  style: { strokeWidth: 3, stroke: "#e2e8f0" },
+  animated: false,
+  style: { strokeWidth: 3.5, stroke: "#e2e8f0" },
 };
 
 export const FIT_VIEW_OPTIONS = {
-  padding: 0.1,
-  minZoom: 0.68,
+  padding: 0.14,
+  minZoom: 0.58,
   maxZoom: 1.35,
 };
 
@@ -43,41 +54,23 @@ export const SWIMLANE_STYLES: Record<
   string,
   { bg: string; border: string; text: string; bgContent: string }
 > = {
-  decision: {
-    bg: "bg-blue-900/40",
+  control_domain: {
+    bg: "bg-cyan-900/40",
     border: "border-slate-700",
-    text: "text-blue-400",
-    bgContent: "bg-blue-900/5",
+    text: "text-cyan-400",
+    bgContent: "bg-cyan-900/5",
   },
-  intent: {
-    bg: "bg-yellow-900/40",
+  runtime_service: {
+    bg: "bg-violet-900/40",
     border: "border-slate-700",
-    text: "text-yellow-400",
-    bgContent: "bg-yellow-900/5",
+    text: "text-violet-400",
+    bgContent: "bg-violet-900/5",
   },
-  kernel: {
-    bg: "bg-green-900/40",
+  execution_step: {
+    bg: "bg-emerald-900/40",
     border: "border-slate-700",
-    text: "text-green-400",
-    bgContent: "bg-green-900/5",
-  },
-  runtime: {
-    bg: "bg-purple-900/40",
-    border: "border-slate-700",
-    text: "text-purple-400",
-    bgContent: "bg-purple-900/5",
-  },
-  provider: {
-    bg: "bg-orange-900/40",
-    border: "border-slate-700",
-    text: "text-orange-400",
-    bgContent: "bg-orange-900/5",
-  },
-  embedding: {
-    bg: "bg-pink-900/40",
-    border: "border-slate-700",
-    text: "text-pink-400",
-    bgContent: "bg-pink-900/5",
+    text: "text-emerald-400",
+    bgContent: "bg-emerald-900/5",
   },
 };
 
@@ -132,6 +125,27 @@ export const WORKFLOW_NODE_THEME: Record<
     titleClass: "text-orange-400",
     handleClass: "!h-3 !w-3 !bg-orange-500",
   },
+  control_domain: {
+    glowClass: "border-cyan-300/90 shadow-[0_0_24px_rgba(34,211,238,0.4)]",
+    shellClass:
+      "group relative flex min-h-[98px] min-w-[220px] flex-col justify-center rounded-xl border-2 border-cyan-500 bg-slate-900 px-5 py-4 text-cyan-100 shadow-[0_0_15px_rgba(6,182,212,0.28)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(6,182,212,0.4)]",
+    titleClass: "text-cyan-300",
+    handleClass: "!h-3 !w-3 !bg-cyan-500",
+  },
+  runtime_service: {
+    glowClass: "border-violet-300/90 shadow-[0_0_24px_rgba(196,181,253,0.45)]",
+    shellClass:
+      "group relative flex min-h-[106px] min-w-[230px] flex-col justify-center rounded-xl border-2 border-violet-500 bg-slate-900 px-5 py-4 text-violet-100 shadow-[0_0_15px_rgba(168,85,247,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(168,85,247,0.45)]",
+    titleClass: "text-violet-300",
+    handleClass: "!h-3 !w-3 !bg-violet-500",
+  },
+  execution_step: {
+    glowClass: "border-emerald-300/90 shadow-[0_0_24px_rgba(110,231,183,0.45)]",
+    shellClass:
+      "group relative flex min-h-[118px] min-w-[250px] flex-col justify-center rounded-xl border-2 border-emerald-500 bg-slate-900 px-5 py-4 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(16,185,129,0.45)]",
+    titleClass: "text-emerald-300",
+    handleClass: "!h-3 !w-3 !bg-emerald-500",
+  },
 };
 
 export function miniMapNodeColor(node: Node): string {
@@ -148,6 +162,12 @@ export function miniMapNodeColor(node: Node): string {
       return "#eab308";
     case "embedding":
       return "#ec4899";
+    case "control_domain":
+      return "#22d3ee";
+    case "runtime_service":
+      return "#a78bfa";
+    case "execution_step":
+      return "#34d399";
     default:
       return "#334155";
   }

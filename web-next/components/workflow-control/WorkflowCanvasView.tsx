@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MiniMap,
   ReactFlow,
@@ -18,6 +18,7 @@ import type { SystemState } from "@/types/workflow-control";
 
 import { handleWorkflowConnect } from "./canvas/connection-handler";
 import { DEFAULT_EDGE_OPTIONS, FIT_VIEW_OPTIONS, miniMapNodeColor } from "./canvas/config";
+import { workflowCanvasEdgeTypes } from "./canvas/edge-components";
 import { buildCanvasGraph, graphSignature } from "./canvas/layout";
 import { workflowCanvasNodeTypes } from "./canvas/node-components";
 
@@ -47,19 +48,50 @@ export function WorkflowCanvas({
   onNodeClick,
   onEdgesChange: onEdgesChangeProp,
   onNodesChange: onNodesChangeProp,
-  readOnly = false,
+  readOnly: _readOnly = true,
   testAdapter,
 }: Readonly<WorkflowCanvasProps>) {
   const t = useTranslation();
   const { pushToast } = useToast();
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
+  void _readOnly;
   const UseNodesStateHook = testAdapter?.useNodesStateHook ?? useNodesState;
   const UseEdgesStateHook = testAdapter?.useEdgesStateHook ?? useEdgesState;
   const ReactFlowComponent = testAdapter?.ReactFlowComponent ?? ReactFlow;
   const MiniMapView = testAdapter?.MiniMapComponent ?? MiniMap;
 
-  const { initialNodes, initialEdges } = useMemo(
-    () => buildCanvasGraph(systemState, readOnly),
-    [systemState, readOnly]
+  const toggleExpandedGroup = useCallback((groupKey: string) => {
+    setExpandedGroupKeys((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const canvasReadOnly = true;
+  const { initialNodes: rawNodes, initialEdges } = useMemo(
+    () => buildCanvasGraph(systemState, canvasReadOnly, { expandedGroupKeys }),
+    [systemState, canvasReadOnly, expandedGroupKeys]
+  );
+  const initialNodes = useMemo(
+    () =>
+      rawNodes.map((node) => {
+        if (node.type !== "execution_step") {
+          return node;
+        }
+        return {
+          ...node,
+          data: {
+            ...(node.data ?? {}),
+            onToggleGroup: toggleExpandedGroup,
+          },
+        };
+      }),
+    [rawNodes, toggleExpandedGroup],
   );
 
   const [nodes, setNodes, onNodesChange] = UseNodesStateHook(initialNodes);
@@ -95,14 +127,14 @@ export function WorkflowCanvas({
   const onConnect = useCallback(
     (params: Connection) => {
       handleWorkflowConnect(params, {
-        readOnly,
+        readOnly: canvasReadOnly,
         nodes,
         t,
         pushToast,
         setEdges,
       });
     },
-    [nodes, pushToast, readOnly, setEdges, t]
+    [canvasReadOnly, nodes, pushToast, setEdges, t]
   );
 
   return (
@@ -115,6 +147,7 @@ export function WorkflowCanvas({
         onConnect={onConnect}
         onNodeClick={(_, node) => onNodeClick?.(node)}
         nodeTypes={workflowCanvasNodeTypes}
+        edgeTypes={workflowCanvasEdgeTypes}
         defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         fitView
         fitViewOptions={FIT_VIEW_OPTIONS}

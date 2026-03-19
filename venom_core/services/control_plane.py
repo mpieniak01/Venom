@@ -7,6 +7,7 @@ This service aggregates and coordinates changes across:
 - Embedding and workflow control
 """
 
+import json
 import threading
 import time
 import uuid
@@ -89,6 +90,26 @@ class ControlPlaneService:
         "background_tasks": ["backend"],
         "academy": ["backend"],
         "intent_embedding_router": ["backend"],
+    }
+    STEP_STAGE_MAP: dict[str, str] = {
+        "decision": "decision",
+        "intent": "intent",
+        "kernel": "execution",
+        "embedding": "embedding",
+        "provider": "runtime",
+        "runtime": "runtime",
+        "system": "system",
+        "user": "ingress",
+        "orchestrator": "orchestration",
+    }
+    STEP_CONFIG_KEY_MAP: dict[str, list[str]] = {
+        "decision": ["AI_MODE"],
+        "intent": ["INTENT_MODE"],
+        "kernel": ["KERNEL"],
+        "provider": ["ACTIVE_PROVIDER"],
+        "embedding": ["EMBEDDING_MODEL"],
+        "llm": ["ACTIVE_PROVIDER"],
+        "model": ["ACTIVE_PROVIDER"],
     }
 
     def plan_changes(
@@ -716,7 +737,11 @@ class ControlPlaneService:
 
         config_fields = self._build_operator_config_fields()
         runtime_services = self._build_operator_runtime_services()
-        execution_steps = self._build_execution_steps(selected_trace)
+        execution_steps = self._build_execution_steps(
+            trace=selected_trace,
+            system_state=base_state,
+            runtime_services=runtime_services,
+        )
         workflow_target = WorkflowTargetState(
             request_id=base_state.active_request_id,
             task_status=base_state.active_task_status,
@@ -836,6 +861,9 @@ class ControlPlaneService:
                 getattr(getattr(status, "status", None), "value", "unknown")
             )
             service_name = str(getattr(status, "name", ""))
+            service_type_value = str(
+                getattr(getattr(status, "service_type", None), "value", "runtime")
+            )
             actionable = bool(getattr(status, "actionable", False))
             allowed_actions: list[str] = []
             if actionable:
@@ -845,13 +873,9 @@ class ControlPlaneService:
                     allowed_actions = ["start"]
             result.append(
                 OperatorRuntimeService(
-                    id=service_name,
+                    id=service_type_value,
                     name=service_name,
-                    kind=str(
-                        getattr(
-                            getattr(status, "service_type", None), "value", "runtime"
-                        )
-                    ),
+                    kind=service_type_value,
                     status=status_value,
                     pid=getattr(status, "pid", None),
                     port=getattr(status, "port", None),
@@ -861,30 +885,188 @@ class ControlPlaneService:
                     runtime_version=getattr(status, "runtime_version", None),
                     actionable=actionable,
                     allowed_actions=allowed_actions,
-                    dependencies=self.SERVICE_DEPENDENCIES.get(service_name, []),
+                    dependencies=self.SERVICE_DEPENDENCIES.get(service_type_value, []),
                 )
             )
         return result
 
-    def _build_execution_steps(self, trace: Any | None) -> list[OperatorExecutionStep]:
+    def _build_execution_steps(
+        self,
+        trace: Any | None,
+        system_state: SystemState,
+        runtime_services: list[OperatorRuntimeService],
+    ) -> list[OperatorExecutionStep]:
         if trace is None:
             return []
 
         steps = getattr(trace, "steps", []) or []
         trace_id = str(getattr(trace, "request_id", "unknown"))
         result: list[OperatorExecutionStep] = []
+        previous_step_id: str | None = None
         for index, step in enumerate(steps):
+            component = str(getattr(step, "component", "unknown"))
+            action = str(getattr(step, "action", "step"))
+            status = str(getattr(step, "status", "unknown"))
+            details = getattr(step, "details", None)
+            step_id = f"{trace_id}:{index}"
             result.append(
                 OperatorExecutionStep(
-                    id=f"{trace_id}:{index}",
-                    component=str(getattr(step, "component", "unknown")),
-                    action=str(getattr(step, "action", "step")),
-                    status=str(getattr(step, "status", "unknown")),
+                    id=step_id,
+                    component=component,
+                    action=action,
+                    status=status,
                     timestamp=getattr(step, "timestamp", None),
-                    details=getattr(step, "details", None),
+                    details=details,
+                    stage=self._infer_step_stage(component=component, action=action),
+                    related_service_id=self._infer_related_service_id(
+                        component=component,
+                        action=action,
+                        system_state=system_state,
+                        runtime_services=runtime_services,
+                    ),
+                    related_config_keys=self._infer_related_config_keys(
+                        component=component,
+                        action=action,
+                        details=details,
+                    ),
+                    depends_on_step_id=previous_step_id,
+                    severity=self._infer_step_severity(status=status, details=details),
                 )
             )
+            previous_step_id = step_id
         return result
+
+    def _infer_step_stage(self, component: str, action: str) -> str:
+        normalized_component = component.strip().lower()
+        normalized_action = action.strip().lower()
+
+        for marker, stage in self.STEP_STAGE_MAP.items():
+            if marker in normalized_component:
+                return stage
+
+        if "classify" in normalized_action or "intent" in normalized_action:
+            return "intent"
+        if "embed" in normalized_action:
+            return "embedding"
+        if "plan" in normalized_action or "route" in normalized_action:
+            return "orchestration"
+        return "execution"
+
+    def _infer_related_service_id(
+        self,
+        component: str,
+        action: str,
+        system_state: SystemState,
+        runtime_services: list[OperatorRuntimeService],
+    ) -> str | None:
+        service_lookup = {
+            service.id.strip().lower(): service.id for service in runtime_services
+        }
+        kind_lookup = {
+            (service.kind or "").strip().lower(): service.id
+            for service in runtime_services
+        }
+        normalized_component = component.strip().lower()
+        normalized_action = action.strip().lower()
+
+        if normalized_component in service_lookup:
+            return service_lookup[normalized_component]
+        if normalized_component in kind_lookup:
+            return kind_lookup[normalized_component]
+        if normalized_component in {
+            "decision",
+            "intent",
+            "kernel",
+            "system",
+            "orchestrator",
+            "user",
+        }:
+            return service_lookup.get("backend")
+        if "ui" in normalized_component:
+            return service_lookup.get("ui")
+        if "embed" in normalized_component or "embed" in normalized_action:
+            return service_lookup.get("intent_embedding_router") or service_lookup.get(
+                "backend"
+            )
+
+        provider_candidate = (system_state.llm_provider_name or "").strip()
+        if not provider_candidate and system_state.provider:
+            provider_candidate = str(system_state.provider.get("active", "")).strip()
+        provider_name = provider_candidate.lower()
+        provider_service_map = {
+            "ollama": "llm_ollama",
+            "vllm": "llm_vllm",
+        }
+        if provider_name:
+            provider_service_id = provider_service_map.get(provider_name)
+            if provider_service_id and provider_service_id in service_lookup:
+                if (
+                    provider_name in normalized_component
+                    or provider_name in normalized_action
+                ):
+                    return provider_service_id
+            if "llm" in normalized_component or "model" in normalized_component:
+                if provider_service_id and provider_service_id in service_lookup:
+                    return provider_service_id
+
+        if "runtime" in normalized_component:
+            return service_lookup.get("backend")
+        return None
+
+    def _infer_related_config_keys(
+        self,
+        component: str,
+        action: str,
+        details: Any,
+    ) -> list[str]:
+        normalized_component = component.strip().lower()
+        normalized_action = action.strip().lower()
+        keys: list[str] = []
+
+        for marker, mapped_keys in self.STEP_CONFIG_KEY_MAP.items():
+            if marker in normalized_component or marker in normalized_action:
+                keys.extend(mapped_keys)
+
+        parsed_details: Any = None
+        if isinstance(details, str) and details.strip().startswith(("{", "[")):
+            try:
+                parsed_details = json.loads(details)
+            except json.JSONDecodeError:
+                parsed_details = None
+
+        detail_text = ""
+        if isinstance(details, str):
+            detail_text = details.lower()
+        elif isinstance(parsed_details, dict):
+            detail_text = json.dumps(parsed_details).lower()
+
+        if "intent" in detail_text:
+            keys.append("INTENT_MODE")
+        if "progress" in detail_text or "kernel" in detail_text:
+            keys.append("KERNEL")
+        if "embed" in detail_text:
+            keys.append("EMBEDDING_MODEL")
+        if "provider" in detail_text or "model" in detail_text:
+            keys.append("ACTIVE_PROVIDER")
+
+        return sorted(set(keys))
+
+    def _infer_step_severity(self, status: str, details: Any) -> str:
+        normalized_status = status.strip().lower()
+        detail_text = str(details or "").lower()
+        if normalized_status in {"error", "failed", "failure", "cancelled"}:
+            return "error"
+        if normalized_status in {"warning", "blocked", "paused"}:
+            return "warning"
+        if normalized_status in {"running", "in_progress", "processing"}:
+            return "info"
+        if (
+            "error" in detail_text
+            or "exception" in detail_text
+            or "timeout" in detail_text
+        ):
+            return "error"
+        return "normal"
 
     def _build_operator_graph(
         self,
@@ -1397,6 +1579,34 @@ class ControlPlaneService:
             "embeddings": {
                 "local": embeddings_local,
                 "cloud": embeddings_cloud,
+            },
+            "kernel_runtimes": {
+                kernel: sorted(compatible_runtimes)
+                for kernel, compatible_runtimes in sorted(
+                    self._compatibility_validator.matrix.kernel_runtime.items()
+                )
+            },
+            "intent_requirements": {
+                intent_mode: dict(requirements)
+                for intent_mode, requirements in sorted(
+                    self._compatibility_validator.matrix.intent_mode_requirements.items()
+                )
+            },
+            "provider_embeddings": {
+                provider: [
+                    embedding_model
+                    for embedding_model, compatible_providers in sorted(
+                        embedding_compatibility.items()
+                    )
+                    if provider in compatible_providers
+                ]
+                for provider in sorted(provider_models.keys())
+            },
+            "embedding_providers": {
+                embedding_model: sorted(compatible_providers)
+                for embedding_model, compatible_providers in sorted(
+                    embedding_compatibility.items()
+                )
             },
             "active": {
                 "provider_source": self._classify_provider_source(active_provider),

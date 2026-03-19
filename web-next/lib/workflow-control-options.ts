@@ -10,6 +10,10 @@ export type PropertyPanelOptions = {
 	models: string[];
 	providersBySource: { local: string[]; cloud: string[] };
 	modelsBySource: { local: string[]; cloud: string[] };
+	kernelRuntimes: Record<string, string[]>;
+	intentRequirements: Record<string, { requires_embedding?: boolean; min_model_size?: string }>;
+	providerEmbeddings: Record<string, string[]>;
+	embeddingProviders: Record<string, string[]>;
 };
 
 function mergeUnique(values: Array<string | undefined | null>): string[] {
@@ -95,5 +99,57 @@ export function buildPropertyPanelOptions(
 		modelsBySource,
 		providers: flattenBySource(providersBySource),
 		models: flattenBySource(modelsBySource),
+		kernelRuntimes: controlOptions?.kernel_runtimes ?? {},
+		intentRequirements: controlOptions?.intent_requirements ?? {},
+		providerEmbeddings: controlOptions?.provider_embeddings ?? {},
+		embeddingProviders: controlOptions?.embedding_providers ?? {},
 	};
+}
+
+export function getCompatibleKernels(
+	options: PropertyPanelOptions,
+	runtime: string | null | undefined
+): string[] {
+	if (!runtime) return options.kernels;
+	return options.kernels.filter((kernel) => {
+		const compatibleRuntimes = options.kernelRuntimes[kernel];
+		if (!compatibleRuntimes || compatibleRuntimes.length === 0) return true;
+		return compatibleRuntimes.includes(runtime);
+	});
+}
+
+export function getCompatibleIntentModes(
+	options: PropertyPanelOptions,
+	hasEmbedding: boolean
+): string[] {
+	return options.intentModes.filter((intentMode) => {
+		const requirements = options.intentRequirements[intentMode];
+		if (!requirements) return true;
+		if (requirements.requires_embedding && !hasEmbedding) return false;
+		return true;
+	});
+}
+
+export function getCompatibleProviders(
+	options: PropertyPanelOptions,
+	source: SourceType,
+	embeddingModel: string | null | undefined
+): string[] {
+	const candidates = options.providersBySource[source] ?? [];
+	if (!embeddingModel) return candidates;
+	const compatibleProviders = options.embeddingProviders[embeddingModel];
+	if (!compatibleProviders || compatibleProviders.length === 0) return candidates;
+	return candidates.filter((provider) => compatibleProviders.includes(provider));
+}
+
+export function getCompatibleEmbeddings(
+	options: PropertyPanelOptions,
+	source: SourceType,
+	provider: string | null | undefined
+): string[] {
+	const candidates = options.modelsBySource[source] ?? [];
+	if (!provider) return candidates;
+	const compatibleEmbeddings = options.providerEmbeddings[provider];
+	if (!compatibleEmbeddings || compatibleEmbeddings.length === 0) return candidates;
+	return candidates.filter((embedding) => compatibleEmbeddings.includes(embedding));
 }

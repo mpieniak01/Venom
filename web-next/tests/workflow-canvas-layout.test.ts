@@ -13,42 +13,70 @@ describe("workflow canvas layout", () => {
     assert.ok(initialNodes.every((node) => node.type === "swimlane"));
   });
 
-  it("toggles node interactivity based on readOnly mode", () => {
+  it("keeps node interactivity disabled because helper canvas is read-only", () => {
     const sampleState = {
       decision_strategy: "advanced",
       intent_mode: "expert",
       kernel: "optimized",
-      runtime: { services: ["backend", "ui"] },
+      runtime_services: [
+        { id: "backend", name: "backend", kind: "backend", status: "running" },
+        { id: "ui", name: "ui", kind: "ui", status: "running", dependencies: ["backend"] },
+      ],
       provider: { active: "openai" },
       embedding_model: "text-embedding-3-large",
+      execution_steps: [
+        {
+          id: "step-1",
+          component: "intent",
+          action: "classify",
+          status: "ok",
+          stage: "execution",
+          related_service_id: "backend",
+          related_config_keys: ["INTENT_MODE"],
+        },
+      ],
     };
 
     const editable = buildCanvasGraph(sampleState, false);
     const readOnly = buildCanvasGraph(sampleState, true);
 
-    const editableDecision = editable.initialNodes.find((node) => node.id === "decision");
-    const readOnlyDecision = readOnly.initialNodes.find((node) => node.id === "decision");
+    const editableDecision = editable.initialNodes.find((node) => node.id === "control-domain:decision");
+    const readOnlyDecision = readOnly.initialNodes.find((node) => node.id === "control-domain:decision");
 
-    assert.equal(editableDecision?.draggable, true);
-    assert.equal(editableDecision?.selectable, true);
+    assert.equal(editableDecision?.draggable, false);
+    assert.equal(editableDecision?.selectable, false);
     assert.equal(readOnlyDecision?.draggable, false);
     assert.equal(readOnlyDecision?.selectable, false);
   });
 
-  it("includes interactivity flags in graph signature", () => {
+  it("keeps graph signature stable regardless of readOnly flag", () => {
     const sampleState = {
       decision_strategy: "advanced",
       intent_mode: "expert",
       kernel: "optimized",
-      runtime: { services: ["backend", "ui"] },
+      runtime_services: [
+        { id: "backend", name: "backend", kind: "backend", status: "running" },
+        { id: "ui", name: "ui", kind: "ui", status: "running", dependencies: ["backend"] },
+      ],
       provider: { active: "openai" },
       embedding_model: "text-embedding-3-large",
+      execution_steps: [
+        {
+          id: "step-1",
+          component: "intent",
+          action: "classify",
+          status: "ok",
+          stage: "execution",
+          related_service_id: "backend",
+          related_config_keys: ["INTENT_MODE"],
+        },
+      ],
     };
 
     const editable = buildCanvasGraph(sampleState, false);
     const readOnly = buildCanvasGraph(sampleState, true);
 
-    assert.notEqual(
+    assert.equal(
       graphSignature(editable.initialNodes, editable.initialEdges),
       graphSignature(readOnly.initialNodes, readOnly.initialEdges),
     );

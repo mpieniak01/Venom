@@ -1,10 +1,38 @@
-
 import type {
   ApplyResults,
   ConfigurationChange,
   PlanRequest,
   SystemState,
+  WorkflowControlOptions,
 } from "@/types/workflow-control";
+import type { ControlDomainId } from "@/lib/workflow-control-screen";
+import {
+  buildPropertyPanelOptions,
+  getCompatibleEmbeddings,
+  getCompatibleIntentModes,
+  getCompatibleKernels,
+  getCompatibleProviders,
+} from "@/lib/workflow-control-options";
+
+type DraftCompatibilityIssue = {
+  code:
+    | "kernel_runtime_mismatch"
+    | "intent_requires_embedding"
+    | "provider_embedding_mismatch";
+  domains: ControlDomainId[];
+  message: string;
+};
+
+export type DraftCompatibilityReport = {
+  issues: DraftCompatibilityIssue[];
+  issuesByDomain: Partial<Record<ControlDomainId, DraftCompatibilityIssue[]>>;
+};
+
+export type WorkflowDraftVisualState = {
+  changedDomainCount: number;
+  hasConflicts: boolean;
+  isPlanReady: boolean;
+};
 
 export function shouldShowApplyResultsModal(
   showResultsModal: boolean,
@@ -29,6 +57,104 @@ export function getWorkflowStatusMeta(workflowStatus: string = "idle") {
     canCancel: ["running", "paused"].includes(workflowStatus),
     canRetry: ["failed", "cancelled"].includes(workflowStatus),
     colorClass,
+  };
+}
+
+function findConfigValue(state: SystemState, key: string): string | null {
+  const field = (state.config_fields ?? []).find((entry) => entry.key === key);
+  const value = field?.value ?? field?.effective_value;
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+export function buildDraftCompatibilityReport(
+  controlOptions: WorkflowControlOptions | null,
+  systemState: SystemState | null,
+  draftState: SystemState | null,
+): DraftCompatibilityReport {
+  if (!draftState) {
+    return { issues: [], issuesByDomain: {} };
+  }
+
+  const options = buildPropertyPanelOptions(controlOptions, systemState, draftState);
+  const issues: DraftCompatibilityIssue[] = [];
+  const kernel = draftState.kernel ?? null;
+  const runtime = findConfigValue(draftState, "WORKFLOW_RUNTIME");
+  const intentMode = draftState.intent_mode ?? null;
+  const provider = draftState.provider?.active ?? null;
+  const providerSource =
+    draftState.provider?.sourceType ??
+    draftState.provider_source ??
+    systemState?.provider?.sourceType ??
+    systemState?.provider_source ??
+    "local";
+  const embedding = draftState.embedding_model ?? null;
+  const embeddingSource =
+    draftState.embedding_source ?? systemState?.embedding_source ?? "local";
+
+  if (kernel && runtime) {
+    const compatibleKernels = getCompatibleKernels(options, runtime);
+    if (!compatibleKernels.includes(kernel)) {
+      issues.push({
+        code: "kernel_runtime_mismatch",
+        domains: ["kernel"],
+        message: `Kernel '${kernel}' is not compatible with runtime '${runtime}'.`,
+      });
+    }
+  }
+
+  if (intentMode) {
+    const compatibleIntentModes = getCompatibleIntentModes(options, Boolean(embedding));
+    if (!compatibleIntentModes.includes(intentMode)) {
+      issues.push({
+        code: "intent_requires_embedding",
+        domains: ["intent", "embedding"],
+        message: `Intent mode '${intentMode}' requires an embedding model.`,
+      });
+    }
+  }
+
+  if (provider && embedding) {
+    const compatibleProviders = getCompatibleProviders(
+      options,
+      providerSource === "cloud" ? "cloud" : "local",
+      embedding,
+    );
+    const compatibleEmbeddings = getCompatibleEmbeddings(
+      options,
+      embeddingSource === "cloud" ? "cloud" : "local",
+      provider,
+    );
+    if (
+      !compatibleProviders.includes(provider) ||
+      !compatibleEmbeddings.includes(embedding)
+    ) {
+      issues.push({
+        code: "provider_embedding_mismatch",
+        domains: ["provider", "embedding"],
+        message: `Provider '${provider}' is not compatible with embedding '${embedding}'.`,
+      });
+    }
+  }
+
+  const issuesByDomain: DraftCompatibilityReport["issuesByDomain"] = {};
+  issues.forEach((issue) => {
+    issue.domains.forEach((domain) => {
+      issuesByDomain[domain] = [...(issuesByDomain[domain] ?? []), issue];
+    });
+  });
+
+  return { issues, issuesByDomain };
+}
+
+export function buildWorkflowDraftVisualState(
+  changedDomainCount: number,
+  compatibilityIssueCount: number,
+  hasPendingPlan: boolean,
+): WorkflowDraftVisualState {
+  return {
+    changedDomainCount,
+    hasConflicts: compatibilityIssueCount > 0,
+    isPlanReady: hasPendingPlan && compatibilityIssueCount === 0,
   };
 }
 

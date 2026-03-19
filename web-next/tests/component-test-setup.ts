@@ -13,6 +13,7 @@ Object.assign(globalThis, {
   HTMLElement: window.HTMLElement,
   SVGElement: window.SVGElement,
   Node: window.Node,
+  DocumentFragment: window.DocumentFragment,
   MutationObserver: window.MutationObserver,
   getComputedStyle: window.getComputedStyle.bind(window),
 });

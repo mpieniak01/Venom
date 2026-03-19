@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ApplyResults } from "../types/workflow-control";
+import type { ApplyResults, WorkflowControlOptions } from "../types/workflow-control";
 import {
+  buildDraftCompatibilityReport,
+  buildWorkflowDraftVisualState,
   generatePlanRequest,
   getWorkflowStatusMeta,
   shouldShowApplyResultsModal,
@@ -82,5 +84,65 @@ describe("workflow-control view helpers", () => {
     const result = generatePlanRequest(original, draft);
     const configChanges = result.changes.filter((c) => c.resource_type === "config");
     assert.equal(configChanges.length, 0);
+  });
+
+  it("builds draft compatibility report before plan", () => {
+    const controlOptions: WorkflowControlOptions = {
+      kernels: ["standard", "minimal"],
+      intent_modes: ["simple", "advanced"],
+      providers: { local: ["ollama"], cloud: ["openai"] },
+      embeddings: { local: ["sentence-transformers"], cloud: ["openai-embeddings"] },
+      kernel_runtimes: { standard: ["python", "docker"], minimal: ["python"] },
+      intent_requirements: {
+        simple: { requires_embedding: false },
+        advanced: { requires_embedding: true },
+      },
+      provider_embeddings: {
+        ollama: ["sentence-transformers"],
+        openai: ["openai-embeddings"],
+      },
+      embedding_providers: {
+        "sentence-transformers": ["ollama"],
+        "openai-embeddings": ["openai"],
+      },
+      active: { provider_source: "local", embedding_source: "local" },
+    };
+    const systemState = {
+      provider: { active: "ollama", sourceType: "local" },
+      provider_source: "local",
+      embedding_model: "sentence-transformers",
+      embedding_source: "local",
+      kernel: "standard",
+      intent_mode: "simple",
+      config_fields: [
+        { key: "WORKFLOW_RUNTIME", value: "docker", entity_id: "config:WORKFLOW_RUNTIME", field: "WORKFLOW_RUNTIME" },
+      ],
+    };
+    const draftState = {
+      ...systemState,
+      kernel: "minimal",
+      intent_mode: "advanced",
+      embedding_model: "",
+      provider: { active: "openai", sourceType: "cloud" },
+      provider_source: "cloud",
+    };
+
+    const report = buildDraftCompatibilityReport(controlOptions, systemState, draftState);
+
+    assert.equal(report.issues.length, 2);
+    assert.equal(report.issuesByDomain.kernel?.[0]?.code, "kernel_runtime_mismatch");
+    assert.equal(report.issuesByDomain.intent?.[0]?.code, "intent_requires_embedding");
+    assert.equal(report.issuesByDomain.embedding?.[0]?.code, "intent_requires_embedding");
+  });
+
+  it("summarizes draft visual state for header status rail", () => {
+    const conflictState = buildWorkflowDraftVisualState(3, 1, false);
+    const readyState = buildWorkflowDraftVisualState(2, 0, true);
+
+    assert.equal(conflictState.changedDomainCount, 3);
+    assert.equal(conflictState.hasConflicts, true);
+    assert.equal(conflictState.isPlanReady, false);
+    assert.equal(readyState.hasConflicts, false);
+    assert.equal(readyState.isPlanReady, true);
   });
 });

@@ -296,6 +296,41 @@ export function useWorkflowState() {
     [executeWorkflowOperation]
   );
 
+  const runtimeServiceAction = useCallback(
+    async (serviceId: string, action: "start" | "stop" | "restart"): Promise<boolean> => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/v1/workflow/control/runtime/${serviceId}/${action}`),
+          {
+            method: "POST",
+          }
+        );
+        if (!response.ok) {
+          throw new Error(
+            await readApiErrorMessage(
+              response,
+              t("workflowControl.messages.runtimeActionError")
+            )
+          );
+        }
+        await fetchSystemState();
+        return true;
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("workflowControl.messages.runtimeActionError")
+        );
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [fetchSystemState, t]
+  );
+
   // Initial load and polling
   useEffect(() => {
     const cachedState = readCache<SystemState>(WORKFLOW_STATE_CACHE_KEY);
@@ -416,5 +451,6 @@ export function useWorkflowState() {
     cancelWorkflow,
     retryWorkflow,
     dryRun,
+    runtimeServiceAction,
   };
 }

@@ -17,9 +17,33 @@ const SAMPLE_STATE = {
   decision_strategy: "advanced",
   intent_mode: "expert",
   kernel: "optimized",
-  runtime: { services: ["backend"] },
+  runtime_services: [
+    { id: "backend", name: "backend", kind: "backend", status: "running" },
+    { id: "ui", name: "ui", kind: "ui", status: "running", dependencies: ["backend"] },
+  ],
   provider: { active: "ollama" },
   embedding_model: "sentence-transformers",
+  execution_steps: [
+    {
+      id: "step-1",
+      component: "intent",
+      action: "classify",
+      status: "ok",
+      stage: "execution",
+      related_service_id: "backend",
+      related_config_keys: ["INTENT_MODE"],
+    },
+    {
+      id: "step-2",
+      component: "response",
+      action: "answer",
+      status: "ok",
+      stage: "execution",
+      depends_on_step_id: "step-1",
+      related_service_id: "ui",
+      related_config_keys: ["ACTIVE_PROVIDER"],
+    },
+  ],
 };
 
 function createTestAdapter() {
@@ -80,7 +104,7 @@ describe("WorkflowCanvas component", () => {
     assert.ok(screen.getByTestId("workflow-minimap"));
   });
 
-  it("rejects invalid connection and shows toast", async () => {
+  it("keeps auxiliary canvas read-only for invalid connection attempts", async () => {
     const { adapter, captured } = createTestAdapter();
 
     render(
@@ -90,10 +114,13 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 6);
+    assert.equal(initialEdgesCount, 5);
 
     await act(async () => {
-      captured.props?.onConnect?.({ source: "runtime", target: "decision" });
+      captured.props?.onConnect?.({
+        source: "runtime-service:backend",
+        target: "execution-step:step-1",
+      });
     });
 
     await act(async () => {
@@ -112,16 +139,19 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 6);
+    assert.equal(initialEdgesCount, 5);
 
     await act(async () => {
-      captured.props?.onConnect?.({ source: "runtime", target: "provider" });
+      captured.props?.onConnect?.({
+        source: "runtime-service:backend",
+        target: "execution-step:step-1",
+      });
     });
 
     assert.equal(captured.props?.edges?.length, initialEdgesCount);
   });
 
-  it("adds edge for valid connection", async () => {
+  it("does not add edge even for valid connection because helper canvas is read-only", async () => {
     const { adapter, captured } = createTestAdapter();
 
     render(
@@ -131,12 +161,15 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 6);
+    assert.equal(initialEdgesCount, 5);
 
     await act(async () => {
-      captured.props?.onConnect?.({ source: "runtime", target: "provider" });
+      captured.props?.onConnect?.({
+        source: "runtime-service:backend",
+        target: "execution-step:step-1",
+      });
     });
 
-    assert.equal(captured.props?.edges?.length, initialEdgesCount + 1);
+    assert.equal(captured.props?.edges?.length, initialEdgesCount);
   });
 });

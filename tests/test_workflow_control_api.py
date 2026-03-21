@@ -10,6 +10,7 @@ from venom_core.api.model_schemas.workflow_control import (
     ApplyMode,
     ReasonCode,
     WorkflowStatus,
+    WorkflowStepOperation,
 )
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.main import app
@@ -592,6 +593,17 @@ class TestExecutionStepOperationsEndpoint:
         )
         assert response.status_code == 400
         assert "step_id does not belong to request_id" in response.text
+
+    def test_step_operation_gateway_rejects_unknown_operation(self, client):
+        request_id = "1e18dd58-6f3e-4efe-95da-8c5c33ee1871"
+        step_id = f"{request_id}:0"
+
+        response = client.post(
+            f"/api/v1/workflow/control/workflow/{request_id}/step/{step_id}/unknown_step_op"
+        )
+
+        assert response.status_code == 422
+        assert WorkflowStepOperation.RETRY_FROM_STEP.value in response.text
 
 
 class TestOptionsEndpoint:

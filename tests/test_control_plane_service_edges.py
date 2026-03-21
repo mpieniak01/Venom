@@ -525,3 +525,37 @@ def test_resource_change_to_config_updates_validation_errors():
     )
     with pytest.raises(ValueError, match="Unsupported resource type"):
         service._resource_change_to_config_updates(unsupported_change)
+
+
+def test_infer_related_config_keys_prefers_parsed_json_details():
+    service = ControlPlaneService()
+
+    related_keys = service._infer_related_config_keys(
+        component="routing",
+        action="dispatch",
+        details='{"details":"Provider model selected with embedding fallback"}',
+    )
+
+    assert "ACTIVE_PROVIDER" in related_keys
+    assert "EMBEDDING_MODEL" in related_keys
+
+
+def test_infer_related_config_keys_logs_warning_for_invalid_json(monkeypatch):
+    import venom_core.services.control_plane as control_plane_module
+
+    service = ControlPlaneService()
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        control_plane_module.logger,
+        "warning",
+        lambda message: warnings.append(str(message)),
+    )
+
+    related_keys = service._infer_related_config_keys(
+        component="intent",
+        action="classify",
+        details='{"invalid_json":',
+    )
+
+    assert "INTENT_MODE" in related_keys
+    assert any("Could not parse step details as JSON" in msg for msg in warnings)

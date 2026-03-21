@@ -27,6 +27,7 @@ from venom_core.api.schemas.workflow_control import (
     ResourceType,
     SystemState,
     WorkflowOperation,
+    WorkflowStepOperation,
 )
 from venom_core.services.control_plane import ControlPlaneService
 from venom_core.services.control_plane_audit import ControlPlaneAuditTrail
@@ -297,7 +298,8 @@ async def workflow_operation_gateway(
 @router.post(
     "/workflow/{request_id}/step/{step_id}/{operation}",
     responses={
-        400: {"description": "Invalid step operation"},
+        400: {"description": "Invalid request scope"},
+        422: {"description": "Validation error (unknown step operation)"},
         500: {"description": "Internal server error"},
     },
 )
@@ -305,16 +307,10 @@ async def workflow_step_operation_gateway(
     request: Request,
     request_id: str,
     step_id: str,
-    operation: str,
+    operation: WorkflowStepOperation,
 ):
     """Execute operation scoped to a concrete execution step."""
     try:
-        if operation not in {"retry_from_step", "replay_step", "skip_step"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown execution-step operation '{operation}'",
-            )
-
         if not step_id.startswith(f"{request_id}:"):
             raise HTTPException(
                 status_code=400,
@@ -327,7 +323,7 @@ async def workflow_step_operation_gateway(
             workflow_id=request_id,
             triggered_by=user,
             step_id=step_id,
-            metadata={"scope": "execution_step", "step_operation": operation},
+            metadata={"scope": "execution_step", "step_operation": operation.value},
         )
     except HTTPException:
         raise

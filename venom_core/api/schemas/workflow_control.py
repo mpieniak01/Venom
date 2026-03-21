@@ -72,6 +72,14 @@ class WorkflowOperation(str, Enum):
     DRY_RUN = "dry_run"
 
 
+class WorkflowStepOperation(str, Enum):
+    """Operations that can be performed on a single workflow step."""
+
+    RETRY_FROM_STEP = "retry_from_step"
+    REPLAY_STEP = "replay_step"
+    SKIP_STEP = "skip_step"
+
+
 class WorkflowStatus(str, Enum):
     """Status of a workflow execution."""
 

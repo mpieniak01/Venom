@@ -1056,17 +1056,24 @@ class ControlPlaneService:
                 keys.extend(mapped_keys)
 
         parsed_details: Any = None
-        if isinstance(details, str) and details.strip().startswith(("{", "[")):
-            try:
-                parsed_details = json.loads(details)
-            except json.JSONDecodeError:
-                parsed_details = None
-
         detail_text = ""
         if isinstance(details, str):
-            detail_text = details.lower()
-        elif isinstance(parsed_details, dict):
-            detail_text = json.dumps(parsed_details).lower()
+            normalized_details = details.strip()
+            if normalized_details.startswith(("{", "[")):
+                try:
+                    parsed_details = json.loads(normalized_details)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Could not parse step details as JSON: {normalized_details[:200]}"
+                    )
+                    parsed_details = None
+            if isinstance(parsed_details, (dict, list)):
+                detail_text = json.dumps(parsed_details, ensure_ascii=False).lower()
+            else:
+                detail_text = details.lower()
+        elif isinstance(details, (dict, list)):
+            parsed_details = details
+            detail_text = json.dumps(details, ensure_ascii=False).lower()
 
         if "intent" in detail_text:
             keys.append("INTENT_MODE")

@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Mapping
 
 from venom_core.services.config_manager import config_manager
 from venom_core.services.system_llm_service import previous_model_key_for_server
@@ -713,7 +713,7 @@ def _resolve_local_hf_cache_dirs(
 
 def _build_hf_cache_env(
     *,
-    base_env: Dict[str, str] | None = None,
+    base_env: Mapping[str, str] | None = None,
     settings_obj: Any | None = None,
 ) -> Dict[str, str]:
     env = dict(base_env or os.environ)

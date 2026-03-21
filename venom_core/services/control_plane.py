@@ -1495,11 +1495,11 @@ class ControlPlaneService:
                 "Workflow resource changes are handled via workflow operations API"
             )
 
-        config_key = self.RESOURCE_CONFIG_KEY_MAP.get(change.resource_type)
-        if not config_key:
+        mapped_config_key = self.RESOURCE_CONFIG_KEY_MAP.get(change.resource_type)
+        if not mapped_config_key:
             raise ValueError(f"Unsupported resource type: {change.resource_type.value}")
 
-        return {config_key: effective_new_value}
+        return {mapped_config_key: effective_new_value}
 
     def _resolve_runtime_from_config(self, config: dict[str, Any]) -> str:
         runtime = str(config.get("WORKFLOW_RUNTIME", "")).strip().lower()

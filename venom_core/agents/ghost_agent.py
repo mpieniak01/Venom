@@ -195,7 +195,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             f"critical_fail_closed={self.critical_fail_closed})"
         )
 
-    def _normalize_runtime_profile(self, profile: str) -> str:
+    def _normalize_runtime_profile(self, profile: str | None) -> str:
         normalized = (profile or "").strip().lower()
         if normalized in self.RUNTIME_PROFILES:
             return normalized

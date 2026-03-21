@@ -10,7 +10,7 @@ import tempfile
 from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
@@ -35,18 +35,31 @@ GHOST_API_DISABLED_DETAIL = (
 )
 GHOST_AGENT_UNAVAILABLE_DETAIL = "Ghost Agent nie jest dostępny"
 
+
+class _GhostAgentLike(Protocol):
+    async def process(self, content: str) -> str: ...
+
+    def emergency_stop_trigger(self) -> None: ...
+
+    def get_status(self) -> dict[str, Any]: ...
+
+    def apply_runtime_profile(self, profile: str) -> dict[str, Any]: ...
+
+
 # Dependencies - będą ustawione w main.py
 _gardener_agent = None
 _shadow_agent = None
 _file_watcher = None
 _documenter_agent = None
 _orchestrator = None
-_ghost_agent = None
+_ghost_agent: _GhostAgentLike | None = None
 
+_fcntl: Any
 try:
-    import fcntl
+    import fcntl as _fcntl
 except ImportError:  # pragma: no cover - fallback for non-POSIX platforms
-    fcntl = None
+    _fcntl = None
+fcntl = _fcntl
 
 
 def _resolve_ghost_run_state_path() -> Path:
@@ -201,8 +214,16 @@ def _get_runtime_profile(task_id: str) -> str | None:
     return str(profile) if profile is not None else None
 
 
+def _require_ghost_agent() -> _GhostAgentLike:
+    ghost_agent = _ghost_agent
+    if ghost_agent is None:
+        raise RuntimeError(GHOST_AGENT_UNAVAILABLE_DETAIL)
+    return ghost_agent
+
+
 async def _run_ghost_process_with_cancel_watch(*, task_id: str, content: str) -> str:
-    process_task = asyncio.create_task(_ghost_agent.process(content))
+    ghost_agent = _require_ghost_agent()
+    process_task = asyncio.create_task(ghost_agent.process(content))
     try:
         while True:
             done, _ = await asyncio.wait({process_task}, timeout=0.25)
@@ -214,7 +235,7 @@ async def _run_ghost_process_with_cancel_watch(*, task_id: str, content: str) ->
                 and run_state.get("task_id") == task_id
                 and run_state.get("status") == "cancelling"
             ):
-                _ghost_agent.emergency_stop_trigger()
+                ghost_agent.emergency_stop_trigger()
                 process_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await process_task
@@ -527,6 +548,7 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
         )
     if _ghost_agent is None:
         raise HTTPException(status_code=503, detail=GHOST_AGENT_UNAVAILABLE_DETAIL)
+    ghost_agent = _require_ghost_agent()
     if _GhostRunStateStore.is_active(_ghost_run_store.get()):
         raise HTTPException(status_code=409, detail="Ghost Agent już wykonuje zadanie")
 
@@ -540,10 +562,11 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
             actor=actor,
         )
 
-    runtime_profile = request.runtime_profile or getattr(
-        SETTINGS, "GHOST_RUNTIME_PROFILE", "desktop_safe"
+    runtime_profile = str(
+        request.runtime_profile
+        or getattr(SETTINGS, "GHOST_RUNTIME_PROFILE", "desktop_safe")
     )
-    profile_payload = _ghost_agent.apply_runtime_profile(runtime_profile)
+    profile_payload = ghost_agent.apply_runtime_profile(runtime_profile)
 
     task_id = str(uuid4())
     started_at = _utc_iso_now()

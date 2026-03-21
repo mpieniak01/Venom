@@ -7,6 +7,7 @@ import {
   buildSelectionNode,
   findExecutionStep,
   findRuntimeService,
+  getSeverityTone,
   getStatusTone,
   mapConfigKeyToControlDomain,
   type ControlDomainId,
@@ -27,8 +28,17 @@ interface WorkflowInspectorPanelProps {
     serviceId: string,
     action: "start" | "stop" | "restart",
   ) => Promise<boolean>;
+  onExecutionStepAction: (
+    stepId: string,
+    action: "retry_from_step" | "replay_step" | "skip_step",
+  ) => Promise<boolean>;
   onSelectRuntimeService: (serviceId: string) => void;
   onSelectControlDomain: (domainId: ControlDomainId) => void;
+  expandedGroupKeys: Set<string>;
+  groupSizes: Map<string, number>;
+  groupToStepIds: Map<string, string[]>;
+  onSelectExecutionStep: (stepId: string, groupKey?: string) => void;
+  onToggleExecutionGroup: (groupKey: string) => void;
   isLoading?: boolean;
 }
 
@@ -55,8 +65,14 @@ export function WorkflowInspectorPanel({
   propertyPanelOptions,
   onUpdateNode,
   onRuntimeServiceAction,
+  onExecutionStepAction,
   onSelectRuntimeService,
   onSelectControlDomain,
+  expandedGroupKeys,
+  groupSizes,
+  groupToStepIds,
+  onSelectExecutionStep,
+  onToggleExecutionGroup,
   isLoading,
 }: Readonly<WorkflowInspectorPanelProps>) {
   const t = useTranslation();
@@ -174,6 +190,14 @@ export function WorkflowInspectorPanel({
       );
     }
 
+    const groupKey = selection.groupKey;
+    const groupSize = groupKey ? (groupSizes.get(groupKey) ?? 1) : 1;
+    const isGroupExpanded = groupKey ? expandedGroupKeys.has(groupKey) : false;
+    const groupStepIds = groupKey ? (groupToStepIds.get(groupKey) ?? []) : [];
+    const groupSteps = groupStepIds
+      .map((stepId) => findExecutionStep(systemState?.execution_steps, stepId))
+      .filter((groupStep): groupStep is NonNullable<typeof groupStep> => Boolean(groupStep));
+
     return (
       <div className="rounded-[28px] border border-white/10 bg-slate-950/90 p-5 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
         <div className="flex items-start justify-between gap-4">
@@ -188,8 +212,46 @@ export function WorkflowInspectorPanel({
               </h3>
             </div>
           </div>
-          <Badge tone={getStatusTone(step.status)}>{step.status}</Badge>
+          <div className="flex items-center gap-2">
+            {step.severity ? (
+              <Badge tone={getSeverityTone(step.severity)}>{step.severity}</Badge>
+            ) : null}
+            <Badge tone={getStatusTone(step.status)}>{step.status}</Badge>
+          </div>
         </div>
+
+        {groupKey && groupSize > 1 ? (
+          <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-cyan-100">
+                {groupSize} {t("workflowControl.labels.branches")}
+              </div>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => onToggleExecutionGroup(groupKey)}
+              >
+                {isGroupExpanded
+                  ? t("workflowControl.actions.collapse")
+                  : t("workflowControl.actions.expand")}
+              </Button>
+            </div>
+            {groupSteps.length > 1 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {groupSteps.map((variantStep) => (
+                  <Button
+                    key={variantStep.id}
+                    size="xs"
+                    variant={variantStep.id === step.id ? "secondary" : "ghost"}
+                    onClick={() => onSelectExecutionStep(variantStep.id, groupKey)}
+                  >
+                    {variantStep.action}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/80 p-4">
           <DetailRow label="ID" value={step.id} />
@@ -260,6 +322,50 @@ export function WorkflowInspectorPanel({
         )}
 
         <div className="mt-5 space-y-3">
+          {(step.allowed_actions ?? []).length > 0 ? (
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">
+                {t("workflowControl.labels.allowedActions")}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onExecutionStepAction(step.id, "retry_from_step")}
+                  disabled={
+                    isLoading ||
+                    !(step.allowed_actions ?? []).includes("retry_from_step")
+                  }
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {t("workflowControl.actions.retryFromStep")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onExecutionStepAction(step.id, "replay_step")}
+                  disabled={
+                    isLoading || !(step.allowed_actions ?? []).includes("replay_step")
+                  }
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {t("workflowControl.actions.replayStep")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => onExecutionStepAction(step.id, "skip_step")}
+                  disabled={
+                    isLoading || !(step.allowed_actions ?? []).includes("skip_step")
+                  }
+                >
+                  <Square className="h-3.5 w-3.5" />
+                  {t("workflowControl.actions.skipStep")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">
             <Database className="h-4 w-4" />
             {t("workflowControl.actions.details")}

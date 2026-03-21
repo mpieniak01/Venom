@@ -1,11 +1,13 @@
 import type {
   ApplyResults,
   ConfigurationChange,
+  OperatorExecutionStep,
+  OperatorRuntimeService,
   PlanRequest,
   SystemState,
   WorkflowControlOptions,
 } from "@/types/workflow-control";
-import type { ControlDomainId } from "@/lib/workflow-control-screen";
+import type { ControlDomainId, WorkflowControlSelection } from "@/lib/workflow-control-screen";
 import {
   buildPropertyPanelOptions,
   getCompatibleEmbeddings,
@@ -33,6 +35,64 @@ export type WorkflowDraftVisualState = {
   hasConflicts: boolean;
   isPlanReady: boolean;
 };
+
+export type WorkflowSelectionSummary = {
+  kind: WorkflowControlSelection["kind"];
+  label: string;
+  value: string;
+  id: string;
+};
+
+function findRuntimeServiceById(
+  services: OperatorRuntimeService[] | undefined,
+  serviceId: string,
+): OperatorRuntimeService | null {
+  return (services ?? []).find((service) => service.id === serviceId) ?? null;
+}
+
+function findExecutionStepById(
+  steps: OperatorExecutionStep[] | undefined,
+  stepId: string,
+): OperatorExecutionStep | null {
+  return (steps ?? []).find((step) => step.id === stepId) ?? null;
+}
+
+export function buildWorkflowSelectionSummary(
+  selection: WorkflowControlSelection | null,
+  systemState: SystemState | null,
+): WorkflowSelectionSummary | null {
+  if (!selection) return null;
+
+  if (selection.kind === "control-domain") {
+    return {
+      kind: "control-domain",
+      label: "control-domain",
+      value: selection.id,
+      id: selection.id,
+    };
+  }
+
+  if (selection.kind === "runtime-service") {
+    const service = findRuntimeServiceById(systemState?.runtime_services, selection.serviceId);
+    return {
+      kind: "runtime-service",
+      label: "runtime-service",
+      value: service?.name ?? selection.serviceId,
+      id: selection.serviceId,
+    };
+  }
+
+  const step = findExecutionStepById(systemState?.execution_steps, selection.stepId);
+  return {
+    kind: "execution-step",
+    label: "execution-step",
+    value:
+      step && step.component && step.action
+        ? `${step.component}:${step.action}`
+        : selection.stepId,
+    id: selection.stepId,
+  };
+}
 
 export function shouldShowApplyResultsModal(
   showResultsModal: boolean,

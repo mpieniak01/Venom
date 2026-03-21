@@ -242,6 +242,7 @@ class OperatorExecutionStep(BaseModel):
     related_config_keys: list[str] = Field(default_factory=list)
     depends_on_step_id: Optional[str] = None
     severity: str = "normal"
+    allowed_actions: list[str] = Field(default_factory=list)
 
 
 class OperatorGraphNode(BaseModel):

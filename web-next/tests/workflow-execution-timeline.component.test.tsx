@@ -51,9 +51,29 @@ describe("WorkflowExecutionTimeline", () => {
             depends_on_step_id: "step-1",
           },
         ]}
+        stepToGroupKey={
+          new Map<string, string>([
+            ["step-1", "group-1"],
+            ["step-2", "group-2"],
+          ])
+        }
+        groupSizes={
+          new Map<string, number>([
+            ["group-1", 2],
+            ["group-2", 1],
+          ])
+        }
+        groupToStepIds={
+          new Map<string, string[]>([
+            ["group-1", ["step-1"]],
+            ["group-2", ["step-2"]],
+          ])
+        }
+        expandedGroupKeys={new Set<string>(["group-1"])}
         selection={null}
         onSelectService={mock.fn(() => undefined)}
         onSelectStep={mock.fn(() => undefined)}
+        onToggleExecutionGroup={mock.fn(() => undefined)}
       />,
     );
 

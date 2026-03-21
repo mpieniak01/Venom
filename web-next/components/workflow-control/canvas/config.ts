@@ -21,13 +21,7 @@ export type WorkflowCanvasNodeType =
   | "execution_step";
 
 export const STRICT_LAYOUT: Record<string, { x: number; lane: (typeof SWIMLANE_ORDER)[number]; row?: number }> = {
-  decision: { x: 0, lane: "control_domain", row: 0 },
-  intent: { x: 0, lane: "control_domain", row: 1 },
-  kernel: { x: 0, lane: "control_domain", row: 2 },
-  provider: { x: 0, lane: "control_domain", row: 3 },
-  embedding: { x: 0, lane: "control_domain", row: 4 },
-  config: { x: 0, lane: "control_domain", row: 5 },
-  runtime: { x: 1, lane: "runtime_service", row: 0 },
+  control_domain: { x: 0, lane: "control_domain", row: 0 },
   runtime_service: { x: 1, lane: "runtime_service", row: 0 },
   execution_step: { x: 2, lane: "execution_step", row: 0 },
 };

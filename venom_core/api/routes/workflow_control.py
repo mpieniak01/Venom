@@ -294,6 +294,53 @@ async def workflow_operation_gateway(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.post(
+    "/workflow/{request_id}/step/{step_id}/{operation}",
+    responses={
+        400: {"description": "Invalid step operation"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def workflow_step_operation_gateway(
+    request: Request,
+    request_id: str,
+    step_id: str,
+    operation: str,
+):
+    """Execute operation scoped to a concrete execution step."""
+    try:
+        if operation not in {"retry_from_step", "replay_step", "skip_step"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown execution-step operation '{operation}'",
+            )
+
+        if not step_id.startswith(f"{request_id}:"):
+            raise HTTPException(
+                status_code=400,
+                detail="step_id does not belong to request_id",
+            )
+
+        user = _extract_user_from_request(request)
+        service = get_workflow_operation_service()
+        return service.retry_workflow(
+            workflow_id=request_id,
+            triggered_by=user,
+            step_id=step_id,
+            metadata={"scope": "execution_step", "step_operation": operation},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            "Failed workflow-step gateway operation=%s request_id=%s step_id=%s",
+            operation,
+            request_id,
+            step_id,
+        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @router.get(
     "/audit",
     response_model=ControlAuditResponse,

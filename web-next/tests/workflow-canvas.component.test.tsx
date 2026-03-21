@@ -51,6 +51,11 @@ function createTestAdapter() {
     props?: {
       onConnect?: (connection: { source?: string | null; target?: string | null }) => void;
       edges?: Array<{ id: string; source: string; target: string }>;
+      onNodeClick?: (event: unknown, node: { id: string; type?: string; data?: Record<string, unknown> }) => void;
+      nodesDraggable?: boolean;
+      nodesConnectable?: boolean;
+      elementsSelectable?: boolean;
+      edgesFocusable?: boolean;
     };
   } = {};
 
@@ -58,6 +63,10 @@ function createTestAdapter() {
     children?: React.ReactNode;
     onConnect?: (connection: { source?: string | null; target?: string | null }) => void;
     edges?: Array<{ id: string; source: string; target: string }>;
+    nodesDraggable?: boolean;
+    nodesConnectable?: boolean;
+    elementsSelectable?: boolean;
+    edgesFocusable?: boolean;
   }) => {
     captured.props = props;
     return <div data-testid="workflow-reactflow">{props.children}</div>;
@@ -171,5 +180,50 @@ describe("WorkflowCanvas component", () => {
     });
 
     assert.equal(captured.props?.edges?.length, initialEdgesCount);
+  });
+
+  it("forwards execution-step node clicks to external handler", async () => {
+    const { adapter, captured } = createTestAdapter();
+    const clickedNodeIds: string[] = [];
+
+    render(
+      <ToastProvider>
+        <WorkflowCanvas
+          systemState={SAMPLE_STATE}
+          testAdapter={adapter}
+          onNodeClick={(node) => {
+            clickedNodeIds.push(node.id);
+          }}
+        />
+      </ToastProvider>,
+    );
+
+    await act(async () => {
+      captured.props?.onNodeClick?.(
+        {},
+        {
+          id: "execution-step:step-1",
+          type: "execution_step",
+          data: { stepId: "step-1" },
+        },
+      );
+    });
+
+    assert.deepEqual(clickedNodeIds, ["execution-step:step-1"]);
+  });
+
+  it("enforces hard read-only flags on ReactFlow", () => {
+    const { adapter, captured } = createTestAdapter();
+
+    render(
+      <ToastProvider>
+        <WorkflowCanvas systemState={SAMPLE_STATE} testAdapter={adapter} />
+      </ToastProvider>,
+    );
+
+    assert.equal(captured.props?.nodesDraggable, false);
+    assert.equal(captured.props?.nodesConnectable, false);
+    assert.equal(captured.props?.elementsSelectable, false);
+    assert.equal(captured.props?.edgesFocusable, false);
   });
 });

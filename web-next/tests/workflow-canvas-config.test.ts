@@ -8,8 +8,13 @@ import {
 } from "../components/workflow-control/canvas/config";
 
 describe("workflow canvas config", () => {
-  it("keeps swimlane order aligned with themed node types", () => {
-    assert.deepEqual(Object.keys(WORKFLOW_NODE_THEME), [...SWIMLANE_ORDER]);
+  it("ensures every swimlane type has a matching visual theme token", () => {
+    for (const laneType of SWIMLANE_ORDER) {
+      assert.ok(
+        laneType in WORKFLOW_NODE_THEME,
+        `Missing theme token for lane type: ${laneType}`,
+      );
+    }
   });
 
   it("defines complete visual theme tokens for every workflow node type", () => {

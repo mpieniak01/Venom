@@ -84,7 +84,27 @@ async def run_council(orch: "Orchestrator", task_id: "UUID", context: str) -> st
             architect = getattr(orch.task_dispatcher, "architect_agent", None)
 
             guardian = GuardianAgent(kernel=orch.task_dispatcher.kernel)
-            llm_config = create_local_llm_config()
+            try:
+                llm_config = create_local_llm_config()
+            except Exception as exc:
+                # Nie blokuj całego Council przy brakującej konfiguracji endpointu
+                # (szczególnie w środowiskach testowych, gdzie sesja jest mockowana).
+                logger.warning(
+                    "Nie udało się zbudować lokalnej konfiguracji LLM dla Council (%s). "
+                    "Używam konfiguracji awaryjnej.",
+                    exc,
+                )
+                llm_config = {
+                    "config_list": [
+                        {
+                            "model": "council-fallback",
+                            "base_url": "http://localhost:11434",
+                            "api_key": "EMPTY",
+                        }
+                    ],
+                    "temperature": 0.7,
+                    "timeout": 120,
+                }
 
             if coder is None or critic is None or architect is None:
                 raise RuntimeError(

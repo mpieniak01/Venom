@@ -267,6 +267,75 @@ async def test_tasks_onnx_helpers_cover_trace_and_run_branches() -> None:
     assert "gen_fail" in failures[-1]
 
 
+@pytest.mark.asyncio
+async def test_tasks_onnx_fast_help_and_session_history_contract() -> None:
+    state = _StateManager()
+    runtime = _Runtime()
+    history: list[tuple[str, str, str, str | None]] = []
+    generation_calls: list[tuple[int | None, float | None]] = []
+
+    async def _run_generation(_messages, max_tokens, temperature):
+        generation_calls.append((max_tokens, temperature))
+        return "model-output"
+
+    await tsvc.run_onnx_task(
+        state_manager=state,
+        task_id="task-fast-help",
+        request=_Request(
+            content="pomoc", session_id="sess-fast", forced_intent="HELP_REQUEST"
+        ),
+        runtime=runtime,
+        build_messages_fn=lambda content, _intent: [
+            {"role": "user", "content": content}
+        ],
+        run_generation_fn=_run_generation,
+        trace_success_fn=lambda *_args: None,
+        trace_failure_fn=lambda *_args: None,
+        append_session_history_fn=lambda task_id,
+        role,
+        content,
+        session_id: history.append((task_id, role, content, session_id)),
+        logger=_Logger(),
+    )
+
+    assert generation_calls == []
+    assert len(history) == 2
+    assert history[0] == ("task-fast-help", "user", "pomoc", "sess-fast")
+    assert history[1][0] == "task-fast-help"
+    assert history[1][1] == "assistant"
+    assert history[1][3] == "sess-fast"
+    assert history[1][2].startswith("Jasne, pomogę.")
+
+    history.clear()
+    await tsvc.run_onnx_task(
+        state_manager=state,
+        task_id="task-normal",
+        request=_Request(
+            content="zwykłe zapytanie",
+            session_id="sess-normal",
+            generation_params={"max_tokens": 32, "temperature": 0.4},
+        ),
+        runtime=runtime,
+        build_messages_fn=lambda content, _intent: [
+            {"role": "user", "content": content}
+        ],
+        run_generation_fn=_run_generation,
+        trace_success_fn=lambda *_args: None,
+        trace_failure_fn=lambda *_args: None,
+        append_session_history_fn=lambda task_id,
+        role,
+        content,
+        session_id: history.append((task_id, role, content, session_id)),
+        logger=_Logger(),
+    )
+
+    assert generation_calls == [(32, 0.4)]
+    assert history == [
+        ("task-normal", "user", "zwykłe zapytanie", "sess-normal"),
+        ("task-normal", "assistant", "model-output", "sess-normal"),
+    ]
+
+
 def test_stream_state_helper_decisions_and_packet_update() -> None:
     state = ssvc.SimpleStreamState(chunks=[])
     ssvc.reset_stream_attempt_state(state)

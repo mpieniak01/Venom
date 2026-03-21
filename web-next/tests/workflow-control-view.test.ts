@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ApplyResults, WorkflowControlOptions } from "../types/workflow-control";
 import {
+  buildWorkflowSelectionSummary,
   buildDraftCompatibilityReport,
   buildWorkflowDraftVisualState,
   generatePlanRequest,
@@ -144,5 +145,46 @@ describe("workflow-control view helpers", () => {
     assert.equal(conflictState.isPlanReady, false);
     assert.equal(readyState.hasConflicts, false);
     assert.equal(readyState.isPlanReady, true);
+  });
+
+  it("builds selection summary for control domain/runtime service/execution step", () => {
+    const systemState = {
+      runtime_services: [{ id: "backend", name: "backend", status: "running" }],
+      execution_steps: [
+        { id: "s1", component: "router", action: "route-safe", status: "ok" },
+      ],
+    };
+
+    const domainSummary = buildWorkflowSelectionSummary(
+      { kind: "control-domain", id: "intent" },
+      systemState,
+    );
+    const serviceSummary = buildWorkflowSelectionSummary(
+      { kind: "runtime-service", serviceId: "backend" },
+      systemState,
+    );
+    const stepSummary = buildWorkflowSelectionSummary(
+      { kind: "execution-step", stepId: "s1" },
+      systemState,
+    );
+
+    assert.deepEqual(domainSummary, {
+      kind: "control-domain",
+      label: "control-domain",
+      value: "intent",
+      id: "intent",
+    });
+    assert.deepEqual(serviceSummary, {
+      kind: "runtime-service",
+      label: "runtime-service",
+      value: "backend",
+      id: "backend",
+    });
+    assert.deepEqual(stepSummary, {
+      kind: "execution-step",
+      label: "execution-step",
+      value: "router:route-safe",
+      id: "s1",
+    });
   });
 });

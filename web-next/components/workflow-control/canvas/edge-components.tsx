@@ -11,16 +11,22 @@ type WorkflowRelationData = {
   relationLabel?: string;
 };
 
-function relationTheme(kind: WorkflowRelationData["relationKind"]): {
+export function relationTheme(kind: WorkflowRelationData["relationKind"]): {
   stroke: string;
   glow: string;
   labelClassName: string;
+  borderRadius: number;
+  offset: number;
+  strokeDasharray?: string;
 } {
   if (kind === "domain") {
     return {
       stroke: "#22d3ee",
       glow: "drop-shadow-[0_0_8px_rgba(34,211,238,0.45)]",
       labelClassName: "border-cyan-400/25 bg-cyan-500/12 text-cyan-100",
+      borderRadius: 22,
+      offset: 34,
+      strokeDasharray: "8 5",
     };
   }
   if (kind === "runtime") {
@@ -28,12 +34,16 @@ function relationTheme(kind: WorkflowRelationData["relationKind"]): {
       stroke: "#a78bfa",
       glow: "drop-shadow-[0_0_8px_rgba(167,139,250,0.4)]",
       labelClassName: "border-violet-400/25 bg-violet-500/12 text-violet-100",
+      borderRadius: 20,
+      offset: 30,
     };
   }
   return {
     stroke: "#34d399",
     glow: "drop-shadow-[0_0_8px_rgba(52,211,153,0.35)]",
     labelClassName: "border-emerald-400/25 bg-emerald-500/12 text-emerald-100",
+    borderRadius: 16,
+    offset: 24,
   };
 }
 
@@ -57,10 +67,9 @@ export function WorkflowRelationEdge({
     targetY,
     sourcePosition,
     targetPosition,
-    borderRadius: 18,
-    offset: 26,
+    borderRadius: theme.borderRadius,
+    offset: theme.offset,
   });
-
   return (
     <>
       <BaseEdge
@@ -71,6 +80,8 @@ export function WorkflowRelationEdge({
           stroke: theme.stroke,
           strokeWidth: 10,
           opacity: 0.18,
+          strokeLinecap: "round",
+          strokeLinejoin: "round",
         }}
         className={theme.glow}
       />
@@ -81,7 +92,9 @@ export function WorkflowRelationEdge({
         style={{
           stroke: theme.stroke,
           strokeWidth: 3.5,
-          strokeDasharray: relation.relationKind === "domain" ? "7 5" : undefined,
+          strokeDasharray: theme.strokeDasharray,
+          strokeLinecap: "round",
+          strokeLinejoin: "round",
         }}
         className={theme.glow}
       />

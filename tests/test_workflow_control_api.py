@@ -498,7 +498,13 @@ class TestStateEndpoint:
         assert response.status_code == 200
         state = response.json()["system_state"]
         assert state["workflow_status"] == WorkflowStatus.FAILED.value
-        assert state["allowed_operations"] == ["retry", "dry_run"]
+        assert state["allowed_operations"] == [
+            "retry",
+            "retry_from_step",
+            "replay_step",
+            "skip_step",
+            "dry_run",
+        ]
 
     def test_state_handles_runtime_tracer_errors(self, client, monkeypatch):
         """Tracer runtime errors should not fail state endpoint."""
@@ -536,6 +542,56 @@ class TestStateEndpoint:
         state = response.json()["system_state"]
         assert state["workflow_status"] == WorkflowStatus.IDLE.value
         assert state["allowed_operations"] == []
+
+
+class TestExecutionStepOperationsEndpoint:
+    """Test /api/v1/workflow/control/workflow/{request_id}/step/{step_id}/{operation}."""
+
+    def test_step_operation_gateway_accepts_extended_operations(
+        self, client, monkeypatch
+    ):
+        request_id = "1e18dd58-6f3e-4efe-95da-8c5c33ee1871"
+        step_id = f"{request_id}:3"
+        captured: dict[str, Any] = {}
+
+        class FakeWorkflowOperationService:
+            def retry_workflow(
+                self,
+                workflow_id: str,
+                triggered_by: str,
+                step_id: str | None = None,
+                metadata: dict[str, Any] | None = None,
+            ):
+                captured["workflow_id"] = workflow_id
+                captured["triggered_by"] = triggered_by
+                captured["step_id"] = step_id
+                captured["metadata"] = metadata or {}
+                return {"ok": True, "operation": "retry", "step_id": step_id}
+
+        monkeypatch.setattr(
+            workflow_control_routes,
+            "get_workflow_operation_service",
+            lambda: FakeWorkflowOperationService(),
+        )
+
+        response = client.post(
+            f"/api/v1/workflow/control/workflow/{request_id}/step/{step_id}/replay_step"
+        )
+        assert response.status_code == 200
+        assert captured["workflow_id"] == request_id
+        assert captured["step_id"] == step_id
+        assert captured["metadata"]["scope"] == "execution_step"
+        assert captured["metadata"]["step_operation"] == "replay_step"
+
+    def test_step_operation_gateway_rejects_foreign_step_id(self, client):
+        request_id = "1e18dd58-6f3e-4efe-95da-8c5c33ee1871"
+        other_step_id = "6c8f4ce4-4f1d-44db-b8a2-7fe7c7fc0df2:0"
+
+        response = client.post(
+            f"/api/v1/workflow/control/workflow/{request_id}/step/{other_step_id}/retry_from_step"
+        )
+        assert response.status_code == 400
+        assert "step_id does not belong to request_id" in response.text
 
 
 class TestOptionsEndpoint:

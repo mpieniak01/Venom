@@ -74,6 +74,7 @@ export type OperatorExecutionStep = {
   related_config_keys?: string[];
   depends_on_step_id?: string | null;
   severity?: string;
+  allowed_actions?: string[];
 };
 
 export type SystemState = Partial<Omit<ApiSystemState, "runtime" | "provider">> & {

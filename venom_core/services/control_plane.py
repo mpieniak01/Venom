@@ -741,6 +741,7 @@ class ControlPlaneService:
             trace=selected_trace,
             system_state=base_state,
             runtime_services=runtime_services,
+            allowed_operations=base_state.allowed_operations,
         )
         workflow_target = WorkflowTargetState(
             request_id=base_state.active_request_id,
@@ -761,6 +762,10 @@ class ControlPlaneService:
         for service in runtime_services:
             for action in service.allowed_actions:
                 runtime_actions.append(f"runtime:{service.id}:{action}")
+        step_actions: list[str] = []
+        for step in execution_steps:
+            for action in step.allowed_actions:
+                step_actions.append(f"execution_step:{step.id}:{action}")
 
         return ControlStateResponse(
             system_state=base_state,
@@ -774,7 +779,7 @@ class ControlPlaneService:
             execution_steps=execution_steps,
             graph=graph,
             allowed_actions=sorted(
-                set(base_state.allowed_operations + runtime_actions)
+                set(base_state.allowed_operations + runtime_actions + step_actions)
             ),
             last_operation=None,
             pending_changes=[],
@@ -895,6 +900,7 @@ class ControlPlaneService:
         trace: Any | None,
         system_state: SystemState,
         runtime_services: list[OperatorRuntimeService],
+        allowed_operations: list[str],
     ) -> list[OperatorExecutionStep]:
         if trace is None:
             return []
@@ -931,10 +937,32 @@ class ControlPlaneService:
                     ),
                     depends_on_step_id=previous_step_id,
                     severity=self._infer_step_severity(status=status, details=details),
+                    allowed_actions=self._infer_step_allowed_actions(
+                        status=status,
+                        allowed_operations=allowed_operations,
+                    ),
                 )
             )
             previous_step_id = step_id
         return result
+
+    def _infer_step_allowed_actions(
+        self,
+        status: str,
+        allowed_operations: list[str],
+    ) -> list[str]:
+        normalized_status = status.strip().lower()
+        if normalized_status in {"running", "processing", "pending"}:
+            return []
+
+        actions: list[str] = []
+        if "retry_from_step" in allowed_operations or "retry" in allowed_operations:
+            actions.append("retry_from_step")
+        if "replay_step" in allowed_operations:
+            actions.append("replay_step")
+        if "skip_step" in allowed_operations:
+            actions.append("skip_step")
+        return actions
 
     def _infer_step_stage(self, component: str, action: str) -> str:
         normalized_component = component.strip().lower()
@@ -1260,9 +1288,9 @@ class ControlPlaneService:
         if workflow_status == WorkflowStatus.PAUSED:
             return ["resume", "cancel"]
         if workflow_status in {WorkflowStatus.FAILED, WorkflowStatus.CANCELLED}:
-            return ["retry", "dry_run"]
+            return ["retry", "retry_from_step", "replay_step", "skip_step", "dry_run"]
         if workflow_status == WorkflowStatus.COMPLETED:
-            return ["dry_run"]
+            return ["retry_from_step", "replay_step", "skip_step", "dry_run"]
         return []
 
     def _validate_change(self, change: ResourceChange) -> dict[str, Any]:

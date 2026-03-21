@@ -1,9 +1,8 @@
 import { type ReactNode } from "react";
-import { Handle, NodeToolbar, Position, type Node, type NodeProps, type NodeTypes } from "@xyflow/react";
-import { ChevronDown, ChevronRight, Info, Settings } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { Handle, Position, type Node, type NodeProps, type NodeTypes } from "@xyflow/react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { getStatusTone, type StatusTone } from "@/lib/workflow-control-screen";
 
 import { SWIMLANE_STYLES, WORKFLOW_NODE_THEME, type WorkflowCanvasNodeType } from "./config";
 import { readSourceTag, resolveDisplayValue, runtimeBadgeValue } from "./value-formatters";
@@ -44,6 +43,7 @@ type ExecutionStepNodeData = {
   isExpanded?: boolean;
   groupSize?: number;
   onToggleGroup?: (groupKey: string) => void;
+  isActiveVariant?: boolean;
 };
 type SwimlaneNodeData = { label: string; index: number };
 
@@ -57,31 +57,15 @@ type RuntimeServiceFlowNode = Node<RuntimeServiceNodeData, "runtime_service">;
 type ExecutionStepFlowNode = Node<ExecutionStepNodeData, "execution_step">;
 type SwimlaneFlowNode = Node<SwimlaneNodeData, "swimlane">;
 
-function NodeActions() {
-  const t = useTranslation();
-  return (
-    <NodeToolbar
-      position={Position.Top}
-      className="flex gap-1 rounded-md border border-white/10 bg-slate-900/90 p-1 shadow-xl backdrop-blur-md"
-    >
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-6 w-6 p-0 hover:bg-white/10"
-        title={t("workflowControl.actions.edit")}
-      >
-        <Settings className="h-3 w-3 text-slate-200" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-6 w-6 p-0 hover:bg-white/10"
-        title={t("workflowControl.actions.details")}
-      >
-        <Info className="h-3 w-3 text-blue-400" />
-      </Button>
-    </NodeToolbar>
-  );
+export function handleExecutionGroupToggleClick(
+  event: { stopPropagation: () => void },
+  groupKey: string | undefined,
+  onToggleGroup: ((groupKey: string) => void) | undefined,
+) {
+  event.stopPropagation();
+  if (groupKey) {
+    onToggleGroup?.(groupKey);
+  }
 }
 
 function SelectedNodePulse({
@@ -124,6 +108,55 @@ function ValueBadge({ value }: Readonly<{ value: string }>) {
   );
 }
 
+function statusToneClasses(tone: StatusTone): {
+  border: string;
+  bg: string;
+  text: string;
+} {
+  if (tone === "success") {
+    return {
+      border: "border-emerald-300/50",
+      bg: "bg-emerald-500/18",
+      text: "text-emerald-100",
+    };
+  }
+  if (tone === "warning") {
+    return {
+      border: "border-amber-300/50",
+      bg: "bg-amber-500/18",
+      text: "text-amber-100",
+    };
+  }
+  if (tone === "danger") {
+    return {
+      border: "border-rose-300/55",
+      bg: "bg-rose-500/18",
+      text: "text-rose-100",
+    };
+  }
+  return {
+    border: "border-white/15",
+    bg: "bg-white/10",
+    text: "text-slate-100",
+  };
+}
+
+function StatusBadge({ value }: Readonly<{ value: string }>) {
+  const tone = statusToneClasses(getStatusTone(value));
+  return (
+    <span
+      className={[
+        "absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        tone.border,
+        tone.bg,
+        tone.text,
+      ].join(" ")}
+    >
+      {value}
+    </span>
+  );
+}
+
 function MetaBadge({
   value,
   className,
@@ -147,7 +180,7 @@ function NodeShell({
   children: ReactNode;
 }>) {
   return (
-    <div className={className}>
+    <div className={`${className} cursor-pointer`}>
       <SelectedNodePulse selected={selected} glowClass={glowClass} />
       {children}
     </div>
@@ -229,7 +262,6 @@ export function DecisionNode({ selected = false, data }: NodeProps<DecisionFlowN
     >
       <ValueBadge value={badgeValue} />
       <NodeHandles type="decision" withTarget={false} />
-      <NodeActions />
       <NodeTitle type="decision" label={t("workflowControl.sections.decision")} />
     </NodeShell>
   );
@@ -247,7 +279,6 @@ export function IntentNode({ selected = false, data }: NodeProps<IntentFlowNode>
     >
       <ValueBadge value={badgeValue} />
       <NodeHandles type="intent" />
-      <NodeActions />
       <NodeTitle type="intent" label={t("workflowControl.sections.intent")} />
     </NodeShell>
   );
@@ -265,7 +296,6 @@ export function KernelNode({ selected = false, data }: NodeProps<KernelFlowNode>
     >
       <ValueBadge value={badgeValue} />
       <NodeHandles type="kernel" />
-      <NodeActions />
       <NodeTitle type="kernel" label={t("workflowControl.labels.currentKernel")} />
     </NodeShell>
   );
@@ -283,7 +313,6 @@ export function RuntimeNode({ selected = false, data }: NodeProps<RuntimeFlowNod
     >
       <ValueBadge value={badgeValue} />
       <NodeHandles type="runtime" />
-      <NodeActions />
       <NodeTitle type="runtime" label={t("workflowControl.labels.runtimeServices")} />
     </NodeShell>
   );
@@ -301,7 +330,6 @@ export function EmbeddingNode({ selected = false, data }: NodeProps<SourceFlowNo
     >
       <SourceBadge sourceTag={sourceTag} />
       <NodeHandles type="embedding" />
-      <NodeActions />
       <NodeTitle type="embedding" label={t("workflowControl.labels.currentEmbedding")} />
     </NodeShell>
   );
@@ -319,7 +347,6 @@ export function ProviderNode({ selected = false, data }: NodeProps<SourceFlowNod
     >
       <SourceBadge sourceTag={sourceTag} />
       <NodeHandles type="provider" withSource={false} />
-      <NodeActions />
       <NodeTitle type="provider" label={t("workflowControl.labels.currentProvider")} />
     </NodeShell>
   );
@@ -356,7 +383,7 @@ export function RuntimeServiceNode({
   const theme = WORKFLOW_NODE_THEME.runtime_service;
   return (
     <NodeShell selected={selected} glowClass={theme.glowClass} className={theme.shellClass}>
-      {data.status ? <ValueBadge value={data.status} /> : null}
+      {data.status ? <StatusBadge value={data.status} /> : null}
       <Handle type="target" position={Position.Left} className={theme.handleClass} />
       <Handle type="source" position={Position.Right} className={theme.handleClass} />
       <NodeTitle type="runtime_service" label={data.label ?? "runtime"} />
@@ -387,16 +414,18 @@ export function ExecutionStepNode({
   const canExpand = Boolean(data.canExpand && data.groupKey);
   return (
     <NodeShell selected={selected} glowClass={theme.glowClass} className={theme.shellClass}>
-      {data.status ? <ValueBadge value={data.status} /> : null}
+      {data.status ? <StatusBadge value={data.status} /> : null}
+      {data.isActiveVariant ? (
+        <span className="absolute right-2 bottom-2 rounded-full border border-cyan-400/30 bg-cyan-500/12 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-100">
+          {t("workflowControl.labels.activeVariant")}
+        </span>
+      ) : null}
       {canExpand ? (
         <button
           type="button"
           className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200"
           onClick={(event) => {
-            event.stopPropagation();
-            if (data.groupKey) {
-              data.onToggleGroup?.(data.groupKey);
-            }
+            handleExecutionGroupToggleClick(event, data.groupKey, data.onToggleGroup);
           }}
         >
           {data.isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}

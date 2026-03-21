@@ -21,7 +21,7 @@ export type ControlDomainId = (typeof CONTROL_DOMAIN_ORDER)[number];
 export type WorkflowControlSelection =
   | { kind: "control-domain"; id: ControlDomainId }
   | { kind: "runtime-service"; serviceId: string }
-  | { kind: "execution-step"; stepId: string };
+  | { kind: "execution-step"; stepId: string; groupKey?: string };
 
 export type StatusTone = "success" | "warning" | "danger" | "neutral";
 
@@ -33,6 +33,12 @@ export type RuntimeServiceTrack = {
 export type ExecutionStepLane = {
   stage: string;
   steps: OperatorExecutionStep[];
+};
+
+export type ExecutionStepGroupState = {
+  stepToGroupKey: Map<string, string>;
+  groupSizes: Map<string, number>;
+  groupToStepIds: Map<string, string[]>;
 };
 
 export type ControlDomainCard = {
@@ -99,6 +105,20 @@ export function getStatusTone(status: string | null | undefined): StatusTone {
   }
   if (["failed", "error", "cancelled", "stopped", "blocked"].includes(normalized)) {
     return "danger";
+  }
+  return "neutral";
+}
+
+export function getSeverityTone(severity: string | null | undefined): StatusTone {
+  const normalized = (severity ?? "").trim().toLowerCase();
+  if (["error", "critical", "fatal"].includes(normalized)) {
+    return "danger";
+  }
+  if (["warning", "warn", "degraded", "blocked"].includes(normalized)) {
+    return "warning";
+  }
+  if (["normal", "ok", "success"].includes(normalized)) {
+    return "success";
   }
   return "neutral";
 }
@@ -359,4 +379,52 @@ export function buildExecutionStepLanes(
     stage,
     steps: laneSteps,
   }));
+}
+
+export function buildExecutionStepGroupState(
+  steps: OperatorExecutionStep[] | undefined,
+): ExecutionStepGroupState {
+  const stepList = steps ?? [];
+  const byId = new Map(stepList.map((step) => [step.id, step]));
+  const depthCache = new Map<string, number>();
+  const computeDepth = (step: OperatorExecutionStep, visiting = new Set<string>()): number => {
+    if (depthCache.has(step.id)) return depthCache.get(step.id) ?? 0;
+    if (visiting.has(step.id)) return 0;
+    visiting.add(step.id);
+    const parentId = step.depends_on_step_id;
+    let depth = 0;
+    if (parentId) {
+      const parent = byId.get(parentId);
+      depth = parent ? computeDepth(parent, visiting) + 1 : 1;
+    }
+    visiting.delete(step.id);
+    depthCache.set(step.id, depth);
+    return depth;
+  };
+
+  const stepToGroupKey = new Map<string, string>();
+  const groupSizes = new Map<string, number>();
+  const groupToStepIds = new Map<string, string[]>();
+
+  for (const step of stepList) {
+    const stage = step.stage?.trim() || "execution";
+    const depth = computeDepth(step);
+    const parentId = step.depends_on_step_id ?? "root";
+    const configKeyPart = [...(step.related_config_keys ?? [])].sort().join("|");
+    const groupKey = [
+      parentId,
+      depth,
+      stage,
+      step.component,
+      step.related_service_id ?? "",
+      configKeyPart,
+    ].join("::");
+    stepToGroupKey.set(step.id, groupKey);
+    groupSizes.set(groupKey, (groupSizes.get(groupKey) ?? 0) + 1);
+    const members = groupToStepIds.get(groupKey) ?? [];
+    members.push(step.id);
+    groupToStepIds.set(groupKey, members);
+  }
+
+  return { stepToGroupKey, groupSizes, groupToStepIds };
 }

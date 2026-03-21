@@ -331,6 +331,49 @@ export function useWorkflowState() {
     [fetchSystemState, t]
   );
 
+  const executionStepAction = useCallback(
+    async (
+      stepId: string,
+      action: "retry_from_step" | "replay_step" | "skip_step",
+    ): Promise<boolean> => {
+      const workflowId = systemState?.active_request_id;
+      if (!workflowId) {
+        setError(t("workflowControl.messages.noActiveRequest"));
+        return false;
+      }
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          buildApiUrl(`/api/v1/workflow/control/workflow/${workflowId}/step/${stepId}/${action}`),
+          {
+            method: "POST",
+          }
+        );
+        if (!response.ok) {
+          throw new Error(
+            await readApiErrorMessage(
+              response,
+              t("workflowControl.messages.executionStepActionError")
+            )
+          );
+        }
+        await fetchSystemState();
+        return true;
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("workflowControl.messages.executionStepActionError")
+        );
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [systemState, fetchSystemState, t]
+  );
+
   // Initial load and polling
   useEffect(() => {
     const cachedState = readCache<SystemState>(WORKFLOW_STATE_CACHE_KEY);
@@ -452,5 +495,6 @@ export function useWorkflowState() {
     retryWorkflow,
     dryRun,
     runtimeServiceAction,
+    executionStepAction,
   };
 }

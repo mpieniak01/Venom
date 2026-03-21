@@ -88,6 +88,7 @@ export function graphSignature(nodes: Node[], edges: Edge[]): string {
       type: node.type,
       position: node.position,
       data: node.data,
+      selected: node.selected,
       parentId: node.parentId,
       draggable: node.draggable,
       selectable: node.selectable,

@@ -1,4 +1,4 @@
-import type { Edge, Node } from "@xyflow/react";
+import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import type {
   OperatorConfigField,
   OperatorExecutionStep,
@@ -9,6 +9,8 @@ import type {
 } from "@/types/workflow-control";
 
 type SourceTag = "local" | "cloud";
+type RelationKind = "domain" | "runtime" | "sequence";
+type CanonicalBackendNodeType = "control_domain" | "runtime_service" | "execution_step";
 
 export type BuildWorkflowGraphOptions = {
   expandedGroupKeys?: Set<string>;
@@ -73,6 +75,19 @@ function resolveEmbeddingSource(
 }
 
 function hasBackendGraph(systemState: SystemState): boolean {
+  const hasRuntimeOrSteps =
+    (systemState.runtime_services?.length ?? 0) > 0 ||
+    (systemState.execution_steps?.length ?? 0) > 0;
+  const backendNodes = systemState.graph?.nodes ?? [];
+  const backendEdges = systemState.graph?.edges ?? [];
+
+  if (backendNodes.length === 0) {
+    return false;
+  }
+  if (hasRuntimeOrSteps && backendEdges.length === 0) {
+    return false;
+  }
+
   return Boolean(
     systemState.graph?.nodes &&
       systemState.graph?.edges &&
@@ -80,43 +95,235 @@ function hasBackendGraph(systemState: SystemState): boolean {
   );
 }
 
+const LEGACY_BACKEND_NODE_TYPES = new Set([
+  "decision",
+  "intent",
+  "kernel",
+  "runtime",
+  "provider",
+  "embedding",
+  "config",
+]);
+
+const SUPPORTED_BACKEND_NODE_TYPES = new Set([
+  "control_domain",
+  "runtime_service",
+  "execution_step",
+  "swimlane",
+]);
+
+function backendNodeTypeFromId(nodeId: string): CanonicalBackendNodeType | null {
+  if (nodeId.startsWith("control-domain:")) return "control_domain";
+  if (nodeId.startsWith("runtime-service:")) return "runtime_service";
+  if (nodeId.startsWith("execution-step:") || nodeId.startsWith("step:")) {
+    return "execution_step";
+  }
+  return null;
+}
+
+function normalizeBackendNodeType(node: OperatorGraphNode): string {
+  const normalizedType = String(node.type || "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_");
+
+  if (normalizedType === "control_domain") return "control_domain";
+  if (
+    normalizedType === "runtime_service" ||
+    normalizedType === "runtime_service_node" ||
+    normalizedType === "service"
+  ) {
+    return "runtime_service";
+  }
+  if (
+    normalizedType === "execution_step" ||
+    normalizedType === "execution" ||
+    normalizedType === "step" ||
+    normalizedType === "workflow_step"
+  ) {
+    return "execution_step";
+  }
+
+  const inferredById = backendNodeTypeFromId(node.id);
+  if (inferredById) {
+    return inferredById;
+  }
+
+  return normalizedType;
+}
+
+function mapExecutionStepData(node: OperatorGraphNode): Record<string, unknown> {
+  const nodeData = node.data ?? {};
+  const stepId =
+    typeof nodeData.stepId === "string"
+      ? nodeData.stepId
+      : node.id.split(":").slice(1).join(":") || node.id;
+  const action =
+    typeof nodeData.variant === "string"
+      ? nodeData.variant
+      : typeof nodeData.action === "string"
+        ? nodeData.action
+        : undefined;
+  const label =
+    typeof nodeData.label === "string"
+      ? nodeData.label
+      : typeof nodeData.component === "string"
+        ? nodeData.component
+        : node.label;
+
+  return {
+    ...nodeData,
+    stepId,
+    label,
+    variant: action,
+    status:
+      typeof nodeData.status === "string"
+        ? nodeData.status
+        : typeof nodeData.state === "string"
+          ? nodeData.state
+          : undefined,
+    canvasLane:
+      typeof nodeData.canvasLane === "string" ? nodeData.canvasLane : "execution_step",
+  };
+}
+
+function mapRuntimeServiceData(node: OperatorGraphNode): Record<string, unknown> {
+  const nodeData = node.data ?? {};
+  const serviceId =
+    typeof nodeData.serviceId === "string"
+      ? nodeData.serviceId
+      : node.id.split(":").slice(1).join(":") || node.id;
+  return {
+    ...nodeData,
+    serviceId,
+    label:
+      typeof nodeData.label === "string"
+        ? nodeData.label
+        : typeof nodeData.name === "string"
+          ? nodeData.name
+          : node.label,
+    dependencyCount: Array.isArray(nodeData.dependencies)
+      ? nodeData.dependencies.length
+      : typeof nodeData.dependencyCount === "number"
+        ? nodeData.dependencyCount
+        : 0,
+    canvasLane:
+      typeof nodeData.canvasLane === "string" ? nodeData.canvasLane : "runtime_service",
+  };
+}
+
+function mapControlDomainData(node: OperatorGraphNode): Record<string, unknown> {
+  const nodeData = node.data ?? {};
+  const domainId =
+    typeof nodeData.domainId === "string"
+      ? nodeData.domainId
+      : node.id.split(":").slice(1).join(":") || node.id;
+  return {
+    ...nodeData,
+    domainId,
+    label: typeof nodeData.label === "string" ? nodeData.label : node.label,
+    canvasLane:
+      typeof nodeData.canvasLane === "string" ? nodeData.canvasLane : "control_domain",
+  };
+}
+
 function mapBackendNodes(nodes: OperatorGraphNode[]): Node[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    type: node.type,
-    data: node.data ?? {},
-    position: {
-      x: node.position?.x ?? 0,
-      y: node.position?.y ?? 0,
-    },
-  }));
+  return nodes.map((node) => {
+    const normalizedType = normalizeBackendNodeType(node);
+    const mappedData =
+      normalizedType === "execution_step"
+        ? mapExecutionStepData(node)
+        : normalizedType === "runtime_service"
+          ? mapRuntimeServiceData(node)
+          : normalizedType === "control_domain"
+            ? mapControlDomainData(node)
+            : (node.data ?? {});
+
+    return {
+      id: node.id,
+      type: normalizedType,
+      data: mappedData,
+      position: {
+        x: node.position?.x ?? 0,
+        y: node.position?.y ?? 0,
+      },
+    };
+  });
 }
 
 function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
+  const markerEndForRelation = (relationKind: RelationKind) => ({
+    type: MarkerType.ArrowClosed,
+    color:
+      relationKind === "domain"
+        ? "#22d3ee"
+        : relationKind === "runtime"
+          ? "#a78bfa"
+          : "#34d399",
+    width: 18,
+    height: 18,
+  });
+
+  const inferRelationKind = (
+    edgeId: string,
+    sourceId: string,
+    targetId: string,
+  ): RelationKind | null => {
+    const normalizedId = edgeId.toLowerCase();
+    if (
+      normalizedId.startsWith("domain-step:") ||
+      normalizedId.startsWith("domain-link:") ||
+      normalizedId.startsWith("domain:") ||
+      sourceId.startsWith("control-domain:")
+    ) {
+      return "domain";
+    }
+    if (
+      normalizedId.startsWith("runtime-step:") ||
+      normalizedId.startsWith("runtime-link:") ||
+      normalizedId.startsWith("service-link:") ||
+      normalizedId.startsWith("runtime:") ||
+      sourceId.startsWith("runtime-service:")
+    ) {
+      return "runtime";
+    }
+    if (
+      normalizedId.startsWith("step-") ||
+      normalizedId.startsWith("step-sequence:") ||
+      normalizedId.startsWith("sequence-link:") ||
+      normalizedId.startsWith("depends-link:") ||
+      normalizedId.startsWith("step-link:") ||
+      normalizedId.startsWith("sequence:") ||
+      normalizedId.startsWith("execution:") ||
+      sourceId.startsWith("execution-step:") ||
+      targetId.startsWith("execution-step:")
+    ) {
+      return "sequence";
+    }
+    return null;
+  };
+
   return edges.map((edge) => {
     const typedEdge = edge as OperatorGraphEdge & {
       type?: string;
       data?: Record<string, unknown>;
     };
-    const inferredWorkflowRelation =
-      edge.id.startsWith("domain-step:") ||
-      edge.id.startsWith("runtime-step:") ||
-      edge.id.startsWith("step-") ||
-      edge.id.startsWith("step-sequence:") ||
-      edge.id.startsWith("runtime-link:") ||
-      edge.id.startsWith("domain-link:") ||
-      edge.id.startsWith("service-link:") ||
-      edge.id.startsWith("sequence-link:") ||
-      edge.id.startsWith("depends-link:") ||
-      edge.id.startsWith("step-link:") ||
-      edge.id.startsWith("link:") ||
-      edge.id.startsWith("edge:") ||
-      edge.id.startsWith("graph:") ||
-      edge.id.startsWith("flow:") ||
-      edge.id.startsWith("execution:") ||
-      edge.id.startsWith("runtime:") ||
-      edge.id.startsWith("domain:") ||
-      edge.id.startsWith("sequence:");
+    const inferredRelationKind = inferRelationKind(edge.id, edge.source, edge.target);
+    const inferredWorkflowRelation = inferredRelationKind !== null;
+    const edgeData = typedEdge.data as
+      | { relationKind?: RelationKind; relationLabel?: string }
+      | undefined;
+    const relationKind = edgeData?.relationKind ?? inferredRelationKind ?? undefined;
+    const relationLabel =
+      edgeData?.relationLabel ??
+      edge.label ??
+      (relationKind === "domain"
+        ? "domain"
+        : relationKind === "runtime"
+          ? "runtime"
+          : relationKind === "sequence"
+            ? "depends"
+            : undefined);
 
     return {
       id: edge.id,
@@ -125,13 +332,17 @@ function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
       target: edge.target,
       animated: edge.animated ?? false,
       label: edge.label,
-      data:
-        typedEdge.data ??
-        (edge.label
-          ? {
-              relationLabel: edge.label,
-            }
-          : undefined),
+      data: inferredWorkflowRelation
+        ? {
+            ...(typedEdge.data ?? {}),
+            relationKind,
+            relationLabel,
+          }
+        : typedEdge.data,
+      markerEnd:
+        inferredWorkflowRelation && relationKind
+          ? markerEndForRelation(relationKind)
+          : undefined,
     };
   });
 }
@@ -517,6 +728,17 @@ function buildFallbackEdges(
   nodeIdByStepId: Map<string, string>,
   visibleStepOrder: string[],
 ): Edge[] {
+  const markerEndForRelation = (relationKind: RelationKind) => ({
+    type: MarkerType.ArrowClosed,
+    color:
+      relationKind === "domain"
+        ? "#22d3ee"
+        : relationKind === "runtime"
+          ? "#a78bfa"
+          : "#34d399",
+    width: 18,
+    height: 18,
+  });
   const edges: Edge[] = [];
   const steps = systemState.execution_steps ?? [];
   const seenEdges = new Set<string>();
@@ -536,6 +758,7 @@ function buildFallbackEdges(
           source: sourceNodeId,
           target: stepNodeId,
           animated: true,
+          markerEnd: markerEndForRelation("sequence"),
           data: {
             relationKind: "sequence",
             relationLabel: "depends",
@@ -555,6 +778,7 @@ function buildFallbackEdges(
           source: sourceNodeId,
           target: stepNodeId,
           animated: true,
+          markerEnd: markerEndForRelation("sequence"),
           data: {
             relationKind: "sequence",
             relationLabel: "flow",
@@ -577,6 +801,7 @@ function buildFallbackEdges(
           source: runtimeNodeId,
           target: stepNodeId,
           animated: true,
+          markerEnd: markerEndForRelation("runtime"),
           data: {
             relationKind: "runtime",
             relationLabel: "runtime",
@@ -597,6 +822,7 @@ function buildFallbackEdges(
         source: `control-domain:${domainId}`,
         target: stepNodeId,
         animated: false,
+        markerEnd: markerEndForRelation("domain"),
         data: {
           relationKind: "domain",
           relationLabel: configKey,
@@ -632,42 +858,60 @@ export function buildWorkflowGraph(
     return { nodes: [], edges: [] };
   }
 
-  if (hasBackendGraph(systemState)) {
+  const buildDerivedGraph = () => {
+    const activeProvider = systemState.provider?.active;
+    const providerSourceTag: SourceTag =
+      normalizeSourceTag(systemState.provider_source) ??
+      normalizeSourceTag(systemState.provider?.sourceType) ??
+      (isCloudProvider(activeProvider) ? "cloud" : "local");
+    const embeddingSourceTag: SourceTag =
+      normalizeSourceTag(systemState.embedding_source) ??
+      resolveEmbeddingSource(systemState.embedding_model, activeProvider);
+    const controlNodes = buildFallbackControlDomainNodes(
+      systemState,
+      providerSourceTag,
+      embeddingSourceTag,
+    );
+    const runtimeNodes = buildFallbackRuntimeServiceNodes(systemState);
+    const expandedGroupKeys = options.expandedGroupKeys ?? new Set<string>();
+    const executionGraph = buildFallbackExecutionStepNodes(
+      systemState.config_fields,
+      systemState.execution_steps,
+      expandedGroupKeys,
+    );
+    const edges = buildFallbackEdges(
+      systemState,
+      runtimeNodes,
+      executionGraph.nodeIdByStepId,
+      executionGraph.visibleStepOrder,
+    );
+
     return {
-      nodes: mapBackendNodes(systemState.graph?.nodes ?? []),
-      edges: mapBackendEdges(systemState.graph?.edges ?? []),
+      nodes: [...controlNodes, ...runtimeNodes, ...executionGraph.nodes],
+      edges,
     };
+  };
+
+  if (hasBackendGraph(systemState)) {
+    const backendNodes = mapBackendNodes(systemState.graph?.nodes ?? []);
+    const backendEdges = mapBackendEdges(systemState.graph?.edges ?? []);
+    const backendNodeTypes = new Set(
+      backendNodes.map((node) => String(node.type || "").trim().toLowerCase()),
+    );
+    const hasLegacyNodes = Array.from(backendNodeTypes).some((type) =>
+      LEGACY_BACKEND_NODE_TYPES.has(type),
+    );
+    const hasUnsupportedNodes = Array.from(backendNodeTypes).some(
+      (type) =>
+        !LEGACY_BACKEND_NODE_TYPES.has(type) &&
+        !SUPPORTED_BACKEND_NODE_TYPES.has(type),
+    );
+    if (hasLegacyNodes || hasUnsupportedNodes) {
+      return buildDerivedGraph();
+    }
+
+    return { nodes: backendNodes, edges: backendEdges };
   }
 
-  const activeProvider = systemState.provider?.active;
-  const providerSourceTag: SourceTag =
-    normalizeSourceTag(systemState.provider_source) ??
-    normalizeSourceTag(systemState.provider?.sourceType) ??
-    (isCloudProvider(activeProvider) ? "cloud" : "local");
-  const embeddingSourceTag: SourceTag =
-    normalizeSourceTag(systemState.embedding_source) ??
-    resolveEmbeddingSource(systemState.embedding_model, activeProvider);
-  const controlNodes = buildFallbackControlDomainNodes(
-    systemState,
-    providerSourceTag,
-    embeddingSourceTag,
-  );
-  const runtimeNodes = buildFallbackRuntimeServiceNodes(systemState);
-  const expandedGroupKeys = options.expandedGroupKeys ?? new Set<string>();
-  const executionGraph = buildFallbackExecutionStepNodes(
-    systemState.config_fields,
-    systemState.execution_steps,
-    expandedGroupKeys,
-  );
-  const edges = buildFallbackEdges(
-    systemState,
-    runtimeNodes,
-    executionGraph.nodeIdByStepId,
-    executionGraph.visibleStepOrder,
-  );
-
-  return {
-    nodes: [...controlNodes, ...runtimeNodes, ...executionGraph.nodes],
-    edges,
-  };
+  return buildDerivedGraph();
 }

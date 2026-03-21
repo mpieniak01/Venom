@@ -41,6 +41,20 @@ class StateManagerLike(Protocol):
     ) -> None: ...
 
 
+def _is_help_request(content: str, forced_intent: str | None) -> bool:
+    if str(forced_intent or "").strip().upper() == "HELP_REQUEST":
+        return True
+    normalized = str(content or "").strip().lower()
+    return normalized in {"pomoc", "help", "help me"} or normalized.startswith("pomoc ")
+
+
+def _build_fast_help_response() -> str:
+    return (
+        "Jasne, pomogę. Mogę wspierać Cię w analizie, kodowaniu, testach i "
+        "diagnozie problemów. Napisz, czego konkretnie potrzebujesz."
+    )
+
+
 class TracerLike(Protocol):
     def create_trace(self, task_id: Any, content: str, *, session_id: str) -> None: ...
 
@@ -173,11 +187,21 @@ async def run_onnx_task(
     ],
     trace_success_fn: Callable[[Any, str], None],
     trace_failure_fn: Callable[[Any, Exception], None],
+    append_session_history_fn: Callable[[Any, str, str, str | None], None]
+    | None = None,
     logger: Any,
 ) -> None:
     try:
         await state_manager.update_status(task_id, TaskStatus.PROCESSING)
         state_manager.add_log(task_id, "ONNX: rozpoczęto przetwarzanie zadania.")
+        if append_session_history_fn is not None:
+            append_session_history_fn(
+                task_id,
+                "user",
+                request.content,
+                request.session_id,
+            )
+
         messages = build_messages_fn(request.content, request.forced_intent)
 
         max_tokens = None
@@ -190,9 +214,15 @@ async def run_onnx_task(
             if isinstance(temp, (int, float)):
                 temperature = float(temp)
 
-        result = (await run_generation_fn(messages, max_tokens, temperature)).strip()
-        if not result:
-            result = "Brak odpowiedzi z runtime ONNX."
+        if _is_help_request(request.content, request.forced_intent):
+            result = _build_fast_help_response()
+            state_manager.add_log(task_id, "ONNX: fast help shortcut (HELP_REQUEST).")
+        else:
+            result = (
+                await run_generation_fn(messages, max_tokens, temperature)
+            ).strip()
+            if not result:
+                result = "Brak odpowiedzi z runtime ONNX."
 
         state_manager.update_context(
             task_id,
@@ -204,6 +234,13 @@ async def run_onnx_task(
         )
         state_manager.add_log(task_id, "ONNX: zakończono generację.")
         await state_manager.update_status(task_id, TaskStatus.COMPLETED, result=result)
+        if append_session_history_fn is not None:
+            append_session_history_fn(
+                task_id,
+                "assistant",
+                result,
+                request.session_id,
+            )
         trace_success_fn(task_id, result)
     except Exception as exc:
         logger.exception("Błąd ONNX task execution: %s", exc)

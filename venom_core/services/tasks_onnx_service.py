@@ -22,6 +22,7 @@ class TaskRequestLike(Protocol):
     content: str
     session_id: str | None
     forced_intent: str | None
+    store_knowledge: bool
     generation_params: dict[str, Any] | None
 
 
@@ -189,6 +190,8 @@ async def run_onnx_task(
     trace_failure_fn: Callable[[Any, Exception], None],
     append_session_history_fn: Callable[[Any, str, str, str | None], None]
     | None = None,
+    append_learning_log_fn: Callable[[Any, str, str, str, bool, str], None]
+    | None = None,
     logger: Any,
 ) -> None:
     try:
@@ -241,6 +244,17 @@ async def run_onnx_task(
                 result,
                 request.session_id,
             )
+        if append_learning_log_fn is not None and bool(request.store_knowledge):
+            intent = str(request.forced_intent or "").strip().upper() or "GENERAL_CHAT"
+            if intent not in {"TIME_REQUEST", "INFRA_STATUS"}:
+                append_learning_log_fn(
+                    task_id,
+                    intent,
+                    request.content,
+                    result,
+                    True,
+                    "",
+                )
         trace_success_fn(task_id, result)
     except Exception as exc:
         logger.exception("Błąd ONNX task execution: %s", exc)

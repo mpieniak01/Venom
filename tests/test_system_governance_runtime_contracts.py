@@ -453,6 +453,32 @@ def test_ensure_learning_log_boot_id_rotates_log(tmp_path, monkeypatch):
     assert payload["boot_id"] == "new-boot"
 
 
+def test_ensure_learning_log_boot_id_rotates_only_once_per_boot(tmp_path, monkeypatch):
+    log_path = tmp_path / "requests.jsonl"
+    meta_path = tmp_path / "requests_meta.json"
+    log_path.write_text('{"task_id":"t-1"}\n', encoding="utf-8")
+    meta_path.write_text(json.dumps({"boot_id": "old-boot"}), encoding="utf-8")
+
+    monkeypatch.setattr(learning_log_mod, "LEARNING_LOG_PATH", log_path)
+    monkeypatch.setattr(learning_log_mod, "LEARNING_LOG_META_PATH", meta_path)
+    monkeypatch.setattr(learning_log_mod, "BOOT_ID", "stable-boot")
+    monkeypatch.setattr(learning_log_mod, "_ROTATION_LOCK_BOOT_ID", None)
+
+    learning_log_mod.ensure_learning_log_boot_id()
+    assert not log_path.exists()
+
+    # Simulate concurrent worker process rewriting meta with a different boot id.
+    log_path.write_text('{"task_id":"t-2"}\n', encoding="utf-8")
+    meta_path.write_text(json.dumps({"boot_id": "worker-boot"}), encoding="utf-8")
+
+    learning_log_mod.ensure_learning_log_boot_id()
+
+    assert log_path.exists()
+    assert log_path.read_text(encoding="utf-8").strip() == '{"task_id":"t-2"}'
+    payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert payload["boot_id"] == "stable-boot"
+
+
 def test_append_learning_log_entry_sets_timestamp(tmp_path, monkeypatch):
     log_path = tmp_path / "requests.jsonl"
     meta_path = tmp_path / "requests_meta.json"

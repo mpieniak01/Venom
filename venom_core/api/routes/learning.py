@@ -60,6 +60,10 @@ def _parse_learning_entry(line: str) -> dict[str, Any] | None:
         return None
 
 
+def _read_learning_lines_sync(path: Path) -> list[str]:
+    return path.read_text(encoding="utf-8").splitlines()
+
+
 def _matches_filters(
     entry: dict[str, Any],
     *,
@@ -90,13 +94,16 @@ async def get_learning_logs(
 
     if not LEARNING_LOG_PATH.exists():
         return {"count": 0, "items": []}
-    if aiofiles is None:
-        return {"count": 0, "items": []}
 
     items: List[dict] = []
     try:
-        async with aiofiles.open(LEARNING_LOG_PATH, "r", encoding="utf-8") as handle:
-            lines = await handle.readlines()
+        if aiofiles is None:
+            lines = _read_learning_lines_sync(LEARNING_LOG_PATH)
+        else:
+            async with aiofiles.open(
+                LEARNING_LOG_PATH, "r", encoding="utf-8"
+            ) as handle:
+                lines = await handle.readlines()
         for line in reversed(lines):
             entry = _parse_learning_entry(line)
             if entry is None:

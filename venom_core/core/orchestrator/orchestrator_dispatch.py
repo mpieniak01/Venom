@@ -11,6 +11,7 @@ from uuid import UUID
 from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_callback
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
+from venom_core.core.learning_log import ensure_learning_log_boot_id
 from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.policy_autonomy_contract import (
     build_policy_block_payload,
@@ -657,6 +658,7 @@ def append_learning_log(
     }
 
     try:
+        ensure_learning_log_boot_id()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False) + "\n")

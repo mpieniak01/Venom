@@ -12,15 +12,21 @@ logger = get_logger(__name__)
 
 LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
 LEARNING_LOG_META_PATH = Path("./data/learning/requests_meta.json")
+_ROTATION_LOCK_BOOT_ID: str | None = None
 
 
 def ensure_learning_log_boot_id() -> None:
     """Czyści log uczenia po restarcie backendu (zmiana boot_id)."""
+    global _ROTATION_LOCK_BOOT_ID
     try:
+        should_rotate_log = _ROTATION_LOCK_BOOT_ID != BOOT_ID
+        if should_rotate_log:
+            _ROTATION_LOCK_BOOT_ID = BOOT_ID
+
         if LEARNING_LOG_META_PATH.exists():
             payload = json.loads(LEARNING_LOG_META_PATH.read_text(encoding="utf-8"))
             stored_boot = payload.get("boot_id")
-            if stored_boot and stored_boot != BOOT_ID:
+            if should_rotate_log and stored_boot and stored_boot != BOOT_ID:
                 if LEARNING_LOG_PATH.exists():
                     LEARNING_LOG_PATH.unlink(missing_ok=True)
         else:

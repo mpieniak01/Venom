@@ -326,6 +326,16 @@ async def _run_onnx_task(
                 session_id=session_id,
             )
         ),
+        append_learning_log_fn=lambda tid, intent, prompt, result, success, error: (
+            orchestrator._append_learning_log(
+                tid,
+                intent=intent,
+                prompt=prompt,
+                result=result,
+                success=success,
+                error=error,
+            )
+        ),
         logger=logger,
     )
 

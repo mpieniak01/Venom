@@ -45,6 +45,140 @@ interface ExecutionStepCardProps {
   t: (path: string) => string;
 }
 
+function executionStepCardClassName(isSelected: boolean): string {
+  const baseClass = "relative w-full rounded-2xl border px-4 py-3 transition";
+  if (isSelected) {
+    return `${baseClass} border-cyan-400/50 bg-cyan-500/10 shadow-[0_0_30px_rgba(34,211,238,0.12)]`;
+  }
+  return `${baseClass} border-white/10 bg-slate-950/70 hover:border-white/20 hover:bg-slate-950`;
+}
+
+function executionStepStatusRowClassName(canToggleGroup: boolean): string {
+  if (canToggleGroup) {
+    return "flex shrink-0 items-center gap-2 pr-24";
+  }
+  return "flex shrink-0 items-center gap-2";
+}
+
+function executionStepToggleLabel(
+  isGroupExpanded: boolean,
+  t: (path: string) => string,
+): string {
+  if (isGroupExpanded) {
+    return t("workflowControl.actions.collapse");
+  }
+  return t("workflowControl.actions.expand");
+}
+
+function executionStepExpandedSuffix(
+  isGroupExpanded: boolean,
+  t: (path: string) => string,
+): string {
+  if (!isGroupExpanded) {
+    return "";
+  }
+  return ` (${t("workflowControl.labels.expanded")})`;
+}
+
+function ExecutionStepStatusRow({
+  step,
+  canToggleGroup,
+}: Readonly<{ step: OperatorExecutionStep; canToggleGroup: boolean }>) {
+  return (
+    <div className={executionStepStatusRowClassName(canToggleGroup)}>
+      {step.timestamp ? (
+        <span className="text-[11px] text-slate-500">
+          {new Date(step.timestamp).toLocaleString()}
+        </span>
+      ) : null}
+      <Badge tone={getStatusTone(step.status)}>{step.status}</Badge>
+      {step.severity ? (
+        <Badge tone={getSeverityTone(step.severity)}>
+          {step.severity}
+        </Badge>
+      ) : null}
+    </div>
+  );
+}
+
+function ExecutionStepMetadata({
+  step,
+  dependsOnIndex,
+  groupKey,
+  groupSize,
+  isGroupExpanded,
+  t,
+}: Readonly<{
+  step: OperatorExecutionStep;
+  dependsOnIndex: number | undefined;
+  groupKey: string | undefined;
+  groupSize: number;
+  isGroupExpanded: boolean;
+  t: (path: string) => string;
+}>) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+      {dependsOnIndex ? (
+        <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1">
+          <GitBranch className="h-3.5 w-3.5" />
+          {t("workflowControl.labels.upstreamStep")} #{dependsOnIndex}
+        </span>
+      ) : null}
+      {step.related_service_id ? (
+        <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1">
+          <Server className="h-3.5 w-3.5" />
+          {step.related_service_id}
+        </span>
+      ) : null}
+      {(step.related_config_keys ?? []).slice(0, 2).map((configKey) => (
+        <span
+          key={configKey}
+          className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1"
+        >
+          {configKey}
+        </span>
+      ))}
+      {groupKey && groupSize > 1 ? (
+        <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-cyan-100">
+          {groupSize} {t("workflowControl.labels.branches")}
+          {executionStepExpandedSuffix(isGroupExpanded, t)}
+        </span>
+      ) : null}
+      <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1">
+        <Link2 className="h-3.5 w-3.5" />
+        {step.id}
+      </span>
+    </div>
+  );
+}
+
+function ExecutionStepToggleButton({
+  canToggleGroup,
+  groupKey,
+  isGroupExpanded,
+  onToggleExecutionGroup,
+  t,
+}: Readonly<{
+  canToggleGroup: boolean;
+  groupKey: string | undefined;
+  isGroupExpanded: boolean;
+  onToggleExecutionGroup: (groupKey: string) => void;
+  t: (path: string) => string;
+}>) {
+  if (!canToggleGroup || !groupKey) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      className="absolute right-4 top-3 rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300 hover:border-cyan-400/30 hover:text-cyan-100"
+      onClick={() => onToggleExecutionGroup(groupKey)}
+    >
+      {executionStepToggleLabel(isGroupExpanded, t)}
+    </button>
+  );
+}
+
 function ExecutionStepCard({
   step,
   selection,
@@ -56,27 +190,18 @@ function ExecutionStepCard({
   onToggleExecutionGroup,
   t,
 }: Readonly<ExecutionStepCardProps>) {
-  const isSelected =
-    selection?.kind === "execution-step" &&
-    selection.stepId === step.id;
+  const isSelected = selection?.kind === "execution-step" && selection.stepId === step.id;
   const groupKey = stepToGroupKey.get(step.id);
   const groupSize = groupKey ? (groupSizes.get(groupKey) ?? 1) : 1;
-  const isGroupExpanded = groupKey ? expandedGroupKeys.has(groupKey) : false;
+  const isGroupExpanded = Boolean(groupKey && expandedGroupKeys.has(groupKey));
   const canToggleGroup = Boolean(groupKey && groupSize > 1);
   const stepIndex = stepIndexMap.get(step.id) ?? 0;
   const dependsOnIndex = step.depends_on_step_id
     ? stepIndexMap.get(step.depends_on_step_id)
-    : null;
+    : undefined;
 
   return (
-    <div
-      className={[
-        "relative w-full rounded-2xl border px-4 py-3 transition",
-        isSelected
-          ? "border-cyan-400/50 bg-cyan-500/10 shadow-[0_0_30px_rgba(34,211,238,0.12)]"
-          : "border-white/10 bg-slate-950/70 hover:border-white/20 hover:bg-slate-950",
-      ].join(" ")}
-    >
+    <div className={executionStepCardClassName(isSelected)}>
       <button
         type="button"
         className="group flex w-full items-start gap-4 text-left"
@@ -105,73 +230,26 @@ function ExecutionStepCard({
                 {truncateDetails(step.details)}
               </div>
             </div>
-            <div
-              className={[
-                "flex shrink-0 items-center gap-2",
-                canToggleGroup ? "pr-24" : "",
-              ].join(" ")}
-            >
-              {step.timestamp ? (
-                <span className="text-[11px] text-slate-500">
-                  {new Date(step.timestamp).toLocaleString()}
-                </span>
-              ) : null}
-              <Badge tone={getStatusTone(step.status)}>{step.status}</Badge>
-              {step.severity ? (
-                <Badge tone={getSeverityTone(step.severity)}>
-                  {step.severity}
-                </Badge>
-              ) : null}
-            </div>
+            <ExecutionStepStatusRow step={step} canToggleGroup={canToggleGroup} />
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
-            {dependsOnIndex ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1">
-                <GitBranch className="h-3.5 w-3.5" />
-                {t("workflowControl.labels.upstreamStep")} #{dependsOnIndex}
-              </span>
-            ) : null}
-            {step.related_service_id ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1">
-                <Server className="h-3.5 w-3.5" />
-                {step.related_service_id}
-              </span>
-            ) : null}
-            {(step.related_config_keys ?? []).slice(0, 2).map((configKey) => (
-              <span
-                key={configKey}
-                className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1"
-              >
-                {configKey}
-              </span>
-            ))}
-            {groupKey && groupSize > 1 ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-cyan-100">
-                {groupSize} {t("workflowControl.labels.branches")}
-                {isGroupExpanded
-                  ? ` (${t("workflowControl.labels.expanded")})`
-                  : ""}
-              </span>
-            ) : null}
-            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1">
-              <Link2 className="h-3.5 w-3.5" />
-              {step.id}
-            </span>
-          </div>
+          <ExecutionStepMetadata
+            step={step}
+            dependsOnIndex={dependsOnIndex}
+            groupKey={groupKey}
+            groupSize={groupSize}
+            isGroupExpanded={isGroupExpanded}
+            t={t}
+          />
         </div>
       </button>
-      {canToggleGroup && groupKey ? (
-        <button
-          type="button"
-          className="absolute right-4 top-3 rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300 hover:border-cyan-400/30 hover:text-cyan-100"
-          onClick={() => onToggleExecutionGroup(groupKey)}
-        >
-          {isGroupExpanded
-            ? t("workflowControl.actions.collapse")
-            : t("workflowControl.actions.expand")}
-        </button>
-      ) : null}
+      <ExecutionStepToggleButton
+        canToggleGroup={canToggleGroup}
+        groupKey={groupKey}
+        isGroupExpanded={isGroupExpanded}
+        onToggleExecutionGroup={onToggleExecutionGroup}
+        t={t}
+      />
     </div>
   );
 }

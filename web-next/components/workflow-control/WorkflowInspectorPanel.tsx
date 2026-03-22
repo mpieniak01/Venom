@@ -22,6 +22,9 @@ import type {
 
 import { PropertyPanel } from "./PropertyPanel";
 
+type RuntimeServiceAction = "start" | "stop" | "restart";
+type ExecutionStepAction = "retry_from_step" | "replay_step" | "skip_step";
+
 interface WorkflowInspectorPanelProps {
   selection: WorkflowControlSelection | null;
   systemState: SystemState | null;
@@ -30,11 +33,11 @@ interface WorkflowInspectorPanelProps {
   onUpdateNode: (nodeId: string, data: unknown) => void;
   onRuntimeServiceAction: (
     serviceId: string,
-    action: "start" | "stop" | "restart",
+    action: RuntimeServiceAction,
   ) => Promise<boolean>;
   onExecutionStepAction: (
     stepId: string,
-    action: "retry_from_step" | "replay_step" | "skip_step",
+    action: ExecutionStepAction,
   ) => Promise<boolean>;
   onSelectRuntimeService: (serviceId: string) => void;
   onSelectControlDomain: (domainId: ControlDomainId) => void;
@@ -81,7 +84,7 @@ function RuntimeServiceInspector({
   service: OperatorRuntimeService;
   onRuntimeServiceAction: (
     serviceId: string,
-    action: "start" | "stop" | "restart",
+    action: RuntimeServiceAction,
   ) => Promise<boolean>;
   isLoading?: boolean;
   t: (path: string) => string;
@@ -302,7 +305,7 @@ function ExecutionStepActionsSection({
   isLoading?: boolean;
   onExecutionStepAction: (
     stepId: string,
-    action: "retry_from_step" | "replay_step" | "skip_step",
+    action: ExecutionStepAction,
   ) => Promise<boolean>;
   t: (path: string) => string;
 }>) {

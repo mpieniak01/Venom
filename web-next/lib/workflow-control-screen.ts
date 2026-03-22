@@ -441,7 +441,7 @@ export function buildExecutionStepGroupState(
     const depth = computeDepth(step);
     const parentId = step.depends_on_step_id ?? "root";
     const configKeyPart = (step.related_config_keys ?? [])
-      .map((key) => String(key))
+      .map(String)
       .sort((left, right) => left.localeCompare(right))
       .join("|");
     const groupKey = [

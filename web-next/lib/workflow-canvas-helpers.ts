@@ -232,11 +232,12 @@ function mapRuntimeServiceData(node: OperatorGraphNode): Record<string, unknown>
   const fallbackServiceId = node.id.split(":").slice(1).join(":") || node.id;
   const serviceId = firstStringValue(nodeData.serviceId) ?? fallbackServiceId;
   const label = firstStringValue(nodeData.label, nodeData.name) ?? node.label;
-  const dependencyCount = Array.isArray(nodeData.dependencies)
-    ? nodeData.dependencies.length
-    : typeof nodeData.dependencyCount === "number"
-      ? nodeData.dependencyCount
-      : 0;
+  let dependencyCount = 0;
+  if (Array.isArray(nodeData.dependencies)) {
+    dependencyCount = nodeData.dependencies.length;
+  } else if (typeof nodeData.dependencyCount === "number") {
+    dependencyCount = nodeData.dependencyCount;
+  }
   return {
     ...nodeData,
     serviceId,
@@ -605,7 +606,7 @@ function buildFallbackExecutionStepNodes(
     const depth = computeDepth(step);
     const parentId = step.depends_on_step_id ?? null;
     const relatedConfigKeys = (step.related_config_keys ?? [])
-      .map((key) => String(key))
+      .map(String)
       .sort((left, right) => left.localeCompare(right));
     const groupKey = [
       parentId ?? "root",

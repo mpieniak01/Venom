@@ -11,11 +11,14 @@ from venom_core.api.schemas.governance import (
     AutonomyLevelResponse,
     AutonomyLevelSetResponse,
     AutonomyLevelsResponse,
+    AutonomyObservabilityPayload,
     AutonomyObservabilityResponse,
     AutonomyRolloutStatusResponse,
     CostModeRequest,
     CostModeResponse,
     CostModeSetResponse,
+    PolicyFalsePositiveTriage,
+    PolicyReasonStat,
 )
 from venom_core.config import SETTINGS
 from venom_core.core.permission_guard import permission_guard
@@ -66,33 +69,48 @@ def _extract_actor_from_request(request: Request) -> str:
     return "unknown"
 
 
-def _normalize_policy_observability(policy_data: Any) -> dict[str, Any]:
+def _normalize_reason_stats(items: Any) -> list[PolicyReasonStat]:
+    if not isinstance(items, list):
+        return []
+
+    stats: list[PolicyReasonStat] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        reason_code = str(item.get("reason_code") or "").strip()
+        if not reason_code:
+            continue
+        stats.append(
+            PolicyReasonStat(
+                reason_code=reason_code,
+                count=int(item.get("count") or 0),
+                share_rate=float(item.get("share_rate") or 0.0),
+            )
+        )
+    return stats
+
+
+def _normalize_policy_observability(policy_data: Any) -> AutonomyObservabilityPayload:
     raw = policy_data if isinstance(policy_data, dict) else {}
     blocked_count = int(raw.get("blocked_count") or 0)
     deny_rate = float(raw.get("deny_rate") or raw.get("block_rate") or 0.0)
 
-    top_reason_codes_raw = raw.get("top_reason_codes")
-    top_reason_codes = (
-        top_reason_codes_raw if isinstance(top_reason_codes_raw, list) else []
-    )
+    top_reason_codes = _normalize_reason_stats(raw.get("top_reason_codes"))
 
     triage_raw = raw.get("false_positive_triage")
     triage = triage_raw if isinstance(triage_raw, dict) else {}
-    top_candidate_reasons_raw = triage.get("top_candidate_reasons")
-    top_candidate_reasons = (
-        top_candidate_reasons_raw if isinstance(top_candidate_reasons_raw, list) else []
+    return AutonomyObservabilityPayload(
+        blocked_count=blocked_count,
+        deny_rate=round(deny_rate, 2),
+        top_reason_codes=top_reason_codes,
+        false_positive_triage=PolicyFalsePositiveTriage(
+            candidate_count=int(triage.get("candidate_count") or 0),
+            candidate_rate=float(triage.get("candidate_rate") or 0.0),
+            top_candidate_reasons=_normalize_reason_stats(
+                triage.get("top_candidate_reasons")
+            ),
+        ),
     )
-
-    return {
-        "blocked_count": blocked_count,
-        "deny_rate": round(deny_rate, 2),
-        "top_reason_codes": top_reason_codes,
-        "false_positive_triage": {
-            "candidate_count": int(triage.get("candidate_count") or 0),
-            "candidate_rate": float(triage.get("candidate_rate") or 0.0),
-            "top_candidate_reasons": top_candidate_reasons,
-        },
-    }
 
 
 def _build_rollout_next_actions(

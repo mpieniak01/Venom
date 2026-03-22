@@ -11,6 +11,7 @@ from uuid import UUID
 from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_callback
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
+from venom_core.core.learning_log import ensure_learning_log_boot_id
 from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.policy_autonomy_contract import (
     build_policy_block_payload,
@@ -277,8 +278,8 @@ def _build_execution_mode_metadata(
 
     template_decision = None
     browser_profile = None
-    browser_execution_contract = None
-    gui_fallback_contract = None
+    browser_execution_contract: dict[str, object] | None = None
+    gui_fallback_contract: dict[str, object] | None = None
     if decision.execution_mode == "api_skill":
         template_decision = resolve_api_skill_template(request=request, intent=intent)
     elif decision.execution_mode == "browser_automation":
@@ -304,6 +305,12 @@ def _build_execution_mode_metadata(
     if gui_fallback_contract is not None:
         updates["gui_fallback_contract"] = gui_fallback_contract
 
+    gui_fail_closed: object | None = None
+    if gui_fallback_contract:
+        safety_config = gui_fallback_contract.get("safety")
+        if isinstance(safety_config, dict):
+            gui_fail_closed = safety_config.get("critical_steps_fail_closed")
+
     if orch.request_tracer:
         details = {
             "execution_mode": decision.execution_mode,
@@ -316,13 +323,7 @@ def _build_execution_mode_metadata(
                 if browser_execution_contract
                 else None
             ),
-            "gui_fail_closed": (
-                gui_fallback_contract.get("safety", {}).get(
-                    "critical_steps_fail_closed"
-                )
-                if gui_fallback_contract
-                else None
-            ),
+            "gui_fail_closed": gui_fail_closed,
         }
         orch.request_tracer.add_step(
             task_id,
@@ -569,7 +570,7 @@ def _evaluate_tool_requirement_and_routing(
     orch: "Orchestrator", task_id: UUID, intent: str
 ) -> tuple[bool, str, dict[str, object]]:
     tool_required = orch.intent_manager.requires_tool(intent)
-    tool_requirement_update = {
+    tool_requirement_update: dict[str, object] = {
         "tool_requirement": {"required": tool_required, "intent": intent}
     }
     if orch.request_tracer:
@@ -657,6 +658,7 @@ def append_learning_log(
     }
 
     try:
+        ensure_learning_log_boot_id()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False) + "\n")

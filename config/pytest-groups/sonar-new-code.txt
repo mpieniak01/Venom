@@ -41,6 +41,7 @@ tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
 tests/test_benchmark_routes_guard.py
+tests/test_boot_id.py
 tests/test_bootstrap_routes_contracts.py
 tests/test_bootstrap_runtime_stack_modules.py
 tests/test_browser_skill.py
@@ -113,6 +114,8 @@ tests/test_knowledge_context_map_api.py
 tests/test_knowledge_context_service.py
 tests/test_knowledge_entries_service.py
 tests/test_knowledge_graph_service.py
+tests/test_learning.py
+tests/test_learning_logs.py
 tests/test_lessons_manager.py
 tests/test_llm_runtime_activation_api.py
 tests/test_llm_runtime_options_api.py

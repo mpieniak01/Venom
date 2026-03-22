@@ -1,17 +1,100 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { WorkflowCanvas } from "./WorkflowCanvas";
-import { WorkflowHeader } from "./WorkflowHeader";
-import { PropertyPanel } from "./PropertyPanel";
-import { WorkflowConsole } from "./WorkflowConsole";
-import { ApplyResultsModal } from "./ApplyResultsModal";
-import { useWorkflowState } from "@/hooks/useWorkflowState";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
-import { shouldShowApplyResultsModal, generatePlanRequest } from "@/lib/workflow-control-ui-helpers";
+import { buildWorkflowGraph } from "@/lib/workflow-canvas-helpers";
+import {
+  buildControlDomainCards,
+  buildExecutionStepGroupState,
+  type ControlDomainId,
+  type WorkflowControlSelection,
+} from "@/lib/workflow-control-screen";
+import {
+  buildWorkflowSelectionSummary,
+  buildDraftCompatibilityReport,
+  buildWorkflowDraftVisualState,
+  generatePlanRequest,
+  shouldShowApplyResultsModal,
+} from "@/lib/workflow-control-ui-helpers";
 import { buildPropertyPanelOptions } from "@/lib/workflow-control-options";
 import type { ApplyResults, PlanResponse } from "@/types/workflow-control";
-import type { Node } from "@xyflow/react";
+import { useWorkflowState } from "@/hooks/useWorkflowState";
+
+import { ApplyResultsModal } from "./ApplyResultsModal";
+import { WorkflowCanvas } from "./WorkflowCanvas";
+import { WorkflowExecutionTimeline } from "./WorkflowExecutionTimeline";
+import { WorkflowHeader } from "./WorkflowHeader";
+import { WorkflowInspectorPanel } from "./WorkflowInspectorPanel";
+import { WorkflowTargetPanel } from "./WorkflowTargetPanel";
+
+function sectionTitleForDomain(
+  id: ControlDomainId,
+  t: (path: string) => string,
+): string {
+  if (id === "config") {
+    return t("workflowControl.labels.systemConfiguration");
+  }
+  if (id === "decision") return t("workflowControl.sections.decision");
+  if (id === "intent") return t("workflowControl.sections.intent");
+  if (id === "kernel") return t("workflowControl.sections.kernel");
+  if (id === "provider") return t("workflowControl.sections.provider");
+  return t("workflowControl.sections.embedding");
+}
+
+function selectionKindLabel(
+  kind: WorkflowControlSelection["kind"],
+  t: (path: string) => string,
+): string {
+  if (kind === "control-domain") {
+    return t("workflowControl.labels.controlDomains");
+  }
+  if (kind === "runtime-service") {
+    return t("workflowControl.labels.runtimeServices");
+  }
+  return t("workflowControl.labels.executionSteps");
+}
+
+function controlDomainCardClassName({
+  isSelected,
+  hasConflict,
+  isChanged,
+}: {
+  isSelected: boolean;
+  hasConflict: boolean;
+  isChanged: boolean;
+}): string {
+  const baseClass = "w-full rounded-2xl border px-4 py-3 text-left transition";
+  if (isSelected) {
+    return `${baseClass} border-cyan-400/50 bg-cyan-500/10 shadow-[0_0_30px_rgba(34,211,238,0.12)]`;
+  }
+  if (hasConflict) {
+    return `${baseClass} border-amber-400/30 bg-amber-500/10 hover:border-amber-300/40`;
+  }
+  if (isChanged) {
+    return `${baseClass} border-sky-400/20 bg-sky-500/10 hover:border-sky-300/30`;
+  }
+  return `${baseClass} border-white/10 bg-slate-900/80 hover:border-white/20 hover:bg-slate-900`;
+}
+
+function timelineBadgeLabel({
+  isTimelineExpanded,
+  hasTimelineSelection,
+  t,
+}: {
+  isTimelineExpanded: boolean;
+  hasTimelineSelection: boolean;
+  t: (path: string) => string;
+}): string {
+  if (!isTimelineExpanded) {
+    return t("workflowControl.actions.expand");
+  }
+  if (hasTimelineSelection) {
+    return t("workflowControl.labels.expanded");
+  }
+  return t("workflowControl.actions.collapse");
+}
 
 export function WorkflowControlView() {
   const t = useTranslation();
@@ -32,52 +115,85 @@ export function WorkflowControlView() {
     cancelWorkflow,
     retryWorkflow,
     dryRun,
+    runtimeServiceAction,
+    executionStepAction,
   } = useWorkflowState();
 
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [applyResults, setApplyResults] = useState<ApplyResults | null>(null);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [pendingPlanResult, setPendingPlanResult] = useState<PlanResponse | null>(null);
+  const [selection, setSelection] = useState<WorkflowControlSelection | null>(null);
+  const [expandedExecutionGroups, setExpandedExecutionGroups] = useState<Set<string>>(new Set());
+  const [isTimelineOpen, setIsTimelineOpen] = useState(false);
+  const hasTimelineSelection =
+    selection?.kind === "execution-step" || selection?.kind === "runtime-service";
+  const isTimelineExpanded = isTimelineOpen || hasTimelineSelection;
+
   const propertyPanelOptions = buildPropertyPanelOptions(
     controlOptions,
     systemState,
     draftState
   );
+  const compatibilityReport = useMemo(
+    () => buildDraftCompatibilityReport(controlOptions, systemState, draftState),
+    [controlOptions, systemState, draftState],
+  );
+  const controlDomainCards = useMemo(
+    () => buildControlDomainCards(systemState, draftState),
+    [systemState, draftState]
+  );
+  const executionStepGroupState = useMemo(
+    () => buildExecutionStepGroupState(systemState?.execution_steps),
+    [systemState?.execution_steps],
+  );
+  const graphPreview = useMemo(
+    () => buildWorkflowGraph(systemState, { expandedGroupKeys: expandedExecutionGroups }),
+    [systemState, expandedExecutionGroups],
+  );
+  const showGraphRelationsWarning =
+    ((systemState?.execution_steps?.length ?? 0) > 0 ||
+      (systemState?.runtime_services?.length ?? 0) > 0) &&
+    graphPreview.edges.length === 0;
+  const draftVisualState = useMemo(() => {
+    const changedDomainCount = controlDomainCards.filter((card) => card.changed).length;
+    return buildWorkflowDraftVisualState(
+      changedDomainCount,
+      compatibilityReport.issues.length,
+      Boolean(pendingPlanResult),
+    );
+  }, [controlDomainCards, compatibilityReport.issues.length, pendingPlanResult]);
+  const selectionSummary = useMemo(
+    () => buildWorkflowSelectionSummary(selection, systemState),
+    [selection, systemState],
+  );
+  const timelineBadgeText = timelineBadgeLabel({
+    isTimelineExpanded,
+    hasTimelineSelection,
+    t,
+  });
 
   const handleUpdateNode = useCallback(
     (nodeId: string, data: unknown) => {
       updateNode(nodeId, data);
-      // Any edit to the draft invalidates the previously planned result.
       setPendingPlanResult(null);
-      setSelectedNode((prev) => {
-        if (prev?.id !== nodeId) return prev;
-        return {
-          ...prev,
-          data: data as Node["data"],
-        };
-      });
     },
-    [updateNode, setPendingPlanResult]
+    [updateNode]
   );
 
-  // Step 1: Plan — only computes diff and stores result for user review.
   const handlePlanRequest = useCallback(async () => {
     if (!systemState || !draftState) return;
     const planReq = generatePlanRequest(systemState, draftState);
     if (planReq.changes.length === 0) {
-      // No changes for this draft; clear any previously pending plan.
       setPendingPlanResult(null);
       return;
     }
 
     const planResult = await planChanges(planReq);
     if (planResult?.valid) {
-      // Store result; user must explicitly confirm to Apply.
       setPendingPlanResult(planResult);
     }
-  }, [systemState, draftState, planChanges, setPendingPlanResult]);
+  }, [systemState, draftState, planChanges]);
 
-  // Step 2: Apply — only called after explicit user confirmation.
   const handleApplyConfirmed = useCallback(async () => {
     if (!pendingPlanResult) return;
     const applyResult = await applyChanges(pendingPlanResult.execution_ticket);
@@ -87,110 +203,436 @@ export function WorkflowControlView() {
     refresh();
   }, [pendingPlanResult, applyChanges, refresh]);
 
-  // Wrap reset so any pending plan is also cleared (reset reverts draft to server
-  // state, making a previously computed plan obsolete immediately).
   const handleReset = useCallback(() => {
     reset();
     setPendingPlanResult(null);
+    setSelection(null);
+    setExpandedExecutionGroups(new Set());
+    setIsTimelineOpen(false);
   }, [reset]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditableTarget =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+      if (isEditableTarget) {
+        return;
+      }
+
+      if (event.key === "Escape") {
+        if (selection || isTimelineOpen) {
+          event.preventDefault();
+          setSelection(null);
+          setIsTimelineOpen(false);
+        }
+        return;
+      }
+
+      if (event.altKey && event.key.toLowerCase() === "t" && !hasTimelineSelection) {
+        event.preventDefault();
+        setIsTimelineOpen((current) => !current);
+      }
+    };
+
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
+  }, [selection, isTimelineOpen, hasTimelineSelection]);
+
+  const handleSelectDomain = useCallback((id: ControlDomainId) => {
+    setSelection({ kind: "control-domain", id });
+  }, []);
+
+  const toggleExecutionGroup = useCallback((groupKey: string) => {
+    setExpandedExecutionGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCanvasNodeClick = useCallback(
+    (node: { id: string; type?: string; data?: Record<string, unknown> }) => {
+      const data = node.data ?? {};
+      if (node.type === "control_domain" && typeof data.domainId === "string") {
+        setSelection({ kind: "control-domain", id: data.domainId as ControlDomainId });
+        return;
+      }
+      if (node.type === "runtime_service" && typeof data.serviceId === "string") {
+        setSelection({ kind: "runtime-service", serviceId: data.serviceId });
+        return;
+      }
+      if (node.type === "execution_step" && typeof data.stepId === "string") {
+        const groupKey = typeof data.groupKey === "string" ? data.groupKey : undefined;
+        setSelection({ kind: "execution-step", stepId: data.stepId, groupKey });
+        return;
+      }
+      if (node.id.startsWith("control-domain:")) {
+        setSelection({
+          kind: "control-domain",
+          id: node.id.replace("control-domain:", "") as ControlDomainId,
+        });
+      }
+    },
+    [],
+  );
+
   return (
-    <div className="flex flex-col bg-background">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(14,116,144,0.18),transparent_35%),linear-gradient(180deg,#020617_0%,#020817_45%,#030712_100%)] text-slate-100">
       <WorkflowHeader
         hasChanges={hasChanges}
+        hasPendingPlan={Boolean(pendingPlanResult)}
+        changedDomainCount={draftVisualState.changedDomainCount}
+        compatibilityIssues={compatibilityReport.issues.map((issue) => issue.message)}
         onPlanRequest={handlePlanRequest}
+        onApplyRequest={handleApplyConfirmed}
+        onDiscardPlan={() => setPendingPlanResult(null)}
         onReset={handleReset}
         isLoading={isLoading}
+        activeRequestId={systemState?.active_request_id ?? null}
+        activeTaskStatus={systemState?.active_task_status ?? null}
+        workflowStatus={systemState?.workflow_status ?? null}
+        llmRuntimeId={systemState?.llm_runtime_id ?? null}
+        llmProvider={systemState?.llm_provider_name ?? null}
+        llmModel={systemState?.llm_model ?? null}
       />
 
-      <div className="flex h-[780px] overflow-hidden border-b border-white/5">
-        {/* Center: Workflow Canvas */}
-        <main className="flex-1 flex flex-col relative">
-          <div className="flex-1 relative">
+      <div className="space-y-5 px-6 py-6">
+        <section className="rounded-[28px] border border-white/10 bg-slate-950/80 p-5 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-400">
+                {t("workflowControl.labels.executionFlow")}
+              </div>
+              <h2 className="mt-2 text-xl font-semibold text-slate-100">
+                {t("workflowControl.labels.executionGraph")}
+              </h2>
+            </div>
+            <Badge tone="neutral">
+              {(systemState?.execution_steps ?? []).length}
+            </Badge>
+          </div>
+          <p className="mt-2 text-sm text-slate-400">
+            {t("workflowControl.messages.executionGraphHint")}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Badge tone="neutral">
+                {t("workflowControl.labels.selection")}
+              </Badge>
+              {selectionSummary ? (
+                <>
+                  <Badge tone="neutral">
+                    {selectionKindLabel(selectionSummary.kind, t)}
+                  </Badge>
+                  <span className="truncate text-sm text-slate-200" title={selectionSummary.value}>
+                    {selectionSummary.value}
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-slate-500">
+                  {t("workflowControl.messages.noSelection")}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">{t("workflowControl.messages.selectionHotkeysHint")}</span>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => setSelection(null)}
+                disabled={!selection}
+              >
+                {t("workflowControl.actions.clearSelection")}
+              </Button>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Badge tone="neutral">
+              {t("workflowControl.labels.graphNodes")}: {graphPreview.nodes.length}
+            </Badge>
+            <Badge tone="neutral">
+              {t("workflowControl.labels.graphEdges")}: {graphPreview.edges.length}
+            </Badge>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <div className="rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-3 py-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-300">
+                {t("workflowControl.canvas.control_domain")}
+              </div>
+              <div className="mt-1 text-xs text-slate-300">
+                {t("workflowControl.messages.graphLaneControlHint")}
+              </div>
+            </div>
+            <div className="rounded-xl border border-violet-400/25 bg-violet-500/10 px-3 py-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-300">
+                {t("workflowControl.canvas.runtime_service")}
+              </div>
+              <div className="mt-1 text-xs text-slate-300">
+                {t("workflowControl.messages.graphLaneRuntimeHint")}
+              </div>
+            </div>
+            <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-300">
+                {t("workflowControl.canvas.execution_step")}
+              </div>
+              <div className="mt-1 text-xs text-slate-300">
+                {t("workflowControl.messages.graphLaneExecutionHint")}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <div className="rounded-xl border border-cyan-400/20 bg-slate-900/70 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className="relative inline-flex w-10 items-center">
+                  <span className="h-0 w-8 border-t-2 border-dashed border-cyan-300/90" />
+                  <span className="absolute right-0 h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                  {t("workflowControl.labels.domainStepRelation")}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-slate-300">
+                {t("workflowControl.messages.graphRelationDomainHint")}
+              </div>
+            </div>
+            <div className="rounded-xl border border-violet-400/20 bg-slate-900/70 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className="relative inline-flex w-10 items-center">
+                  <span className="h-0 w-8 border-t-2 border-violet-300/90" />
+                  <span className="absolute right-0 h-1.5 w-1.5 rounded-full bg-violet-300" />
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-200">
+                  {t("workflowControl.labels.runtimeStepRelation")}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-slate-300">
+                {t("workflowControl.messages.graphRelationRuntimeHint")}
+              </div>
+            </div>
+            <div className="rounded-xl border border-emerald-400/20 bg-slate-900/70 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className="relative inline-flex w-10 items-center">
+                  <span className="h-0 w-8 border-t-2 border-emerald-300/90" />
+                  <span className="absolute right-0 h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
+                  {t("workflowControl.labels.stepSequenceRelation")}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-slate-300">
+                {t("workflowControl.messages.graphRelationSequenceHint")}
+              </div>
+            </div>
+          </div>
+          {showGraphRelationsWarning ? (
+            <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              {t("workflowControl.messages.graphRelationsMissing")}
+            </div>
+          ) : null}
+          <div className="mt-4 h-[720px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
             <WorkflowCanvas
-              systemState={draftState}
-              onNodeClick={setSelectedNode}
-              readOnly={isLoading}
+              systemState={systemState}
+              onNodeClick={handleCanvasNodeClick}
+              selectedControlDomainId={
+                selection?.kind === "control-domain" ? selection.id : null
+              }
+              selectedRuntimeServiceId={
+                selection?.kind === "runtime-service" ? selection.serviceId : null
+              }
+              selectedExecutionStepId={
+                selection?.kind === "execution-step" ? selection.stepId : null
+              }
+              expandedGroupKeys={expandedExecutionGroups}
+              onToggleExecutionGroup={toggleExecutionGroup}
+              readOnly
             />
           </div>
-        </main>
+        </section>
 
-        {/* Right Panel: Property Inspector & Console */}
-        <aside className="w-80 border-l bg-background/50 flex flex-col p-2 gap-2">
-          <div className="flex-1 overflow-y-auto">
-            <PropertyPanel
-              selectedNode={selectedNode}
-              onUpdateNode={handleUpdateNode}
-              availableOptions={propertyPanelOptions}
-              configFields={systemState?.config_fields}
+        <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)_360px]">
+          <aside className="space-y-4">
+            <section className="rounded-[28px] border border-white/10 bg-slate-950/80 p-5 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-400">
+                {t("workflowControl.labels.controlSurface")}
+              </div>
+              <h2 className="mt-2 text-xl font-semibold text-slate-100">
+                {t("workflowControl.labels.controlDomains")}
+              </h2>
+              <p className="mt-2 text-sm text-slate-400">
+                {t("workflowControl.messages.controlSurfaceHint")}
+              </p>
+
+              <div className="mt-5 space-y-2">
+                {controlDomainCards.map((card) => {
+                  const isSelected =
+                    selection?.kind === "control-domain" && selection.id === card.id;
+                  const hasConflict = (compatibilityReport.issuesByDomain[card.id] ?? []).length > 0;
+                  const isChanged = card.changed;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => handleSelectDomain(card.id)}
+                      className={controlDomainCardClassName({
+                        isSelected,
+                        hasConflict,
+                        isChanged,
+                      })}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-100">
+                            {sectionTitleForDomain(card.id, t)}
+                          </div>
+                          <div className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">
+                            {card.source ?? t("workflowControl.common.unknown")}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          {card.changed ? (
+                            <Badge tone="warning">{t("workflowControl.status.draft")}</Badge>
+                          ) : null}
+                          {card.restartRequired ? (
+                            <Badge tone="danger">{t("workflowControl.labels.restartImpact")}</Badge>
+                          ) : null}
+                          {hasConflict ? (
+                            <Badge tone="warning">
+                              {t("workflowControl.labels.compatibilityConflict")}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <div className="text-sm text-slate-300">{card.value}</div>
+                        {card.affectedServices.length > 0 ? (
+                          <div className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-500">
+                            {card.affectedServices.length} svc
+                          </div>
+                        ) : null}
+                      </div>
+                      {hasConflict ? (
+                        <div className="mt-2 rounded-xl border border-amber-400/15 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                          {(compatibilityReport.issuesByDomain[card.id] ?? [])[0]?.message}
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </aside>
+
+          <main className="space-y-5">
+            <WorkflowTargetPanel
+              status={systemState?.workflow_status ?? "unknown"}
+              allowedOperations={systemState?.allowed_operations ?? []}
+              onPause={pauseWorkflow}
+              onResume={resumeWorkflow}
+              onCancel={cancelWorkflow}
+              onRetry={retryWorkflow}
+              onDryRun={dryRun}
+              isLoading={isLoading}
             />
-          </div>
-          <WorkflowConsole
-            hasChanges={hasChanges}
-            onPlanRequest={handlePlanRequest}
-            onReset={handleReset}
-            status={systemState?.workflow_status ?? "unknown"}
-            allowedOperations={systemState?.allowed_operations ?? []}
-            activeRequestId={systemState?.active_request_id ?? null}
-            llmRuntimeId={systemState?.llm_runtime_id ?? null}
-            llmProvider={systemState?.llm_provider_name ?? null}
-            llmModel={systemState?.llm_model ?? null}
-            onPause={pauseWorkflow}
-            onResume={resumeWorkflow}
-            onCancel={cancelWorkflow}
-            onRetry={retryWorkflow}
-            onDryRun={dryRun}
-            isLoading={isLoading}
-          />
-        </aside>
+
+            <section
+              data-testid="workflow-drilldown-timeline"
+              className="rounded-[28px] border border-white/10 bg-slate-950/80 p-3 shadow-[0_18px_60px_rgba(2,6,23,0.45)]"
+            >
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-left"
+                onClick={() => {
+                  if (hasTimelineSelection) return;
+                  setIsTimelineOpen((current) => !current);
+                }}
+              >
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-400">
+                    {t("workflowControl.actions.details")}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-slate-100">
+                    {t("workflowControl.labels.executionSteps")}
+                  </div>
+                </div>
+                <Badge tone="neutral">
+                  {timelineBadgeText}
+                </Badge>
+              </button>
+              {isTimelineExpanded ? (
+                <div className="mt-3">
+                  <WorkflowExecutionTimeline
+                    executionSteps={systemState?.execution_steps ?? []}
+                    runtimeServices={systemState?.runtime_services ?? []}
+                    stepToGroupKey={executionStepGroupState.stepToGroupKey}
+                    groupSizes={executionStepGroupState.groupSizes}
+                    groupToStepIds={executionStepGroupState.groupToStepIds}
+                    expandedGroupKeys={expandedExecutionGroups}
+                    selection={selection}
+                    onSelectStep={(stepId) =>
+                      setSelection({
+                        kind: "execution-step",
+                        stepId,
+                        groupKey: executionStepGroupState.stepToGroupKey.get(stepId),
+                      })
+                    }
+                    onSelectService={(serviceId) =>
+                      setSelection({ kind: "runtime-service", serviceId })
+                    }
+                    onToggleExecutionGroup={toggleExecutionGroup}
+                  />
+                </div>
+              ) : null}
+            </section>
+          </main>
+
+          <aside className="min-h-[420px]">
+            <WorkflowInspectorPanel
+              selection={selection}
+              systemState={systemState}
+              draftState={draftState}
+              propertyPanelOptions={propertyPanelOptions}
+              onUpdateNode={handleUpdateNode}
+              onRuntimeServiceAction={runtimeServiceAction}
+              onExecutionStepAction={executionStepAction}
+              onSelectRuntimeService={(serviceId) =>
+                setSelection({ kind: "runtime-service", serviceId })
+              }
+              onSelectControlDomain={handleSelectDomain}
+              expandedGroupKeys={expandedExecutionGroups}
+              groupSizes={executionStepGroupState.groupSizes}
+              groupToStepIds={executionStepGroupState.groupToStepIds}
+              onSelectExecutionStep={(stepId, groupKey) =>
+                setSelection({ kind: "execution-step", stepId, groupKey })
+              }
+              onToggleExecutionGroup={toggleExecutionGroup}
+              isLoading={isLoading}
+            />
+          </aside>
+        </div>
       </div>
 
-      {/* Plan Confirmation Banner — shown after Plan, before Apply */}
-      {pendingPlanResult && (
-        <div className="fixed bottom-20 right-4 bg-slate-800 border border-blue-500/50 text-slate-100 p-4 rounded-lg shadow-lg z-50 max-w-sm">
-          <p className="font-semibold text-sm mb-2">{t("workflowControl.actions.planReady")}</p>
-          <p className="text-xs text-slate-400 mb-3">
-            {t("workflowControl.actions.planReadyHint")}
-          </p>
-          <div className="flex gap-2">
-            <button
-              className="flex-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 rounded font-medium"
-              onClick={handleApplyConfirmed}
-              disabled={isLoading}
-            >
-              {t("workflowControl.actions.apply")}
-            </button>
-            <button
-              className="flex-1 px-3 py-1.5 text-xs border border-white/20 hover:bg-white/10 rounded"
-              onClick={() => setPendingPlanResult(null)}
-            >
-              {t("workflowControl.actions.discard")}
-            </button>
-          </div>
-        </div>
+      {applyResults && shouldShowApplyResultsModal(showResultsModal, applyResults) && (
+        <ApplyResultsModal
+          results={applyResults}
+          onClose={() => setShowResultsModal(false)}
+        />
       )}
 
-
-
-      {/* Apply Results Modal */}
-      {
-        applyResults && shouldShowApplyResultsModal(showResultsModal, applyResults) && (
-          <ApplyResultsModal
-            results={applyResults}
-            onClose={() => setShowResultsModal(false)}
-          />
-        )
-      }
-
-      {/* Error Display */}
-      {
-        error && (
-          <div className="fixed bottom-20 right-4 bg-destructive text-destructive-foreground p-4 rounded-lg shadow-lg z-50 max-w-sm">
-            <p className="font-semibold">{t("workflowControl.common.errorTitle")}</p>
-            <p className="text-sm">{error}</p>
-          </div>
-        )
-      }
-    </div >
+      {error && (
+        <div className="fixed bottom-5 right-5 max-w-sm rounded-2xl border border-red-500/40 bg-red-950/90 p-4 text-red-100 shadow-2xl">
+          <p className="font-semibold">{t("workflowControl.common.errorTitle")}</p>
+          <p className="mt-1 text-sm">{error}</p>
+        </div>
+      )}
+    </div>
   );
 }

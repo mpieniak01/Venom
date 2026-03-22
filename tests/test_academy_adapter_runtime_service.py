@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -857,3 +858,172 @@ def test_prepare_gemma3_text_export_input_dir_cleans_temp_on_copy_failure(
                 merged_dir=merged_dir,
             )
     assert not list(adapter_dir.glob("runtime_onnx_export_input_tmp_*"))
+
+
+def test_parse_helpers_return_defaults_when_str_raises() -> None:
+    class _BadValue:
+        def __str__(self) -> str:
+            raise RuntimeError("boom")
+
+    assert ars._parse_positive_float(_BadValue(), default=0.75) == pytest.approx(0.75)
+    assert ars._parse_positive_int(_BadValue(), default=42) == 42
+
+
+def test_deploy_adapter_to_vllm_runtime_success_updates_previous_model(
+    tmp_path: Path,
+) -> None:
+    models_dir = tmp_path / "models"
+    adapter_id = "adapter-vllm"
+    adapter_dir = models_dir / adapter_id
+    (adapter_dir / "adapter").mkdir(parents=True, exist_ok=True)
+    runtime_model_dir = tmp_path / "runtime-model"
+    runtime_model_dir.mkdir(parents=True, exist_ok=True)
+    (runtime_model_dir / "chat_template.jinja").write_text(
+        "{{ prompt }}", encoding="utf-8"
+    )
+
+    settings = SimpleNamespace(ACADEMY_MODELS_DIR=str(models_dir))
+    config_manager_obj = MagicMock()
+    restart_runtime = MagicMock()
+
+    with (
+        patch.object(ars, "_require_trusted_adapter_base_model", return_value="gemma3"),
+        patch.object(
+            ars, "_resolve_local_training_base_model_for_merge", return_value=""
+        ),
+    ):
+        payload = ars._deploy_adapter_to_vllm_runtime(
+            adapter_id=adapter_id,
+            settings_obj=settings,
+            config_manager_obj=config_manager_obj,
+            compute_llm_config_hash_fn=lambda *_args: "hash-vllm",
+            runtime_endpoint_for_hash_fn=lambda *_args,
+            **_kwargs: "http://localhost:8001/v1",
+            build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: runtime_model_dir,
+            is_runtime_model_dir_fn=lambda _path: True,
+            restart_vllm_runtime_fn=restart_runtime,
+            get_active_llm_runtime_fn=lambda: SimpleNamespace(
+                provider="vllm",
+                model_name="old-model",
+            ),
+        )
+
+    assert payload["deployed"] is True
+    assert payload["runtime_id"] == "vllm"
+    assert payload["runtime_model_path"] == str(runtime_model_dir)
+
+    updates = config_manager_obj.update_config.call_args.args[0]
+    previous_key = ars.previous_model_key_for_server("vllm")
+    assert updates[previous_key] == "old-model"
+    assert updates["LLM_CONFIG_HASH"] == "hash-vllm"
+    restart_runtime.assert_called_once()
+
+
+def test_deploy_adapter_to_vllm_runtime_raises_for_non_runtime_model_dir(
+    tmp_path: Path,
+) -> None:
+    models_dir = tmp_path / "models"
+    adapter_id = "adapter-vllm-invalid"
+    adapter_dir = models_dir / adapter_id
+    (adapter_dir / "adapter").mkdir(parents=True, exist_ok=True)
+    runtime_model_dir = tmp_path / "runtime-invalid"
+    runtime_model_dir.mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch.object(ars, "_require_trusted_adapter_base_model", return_value="gemma3"),
+        patch.object(
+            ars, "_resolve_local_training_base_model_for_merge", return_value=""
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="Failed to prepare runtime-usable vLLM"):
+            ars._deploy_adapter_to_vllm_runtime(
+                adapter_id=adapter_id,
+                settings_obj=SimpleNamespace(ACADEMY_MODELS_DIR=str(models_dir)),
+                build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: runtime_model_dir,
+                is_runtime_model_dir_fn=lambda _path: False,
+                restart_vllm_runtime_fn=lambda **_kwargs: None,
+                get_active_llm_runtime_fn=lambda: SimpleNamespace(
+                    provider="vllm",
+                    model_name="old-model",
+                ),
+            )
+
+
+def test_runtime_helper_paths_and_onnx_export_cmd(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir(parents=True, exist_ok=True)
+    file_path = root / "entry.json"
+
+    safe_path = ars._resolve_safe_child_file_path(
+        parent_dir=root,
+        file_name="entry.json",
+    )
+    assert safe_path == file_path.resolve()
+
+    ars._write_json_file_in_dir(
+        directory=root,
+        file_name="entry.json",
+        payload={"ok": True},
+    )
+    assert json.loads(file_path.read_text(encoding="utf-8")) == {"ok": True}
+
+    cmd = ars._build_onnx_export_cmd(
+        builder_script=tmp_path / "builder.py",
+        export_input=tmp_path / "input-model",
+        execution_provider="cpu",
+        precision="fp16",
+        tmp_dir=tmp_path / "out",
+    )
+    assert cmd[0] == ars.sys.executable
+    assert cmd[-1] == str((tmp_path / "out"))
+
+    runtime_tmp = ars._prepare_runtime_tmp_dir(name="academy-test")
+    assert runtime_tmp.exists()
+    ars._cleanup_optional_dir(runtime_tmp)
+    assert not runtime_tmp.exists()
+    ars._cleanup_optional_dir(None)
+
+
+def test_subprocess_guard_helpers_timeout_and_memory_exceeded(monkeypatch) -> None:
+    class _FakeProcess:
+        def __init__(self):
+            self.pid = 123
+            self._timed_out = False
+            self.killed = False
+
+        def communicate(self, timeout: int | None = None):
+            if timeout is not None and not self._timed_out:
+                self._timed_out = True
+                raise ars.subprocess.TimeoutExpired(cmd=["cmd"], timeout=timeout)
+            return ("", "")
+
+        def kill(self):
+            self.killed = True
+
+        def poll(self):
+            return None
+
+    process = _FakeProcess()
+    with pytest.raises(RuntimeError, match="merge timed out after 1s"):
+        ars._communicate_or_raise_timeout(process=process, timeout_sec=1, stage="merge")
+    assert process.killed is True
+
+    state: dict[str, object] = {"peak_rss_mb": 0.0, "exceeded": False}
+    stop_event = threading.Event()
+    terminate_called = {"value": False}
+
+    monkeypatch.setattr(ars, "_read_process_rss_mb", lambda pid: 256.0)
+    monkeypatch.setattr(
+        ars,
+        "_terminate_process_with_grace",
+        lambda **_kwargs: terminate_called.__setitem__("value", True),
+    )
+    ars._monitor_subprocess_memory(
+        process=process,
+        state=state,
+        stop_event=stop_event,
+        max_rss_mb=128,
+        monitor_interval_sec=0.01,
+    )
+    assert state["exceeded"] is True
+    assert terminate_called["value"] is True

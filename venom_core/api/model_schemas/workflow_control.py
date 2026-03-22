@@ -25,6 +25,7 @@ from venom_core.api.schemas.workflow_control import (
     WorkflowOperationRequest,
     WorkflowOperationResponse,
     WorkflowStatus,
+    WorkflowStepOperation,
 )
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "ReasonCode",
     "ResourceType",
     "WorkflowOperation",
+    "WorkflowStepOperation",
     "WorkflowStatus",
     "ResourceChange",
     "ControlPlanRequest",

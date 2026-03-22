@@ -318,6 +318,24 @@ async def _run_onnx_task(
         run_generation_fn=_run_generation,
         trace_success_fn=_trace_onnx_task_success,
         trace_failure_fn=_trace_onnx_task_failure,
+        append_session_history_fn=lambda tid, role, content, session_id: (
+            orchestrator._append_session_history(
+                tid,
+                role=role,
+                content=content,
+                session_id=session_id,
+            )
+        ),
+        append_learning_log_fn=lambda tid, intent, prompt, result, success, error: (
+            orchestrator._append_learning_log(
+                tid,
+                intent=intent,
+                prompt=prompt,
+                result=result,
+                success=success,
+                error=error,
+            )
+        ),
         logger=logger,
     )
 

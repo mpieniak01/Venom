@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypedDict
 
 from venom_core.core.models import TaskRequest
 
@@ -9,6 +10,14 @@ from venom_core.core.models import TaskRequest
 class ExecutionTemplateDecision:
     template_id: str
     source: str
+
+
+class BrowserProfilePolicy(TypedDict):
+    verify_checks: list[str]
+    required_artifacts: list[str]
+    timeout_seconds: int
+    max_retries: int
+    fail_closed: bool
 
 
 FORCED_TOOL_TEMPLATE_MAP = {
@@ -45,7 +54,7 @@ SMOKE_BROWSER_KEYWORDS = {
     "sanity",
 }
 
-BROWSER_PROFILE_POLICY = {
+BROWSER_PROFILE_POLICY: dict[str, BrowserProfilePolicy] = {
     "smoke": {
         "verify_checks": ["page_status_ok", "critical_element_visible"],
         "required_artifacts": ["screenshot"],

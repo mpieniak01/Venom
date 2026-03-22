@@ -77,6 +77,7 @@ except ImportError:  # pragma: no cover - fallback for environments bez AutoGen
 # Konfiguracja Group Chat
 DEFAULT_MAX_COUNCIL_ROUNDS = 20  # Maksymalna liczba rund konwersacji w Council
 COUNCIL_SESSION_TIMEOUT = 300  # Timeout dla sesji Council w sekundach (5 minut)
+DEFAULT_LOCAL_LLM_ENDPOINT = "http://localhost:11434/v1"
 
 
 class CouncilConfig:
@@ -361,7 +362,7 @@ def create_local_llm_config(
     """
     # Użyj wartości z SETTINGS jeśli nie podano
     if base_url is None:
-        base_url = SETTINGS.LLM_LOCAL_ENDPOINT
+        base_url = SETTINGS.LLM_LOCAL_ENDPOINT or DEFAULT_LOCAL_LLM_ENDPOINT
     if model is None:
         model = SETTINGS.LOCAL_LLAMA3_MODEL
 
@@ -371,13 +372,13 @@ def create_local_llm_config(
             f"Temperature musi być w zakresie 0.0-1.0, otrzymano: {temperature}"
         )
 
+    if not model or not isinstance(model, str):
+        raise ValueError(f"model musi być niepustym stringiem, otrzymano: {model}")
+
     if not base_url or not isinstance(base_url, str):
         raise ValueError(
             f"base_url musi być niepustym stringiem, otrzymano: {base_url}"
         )
-
-    if not model or not isinstance(model, str):
-        raise ValueError(f"model musi być niepustym stringiem, otrzymano: {model}")
 
     config = {
         "config_list": [

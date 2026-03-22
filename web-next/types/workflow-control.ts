@@ -69,6 +69,12 @@ export type OperatorExecutionStep = {
   status: string;
   timestamp?: string;
   details?: string | null;
+  stage?: string;
+  related_service_id?: string | null;
+  related_config_keys?: string[];
+  depends_on_step_id?: string | null;
+  severity?: string;
+  allowed_actions?: string[];
 };
 
 export type SystemState = Partial<Omit<ApiSystemState, "runtime" | "provider">> & {
@@ -109,17 +115,19 @@ export type PlanResponse = ApiSchemas["ControlPlanResponse"];
 
 export type WorkflowOperationRequest = ApiSchemas["WorkflowOperationRequest"];
 
+type WorkflowTargetPayload = {
+  request_id?: string | null;
+  task_status?: SystemState["active_task_status"];
+  workflow_status?: SystemState["workflow_status"];
+  runtime_id?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  allowed_operations?: string[];
+};
+
 export type WorkflowControlStatePayload = {
   system_state?: SystemState;
-  workflow_target?: {
-    request_id?: string | null;
-    task_status?: string | null;
-    workflow_status?: string;
-    runtime_id?: string | null;
-    provider?: string | null;
-    model?: string | null;
-    allowed_operations?: string[];
-  };
+  workflow_target?: WorkflowTargetPayload;
   config_fields?: OperatorConfigField[];
   runtime_services?: OperatorRuntimeService[];
   execution_steps?: OperatorExecutionStep[];

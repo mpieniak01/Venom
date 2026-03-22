@@ -17,9 +17,33 @@ const SAMPLE_STATE = {
   decision_strategy: "advanced",
   intent_mode: "expert",
   kernel: "optimized",
-  runtime: { services: ["backend"] },
+  runtime_services: [
+    { id: "backend", name: "backend", kind: "backend", status: "running" },
+    { id: "ui", name: "ui", kind: "ui", status: "running", dependencies: ["backend"] },
+  ],
   provider: { active: "ollama" },
   embedding_model: "sentence-transformers",
+  execution_steps: [
+    {
+      id: "step-1",
+      component: "intent",
+      action: "classify",
+      status: "ok",
+      stage: "execution",
+      related_service_id: "backend",
+      related_config_keys: ["INTENT_MODE"],
+    },
+    {
+      id: "step-2",
+      component: "response",
+      action: "answer",
+      status: "ok",
+      stage: "execution",
+      depends_on_step_id: "step-1",
+      related_service_id: "ui",
+      related_config_keys: ["ACTIVE_PROVIDER"],
+    },
+  ],
 };
 
 function createTestAdapter() {
@@ -27,6 +51,11 @@ function createTestAdapter() {
     props?: {
       onConnect?: (connection: { source?: string | null; target?: string | null }) => void;
       edges?: Array<{ id: string; source: string; target: string }>;
+      onNodeClick?: (event: unknown, node: { id: string; type?: string; data?: Record<string, unknown> }) => void;
+      nodesDraggable?: boolean;
+      nodesConnectable?: boolean;
+      elementsSelectable?: boolean;
+      edgesFocusable?: boolean;
     };
   } = {};
 
@@ -34,6 +63,10 @@ function createTestAdapter() {
     children?: React.ReactNode;
     onConnect?: (connection: { source?: string | null; target?: string | null }) => void;
     edges?: Array<{ id: string; source: string; target: string }>;
+    nodesDraggable?: boolean;
+    nodesConnectable?: boolean;
+    elementsSelectable?: boolean;
+    edgesFocusable?: boolean;
   }) => {
     captured.props = props;
     return <div data-testid="workflow-reactflow">{props.children}</div>;
@@ -80,7 +113,7 @@ describe("WorkflowCanvas component", () => {
     assert.ok(screen.getByTestId("workflow-minimap"));
   });
 
-  it("rejects invalid connection and shows toast", async () => {
+  it("keeps auxiliary canvas read-only for invalid connection attempts", async () => {
     const { adapter, captured } = createTestAdapter();
 
     render(
@@ -90,10 +123,13 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 6);
+    assert.equal(initialEdgesCount, 5);
 
     await act(async () => {
-      captured.props?.onConnect?.({ source: "runtime", target: "decision" });
+      captured.props?.onConnect?.({
+        source: "runtime-service:backend",
+        target: "execution-step:step-1",
+      });
     });
 
     await act(async () => {
@@ -112,16 +148,19 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 6);
+    assert.equal(initialEdgesCount, 5);
 
     await act(async () => {
-      captured.props?.onConnect?.({ source: "runtime", target: "provider" });
+      captured.props?.onConnect?.({
+        source: "runtime-service:backend",
+        target: "execution-step:step-1",
+      });
     });
 
     assert.equal(captured.props?.edges?.length, initialEdgesCount);
   });
 
-  it("adds edge for valid connection", async () => {
+  it("does not add edge even for valid connection because helper canvas is read-only", async () => {
     const { adapter, captured } = createTestAdapter();
 
     render(
@@ -131,12 +170,60 @@ describe("WorkflowCanvas component", () => {
     );
 
     const initialEdgesCount = captured.props?.edges?.length ?? 0;
-    assert.equal(initialEdgesCount, 6);
+    assert.equal(initialEdgesCount, 5);
 
     await act(async () => {
-      captured.props?.onConnect?.({ source: "runtime", target: "provider" });
+      captured.props?.onConnect?.({
+        source: "runtime-service:backend",
+        target: "execution-step:step-1",
+      });
     });
 
-    assert.equal(captured.props?.edges?.length, initialEdgesCount + 1);
+    assert.equal(captured.props?.edges?.length, initialEdgesCount);
+  });
+
+  it("forwards execution-step node clicks to external handler", async () => {
+    const { adapter, captured } = createTestAdapter();
+    const clickedNodeIds: string[] = [];
+
+    render(
+      <ToastProvider>
+        <WorkflowCanvas
+          systemState={SAMPLE_STATE}
+          testAdapter={adapter}
+          onNodeClick={(node) => {
+            clickedNodeIds.push(node.id);
+          }}
+        />
+      </ToastProvider>,
+    );
+
+    await act(async () => {
+      captured.props?.onNodeClick?.(
+        {},
+        {
+          id: "execution-step:step-1",
+          type: "execution_step",
+          data: { stepId: "step-1" },
+        },
+      );
+    });
+
+    assert.deepEqual(clickedNodeIds, ["execution-step:step-1"]);
+  });
+
+  it("enforces hard read-only flags on ReactFlow", () => {
+    const { adapter, captured } = createTestAdapter();
+
+    render(
+      <ToastProvider>
+        <WorkflowCanvas systemState={SAMPLE_STATE} testAdapter={adapter} />
+      </ToastProvider>,
+    );
+
+    assert.equal(captured.props?.nodesDraggable, false);
+    assert.equal(captured.props?.nodesConnectable, false);
+    assert.equal(captured.props?.elementsSelectable, false);
+    assert.equal(captured.props?.edgesFocusable, false);
   });
 });

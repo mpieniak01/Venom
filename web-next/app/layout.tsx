@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import Script from "next/script";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBarWrapper, TopBarSkeleton } from "@/components/layout/top-bar-wrapper";
 import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/layout/system-status-bar-wrapper";
@@ -80,14 +79,14 @@ export default function RootLayout({
   return (
     <html lang="pl" data-theme={DEFAULT_THEME} suppressHydrationWarning>
       <head>
-        <Script
+        <script
           id="venom-theme-bootstrap"
-          strategy="beforeInteractive"
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: themeBootstrapScript }}
         />
-        <Script
+        <script
           id="venom-app-meta-bootstrap"
-          strategy="beforeInteractive"
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: appMetaBootstrapScript }}
         />
       </head>

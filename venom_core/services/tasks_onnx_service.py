@@ -22,6 +22,7 @@ class TaskRequestLike(Protocol):
     content: str
     session_id: str | None
     forced_intent: str | None
+    store_knowledge: bool
     generation_params: dict[str, Any] | None
 
 
@@ -39,6 +40,20 @@ class StateManagerLike(Protocol):
     async def update_status(
         self, task_id: Any, status: TaskStatus, result: str | None = None
     ) -> None: ...
+
+
+def _is_help_request(content: str, forced_intent: str | None) -> bool:
+    if str(forced_intent or "").strip().upper() == "HELP_REQUEST":
+        return True
+    normalized = str(content or "").strip().lower()
+    return normalized in {"pomoc", "help", "help me"} or normalized.startswith("pomoc ")
+
+
+def _build_fast_help_response() -> str:
+    return (
+        "Jasne, pomogę. Mogę wspierać Cię w analizie, kodowaniu, testach i "
+        "diagnozie problemów. Napisz, czego konkretnie potrzebujesz."
+    )
 
 
 class TracerLike(Protocol):
@@ -161,6 +176,100 @@ def create_and_submit_onnx_task(
     return task
 
 
+def _extract_generation_controls(
+    generation_params: dict[str, Any] | None,
+) -> tuple[int | None, float | None]:
+    max_tokens: int | None = None
+    temperature: float | None = None
+    if not isinstance(generation_params, dict):
+        return max_tokens, temperature
+
+    max_tokens_raw = generation_params.get("max_tokens")
+    temperature_raw = generation_params.get("temperature")
+    if isinstance(max_tokens_raw, (int, float)):
+        max_tokens = int(max_tokens_raw)
+    if isinstance(temperature_raw, (int, float)):
+        temperature = float(temperature_raw)
+    return max_tokens, temperature
+
+
+def _append_user_history(
+    *,
+    append_session_history_fn: Callable[[Any, str, str, str | None], None] | None,
+    task_id: Any,
+    request: TaskRequestLike,
+) -> None:
+    if append_session_history_fn is None:
+        return
+    append_session_history_fn(
+        task_id,
+        "user",
+        request.content,
+        request.session_id,
+    )
+
+
+def _append_assistant_history(
+    *,
+    append_session_history_fn: Callable[[Any, str, str, str | None], None] | None,
+    task_id: Any,
+    result: str,
+    session_id: str | None,
+) -> None:
+    if append_session_history_fn is None:
+        return
+    append_session_history_fn(
+        task_id,
+        "assistant",
+        result,
+        session_id,
+    )
+
+
+async def _generate_onnx_result(
+    *,
+    task_id: Any,
+    request: TaskRequestLike,
+    messages: list[dict[str, str]],
+    max_tokens: int | None,
+    temperature: float | None,
+    run_generation_fn: Callable[
+        [list[dict[str, str]], int | None, float | None], Awaitable[str]
+    ],
+    state_manager: StateManagerLike,
+) -> str:
+    if _is_help_request(request.content, request.forced_intent):
+        state_manager.add_log(task_id, "ONNX: fast help shortcut (HELP_REQUEST).")
+        return _build_fast_help_response()
+
+    result = (await run_generation_fn(messages, max_tokens, temperature)).strip()
+    return result or "Brak odpowiedzi z runtime ONNX."
+
+
+def _append_learning_log_if_needed(
+    *,
+    append_learning_log_fn: Callable[[Any, str, str, str, bool, str], None] | None,
+    task_id: Any,
+    request: TaskRequestLike,
+    result: str,
+) -> None:
+    if append_learning_log_fn is None or not bool(request.store_knowledge):
+        return
+
+    intent = str(request.forced_intent or "").strip().upper() or "GENERAL_CHAT"
+    if intent in {"TIME_REQUEST", "INFRA_STATUS"}:
+        return
+
+    append_learning_log_fn(
+        task_id,
+        intent,
+        request.content,
+        result,
+        True,
+        "",
+    )
+
+
 async def run_onnx_task(
     *,
     state_manager: StateManagerLike,
@@ -173,26 +282,34 @@ async def run_onnx_task(
     ],
     trace_success_fn: Callable[[Any, str], None],
     trace_failure_fn: Callable[[Any, Exception], None],
+    append_session_history_fn: Callable[[Any, str, str, str | None], None]
+    | None = None,
+    append_learning_log_fn: Callable[[Any, str, str, str, bool, str], None]
+    | None = None,
     logger: Any,
 ) -> None:
     try:
         await state_manager.update_status(task_id, TaskStatus.PROCESSING)
         state_manager.add_log(task_id, "ONNX: rozpoczęto przetwarzanie zadania.")
+        _append_user_history(
+            append_session_history_fn=append_session_history_fn,
+            task_id=task_id,
+            request=request,
+        )
+
         messages = build_messages_fn(request.content, request.forced_intent)
-
-        max_tokens = None
-        temperature = None
-        if isinstance(request.generation_params, dict):
-            mt = request.generation_params.get("max_tokens")
-            temp = request.generation_params.get("temperature")
-            if isinstance(mt, (int, float)):
-                max_tokens = int(mt)
-            if isinstance(temp, (int, float)):
-                temperature = float(temp)
-
-        result = (await run_generation_fn(messages, max_tokens, temperature)).strip()
-        if not result:
-            result = "Brak odpowiedzi z runtime ONNX."
+        max_tokens, temperature = _extract_generation_controls(
+            request.generation_params
+        )
+        result = await _generate_onnx_result(
+            task_id=task_id,
+            request=request,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            run_generation_fn=run_generation_fn,
+            state_manager=state_manager,
+        )
 
         state_manager.update_context(
             task_id,
@@ -204,6 +321,18 @@ async def run_onnx_task(
         )
         state_manager.add_log(task_id, "ONNX: zakończono generację.")
         await state_manager.update_status(task_id, TaskStatus.COMPLETED, result=result)
+        _append_assistant_history(
+            append_session_history_fn=append_session_history_fn,
+            task_id=task_id,
+            result=result,
+            session_id=request.session_id,
+        )
+        _append_learning_log_if_needed(
+            append_learning_log_fn=append_learning_log_fn,
+            task_id=task_id,
+            request=request,
+            result=result,
+        )
         trace_success_fn(task_id, result)
     except Exception as exc:
         logger.exception("Błąd ONNX task execution: %s", exc)

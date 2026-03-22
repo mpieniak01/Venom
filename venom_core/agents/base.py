@@ -154,6 +154,13 @@ class BaseAgent(ABC):
 
         # Adaptuj parametry do formatu providera
         adapted_params = GenerationParamsAdapter.adapt_params(merged_params, provider)
+        if provider == "onnx":
+            # Kontrakt kompatybilności testów i telemetryki: przy ONNX utrzymuj także
+            # aliasy token-limit obok max_new_tokens.
+            max_new_tokens = adapted_params.get("max_new_tokens")
+            if isinstance(max_new_tokens, (int, float)):
+                adapted_params.setdefault("num_predict", int(max_new_tokens))
+                adapted_params.setdefault("max_tokens", int(max_new_tokens))
 
         if adapted_params:
             logger.debug(

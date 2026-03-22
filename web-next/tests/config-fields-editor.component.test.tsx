@@ -78,6 +78,43 @@ describe("ConfigFieldsEditor", () => {
     assert.ok(screen.getByText("ui"));
   });
 
+  it("updates selectable config field through compact option pills", () => {
+    const onUpdateField = mock.fn(() => undefined);
+
+    render(
+      <ConfigFieldsEditor
+        configFields={[
+          {
+            entity_id: "config:INTENT_MODE",
+            field: "INTENT_MODE",
+            key: "INTENT_MODE",
+            value: "simple",
+            effective_value: "simple",
+            source: "env",
+            editable: true,
+            restart_required: false,
+            affected_services: ["backend"],
+            options: ["simple", "advanced", "expert"],
+          },
+        ]}
+        onUpdateField={onUpdateField}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /INTENT_MODE/i }));
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+
+    assert.equal(onUpdateField.mock.callCount(), 1);
+    const firstCall = onUpdateField.mock.calls[0];
+    assert.ok(firstCall);
+    const [updatedField, updatedValue] = ((firstCall.arguments ?? []) as unknown) as [
+      { key: string },
+      unknown,
+    ];
+    assert.equal(updatedField.key, "INTENT_MODE");
+    assert.equal(updatedValue, "advanced");
+  });
+
   it("disables controls for read-only config fields", () => {
     const onUpdateField = mock.fn(() => undefined);
 

@@ -378,6 +378,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics/execution-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Mode Kpi
+         * @description Zwraca KPI i alerty planera execution_mode dla dashboardu operacyjnego.
+         */
+        get: operations["get_execution_mode_kpi_api_v1_metrics_execution_mode_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/metrics": {
         parameters: {
             query?: never;
@@ -1091,6 +1111,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/academy/adapters/{adapter_id}/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign Adapter For Chat */
+        post: operations["sign_adapter_for_chat_api_v1_academy_adapters__adapter_id__sign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/academy/adapters/deactivate": {
         parameters: {
             query?: never;
@@ -1495,6 +1532,23 @@ export interface paths {
         };
         /** Get Knowledge Context Map */
         get: operations["get_knowledge_context_map_api_v1_knowledge_context_map__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Entries */
+        get: operations["get_knowledge_entries_api_v1_knowledge_entries_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1968,6 +2022,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ghost/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ghost Status
+         * @description Zwraca status wykonania zadań Ghost Agent.
+         */
+        get: operations["get_ghost_status_api_v1_ghost_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ghost/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Ghost Task
+         * @description Uruchamia zadanie Ghost Agent w tle.
+         */
+        post: operations["start_ghost_task_api_v1_ghost_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ghost/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Ghost Task
+         * @description Anuluje aktywne zadanie Ghost Agent i aktywuje emergency stop.
+         */
+        post: operations["cancel_ghost_task_api_v1_ghost_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scheduler/status": {
         parameters: {
             query?: never;
@@ -2385,6 +2499,46 @@ export interface paths {
          * @description Ustawia nowy poziom autonomii.
          */
         post: operations["set_autonomy_level_api_v1_system_autonomy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/autonomy/observability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Autonomy Observability
+         * @description Zwraca dedykowany snapshot observability policy/autonomy dla operacji (SRE/ops).
+         */
+        get: operations["get_autonomy_observability_api_v1_system_autonomy_observability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/autonomy/rollout-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Autonomy Rollout Status
+         * @description Zwraca status gotowości rollout runtime-only policy gate.
+         */
+        get: operations["get_autonomy_rollout_status_api_v1_system_autonomy_rollout_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3655,24 +3809,17 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get System State
-         * @description Get current state of the entire system.
-         *
-         *     Returns comprehensive system state including:
-         *     - Decision strategy and intent mode
-         *     - Kernel and runtime configuration
-         *     - Provider and model status
-         *     - Embedding configuration
-         *     - Workflow status
-         *     - Active operations
+         * Get Control State
+         * @description Get canonical operator state for workflow-control.
          *
          *     Args:
          *         service: Control plane service injected via Depends
+         *         request_id: Optional explicit request selector
          *
          *     Returns:
-         *         Current system state
+         *         Current canonical operator state
          */
-        get: operations["get_system_state_api_v1_workflow_control_state_get"];
+        get: operations["get_control_state_api_v1_workflow_control_state_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3698,6 +3845,46 @@ export interface paths {
         get: operations["get_control_options_api_v1_workflow_control_options_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/control/runtime/{service_id}/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Runtime Service Action
+         * @description Execute runtime service action via workflow-control gateway.
+         */
+        post: operations["runtime_service_action_api_v1_workflow_control_runtime__service_id___action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/control/workflow/{request_id}/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Workflow Operation Gateway
+         * @description Execute workflow operation via workflow-control gateway.
+         */
+        post: operations["workflow_operation_gateway_api_v1_workflow_control_workflow__request_id___operation__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4524,6 +4711,11 @@ export interface components {
              * @default false
              */
             deploy_to_chat_runtime: boolean;
+            /**
+             * Require Chat Signature
+             * @default false
+             */
+            require_chat_signature: boolean;
         };
         /**
          * ActiveLlmServerRequest
@@ -4550,6 +4742,38 @@ export interface components {
              * @default false
              */
             exact_only: boolean;
+        };
+        /**
+         * AdapterChatSignRequest
+         * @description Request to sign adapter for chat runtime usage.
+         */
+        AdapterChatSignRequest: {
+            /** Runtime Id */
+            runtime_id: string;
+            /** Model Id */
+            model_id?: string | null;
+            /** Signer */
+            signer?: string | null;
+            /**
+             * Conversion Mode
+             * @default none
+             * @enum {string}
+             */
+            conversion_mode: "none" | "merge_export" | "gguf";
+        };
+        /**
+         * AdapterChatSignResponse
+         * @description Response after signing adapter for chat usage.
+         */
+        AdapterChatSignResponse: {
+            /** Success */
+            success: boolean;
+            /** Adapter Id */
+            adapter_id: string;
+            /** Signature */
+            signature?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * AdapterInfo
@@ -4864,6 +5088,75 @@ export interface components {
             }[];
             /** Count */
             count: number;
+        };
+        /**
+         * AutonomyObservabilityPayload
+         * @description Operational policy/autonomy observability payload.
+         */
+        AutonomyObservabilityPayload: {
+            /**
+             * Blocked Count
+             * @default 0
+             */
+            blocked_count: number;
+            /**
+             * Deny Rate
+             * @default 0
+             */
+            deny_rate: number;
+            /** Top Reason Codes */
+            top_reason_codes?: components["schemas"]["PolicyReasonStat"][];
+            false_positive_triage?: components["schemas"]["PolicyFalsePositiveTriage"];
+        };
+        /**
+         * AutonomyObservabilityResponse
+         * @description Response for dedicated policy/autonomy observability endpoint.
+         */
+        AutonomyObservabilityResponse: {
+            /**
+             * Status
+             * @default success
+             */
+            status: string;
+            /**
+             * Source
+             * @default runtime_policy_gate
+             */
+            source: string;
+            policy: components["schemas"]["AutonomyObservabilityPayload"];
+        };
+        /**
+         * AutonomyRolloutStatusResponse
+         * @description Response for runtime-only policy gate rollout readiness.
+         */
+        AutonomyRolloutStatusResponse: {
+            /**
+             * Status
+             * @default success
+             */
+            status: string;
+            /**
+             * Source
+             * @default runtime_policy_gate
+             */
+            source: string;
+            /** Readiness */
+            readiness: string;
+            /** Runtime Only Architecture */
+            runtime_only_architecture: boolean;
+            /** Policy Gate Enabled */
+            policy_gate_enabled: boolean;
+            /**
+             * Global Checkpoint Phase
+             * @default global_pre_execution
+             */
+            global_checkpoint_phase: string;
+            /** Legacy Submit Stage Removed */
+            legacy_submit_stage_removed: boolean;
+            /** Observability Endpoint Available */
+            observability_endpoint_available: boolean;
+            /** Required Next Actions */
+            required_next_actions?: string[];
         };
         /**
          * BenchmarkDeleteResponse
@@ -5606,12 +5899,36 @@ export interface components {
          * @description Response with workflow control option catalogs.
          */
         ControlOptionsResponse: {
+            /** Decision Strategies */
+            decision_strategies?: string[];
+            /** Intent Modes */
+            intent_modes?: string[];
+            /** Kernels */
+            kernels?: string[];
             /** Provider Sources */
             provider_sources?: string[];
             /** Embedding Sources */
             embedding_sources?: string[];
             providers: components["schemas"]["ControlOptionsCatalog"];
             embeddings: components["schemas"]["ControlOptionsCatalog"];
+            /** Kernel Runtimes */
+            kernel_runtimes?: {
+                [key: string]: string[];
+            };
+            /** Intent Requirements */
+            intent_requirements?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Provider Embeddings */
+            provider_embeddings?: {
+                [key: string]: string[];
+            };
+            /** Embedding Providers */
+            embedding_providers?: {
+                [key: string]: string[];
+            };
             active: components["schemas"]["ControlOptionsActive"];
         };
         /**
@@ -5664,6 +5981,17 @@ export interface components {
          */
         ControlStateResponse: {
             system_state: components["schemas"]["SystemState"];
+            meta?: components["schemas"]["OperatorMeta"] | null;
+            workflow_target?: components["schemas"]["WorkflowTargetState"] | null;
+            /** Config Fields */
+            config_fields?: components["schemas"]["OperatorConfigField"][];
+            /** Runtime Services */
+            runtime_services?: components["schemas"]["OperatorRuntimeService"][];
+            /** Execution Steps */
+            execution_steps?: components["schemas"]["OperatorExecutionStep"][];
+            graph?: components["schemas"]["OperatorGraph"] | null;
+            /** Allowed Actions */
+            allowed_actions?: string[];
             /** Last Operation */
             last_operation?: string | null;
             /** Pending Changes */
@@ -5946,6 +6274,24 @@ export interface components {
             time_max: string;
         };
         /**
+         * ExecutionModeKPIResponse
+         * @description Execution mode planner KPI payload for operational dashboarding.
+         */
+        ExecutionModeKPIResponse: {
+            /** Status */
+            status?: string | null;
+            /** Kpi */
+            kpi?: {
+                [key: string]: unknown;
+            };
+            /** Alerts */
+            alerts?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * FeedbackLogsResponse
          * @description Response model for feedback logs.
          */
@@ -6032,6 +6378,13 @@ export interface components {
             steps: components["schemas"]["FlowStep"][];
             /** Mermaid Diagram */
             mermaid_diagram: string;
+        };
+        /** GhostRunRequest */
+        GhostRunRequest: {
+            /** Content */
+            content: string;
+            /** Runtime Profile */
+            runtime_profile?: string | null;
         };
         /**
          * GitStatusResponse
@@ -6334,6 +6687,65 @@ export interface components {
             /** Links */
             links?: components["schemas"]["KnowledgeLinkV1"][];
         };
+        /** KnowledgeEntriesResponse */
+        KnowledgeEntriesResponse: {
+            /**
+             * Status
+             * @default success
+             */
+            status: string;
+            /** Count */
+            count: number;
+            /** Entries */
+            entries?: components["schemas"]["KnowledgeEntry"][];
+        };
+        /** KnowledgeEntry */
+        KnowledgeEntry: {
+            /** Entry Id */
+            entry_id: string;
+            /** Entry Type */
+            entry_type: string;
+            scope: components["schemas"]["KnowledgeEntryScope"];
+            /** Source */
+            source: string;
+            /** Content */
+            content: string;
+            /** Summary */
+            summary?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Session Id */
+            session_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Ttl At */
+            ttl_at?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Quality Score */
+            quality_score?: number | null;
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+            source_meta: components["schemas"]["KnowledgeSourceMeta"];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * KnowledgeEntryScope
+         * @enum {string}
+         */
+        KnowledgeEntryScope: "session" | "global" | "task";
         /**
          * KnowledgeKind
          * @enum {string}
@@ -6378,6 +6790,21 @@ export interface components {
          * @enum {string}
          */
         KnowledgeSource: "session_store" | "state_manager" | "lessons_store" | "vector_store" | "orchestrator";
+        /** KnowledgeSourceMeta */
+        KnowledgeSourceMeta: {
+            origin: components["schemas"]["KnowledgeSourceOrigin"];
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Reason Code */
+            reason_code?: string | null;
+        };
+        /**
+         * KnowledgeSourceOrigin
+         * @enum {string}
+         */
+        KnowledgeSourceOrigin: "session" | "lesson" | "vector" | "graph" | "training" | "external";
         /** LearningStatusResponse */
         LearningStatusResponse: {
             /** Status */
@@ -6617,6 +7044,18 @@ export interface components {
             blocked_count?: number | null;
             /** Block Rate */
             block_rate?: number | null;
+            /** Deny Rate */
+            deny_rate?: number | null;
+            /** Top Reason Codes */
+            top_reason_codes?: {
+                [key: string]: unknown;
+            }[];
+            /** False Positive Triage */
+            false_positive_triage?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
         };
         /**
          * MetricsResponse
@@ -6794,6 +7233,211 @@ export interface components {
             /** Builder Script */
             builder_script?: string | null;
         };
+        /**
+         * OperatorConfigField
+         * @description Single editable config field exposed to workflow-control.
+         */
+        OperatorConfigField: {
+            /** Entity Id */
+            entity_id: string;
+            /** Field */
+            field: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value?: unknown;
+            /** Effective Value */
+            effective_value?: unknown;
+            /**
+             * Source
+             * @default default
+             */
+            source: string;
+            /**
+             * Editable
+             * @default true
+             */
+            editable: boolean;
+            /**
+             * Restart Required
+             * @default false
+             */
+            restart_required: boolean;
+            /** Affected Services */
+            affected_services?: string[];
+            /** Options */
+            options?: string[];
+        };
+        /**
+         * OperatorExecutionStep
+         * @description Execution trace step for selected workflow request.
+         */
+        OperatorExecutionStep: {
+            /** Id */
+            id: string;
+            /** Component */
+            component: string;
+            /** Action */
+            action: string;
+            /** Status */
+            status: string;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Details */
+            details?: string | null;
+            /**
+             * Stage
+             * @default execution
+             */
+            stage: string;
+            /** Related Service Id */
+            related_service_id?: string | null;
+            /** Related Config Keys */
+            related_config_keys?: string[];
+            /** Depends On Step Id */
+            depends_on_step_id?: string | null;
+            /**
+             * Severity
+             * @default normal
+             */
+            severity: string;
+        };
+        /**
+         * OperatorGraph
+         * @description Canonical graph payload for workflow canvas.
+         */
+        OperatorGraph: {
+            /** Nodes */
+            nodes?: components["schemas"]["OperatorGraphNode"][];
+            /** Edges */
+            edges?: components["schemas"]["OperatorGraphEdge"][];
+        };
+        /**
+         * OperatorGraphEdge
+         * @description Graph edge descriptor for frontend canvas.
+         */
+        OperatorGraphEdge: {
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /**
+             * Animated
+             * @default false
+             */
+            animated: boolean;
+            /** Label */
+            label?: string | null;
+        };
+        /**
+         * OperatorGraphNode
+         * @description Graph node descriptor for frontend canvas.
+         */
+        OperatorGraphNode: {
+            /** Id */
+            id: string;
+            /** Type */
+            type: string;
+            /** Label */
+            label: string;
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            };
+            /** Position */
+            position?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * OperatorMeta
+         * @description Metadata for canonical operator state payload.
+         */
+        OperatorMeta: {
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /**
+             * Request Selector
+             * @default auto
+             */
+            request_selector: string;
+        };
+        /**
+         * OperatorRuntimeService
+         * @description Canonical runtime service entry for operator UI.
+         */
+        OperatorRuntimeService: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Status */
+            status: string;
+            /** Pid */
+            pid?: number | null;
+            /** Port */
+            port?: number | null;
+            /**
+             * Cpu Percent
+             * @default 0
+             */
+            cpu_percent: number;
+            /**
+             * Memory Mb
+             * @default 0
+             */
+            memory_mb: number;
+            /** Uptime Seconds */
+            uptime_seconds?: number | null;
+            /** Runtime Version */
+            runtime_version?: string | null;
+            /**
+             * Actionable
+             * @default false
+             */
+            actionable: boolean;
+            /** Allowed Actions */
+            allowed_actions?: string[];
+            /** Dependencies */
+            dependencies?: string[];
+        };
+        /**
+         * PolicyFalsePositiveTriage
+         * @description Triage snapshot for potential false-positive policy blocks.
+         */
+        PolicyFalsePositiveTriage: {
+            /**
+             * Candidate Count
+             * @default 0
+             */
+            candidate_count: number;
+            /**
+             * Candidate Rate
+             * @default 0
+             */
+            candidate_rate: number;
+            /** Top Candidate Reasons */
+            top_candidate_reasons?: components["schemas"]["PolicyReasonStat"][];
+        };
+        /**
+         * PolicyReasonStat
+         * @description Single reason code statistic for policy/autonomy blocks.
+         */
+        PolicyReasonStat: {
+            /** Reason Code */
+            reason_code: string;
+            /** Count */
+            count: number;
+            /** Share Rate */
+            share_rate: number;
+        };
         /** ProvenanceV1 */
         ProvenanceV1: {
             source: components["schemas"]["KnowledgeSource"];
@@ -6869,7 +7513,7 @@ export interface components {
          * @description Reason codes for operation results.
          * @enum {string}
          */
-        ReasonCode: "success_hot_swap" | "success_restart_pending" | "invalid_configuration" | "incompatible_combination" | "dependency_missing" | "service_unavailable" | "forbidden_transition" | "invalid_state" | "kernel_runtime_mismatch" | "provider_model_mismatch" | "embedding_incompatible" | "intent_mode_conflict" | "operation_in_progress" | "operation_completed" | "operation_failed" | "operation_cancelled";
+        ReasonCode: "success_hot_swap" | "success_restart_pending" | "invalid_configuration" | "incompatible_combination" | "dependency_missing" | "service_unavailable" | "forbidden_transition" | "invalid_state" | "resource_not_found" | "kernel_runtime_mismatch" | "provider_model_mismatch" | "embedding_incompatible" | "intent_mode_conflict" | "operation_in_progress" | "operation_completed" | "operation_failed" | "operation_cancelled";
         /**
          * ResourceChange
          * @description Single resource change in a plan.
@@ -6884,6 +7528,10 @@ export interface components {
             current_value?: unknown | null;
             /** New Value */
             new_value?: unknown | null;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Field */
+            field?: string | null;
             /** Metadata */
             metadata?: {
                 [key: string]: unknown;
@@ -7568,6 +8216,11 @@ export interface components {
             task_id: string;
             /** Status */
             status: string;
+            /**
+             * Decision
+             * @default allow
+             */
+            decision: string;
             /** Llm Provider */
             llm_provider?: string | null;
             /** Llm Model */
@@ -7583,6 +8236,16 @@ export interface components {
             reason_code?: string | null;
             /** User Message */
             user_message?: string | null;
+            /** Remediation Hint */
+            remediation_hint?: string | null;
+            /** Technical Context */
+            technical_context?: {
+                [key: string]: unknown;
+            } | null;
+            /** Execution Mode */
+            execution_mode?: string | null;
+            /** Fallback Reason */
+            fallback_reason?: string | null;
         };
         /**
          * TaskStatus
@@ -7623,6 +8286,21 @@ export interface components {
             base_model?: string | null;
             /** Runtime Id */
             runtime_id?: string | null;
+            /**
+             * Onnx Conversion Mode
+             * @default none
+             * @enum {string}
+             */
+            onnx_conversion_mode: "none" | "merge_export";
+            /**
+             * Auto Sign For Chat
+             * @default false
+             */
+            auto_sign_for_chat: boolean;
+            /** Chat Signer */
+            chat_signer?: string | null;
+            /** Chat Target Model Id */
+            chat_target_model_id?: string | null;
             /**
              * Lora Rank
              * @default 8
@@ -8139,6 +8817,29 @@ export interface components {
          * @enum {string}
          */
         WorkflowStatus: "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
+        /**
+         * WorkflowTargetState
+         * @description Selected workflow request target and operation context.
+         */
+        WorkflowTargetState: {
+            /** Request Id */
+            request_id?: string | null;
+            /** Task Status */
+            task_status?: string | null;
+            /**
+             * Workflow Status
+             * @default idle
+             */
+            workflow_status: string;
+            /** Runtime Id */
+            runtime_id?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Allowed Operations */
+            allowed_operations?: string[];
+        };
     };
     responses: never;
     parameters: never;
@@ -8679,6 +9380,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricsResponse"];
+                };
+            };
+            /** @description Błąd podczas pobierania metryk systemowych */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Metrics collector nie jest dostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_execution_mode_kpi_api_v1_metrics_execution_mode_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionModeKPIResponse"];
                 };
             };
             /** @description Błąd podczas pobierania metryk systemowych */
@@ -10283,6 +11018,76 @@ export interface operations {
             };
         };
     };
+    sign_adapter_for_chat_api_v1_academy_adapters__adapter_id__sign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                adapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdapterChatSignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdapterChatSignResponse"];
+                };
+            };
+            /** @description Invalid request payload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Access denied for non-localhost administrative operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Adapter not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Academy is unavailable or not initialized. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     deactivate_adapter_api_v1_academy_adapters_deactivate_post: {
         parameters: {
             query?: never;
@@ -11341,6 +12146,57 @@ export interface operations {
             };
         };
     };
+    get_knowledge_entries_api_v1_knowledge_entries_get: {
+        parameters: {
+            query?: {
+                /** @description Filtr po session_id */
+                session_id?: string | null;
+                /** @description Filtr zakresu wpisów: session/global/task */
+                scope?: components["schemas"]["KnowledgeEntryScope"] | null;
+                /** @description Filtr źródła: session/lesson/vector/graph/training/external */
+                source?: components["schemas"]["KnowledgeSourceOrigin"] | null;
+                /** @description Lista tagów oddzielona przecinkami (OR logic) */
+                tags?: string | null;
+                /** @description Początek okna czasowego ISO-8601 */
+                created_from?: string | null;
+                /** @description Koniec okna czasowego ISO-8601 */
+                created_to?: string | null;
+                /** @description Maksymalna liczba wpisów */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeEntriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Błąd wewnętrzny */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_graph_summary_api_v1_graph_summary_get: {
         parameters: {
             query?: never;
@@ -12045,6 +12901,128 @@ export interface operations {
                 content?: never;
             };
             /** @description Shadow Agent lub Orchestrator nie jest dostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_ghost_status_api_v1_ghost_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Błąd wewnętrzny podczas pobierania statusu */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ghost API lub Ghost Agent nie jest dostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    start_ghost_task_api_v1_ghost_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GhostRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Mutacje są zablokowane przez policy/autonomy */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ghost Agent wykonuje już zadanie */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Ghost API lub Ghost Agent nie jest dostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancel_ghost_task_api_v1_ghost_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Mutacje są zablokowane przez policy/autonomy */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ghost API lub Ghost Agent nie jest dostępny */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -12985,6 +13963,67 @@ export interface operations {
                 };
             };
             /** @description Błąd wewnętrzny podczas zmiany poziomu autonomii */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_autonomy_observability_api_v1_system_autonomy_observability_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyObservabilityResponse"];
+                };
+            };
+            /** @description Błąd wewnętrzny podczas pobierania observability policy */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Metrics collector nie jest dostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_autonomy_rollout_status_api_v1_system_autonomy_rollout_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyRolloutStatusResponse"];
+                };
+            };
+            /** @description Błąd wewnętrzny podczas pobierania statusu rollout policy */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -15409,9 +16448,12 @@ export interface operations {
             };
         };
     };
-    get_system_state_api_v1_workflow_control_state_get: {
+    get_control_state_api_v1_workflow_control_state_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional explicit request selector */
+                request_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -15425,6 +16467,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ControlStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Internal server error */
@@ -15452,6 +16503,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ControlOptionsResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    runtime_service_action_api_v1_workflow_control_runtime__service_id___action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_id: string;
+                action: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid service or runtime action */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    workflow_operation_gateway_api_v1_workflow_control_workflow__request_id___operation__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                operation: components["schemas"]["WorkflowOperation"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid workflow operation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Internal server error */

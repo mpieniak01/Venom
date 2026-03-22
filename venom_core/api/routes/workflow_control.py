@@ -27,6 +27,7 @@ from venom_core.api.schemas.workflow_control import (
     ResourceType,
     SystemState,
     WorkflowOperation,
+    WorkflowStepOperation,
 )
 from venom_core.services.control_plane import ControlPlaneService
 from venom_core.services.control_plane_audit import ControlPlaneAuditTrail
@@ -290,6 +291,48 @@ async def workflow_operation_gateway(
             "Failed workflow gateway operation=%s request_id=%s",
             operation,
             request_id,
+        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post(
+    "/workflow/{request_id}/step/{step_id}/{operation}",
+    responses={
+        400: {"description": "Invalid request scope"},
+        422: {"description": "Validation error (unknown step operation)"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def workflow_step_operation_gateway(
+    request: Request,
+    request_id: str,
+    step_id: str,
+    operation: WorkflowStepOperation,
+):
+    """Execute operation scoped to a concrete execution step."""
+    try:
+        if not step_id.startswith(f"{request_id}:"):
+            raise HTTPException(
+                status_code=400,
+                detail="step_id does not belong to request_id",
+            )
+
+        user = _extract_user_from_request(request)
+        service = get_workflow_operation_service()
+        return service.retry_workflow(
+            workflow_id=request_id,
+            triggered_by=user,
+            step_id=step_id,
+            metadata={"scope": "execution_step", "step_operation": operation.value},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            "Failed workflow-step gateway operation=%s request_id=%s step_id=%s",
+            operation,
+            request_id,
+            step_id,
         )
         raise HTTPException(status_code=500, detail=str(e)) from e
 

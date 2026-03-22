@@ -1,9 +1,11 @@
 import type { Edge, Node } from "@xyflow/react";
 
-import { buildWorkflowGraph } from "@/lib/workflow-canvas-helpers";
+import { buildWorkflowGraph, type BuildWorkflowGraphOptions } from "@/lib/workflow-canvas-helpers";
 import type { SystemState } from "@/types/workflow-control";
 
 import {
+  LAYOUT_Y_OFFSET,
+  LAYOUT_Y_START,
   LAYOUT_X_OFFSET,
   LAYOUT_X_START,
   STRICT_LAYOUT,
@@ -14,9 +16,11 @@ import {
 
 export function buildCanvasGraph(
   systemState: SystemState | null,
-  readOnly: boolean
+  _readOnly: boolean,
+  options?: BuildWorkflowGraphOptions,
 ): { initialNodes: Node[]; initialEdges: Edge[] } {
-  const { nodes, edges } = buildWorkflowGraph(systemState);
+  const { nodes, edges } = buildWorkflowGraph(systemState, options ?? {});
+  const canvasReadOnly = true;
 
   const backgroundSwimlanes: Node[] = SWIMLANE_ORDER.map((category, index) => ({
     id: `swimlane-${category}`,
@@ -29,27 +33,43 @@ export function buildCanvasGraph(
     zIndex: 0,
   }));
 
-  const positionedNodes: Node[] = nodes.map((node) => {
-    const position = STRICT_LAYOUT[node.type || ""];
-    if (!position) {
-      return {
-        ...node,
-        draggable: !readOnly,
-        selectable: !readOnly,
-        zIndex: 20,
-      };
+  const laneIndexForNode = (node: Node): number => {
+    const canvasLane = (node.data as { canvasLane?: string } | undefined)?.canvasLane;
+    if (canvasLane) {
+      const laneIndex = SWIMLANE_ORDER.indexOf(canvasLane as (typeof SWIMLANE_ORDER)[number]);
+      if (laneIndex >= 0) return laneIndex;
     }
+
+    if (node.type === "runtime_service" || node.type === "runtime") return 1;
+    if (node.type === "execution_step") return 2;
+    return 0;
+  };
+
+  const positionedNodes: Node[] = nodes.map((node) => {
+    const canvasData = (node.data as {
+      canvasColumn?: number;
+      canvasRow?: number;
+      canvasLane?: string;
+    } | undefined) ?? {};
+    const strictPosition = STRICT_LAYOUT[node.type || ""];
+    const laneIndex = laneIndexForNode(node);
+    const column =
+      typeof canvasData.canvasColumn === "number"
+        ? canvasData.canvasColumn
+        : strictPosition?.x ?? 0;
+    const row =
+      typeof canvasData.canvasRow === "number"
+        ? canvasData.canvasRow
+        : strictPosition?.row ?? 0;
 
     return {
       ...node,
-      parentId: `swimlane-${node.type}`,
-      extent: "parent",
       position: {
-        x: LAYOUT_X_START + position.x * LAYOUT_X_OFFSET,
-        y: 25,
+        x: LAYOUT_X_START + column * LAYOUT_X_OFFSET,
+        y: laneIndex * SWIMLANE_HEIGHT + LAYOUT_Y_START + row * LAYOUT_Y_OFFSET,
       },
-      draggable: !readOnly,
-      selectable: !readOnly,
+      draggable: !canvasReadOnly,
+      selectable: !canvasReadOnly,
       zIndex: 20,
     };
   });
@@ -67,6 +87,7 @@ export function graphSignature(nodes: Node[], edges: Edge[]): string {
       type: node.type,
       position: node.position,
       data: node.data,
+      selected: node.selected,
       parentId: node.parentId,
       draggable: node.draggable,
       selectable: node.selectable,

@@ -60,6 +60,7 @@ class _Request:
     content: str
     session_id: str
     forced_intent: str | None = None
+    store_knowledge: bool = True
     generation_params: dict[str, object] | None = None
 
 
@@ -265,6 +266,152 @@ async def test_tasks_onnx_helpers_cover_trace_and_run_branches() -> None:
         logger=_Logger(),
     )
     assert "gen_fail" in failures[-1]
+
+
+@pytest.mark.asyncio
+async def test_tasks_onnx_fast_help_and_session_history_contract() -> None:
+    state = _StateManager()
+    runtime = _Runtime()
+    history: list[tuple[str, str, str, str | None]] = []
+    generation_calls: list[tuple[int | None, float | None]] = []
+
+    async def _run_generation(_messages, max_tokens, temperature):
+        generation_calls.append((max_tokens, temperature))
+        return "model-output"
+
+    await tsvc.run_onnx_task(
+        state_manager=state,
+        task_id="task-fast-help",
+        request=_Request(
+            content="pomoc", session_id="sess-fast", forced_intent="HELP_REQUEST"
+        ),
+        runtime=runtime,
+        build_messages_fn=lambda content, _intent: [
+            {"role": "user", "content": content}
+        ],
+        run_generation_fn=_run_generation,
+        trace_success_fn=lambda *_args: None,
+        trace_failure_fn=lambda *_args: None,
+        append_session_history_fn=lambda task_id,
+        role,
+        content,
+        session_id: history.append((task_id, role, content, session_id)),
+        logger=_Logger(),
+    )
+
+    assert generation_calls == []
+    assert len(history) == 2
+    assert history[0] == ("task-fast-help", "user", "pomoc", "sess-fast")
+    assert history[1][0] == "task-fast-help"
+    assert history[1][1] == "assistant"
+    assert history[1][3] == "sess-fast"
+    assert history[1][2].startswith("Jasne, pomogę.")
+
+    history.clear()
+    await tsvc.run_onnx_task(
+        state_manager=state,
+        task_id="task-normal",
+        request=_Request(
+            content="zwykłe zapytanie",
+            session_id="sess-normal",
+            generation_params={"max_tokens": 32, "temperature": 0.4},
+        ),
+        runtime=runtime,
+        build_messages_fn=lambda content, _intent: [
+            {"role": "user", "content": content}
+        ],
+        run_generation_fn=_run_generation,
+        trace_success_fn=lambda *_args: None,
+        trace_failure_fn=lambda *_args: None,
+        append_session_history_fn=lambda task_id,
+        role,
+        content,
+        session_id: history.append((task_id, role, content, session_id)),
+        logger=_Logger(),
+    )
+
+    assert generation_calls == [(32, 0.4)]
+    assert history == [
+        ("task-normal", "user", "zwykłe zapytanie", "sess-normal"),
+        ("task-normal", "assistant", "model-output", "sess-normal"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tasks_onnx_appends_learning_log_for_store_knowledge() -> None:
+    state = _StateManager()
+    runtime = _Runtime()
+    learning_log_calls: list[tuple[str, str, str, str, bool, str]] = []
+
+    async def _run_generation(_messages, _max_tokens, _temperature):
+        return "onnx-result"
+
+    await tsvc.run_onnx_task(
+        state_manager=state,
+        task_id="task-learning",
+        request=_Request(
+            content="krótkie pytanie",
+            session_id="sess-learning",
+            forced_intent="GENERAL_CHAT",
+            store_knowledge=True,
+        ),
+        runtime=runtime,
+        build_messages_fn=lambda content, _intent: [
+            {"role": "user", "content": content}
+        ],
+        run_generation_fn=_run_generation,
+        trace_success_fn=lambda *_args: None,
+        trace_failure_fn=lambda *_args: None,
+        append_learning_log_fn=lambda task_id, intent, prompt, result, success, error: (
+            learning_log_calls.append((task_id, intent, prompt, result, success, error))
+        ),
+        logger=_Logger(),
+    )
+
+    assert learning_log_calls == [
+        (
+            "task-learning",
+            "GENERAL_CHAT",
+            "krótkie pytanie",
+            "onnx-result",
+            True,
+            "",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tasks_onnx_skips_learning_log_for_non_learning_intent() -> None:
+    state = _StateManager()
+    runtime = _Runtime()
+    learning_log_calls: list[tuple[str, str, str, str, bool, str]] = []
+
+    async def _run_generation(_messages, _max_tokens, _temperature):
+        return "onnx-result"
+
+    await tsvc.run_onnx_task(
+        state_manager=state,
+        task_id="task-no-learning",
+        request=_Request(
+            content="jaka godzina",
+            session_id="sess-no-learning",
+            forced_intent="TIME_REQUEST",
+            store_knowledge=True,
+        ),
+        runtime=runtime,
+        build_messages_fn=lambda content, _intent: [
+            {"role": "user", "content": content}
+        ],
+        run_generation_fn=_run_generation,
+        trace_success_fn=lambda *_args: None,
+        trace_failure_fn=lambda *_args: None,
+        append_learning_log_fn=lambda task_id, intent, prompt, result, success, error: (
+            learning_log_calls.append((task_id, intent, prompt, result, success, error))
+        ),
+        logger=_Logger(),
+    )
+
+    assert learning_log_calls == []
 
 
 def test_stream_state_helper_decisions_and_packet_update() -> None:

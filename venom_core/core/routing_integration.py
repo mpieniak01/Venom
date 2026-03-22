@@ -126,20 +126,20 @@ def _get_router(state_manager: Any) -> HybridModelRouter:
     with _ROUTER_CACHE_LOCK:
         router_cls_id = id(router_cls)
         if state_manager is None:
-            cached = _ROUTER_CACHE_NO_STATE.get(router_cls_id)
-            if cached is not None:
-                return cached
+            cached_router = _ROUTER_CACHE_NO_STATE.get(router_cls_id)
+            if cached_router is not None:
+                return cached_router
             router = router_cls(state_manager=state_manager)
             _ROUTER_CACHE_NO_STATE[router_cls_id] = router
             return router
 
         try:
-            cached = _ROUTER_CACHE.get(state_manager)
+            cached_entry = _ROUTER_CACHE.get(state_manager)
         except TypeError:
             return router_cls(state_manager=state_manager)
 
-        if cached is not None and cached[0] == router_cls_id:
-            return cached[1]
+        if cached_entry is not None and cached_entry[0] == router_cls_id:
+            return cached_entry[1]
 
         router = router_cls(state_manager=state_manager)
         _ROUTER_CACHE[state_manager] = (router_cls_id, router)

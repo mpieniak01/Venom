@@ -494,6 +494,13 @@ class _DummyCancelledTask:
 
 
 class TestGhostApiFastlaneCoverage:
+    def test_require_ghost_agent_raises_when_missing(self, ghost_routes_mod):
+        ghost_routes_mod._ghost_agent = None
+        with pytest.raises(
+            RuntimeError, match=ghost_routes_mod.GHOST_AGENT_UNAVAILABLE_DETAIL
+        ):
+            ghost_routes_mod._require_ghost_agent()
+
     def test_store_helpers_and_hash(self, ghost_routes_mod):
         store = ghost_routes_mod._ghost_run_store
         store.clear()

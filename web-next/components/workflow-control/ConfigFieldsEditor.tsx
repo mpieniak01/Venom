@@ -65,22 +65,24 @@ function ConfigFieldCard({
   const options = field.options ?? [];
   const hasDraftValue = draftValue !== undefined;
   const displayValue = hasDraftValue ? draftValue : field.value;
+  const displayValueComparable = toDisplayString(displayValue, "");
   const displayValueText = toDisplayString(displayValue);
   const effectiveValueText = toDisplayString(field.effective_value);
   const readOnly = field.editable === false;
   const editable = !readOnly;
+  const canUseOptionPills = hasOptions && options.length <= 8;
 
   return (
-    <div className="border border-slate-700 rounded-lg bg-slate-900/40 overflow-hidden hover:border-slate-600 transition-colors">
+    <div className="overflow-hidden rounded-[20px] border border-white/10 bg-slate-950/75 transition-colors hover:border-white/20">
       <button
         onClick={onToggle}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-800/50 transition-colors"
+        className="flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-slate-900/80"
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <Edit2 className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+          <Edit2 className="h-4 w-4 shrink-0 text-cyan-300" />
           <div className="text-left min-w-0">
-            <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">{field.key}</div>
-            <div className="text-[11px] text-slate-500 font-mono truncate">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-200">{field.key}</div>
+            <div className="truncate font-mono text-[11px] text-slate-500">
               {field.entity_id}
               {field.field && `.${field.field}`}
             </div>
@@ -90,26 +92,26 @@ function ConfigFieldCard({
             {field.restart_required && <Zap className="w-3.5 h-3.5 text-orange-500" />}
           </div>
         </div>
-        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
       </button>
 
       {isExpanded && (
-        <div className="border-t border-slate-700 bg-slate-950/40 px-4 py-4 space-y-4">
+        <div className="space-y-4 border-t border-white/10 bg-slate-950/90 px-4 py-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor={`current-${field.key}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+              <Label htmlFor={`current-${field.key}`} className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                 Current Value
               </Label>
-              <div id={`current-${field.key}`} className="mt-1.5 text-xs font-mono bg-slate-800/50 border border-slate-700 rounded px-2 py-1.5 text-slate-300 break-all">
+              <div id={`current-${field.key}`} className="mt-1.5 break-all rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-xs font-mono text-slate-300">
                 {displayValueText}
               </div>
             </div>
             {field.effective_value !== field.value && (
               <div>
-                <Label htmlFor={`effective-${field.key}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                <Label htmlFor={`effective-${field.key}`} className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                   Effective Value
                 </Label>
-                <div id={`effective-${field.key}`} className="mt-1.5 text-xs font-mono bg-slate-800/50 border border-slate-700 rounded px-2 py-1.5 text-cyan-300 break-all">
+                <div id={`effective-${field.key}`} className="mt-1.5 break-all rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-mono text-cyan-200">
                   {effectiveValueText}
                 </div>
               </div>
@@ -117,22 +119,46 @@ function ConfigFieldCard({
           </div>
 
           <div>
-            <Label htmlFor={`cfg-${field.key}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">
+            <Label htmlFor={`cfg-${field.key}`} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Set Value
             </Label>
+            {canUseOptionPills ? (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {options.map((opt) => {
+                  const isActive = displayValueComparable === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={editable ? () => onUpdateValue(opt) : undefined}
+                      disabled={readOnly}
+                      className={[
+                        "rounded-full border px-3 py-1.5 text-xs transition",
+                        isActive
+                          ? "border-sky-400/30 bg-sky-500/10 text-sky-200"
+                          : "border-white/10 bg-slate-950/70 text-slate-400 hover:border-white/20 hover:text-slate-200",
+                        readOnly ? "cursor-not-allowed opacity-60" : "",
+                      ].join(" ")}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             {hasOptions ? (
               <Select
-                value={toDisplayString(displayValue, "")}
+                value={displayValueComparable}
                 onValueChange={editable ? (val) => onUpdateValue(val) : undefined}
                 disabled={readOnly}
                 aria-disabled={readOnly}
               >
-                <SelectTrigger id={`cfg-${field.key}`} className="bg-slate-800/60 border-cyan-500/30 text-cyan-100 focus:ring-cyan-500/50">
+                <SelectTrigger id={`cfg-${field.key}`} className="border-white/10 bg-slate-900/80 text-slate-100 focus:ring-cyan-500/30">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-cyan-500/30 text-cyan-100">
+                <SelectContent className="border-white/10 bg-slate-950 text-slate-100">
                   {options.map((opt) => (
-                    <SelectItem key={opt} value={opt} className="focus:bg-cyan-500/20">
+                    <SelectItem key={opt} value={opt} className="focus:bg-cyan-500/15">
                       {opt}
                     </SelectItem>
                   ))}
@@ -142,34 +168,34 @@ function ConfigFieldCard({
               <Input
                 id={`cfg-${field.key}`}
                 type="text"
-                value={toDisplayString(displayValue, "")}
+                value={displayValueComparable}
                 onChange={editable ? (e) => onUpdateValue(e.target.value) : undefined}
                 disabled={readOnly}
                 aria-disabled={readOnly}
-                className="bg-slate-800/60 border-cyan-500/30 text-cyan-100 placeholder-slate-600 focus:ring-cyan-500/50"
+                className="border-white/10 bg-slate-900/80 text-slate-100 placeholder-slate-600 focus:ring-cyan-500/30"
                 placeholder={`Enter value for ${field.key}`}
               />
             )}
           </div>
 
           {field.restart_required && (
-            <div className="p-2.5 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 rounded-2xl border border-orange-400/20 bg-orange-500/10 p-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-300" />
               <div>
-                <p className="text-xs font-bold text-orange-300">Requires Restart</p>
-                <p className="text-[11px] text-orange-200/70 mt-0.5">Service restart required to apply this change.</p>
+                <p className="text-xs font-semibold text-orange-200">Requires Restart</p>
+                <p className="mt-0.5 text-[11px] text-orange-100/70">Service restart required to apply this change.</p>
               </div>
             </div>
           )}
 
           {(field.affected_services?.length ?? 0) > 0 && (
-            <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-start gap-2">
-              <Package className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 rounded-2xl border border-violet-400/20 bg-violet-500/10 p-3">
+              <Package className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
               <div className="min-w-0">
-                <p className="text-xs font-bold text-purple-300">Affected Services</p>
+                <p className="text-xs font-semibold text-violet-200">Affected Services</p>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                   {(field.affected_services ?? []).map((svc) => (
-                    <span key={svc} className="text-[10px] px-2 py-1 rounded bg-purple-500/20 text-purple-200 border border-purple-500/40 font-mono">
+                    <span key={svc} className="rounded-full border border-white/10 bg-slate-950/70 px-2 py-1 text-[10px] font-mono text-slate-300">
                       {svc}
                     </span>
                   ))}
@@ -179,8 +205,8 @@ function ConfigFieldCard({
           )}
 
           {field.editable === false && (
-            <div className="p-2.5 rounded-lg bg-slate-700/50 border border-slate-600 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 rounded-2xl border border-white/10 bg-slate-900/80 p-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
               <p className="text-[11px] text-slate-400">This field is read-only.</p>
             </div>
           )}
@@ -216,16 +242,16 @@ export function ConfigFieldsEditor({
   const readOnlyFields = configFields.filter((f) => f.editable === false);
 
   return (
-    <div className="p-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 shadow-[0_4px_25px_rgba(6,182,212,0.05)]">
-      <div className="flex items-center gap-2 mb-3 border-b border-cyan-500/20 pb-2">
-        <Edit2 className="w-4 h-4 text-cyan-400" />
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-cyan-400">System Configuration</h3>
+    <div className="rounded-[24px] border border-sky-400/20 bg-slate-900/80 p-4 shadow-[0_12px_40px_rgba(2,6,23,0.28)]">
+      <div className="mb-4 flex items-center gap-2 border-b border-white/10 pb-3">
+        <Edit2 className="h-4 w-4 text-sky-300" />
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-300">System Configuration</h3>
       </div>
 
       <div className="space-y-4">
         {editableFields.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest px-1">Editable Fields ({editableFields.length})</h4>
+            <h4 className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-300">Editable Fields ({editableFields.length})</h4>
             <div className="space-y-2">
               {editableFields.map((field) => (
                 <ConfigFieldCard
@@ -244,7 +270,7 @@ export function ConfigFieldsEditor({
 
         {readOnlyFields.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Read-Only Fields ({readOnlyFields.length})</h4>
+            <h4 className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Read-Only Fields ({readOnlyFields.length})</h4>
             <div className="space-y-2">
               {readOnlyFields.map((field) => (
                 <ConfigFieldCard

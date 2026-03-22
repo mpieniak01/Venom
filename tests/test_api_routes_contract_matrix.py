@@ -2067,6 +2067,52 @@ class TestSystemGovernance:
 
         assert mod._extract_actor_from_request(_BrokenRequest()) == "unknown"
 
+    def test_normalize_governance_policy_helpers_cover_branches(self):
+        from venom_core.api.routes import system_governance as mod
+
+        assert mod._normalize_reason_stats({"invalid": "shape"}) == []
+
+        stats = mod._normalize_reason_stats(
+            [
+                "bad-item",
+                {"reason_code": " ", "count": 9, "share_rate": 0.9},
+                {"reason_code": "RUNTIME_TIMEOUT", "count": "2", "share_rate": "0.5"},
+            ]
+        )
+        assert len(stats) == 1
+        assert stats[0].reason_code == "RUNTIME_TIMEOUT"
+        assert stats[0].count == 2
+        assert stats[0].share_rate == 0.5
+
+        payload_from_non_dict = mod._normalize_policy_observability("invalid")
+        assert payload_from_non_dict.blocked_count == 0
+        assert payload_from_non_dict.top_reason_codes == []
+
+        payload = mod._normalize_policy_observability(
+            {
+                "blocked_count": "7",
+                "block_rate": "0.333",
+                "top_reason_codes": [
+                    {"reason_code": "POLICY_DENY", "count": 4, "share_rate": 0.57}
+                ],
+                "false_positive_triage": {
+                    "candidate_count": "3",
+                    "candidate_rate": "0.125",
+                    "top_candidate_reasons": [
+                        {"reason_code": "LIKELY_FALSE_POSITIVE", "count": 1}
+                    ],
+                },
+            }
+        )
+        assert payload.blocked_count == 7
+        assert payload.deny_rate == 0.33
+        assert len(payload.top_reason_codes) == 1
+        assert payload.false_positive_triage.candidate_count == 3
+        assert payload.false_positive_triage.candidate_rate == 0.125
+        assert payload.false_positive_triage.top_candidate_reasons[0].reason_code == (
+            "LIKELY_FALSE_POSITIVE"
+        )
+
     # --- autonomy levels list ---
 
     def test_get_all_autonomy_levels_success(self):

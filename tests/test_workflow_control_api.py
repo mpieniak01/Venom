@@ -605,6 +605,29 @@ class TestExecutionStepOperationsEndpoint:
         assert response.status_code == 422
         assert WorkflowStepOperation.RETRY_FROM_STEP.value in response.text
 
+    def test_step_operation_gateway_returns_500_when_service_raises(
+        self, client, monkeypatch
+    ):
+        request_id = "1e18dd58-6f3e-4efe-95da-8c5c33ee1871"
+        step_id = f"{request_id}:0"
+
+        class FakeWorkflowOperationService:
+            def retry_workflow(self, **_kwargs):
+                raise RuntimeError("step-op-boom")
+
+        monkeypatch.setattr(
+            workflow_control_routes,
+            "get_workflow_operation_service",
+            lambda: FakeWorkflowOperationService(),
+        )
+
+        response = client.post(
+            f"/api/v1/workflow/control/workflow/{request_id}/step/{step_id}/replay_step"
+        )
+
+        assert response.status_code == 500
+        assert "step-op-boom" in response.text
+
 
 class TestOptionsEndpoint:
     """Test /api/v1/workflow/control/options endpoint."""

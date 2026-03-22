@@ -19,6 +19,12 @@ from venom_core.api.model_schemas.workflow_control import (
     ResourceChange,
     ResourceType,
 )
+from venom_core.api.schemas.workflow_control import (
+    OperatorExecutionStep,
+    OperatorGraph,
+    SystemState,
+    WorkflowStatus,
+)
 from venom_core.services.control_plane import ControlPlaneService
 
 
@@ -559,3 +565,157 @@ def test_infer_related_config_keys_logs_warning_for_invalid_json(monkeypatch):
 
     assert "INTENT_MODE" in related_keys
     assert any("Could not parse step details as JSON" in msg for msg in warnings)
+
+
+def test_get_control_state_adds_execution_step_allowed_actions(monkeypatch):
+    service = ControlPlaneService()
+    base_state = SystemState(
+        timestamp=datetime.now(timezone.utc),
+        decision_strategy="standard",
+        intent_mode="simple",
+        kernel="standard",
+        runtime={},
+        provider={"active": "ollama"},
+        embedding_model="sentence-transformers",
+        workflow_status=WorkflowStatus.FAILED,
+        allowed_operations=["retry", "replay_step", "skip_step"],
+    )
+    execution_step = OperatorExecutionStep(
+        id="req-1:0",
+        component="OnnxTask",
+        action="complete",
+        status="ok",
+        allowed_actions=["retry_from_step", "replay_step"],
+    )
+
+    monkeypatch.setattr(service, "get_system_state", lambda: base_state)
+    monkeypatch.setattr(service, "_select_trace", lambda _request_id: (None, "none"))
+    monkeypatch.setattr(service, "_build_operator_config_fields", lambda: [])
+    monkeypatch.setattr(service, "_build_operator_runtime_services", lambda: [])
+    monkeypatch.setattr(
+        service,
+        "_build_execution_steps",
+        lambda **_kwargs: [execution_step],
+    )
+    monkeypatch.setattr(
+        service,
+        "_build_operator_graph",
+        lambda **_kwargs: OperatorGraph(nodes=[], edges=[]),
+    )
+
+    response = service.get_control_state()
+
+    assert "execution_step:req-1:0:retry_from_step" in response.allowed_actions
+    assert "execution_step:req-1:0:replay_step" in response.allowed_actions
+
+
+def test_infer_step_actions_stage_related_service_and_severity_branches():
+    service = ControlPlaneService()
+
+    assert service._infer_step_allowed_actions("running", ["retry"]) == []
+    assert service._infer_step_allowed_actions(
+        "ok", ["retry", "replay_step", "skip_step"]
+    ) == ["retry_from_step", "replay_step", "skip_step"]
+
+    assert (
+        service._infer_step_stage(component="unknown", action="classify_intent")
+        == "intent"
+    )
+    assert (
+        service._infer_step_stage(component="unknown", action="embed_text")
+        == "embedding"
+    )
+    assert (
+        service._infer_step_stage(component="unknown", action="route_request")
+        == "orchestration"
+    )
+    assert (
+        service._infer_step_stage(component="unknown", action="execute") == "execution"
+    )
+
+    runtime_services = [
+        SimpleNamespace(id="backend", kind="backend"),
+        SimpleNamespace(id="ui", kind="frontend-ui"),
+        SimpleNamespace(id="llm_ollama", kind="llm_ollama"),
+        SimpleNamespace(id="intent_embedding_router", kind="intent_embedding_router"),
+    ]
+    system_state = SimpleNamespace(
+        llm_provider_name=None, provider={"active": "ollama"}
+    )
+
+    assert (
+        service._infer_related_service_id(
+            component="backend",
+            action="noop",
+            system_state=system_state,
+            runtime_services=runtime_services,
+        )
+        == "backend"
+    )
+    assert (
+        service._infer_related_service_id(
+            component="frontend-ui",
+            action="noop",
+            system_state=system_state,
+            runtime_services=runtime_services,
+        )
+        == "ui"
+    )
+    assert (
+        service._infer_related_service_id(
+            component="ui-panel",
+            action="render",
+            system_state=system_state,
+            runtime_services=runtime_services,
+        )
+        == "ui"
+    )
+    assert (
+        service._infer_related_service_id(
+            component="routing",
+            action="embed_request",
+            system_state=system_state,
+            runtime_services=runtime_services,
+        )
+        == "intent_embedding_router"
+    )
+    assert (
+        service._infer_related_service_id(
+            component="ollama_router",
+            action="route",
+            system_state=system_state,
+            runtime_services=runtime_services,
+        )
+        == "llm_ollama"
+    )
+    assert (
+        service._infer_related_service_id(
+            component="llm_selector",
+            action="dispatch",
+            system_state=system_state,
+            runtime_services=runtime_services,
+        )
+        == "llm_ollama"
+    )
+    assert (
+        service._infer_related_service_id(
+            component="runtime",
+            action="dispatch",
+            system_state=system_state,
+            runtime_services=runtime_services,
+        )
+        == "backend"
+    )
+
+    related_keys = service._infer_related_config_keys(
+        component="routing",
+        action="dispatch",
+        details={"intent": "x", "kernel": "y", "provider": "z", "embed": "e"},
+    )
+    assert "INTENT_MODE" in related_keys
+    assert "KERNEL" in related_keys
+    assert "ACTIVE_PROVIDER" in related_keys
+    assert "EMBEDDING_MODEL" in related_keys
+
+    assert service._infer_step_severity(status="failed", details=None) == "error"
+    assert service._infer_step_severity(status="blocked", details=None) == "warning"

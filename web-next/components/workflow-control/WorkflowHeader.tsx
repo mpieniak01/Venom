@@ -83,6 +83,15 @@ export function WorkflowHeader({
   const t = useTranslation();
   const statusTone = getStatusTone(workflowStatus);
   const showStatusRail = hasChanges || hasPendingPlan || compatibilityIssues.length > 0;
+  let draftStateValue = t("workflowControl.status.idle");
+  let draftStateTone: StatusRailItemProps["tone"] = "neutral";
+  if (hasPendingPlan) {
+    draftStateValue = t("workflowControl.status.planReady");
+    draftStateTone = "success";
+  } else if (hasChanges) {
+    draftStateValue = t("workflowControl.status.draft");
+    draftStateTone = "warning";
+  }
 
   return (
     <div className="border-b border-white/10 bg-[linear-gradient(90deg,rgba(15,23,42,0.98),rgba(8,47,73,0.95),rgba(15,23,42,0.98))] px-6 py-5">
@@ -170,14 +179,8 @@ export function WorkflowHeader({
           <div className="grid gap-3 lg:grid-cols-3">
             <StatusRailItem
               label={t("workflowControl.labels.draftState")}
-              value={
-                hasPendingPlan
-                  ? t("workflowControl.status.planReady")
-                  : hasChanges
-                    ? t("workflowControl.status.draft")
-                    : t("workflowControl.status.idle")
-              }
-              tone={hasPendingPlan ? "success" : hasChanges ? "warning" : "neutral"}
+              value={draftStateValue}
+              tone={draftStateTone}
             />
             <StatusRailItem
               label={t("workflowControl.labels.changedDomains")}

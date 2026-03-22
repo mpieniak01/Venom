@@ -871,11 +871,10 @@ class ControlPlaneService:
             )
             actionable = bool(getattr(status, "actionable", False))
             allowed_actions: list[str] = []
-            if actionable:
-                if status_value == "running":
-                    allowed_actions = ["stop", "restart"]
-                else:
-                    allowed_actions = ["start"]
+            if actionable and status_value == "running":
+                allowed_actions = ["stop", "restart"]
+            elif actionable:
+                allowed_actions = ["start"]
             result.append(
                 OperatorRuntimeService(
                     id=service_type_value,
@@ -987,6 +986,37 @@ class ControlPlaneService:
         system_state: SystemState,
         runtime_services: list[OperatorRuntimeService],
     ) -> str | None:
+        service_lookup, kind_lookup = self._build_runtime_service_lookups(
+            runtime_services
+        )
+        normalized_component = component.strip().lower()
+        normalized_action = action.strip().lower()
+
+        direct_service = self._infer_direct_related_service_id(
+            normalized_component=normalized_component,
+            normalized_action=normalized_action,
+            service_lookup=service_lookup,
+            kind_lookup=kind_lookup,
+        )
+        if direct_service is not None:
+            return direct_service
+
+        provider_service = self._infer_provider_related_service_id(
+            normalized_component=normalized_component,
+            normalized_action=normalized_action,
+            system_state=system_state,
+            service_lookup=service_lookup,
+        )
+        if provider_service is not None:
+            return provider_service
+
+        if "runtime" in normalized_component:
+            return service_lookup.get("backend")
+        return None
+
+    def _build_runtime_service_lookups(
+        self, runtime_services: list[OperatorRuntimeService]
+    ) -> tuple[dict[str, str], dict[str, str]]:
         service_lookup = {
             service.id.strip().lower(): service.id for service in runtime_services
         }
@@ -994,9 +1024,15 @@ class ControlPlaneService:
             (service.kind or "").strip().lower(): service.id
             for service in runtime_services
         }
-        normalized_component = component.strip().lower()
-        normalized_action = action.strip().lower()
+        return service_lookup, kind_lookup
 
+    def _infer_direct_related_service_id(
+        self,
+        normalized_component: str,
+        normalized_action: str,
+        service_lookup: dict[str, str],
+        kind_lookup: dict[str, str],
+    ) -> str | None:
         if normalized_component in service_lookup:
             return service_lookup[normalized_component]
         if normalized_component in kind_lookup:
@@ -1016,29 +1052,40 @@ class ControlPlaneService:
             return service_lookup.get("intent_embedding_router") or service_lookup.get(
                 "backend"
             )
+        return None
 
+    def _resolve_provider_name_for_step(self, system_state: SystemState) -> str:
         provider_candidate = (system_state.llm_provider_name or "").strip()
         if not provider_candidate and system_state.provider:
             provider_candidate = str(system_state.provider.get("active", "")).strip()
-        provider_name = provider_candidate.lower()
-        provider_service_map = {
+        return provider_candidate.lower()
+
+    @staticmethod
+    def _provider_service_id_map() -> dict[str, str]:
+        return {
             "ollama": "llm_ollama",
             "vllm": "llm_vllm",
         }
-        if provider_name:
-            provider_service_id = provider_service_map.get(provider_name)
-            if provider_service_id and provider_service_id in service_lookup:
-                if (
-                    provider_name in normalized_component
-                    or provider_name in normalized_action
-                ):
-                    return provider_service_id
-            if "llm" in normalized_component or "model" in normalized_component:
-                if provider_service_id and provider_service_id in service_lookup:
-                    return provider_service_id
 
-        if "runtime" in normalized_component:
-            return service_lookup.get("backend")
+    def _infer_provider_related_service_id(
+        self,
+        normalized_component: str,
+        normalized_action: str,
+        system_state: SystemState,
+        service_lookup: dict[str, str],
+    ) -> str | None:
+        provider_name = self._resolve_provider_name_for_step(system_state)
+        if not provider_name:
+            return None
+
+        provider_service_id = self._provider_service_id_map().get(provider_name)
+        if not provider_service_id or provider_service_id not in service_lookup:
+            return None
+
+        if provider_name in normalized_component or provider_name in normalized_action:
+            return provider_service_id
+        if "llm" in normalized_component or "model" in normalized_component:
+            return provider_service_id
         return None
 
     def _infer_related_config_keys(
@@ -1049,32 +1096,43 @@ class ControlPlaneService:
     ) -> list[str]:
         normalized_component = component.strip().lower()
         normalized_action = action.strip().lower()
-        keys: list[str] = []
+        keys = self._collect_step_config_keys_from_markers(
+            normalized_component=normalized_component,
+            normalized_action=normalized_action,
+        )
+        detail_text = self._serialize_step_details_for_matching(details)
+        keys.extend(self._collect_step_config_keys_from_detail_text(detail_text))
+        return sorted(set(keys))
 
+    def _collect_step_config_keys_from_markers(
+        self, normalized_component: str, normalized_action: str
+    ) -> list[str]:
+        keys: list[str] = []
         for marker, mapped_keys in self.STEP_CONFIG_KEY_MAP.items():
             if marker in normalized_component or marker in normalized_action:
                 keys.extend(mapped_keys)
+        return keys
 
-        parsed_details: Any = None
-        detail_text = ""
+    def _serialize_step_details_for_matching(self, details: Any) -> str:
         if isinstance(details, str):
             normalized_details = details.strip()
             if normalized_details.startswith(("{", "[")):
                 try:
                     parsed_details = json.loads(normalized_details)
+                    if isinstance(parsed_details, (dict, list)):
+                        return json.dumps(parsed_details, ensure_ascii=False).lower()
                 except json.JSONDecodeError:
                     logger.warning(
                         f"Could not parse step details as JSON: {normalized_details[:200]}"
                     )
-                    parsed_details = None
-            if isinstance(parsed_details, (dict, list)):
-                detail_text = json.dumps(parsed_details, ensure_ascii=False).lower()
-            else:
-                detail_text = details.lower()
-        elif isinstance(details, (dict, list)):
-            parsed_details = details
-            detail_text = json.dumps(details, ensure_ascii=False).lower()
+            return details.lower()
 
+        if isinstance(details, (dict, list)):
+            return json.dumps(details, ensure_ascii=False).lower()
+        return ""
+
+    def _collect_step_config_keys_from_detail_text(self, detail_text: str) -> list[str]:
+        keys: list[str] = []
         if "intent" in detail_text:
             keys.append("INTENT_MODE")
         if "progress" in detail_text or "kernel" in detail_text:
@@ -1083,8 +1141,7 @@ class ControlPlaneService:
             keys.append("EMBEDDING_MODEL")
         if "provider" in detail_text or "model" in detail_text:
             keys.append("ACTIVE_PROVIDER")
-
-        return sorted(set(keys))
+        return keys
 
     def _infer_step_severity(self, status: str, details: Any) -> str:
         normalized_status = status.strip().lower()

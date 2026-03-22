@@ -95,6 +95,46 @@ function findConfigField(
   return (configFields ?? []).find((field) => field.key === key);
 }
 
+function resolveDomainSource({
+  id,
+  sourceField,
+  currentField,
+  draft,
+  systemState,
+}: {
+  id: ControlDomainId;
+  sourceField: OperatorConfigField | undefined;
+  currentField: OperatorConfigField | undefined;
+  draft: SystemState;
+  systemState: SystemState | null;
+}): string | null {
+  if (sourceField?.source) {
+    return sourceField.source;
+  }
+  if (currentField?.source) {
+    return currentField.source;
+  }
+  if (id === "provider") {
+    return draft.provider_source ?? systemState?.provider_source ?? null;
+  }
+  if (id === "embedding") {
+    return draft.embedding_source ?? systemState?.embedding_source ?? null;
+  }
+  return null;
+}
+
+function resolveRuntimeFieldValue(
+  field: OperatorConfigField | undefined,
+): string | null {
+  if (typeof field?.effective_value === "string") {
+    return field.effective_value;
+  }
+  if (typeof field?.value === "string") {
+    return field.value;
+  }
+  return null;
+}
+
 export function getStatusTone(status: string | null | undefined): StatusTone {
   const normalized = (status ?? "").trim().toLowerCase();
   if (["running", "completed", "ok", "success", "succeeded"].includes(normalized)) {
@@ -183,13 +223,7 @@ export function buildControlDomainCards(
     return {
       id,
       value: formatValue(draftValue ?? sourceField?.effective_value ?? sourceField?.value),
-      source:
-        sourceField?.source ??
-        currentField?.source ??
-        (id === "provider" ? (draft.provider_source ?? systemState?.provider_source ?? null) : null) ??
-        (id === "embedding"
-          ? (draft.embedding_source ?? systemState?.embedding_source ?? null)
-          : null),
+      source: resolveDomainSource({ id, sourceField, currentField, draft, systemState }),
       restartRequired: Boolean(sourceField?.restart_required ?? currentField?.restart_required),
       editable: sourceField?.editable !== false,
       changed: JSON.stringify(currentValue) !== JSON.stringify(draftValue),
@@ -199,7 +233,7 @@ export function buildControlDomainCards(
 }
 
 export function buildSelectionNode(selection: WorkflowControlSelection | null, draftState: SystemState | null): Node | null {
-  if (!selection || selection.kind !== "control-domain" || !draftState) {
+  if (!draftState || selection?.kind !== "control-domain") {
     return null;
   }
 
@@ -236,25 +270,21 @@ export function buildSelectionNode(selection: WorkflowControlSelection | null, d
       position: { x: 0, y: 0 },
       data: {
         kernel: draftState.kernel,
-        workflowRuntime:
-          typeof runtimeField?.effective_value === "string"
-            ? runtimeField.effective_value
-            : typeof runtimeField?.value === "string"
-              ? runtimeField.value
-              : null,
+        workflowRuntime: resolveRuntimeFieldValue(runtimeField),
       },
     };
   }
 
   if (selection.id === "provider") {
     const providerSource = draftState.provider?.sourceType ?? draftState.provider_source ?? "local";
+    const providerData = draftState.provider ?? undefined;
     return {
       id: "provider",
       type: "provider",
       position: { x: 0, y: 0 },
       data: {
         provider: {
-          ...(draftState.provider ?? {}),
+          ...providerData,
           sourceType: providerSource,
         },
         embeddingModel: draftState.embedding_model,
@@ -410,7 +440,10 @@ export function buildExecutionStepGroupState(
     const stage = step.stage?.trim() || "execution";
     const depth = computeDepth(step);
     const parentId = step.depends_on_step_id ?? "root";
-    const configKeyPart = [...(step.related_config_keys ?? [])].sort().join("|");
+    const configKeyPart = (step.related_config_keys ?? [])
+      .map((key) => String(key))
+      .sort((left, right) => left.localeCompare(right))
+      .join("|");
     const groupKey = [
       parentId,
       depth,

@@ -65,6 +65,7 @@ function ConfigFieldCard({
   const options = field.options ?? [];
   const hasDraftValue = draftValue !== undefined;
   const displayValue = hasDraftValue ? draftValue : field.value;
+  const displayValueComparable = toDisplayString(displayValue, "");
   const displayValueText = toDisplayString(displayValue);
   const effectiveValueText = toDisplayString(field.effective_value);
   const readOnly = field.editable === false;
@@ -124,7 +125,7 @@ function ConfigFieldCard({
             {canUseOptionPills ? (
               <div className="mb-3 flex flex-wrap gap-2">
                 {options.map((opt) => {
-                  const isActive = String(displayValue ?? "") === opt;
+                  const isActive = displayValueComparable === opt;
                   return (
                     <button
                       key={opt}
@@ -147,7 +148,7 @@ function ConfigFieldCard({
             ) : null}
             {hasOptions ? (
               <Select
-                value={toDisplayString(displayValue, "")}
+                value={displayValueComparable}
                 onValueChange={editable ? (val) => onUpdateValue(val) : undefined}
                 disabled={readOnly}
                 aria-disabled={readOnly}
@@ -167,7 +168,7 @@ function ConfigFieldCard({
               <Input
                 id={`cfg-${field.key}`}
                 type="text"
-                value={toDisplayString(displayValue, "")}
+                value={displayValueComparable}
                 onChange={editable ? (e) => onUpdateValue(e.target.value) : undefined}
                 disabled={readOnly}
                 aria-disabled={readOnly}

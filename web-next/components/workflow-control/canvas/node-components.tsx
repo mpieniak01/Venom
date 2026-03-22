@@ -398,6 +398,109 @@ export function RuntimeServiceNode({
   );
 }
 
+function ExecutionStepExpandButton({
+  isExpanded,
+  groupKey,
+  onToggleGroup,
+  t,
+}: Readonly<{
+  isExpanded?: boolean;
+  groupKey?: string;
+  onToggleGroup?: (groupKey: string) => void;
+  t: (path: string) => string;
+}>) {
+  if (!groupKey) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200"
+      onClick={(event) => {
+        handleExecutionGroupToggleClick(event, groupKey, onToggleGroup);
+      }}
+    >
+      {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      {isExpanded
+        ? t("workflowControl.actions.collapse")
+        : t("workflowControl.actions.expand")}
+    </button>
+  );
+}
+
+function ExecutionStepAlternatives({
+  variants,
+  remainingAlternatives,
+  t,
+}: Readonly<{
+  variants: string[];
+  remainingAlternatives: number;
+  t: (path: string) => string;
+}>) {
+  if (variants.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      <div className="mt-3 text-center text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-400">
+        {t("workflowControl.labels.availableVariants")}
+      </div>
+      <div className="mt-2 flex flex-wrap justify-center gap-2">
+        {variants.map((variant) => (
+          <MetaBadge
+            key={variant}
+            value={variant}
+            className="border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+          />
+        ))}
+        {remainingAlternatives > 0 ? (
+          <MetaBadge
+            value={`+${remainingAlternatives}`}
+            className="border-white/10 bg-white/5 text-slate-200"
+          />
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function ExecutionStepMetaBadges({
+  data,
+  configKeys,
+  collapsedStepCount,
+  t,
+}: Readonly<{
+  data: ExecutionStepNodeData;
+  configKeys: string[];
+  collapsedStepCount: number;
+  t: (path: string) => string;
+}>) {
+  return (
+    <div className="mt-3 flex flex-wrap justify-center gap-2">
+      {typeof data.sequenceIndex === "number" ? (
+        <MetaBadge value={`#${data.sequenceIndex}`} className="text-emerald-200" />
+      ) : null}
+      {collapsedStepCount > 0 ? (
+        <MetaBadge
+          value={`+${collapsedStepCount} ${t("workflowControl.labels.branches")}`}
+          className="border-amber-400/20 bg-amber-500/10 text-amber-100"
+        />
+      ) : null}
+      {data.isExpanded && (data.groupSize ?? 0) > 1 ? (
+        <MetaBadge
+          value={`${data.groupSize} ${t("workflowControl.labels.branches")}`}
+          className="border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
+        />
+      ) : null}
+      {data.stage ? <MetaBadge value={data.stage} /> : null}
+      {data.relatedServiceId ? <MetaBadge value={data.relatedServiceId} /> : null}
+      {configKeys.map((configKey) => (
+        <MetaBadge key={configKey} value={configKey} />
+      ))}
+    </div>
+  );
+}
+
 export function ExecutionStepNode({
   selected = false,
   data,
@@ -411,7 +514,7 @@ export function ExecutionStepNode({
     (data.alternativeCount ?? visibleAlternatives.length) - visibleAlternatives.length,
   );
   const collapsedStepCount = data.collapsedStepCount ?? 0;
-  const canExpand = Boolean(data.canExpand && data.groupKey);
+  const groupKey = data.canExpand ? data.groupKey : undefined;
   return (
     <NodeShell selected={selected} glowClass={theme.glowClass} className={theme.shellClass}>
       {data.status ? <StatusBadge value={data.status} /> : null}
@@ -420,20 +523,12 @@ export function ExecutionStepNode({
           {t("workflowControl.labels.activeVariant")}
         </span>
       ) : null}
-      {canExpand ? (
-        <button
-          type="button"
-          className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200"
-          onClick={(event) => {
-            handleExecutionGroupToggleClick(event, data.groupKey, data.onToggleGroup);
-          }}
-        >
-          {data.isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          {data.isExpanded
-            ? t("workflowControl.actions.collapse")
-            : t("workflowControl.actions.expand")}
-        </button>
-      ) : null}
+      <ExecutionStepExpandButton
+        isExpanded={data.isExpanded}
+        groupKey={groupKey}
+        onToggleGroup={data.onToggleGroup}
+        t={t}
+      />
       <Handle type="target" position={Position.Left} className={theme.handleClass} />
       <Handle type="source" position={Position.Right} className={theme.handleClass} />
       <NodeTitle type="execution_step" label={data.label ?? "step"} />
@@ -443,50 +538,17 @@ export function ExecutionStepNode({
       <div className="mt-1 text-center text-sm font-semibold text-slate-100">
         {data.variant ?? "action"}
       </div>
-      {visibleAlternatives.length > 0 ? (
-        <>
-          <div className="mt-3 text-center text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-400">
-            {t("workflowControl.labels.availableVariants")}
-          </div>
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
-            {visibleAlternatives.map((variant) => (
-              <MetaBadge
-                key={variant}
-                value={variant}
-                className="border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-              />
-            ))}
-            {remainingAlternatives > 0 ? (
-              <MetaBadge
-                value={`+${remainingAlternatives}`}
-                className="border-white/10 bg-white/5 text-slate-200"
-              />
-            ) : null}
-          </div>
-        </>
-      ) : null}
-      <div className="mt-3 flex flex-wrap justify-center gap-2">
-        {typeof data.sequenceIndex === "number" ? (
-          <MetaBadge value={`#${data.sequenceIndex}`} className="text-emerald-200" />
-        ) : null}
-        {collapsedStepCount > 0 ? (
-          <MetaBadge
-            value={`+${collapsedStepCount} ${t("workflowControl.labels.branches")}`}
-            className="border-amber-400/20 bg-amber-500/10 text-amber-100"
-          />
-        ) : null}
-        {data.isExpanded && (data.groupSize ?? 0) > 1 ? (
-          <MetaBadge
-            value={`${data.groupSize} ${t("workflowControl.labels.branches")}`}
-            className="border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
-          />
-        ) : null}
-        {data.stage ? <MetaBadge value={data.stage} /> : null}
-        {data.relatedServiceId ? <MetaBadge value={data.relatedServiceId} /> : null}
-        {configKeys.map((configKey) => (
-          <MetaBadge key={configKey} value={configKey} />
-        ))}
-      </div>
+      <ExecutionStepAlternatives
+        variants={visibleAlternatives}
+        remainingAlternatives={remainingAlternatives}
+        t={t}
+      />
+      <ExecutionStepMetaBadges
+        data={data}
+        configKeys={configKeys}
+        collapsedStepCount={collapsedStepCount}
+        t={t}
+      />
     </NodeShell>
   );
 }

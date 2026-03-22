@@ -43,6 +43,59 @@ function sectionTitleForDomain(
   return t("workflowControl.sections.embedding");
 }
 
+function selectionKindLabel(
+  kind: WorkflowControlSelection["kind"],
+  t: (path: string) => string,
+): string {
+  if (kind === "control-domain") {
+    return t("workflowControl.labels.controlDomains");
+  }
+  if (kind === "runtime-service") {
+    return t("workflowControl.labels.runtimeServices");
+  }
+  return t("workflowControl.labels.executionSteps");
+}
+
+function controlDomainCardClassName({
+  isSelected,
+  hasConflict,
+  isChanged,
+}: {
+  isSelected: boolean;
+  hasConflict: boolean;
+  isChanged: boolean;
+}): string {
+  const baseClass = "w-full rounded-2xl border px-4 py-3 text-left transition";
+  if (isSelected) {
+    return `${baseClass} border-cyan-400/50 bg-cyan-500/10 shadow-[0_0_30px_rgba(34,211,238,0.12)]`;
+  }
+  if (hasConflict) {
+    return `${baseClass} border-amber-400/30 bg-amber-500/10 hover:border-amber-300/40`;
+  }
+  if (isChanged) {
+    return `${baseClass} border-sky-400/20 bg-sky-500/10 hover:border-sky-300/30`;
+  }
+  return `${baseClass} border-white/10 bg-slate-900/80 hover:border-white/20 hover:bg-slate-900`;
+}
+
+function timelineBadgeLabel({
+  isTimelineExpanded,
+  hasTimelineSelection,
+  t,
+}: {
+  isTimelineExpanded: boolean;
+  hasTimelineSelection: boolean;
+  t: (path: string) => string;
+}): string {
+  if (!isTimelineExpanded) {
+    return t("workflowControl.actions.expand");
+  }
+  if (hasTimelineSelection) {
+    return t("workflowControl.labels.expanded");
+  }
+  return t("workflowControl.actions.collapse");
+}
+
 export function WorkflowControlView() {
   const t = useTranslation();
   const {
@@ -113,6 +166,11 @@ export function WorkflowControlView() {
     () => buildWorkflowSelectionSummary(selection, systemState),
     [selection, systemState],
   );
+  const timelineBadgeText = timelineBadgeLabel({
+    isTimelineExpanded,
+    hasTimelineSelection,
+    t,
+  });
 
   const handleUpdateNode = useCallback(
     (nodeId: string, data: unknown) => {
@@ -181,8 +239,8 @@ export function WorkflowControlView() {
       }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, [selection, isTimelineOpen, hasTimelineSelection]);
 
   const handleSelectDomain = useCallback((id: ControlDomainId) => {
@@ -273,11 +331,7 @@ export function WorkflowControlView() {
               {selectionSummary ? (
                 <>
                   <Badge tone="neutral">
-                    {selectionSummary.kind === "control-domain"
-                      ? t("workflowControl.labels.controlDomains")
-                      : selectionSummary.kind === "runtime-service"
-                        ? t("workflowControl.labels.runtimeServices")
-                        : t("workflowControl.labels.executionSteps")}
+                    {selectionKindLabel(selectionSummary.kind, t)}
                   </Badge>
                   <span className="truncate text-sm text-slate-200" title={selectionSummary.value}>
                     {selectionSummary.value}
@@ -428,16 +482,11 @@ export function WorkflowControlView() {
                       key={card.id}
                       type="button"
                       onClick={() => handleSelectDomain(card.id)}
-                      className={[
-                        "w-full rounded-2xl border px-4 py-3 text-left transition",
-                        isSelected
-                          ? "border-cyan-400/50 bg-cyan-500/10 shadow-[0_0_30px_rgba(34,211,238,0.12)]"
-                          : hasConflict
-                            ? "border-amber-400/30 bg-amber-500/10 hover:border-amber-300/40"
-                            : isChanged
-                              ? "border-sky-400/20 bg-sky-500/10 hover:border-sky-300/30"
-                          : "border-white/10 bg-slate-900/80 hover:border-white/20 hover:bg-slate-900",
-                      ].join(" ")}
+                      className={controlDomainCardClassName({
+                        isSelected,
+                        hasConflict,
+                        isChanged,
+                      })}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -515,11 +564,7 @@ export function WorkflowControlView() {
                   </div>
                 </div>
                 <Badge tone="neutral">
-                  {isTimelineExpanded
-                    ? hasTimelineSelection
-                      ? t("workflowControl.labels.expanded")
-                      : t("workflowControl.actions.collapse")
-                    : t("workflowControl.actions.expand")}
+                  {timelineBadgeText}
                 </Badge>
               </button>
               {isTimelineExpanded ? (

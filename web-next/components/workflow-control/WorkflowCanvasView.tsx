@@ -58,13 +58,12 @@ export function WorkflowCanvas({
   selectedControlDomainId = null,
   expandedGroupKeys: expandedGroupKeysProp,
   onToggleExecutionGroup,
-  readOnly: _readOnly = true,
+  readOnly = true,
   testAdapter,
 }: Readonly<WorkflowCanvasProps>) {
   const t = useTranslation();
   const { pushToast } = useToast();
   const [localExpandedGroupKeys, setLocalExpandedGroupKeys] = useState<Set<string>>(new Set());
-  void _readOnly;
   const UseNodesStateHook = testAdapter?.useNodesStateHook ?? useNodesState;
   const UseEdgesStateHook = testAdapter?.useEdgesStateHook ?? useEdgesState;
   const ReactFlowComponent = testAdapter?.ReactFlowComponent ?? ReactFlow;
@@ -86,7 +85,7 @@ export function WorkflowCanvas({
     });
   }, [onToggleExecutionGroup]);
 
-  const canvasReadOnly = true;
+  const canvasReadOnly = readOnly;
   const expandedGroupKeys = expandedGroupKeysProp ?? localExpandedGroupKeys;
   const { initialNodes: rawNodes, initialEdges } = useMemo(
     () => buildCanvasGraph(systemState, canvasReadOnly, { expandedGroupKeys }),
@@ -132,7 +131,7 @@ export function WorkflowCanvas({
           ...node,
           selected: isSelectedStep,
           data: {
-            ...(node.data ?? {}),
+            ...data,
             onToggleGroup: toggleExpandedGroup,
             isActiveVariant: isSelectedStep,
           },

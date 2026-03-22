@@ -112,6 +112,63 @@ const SUPPORTED_BACKEND_NODE_TYPES = new Set([
   "swimlane",
 ]);
 
+function firstStringValue(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function resolveCanvasLane(
+  nodeData: Record<string, unknown>,
+  fallback: CanonicalBackendNodeType,
+): string {
+  const lane = nodeData.canvasLane;
+  return typeof lane === "string" ? lane : fallback;
+}
+
+function markerEndForRelation(relationKind: RelationKind) {
+  if (relationKind === "domain") {
+    return {
+      type: MarkerType.ArrowClosed,
+      color: "#22d3ee",
+      width: 18,
+      height: 18,
+    };
+  }
+  if (relationKind === "runtime") {
+    return {
+      type: MarkerType.ArrowClosed,
+      color: "#a78bfa",
+      width: 18,
+      height: 18,
+    };
+  }
+  return {
+    type: MarkerType.ArrowClosed,
+    color: "#34d399",
+    width: 18,
+    height: 18,
+  };
+}
+
+function resolveRelationLabel(
+  relationKind: RelationKind | undefined,
+): string | undefined {
+  if (relationKind === "domain") {
+    return "domain";
+  }
+  if (relationKind === "runtime") {
+    return "runtime";
+  }
+  if (relationKind === "sequence") {
+    return "depends";
+  }
+  return undefined;
+}
+
 function backendNodeTypeFromId(nodeId: string): CanonicalBackendNodeType | null {
   if (nodeId.startsWith("control-domain:")) return "control_domain";
   if (nodeId.startsWith("runtime-service:")) return "runtime_service";
@@ -125,7 +182,7 @@ function normalizeBackendNodeType(node: OperatorGraphNode): string {
   const normalizedType = String(node.type || "")
     .trim()
     .toLowerCase()
-    .replace(/-/g, "_");
+    .replaceAll("-", "_");
 
   if (normalizedType === "control_domain") return "control_domain";
   if (
@@ -154,90 +211,66 @@ function normalizeBackendNodeType(node: OperatorGraphNode): string {
 
 function mapExecutionStepData(node: OperatorGraphNode): Record<string, unknown> {
   const nodeData = node.data ?? {};
-  const stepId =
-    typeof nodeData.stepId === "string"
-      ? nodeData.stepId
-      : node.id.split(":").slice(1).join(":") || node.id;
-  const action =
-    typeof nodeData.variant === "string"
-      ? nodeData.variant
-      : typeof nodeData.action === "string"
-        ? nodeData.action
-        : undefined;
-  const label =
-    typeof nodeData.label === "string"
-      ? nodeData.label
-      : typeof nodeData.component === "string"
-        ? nodeData.component
-        : node.label;
+  const fallbackStepId = node.id.split(":").slice(1).join(":") || node.id;
+  const stepId = firstStringValue(nodeData.stepId) ?? fallbackStepId;
+  const action = firstStringValue(nodeData.variant, nodeData.action);
+  const label = firstStringValue(nodeData.label, nodeData.component) ?? node.label;
+  const status = firstStringValue(nodeData.status, nodeData.state);
 
   return {
     ...nodeData,
     stepId,
     label,
     variant: action,
-    status:
-      typeof nodeData.status === "string"
-        ? nodeData.status
-        : typeof nodeData.state === "string"
-          ? nodeData.state
-          : undefined,
-    canvasLane:
-      typeof nodeData.canvasLane === "string" ? nodeData.canvasLane : "execution_step",
+    status,
+    canvasLane: resolveCanvasLane(nodeData, "execution_step"),
   };
 }
 
 function mapRuntimeServiceData(node: OperatorGraphNode): Record<string, unknown> {
   const nodeData = node.data ?? {};
-  const serviceId =
-    typeof nodeData.serviceId === "string"
-      ? nodeData.serviceId
-      : node.id.split(":").slice(1).join(":") || node.id;
+  const fallbackServiceId = node.id.split(":").slice(1).join(":") || node.id;
+  const serviceId = firstStringValue(nodeData.serviceId) ?? fallbackServiceId;
+  const label = firstStringValue(nodeData.label, nodeData.name) ?? node.label;
+  const dependencyCount = Array.isArray(nodeData.dependencies)
+    ? nodeData.dependencies.length
+    : typeof nodeData.dependencyCount === "number"
+      ? nodeData.dependencyCount
+      : 0;
   return {
     ...nodeData,
     serviceId,
-    label:
-      typeof nodeData.label === "string"
-        ? nodeData.label
-        : typeof nodeData.name === "string"
-          ? nodeData.name
-          : node.label,
-    dependencyCount: Array.isArray(nodeData.dependencies)
-      ? nodeData.dependencies.length
-      : typeof nodeData.dependencyCount === "number"
-        ? nodeData.dependencyCount
-        : 0,
-    canvasLane:
-      typeof nodeData.canvasLane === "string" ? nodeData.canvasLane : "runtime_service",
+    label,
+    dependencyCount,
+    canvasLane: resolveCanvasLane(nodeData, "runtime_service"),
   };
 }
 
 function mapControlDomainData(node: OperatorGraphNode): Record<string, unknown> {
   const nodeData = node.data ?? {};
-  const domainId =
-    typeof nodeData.domainId === "string"
-      ? nodeData.domainId
-      : node.id.split(":").slice(1).join(":") || node.id;
+  const fallbackDomainId = node.id.split(":").slice(1).join(":") || node.id;
+  const domainId = firstStringValue(nodeData.domainId) ?? fallbackDomainId;
   return {
     ...nodeData,
     domainId,
-    label: typeof nodeData.label === "string" ? nodeData.label : node.label,
-    canvasLane:
-      typeof nodeData.canvasLane === "string" ? nodeData.canvasLane : "control_domain",
+    label: firstStringValue(nodeData.label) ?? node.label,
+    canvasLane: resolveCanvasLane(nodeData, "control_domain"),
   };
 }
 
 function mapBackendNodes(nodes: OperatorGraphNode[]): Node[] {
   return nodes.map((node) => {
     const normalizedType = normalizeBackendNodeType(node);
-    const mappedData =
-      normalizedType === "execution_step"
-        ? mapExecutionStepData(node)
-        : normalizedType === "runtime_service"
-          ? mapRuntimeServiceData(node)
-          : normalizedType === "control_domain"
-            ? mapControlDomainData(node)
-            : (node.data ?? {});
+    let mappedData: Record<string, unknown>;
+    if (normalizedType === "execution_step") {
+      mappedData = mapExecutionStepData(node);
+    } else if (normalizedType === "runtime_service") {
+      mappedData = mapRuntimeServiceData(node);
+    } else if (normalizedType === "control_domain") {
+      mappedData = mapControlDomainData(node);
+    } else {
+      mappedData = node.data ?? {};
+    }
 
     return {
       id: node.id,
@@ -252,18 +285,6 @@ function mapBackendNodes(nodes: OperatorGraphNode[]): Node[] {
 }
 
 function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
-  const markerEndForRelation = (relationKind: RelationKind) => ({
-    type: MarkerType.ArrowClosed,
-    color:
-      relationKind === "domain"
-        ? "#22d3ee"
-        : relationKind === "runtime"
-          ? "#a78bfa"
-          : "#34d399",
-    width: 18,
-    height: 18,
-  });
-
   const inferRelationKind = (
     edgeId: string,
     sourceId: string,
@@ -317,13 +338,7 @@ function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
     const relationLabel =
       edgeData?.relationLabel ??
       edge.label ??
-      (relationKind === "domain"
-        ? "domain"
-        : relationKind === "runtime"
-          ? "runtime"
-          : relationKind === "sequence"
-            ? "depends"
-            : undefined);
+      resolveRelationLabel(relationKind);
 
     return {
       id: edge.id,
@@ -334,7 +349,7 @@ function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
       label: edge.label,
       data: inferredWorkflowRelation
         ? {
-            ...(typedEdge.data ?? {}),
+            ...typedEdge.data,
             relationKind,
             relationLabel,
           }
@@ -589,7 +604,9 @@ function buildFallbackExecutionStepNodes(
     const stage = step.stage?.trim() || "execution";
     const depth = computeDepth(step);
     const parentId = step.depends_on_step_id ?? null;
-    const relatedConfigKeys = [...(step.related_config_keys ?? [])].sort();
+    const relatedConfigKeys = (step.related_config_keys ?? [])
+      .map((key) => String(key))
+      .sort((left, right) => left.localeCompare(right));
     const groupKey = [
       parentId ?? "root",
       depth,
@@ -622,7 +639,7 @@ function buildFallbackExecutionStepNodes(
 
   const nodeIdByStepId = new Map<string, string>();
   const visibleStepOrder: string[] = [];
-  const nodes = groupOrder.map((groupKey) => {
+  const nodes = groupOrder.flatMap((groupKey) => {
     const group = groups.get(groupKey);
     if (!group) {
       throw new Error(`Missing execution step group: ${groupKey}`);
@@ -713,7 +730,7 @@ function buildFallbackExecutionStepNodes(
       },
       position: { x: 0, y: 0 },
     };
-  }).flat();
+  });
 
   return {
     nodes,
@@ -728,17 +745,6 @@ function buildFallbackEdges(
   nodeIdByStepId: Map<string, string>,
   visibleStepOrder: string[],
 ): Edge[] {
-  const markerEndForRelation = (relationKind: RelationKind) => ({
-    type: MarkerType.ArrowClosed,
-    color:
-      relationKind === "domain"
-        ? "#22d3ee"
-        : relationKind === "runtime"
-          ? "#a78bfa"
-          : "#34d399",
-    width: 18,
-    height: 18,
-  });
   const edges: Edge[] = [];
   const steps = systemState.execution_steps ?? [];
   const seenEdges = new Set<string>();

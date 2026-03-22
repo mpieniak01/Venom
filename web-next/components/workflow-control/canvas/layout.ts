@@ -19,7 +19,6 @@ export function buildCanvasGraph(
   _readOnly: boolean,
   options?: BuildWorkflowGraphOptions,
 ): { initialNodes: Node[]; initialEdges: Edge[] } {
-  void _readOnly;
   const { nodes, edges } = buildWorkflowGraph(systemState, options ?? {});
   const canvasReadOnly = true;
 

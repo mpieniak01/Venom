@@ -80,48 +80,66 @@ const DEFAULT_OPTIONS: Required<NonNullable<PropertyPanelProps["availableOptions
   embeddingProviders: {},
 };
 
+type ResolvedAvailableOptions = Required<NonNullable<PropertyPanelProps["availableOptions"]>>;
+
+function resolveArrayOption(
+  value: string[] | undefined,
+  fallback: string[],
+): string[] {
+  return Array.isArray(value) ? value : fallback;
+}
+
+function resolveSourceOptions(
+  value: { local: string[]; cloud: string[] } | undefined,
+  fallback: { local: string[]; cloud: string[] },
+): { local: string[]; cloud: string[] } {
+  return {
+    local: resolveArrayOption(value?.local, fallback.local),
+    cloud: resolveArrayOption(value?.cloud, fallback.cloud),
+  };
+}
+
+function resolveRecordOption<T extends Record<string, unknown>>(
+  value: T | undefined,
+  fallback: T,
+): T {
+  return value && typeof value === "object" ? value : fallback;
+}
+
 function resolveAvailableOptions(
   options?: PropertyPanelProps["availableOptions"]
-): Required<NonNullable<PropertyPanelProps["availableOptions"]>> {
+) : ResolvedAvailableOptions {
   if (!options) return DEFAULT_OPTIONS;
   return {
-    strategies: Array.isArray(options.strategies) ? options.strategies : DEFAULT_OPTIONS.strategies,
-    intentModes: Array.isArray(options.intentModes) ? options.intentModes : DEFAULT_OPTIONS.intentModes,
-    kernels: Array.isArray(options.kernels) ? options.kernels : DEFAULT_OPTIONS.kernels,
-    providers: Array.isArray(options.providers) ? options.providers : DEFAULT_OPTIONS.providers,
-    models: Array.isArray(options.models) ? options.models : DEFAULT_OPTIONS.models,
-    providersBySource: {
-      local: Array.isArray(options.providersBySource?.local)
-        ? options.providersBySource.local
-        : DEFAULT_OPTIONS.providersBySource.local,
-      cloud: Array.isArray(options.providersBySource?.cloud)
-        ? options.providersBySource.cloud
-        : DEFAULT_OPTIONS.providersBySource.cloud,
-    },
-    modelsBySource: {
-      local: Array.isArray(options.modelsBySource?.local)
-        ? options.modelsBySource.local
-        : DEFAULT_OPTIONS.modelsBySource.local,
-      cloud: Array.isArray(options.modelsBySource?.cloud)
-        ? options.modelsBySource.cloud
-        : DEFAULT_OPTIONS.modelsBySource.cloud,
-    },
-    kernelRuntimes:
-      options.kernelRuntimes && typeof options.kernelRuntimes === "object"
-        ? options.kernelRuntimes
-        : DEFAULT_OPTIONS.kernelRuntimes,
-    intentRequirements:
-      options.intentRequirements && typeof options.intentRequirements === "object"
-        ? options.intentRequirements
-        : DEFAULT_OPTIONS.intentRequirements,
-    providerEmbeddings:
-      options.providerEmbeddings && typeof options.providerEmbeddings === "object"
-        ? options.providerEmbeddings
-        : DEFAULT_OPTIONS.providerEmbeddings,
-    embeddingProviders:
-      options.embeddingProviders && typeof options.embeddingProviders === "object"
-        ? options.embeddingProviders
-        : DEFAULT_OPTIONS.embeddingProviders,
+    strategies: resolveArrayOption(options.strategies, DEFAULT_OPTIONS.strategies),
+    intentModes: resolveArrayOption(options.intentModes, DEFAULT_OPTIONS.intentModes),
+    kernels: resolveArrayOption(options.kernels, DEFAULT_OPTIONS.kernels),
+    providers: resolveArrayOption(options.providers, DEFAULT_OPTIONS.providers),
+    models: resolveArrayOption(options.models, DEFAULT_OPTIONS.models),
+    providersBySource: resolveSourceOptions(
+      options.providersBySource,
+      DEFAULT_OPTIONS.providersBySource,
+    ),
+    modelsBySource: resolveSourceOptions(
+      options.modelsBySource,
+      DEFAULT_OPTIONS.modelsBySource,
+    ),
+    kernelRuntimes: resolveRecordOption(
+      options.kernelRuntimes,
+      DEFAULT_OPTIONS.kernelRuntimes,
+    ) as ResolvedAvailableOptions["kernelRuntimes"],
+    intentRequirements: resolveRecordOption(
+      options.intentRequirements,
+      DEFAULT_OPTIONS.intentRequirements,
+    ) as ResolvedAvailableOptions["intentRequirements"],
+    providerEmbeddings: resolveRecordOption(
+      options.providerEmbeddings,
+      DEFAULT_OPTIONS.providerEmbeddings,
+    ) as ResolvedAvailableOptions["providerEmbeddings"],
+    embeddingProviders: resolveRecordOption(
+      options.embeddingProviders,
+      DEFAULT_OPTIONS.embeddingProviders,
+    ) as ResolvedAvailableOptions["embeddingProviders"],
   };
 }
 

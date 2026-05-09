@@ -8,7 +8,6 @@ import { HistoryList } from "@/components/history/history-list";
 import { QueueStatusCard } from "@/components/queue/queue-status-card";
 import { RecentRequestList } from "@/components/tasks/recent-request-list";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
-import { VoiceCommandCenter } from "@/components/voice/voice-command-center";
 import { IntegrationMatrix } from "@/components/cockpit/integration-matrix";
 import { MacroCard } from "@/components/cockpit/macro-card";
 import { CockpitQueue } from "@/components/cockpit/cockpit-queue";
@@ -361,7 +360,6 @@ export function CockpitInsightsSection({
 
       {showReferenceSections && showArtifacts && (
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <VoiceCommandCenter />
           <IntegrationMatrix services={services} events={entries} />
         </section>
       )}

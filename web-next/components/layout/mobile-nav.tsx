@@ -124,6 +124,22 @@ export function MobileNav() {
             </SheetDescription>
           </SheetHeader>
 
+          <Link
+            href="/voice"
+            className="card-shell card-base flex items-center justify-between gap-3 border-[color:var(--primary)]/20 bg-gradient-to-r from-[color:var(--primary)]/12 to-transparent px-4 py-3 transition hover:border-[color:var(--primary)]/40 hover:bg-[color:var(--ui-surface-hover)]"
+            onClick={() => setOpen(false)}
+          >
+            <div>
+              <p className="text-sm font-semibold text-[color:var(--text-heading)]">
+                {t("mobileNav.voiceTitle")}
+              </p>
+              <p className="text-xs text-[color:var(--text-secondary)]">
+                {t("mobileNav.voiceDescription")}
+              </p>
+            </div>
+            <Radio className="h-4 w-4 text-[color:var(--primary)]" />
+          </Link>
+
           <nav className="mt-2 space-y-3 text-sm">
             {navigationItems.map((item) => {
               const label = item.labelKey ? t(item.labelKey) : item.label;

@@ -25,6 +25,26 @@ class TestWhisperSkill:
         # W realnym przypadku potrzebujemy mock lub integracyjny test z modelem
         assert empty_audio.shape[0] == 16000
 
+    def test_transcribe_file_delegates_to_buffer(self, monkeypatch):
+        """Test transcribe_file deleguje do transkrypcji bufora."""
+        skill = WhisperSkill(model_size="tiny", device="cpu")
+        monkeypatch.setattr(
+            skill,
+            "_load_audio_file",
+            lambda _path: (np.zeros(32, dtype=np.int16), 22050),
+        )
+        monkeypatch.setattr(
+            skill,
+            "_transcribe_buffer_sync",
+            lambda audio,
+            language="pl",
+            sample_rate=16000: f"{len(audio)}:{language}:{sample_rate}",
+        )
+
+        result = skill.transcribe_file("/tmp/fake.wav", language="pl")
+
+        assert result == "32:pl:22050"
+
 
 class TestVoiceSkill:
     """Testy dla VoiceSkill (TTS)."""
@@ -127,6 +147,42 @@ class TestAudioEngine:
 
         # Test struktury - pełny test wymagałby modelu
         assert audio_buffer.shape[0] == 16000
+
+    def test_transcribe_file_delegates(self, monkeypatch):
+        """AudioEngine.transcribe_file deleguje do WhisperSkill."""
+        engine = AudioEngine(tts_model_path=None, device="cpu")
+        monkeypatch.setattr(
+            engine.whisper,
+            "transcribe_file",
+            lambda _path, language="pl": f"ok:{language}",
+        )
+
+        result = engine.transcribe_file("/tmp/example.wav", language="pl")
+
+        assert result == "ok:pl"
+
+    @pytest.mark.asyncio
+    async def test_warmup_loads_models(self, monkeypatch, tmp_path):
+        """AudioEngine.warmup preloads STT/TTS models when available."""
+        tts_model = tmp_path / "voice.onnx"
+        tts_model.write_text("fake")
+        engine = AudioEngine(tts_model_path=str(tts_model), device="cpu")
+        engine.whisper.model = None
+        engine.voice.voice = None
+
+        def _fake_whisper_load():
+            engine.whisper.model = object()
+
+        def _fake_tts_load():
+            engine.voice.voice = object()
+
+        monkeypatch.setattr(engine.whisper, "_load_model", _fake_whisper_load)
+        monkeypatch.setattr(engine.voice, "_load_model", _fake_tts_load)
+
+        result = await engine.warmup()
+
+        assert result["whisper_loaded"] is True
+        assert result["tts_loaded"] is True
 
     @pytest.mark.asyncio
     async def test_speak(self):

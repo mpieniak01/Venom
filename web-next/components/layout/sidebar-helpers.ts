@@ -7,6 +7,7 @@ import {
     Gauge,
     GraduationCap,
     Settings,
+    Radio,
     type LucideIcon,
 } from "lucide-react";
 import { getEnabledOptionalModuleNavItems } from "@/lib/generated/optional-modules.generated";
@@ -23,6 +24,7 @@ export type NavItem = {
 
 export const coreNavItems: NavItem[] = [
     { href: "/", label: "Kokpit", labelKey: "sidebar.nav.cockpit", icon: Command },
+    { href: "/voice", label: "Głos", labelKey: "sidebar.nav.voice", icon: Radio },
     { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
     { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
     { href: "/models", label: "Przeglad modeli", labelKey: "sidebar.nav.models", icon: Layers },

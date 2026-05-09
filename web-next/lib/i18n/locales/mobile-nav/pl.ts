@@ -1,6 +1,8 @@
 export const mobileNav = {
   navTitle: "Centrum Venom",
   menuButton: "Menu",
+  voiceTitle: "Czat głosowy",
+  voiceDescription: "Osobny ekran do sterowania mową i trybami analizy.",
   telemetry: {
     title: "Telemetria",
     queue: "Kolejka",

@@ -1,6 +1,8 @@
 export const mobileNav = {
   navTitle: "Venom Center",
   menuButton: "Menu",
+  voiceTitle: "Voice chat",
+  voiceDescription: "Dedicated screen for speech control and analysis modes.",
   telemetry: {
     title: "Telemetry",
     queue: "Queue",

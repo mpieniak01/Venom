@@ -4,15 +4,20 @@ import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
 from venom_core.agents.ghost_agent import GhostAgent
 from venom_core.agents.operator import OperatorAgent
 from venom_core.api import dependencies as api_deps
-from venom_core.api.audio_stream import AudioStreamHandler
+from venom_core.api.audio_stream import (
+    MIN_VOICE_SESSION_DURATION_SEC,
+    VOICE_SESSION_ROOT,
+    AudioStreamHandler,
+)
 from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 
 # Import routers
@@ -92,6 +97,9 @@ from venom_core.bootstrap.runtime_stack import (
 )
 from venom_core.bootstrap.runtime_stack import (
     initialize_shadow_stack as rt_initialize_shadow_stack,
+)
+from venom_core.bootstrap.runtime_stack import (
+    warmup_audio_engine_if_enabled as rt_warmup_audio_engine_if_enabled,
 )
 from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import validate_environment_policy
@@ -184,6 +192,84 @@ benchmark_service = None
 # Inicjalizacja Coding Benchmark Service
 coding_benchmark_service = None
 runtime_exclusive_guard = None
+
+
+def _get_latest_voice_session_record() -> dict[str, object] | None:
+    """Zwraca najnowszą sesję voice wraz ze ścieżkami lokalnymi."""
+    if audio_stream_handler is not None:
+        latest = audio_stream_handler.get_latest_voice_session()
+        if latest:
+            return latest
+
+    if not VOICE_SESSION_ROOT.exists():
+        return None
+
+    candidates: list[tuple[float, Path, dict[str, object]]] = []
+    for session_dir in VOICE_SESSION_ROOT.iterdir():
+        if not session_dir.is_dir():
+            continue
+        wav_path = session_dir / "recording.wav"
+        if not wav_path.exists():
+            continue
+        metadata_path = session_dir / "metadata.json"
+        stat_source = metadata_path if metadata_path.exists() else wav_path
+        try:
+            mtime = stat_source.stat().st_mtime
+        except OSError:
+            continue
+        metadata_path = session_dir / "metadata.json"
+        metadata: dict[str, object] = {}
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except Exception:
+                metadata = {}
+        candidates.append((mtime, session_dir, metadata))
+
+    for _mtime, latest_dir, metadata in sorted(
+        candidates, key=lambda item: item[0], reverse=True
+    ):
+        try:
+            duration_sec = metadata.get("duration_sec")
+            if (
+                duration_sec is not None
+                and float(duration_sec) < MIN_VOICE_SESSION_DURATION_SEC
+            ):
+                continue
+        except Exception:
+            pass
+        try:
+            samples = metadata.get("samples")
+            if samples is not None and int(samples) < 4096:
+                continue
+        except Exception:
+            pass
+
+        metadata_path = latest_dir / "metadata.json"
+        wav_path = latest_dir / "recording.wav"
+        return {
+            "session_id": latest_dir.name,
+            "created_at": metadata.get("created_at"),
+            "duration_sec": metadata.get("duration_sec"),
+            "sample_rate": metadata.get("sample_rate"),
+            "input_format": metadata.get("input_format"),
+            "mime_type": metadata.get("mime_type"),
+            "gain_applied": metadata.get("gain_applied"),
+            "peak_before_normalization": metadata.get("peak_before_normalization"),
+            "dc_offset": metadata.get("dc_offset"),
+            "rms_before_normalization": metadata.get("rms_before_normalization"),
+            "rms_after_normalization": metadata.get("rms_after_normalization"),
+            "peak_after_normalization": metadata.get("peak_after_normalization"),
+            "timings_ms": metadata.get("timings_ms") or {},
+            "runtime": metadata.get("runtime") or {},
+            "wav_path": str(wav_path),
+            "metadata_path": str(metadata_path) if metadata_path.exists() else None,
+            "transcription": metadata.get("transcription") or "",
+            "response_text": metadata.get("response_text") or "",
+        }
+
+    return None
+
 
 # Inicjalizacja Model Registry (dla endpointów models)
 model_registry = None
@@ -816,6 +902,10 @@ async def lifespan(app: FastAPI):
     await _initialize_background_scheduler()
     await _initialize_documenter_and_watcher(workspace_path)
     await _initialize_avatar_stack()
+    if audio_engine is not None:
+        app.state.startup_audio_task = asyncio.create_task(
+            rt_warmup_audio_engine_if_enabled(audio_engine=audio_engine, logger=logger)
+        )
     await _initialize_shadow_stack()
     _initialize_ghost_agent_if_enabled()
     setup_router_dependencies()
@@ -1194,6 +1284,48 @@ async def audio_websocket_endpoint(websocket: WebSocket):
         )
     except Exception as e:
         logger.error(f"Audio WebSocket error: {e}")
+
+
+@app.get("/api/v1/audio/status")
+async def audio_status_endpoint(request: Request):
+    """Zwraca stan kanału audio i gotowość stacka STT/TTS."""
+    if not audio_stream_handler:
+        return {
+            "enabled": False,
+            "connected_clients": 0,
+            "active_recordings": 0,
+            "message": "Interfejs audio jest wyłączony lub nie został zainicjalizowany.",
+        }
+
+    status = audio_stream_handler.get_status(operator_agent=operator_agent)
+    status["message"] = (
+        "Kanał audio gotowy." if status.get("enabled") else "Audio interface disabled."
+    )
+    latest_session = _get_latest_voice_session_record()
+    if latest_session:
+        latest_session["download_url"] = str(
+            request.url_for("download_latest_voice_session")
+        )
+    status["latest_voice_session"] = latest_session
+    return status
+
+
+@app.get("/api/v1/audio/sessions/latest/download", name="download_latest_voice_session")
+async def download_latest_voice_session():
+    """Pobiera ostatnie zapisane nagranie voice jako WAV."""
+    latest_session = _get_latest_voice_session_record()
+    if not latest_session:
+        raise HTTPException(status_code=404, detail="Brak zapisanych sesji voice.")
+
+    wav_path = Path(str(latest_session["wav_path"]))
+    if not wav_path.exists():
+        raise HTTPException(status_code=404, detail="Plik nagrania nie istnieje.")
+
+    return FileResponse(
+        path=str(wav_path),
+        media_type="audio/wav",
+        filename=wav_path.name,
+    )
 
 
 @app.websocket("/ws/nodes")

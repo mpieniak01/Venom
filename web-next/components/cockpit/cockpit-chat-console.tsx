@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import type { ReactNode, RefObject } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -93,6 +94,15 @@ export function CockpitChatConsole({
           className="items-center"
           rightSlot={
             <div className="flex flex-wrap items-center gap-2 pr-10">
+              <Button
+                asChild
+                variant="outline"
+                size="xs"
+              >
+                <Link href="/voice">
+                  Voice chat
+                </Link>
+              </Button>
               <Button
                 variant="amber"
                 size="xs"

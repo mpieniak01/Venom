@@ -1,7 +1,10 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getAudioWsUrl } from "@/lib/env";
 
 type IoTStatus = {
   connected: boolean;
@@ -10,6 +13,55 @@ type IoTStatus = {
   disk?: string;
   message?: string;
 };
+
+type AudioStatus = {
+  enabled: boolean;
+  connected_clients: number;
+  active_recordings: number;
+  vad_threshold?: number;
+  silence_duration?: number;
+  operator_ready?: boolean;
+  stt_backend?: string | null;
+  stt_ready?: boolean;
+  whisper_model_size?: string | null;
+  whisper_device?: string | null;
+  tts_backend?: string | null;
+  tts_ready?: boolean;
+  tts_model_path?: string | null;
+  tts_fallback?: boolean | null;
+  dependencies?: Record<string, boolean>;
+  latest_voice_session?: {
+    session_id: string;
+    created_at?: string | null;
+    duration_sec?: number | null;
+    sample_rate?: number | null;
+    input_format?: string | null;
+    mime_type?: string | null;
+    voice_mode?: string | null;
+    gain_applied?: number | null;
+    peak_before_normalization?: number | null;
+    peak_after_normalization?: number | null;
+    rms_before_normalization?: number | null;
+    rms_after_normalization?: number | null;
+    timings_ms?: Record<string, number | null | undefined>;
+    runtime?: {
+      stt_model?: string | null;
+      stt_device?: string | null;
+      stt_compute_type?: string | null;
+      llm_service_id?: string | null;
+      llm_model?: string | null;
+      tts_model_path?: string | null;
+      tts_fallback?: boolean | null;
+      tts_sample_rate?: number | null;
+    };
+    transcription?: string;
+    response_text?: string;
+    download_url?: string | null;
+  } | null;
+  message?: string;
+};
+
+type PlaybackState = "idle" | "playing" | "muted" | "error";
 
 declare global {
   interface Window {
@@ -43,75 +95,338 @@ const secureRandomInt = (maxExclusive: number): number => {
 
 const toPrimitiveString = (value: unknown): string | null => {
   if (typeof value === "string") return value;
-  if (
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    typeof value === "bigint"
-  ) {
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
     return String(value);
   }
   return null;
 };
 
-const AUDIO_WORKLET_PROCESSOR_NAME = "venom-pcm-forwarder";
-const AUDIO_WORKLET_SOURCE = `
-class VenomPcmForwarder extends AudioWorkletProcessor {
-  process(inputs) {
-    const input = inputs[0];
-    if (input && input[0]) {
-      const channelData = input[0];
-      this.port.postMessage(channelData.slice(0));
-    }
-    return true;
+const decodeBase64Pcm16 = (base64Audio: string): Int16Array => {
+  const binary = globalThis.window.atob(base64Audio);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
   }
-}
-registerProcessor("${AUDIO_WORKLET_PROCESSOR_NAME}", VenomPcmForwarder);
-`;
+  return new Int16Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+};
 
-export function VoiceCommandCenter() {
+const formatTimingSeconds = (milliseconds?: number | null): string | null => {
+  if (typeof milliseconds !== "number" || !Number.isFinite(milliseconds)) return null;
+  return `${(milliseconds / 1000).toFixed(2)}s`;
+};
+
+export type VoiceModePreset = "standard" | "deep_analysis" | "summary" | "action_items";
+
+const VOICE_MODE_LABELS: Record<VoiceModePreset, string> = {
+  standard: "Standard",
+  deep_analysis: "Deep analysis",
+  summary: "Summary",
+  action_items: "Action items",
+};
+
+const VOICE_MODE_HINTS: Record<VoiceModePreset, string> = {
+  standard: "Krótka, zwięzła odpowiedź",
+  deep_analysis: "Więcej wniosków, ryzyk i rekomendacji",
+  summary: "Najkrótsze podsumowanie odpowiedzi",
+  action_items: "Konkretne następne kroki",
+};
+
+type VoiceCommandCenterProps = Readonly<{
+  onTranscriptReady?: (text: string) => void;
+  voiceModePreset?: VoiceModePreset;
+}>;
+
+export function VoiceCommandCenter({
+  onTranscriptReady,
+  voiceModePreset = "standard",
+}: VoiceCommandCenterProps) {
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
   const iotStatusEnabled = process.env.NEXT_PUBLIC_ENABLE_IOT_STATUS === "true";
   const [connected, setConnected] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(audioEnabled);
   const [recording, setRecording] = useState(false);
   const [transcription, setTranscription] = useState("Oczekiwanie na komendę głosową...");
   const [response, setResponse] = useState("—");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [iotStatus, setIotStatus] = useState<IoTStatus | null>(null);
+  const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
+  const [iotStatus, setIoTStatus] = useState<IoTStatus | null>(null);
   const [loadingIoT, setLoadingIoT] = useState(false);
+  const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
+  const [ttsMuted, setTtsMuted] = useState(false);
+  const [audioChunkCount, setAudioChunkCount] = useState(0);
+  const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<AudioWorkletNode | null>(null);
+  const ttsAudioContextRef = useRef<AudioContext | null>(null);
+  const ttsSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const processorRef = useRef<AudioNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const captureGainRef = useRef<GainNode | null>(null);
   const silenceGainRef = useRef<GainNode | null>(null);
   const workletModuleUrlRef = useRef<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const visualizerFrameRef = useRef<number | null>(null);
   const recordingRef = useRef(false);
+  const recordingStartPendingRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const lastAudioResponseRef = useRef<{ audio: string; sampleRate: number } | null>(null);
+  const lastVoiceModeSentRef = useRef<string | null>(null);
 
-  const handleAudioMessage = useCallback((data: Record<string, unknown>) => {
-    switch (data.type) {
-      case "processing":
-        setStatusMessage(`Przetwarzanie (${toPrimitiveString(data.status) ?? "unknown"})`);
-        break;
-      case "transcription":
-        setTranscription(toPrimitiveString(data.text) ?? "Nie rozpoznano mowy.");
-        break;
-      case "response_text":
-        setResponse(toPrimitiveString(data.text) ?? "—");
-        break;
-      case "error":
-        setStatusMessage(toPrimitiveString(data.message) ?? "Błąd kanału audio.");
-        break;
+  const clearVisualizer = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  useEffect(() => {
+    if (!audioEnabled || !connected) return;
+    const mode = voiceModePreset || "standard";
+    if (lastVoiceModeSentRef.current === mode) return;
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(
+      JSON.stringify({
+        command: "voice_mode",
+        mode,
+      }),
+    );
+    lastVoiceModeSentRef.current = mode;
+    setStatusMessage(`Tryb voice: ${VOICE_MODE_LABELS[mode as VoiceModePreset] ?? mode}`);
+  }, [audioEnabled, connected, voiceModePreset]);
+
+  const drawVisualizer = useCallback((samples: Float32Array) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(15,23,42,0.9)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#34d399";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const sliceWidth = canvas.width / Math.max(samples.length, 1);
+    let x = 0;
+    for (let index = 0; index < samples.length; index += 1) {
+      const value = samples[index] ?? 0;
+      const y = (0.5 + value / 2) * canvas.height;
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+      x += sliceWidth;
+    }
+    ctx.stroke();
+  }, []);
+
+  const refreshAudioStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/audio/status");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as AudioStatus;
+      setAudioStatus(data);
+    } catch {
+      setAudioStatus({
+        enabled: false,
+        connected_clients: 0,
+        active_recordings: 0,
+        message: "Brak danych o stanie audio.",
+      });
     }
   }, []);
 
+  const releasePlaybackResources = useCallback(() => {
+    try {
+      ttsSourceRef.current?.stop();
+    } catch {
+      // ignore
+    }
+    ttsSourceRef.current?.disconnect();
+    ttsSourceRef.current = null;
+  }, []);
+
+  const scaleAudioChunkForDisplay = useCallback((samples: Float32Array) => {
+    let peak = 0;
+    for (let index = 0; index < samples.length; index += 1) {
+      const value = Math.abs(samples[index] ?? 0);
+      if (value > peak) {
+        peak = value;
+      }
+    }
+    const targetPeak = 0.6;
+    const gain = peak > 0 ? Math.min(24, Math.max(1, targetPeak / peak)) : 1;
+    const normalized = new Float32Array(samples.length);
+    for (let index = 0; index < samples.length; index += 1) {
+      const value = (samples[index] ?? 0) * gain;
+      normalized[index] = Math.max(-1, Math.min(1, value));
+    }
+    return { normalized, peak, gain };
+  }, []);
+
+  const getMediaRecorderMimeType = useCallback(() => {
+    if (typeof MediaRecorder === "undefined") return "";
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+    ];
+    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+  }, []);
+
+  const ensurePlaybackContext = useCallback(async () => {
+    if (globalThis.window === undefined) return null;
+    const AudioContextCtor = globalThis.window.AudioContext || globalThis.window.webkitAudioContext;
+    if (!AudioContextCtor) {
+      return null;
+    }
+    let ctx = ttsAudioContextRef.current;
+    if (!ctx) {
+      ctx = new AudioContextCtor();
+      ttsAudioContextRef.current = ctx;
+    }
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {
+        // ignore autoplay policy failures; user can replay after a gesture
+      }
+    }
+    return ctx;
+  }, []);
+
+  const playAudioResponse = useCallback(
+    async (base64Audio: string, sampleRate: number) => {
+      lastAudioResponseRef.current = { audio: base64Audio, sampleRate };
+      if (ttsMuted) {
+        setPlaybackState("muted");
+        setStatusMessage("Odpowiedź audio gotowa, ale odtwarzanie jest wyciszone.");
+        return;
+      }
+      if (globalThis.window === undefined) return;
+      const ctx = await ensurePlaybackContext();
+      if (!ctx) {
+        setPlaybackState("error");
+        setStatusMessage("Brak wsparcia AudioContext dla playbacku TTS.");
+        return;
+      }
+      const pcm16 = decodeBase64Pcm16(base64Audio);
+      if (pcm16.length === 0) {
+        setPlaybackState("error");
+        setStatusMessage("Otrzymano pusty bufor audio.");
+        return;
+      }
+      releasePlaybackResources();
+      const audioBuffer = ctx.createBuffer(1, pcm16.length, sampleRate || 22050);
+      const channelData = audioBuffer.getChannelData(0);
+      for (let index = 0; index < pcm16.length; index += 1) {
+        channelData[index] = (pcm16[index] ?? 0) / 32768;
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      source.onended = () => {
+        if (ttsSourceRef.current === source) {
+          setPlaybackState("idle");
+          ttsSourceRef.current = null;
+        }
+      };
+      ttsSourceRef.current = source;
+      setPlaybackState("playing");
+      setStatusMessage("Odtwarzam odpowiedź głosową.");
+      source.start();
+    },
+    [ensurePlaybackContext, releasePlaybackResources, ttsMuted],
+  );
+
+  const replayLastResponse = useCallback(async () => {
+    const last = lastAudioResponseRef.current;
+    if (!last) {
+      setStatusMessage("Brak ostatniej odpowiedzi audio do odtworzenia.");
+      return;
+    }
+    await playAudioResponse(last.audio, last.sampleRate);
+  }, [playAudioResponse]);
+
+  const handleAudioMessage = useCallback(
+    (data: Record<string, unknown>) => {
+      switch (data.type) {
+        case "recording_started":
+          setStatusMessage("Nagrywanie rozpoczęte.");
+          setLastAudioSignal("recording:started");
+          break;
+        case "processing":
+          setStatusMessage(`Przetwarzanie (${toPrimitiveString(data.status) ?? "unknown"})`);
+          setLastAudioSignal(`processing:${toPrimitiveString(data.status) ?? "unknown"}`);
+          break;
+        case "transcription":
+          {
+            const transcript = toPrimitiveString(data.text) ?? "Nie rozpoznano mowy.";
+            setTranscription(transcript);
+            if (transcript.trim()) {
+              onTranscriptReady?.(transcript.trim());
+              setStatusMessage("Transkrypcja wstawiona do czatu.");
+              setLastAudioSignal("stt:ok");
+            }
+          }
+          break;
+        case "response_text":
+          setResponse(toPrimitiveString(data.text) ?? "—");
+          setLastAudioSignal("response:text");
+          break;
+        case "audio_response": {
+          const audio = toPrimitiveString(data.audio) ?? "";
+          const sampleRate = Number(data.sample_rate ?? 22050);
+          if (audio) {
+            void playAudioResponse(audio, sampleRate);
+            setLastAudioSignal("tts:audio");
+          }
+          break;
+        }
+        case "complete":
+          setStatusMessage("Gotowe.");
+          setLastAudioSignal("complete");
+          break;
+        case "error":
+          setPlaybackState("error");
+          setStatusMessage(toPrimitiveString(data.message) ?? "Błąd kanału audio.");
+          setLastAudioSignal("error");
+          break;
+      }
+    },
+    [onTranscriptReady, playAudioResponse],
+  );
+
   const releaseAudioResources = useCallback(() => {
+    if (visualizerFrameRef.current !== null) {
+      window.cancelAnimationFrame(visualizerFrameRef.current);
+      visualizerFrameRef.current = null;
+    }
+    if (mediaRecorderRef.current?.state === "recording") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore recorder shutdown races
+      }
+    }
+    mediaRecorderRef.current = null;
     processorRef.current?.disconnect();
     processorRef.current = null;
     sourceNodeRef.current?.disconnect();
     sourceNodeRef.current = null;
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    captureGainRef.current?.disconnect();
+    captureGainRef.current = null;
     silenceGainRef.current?.disconnect();
     silenceGainRef.current = null;
     if (workletModuleUrlRef.current) {
@@ -134,19 +449,22 @@ export function VoiceCommandCenter() {
     if (!audioEnabled) {
       setConnected(false);
       setStatusMessage("Kanał audio wyłączony w konfiguracji.");
+      setVoiceMode(false);
       return;
     }
     let destroyed = false;
-    const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
     const connect = () => {
       if (destroyed) return;
-      const ws = new WebSocket(`${protocol}//${globalThis.window.location.host}/ws/audio`);
+      const ws = new WebSocket(getAudioWsUrl());
       wsRef.current = ws;
       setStatusMessage("Łączenie z kanałem audio…");
       ws.onopen = () => {
         setConnected(true);
         reconnectAttemptsRef.current = 0;
+        lastVoiceModeSentRef.current = null;
         setStatusMessage("Kanał audio połączony.");
+        setLastAudioSignal("ws:open");
+        void refreshAudioStatus();
       };
       ws.onmessage = (event) => {
         try {
@@ -158,9 +476,11 @@ export function VoiceCommandCenter() {
       };
       ws.onerror = () => {
         setStatusMessage("Kanał audio offline.");
+        setLastAudioSignal("ws:error");
       };
       ws.onclose = () => {
         setConnected(false);
+        lastVoiceModeSentRef.current = null;
         if (!destroyed) {
           const attempt = reconnectAttemptsRef.current;
           const baseDelay = Math.min(30000, 1000 * 2 ** attempt);
@@ -176,6 +496,7 @@ export function VoiceCommandCenter() {
       };
     };
     connect();
+    void refreshAudioStatus();
     return () => {
       destroyed = true;
       if (reconnectTimeoutRef.current) {
@@ -183,12 +504,17 @@ export function VoiceCommandCenter() {
       }
       wsRef.current?.close();
       releaseAudioResources();
+      releasePlaybackResources();
+      ttsAudioContextRef.current?.close().catch(() => {
+        // Ignore close errors on unmount.
+      });
+      ttsAudioContextRef.current = null;
     };
-  }, [audioEnabled, handleAudioMessage, releaseAudioResources]);
+  }, [audioEnabled, handleAudioMessage, releaseAudioResources, releasePlaybackResources, refreshAudioStatus]);
 
   const refreshIoTStatus = useCallback(async () => {
     if (!iotStatusEnabled) {
-      setIotStatus({
+      setIoTStatus({
         connected: false,
         message: "Status IoT wyłączony w konfiguracji.",
       });
@@ -199,18 +525,18 @@ export function VoiceCommandCenter() {
       const res = await fetch("/api/v1/iot/status");
       if (!res.ok) {
         if (res.status === 404) {
-          setIotStatus({
+          setIoTStatus({
             connected: false,
             message: "Offline – endpoint /api/v1/iot/status nie jest dostępny.",
           });
           return;
         }
-        throw new Error("HTTP " + res.status);
+        throw new Error(`HTTP ${res.status}`);
       }
       const data = (await res.json()) as IoTStatus;
-      setIotStatus(data);
+      setIoTStatus(data);
     } catch {
-      setIotStatus({
+      setIoTStatus({
         connected: false,
         message: "Offline – brak danych IoT.",
       });
@@ -220,116 +546,216 @@ export function VoiceCommandCenter() {
   }, [iotStatusEnabled]);
 
   useEffect(() => {
-    refreshIoTStatus();
+    void refreshIoTStatus();
   }, [refreshIoTStatus]);
 
+  const stopRecording = useCallback(() => {
+    if (recordingStartPendingRef.current) {
+      stopRequestedRef.current = true;
+      setStatusMessage("Kończę uruchamianie nagrania...");
+      return;
+    }
+    if (!recordingRef.current) return;
+    recordingRef.current = false;
+    stopRequestedRef.current = false;
+    setRecording(false);
+    setLastAudioSignal("recording:stop");
+    clearVisualizer();
+    setStatusMessage("Nagrywanie zakończone.");
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") {
+      recorder.stop();
+      return;
+    }
+    wsRef.current?.send(JSON.stringify({ command: "stop_recording" }));
+    releaseAudioResources();
+  }, [clearVisualizer, releaseAudioResources]);
+
   const startRecording = useCallback(async () => {
+    if (!voiceMode) {
+      setStatusMessage("Tryb głosowy jest wyłączony.");
+      return;
+    }
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
       setStatusMessage("Kanał audio nie jest gotowy.");
       return;
     }
-    if (recordingRef.current) return;
+    if (recordingRef.current || recordingStartPendingRef.current) return;
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStartPendingRef.current = true;
+      stopRequestedRef.current = false;
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       mediaStreamRef.current = mediaStream;
       const AudioContextCtor = globalThis.window.AudioContext || globalThis.window.webkitAudioContext;
       if (!AudioContextCtor) {
         setStatusMessage("Brak wsparcia AudioContext w przeglądarce.");
         return;
       }
+      if (typeof MediaRecorder === "undefined") {
+        setStatusMessage("Brak wsparcia MediaRecorder w przeglądarce.");
+        return;
+      }
+      void ensurePlaybackContext();
       const audioContext = new AudioContextCtor();
       audioContextRef.current = audioContext;
       const source = audioContext.createMediaStreamSource(mediaStream);
       sourceNodeRef.current = source;
-      const moduleBlob = new Blob([AUDIO_WORKLET_SOURCE], { type: "application/javascript" });
-      const moduleUrl = URL.createObjectURL(moduleBlob);
-      workletModuleUrlRef.current = moduleUrl;
-      await audioContext.audioWorklet.addModule(moduleUrl);
-      const processor = new AudioWorkletNode(audioContext, AUDIO_WORKLET_PROCESSOR_NAME, {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        channelCount: 1,
-      });
-      processorRef.current = processor;
-      const silenceGain = audioContext.createGain();
-      silenceGain.gain.value = 0;
-      silenceGainRef.current = silenceGain;
-      source.connect(processor);
-      processor.connect(silenceGain);
-      silenceGain.connect(audioContext.destination);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      analyserRef.current = analyser;
+      source.connect(analyser);
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+      const mimeType = getMediaRecorderMimeType();
+      const recorder = new MediaRecorder(
+        mediaStream,
+        mimeType ? { mimeType } : undefined,
+      );
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size <= 0 || wsRef.current?.readyState !== WebSocket.OPEN) return;
+        wsRef.current.send(event.data);
+        setAudioChunkCount((current) => current + 1);
+        setLastAudioSignal(`media:${event.data.size}B`);
+      };
+      recorder.onstop = () => {
+        wsRef.current?.send(JSON.stringify({ command: "stop_recording" }));
+        releaseAudioResources();
+      };
       recordingRef.current = true;
       setRecording(true);
+      setAudioChunkCount(0);
+      setLastAudioSignal("recording:start");
       setStatusMessage("Nagrywanie…");
-      wsRef.current.send(JSON.stringify({ command: "start_recording" }));
-      processor.port.onmessage = (event) => {
+      wsRef.current.send(
+        JSON.stringify({
+          command: "audio_config",
+          sample_rate: audioContext.sampleRate,
+          channels: 1,
+          format: "mediarecorder",
+          mime_type: recorder.mimeType || mimeType,
+        }),
+      );
+      wsRef.current.send(
+        JSON.stringify({
+          command: "start_recording",
+          format: "mediarecorder",
+          mime_type: recorder.mimeType || mimeType,
+          sample_rate: audioContext.sampleRate,
+          channels: 1,
+        }),
+      );
+      recorder.start(250);
+
+      const timeDomain = new Uint8Array(analyser.fftSize);
+      const drawFromAnalyser = () => {
         if (!recordingRef.current) return;
-        const channelData = event.data as Float32Array;
-        const int16 = new Int16Array(channelData.length);
-        for (let i = 0; i < channelData.length; i += 1) {
-          int16[i] = Math.max(-32768, Math.min(32767, channelData[i] * 32768));
+        analyser.getByteTimeDomainData(timeDomain);
+        const samples = new Float32Array(timeDomain.length);
+        for (let index = 0; index < timeDomain.length; index += 1) {
+          samples[index] = ((timeDomain[index] ?? 128) - 128) / 128;
         }
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(int16.buffer);
+        const { normalized, peak } = scaleAudioChunkForDisplay(samples);
+        if (peak > 0) {
+          setLastAudioSignal(`media:peak ${peak.toFixed(3)}`);
         }
-        drawVisualizer(channelData);
+        drawVisualizer(normalized);
+        visualizerFrameRef.current = window.requestAnimationFrame(drawFromAnalyser);
       };
+      visualizerFrameRef.current = window.requestAnimationFrame(drawFromAnalyser);
     } catch (error) {
       console.error("recording error", error);
       releaseAudioResources();
       setStatusMessage("Nie udało się uruchomić mikrofonu.");
+    } finally {
+      recordingStartPendingRef.current = false;
     }
-  }, [releaseAudioResources]);
-
-  const stopRecording = useCallback(() => {
-    if (!recordingRef.current) return;
-    recordingRef.current = false;
-    setRecording(false);
-    wsRef.current?.send(JSON.stringify({ command: "stop_recording" }));
-    releaseAudioResources();
-    clearVisualizer();
-    setStatusMessage("Nagrywanie zakończone.");
-  }, [releaseAudioResources]);
-
-  const drawVisualizer = (samples: Float32Array) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(15,23,42,0.9)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#34d399";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const sliceWidth = canvas.width / samples.length;
-    let x = 0;
-    for (let i = 0; i < samples.length; i += 1) {
-      const v = samples[i];
-      const y = (0.5 + v / 2) * canvas.height;
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-      x += sliceWidth;
+    if (stopRequestedRef.current && recordingRef.current) {
+      stopRecording();
     }
-    ctx.stroke();
-  };
+  }, [
+    drawVisualizer,
+    ensurePlaybackContext,
+    getMediaRecorderMimeType,
+    releaseAudioResources,
+    scaleAudioChunkForDisplay,
+    stopRecording,
+    voiceMode,
+  ]);
 
-  const clearVisualizer = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  };
+  const recordingButtonClass = (() => {
+    if (!voiceMode || !audioEnabled) return "border-white/10 bg-white/5 text-zinc-500";
+    if (recording) return "border-rose-400/60 bg-rose-500/10 text-rose-100";
+    if (connected) return "border-emerald-400/40 bg-emerald-500/10 text-white";
+    return "border-white/10 bg-white/5 text-zinc-300";
+  })();
+  const latestVoiceSession = audioStatus?.latest_voice_session;
+  const activeVoiceMode = voiceModePreset || "standard";
+  const latestTimings = latestVoiceSession?.timings_ms;
+  const timingSummary = [
+    ["decode", formatTimingSeconds(latestTimings?.decode_ms)],
+    ["STT", formatTimingSeconds(latestTimings?.stt_ms)],
+    ["LLM", formatTimingSeconds(latestTimings?.llm_ms)],
+    ["TTS", formatTimingSeconds(latestTimings?.tts_ms)],
+    ["total", formatTimingSeconds(latestTimings?.total_backend_ms)],
+  ]
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([label, value]) => `${label} ${value}`)
+    .join(" · ");
+  const runtimeSummary = latestVoiceSession?.runtime
+    ? [
+        latestVoiceSession.runtime.llm_model
+          ? `LLM ${latestVoiceSession.runtime.llm_service_id ?? "runtime"}:${latestVoiceSession.runtime.llm_model}`
+          : null,
+        latestVoiceSession.runtime.stt_model
+          ? `STT ${latestVoiceSession.runtime.stt_model}/${latestVoiceSession.runtime.stt_device ?? "?"}`
+          : null,
+        latestVoiceSession.runtime.tts_sample_rate
+          ? `TTS ${latestVoiceSession.runtime.tts_sample_rate} Hz`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+  const qualitySummary = latestVoiceSession
+    ? [
+        latestVoiceSession.peak_before_normalization != null
+          ? `peak ${latestVoiceSession.peak_before_normalization.toFixed(2)}`
+          : null,
+        latestVoiceSession.rms_after_normalization != null
+          ? `rms ${latestVoiceSession.rms_after_normalization.toFixed(3)}`
+          : null,
+    ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
-  let recordingButtonClass = "border-white/10 bg-white/5 text-zinc-300";
-  if (recording) {
-    recordingButtonClass = "border-rose-400/60 bg-rose-500/10 text-rose-100";
-  } else if (connected) {
-    recordingButtonClass = "border-emerald-400/40 bg-emerald-500/10 text-white";
-  }
+  useEffect(() => {
+    if (!recording) return;
+    const stopOnRelease = () => {
+      stopRecording();
+    };
+    window.addEventListener("pointerup", stopOnRelease);
+    window.addEventListener("mouseup", stopOnRelease);
+    window.addEventListener("touchend", stopOnRelease);
+    window.addEventListener("touchcancel", stopOnRelease);
+    window.addEventListener("blur", stopOnRelease);
+    return () => {
+      window.removeEventListener("pointerup", stopOnRelease);
+      window.removeEventListener("mouseup", stopOnRelease);
+      window.removeEventListener("touchend", stopOnRelease);
+      window.removeEventListener("touchcancel", stopOnRelease);
+      window.removeEventListener("blur", stopOnRelease);
+    };
+  }, [recording, stopRecording]);
 
   return (
     <Panel
@@ -343,31 +769,222 @@ export function VoiceCommandCenter() {
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card-shell card-base space-y-3 p-4">
-          <p className="eyebrow">Sterowanie</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="eyebrow">Sterowanie</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant={voiceMode ? "primary" : "outline"}
+                onClick={() =>
+                  setVoiceMode((current) => {
+                    const next = !current;
+                    setStatusMessage(next ? "Tryb głosowy włączony." : "Tryb głosowy wyłączony.");
+                    return next;
+                  })
+                }
+                disabled={!audioEnabled}
+              >
+                {voiceMode ? "Voice" : "Text"}
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => setTtsMuted((current) => !current)}
+                disabled={!audioEnabled}
+              >
+                {ttsMuted ? "TTS: mute" : "TTS: on"}
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => void replayLastResponse()}
+                disabled={!audioEnabled || !lastAudioResponseRef.current}
+              >
+                Replay
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => void refreshAudioStatus()}
+              >
+                Refresh
+              </Button>
+            </div>
+          </div>
           <Button
             type="button"
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onMouseLeave={stopRecording}
-            onTouchStart={(e) => {
-              e.preventDefault();
-              startRecording();
+            onPointerDown={(event) => {
+              event.preventDefault();
+              if (!recordingRef.current) {
+                try {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                } catch {
+                  // ignore pointer capture failures
+                }
+                void startRecording();
+              }
             }}
-            onTouchEnd={(e) => {
-              e.preventDefault();
+            onPointerUp={(event) => {
+              event.preventDefault();
               stopRecording();
+              try {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              } catch {
+                // ignore pointer capture failures
+              }
             }}
+            onPointerCancel={() => stopRecording()}
+            onLostPointerCapture={() => stopRecording()}
             variant="outline"
             size="md"
             className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
-            disabled={!connected}
+            disabled={!connected || !voiceMode}
           >
-            🎙 {recording ? "Nagrywanie..." : "Przytrzymaj i mów"}
+            🎙 {recording ? "Nagrywanie..." : voiceMode ? "Przytrzymaj i mów" : "Tryb tekstowy"}
           </Button>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
+              <p className="text-caption">Tryb</p>
+              <p className="text-white">{voiceMode ? "Voice chat" : "Text chat"}</p>
+            </div>
+            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
+              <p className="text-caption">Playback</p>
+              <p className="text-white">{ttsMuted ? "Muted" : playbackState}</p>
+            </div>
+            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
+              <p className="text-caption">Audio WS</p>
+              <p className="text-white">{audioStatus?.enabled ? "Ready" : "Offline"}</p>
+            </div>
+            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300 sm:col-span-3">
+              <p className="text-caption">Voice mode</p>
+              <p className="text-white">{VOICE_MODE_LABELS[activeVoiceMode as VoiceModePreset] ?? activeVoiceMode}</p>
+              <p className="text-[11px] text-zinc-400">{VOICE_MODE_HINTS[activeVoiceMode as VoiceModePreset] ?? ""}</p>
+            </div>
+          </div>
           <canvas ref={canvasRef} width={320} height={80} className="w-full rounded-2xl box-muted" />
           <p className="text-hint">{statusMessage ?? "Kanał gotowy."}</p>
+          <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-caption">Signal</p>
+                <p className="text-white">{lastAudioSignal}</p>
+              </div>
+              <div>
+                <p className="text-caption">Chunks</p>
+                <p className="text-white">{audioChunkCount}</p>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="space-y-3">
+          <div className="rounded-2xl box-muted p-4">
+            <p className="eyebrow">Audio status</p>
+            {audioStatus ? (
+              <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+                <div>
+                  <p className="text-caption">Enabled</p>
+                  <p className="text-white">{audioStatus.enabled ? "Yes" : "No"}</p>
+                </div>
+                <div>
+                  <p className="text-caption">Clients</p>
+                  <p className="text-white">{audioStatus.connected_clients}</p>
+                </div>
+                <div>
+                  <p className="text-caption">Recordings</p>
+                  <p className="text-white">{audioStatus.active_recordings}</p>
+                </div>
+                <div>
+                  <p className="text-caption">VAD</p>
+                  <p className="text-white">{audioStatus.vad_threshold ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-caption">Whisper</p>
+                  <p className="text-white">{audioStatus.whisper_model_size ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-caption">STT ready</p>
+                  <p className="text-white">{audioStatus.stt_ready ? "Yes" : "No"}</p>
+                </div>
+                <div>
+                  <p className="text-caption">TTS ready</p>
+                  <p className="text-white">{audioStatus.tts_ready ? "Yes" : "No"}</p>
+                </div>
+                <div>
+                  <p className="text-caption">TTS fallback</p>
+                  <p className="text-white">{audioStatus.tts_fallback ? "Yes" : "No"}</p>
+                </div>
+                {audioStatus.dependencies && (
+                  <div className="sm:col-span-2">
+                    <p className="text-caption">Dependencies</p>
+                    <p className="text-white">
+                      {Object.entries(audioStatus.dependencies)
+                        .map(([name, ok]) => `${name}:${ok ? "yes" : "no"}`)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                )}
+                {latestVoiceSession?.download_url && (
+                  <div className="sm:col-span-2">
+                    <p className="text-caption">Ostatnie nagranie</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <Button asChild size="xs" variant="outline">
+                        <a
+                          href={latestVoiceSession.download_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Pobierz WAV
+                        </a>
+                      </Button>
+                      <span className="text-[11px] text-zinc-400">
+                        {latestVoiceSession.duration_sec != null
+                          ? `${latestVoiceSession.duration_sec.toFixed(1)} s`
+                          : "—"}
+                        {latestVoiceSession.sample_rate
+                          ? ` · ${latestVoiceSession.sample_rate} Hz`
+                          : ""}
+                        {latestVoiceSession.input_format
+                          ? ` · ${latestVoiceSession.input_format}`
+                          : ""}
+                        {latestVoiceSession.voice_mode
+                          ? ` · ${latestVoiceSession.voice_mode}`
+                          : ""}
+                        {latestVoiceSession.gain_applied
+                          ? ` · gain ${latestVoiceSession.gain_applied.toFixed(1)}`
+                          : ""}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-hint">
+                      ID: {latestVoiceSession.session_id}
+                    </p>
+                    {qualitySummary && (
+                      <p className="mt-1 text-hint">Jakość: {qualitySummary}</p>
+                    )}
+                    {timingSummary && (
+                      <p className="mt-1 text-hint">Czasy: {timingSummary}</p>
+                    )}
+                    {runtimeSummary && (
+                      <p className="mt-1 text-hint">Runtime: {runtimeSummary}</p>
+                    )}
+                    {latestVoiceSession.transcription && (
+                      <p className="mt-1 text-hint">
+                        STT: {latestVoiceSession.transcription}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {audioStatus.message && (
+                  <div className="sm:col-span-2 text-hint">{audioStatus.message}</div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-hint">Brak danych o audio.</p>
+            )}
+          </div>
           <div className="rounded-2xl box-muted p-4">
             <p className="eyebrow">Transkrypcja</p>
             <p className="mt-2 text-sm text-white">{transcription}</p>
@@ -379,12 +996,7 @@ export function VoiceCommandCenter() {
           <div className="rounded-2xl box-muted p-4 text-sm">
             <div className="flex items-center justify-between">
               <p className="eyebrow">Rider-Pi</p>
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={refreshIoTStatus}
-                disabled={loadingIoT}
-              >
+              <Button size="xs" variant="outline" onClick={() => void refreshIoTStatus()} disabled={loadingIoT}>
                 {loadingIoT ? "Odświeżam…" : "Odśwież"}
               </Button>
             </div>
@@ -406,11 +1018,7 @@ export function VoiceCommandCenter() {
                   <p className="text-caption">Dysk</p>
                   <p className="text-white">{iotStatus.disk ?? "—"}</p>
                 </div>
-                {iotStatus.message && (
-                  <div className="sm:col-span-3 text-hint">
-                    {iotStatus.message}
-                  </div>
-                )}
+                {iotStatus.message && <div className="sm:col-span-3 text-hint">{iotStatus.message}</div>}
               </div>
             ) : (
               <p className="mt-2 text-hint">Brak danych IoT.</p>

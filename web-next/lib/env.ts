@@ -114,3 +114,19 @@ export const getWsBaseUrl = (): string => {
   }
   return normalizeWs(httpBase);
 };
+
+const buildWsEndpoint = (base: string, pathname: string): string => {
+  try {
+    const url = new URL(pathname, base);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return sanitizeBase(url.toString());
+  } catch {
+    return sanitizeBase(base.replace(/^http/, "ws")).replace(/\/$/, "") + pathname;
+  }
+};
+
+export const getAudioWsUrl = (): string => {
+  const explicit = getEnv("NEXT_PUBLIC_AUDIO_WS_BASE");
+  const base = explicit || getEnvApiBase() || buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);
+  return buildWsEndpoint(base, "/ws/audio");
+};

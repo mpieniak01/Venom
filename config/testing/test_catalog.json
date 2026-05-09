@@ -53,7 +53,7 @@
   "tests": [
     {
       "path": "tests/api/test_academy_openapi_contract.py",
-      "domain": "api",
+      "domain": "core",
       "test_type": "route_contract",
       "intent": "contract",
       "primary_lane": "release",
@@ -836,7 +836,7 @@
     },
     {
       "path": "tests/test_artifact_strategy.py",
-      "domain": "environment",
+      "domain": "core",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "release",

@@ -36,6 +36,7 @@ tests/test_api_routes_import_guard.py
 tests/test_architect_agent.py
 tests/test_architecture_contracts_guard.py
 tests/test_assistant_skill.py
+tests/test_audio_smoke_script.py
 tests/test_audio_stream_handler_roi.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
@@ -181,6 +182,7 @@ tests/test_orchestrator_flows_regression.py
 tests/test_parallel_skill.py
 tests/test_permission_guard.py
 tests/test_persona_factory.py
+tests/test_piper_voice_assets.py
 tests/test_platform_skill.py
 tests/test_policy_autonomy_contract.py
 tests/test_policy_gate_integration.py

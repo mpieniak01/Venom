@@ -45,6 +45,21 @@ class TestOperatorAgent:
 
         assert agent.hardware_bridge == mock_hardware_bridge
 
+    def test_resolve_chat_service_id_prefers_chat_then_local_and_fallback(
+        self, mock_kernel
+    ):
+        """_resolve_chat_service_id should prefer chat, then local, then fallback."""
+        agent = OperatorAgent(kernel=mock_kernel)
+
+        mock_kernel.services = {"chat": MagicMock(), "local": MagicMock()}
+        assert agent._resolve_chat_service_id() == "chat"
+
+        mock_kernel.services = {"local": MagicMock()}
+        assert agent._resolve_chat_service_id() == "local"
+
+        mock_kernel.services = {}
+        assert agent._resolve_chat_service_id() == "chat"
+
     def test_is_hardware_command_true(self, mock_kernel):
         """Test rozpoznawania komend sprzętowych."""
         agent = OperatorAgent(kernel=mock_kernel)
@@ -238,3 +253,43 @@ class TestOperatorAgent:
         response = await agent.process("Jaki jest status repozytorium?")
         assert isinstance(response, str)
         assert len(response) > 0
+
+    @pytest.mark.asyncio
+    async def test_generate_voice_response_filters_system_messages_and_uses_mode(
+        self, mock_kernel
+    ):
+        """_generate_voice_response should filter historical system messages."""
+        agent = OperatorAgent(kernel=mock_kernel)
+        mock_kernel.services = {"local": MagicMock()}
+        agent.chat_history.add_user_message("historia user")
+        agent.chat_history.add_assistant_message("historia assistant")
+        agent.chat_history.add_system_message("system-only-history")
+
+        captured = {}
+
+        async def fake_invoke_chat_with_fallbacks(
+            *, chat_service, chat_history, settings, enable_functions
+        ):
+            captured["service"] = chat_service
+            captured["messages"] = [
+                getattr(message, "role", None) for message in chat_history.messages
+            ]
+            captured["tokens"] = settings.max_tokens
+            captured["temperature"] = settings.temperature
+            captured["enable_functions"] = enable_functions
+            return "Odpowiedź głosowa."
+
+        mock_chat_service = MagicMock()
+        mock_kernel.get_service.return_value = mock_chat_service
+        agent._invoke_chat_with_fallbacks = AsyncMock(
+            side_effect=fake_invoke_chat_with_fallbacks
+        )
+
+        response = await agent._generate_voice_response("co dalej?", mode="summary")
+
+        assert response == "Odpowiedź głosowa."
+        assert captured["service"] is mock_chat_service
+        assert captured["enable_functions"] is False
+        assert captured["tokens"] == 100
+        assert captured["temperature"] == pytest.approx(0.5)
+        assert captured["messages"].count("system") == 2

@@ -65,7 +65,7 @@
     },
     {
       "path": "tests/api/test_memory_api_pruning.py",
-      "domain": "api",
+      "domain": "core",
       "test_type": "route_contract",
       "intent": "contract",
       "primary_lane": "release",
@@ -890,7 +890,7 @@
     },
     {
       "path": "tests/test_audio_stream_handler_roi.py",
-      "domain": "api",
+      "domain": "core",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
@@ -1062,7 +1062,7 @@
     },
     {
       "path": "tests/test_boot_id.py",
-      "domain": "environment",
+      "domain": "core",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
@@ -3210,7 +3210,7 @@
     },
     {
       "path": "tests/test_main_internal_helpers.py",
-      "domain": "environment",
+      "domain": "core",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",

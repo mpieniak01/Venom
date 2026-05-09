@@ -36,6 +36,8 @@ export const de = {
     completed: "Abgeschlossen",
     failed: "Fehlgeschlagen",
     unknown: "Unbekannt",
+    yes: "Ja",
+    no: "Nein",
     total: "Gesamt",
     loading: "Laden...",
   },

@@ -530,15 +530,12 @@ async def test_handle_audio_data_auto_finalizes_on_silence(monkeypatch):
             (connection_id, len(audio_buffer), operator_agent, sample_rate)
         )
 
-    async def fake_sleep(_seconds):
-        return None
-
     monkeypatch.setattr(handler, "_process_audio_buffer", fake_process)
-    monkeypatch.setattr(audio_stream_mod.asyncio, "sleep", fake_sleep)
 
     await handler._handle_audio_data(
         cid, np.zeros(32, dtype=np.int16), operator_agent=None
     )
+    await asyncio.sleep(0.05)
 
     assert processed
     assert handler.active_connections[cid]["is_speaking"] is False

@@ -35,6 +35,82 @@ VOICE_SESSION_ROOT = PROJECT_ROOT / "data" / "audio" / "voice_sessions"
 MIN_VOICE_SESSION_DURATION_SEC = 0.25
 
 
+def collect_latest_voice_session_record(
+    session_root: Path = VOICE_SESSION_ROOT,
+) -> dict[str, object] | None:
+    """Zwraca najnowszą sesję voice z katalogu sesji."""
+    if not session_root.exists():
+        return None
+
+    candidates: list[tuple[float, Path, dict[str, object]]] = []
+    for session_dir in session_root.iterdir():
+        if not session_dir.is_dir():
+            continue
+        wav_path = session_dir / "recording.wav"
+        if not wav_path.exists():
+            continue
+
+        metadata_path = session_dir / "metadata.json"
+        stat_source = metadata_path if metadata_path.exists() else wav_path
+        try:
+            mtime = stat_source.stat().st_mtime
+        except OSError:
+            continue
+
+        metadata: dict[str, object] = {}
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except Exception:
+                metadata = {}
+        candidates.append((mtime, session_dir, metadata))
+
+    for _mtime, latest_dir, metadata in sorted(
+        candidates, key=lambda item: item[0], reverse=True
+    ):
+        duration_sec = metadata.get("duration_sec")
+        samples = metadata.get("samples")
+        try:
+            if (
+                duration_sec is not None
+                and float(duration_sec) < MIN_VOICE_SESSION_DURATION_SEC
+            ):
+                continue
+        except Exception:
+            pass
+        try:
+            if samples is not None and int(samples) < 4096:
+                continue
+        except Exception:
+            pass
+
+        metadata_path = latest_dir / "metadata.json"
+        wav_path = latest_dir / "recording.wav"
+        return {
+            "session_id": latest_dir.name,
+            "created_at": metadata.get("created_at"),
+            "duration_sec": duration_sec,
+            "sample_rate": metadata.get("sample_rate"),
+            "input_format": metadata.get("input_format"),
+            "mime_type": metadata.get("mime_type"),
+            "voice_mode": metadata.get("voice_mode") or "standard",
+            "gain_applied": metadata.get("gain_applied"),
+            "peak_before_normalization": metadata.get("peak_before_normalization"),
+            "dc_offset": metadata.get("dc_offset"),
+            "rms_before_normalization": metadata.get("rms_before_normalization"),
+            "rms_after_normalization": metadata.get("rms_after_normalization"),
+            "peak_after_normalization": metadata.get("peak_after_normalization"),
+            "timings_ms": metadata.get("timings_ms") or {},
+            "runtime": metadata.get("runtime") or {},
+            "wav_path": str(wav_path),
+            "metadata_path": str(metadata_path) if metadata_path.exists() else None,
+            "transcription": metadata.get("transcription") or "",
+            "response_text": metadata.get("response_text") or "",
+        }
+
+    return None
+
+
 class AudioStreamHandler:
     """
     Handler do obsługi streaming audio przez WebSocket.
@@ -66,6 +142,7 @@ class AudioStreamHandler:
         audio_buffer: List[np.ndarray]
         audio_bytes_buffer: List[bytes]
         is_speaking: bool
+        silence_finalize_task: asyncio.Task[None] | None
         sample_rate: int
         channels: int
         speech_detected: bool
@@ -110,76 +187,7 @@ class AudioStreamHandler:
 
     def get_latest_voice_session(self) -> dict[str, object] | None:
         """Zwraca metadane ostatniej zapisanej sesji głosowej."""
-        if not VOICE_SESSION_ROOT.exists():
-            return None
-
-        candidates: list[tuple[float, Path, dict[str, object]]] = []
-        for session_dir in VOICE_SESSION_ROOT.iterdir():
-            if not session_dir.is_dir():
-                continue
-            wav_path = session_dir / "recording.wav"
-            if not wav_path.exists():
-                continue
-
-            metadata_path = session_dir / "metadata.json"
-            stat_source = metadata_path if metadata_path.exists() else wav_path
-            try:
-                mtime = stat_source.stat().st_mtime
-            except OSError:
-                continue
-
-            metadata_path = session_dir / "metadata.json"
-            metadata: dict[str, object] = {}
-            if metadata_path.exists():
-                try:
-                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-                except Exception:
-                    metadata = {}
-            candidates.append((mtime, session_dir, metadata))
-
-        for _mtime, latest_dir, metadata in sorted(
-            candidates, key=lambda item: item[0], reverse=True
-        ):
-            duration_sec = metadata.get("duration_sec")
-            samples = metadata.get("samples")
-            try:
-                if (
-                    duration_sec is not None
-                    and float(duration_sec) < MIN_VOICE_SESSION_DURATION_SEC
-                ):
-                    continue
-            except Exception:
-                pass
-            try:
-                if samples is not None and int(samples) < 4096:
-                    continue
-            except Exception:
-                pass
-
-            metadata_path = latest_dir / "metadata.json"
-            wav_path = latest_dir / "recording.wav"
-            return {
-                "session_id": latest_dir.name,
-                "created_at": metadata.get("created_at"),
-                "duration_sec": duration_sec,
-                "sample_rate": metadata.get("sample_rate"),
-                "input_format": metadata.get("input_format"),
-                "mime_type": metadata.get("mime_type"),
-                "gain_applied": metadata.get("gain_applied"),
-                "peak_before_normalization": metadata.get("peak_before_normalization"),
-                "dc_offset": metadata.get("dc_offset"),
-                "rms_before_normalization": metadata.get("rms_before_normalization"),
-                "rms_after_normalization": metadata.get("rms_after_normalization"),
-                "peak_after_normalization": metadata.get("peak_after_normalization"),
-                "timings_ms": metadata.get("timings_ms") or {},
-                "runtime": metadata.get("runtime") or {},
-                "wav_path": str(wav_path),
-                "metadata_path": str(metadata_path) if metadata_path.exists() else None,
-                "transcription": metadata.get("transcription") or "",
-                "response_text": metadata.get("response_text") or "",
-            }
-
-        return None
+        return collect_latest_voice_session_record(VOICE_SESSION_ROOT)
 
     async def handle_websocket(
         self,
@@ -200,6 +208,7 @@ class AudioStreamHandler:
             "audio_buffer": [],
             "audio_bytes_buffer": [],
             "is_speaking": False,
+            "silence_finalize_task": None,
             "sample_rate": 16000,
             "channels": 1,
             "speech_detected": False,
@@ -259,6 +268,7 @@ class AudioStreamHandler:
                 conn["audio_buffer"] = []
                 conn["audio_bytes_buffer"] = []
                 conn["is_speaking"] = True
+                self._cancel_silence_finalize_task(conn)
                 audio_config = conn.get("audio_config") or {}
                 conn["sample_rate"] = int(
                     data.get("sample_rate") or audio_config.get("sample_rate") or 16000
@@ -333,6 +343,7 @@ class AudioStreamHandler:
                 # Zakończ nagrywanie i przetwórz
                 conn = self.active_connections[connection_id]
                 conn["is_speaking"] = False
+                self._cancel_silence_finalize_task(conn)
                 logger.info(
                     "Zakończono nagrywanie: "
                     f"{connection_id} (pcm_chunks={len(conn['audio_buffer'])}, "
@@ -383,6 +394,7 @@ class AudioStreamHandler:
             if conn.get("recording_format") != "pcm16":
                 conn["audio_bytes_buffer"].append(audio_bytes)
                 conn["speech_detected"] = True
+                self._cancel_silence_finalize_task(conn)
                 logger.debug(
                     f"Odebrano encoded audio chunk: {len(audio_bytes)} B od {connection_id}"
                 )
@@ -402,30 +414,13 @@ class AudioStreamHandler:
             is_voice = self._detect_voice_activity(audio_data)
             if is_voice:
                 conn["speech_detected"] = True
-
-            if not is_voice and conn["is_speaking"] and conn["speech_detected"]:
-                # Cisza wykryta - jeśli utrzyma się przez silence_duration,
-                # finalizujemy wypowiedź nawet wtedy, gdy UI nie wysłało jeszcze stop_recording.
-                await asyncio.sleep(self.silence_duration)
-
-                still_active = self.active_connections.get(connection_id)
-                if (
-                    still_active
-                    and still_active["is_speaking"]
-                    and still_active["audio_buffer"]
-                    and still_active["speech_detected"]
-                    and not self._detect_voice_activity(
-                        still_active["audio_buffer"][-1]
-                    )
-                ):
-                    still_active["is_speaking"] = False
-                    await self._process_audio_buffer(
-                        connection_id,
-                        still_active["audio_buffer"],
-                        operator_agent,
-                        sample_rate=still_active.get("sample_rate", 16000),
-                    )
-                    still_active["audio_buffer"] = []
+                self._cancel_silence_finalize_task(conn)
+            elif conn["is_speaking"] and conn["speech_detected"]:
+                self._schedule_silence_finalize(
+                    connection_id,
+                    operator_agent,
+                    sample_rate=int(conn.get("sample_rate", 16000)),
+                )
 
         except Exception as e:
             logger.error(f"Błąd podczas obsługi audio data: {e}")
@@ -457,6 +452,58 @@ class AudioStreamHandler:
 
         except Exception:
             return False
+
+    def _cancel_silence_finalize_task(self, conn: dict[str, object] | None) -> None:
+        if not conn:
+            return
+        task = conn.get("silence_finalize_task")
+        if isinstance(task, asyncio.Task) and not task.done():
+            task.cancel()
+        conn["silence_finalize_task"] = None
+
+    def _schedule_silence_finalize(
+        self,
+        connection_id: int,
+        operator_agent,
+        sample_rate: int = 16000,
+    ) -> None:
+        conn = self.active_connections.get(connection_id)
+        if not conn:
+            return
+        existing_task = conn.get("silence_finalize_task")
+        if isinstance(existing_task, asyncio.Task) and not existing_task.done():
+            return
+
+        async def finalize_after_silence() -> None:
+            try:
+                await asyncio.sleep(self.silence_duration)
+                current = self.active_connections.get(connection_id)
+                if (
+                    not current
+                    or not current["is_speaking"]
+                    or not current["audio_buffer"]
+                    or not current["speech_detected"]
+                    or self._detect_voice_activity(current["audio_buffer"][-1])
+                ):
+                    return
+                current["is_speaking"] = False
+                audio_buffer = list(current["audio_buffer"])
+                current["audio_buffer"] = []
+                await self._process_audio_buffer(
+                    connection_id,
+                    audio_buffer,
+                    operator_agent,
+                    sample_rate=sample_rate,
+                )
+            except asyncio.CancelledError:
+                return
+            finally:
+                current = self.active_connections.get(connection_id)
+                if current and current.get("silence_finalize_task") is task:
+                    current["silence_finalize_task"] = None
+
+        task = asyncio.create_task(finalize_after_silence())
+        conn["silence_finalize_task"] = task
 
     async def _process_audio_buffer(
         self,
@@ -612,12 +659,11 @@ class AudioStreamHandler:
             await self._send_json(
                 connection_id, {"type": "processing", "status": "decode"}
             )
-            encoded_audio = b"".join(audio_chunks)
             decode_started_at = time.perf_counter()
             session_dir = await asyncio.to_thread(
                 self._persist_encoded_voice_session,
                 connection_id,
-                encoded_audio,
+                audio_chunks,
                 mime_type,
             )
             timings_ms["decode_ms"] = self._elapsed_ms(decode_started_at)
@@ -732,7 +778,10 @@ class AudioStreamHandler:
             await self._send_json(connection_id, {"type": "error", "message": str(e)})
 
     def _persist_encoded_voice_session(
-        self, connection_id: int, encoded_audio: bytes, mime_type: str = ""
+        self,
+        connection_id: int,
+        encoded_audio: bytes | list[bytes],
+        mime_type: str = "",
     ) -> Path:
         """Zapisuje oryginalne MediaRecorder audio i dekoduje je do WAV 16 kHz."""
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -742,7 +791,12 @@ class AudioStreamHandler:
 
         original_suffix = ".webm" if "webm" in mime_type.lower() else ".bin"
         original_path = session_dir / f"original{original_suffix}"
-        original_path.write_bytes(encoded_audio)
+        with open(original_path, "wb") as original_file:
+            if isinstance(encoded_audio, (bytes, bytearray, memoryview)):
+                original_file.write(bytes(encoded_audio))
+            else:
+                for chunk in encoded_audio:
+                    original_file.write(chunk)
         wav_path = session_dir / "recording.wav"
 
         command = [

@@ -100,7 +100,7 @@ export function CockpitChatConsole({
                 size="xs"
               >
                 <Link href="/voice">
-                  Voice chat
+                  {t("sidebar.nav.voice")}
                 </Link>
               </Button>
               <Button

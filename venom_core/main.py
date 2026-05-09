@@ -14,9 +14,9 @@ from venom_core.agents.ghost_agent import GhostAgent
 from venom_core.agents.operator import OperatorAgent
 from venom_core.api import dependencies as api_deps
 from venom_core.api.audio_stream import (
-    MIN_VOICE_SESSION_DURATION_SEC,
     VOICE_SESSION_ROOT,
     AudioStreamHandler,
+    collect_latest_voice_session_record,
 )
 from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 
@@ -200,75 +200,7 @@ def _get_latest_voice_session_record() -> dict[str, object] | None:
         latest = audio_stream_handler.get_latest_voice_session()
         if latest:
             return latest
-
-    if not VOICE_SESSION_ROOT.exists():
-        return None
-
-    candidates: list[tuple[float, Path, dict[str, object]]] = []
-    for session_dir in VOICE_SESSION_ROOT.iterdir():
-        if not session_dir.is_dir():
-            continue
-        wav_path = session_dir / "recording.wav"
-        if not wav_path.exists():
-            continue
-        metadata_path = session_dir / "metadata.json"
-        stat_source = metadata_path if metadata_path.exists() else wav_path
-        try:
-            mtime = stat_source.stat().st_mtime
-        except OSError:
-            continue
-        metadata_path = session_dir / "metadata.json"
-        metadata: dict[str, object] = {}
-        if metadata_path.exists():
-            try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            except Exception:
-                metadata = {}
-        candidates.append((mtime, session_dir, metadata))
-
-    for _mtime, latest_dir, metadata in sorted(
-        candidates, key=lambda item: item[0], reverse=True
-    ):
-        try:
-            duration_sec = metadata.get("duration_sec")
-            if (
-                duration_sec is not None
-                and float(duration_sec) < MIN_VOICE_SESSION_DURATION_SEC
-            ):
-                continue
-        except Exception:
-            pass
-        try:
-            samples = metadata.get("samples")
-            if samples is not None and int(samples) < 4096:
-                continue
-        except Exception:
-            pass
-
-        metadata_path = latest_dir / "metadata.json"
-        wav_path = latest_dir / "recording.wav"
-        return {
-            "session_id": latest_dir.name,
-            "created_at": metadata.get("created_at"),
-            "duration_sec": metadata.get("duration_sec"),
-            "sample_rate": metadata.get("sample_rate"),
-            "input_format": metadata.get("input_format"),
-            "mime_type": metadata.get("mime_type"),
-            "gain_applied": metadata.get("gain_applied"),
-            "peak_before_normalization": metadata.get("peak_before_normalization"),
-            "dc_offset": metadata.get("dc_offset"),
-            "rms_before_normalization": metadata.get("rms_before_normalization"),
-            "rms_after_normalization": metadata.get("rms_after_normalization"),
-            "peak_after_normalization": metadata.get("peak_after_normalization"),
-            "timings_ms": metadata.get("timings_ms") or {},
-            "runtime": metadata.get("runtime") or {},
-            "wav_path": str(wav_path),
-            "metadata_path": str(metadata_path) if metadata_path.exists() else None,
-            "transcription": metadata.get("transcription") or "",
-            "response_text": metadata.get("response_text") or "",
-        }
-
-    return None
+    return collect_latest_voice_session_record(VOICE_SESSION_ROOT)
 
 
 # Inicjalizacja Model Registry (dla endpointów models)
@@ -1317,7 +1249,14 @@ async def download_latest_voice_session():
     if not latest_session:
         raise HTTPException(status_code=404, detail="Brak zapisanych sesji voice.")
 
-    wav_path = Path(str(latest_session["wav_path"]))
+    session_id = str(latest_session.get("session_id") or "")
+    if not session_id:
+        raise HTTPException(status_code=404, detail="Brak identyfikatora sesji voice.")
+
+    wav_path = (VOICE_SESSION_ROOT / session_id / "recording.wav").resolve()
+    root_path = VOICE_SESSION_ROOT.resolve()
+    if not wav_path.is_relative_to(root_path):
+        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka nagrania.")
     if not wav_path.exists():
         raise HTTPException(status_code=404, detail="Plik nagrania nie istnieje.")
 

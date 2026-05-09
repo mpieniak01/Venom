@@ -118,12 +118,17 @@ class WhisperSkill:
 
         audio = np.clip(audio, -1.0, 1.0)
         if sample_rate and sample_rate != 16000 and audio.size > 1:
-            target_len = max(1, int(round(len(audio) * 16000 / sample_rate)))
-            src_idx = np.linspace(0.0, 1.0, num=len(audio), endpoint=True)
-            dst_idx = np.linspace(0.0, 1.0, num=target_len, endpoint=True)
-            audio = np.interp(dst_idx, src_idx, audio.astype(np.float64)).astype(
-                np.float32
-            )
+            try:
+                from scipy.signal import resample_poly
+
+                audio = resample_poly(audio.astype(np.float32), 16000, int(sample_rate))
+            except Exception:
+                target_len = max(1, int(round(len(audio) * 16000 / sample_rate)))
+                src_idx = np.linspace(0.0, 1.0, num=len(audio), endpoint=True)
+                dst_idx = np.linspace(0.0, 1.0, num=target_len, endpoint=True)
+                audio = np.interp(dst_idx, src_idx, audio.astype(np.float64)).astype(
+                    np.float32
+                )
 
         peak = float(np.max(np.abs(audio))) if audio.size else 0.0
         if 0.0 < peak < 0.1:

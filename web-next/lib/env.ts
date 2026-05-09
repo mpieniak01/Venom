@@ -23,14 +23,17 @@ const isLocalhostFallbackEnabled = (): boolean =>
 
 const sanitizeBase = (value: string): string => value.replace(/\/$/, "");
 
+const toWsProtocol = (protocol: string): "wss:" | "ws:" =>
+  protocol === "https:" || protocol === "wss:" ? "wss:" : "ws:";
+
 const normalizeWs = (url: string): string => {
   try {
     const parsed = new URL(url);
-    parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+    parsed.protocol = toWsProtocol(parsed.protocol);
     return sanitizeBase(parsed.toString());
   } catch {
     const fallback = buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);
-    return sanitizeBase(fallback.replace(/^http/, "ws"));
+    return sanitizeBase(fallback.replace(/^https/, "wss").replace(/^http/, "ws"));
   }
 };
 
@@ -86,9 +89,9 @@ const resolveBrowserWsBase = (): string => {
       return normalizeWs(parsed.toString());
     }
   } catch {
-    return sanitizeBase(origin.replace(/^http/, "ws"));
+    return sanitizeBase(origin.replace(/^https/, "wss").replace(/^http/, "ws"));
   }
-  return sanitizeBase(origin.replace(/^http/, "ws"));
+  return sanitizeBase(origin.replace(/^https/, "wss").replace(/^http/, "ws"));
 };
 
 export const getServerApiBaseUrl = (): string => {
@@ -118,10 +121,10 @@ export const getWsBaseUrl = (): string => {
 const buildWsEndpoint = (base: string, pathname: string): string => {
   try {
     const url = new URL(pathname, base);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.protocol = toWsProtocol(url.protocol);
     return sanitizeBase(url.toString());
   } catch {
-    return sanitizeBase(base.replace(/^http/, "ws")).replace(/\/$/, "") + pathname;
+    return sanitizeBase(base.replace(/^https/, "wss").replace(/^http/, "ws")).replace(/\/$/, "") + pathname;
   }
 };
 

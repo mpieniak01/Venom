@@ -5,6 +5,7 @@ import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getAudioWsUrl } from "@/lib/env";
+import { useTranslation } from "@/lib/i18n";
 
 type IoTStatus = {
   connected: boolean;
@@ -117,18 +118,18 @@ const formatTimingSeconds = (milliseconds?: number | null): string | null => {
 
 export type VoiceModePreset = "standard" | "deep_analysis" | "summary" | "action_items";
 
-const VOICE_MODE_LABELS: Record<VoiceModePreset, string> = {
-  standard: "Standard",
-  deep_analysis: "Deep analysis",
-  summary: "Summary",
-  action_items: "Action items",
+const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
+  standard: "voice.modes.standard.title",
+  deep_analysis: "voice.modes.deepAnalysis.title",
+  summary: "voice.modes.summary.title",
+  action_items: "voice.modes.actionItems.title",
 };
 
-const VOICE_MODE_HINTS: Record<VoiceModePreset, string> = {
-  standard: "Krótka, zwięzła odpowiedź",
-  deep_analysis: "Więcej wniosków, ryzyk i rekomendacji",
-  summary: "Najkrótsze podsumowanie odpowiedzi",
-  action_items: "Konkretne następne kroki",
+const VOICE_MODE_HINT_KEYS: Record<VoiceModePreset, string> = {
+  standard: "voice.modes.standard.description",
+  deep_analysis: "voice.modes.deepAnalysis.description",
+  summary: "voice.modes.summary.description",
+  action_items: "voice.modes.actionItems.description",
 };
 
 type VoiceCommandCenterProps = Readonly<{
@@ -140,6 +141,7 @@ export function VoiceCommandCenter({
   onTranscriptReady,
   voiceModePreset = "standard",
 }: VoiceCommandCenterProps) {
+  const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
   const iotStatusEnabled = process.env.NEXT_PUBLIC_ENABLE_IOT_STATUS === "true";
   const [connected, setConnected] = useState(false);
@@ -161,12 +163,8 @@ export function VoiceCommandCenter({
   const audioContextRef = useRef<AudioContext | null>(null);
   const ttsAudioContextRef = useRef<AudioContext | null>(null);
   const ttsSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const processorRef = useRef<AudioNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const captureGainRef = useRef<GainNode | null>(null);
-  const silenceGainRef = useRef<GainNode | null>(null);
-  const workletModuleUrlRef = useRef<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -197,8 +195,8 @@ export function VoiceCommandCenter({
       }),
     );
     lastVoiceModeSentRef.current = mode;
-    setStatusMessage(`Tryb voice: ${VOICE_MODE_LABELS[mode as VoiceModePreset] ?? mode}`);
-  }, [audioEnabled, connected, voiceModePreset]);
+    setStatusMessage(`${t("voice.controls.voiceChat")}: ${t(VOICE_MODE_TITLE_KEYS[mode as VoiceModePreset])}`);
+  }, [audioEnabled, connected, t, voiceModePreset]);
 
   const drawVisualizer = useCallback((samples: Float32Array) => {
     const canvas = canvasRef.current;
@@ -239,10 +237,10 @@ export function VoiceCommandCenter({
         enabled: false,
         connected_clients: 0,
         active_recordings: 0,
-        message: "Brak danych o stanie audio.",
+        message: t("voice.status.noData"),
       });
     }
-  }, []);
+  }, [t]);
 
   const releasePlaybackResources = useCallback(() => {
     try {
@@ -419,20 +417,10 @@ export function VoiceCommandCenter({
       }
     }
     mediaRecorderRef.current = null;
-    processorRef.current?.disconnect();
-    processorRef.current = null;
     sourceNodeRef.current?.disconnect();
     sourceNodeRef.current = null;
     analyserRef.current?.disconnect();
     analyserRef.current = null;
-    captureGainRef.current?.disconnect();
-    captureGainRef.current = null;
-    silenceGainRef.current?.disconnect();
-    silenceGainRef.current = null;
-    if (workletModuleUrlRef.current) {
-      URL.revokeObjectURL(workletModuleUrlRef.current);
-      workletModuleUrlRef.current = null;
-    }
     const audioContext = audioContextRef.current;
     if (audioContext) {
       audioContext.close().catch(() => {
@@ -448,7 +436,7 @@ export function VoiceCommandCenter({
     if (globalThis.window === undefined) return;
     if (!audioEnabled) {
       setConnected(false);
-      setStatusMessage("Kanał audio wyłączony w konfiguracji.");
+      setStatusMessage(t("voice.status.channelDisabled"));
       setVoiceMode(false);
       return;
     }
@@ -457,12 +445,12 @@ export function VoiceCommandCenter({
       if (destroyed) return;
       const ws = new WebSocket(getAudioWsUrl());
       wsRef.current = ws;
-      setStatusMessage("Łączenie z kanałem audio…");
+      setStatusMessage(t("voice.status.channelConnecting"));
       ws.onopen = () => {
         setConnected(true);
         reconnectAttemptsRef.current = 0;
         lastVoiceModeSentRef.current = null;
-        setStatusMessage("Kanał audio połączony.");
+        setStatusMessage(t("voice.status.channelReady"));
         setLastAudioSignal("ws:open");
         void refreshAudioStatus();
       };
@@ -475,7 +463,7 @@ export function VoiceCommandCenter({
         }
       };
       ws.onerror = () => {
-        setStatusMessage("Kanał audio offline.");
+        setStatusMessage(t("voice.status.channelOffline"));
         setLastAudioSignal("ws:error");
       };
       ws.onclose = () => {
@@ -487,7 +475,7 @@ export function VoiceCommandCenter({
           const jitter = secureRandomInt(500);
           const delay = baseDelay + jitter;
           reconnectAttemptsRef.current = Math.min(attempt + 1, 6);
-          setStatusMessage(`Kanał audio offline – ponawiam za ${Math.ceil(delay / 1000)}s…`);
+          setStatusMessage(`${t("voice.status.channelOffline")} – ponawiam za ${Math.ceil(delay / 1000)}s…`);
           if (reconnectTimeoutRef.current) {
             globalThis.window.clearTimeout(reconnectTimeoutRef.current);
           }
@@ -510,7 +498,7 @@ export function VoiceCommandCenter({
       });
       ttsAudioContextRef.current = null;
     };
-  }, [audioEnabled, handleAudioMessage, releaseAudioResources, releasePlaybackResources, refreshAudioStatus]);
+  }, [audioEnabled, handleAudioMessage, releaseAudioResources, releasePlaybackResources, refreshAudioStatus, t]);
 
   const refreshIoTStatus = useCallback(async () => {
     if (!iotStatusEnabled) {
@@ -549,10 +537,20 @@ export function VoiceCommandCenter({
     void refreshIoTStatus();
   }, [refreshIoTStatus]);
 
+  const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
+    const ws = wsRef.current;
+    if (ws?.readyState !== WebSocket.OPEN) {
+      setStatusMessage(t("voice.status.channelOffline"));
+      return false;
+    }
+    ws.send(JSON.stringify(payload));
+    return true;
+  }, [t]);
+
   const stopRecording = useCallback(() => {
     if (recordingStartPendingRef.current) {
       stopRequestedRef.current = true;
-      setStatusMessage("Kończę uruchamianie nagrania...");
+      setStatusMessage(t("voice.controls.recording"));
       return;
     }
     if (!recordingRef.current) return;
@@ -567,17 +565,17 @@ export function VoiceCommandCenter({
       recorder.stop();
       return;
     }
-    wsRef.current?.send(JSON.stringify({ command: "stop_recording" }));
+    sendControlMessage({ command: "stop_recording" });
     releaseAudioResources();
-  }, [clearVisualizer, releaseAudioResources]);
+  }, [clearVisualizer, releaseAudioResources, sendControlMessage, t]);
 
   const startRecording = useCallback(async () => {
     if (!voiceMode) {
-      setStatusMessage("Tryb głosowy jest wyłączony.");
+      setStatusMessage(t("voice.controls.textChat"));
       return;
     }
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
-      setStatusMessage("Kanał audio nie jest gotowy.");
+      setStatusMessage(t("voice.status.channelOffline"));
       return;
     }
     if (recordingRef.current || recordingStartPendingRef.current) return;
@@ -627,32 +625,38 @@ export function VoiceCommandCenter({
         setLastAudioSignal(`media:${event.data.size}B`);
       };
       recorder.onstop = () => {
-        wsRef.current?.send(JSON.stringify({ command: "stop_recording" }));
+        sendControlMessage({ command: "stop_recording" });
         releaseAudioResources();
       };
       recordingRef.current = true;
       setRecording(true);
       setAudioChunkCount(0);
       setLastAudioSignal("recording:start");
-      setStatusMessage("Nagrywanie…");
-      wsRef.current.send(
-        JSON.stringify({
+      setStatusMessage(t("voice.controls.recording"));
+      if (
+        !sendControlMessage({
           command: "audio_config",
           sample_rate: audioContext.sampleRate,
           channels: 1,
           format: "mediarecorder",
           mime_type: recorder.mimeType || mimeType,
-        }),
-      );
-      wsRef.current.send(
-        JSON.stringify({
+        })
+      ) {
+        releaseAudioResources();
+        return;
+      }
+      if (
+        !sendControlMessage({
           command: "start_recording",
           format: "mediarecorder",
           mime_type: recorder.mimeType || mimeType,
           sample_rate: audioContext.sampleRate,
           channels: 1,
-        }),
-      );
+        })
+      ) {
+        releaseAudioResources();
+        return;
+      }
       recorder.start(250);
 
       const timeDomain = new Uint8Array(analyser.fftSize);
@@ -688,6 +692,8 @@ export function VoiceCommandCenter({
     releaseAudioResources,
     scaleAudioChunkForDisplay,
     stopRecording,
+    sendControlMessage,
+    t,
     voiceMode,
   ]);
 
@@ -759,18 +765,18 @@ export function VoiceCommandCenter({
 
   return (
     <Panel
-      title="Voice Command Center"
-      description="Kanał /ws/audio + transkrypcja i odpowiedź w czasie rzeczywistym."
+      title={t("voice.page.title")}
+      description={t("voice.page.description")}
       action={
         <Badge tone={connected ? "success" : "warning"}>
-          {connected ? "WS połączony" : "WS offline"}
+          {connected ? t("voice.status.connected") : t("voice.status.offline")}
         </Badge>
       }
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card-shell card-base space-y-3 p-4">
           <div className="flex items-center justify-between gap-3">
-            <p className="eyebrow">Sterowanie</p>
+            <p className="eyebrow">{t("voice.controls.voiceChat")}</p>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -779,13 +785,13 @@ export function VoiceCommandCenter({
                 onClick={() =>
                   setVoiceMode((current) => {
                     const next = !current;
-                    setStatusMessage(next ? "Tryb głosowy włączony." : "Tryb głosowy wyłączony.");
+                    setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
                     return next;
                   })
                 }
                 disabled={!audioEnabled}
               >
-                {voiceMode ? "Voice" : "Text"}
+                {voiceMode ? t("voice.controls.voice") : t("voice.controls.text")}
               </Button>
               <Button
                 type="button"
@@ -794,7 +800,7 @@ export function VoiceCommandCenter({
                 onClick={() => setTtsMuted((current) => !current)}
                 disabled={!audioEnabled}
               >
-                {ttsMuted ? "TTS: mute" : "TTS: on"}
+                {ttsMuted ? t("voice.controls.ttsMuted") : t("voice.controls.ttsOn")}
               </Button>
               <Button
                 type="button"
@@ -803,7 +809,7 @@ export function VoiceCommandCenter({
                 onClick={() => void replayLastResponse()}
                 disabled={!audioEnabled || !lastAudioResponseRef.current}
               >
-                Replay
+                {t("voice.controls.replay")}
               </Button>
               <Button
                 type="button"
@@ -811,7 +817,7 @@ export function VoiceCommandCenter({
                 variant="outline"
                 onClick={() => void refreshAudioStatus()}
               >
-                Refresh
+                {t("voice.controls.refresh")}
               </Button>
             </div>
           </div>
@@ -844,37 +850,37 @@ export function VoiceCommandCenter({
             className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
             disabled={!connected || !voiceMode}
           >
-            🎙 {recording ? "Nagrywanie..." : voiceMode ? "Przytrzymaj i mów" : "Tryb tekstowy"}
+            🎙 {recording ? t("voice.controls.recording") : voiceMode ? t("voice.controls.pushToTalk") : t("voice.controls.textChat")}
           </Button>
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">Tryb</p>
-              <p className="text-white">{voiceMode ? "Voice chat" : "Text chat"}</p>
+              <p className="text-caption">{t("voice.controls.voiceChat")}</p>
+              <p className="text-white">{voiceMode ? t("voice.controls.voiceChat") : t("voice.controls.textChat")}</p>
             </div>
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">Playback</p>
-              <p className="text-white">{ttsMuted ? "Muted" : playbackState}</p>
+              <p className="text-caption">{t("voice.controls.playback")}</p>
+              <p className="text-white">{ttsMuted ? t("voice.controls.ttsMuted") : playbackState}</p>
             </div>
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">Audio WS</p>
-              <p className="text-white">{audioStatus?.enabled ? "Ready" : "Offline"}</p>
+              <p className="text-caption">{t("voice.controls.audioWs")}</p>
+              <p className="text-white">{audioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline")}</p>
             </div>
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300 sm:col-span-3">
-              <p className="text-caption">Voice mode</p>
-              <p className="text-white">{VOICE_MODE_LABELS[activeVoiceMode as VoiceModePreset] ?? activeVoiceMode}</p>
-              <p className="text-[11px] text-zinc-400">{VOICE_MODE_HINTS[activeVoiceMode as VoiceModePreset] ?? ""}</p>
+              <p className="text-caption">{t("voice.modes.title")}</p>
+              <p className="text-white">{t(VOICE_MODE_TITLE_KEYS[activeVoiceMode as VoiceModePreset])}</p>
+              <p className="text-[11px] text-zinc-400">{t(VOICE_MODE_HINT_KEYS[activeVoiceMode as VoiceModePreset])}</p>
             </div>
           </div>
           <canvas ref={canvasRef} width={320} height={80} className="w-full rounded-2xl box-muted" />
-          <p className="text-hint">{statusMessage ?? "Kanał gotowy."}</p>
+          <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
           <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <p className="text-caption">Signal</p>
+                <p className="text-caption">{t("voice.controls.signal")}</p>
                 <p className="text-white">{lastAudioSignal}</p>
               </div>
               <div>
-                <p className="text-caption">Chunks</p>
+                <p className="text-caption">{t("voice.controls.chunks")}</p>
                 <p className="text-white">{audioChunkCount}</p>
               </div>
             </div>
@@ -882,19 +888,19 @@ export function VoiceCommandCenter({
         </div>
         <div className="space-y-3">
           <div className="rounded-2xl box-muted p-4">
-            <p className="eyebrow">Audio status</p>
+            <p className="eyebrow">{t("voice.controls.audioWs")}</p>
             {audioStatus ? (
               <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
                 <div>
-                  <p className="text-caption">Enabled</p>
-                  <p className="text-white">{audioStatus.enabled ? "Yes" : "No"}</p>
+                  <p className="text-caption">{t("voice.controls.enabled")}</p>
+                  <p className="text-white">{audioStatus.enabled ? t("common.yes") : t("common.no")}</p>
                 </div>
                 <div>
-                  <p className="text-caption">Clients</p>
+                  <p className="text-caption">{t("voice.controls.clients")}</p>
                   <p className="text-white">{audioStatus.connected_clients}</p>
                 </div>
                 <div>
-                  <p className="text-caption">Recordings</p>
+                  <p className="text-caption">{t("voice.controls.recordings")}</p>
                   <p className="text-white">{audioStatus.active_recordings}</p>
                 </div>
                 <div>
@@ -902,24 +908,24 @@ export function VoiceCommandCenter({
                   <p className="text-white">{audioStatus.vad_threshold ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-caption">Whisper</p>
+                  <p className="text-caption">{t("voice.controls.whisper")}</p>
                   <p className="text-white">{audioStatus.whisper_model_size ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-caption">STT ready</p>
-                  <p className="text-white">{audioStatus.stt_ready ? "Yes" : "No"}</p>
+                  <p className="text-caption">{t("voice.controls.sttReady")}</p>
+                  <p className="text-white">{audioStatus.stt_ready ? t("common.yes") : t("common.no")}</p>
                 </div>
                 <div>
-                  <p className="text-caption">TTS ready</p>
-                  <p className="text-white">{audioStatus.tts_ready ? "Yes" : "No"}</p>
+                  <p className="text-caption">{t("voice.controls.ttsReady")}</p>
+                  <p className="text-white">{audioStatus.tts_ready ? t("common.yes") : t("common.no")}</p>
                 </div>
                 <div>
-                  <p className="text-caption">TTS fallback</p>
-                  <p className="text-white">{audioStatus.tts_fallback ? "Yes" : "No"}</p>
+                  <p className="text-caption">{t("voice.controls.ttsFallback")}</p>
+                  <p className="text-white">{audioStatus.tts_fallback ? t("common.yes") : t("common.no")}</p>
                 </div>
                 {audioStatus.dependencies && (
                   <div className="sm:col-span-2">
-                    <p className="text-caption">Dependencies</p>
+                    <p className="text-caption">{t("voice.controls.dependencies")}</p>
                     <p className="text-white">
                       {Object.entries(audioStatus.dependencies)
                         .map(([name, ok]) => `${name}:${ok ? "yes" : "no"}`)
@@ -929,7 +935,7 @@ export function VoiceCommandCenter({
                 )}
                 {latestVoiceSession?.download_url && (
                   <div className="sm:col-span-2">
-                    <p className="text-caption">Ostatnie nagranie</p>
+                    <p className="text-caption">{t("voice.controls.latestRecording")}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <Button asChild size="xs" variant="outline">
                         <a
@@ -937,7 +943,7 @@ export function VoiceCommandCenter({
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Pobierz WAV
+                          {t("voice.controls.downloadWav")}
                         </a>
                       </Button>
                       <span className="text-[11px] text-zinc-400">
@@ -959,16 +965,16 @@ export function VoiceCommandCenter({
                       </span>
                     </div>
                     <p className="mt-1 text-hint">
-                      ID: {latestVoiceSession.session_id}
+                      {t("voice.controls.sessionId")}: {latestVoiceSession.session_id}
                     </p>
                     {qualitySummary && (
-                      <p className="mt-1 text-hint">Jakość: {qualitySummary}</p>
+                      <p className="mt-1 text-hint">{t("voice.controls.quality")}: {qualitySummary}</p>
                     )}
                     {timingSummary && (
-                      <p className="mt-1 text-hint">Czasy: {timingSummary}</p>
+                      <p className="mt-1 text-hint">{t("voice.controls.timings")}: {timingSummary}</p>
                     )}
                     {runtimeSummary && (
-                      <p className="mt-1 text-hint">Runtime: {runtimeSummary}</p>
+                      <p className="mt-1 text-hint">{t("voice.controls.runtime")}: {runtimeSummary}</p>
                     )}
                     {latestVoiceSession.transcription && (
                       <p className="mt-1 text-hint">
@@ -982,22 +988,22 @@ export function VoiceCommandCenter({
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-hint">Brak danych o audio.</p>
+              <p className="mt-2 text-hint">{t("voice.controls.noRecordingYet")}</p>
             )}
           </div>
           <div className="rounded-2xl box-muted p-4">
-            <p className="eyebrow">Transkrypcja</p>
+            <p className="eyebrow">{t("voice.controls.transcription")}</p>
             <p className="mt-2 text-sm text-white">{transcription}</p>
           </div>
           <div className="rounded-2xl box-muted p-4">
-            <p className="eyebrow">Odpowiedź</p>
+            <p className="eyebrow">{t("voice.controls.response")}</p>
             <p className="mt-2 text-sm text-white">{response}</p>
           </div>
           <div className="rounded-2xl box-muted p-4 text-sm">
             <div className="flex items-center justify-between">
               <p className="eyebrow">Rider-Pi</p>
               <Button size="xs" variant="outline" onClick={() => void refreshIoTStatus()} disabled={loadingIoT}>
-                {loadingIoT ? "Odświeżam…" : "Odśwież"}
+                {loadingIoT ? "Odświeżam…" : t("voice.controls.refresh")}
               </Button>
             </div>
             {iotStatus ? (

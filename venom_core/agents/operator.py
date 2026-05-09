@@ -259,7 +259,9 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             temp_history.add_system_message(self.SYSTEM_PROMPT)
             if mode != "standard":
                 temp_history.add_system_message(str(mode_prompt["instruction"]))
-            for message in self.chat_history.messages[1:]:
+            for message in self.chat_history.messages:
+                if getattr(message, "role", None) == "system":
+                    continue
                 temp_history.add_message(message)
             temp_history.add_user_message(input_text)
             service_id = self._resolve_chat_service_id()

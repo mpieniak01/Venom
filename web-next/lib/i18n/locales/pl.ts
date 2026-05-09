@@ -36,6 +36,8 @@ export const pl = {
     completed: "Zakończone",
     failed: "Błąd",
     unknown: "Nieznany",
+    yes: "Tak",
+    no: "Nie",
     total: "Łącznie",
     loading: "Ładowanie...",
   },

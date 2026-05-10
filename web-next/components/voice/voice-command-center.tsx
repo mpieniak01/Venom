@@ -430,6 +430,81 @@ const bindVoiceConnectionLifecycle = (
   return connect();
 };
 
+const handleVoiceRecordingStarted = (
+  setStatusMessage: (value: string | null) => void,
+  setLastAudioSignal: (value: string) => void,
+) => {
+  setStatusMessage("Nagrywanie rozpoczęte.");
+  setLastAudioSignal("recording:started");
+};
+
+const handleVoiceProcessing = (
+  data: Record<string, unknown>,
+  setStatusMessage: (value: string | null) => void,
+  setLastAudioSignal: (value: string) => void,
+) => {
+  const status = toPrimitiveString(data.status) ?? "unknown";
+  setStatusMessage(`Przetwarzanie (${status})`);
+  setLastAudioSignal(`processing:${status}`);
+};
+
+const handleVoiceTranscript = (
+  data: Record<string, unknown>,
+  onTranscriptReady: ((text: string) => void) | undefined,
+  setTranscription: (value: string) => void,
+  setStatusMessage: (value: string | null) => void,
+  setLastAudioSignal: (value: string) => void,
+) => {
+  const transcript = toPrimitiveString(data.text) ?? "Nie rozpoznano mowy.";
+  setTranscription(transcript);
+  if (transcript.trim()) {
+    onTranscriptReady?.(transcript.trim());
+    setStatusMessage("Transkrypcja wstawiona do czatu.");
+    setLastAudioSignal("stt:ok");
+  }
+};
+
+const handleVoiceResponseText = (
+  data: Record<string, unknown>,
+  setResponse: (value: string) => void,
+  setLastAudioSignal: (value: string) => void,
+) => {
+  setResponse(toPrimitiveString(data.text) ?? "—");
+  setLastAudioSignal("response:text");
+};
+
+const handleVoiceAudioResponse = (
+  data: Record<string, unknown>,
+  playAudioResponse: (base64Audio: string, sampleRate: number) => Promise<void>,
+  setLastAudioSignal: (value: string) => void,
+) => {
+  const audio = toPrimitiveString(data.audio) ?? "";
+  const sampleRate = Number(data.sample_rate ?? 22050);
+  if (audio) {
+    playAudioResponse(audio, sampleRate).catch(() => undefined);
+    setLastAudioSignal("tts:audio");
+  }
+};
+
+const handleVoiceCompletion = (
+  setStatusMessage: (value: string | null) => void,
+  setLastAudioSignal: (value: string) => void,
+) => {
+  setStatusMessage("Gotowe.");
+  setLastAudioSignal("complete");
+};
+
+const handleVoiceError = (
+  data: Record<string, unknown>,
+  setPlaybackState: (value: PlaybackState) => void,
+  setStatusMessage: (value: string | null) => void,
+  setLastAudioSignal: (value: string) => void,
+) => {
+  setPlaybackState("error");
+  setStatusMessage(toPrimitiveString(data.message) ?? "Błąd kanału audio.");
+  setLastAudioSignal("error");
+};
+
 const connectVoiceSocket = (deps: VoiceControlDeps): (() => void) => {
   const {
     t,
@@ -954,48 +1029,33 @@ export function VoiceCommandCenter({
 
   const handleAudioMessage = useCallback(
     (data: Record<string, unknown>) => {
-      switch (data.type) {
-        case "recording_started":
-          setStatusMessage("Nagrywanie rozpoczęte.");
-          setLastAudioSignal("recording:started");
-          break;
-        case "processing":
-          setStatusMessage(`Przetwarzanie (${toPrimitiveString(data.status) ?? "unknown"})`);
-          setLastAudioSignal(`processing:${toPrimitiveString(data.status) ?? "unknown"}`);
-          break;
-        case "transcription":
-          {
-            const transcript = toPrimitiveString(data.text) ?? "Nie rozpoznano mowy.";
-            setTranscription(transcript);
-            if (transcript.trim()) {
-              onTranscriptReady?.(transcript.trim());
-              setStatusMessage("Transkrypcja wstawiona do czatu.");
-              setLastAudioSignal("stt:ok");
-            }
-          }
-          break;
-        case "response_text":
-          setResponse(toPrimitiveString(data.text) ?? "—");
-          setLastAudioSignal("response:text");
-          break;
-        case "audio_response": {
-          const audio = toPrimitiveString(data.audio) ?? "";
-          const sampleRate = Number(data.sample_rate ?? 22050);
-          if (audio) {
-            playAudioResponse(audio, sampleRate).catch(() => undefined);
-            setLastAudioSignal("tts:audio");
-          }
-          break;
-        }
-        case "complete":
-          setStatusMessage("Gotowe.");
-          setLastAudioSignal("complete");
-          break;
-        case "error":
-          setPlaybackState("error");
-          setStatusMessage(toPrimitiveString(data.message) ?? "Błąd kanału audio.");
-          setLastAudioSignal("error");
-          break;
+      const messageType = toPrimitiveString(data.type) ?? "";
+      if (messageType === "recording_started") {
+        handleVoiceRecordingStarted(setStatusMessage, setLastAudioSignal);
+        return;
+      }
+      if (messageType === "processing") {
+        handleVoiceProcessing(data, setStatusMessage, setLastAudioSignal);
+        return;
+      }
+      if (messageType === "transcription") {
+        handleVoiceTranscript(data, onTranscriptReady, setTranscription, setStatusMessage, setLastAudioSignal);
+        return;
+      }
+      if (messageType === "response_text") {
+        handleVoiceResponseText(data, setResponse, setLastAudioSignal);
+        return;
+      }
+      if (messageType === "audio_response") {
+        handleVoiceAudioResponse(data, playAudioResponse, setLastAudioSignal);
+        return;
+      }
+      if (messageType === "complete") {
+        handleVoiceCompletion(setStatusMessage, setLastAudioSignal);
+        return;
+      }
+      if (messageType === "error") {
+        handleVoiceError(data, setPlaybackState, setStatusMessage, setLastAudioSignal);
       }
     },
     [onTranscriptReady, playAudioResponse],

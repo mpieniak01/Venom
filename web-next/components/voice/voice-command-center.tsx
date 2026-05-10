@@ -16,6 +16,7 @@ import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
 import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
+import { useOrbMetrics } from "@/components/voice/use-orb-metrics";
 import { OrbZone } from "@/components/voice/orb-zone";
 import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
 
@@ -98,8 +99,6 @@ type TtsModelOption = {
 };
 
 type Translator = (key: string, variables?: Record<string, string | number>) => string;
-type VoiceRuntime = NonNullable<NonNullable<AudioStatus["latest_voice_session"]>["runtime"]>;
-type RuntimeSnapshot = NonNullable<AudioStatus["runtime_snapshot"]>;
 
 declare global {
   interface Window {
@@ -158,31 +157,11 @@ const formatTimingSeconds = (milliseconds?: number | null): string | null => {
 const getBrowserWindow = (): BrowserWindowLike | undefined =>
   globalThis as unknown as BrowserWindowLike;
 
-const getVoiceModeMeta = (t: Translator, mode: VoiceModePreset) => ({
-  title: t(VOICE_MODE_TITLE_KEYS[mode]),
-  description: t(VOICE_MODE_HINT_KEYS[mode]),
-});
-
-const buildTimingSummary = (timings?: Record<string, number | null | undefined> | null): string => {
-  if (!timings) return "";
-  const entries: Array<[string, string | null]> = [
-    ["decode", formatTimingSeconds(timings.decode_ms)],
-    ["STT", formatTimingSeconds(timings.stt_ms)],
-    ["LLM", formatTimingSeconds(timings.llm_ms)],
-    ["TTS", formatTimingSeconds(timings.tts_ms)],
-    ["total", formatTimingSeconds(timings.total_backend_ms)],
-  ];
-  return entries
-    .filter((entry): entry is [string, string] => Boolean(entry[1]))
-    .map(([label, value]) => `${label} ${value}`)
-    .join(" · ");
-};
-
 const TIMING_STAGES: Array<{ key: string; label: string; accent?: boolean }> = [
   { key: "decode_ms", label: "Decode" },
-  { key: "stt_ms",    label: "STT" },
-  { key: "llm_ms",    label: "LLM" },
-  { key: "tts_ms",    label: "TTS" },
+  { key: "stt_ms", label: "STT" },
+  { key: "llm_ms", label: "LLM" },
+  { key: "tts_ms", label: "TTS" },
   { key: "total_backend_ms", label: "Total", accent: true },
 ];
 
@@ -216,212 +195,6 @@ function TimingStrip({
     </div>
   );
 }
-
-const buildRuntimeSummary = (runtime?: VoiceRuntime | null): string => {
-  if (!runtime) return "";
-  const parts: Array<string | null> = [
-    runtime.llm_model
-      ? `LLM ${runtime.llm_service_id ?? "runtime"}:${runtime.llm_model}`
-      : null,
-    runtime.stt_model
-      ? `STT ${runtime.stt_model}/${runtime.stt_device ?? "?"}`
-      : null,
-    runtime.tts_sample_rate ? `TTS ${runtime.tts_sample_rate} Hz` : null,
-  ];
-  return parts.filter((part): part is string => Boolean(part)).join(" · ");
-};
-
-const buildRuntimeSnapshotSummary = (
-  runtimeSnapshot: AudioStatus["runtime_snapshot"],
-): string => {
-  if (!runtimeSnapshot) return "";
-  if (runtimeSnapshot.error) return runtimeSnapshot.error;
-  const profile = runtimeSnapshot.runtime_capabilities?.compatibility_profile ?? "";
-  const probeStatus = runtimeSnapshot.runtime_capabilities?.probe_status ?? "";
-  const pipeline = runtimeSnapshot.voice_pipeline;
-  const parts = [
-    profile ? `profile ${profile}` : null,
-    probeStatus ? `probe ${probeStatus}` : null,
-    pipeline?.stt ? `stt ${pipeline.stt}` : null,
-    pipeline?.reasoning ? `reasoning ${pipeline.reasoning}` : null,
-    pipeline?.tools ? `tools ${pipeline.tools}` : null,
-    pipeline?.vision ? `vision ${pipeline.vision}` : null,
-    pipeline?.tts ? `tts ${pipeline.tts}` : null,
-  ];
-  return parts.filter((part): part is string => Boolean(part)).join(" · ");
-};
-
-const getProbeTone = (status?: string | null): "success" | "warning" | "danger" | "neutral" => {
-  if (status === "verified") return "success";
-  if (status === "failed") return "danger";
-  if (status === "metadata_only") return "warning";
-  return "neutral";
-};
-
-const getRuntimeSnapshotContainerClass = (
-  tone: "success" | "warning" | "danger" | "neutral",
-): string => {
-  if (tone === "danger") {
-    return "border-rose-400/25 bg-rose-500/[0.06] shadow-[0_0_32px_rgba(244,63,94,0.08)]";
-  }
-  if (tone === "warning") {
-    return "border-amber-400/25 bg-amber-500/[0.06] shadow-[0_0_32px_rgba(245,158,11,0.08)]";
-  }
-  if (tone === "neutral") {
-    return "border-white/10 bg-white/[0.03] shadow-none";
-  }
-  return "border-emerald-400/25 bg-emerald-500/[0.06] shadow-[0_0_32px_rgba(16,185,129,0.08)]";
-};
-
-const buildProbeSummary = (runtimeSnapshot: RuntimeSnapshot): string => {
-  const probes = runtimeSnapshot.runtime_capabilities?.probes ?? {};
-  return Object.entries(probes)
-    .map(([name, probe]) => `${name}:${probe.status ?? "?"}`)
-    .join(" · ");
-};
-
-const buildPipelineEntries = (runtimeSnapshot: RuntimeSnapshot): Array<[string, string]> => {
-  const pipeline = runtimeSnapshot.voice_pipeline;
-  return [
-    ["STT", pipeline?.stt ?? "—"],
-    ["Reasoning", pipeline?.reasoning ?? "—"],
-    ["Tools", pipeline?.tools ?? "—"],
-    ["Vision", pipeline?.vision ?? "—"],
-    ["TTS", pipeline?.tts ?? "—"],
-  ];
-};
-
-type RuntimeSnapshotPanelProps = Readonly<{
-  t: Translator;
-  runtimeSnapshot: RuntimeSnapshot | null;
-  runtimeSnapshotSummary: string;
-}>;
-
-function RuntimeSnapshotPanel({
-  t,
-  runtimeSnapshot,
-  runtimeSnapshotSummary,
-}: RuntimeSnapshotPanelProps) {
-  if (!runtimeSnapshot) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="eyebrow">{t("voice.controls.runtimeSnapshot")}</p>
-            <p className="mt-1 text-sm text-zinc-300">{t("voice.controls.noRuntimeSnapshot")}</p>
-          </div>
-          <Badge tone="neutral">{t("voice.controls.offline")}</Badge>
-        </div>
-      </div>
-    );
-  }
-
-  const capabilities = runtimeSnapshot.runtime_capabilities;
-  const probeStatus = capabilities?.probe_status ?? "unknown";
-  const containerTone = getProbeTone(runtimeSnapshot.error ? "failed" : probeStatus);
-  const probeSummary = buildProbeSummary(runtimeSnapshot);
-  const pipelineEntries = buildPipelineEntries(runtimeSnapshot);
-  const notes = runtimeSnapshot.voice_pipeline?.notes ?? [];
-
-  return (
-    <div className={`rounded-2xl border p-4 ${getRuntimeSnapshotContainerClass(containerTone)}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow">{t("voice.controls.runtimeSnapshot")}</p>
-          <p className="mt-1 text-base font-semibold text-white">
-            {runtimeSnapshot.model_name ?? t("voice.controls.unknownModel")}
-          </p>
-          <p className="mt-1 text-xs text-zinc-400">
-            {runtimeSnapshotSummary || runtimeSnapshot.provider || "—"}
-          </p>
-          {runtimeSnapshot.error ? (
-            <p className="mt-2 text-xs text-rose-200">{runtimeSnapshot.error}</p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge tone={getProbeTone(probeStatus)}>
-            {t("voice.controls.probeStatus")}: {probeStatus}
-          </Badge>
-          <Badge tone="neutral">
-            {capabilities?.compatibility_profile ?? runtimeSnapshot.voice_pipeline?.profile ?? "unknown"}
-          </Badge>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="text-caption">{t("voice.controls.provider")}</p>
-          <p className="mt-1 text-white">{runtimeSnapshot.provider ?? runtimeSnapshot.runtime_id ?? "—"}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="text-caption">{t("voice.controls.profile")}</p>
-          <p className="mt-1 text-white">{capabilities?.compatibility_profile ?? "—"}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="text-caption">{t("voice.controls.pipeline")}</p>
-          <p className="mt-1 text-white">{runtimeSnapshot.voice_pipeline?.profile ?? "—"}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-5">
-        {pipelineEntries.map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs">
-            <p className="text-caption">{label}</p>
-            <p className="mt-1 text-white">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-        <p className="text-caption">{t("voice.controls.probes")}</p>
-        <p className="mt-1 text-white">{probeSummary || "—"}</p>
-        {notes.length > 0 && <p className="mt-2 text-hint">{notes.join(" · ")}</p>}
-      </div>
-    </div>
-  );
-}
-
-const buildQualitySummary = (latestVoiceSession: AudioStatus["latest_voice_session"]): string => {
-  const parts: string[] = [];
-  if (latestVoiceSession) {
-    const peak = latestVoiceSession.peak_before_normalization;
-    if (typeof peak === "number" && Number.isFinite(peak)) {
-      parts.push(`peak ${peak.toFixed(2)}`);
-    }
-    const rms = latestVoiceSession.rms_after_normalization;
-    if (typeof rms === "number" && Number.isFinite(rms)) {
-      parts.push(`rms ${rms.toFixed(3)}`);
-    }
-  }
-  return parts.join(" · ");
-};
-
-const buildLatestRecordingSummary = (latestVoiceSession: AudioStatus["latest_voice_session"]): string => {
-  const parts: string[] = [];
-  if (latestVoiceSession) {
-    const duration = latestVoiceSession.duration_sec;
-    if (typeof duration === "number" && Number.isFinite(duration)) {
-      parts.push(`${duration.toFixed(1)} s`);
-    }
-    if (
-      typeof latestVoiceSession.sample_rate === "number" &&
-      Number.isFinite(latestVoiceSession.sample_rate)
-    ) {
-      parts.push(`${latestVoiceSession.sample_rate} Hz`);
-    }
-    if (latestVoiceSession.input_format) {
-      parts.push(latestVoiceSession.input_format);
-    }
-    if (latestVoiceSession.voice_mode) {
-      parts.push(latestVoiceSession.voice_mode);
-    }
-    const gain = latestVoiceSession.gain_applied;
-    if (typeof gain === "number" && Number.isFinite(gain)) {
-      parts.push(`gain ${gain.toFixed(1)}`);
-    }
-  }
-  return parts.join(" · ");
-};
 
 const getRecordingButtonClass = (
   audioEnabled: boolean,
@@ -1158,13 +931,6 @@ const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
   action_items: "voice.modes.actionItems.title",
 };
 
-const VOICE_MODE_HINT_KEYS: Record<VoiceModePreset, string> = {
-  standard: "voice.modes.standard.description",
-  deep_analysis: "voice.modes.deepAnalysis.description",
-  summary: "voice.modes.summary.description",
-  action_items: "voice.modes.actionItems.description",
-};
-
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -1691,6 +1457,7 @@ export function VoiceCommandCenter({
 
   const orbState = deriveOrbState(connected, recording, processingStatus, playbackState, lastAudioSignal);
   const effectsConfig = useOrbEffectsConfig();
+  const metricsRef = useOrbMetrics();
 
   const recordingButtonClass = getRecordingButtonClass(
     audioEnabled,
@@ -1745,6 +1512,7 @@ export function VoiceCommandCenter({
             audioEnabled={audioEnabled}
             micAnalyserRef={analyserRef}
             ttsAnalyserRef={ttsAnalyserRef}
+            metricsRef={metricsRef}
           />
         )}
 

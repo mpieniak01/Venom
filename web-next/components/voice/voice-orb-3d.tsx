@@ -10,6 +10,7 @@ import * as THREE from "three";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import { useAudioLevel } from "@/components/voice/use-audio-level";
+import type { OrbMetrics } from "@/components/voice/use-orb-metrics";
 
 // ─── State color palette (matches CSS orb palette) ──────────────────────────
 
@@ -104,9 +105,166 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
+// ─── Metrics bars 3D ────────────────────────────────────────────────────────
+
+const MAX_BAR_RADIUS = 2.2;  // extends visibly beyond orb sphere (radius ~0.62)
+const MIN_BAR_SCALE = 0.08;
+const BAR_LERP_ALPHA = 0.07;
+
+const BAR_DEFS: Array<{
+  key: keyof OrbMetrics;
+  color: string;
+  rotation: [number, number, number];
+}> = [
+  { key: "cpu", color: "#f97316", rotation: [0, 0, 0] },              // UP   (+Y)
+  { key: "gpu", color: "#a855f7", rotation: [0, 0, -Math.PI / 2] },   // RIGHT (+X)
+  { key: "net", color: "#4ade80", rotation: [0, 0, Math.PI] },        // DOWN  (-Y)
+  { key: "ram", color: "#22d3ee", rotation: [0, 0, Math.PI / 2] },    // LEFT  (-X)
+];
+
+// BoxGeometry with translate(0, 0.5, 0): bottom at Y=0 → scales grow outward.
+function makeBarGeometry() {
+  const geo = new THREE.BoxGeometry(0.055, 1.0, 0.055);
+  geo.translate(0, 0.5, 0);
+  return geo;
+}
+
+// Wider secondary "glow" geometry
+function makeGlowGeometry() {
+  const geo = new THREE.BoxGeometry(0.18, 1.0, 0.055);
+  geo.translate(0, 0.5, 0);
+  return geo;
+}
+
+type OrbMetricsBars3DProps = {
+  metricsRef: RefObject<OrbMetrics>;
+};
+
+function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
+  const coreRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
+  const glowRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
+  const barGeo = useMemo(() => makeBarGeometry(), []);
+  const glowGeo = useMemo(() => makeGlowGeometry(), []);
+
+  useFrame(() => {
+    const m = metricsRef.current;
+    const values: number[] = [m.cpu, m.gpu, m.net, m.ram];
+
+    values.forEach((pct, i) => {
+      const isGpuAbsent = i === 1 && pct === 0;
+      const target = MIN_BAR_SCALE + (pct / 100) * (MAX_BAR_RADIUS - MIN_BAR_SCALE);
+
+      const core = coreRefs.current[i];
+      if (core) {
+        core.scale.y += (target - core.scale.y) * BAR_LERP_ALPHA;
+        const mat = core.material as THREE.MeshStandardMaterial;
+        mat.emissiveIntensity = isGpuAbsent ? 0.04 : 0.35 + 0.65 * (pct / 100);
+        mat.opacity = isGpuAbsent ? 0.2 : 0.92;
+      }
+
+      const glow = glowRefs.current[i];
+      if (glow) {
+        glow.scale.y += (target - glow.scale.y) * BAR_LERP_ALPHA;
+        const mat = glow.material as THREE.MeshStandardMaterial;
+        mat.emissiveIntensity = isGpuAbsent ? 0.02 : 0.15 + 0.35 * (pct / 100);
+        mat.opacity = isGpuAbsent ? 0.06 : 0.18 + 0.22 * (pct / 100);
+      }
+    });
+  });
+
+  return (
+    <>
+      {BAR_DEFS.map(({ key, color, rotation }, i) => (
+        <group key={key} rotation={rotation}>
+          {/* Glow halo — wide, semi-transparent */}
+          <mesh
+            ref={(el) => { glowRefs.current[i] = el; }}
+            geometry={glowGeo}
+            scale={[1, MIN_BAR_SCALE, 1]}
+          >
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={0.15}
+              transparent
+              opacity={0.12}
+              depthWrite={false}
+            />
+          </mesh>
+          {/* Core beam */}
+          <mesh
+            ref={(el) => { coreRefs.current[i] = el; }}
+            geometry={barGeo}
+            scale={[1, MIN_BAR_SCALE, 1]}
+          >
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={0.35}
+              transparent
+              opacity={0.9}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+      ))}
+    </>
+  );
+}
+
 // ─── Particles 3D ───────────────────────────────────────────────────────────
 
 const PARTICLE_COUNT = 40;
+
+function pseudoRandom(seed: number): number {
+  const x = Math.sin(seed) * 43758.5453123;
+  return x - Math.floor(x);
+}
+
+function sampleParticle(seed: number) {
+  const theta = pseudoRandom(seed * 1.17 + 1.0) * Math.PI * 2;
+  const phi = pseudoRandom(seed * 1.91 + 2.0) * (Math.PI / 2);
+  const r = 0.65 + pseudoRandom(seed * 2.53 + 3.0) * 0.15;
+  return {
+    theta,
+    phi,
+    r,
+    vy: 0.15 + pseudoRandom(seed * 3.11 + 4.0) * 0.25,
+    life: pseudoRandom(seed * 4.07 + 5.0),
+  };
+}
+
+type ParticleState = {
+  positions: Float32Array;
+  velocities: Float32Array;
+  lifetimes: Float32Array;
+  resetCounts: Uint32Array;
+};
+
+function createParticleState(): ParticleState {
+  const positions = new Float32Array(PARTICLE_COUNT * 3);
+  const velocities = new Float32Array(PARTICLE_COUNT * 3);
+  const lifetimes = new Float32Array(PARTICLE_COUNT);
+  const resetCounts = new Uint32Array(PARTICLE_COUNT);
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const sample = sampleParticle(i + 1);
+    positions[i * 3] = sample.r * Math.sin(sample.phi) * Math.cos(sample.theta);
+    positions[i * 3 + 1] = sample.r * Math.cos(sample.phi);
+    positions[i * 3 + 2] = sample.r * Math.sin(sample.phi) * Math.sin(sample.theta);
+    velocities[i * 3] = (pseudoRandom(i * 5.13 + 6.0) - 0.5) * 0.02;
+    velocities[i * 3 + 1] = sample.vy;
+    velocities[i * 3 + 2] = (pseudoRandom(i * 7.41 + 7.0) - 0.5) * 0.02;
+    lifetimes[i] = sample.life;
+  }
+  return { positions, velocities, lifetimes, resetCounts };
+}
+
+const GLOBAL_PARTICLE_STATE = createParticleState();
+const GLOBAL_FFT_DATA_ARRAY = new Uint8Array(128 * 4);
+const GLOBAL_FFT_TEXTURE = new THREE.DataTexture(GLOBAL_FFT_DATA_ARRAY, 128, 1, THREE.RGBAFormat);
+GLOBAL_FFT_TEXTURE.needsUpdate = true;
+const GLOBAL_BLOOM_TARGET = { current: 0.3 };
+const GLOBAL_CHROMATIC_OFFSET = new THREE.Vector2(0, 0);
 
 function OrbParticles3D({
   active,
@@ -118,34 +276,12 @@ function OrbParticles3D({
   audioLevel: number;
 }) {
   const pointsRef = useRef<THREE.Points>(null);
-  const velocitiesRef = useRef<Float32Array>(new Float32Array(PARTICLE_COUNT * 3));
-  const lifetimesRef = useRef<Float32Array>(new Float32Array(PARTICLE_COUNT));
-
-  const positions = useMemo(() => {
-    const arr = new Float32Array(PARTICLE_COUNT * 3);
-    const v = velocitiesRef.current;
-    const l = lifetimesRef.current;
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = (Math.random() * Math.PI) / 2; // upper hemisphere
-      const r = 0.65 + Math.random() * 0.15;
-      arr[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-      arr[i * 3 + 1] = r * Math.cos(phi);
-      arr[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-      v[i * 3]     = (Math.random() - 0.5) * 0.02;
-      v[i * 3 + 1] = 0.15 + Math.random() * 0.25;
-      v[i * 3 + 2] = (Math.random() - 0.5) * 0.02;
-      l[i] = Math.random();
-    }
-    return arr;
-  }, []);
-
   useFrame((_, delta) => {
     if (!active || !pointsRef.current) return;
     const pos = pointsRef.current.geometry.attributes.position?.array as Float32Array | undefined;
     if (!pos) return;
-    const v = velocitiesRef.current;
-    const l = lifetimesRef.current;
+    const v = GLOBAL_PARTICLE_STATE.velocities;
+    const l = GLOBAL_PARTICLE_STATE.lifetimes;
     const speed = 0.4 + audioLevel * 0.6;
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       pos[i * 3]     += v[i * 3] * delta;
@@ -154,14 +290,14 @@ function OrbParticles3D({
       l[i] -= delta * 0.35;
       if (l[i] <= 0) {
         // Reset particle on sphere surface (upper hemisphere)
-        const theta = Math.random() * Math.PI * 2;
-        const phi = (Math.random() * Math.PI) / 2;
-        const r = 0.65 + Math.random() * 0.1;
-        pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-        pos[i * 3 + 1] = r * Math.cos(phi);
-        pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-        v[i * 3 + 1] = 0.15 + Math.random() * 0.25;
-        l[i] = 0.5 + Math.random() * 0.5;
+        const resetIndex = (GLOBAL_PARTICLE_STATE.resetCounts[i] ?? 0) + 1;
+        GLOBAL_PARTICLE_STATE.resetCounts[i] = resetIndex;
+        const sample = sampleParticle(i + resetIndex * 17);
+        pos[i * 3] = sample.r * Math.sin(sample.phi) * Math.cos(sample.theta);
+        pos[i * 3 + 1] = sample.r * Math.cos(sample.phi);
+        pos[i * 3 + 2] = sample.r * Math.sin(sample.phi) * Math.sin(sample.theta);
+        v[i * 3 + 1] = sample.vy;
+        l[i] = 0.5 + sample.life * 0.5;
       }
     }
     (pointsRef.current.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
@@ -174,7 +310,7 @@ function OrbParticles3D({
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          args={[positions, 3]}
+          args={[GLOBAL_PARTICLE_STATE.positions, 3]}
         />
       </bufferGeometry>
       <pointsMaterial
@@ -199,6 +335,7 @@ type OrbSceneProps = {
   inputLevel: number;
   outputLevel: number;
   reducedMotion: boolean;
+  metricsRef?: RefObject<OrbMetrics>;
 };
 
 function OrbScene({
@@ -209,6 +346,7 @@ function OrbScene({
   inputLevel,
   outputLevel,
   reducedMotion,
+  metricsRef,
 }: OrbSceneProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const matRef = useRef<THREE.ShaderMaterial>(null);
@@ -216,27 +354,15 @@ function OrbScene({
   const light2Ref = useRef<THREE.PointLight>(null);
   const light1Angle = useRef(0);
   const light2Angle = useRef(Math.PI);
-  const chromaticOffsetRef = useRef(new THREE.Vector2(0, 0));
   const prevState = useRef(state);
   const burstProgress = useRef(0);
   const { camera } = useThree();
-
-  // DataTexture for FFT data (128 buckets → 128x1 RGBA texture)
-  const fftDataArray = useRef(new Uint8Array(128 * 4));
-  const fftTexture = useMemo(() => {
-    const tex = new THREE.DataTexture(fftDataArray.current, 128, 1, THREE.RGBAFormat);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
 
   const rawFFT = useRef(new Uint8Array(128));
 
   const audioLevel = state === "recording" ? inputLevel : state === "tts" ? outputLevel : 0;
   const isActive = state === "recording" || state === "tts";
   const colors = STATE_COLORS[state];
-
-  // Bloom intensity state
-  const bloomTarget = useRef(0.3);
 
   // Chromatic aberration spike on state change
   useEffect(() => {
@@ -248,7 +374,7 @@ function OrbScene({
     const tick = () => {
       const t = Math.min((performance.now() - start) / 280, 1);
       const ease = Math.sin(t * Math.PI);
-      chromaticOffsetRef.current.set(ease * 0.007, ease * 0.007);
+      GLOBAL_CHROMATIC_OFFSET.set(ease * 0.007, ease * 0.007);
       if (t < 1) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -274,7 +400,7 @@ function OrbScene({
 
     if (activeAnalyser) {
       activeAnalyser.getByteFrequencyData(rawFFT.current);
-      const fftArr = fftDataArray.current;
+      const fftArr = GLOBAL_FFT_DATA_ARRAY;
       for (let i = 0; i < 128; i++) {
         const val = rawFFT.current[i] ?? 0;
         fftArr[i * 4]     = val;
@@ -282,11 +408,11 @@ function OrbScene({
         fftArr[i * 4 + 2] = val;
         fftArr[i * 4 + 3] = 255;
       }
-      fftTexture.needsUpdate = true;
+      GLOBAL_FFT_TEXTURE.needsUpdate = true;
     }
 
     // Update material uniforms
-    mat.uniforms.fftTexture = { value: fftTexture };
+    mat.uniforms.fftTexture = { value: GLOBAL_FFT_TEXTURE };
     mat.uniforms.audioLevel = { value: audioLevel };
     mat.uniforms.time = { value: t };
     mat.uniforms.blobEnabled = { value: effectsConfig.blob && isActive ? 1 : 0 };
@@ -317,7 +443,7 @@ function OrbScene({
     mat.uniforms.emissionIntensity = { value: prevEmission + (emissionTarget - prevEmission) * delta * 5 };
 
     // Bloom intensity
-    bloomTarget.current =
+    GLOBAL_BLOOM_TARGET.current =
       state === "recording" ? 0.4 + audioLevel * 0.8 :
       state === "tts" ? 0.5 + audioLevel * 1.2 :
       state === "thinking" ? 0.4 + Math.sin(t * 2) * 0.15 :
@@ -350,8 +476,8 @@ function OrbScene({
     void camera;
   });
 
-  const shaderUniforms = useMemo(() => ({
-    fftTexture: { value: fftTexture },
+  const shaderUniforms = {
+    fftTexture: { value: GLOBAL_FFT_TEXTURE },
     audioLevel: { value: 0 },
     time: { value: 0 },
     blobEnabled: { value: 1 },
@@ -360,7 +486,7 @@ function OrbScene({
     baseColor: { value: colors.base.clone() },
     emissionColor: { value: colors.emission.clone() },
     emissionIntensity: { value: 0.2 },
-  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
   return (
     <>
@@ -391,17 +517,21 @@ function OrbScene({
         <Environment preset="city" background={false} />
       ) : null}
 
+      {effectsConfig.orbMetricsBars && metricsRef && !reducedMotion ? (
+        <OrbMetricsBars3D metricsRef={metricsRef} />
+      ) : null}
+
       {effectsConfig.bloom && !reducedMotion ? (
         <EffectComposer>
           <Bloom
-            intensity={bloomTarget.current}
+            intensity={GLOBAL_BLOOM_TARGET.current}
             luminanceThreshold={0.22}
             luminanceSmoothing={0.9}
             blendFunction={BlendFunction.ADD}
           />
           <ChromaticAberration
             offset={effectsConfig.chromaticAberration && !reducedMotion
-              ? chromaticOffsetRef.current
+              ? GLOBAL_CHROMATIC_OFFSET
               : new THREE.Vector2(0, 0)}
             radialModulation={false}
             modulationOffset={0}
@@ -422,6 +552,7 @@ type VoiceOrb3DProps = Readonly<{
   ttsAnalyserRef?: RefObject<AnalyserNode | null>;
   disabled?: boolean;
   size?: number;
+  metricsRef?: RefObject<OrbMetrics>;
 }>;
 
 export function VoiceOrb3D({
@@ -432,6 +563,7 @@ export function VoiceOrb3D({
   ttsAnalyserRef,
   disabled = false,
   size = 200,
+  metricsRef,
 }: VoiceOrb3DProps) {
   const fallbackRef = useRef<AnalyserNode | null>(null);
   const effectiveState: VoiceOrbState = disabled ? "offline" : state;
@@ -460,6 +592,7 @@ export function VoiceOrb3D({
           inputLevel={inputLevel}
           outputLevel={outputLevel}
           reducedMotion={reducedMotion}
+          metricsRef={metricsRef}
         />
       </Canvas>
     </div>

@@ -5,6 +5,7 @@ import type { RefObject } from "react";
 import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
 import { OrbDialogWindow } from "@/components/voice/orb-dialog-window";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
+import type { OrbMetrics } from "@/components/voice/use-orb-metrics";
 import { useTranslation } from "@/lib/i18n";
 
 // Lazy-load 3D orb — never included in initial bundle, SSR disabled
@@ -36,6 +37,7 @@ type OrbZoneProps = Readonly<{
   micAnalyserRef: RefObject<AnalyserNode | null>;
   ttsAnalyserRef: RefObject<AnalyserNode | null>;
   label?: string;
+  metricsRef?: RefObject<OrbMetrics>;
 }>;
 
 export function OrbZone({
@@ -48,6 +50,7 @@ export function OrbZone({
   micAnalyserRef,
   ttsAnalyserRef,
   label,
+  metricsRef,
 }: OrbZoneProps) {
   const t = useTranslation();
   const use3D = effectsConfig.orb3D && !reducedMotion && supportsWebGL();
@@ -75,6 +78,7 @@ export function OrbZone({
             ttsAnalyserRef={ttsAnalyserRef}
             disabled={!audioEnabled}
             size={240}
+            metricsRef={metricsRef}
           />
         ) : (
           <div className="flex justify-center rounded-2xl box-muted py-8 px-10">
@@ -86,6 +90,7 @@ export function OrbZone({
               effectsConfig={effectsConfig}
               micAnalyserRef={micAnalyserRef}
               ttsAnalyserRef={ttsAnalyserRef}
+              metricsRef={metricsRef}
             />
           </div>
         )}

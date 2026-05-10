@@ -18,6 +18,8 @@ export type OrbEffectsConfig = {
   chromaticAberration: boolean;
   iridescence: boolean;
   volumetricLights: boolean;
+  // PR 208B — live system metrics bars radiating from orb center
+  orbMetricsBars: boolean;
 };
 
 const ALL_OFF: OrbEffectsConfig = {
@@ -34,6 +36,7 @@ const ALL_OFF: OrbEffectsConfig = {
   chromaticAberration: false,
   iridescence: false,
   volumetricLights: false,
+  orbMetricsBars: false,
 };
 
 // Next.js replaces NEXT_PUBLIC_* vars at build time only when referenced by
@@ -61,6 +64,8 @@ export function useOrbEffectsConfig(): OrbEffectsConfig {
       chromaticAberration: !isOff(process.env.NEXT_PUBLIC_ORB_CHROMATIC_ABERRATION),
       iridescence:         !isOff(process.env.NEXT_PUBLIC_ORB_IRIDESCENCE),
       volumetricLights:    !isOff(process.env.NEXT_PUBLIC_ORB_VOLUMETRIC_LIGHTS),
+      // PR 208B — metrics bars default to false (opt-in)
+      orbMetricsBars:      process.env.NEXT_PUBLIC_ORB_METRICS_BARS === "true",
     };
   }, []);
 }

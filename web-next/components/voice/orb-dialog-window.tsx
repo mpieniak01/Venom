@@ -32,28 +32,36 @@ export function OrbDialogWindow({
     if (role !== "assistant" || !text) return;
 
     if (reducedMotion) {
-      setDisplayed(text);
-      return;
+      const id = window.setTimeout(() => setDisplayed(text), 0);
+      return () => window.clearTimeout(id);
     }
 
     let i = prevTextRef.current === text ? text.length : 0;
     prevTextRef.current = text;
-    setDisplayed(text.slice(0, i));
-
-    const id = setInterval(() => {
-      i += 1;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const startId = window.setTimeout(() => {
       setDisplayed(text.slice(0, i));
-      if (i >= text.length) clearInterval(id);
-    }, TYPEWRITER_INTERVAL_MS);
+      intervalId = window.setInterval(() => {
+        i += 1;
+        setDisplayed(text.slice(0, i));
+        if (i >= text.length && intervalId) {
+          clearInterval(intervalId);
+        }
+      }, TYPEWRITER_INTERVAL_MS);
+    }, 0);
 
-    return () => clearInterval(id);
+    return () => {
+      window.clearTimeout(startId);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [text, role, reducedMotion]);
 
   // For user bubble just show full text immediately
   useEffect(() => {
     if (role !== "user") return;
     prevTextRef.current = text;
-    setDisplayed(text);
+    const id = window.setTimeout(() => setDisplayed(text), 0);
+    return () => window.clearTimeout(id);
   }, [text, role]);
 
   // Visibility + enter animation on text change
@@ -61,14 +69,19 @@ export function OrbDialogWindow({
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
 
     if (text) {
-      setVisible(true);
+      const visibleId = window.setTimeout(() => setVisible(true), 0);
       if (!reducedMotion) {
-        setEntering(true);
-        const id = setTimeout(() => setEntering(false), 240);
-        return () => clearTimeout(id);
+        const enterId = window.setTimeout(() => setEntering(true), 0);
+        const exitId = window.setTimeout(() => setEntering(false), 240);
+        return () => {
+          window.clearTimeout(visibleId);
+          window.clearTimeout(enterId);
+          window.clearTimeout(exitId);
+        };
       }
     } else {
-      setVisible(false);
+      const id = window.setTimeout(() => setVisible(false), 0);
+      return () => window.clearTimeout(id);
     }
   }, [text, reducedMotion]);
 

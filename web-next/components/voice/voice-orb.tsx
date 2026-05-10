@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { OrbFrequencyRing } from "@/components/voice/orb-frequency-ring";
 import { useAudioLevel } from "@/components/voice/use-audio-level";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
+import type { OrbMetrics } from "@/components/voice/use-orb-metrics";
 
 export type VoiceOrbState =
   | "offline"
@@ -227,6 +228,176 @@ function useOrbParticles() {
   return particles;
 }
 
+// ─── Metrics arcs — 4 quarter-circle arcs floating outward from the orb ──────
+
+const ARC_DEFS = [
+  { key: "cpu" as keyof OrbMetrics, color: "#f97316", startDeg:  45, endDeg: 135 }, // top
+  { key: "gpu" as keyof OrbMetrics, color: "#a855f7", startDeg: -45, endDeg:  45 }, // right
+  { key: "net" as keyof OrbMetrics, color: "#4ade80", startDeg: 225, endDeg: 315 }, // bottom
+  { key: "ram" as keyof OrbMetrics, color: "#22d3ee", startDeg: 135, endDeg: 225 }, // left
+] as const;
+
+function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
+  const s  = (startDeg * Math.PI) / 180;
+  const e  = (endDeg   * Math.PI) / 180;
+  const x1 = cx + r * Math.cos(s);
+  const y1 = cy - r * Math.sin(s);
+  const x2 = cx + r * Math.cos(e);
+  const y2 = cy - r * Math.sin(e);
+  // sweep-flag=0: counter-clockwise in SVG, draws the short arc through the quadrant centre
+  return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 0 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+}
+
+type OrbMetricsBars2DProps = Readonly<{
+  metricsRef: RefObject<OrbMetrics>;
+  orbSize: number;
+  colorMode: boolean;
+}>;
+
+function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DProps) {
+  const coreRefs   = useRef<Array<SVGPathElement | null>>([null, null, null, null]);
+  const glowRefs   = useRef<Array<SVGPathElement | null>>([null, null, null, null]);
+  const rippleRefs = useRef<Array<SVGPathElement | null>>([null, null, null, null]);
+  const currents   = useRef([0, 0, 0, 0]);
+  const prevRadii  = useRef<number[]>([]);
+  const rippleSt   = useRef([0, 0, 0, 0]);
+
+  useEffect(() => {
+    const cx     = orbSize / 2;
+    const cy     = orbSize / 2;
+    const ORB_R  = orbSize / 2;
+    const MIN_R  = ORB_R * 1.08; // just outside the orb edge
+    const MAX_R  = ORB_R * 1.95; // fully loaded: arcs nearly double the orb radius
+    const PHASES = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]; // 90° stagger per arc
+
+    currents.current  = [MIN_R, MIN_R, MIN_R, MIN_R];
+    prevRadii.current = [MIN_R, MIN_R, MIN_R, MIN_R];
+
+    let raf: number;
+
+    const tick = (now: number) => {
+      const t    = now / 1000;
+      const m    = metricsRef.current;
+      const vals = [m.cpu, m.gpu, m.net, m.ram];
+
+      currents.current = currents.current.map((c, i) => {
+        const tgt = MIN_R + ((vals[i] ?? 0) / 100) * (MAX_R - MIN_R);
+        return c + (tgt - c) * 0.06;
+      });
+
+      currents.current.forEach((r, i) => {
+        const def         = ARC_DEFS[i]!;
+        const pct         = Math.max(0, Math.min(1, (r - MIN_R) / (MAX_R - MIN_R)));
+        const breathPhase = t * 2.1 + (PHASES[i] ?? 0);
+        const breathe     = Math.sin(breathPhase);
+        const effR        = r + breathe * orbSize * 0.012;
+        const sw          = 1.8 + 3.8 * pct + breathe * (0.8 + 1.2 * pct);
+        const opa         = 0.35 + 0.65 * pct;
+        const d           = arcPath(cx, cy, Math.max(MIN_R * 0.95, effR), def.startDeg, def.endDeg);
+
+        const core = coreRefs.current[i];
+        if (core) {
+          core.setAttribute("d",            d);
+          core.setAttribute("stroke-width", String(Math.max(1.2, sw).toFixed(2)));
+          core.setAttribute("opacity",      String(opa.toFixed(3)));
+        }
+
+        const glow = glowRefs.current[i];
+        if (glow) {
+          glow.setAttribute("d",            d);
+          glow.setAttribute("stroke-width", String(Math.max(4, sw * 3.5).toFixed(2)));
+          glow.setAttribute("opacity",      String((0.10 + 0.22 * pct).toFixed(3)));
+        }
+
+        // Ripple arc: spawns when radius spikes (load surge)
+        const prev = prevRadii.current[i] ?? MIN_R;
+        const rp   = rippleSt.current[i] ?? 0;
+        if (r - prev > (MAX_R - MIN_R) * 0.06 && pct > 0.15 && rp === 0) {
+          rippleSt.current[i] = 1.0;
+        }
+        prevRadii.current[i] = r;
+
+        const ripple = rippleRefs.current[i];
+        if (ripple) {
+          if (rp > 0) {
+            const rOuter = effR + (1 - rp) * orbSize * 0.28;
+            ripple.setAttribute("d",            arcPath(cx, cy, Math.max(MIN_R, rOuter), def.startDeg, def.endDeg));
+            ripple.setAttribute("stroke-width", "2.0");
+            ripple.setAttribute("opacity",      String((rp * 0.65).toFixed(3)));
+            rippleSt.current[i] = Math.max(0, rp - 0.018);
+          } else {
+            ripple.setAttribute("opacity", "0");
+          }
+        }
+      });
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [metricsRef, orbSize]);
+
+  const MONO = "#6b7280";
+
+  return (
+    <svg
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        pointerEvents: "none",
+        overflow: "visible",
+      }}
+      width={orbSize}
+      height={orbSize}
+      aria-hidden="true"
+    >
+      <defs>
+        <filter id="orb-arc-glow" x="-200%" y="-200%" width="500%" height="500%">
+          <feGaussianBlur stdDeviation="4.5" in="SourceGraphic" />
+        </filter>
+      </defs>
+
+      {/* Glow bloom — wide blurred arc copies */}
+      {ARC_DEFS.map(({ key, color }, i) => (
+        <path
+          key={`g-${key}`}
+          ref={(el) => { glowRefs.current[i] = el; }}
+          fill="none"
+          stroke={colorMode ? color : MONO}
+          strokeLinecap="round"
+          filter="url(#orb-arc-glow)"
+        />
+      ))}
+
+      {/* Core arcs */}
+      {ARC_DEFS.map(({ key, color }, i) => (
+        <path
+          key={`c-${key}`}
+          ref={(el) => { coreRefs.current[i] = el; }}
+          fill="none"
+          stroke={colorMode ? color : MONO}
+          strokeLinecap="round"
+        />
+      ))}
+
+      {/* Ripple arcs that expand outward on load surge */}
+      {ARC_DEFS.map(({ key, color }, i) => (
+        <path
+          key={`r-${key}`}
+          ref={(el) => { rippleRefs.current[i] = el; }}
+          fill="none"
+          stroke={colorMode ? color : MONO}
+          strokeLinecap="round"
+          opacity={0}
+        />
+      ))}
+    </svg>
+  );
+}
+
 type VoiceOrbProps = Readonly<{
   state: VoiceOrbState;
   /** Override audio level - used in tests; omit in production (computed internally). */
@@ -238,6 +409,7 @@ type VoiceOrbProps = Readonly<{
   effectsConfig?: OrbEffectsConfig;
   micAnalyserRef?: RefObject<AnalyserNode | null>;
   ttsAnalyserRef?: RefObject<AnalyserNode | null>;
+  metricsRef?: RefObject<OrbMetrics>;
 }>;
 
 export function VoiceOrb({
@@ -250,6 +422,7 @@ export function VoiceOrb({
   effectsConfig,
   micAnalyserRef,
   ttsAnalyserRef,
+  metricsRef,
 }: VoiceOrbProps) {
   const effectiveState: VoiceOrbState = disabled ? "offline" : state;
   const visual = ORB_VISUALS[effectiveState];
@@ -263,6 +436,7 @@ export function VoiceOrb({
     coreTexture: true,
     particles: true,
     stateLabel: true,
+    orbMetricsBars: false,
   };
 
   // Audio level is computed here so the parent does not re-render at 60fps.
@@ -404,6 +578,10 @@ export function VoiceOrb({
               />
             );
           })}
+
+        {cfg.orbMetricsBars && metricsRef && !reducedMotion && (
+          <OrbMetricsBars2D metricsRef={metricsRef} orbSize={ORB_SIZE} colorMode />
+        )}
       </div>
 
       {cfg.stateLabel && (

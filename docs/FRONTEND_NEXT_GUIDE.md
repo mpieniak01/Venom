@@ -119,6 +119,16 @@ From repository root, you can use:
 - UI language (PL/EN/DE) is sent as `preferred_language` in `/api/v1/tasks` and backend translates response if different language detected.
 - Calculation results (e.g. JSON/arrays) are formatted in chat to tables/lists; when formulas detected we render KaTeX.
 
+### 0.6 Voice screen and `react-three` orb stack
+- `web-next/components/voice/*` is the dedicated voice surface for `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, `VoiceOrb3D`, dialog windows, metrics hooks, and orb-specific overlays.
+- The orb now has a `react-three` rendering path (`VoiceOrb3D` with `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) plus a CSS fallback when WebGL or 3D mode is unavailable.
+- `web-next/tests/voice-orb.spec.ts` covers `/voice` layout stability and orb visibility in smoke-style Playwright checks.
+- Frontend helper scripts that matter for this stack live in `web-next/scripts/`:
+  - `run-e2e.mjs`
+  - `e2e-quality-gate.mjs`
+  - `check-dev-turbo.mjs`
+- When adding new voice visuals, document them as part of the orb stack first; treat CSS-only variants as fallback, not as the primary architecture.
+
 ## 1. Brain / Strategy – Data sources and hooks
 
 | View / module                     | Endpoints / hooks                                                                                              | Fallback / notes                                                                                           |

@@ -16,6 +16,13 @@ Current production-safe path:
 5. TTS uses Piper when a voice model is available,
 6. `/voice` shows the transcript, response, recording link, timings, quality metrics, and runtime snapshot.
 
+The current branch also treats the voice orb as a dedicated UI stack, not a loose widget:
+
+1. `VoiceCommandCenter` owns the `/voice` screen state and wires the orb into the rest of the page,
+2. `VoiceOrb3D` is the `react-three` rendering path for the orb when 3D visuals are enabled,
+3. the CSS orb remains the safe fallback when WebGL is unavailable or 3D is disabled,
+4. voice-specific smoke coverage lives in `web-next/tests/voice-orb.spec.ts`.
+
 ### Current STT baseline
 
 The default speech-to-text model is `medium`.

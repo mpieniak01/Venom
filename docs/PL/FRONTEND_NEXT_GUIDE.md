@@ -119,6 +119,16 @@ Z poziomu roota repo możesz użyć:
 - Język UI (PL/EN/DE) jest przesyłany jako `preferred_language` w `/api/v1/tasks` i backend tłumaczy odpowiedź, jeśli wykryje inny język.
 - Wyniki obliczeń (np. JSON/tablice) są formatowane w czacie do tabel/list; przy wykryciu formuł renderujemy KaTeX.
 
+### 0.6 Ekran voice i stos orba `react-three`
+- `web-next/components/voice/*` to dedykowany ekran voice dla `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, `VoiceOrb3D`, okna dialogowe, hooki metryk i overlaye orba.
+- Orb ma już ścieżkę renderowania w `react-three` (`VoiceOrb3D` z `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) oraz fallback CSS, gdy WebGL lub tryb 3D są niedostępne.
+- `web-next/tests/voice-orb.spec.ts` pokrywa stabilność layoutu `/voice` i widoczność orba w smoke testach Playwright.
+- Ważne skrypty frontendowe dla tego stosu znajdują się w `web-next/scripts/`:
+  - `run-e2e.mjs`
+  - `e2e-quality-gate.mjs`
+  - `check-dev-turbo.mjs`
+- Przy dodawaniu nowych efektów voice dokumentuj je najpierw jako część stosu orba; wariant CSS traktuj jako fallback, nie jako główną architekturę.
+
 ## 1. Brain / Strategy – Źródła danych i hooki
 
 | Widok / moduł                     | Endpointy / hooki                                                                                              | Fallback / uwagi                                                                                           |

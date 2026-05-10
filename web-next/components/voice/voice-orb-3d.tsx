@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import type { RefObject } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import type { MutableRefObject, RefObject } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import { EffectComposer, Bloom, ChromaticAberration } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
@@ -124,14 +124,14 @@ const BAR_DEFS: Array<{
 
 // BoxGeometry with translate(0, 0.5, 0): bottom at Y=0 → scales grow outward.
 function makeBarGeometry() {
-  const geo = new THREE.BoxGeometry(0.055, 1.0, 0.055);
+  const geo = new THREE.BoxGeometry(0.055, 1, 0.055);
   geo.translate(0, 0.5, 0);
   return geo;
 }
 
 // Wider secondary "glow" geometry
 function makeGlowGeometry() {
-  const geo = new THREE.BoxGeometry(0.18, 1.0, 0.055);
+  const geo = new THREE.BoxGeometry(0.18, 1, 0.055);
   geo.translate(0, 0.5, 0);
   return geo;
 }
@@ -141,13 +141,36 @@ type OrbMetricsBars3DProps = {
 };
 
 function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
+  const groupRefs = useRef<Array<THREE.Group | null>>([null, null, null, null]);
   const coreRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
   const glowRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
+  const coreMaterialRefs = useRef<Array<THREE.MeshStandardMaterial | null>>([null, null, null, null]);
+  const glowMaterialRefs = useRef<Array<THREE.MeshStandardMaterial | null>>([null, null, null, null]);
   const barGeo = useMemo(() => makeBarGeometry(), []);
   const glowGeo = useMemo(() => makeGlowGeometry(), []);
 
+  useEffect(() => {
+    coreRefs.current.forEach((mesh) => {
+      if (mesh) {
+        mesh.geometry = barGeo;
+      }
+    });
+    glowRefs.current.forEach((mesh) => {
+      if (mesh) {
+        mesh.geometry = glowGeo;
+      }
+    });
+    groupRefs.current.forEach((group, index) => {
+      const def = BAR_DEFS[index];
+      if (group && def) {
+        group.rotation.set(def.rotation[0], def.rotation[1], def.rotation[2]);
+      }
+    });
+  }, [barGeo, glowGeo]);
+
   useFrame(() => {
     const m = metricsRef.current;
+    if (!m) return;
     const values: number[] = [m.cpu, m.gpu, m.net, m.ram];
 
     values.forEach((pct, i) => {
@@ -157,17 +180,29 @@ function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
       const core = coreRefs.current[i];
       if (core) {
         core.scale.y += (target - core.scale.y) * BAR_LERP_ALPHA;
-        const mat = core.material as THREE.MeshStandardMaterial;
-        mat.emissiveIntensity = isGpuAbsent ? 0.04 : 0.35 + 0.65 * (pct / 100);
-        mat.opacity = isGpuAbsent ? 0.2 : 0.92;
+        const mat = coreMaterialRefs.current[i];
+        if (mat) {
+          mat.color.set(BAR_DEFS[i]?.color ?? mat.color);
+          mat.emissive.set(BAR_DEFS[i]?.color ?? mat.emissive);
+          mat.emissiveIntensity = isGpuAbsent ? 0.04 : 0.35 + 0.65 * (pct / 100);
+          mat.opacity = isGpuAbsent ? 0.2 : 0.92;
+          mat.transparent = true;
+          mat.depthWrite = false;
+        }
       }
 
       const glow = glowRefs.current[i];
       if (glow) {
         glow.scale.y += (target - glow.scale.y) * BAR_LERP_ALPHA;
-        const mat = glow.material as THREE.MeshStandardMaterial;
-        mat.emissiveIntensity = isGpuAbsent ? 0.02 : 0.15 + 0.35 * (pct / 100);
-        mat.opacity = isGpuAbsent ? 0.06 : 0.18 + 0.22 * (pct / 100);
+        const mat = glowMaterialRefs.current[i];
+        if (mat) {
+          mat.color.set(BAR_DEFS[i]?.color ?? mat.color);
+          mat.emissive.set(BAR_DEFS[i]?.color ?? mat.emissive);
+          mat.emissiveIntensity = isGpuAbsent ? 0.02 : 0.15 + 0.35 * (pct / 100);
+          mat.opacity = isGpuAbsent ? 0.06 : 0.18 + 0.22 * (pct / 100);
+          mat.transparent = true;
+          mat.depthWrite = false;
+        }
       }
     });
   });
@@ -175,35 +210,55 @@ function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
   return (
     <>
       {BAR_DEFS.map(({ key, color, rotation }, i) => (
-        <group key={key} rotation={rotation}>
+        <group
+          key={key}
+          ref={(group) => {
+            groupRefs.current[i] = group;
+            if (group) {
+              group.rotation.set(rotation[0], rotation[1], rotation[2]);
+            }
+          }}
+        >
           {/* Glow halo — wide, semi-transparent */}
           <mesh
-            ref={(el) => { glowRefs.current[i] = el; }}
-            geometry={glowGeo}
+            ref={(el) => {
+              glowRefs.current[i] = el;
+            }}
             scale={[1, MIN_BAR_SCALE, 1]}
           >
             <meshStandardMaterial
-              color={color}
-              emissive={color}
-              emissiveIntensity={0.15}
-              transparent
-              opacity={0.12}
-              depthWrite={false}
+              ref={(mat) => {
+                glowMaterialRefs.current[i] = mat;
+                if (mat) {
+                  mat.color.set(color);
+                  mat.emissive.set(color);
+                  mat.emissiveIntensity = 0.15;
+                  mat.transparent = true;
+                  mat.opacity = 0.12;
+                  mat.depthWrite = false;
+                }
+              }}
             />
           </mesh>
           {/* Core beam */}
           <mesh
-            ref={(el) => { coreRefs.current[i] = el; }}
-            geometry={barGeo}
+            ref={(el) => {
+              coreRefs.current[i] = el;
+            }}
             scale={[1, MIN_BAR_SCALE, 1]}
           >
             <meshStandardMaterial
-              color={color}
-              emissive={color}
-              emissiveIntensity={0.35}
-              transparent
-              opacity={0.9}
-              depthWrite={false}
+              ref={(mat) => {
+                coreMaterialRefs.current[i] = mat;
+                if (mat) {
+                  mat.color.set(color);
+                  mat.emissive.set(color);
+                  mat.emissiveIntensity = 0.35;
+                  mat.transparent = true;
+                  mat.opacity = 0.9;
+                  mat.depthWrite = false;
+                }
+              }}
             />
           </mesh>
         </group>
@@ -222,15 +277,15 @@ function pseudoRandom(seed: number): number {
 }
 
 function sampleParticle(seed: number) {
-  const theta = pseudoRandom(seed * 1.17 + 1.0) * Math.PI * 2;
-  const phi = pseudoRandom(seed * 1.91 + 2.0) * (Math.PI / 2);
-  const r = 0.65 + pseudoRandom(seed * 2.53 + 3.0) * 0.15;
+  const theta = pseudoRandom(seed * 1.17 + 1) * Math.PI * 2;
+  const phi = pseudoRandom(seed * 1.91 + 2) * (Math.PI / 2);
+  const r = 0.65 + pseudoRandom(seed * 2.53 + 3) * 0.15;
   return {
     theta,
     phi,
     r,
-    vy: 0.15 + pseudoRandom(seed * 3.11 + 4.0) * 0.25,
-    life: pseudoRandom(seed * 4.07 + 5.0),
+    vy: 0.15 + pseudoRandom(seed * 3.11 + 4) * 0.25,
+    life: pseudoRandom(seed * 4.07 + 5),
   };
 }
 
@@ -251,9 +306,9 @@ function createParticleState(): ParticleState {
     positions[i * 3] = sample.r * Math.sin(sample.phi) * Math.cos(sample.theta);
     positions[i * 3 + 1] = sample.r * Math.cos(sample.phi);
     positions[i * 3 + 2] = sample.r * Math.sin(sample.phi) * Math.sin(sample.theta);
-    velocities[i * 3] = (pseudoRandom(i * 5.13 + 6.0) - 0.5) * 0.02;
+    velocities[i * 3] = (pseudoRandom(i * 5.13 + 6) - 0.5) * 0.02;
     velocities[i * 3 + 1] = sample.vy;
-    velocities[i * 3 + 2] = (pseudoRandom(i * 7.41 + 7.0) - 0.5) * 0.02;
+    velocities[i * 3 + 2] = (pseudoRandom(i * 7.41 + 7) - 0.5) * 0.02;
     lifetimes[i] = sample.life;
   }
   return { positions, velocities, lifetimes, resetCounts };
@@ -265,6 +320,142 @@ const GLOBAL_FFT_TEXTURE = new THREE.DataTexture(GLOBAL_FFT_DATA_ARRAY, 128, 1, 
 GLOBAL_FFT_TEXTURE.needsUpdate = true;
 const GLOBAL_BLOOM_TARGET = { current: 0.3 };
 const GLOBAL_CHROMATIC_OFFSET = new THREE.Vector2(0, 0);
+const GLOBAL_ORB_SHADER_MATERIAL = new THREE.ShaderMaterial({
+  uniforms: {
+    fftTexture: { value: GLOBAL_FFT_TEXTURE },
+    audioLevel: { value: 0 },
+    time: { value: 0 },
+    blobEnabled: { value: 1 },
+    fftEnabled: { value: 1 },
+    iridescenceEnabled: { value: 0 },
+    baseColor: { value: STATE_COLORS.ready.base.clone() },
+    emissionColor: { value: STATE_COLORS.ready.emission.clone() },
+    emissionIntensity: { value: 0.2 },
+  },
+  vertexShader,
+  fragmentShader,
+});
+
+function getActiveAnalyser(
+  state: VoiceOrbState,
+  micAnalyserRef?: RefObject<AnalyserNode | null>,
+  ttsAnalyserRef?: RefObject<AnalyserNode | null>,
+): AnalyserNode | null {
+  if (state === "recording") return micAnalyserRef?.current ?? null;
+  if (state === "tts") return ttsAnalyserRef?.current ?? null;
+  return null;
+}
+
+function getEmissionTarget(state: VoiceOrbState, audioLevel: number, elapsed: number, burst: number): number {
+  if (state === "recording") return 0.25 + audioLevel * 0.6;
+  if (state === "tts") return 0.3 + audioLevel * 0.9;
+  if (state === "thinking") return 0.3 + Math.sin(elapsed * 2.2) * 0.15;
+  if (state === "complete") return Math.max(0, burst);
+  if (state === "ready") return 0.15 + Math.sin(elapsed * 1.5) * 0.05;
+  return 0.1;
+}
+
+function getBloomTarget(state: VoiceOrbState, audioLevel: number, elapsed: number, burst: number): number {
+  if (state === "recording") return 0.4 + audioLevel * 0.8;
+  if (state === "tts") return 0.5 + audioLevel * 1.2;
+  if (state === "thinking") return 0.4 + Math.sin(elapsed * 2) * 0.15;
+  if (state === "complete") return 1.2 * burst;
+  if (state === "ready") return 0.25;
+  return 0.1;
+}
+
+function updateVolumetricLights(
+  light1: THREE.PointLight | null,
+  light2: THREE.PointLight | null,
+  delta: number,
+  audioLevel: number,
+  enabled: boolean,
+  light1Angle: MutableRefObject<number>,
+  light2Angle: MutableRefObject<number>,
+) {
+  if (!enabled) return;
+  light1Angle.current += delta * (Math.PI * 2 / 6);
+  light2Angle.current += delta * (Math.PI * 2 / 10);
+  if (light1) {
+    light1.position.set(
+      Math.cos(light1Angle.current) * 2,
+      Math.sin(light1Angle.current * 0.7) * 1.2,
+      Math.sin(light1Angle.current) * 2,
+    );
+    light1.intensity = 0.6 + audioLevel;
+  }
+  if (light2) {
+    light2.position.set(
+      Math.cos(light2Angle.current + Math.PI) * 2.5,
+      Math.sin(light2Angle.current * 0.5) * 1.5,
+      Math.sin(light2Angle.current + Math.PI) * 2.5,
+    );
+    light2.intensity = 0.4 + audioLevel * 0.6;
+  }
+}
+
+function updateShaderMaterial(
+  mat: THREE.ShaderMaterial | null,
+  state: VoiceOrbState,
+  colors: StateColors,
+  audioLevel: number,
+  elapsed: number,
+  delta: number,
+  effectsConfig: OrbEffectsConfig,
+  activeAnalyser: AnalyserNode | null,
+  rawFFT: MutableRefObject<Uint8Array>,
+  burstProgress: MutableRefObject<number>,
+) {
+  if (!mat) return;
+  const uniforms = mat.uniforms as Record<string, { value: unknown }>;
+  const setUniform = (name: string, value: unknown) => {
+    const uniform = uniforms[name];
+    if (uniform) {
+      uniform.value = value;
+      return;
+    }
+    uniforms[name] = { value };
+  };
+
+  if (activeAnalyser) {
+    activeAnalyser.getByteFrequencyData(rawFFT.current);
+    for (let i = 0; i < 128; i++) {
+      const val = rawFFT.current[i] ?? 0;
+      GLOBAL_FFT_DATA_ARRAY[i * 4] = val;
+      GLOBAL_FFT_DATA_ARRAY[i * 4 + 1] = val;
+      GLOBAL_FFT_DATA_ARRAY[i * 4 + 2] = val;
+      GLOBAL_FFT_DATA_ARRAY[i * 4 + 3] = 255;
+    }
+    GLOBAL_FFT_TEXTURE.needsUpdate = true;
+  }
+
+  setUniform("fftTexture", GLOBAL_FFT_TEXTURE);
+  setUniform("audioLevel", audioLevel);
+  setUniform("time", elapsed);
+  setUniform("blobEnabled", effectsConfig.blob && (state === "recording" || state === "tts") ? 1 : 0);
+  setUniform("fftEnabled", effectsConfig.frequencyRing && !!activeAnalyser ? 1 : 0);
+  setUniform("iridescenceEnabled", effectsConfig.iridescence ? 1 : 0);
+
+  const currentBase = (uniforms.baseColor?.value as THREE.Color | undefined) ?? colors.base.clone();
+  const currentEmission = (uniforms.emissionColor?.value as THREE.Color | undefined) ?? colors.emission.clone();
+  currentBase.lerp(colors.base, delta * 4);
+  currentEmission.lerp(colors.emission, delta * 4);
+  setUniform("baseColor", currentBase);
+  setUniform("emissionColor", currentEmission);
+
+  if (state === "complete" && burstProgress.current > 0) {
+    burstProgress.current = Math.max(0, burstProgress.current - delta * 1.8);
+  }
+
+  const currentEmissionIntensity = (uniforms.emissionIntensity?.value as number | undefined) ?? 0;
+  setUniform(
+    "emissionIntensity",
+    currentEmissionIntensity +
+      (getEmissionTarget(state, audioLevel, elapsed, burstProgress.current) - currentEmissionIntensity) * delta * 5,
+  );
+
+  GLOBAL_BLOOM_TARGET.current = getBloomTarget(state, audioLevel, elapsed, burstProgress.current);
+}
 
 function OrbParticles3D({
   active,
@@ -276,6 +467,26 @@ function OrbParticles3D({
   audioLevel: number;
 }) {
   const pointsRef = useRef<THREE.Points>(null);
+  const geometryRef = useRef<THREE.BufferGeometry | null>(null);
+  const materialRef = useRef<THREE.PointsMaterial | null>(null);
+
+  useEffect(() => {
+    if (geometryRef.current) {
+      geometryRef.current.setAttribute(
+        "position",
+        new THREE.BufferAttribute(GLOBAL_PARTICLE_STATE.positions, 3),
+      );
+    }
+    if (materialRef.current) {
+      materialRef.current.color.set(color);
+      materialRef.current.size = 0.035;
+      materialRef.current.transparent = true;
+      materialRef.current.opacity = 0.55;
+      materialRef.current.depthWrite = false;
+      materialRef.current.sizeAttenuation = true;
+    }
+  }, [color]);
+
   useFrame((_, delta) => {
     if (!active || !pointsRef.current) return;
     const pos = pointsRef.current.geometry.attributes.position?.array as Float32Array | undefined;
@@ -307,20 +518,8 @@ function OrbParticles3D({
 
   return (
     <points ref={pointsRef}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[GLOBAL_PARTICLE_STATE.positions, 3]}
-        />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.035}
-        color={color}
-        transparent
-        opacity={0.55}
-        depthWrite={false}
-        sizeAttenuation
-      />
+      <bufferGeometry ref={geometryRef} />
+      <pointsMaterial ref={materialRef} />
     </points>
   );
 }
@@ -349,20 +548,21 @@ function OrbScene({
   metricsRef,
 }: OrbSceneProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const matRef = useRef<THREE.ShaderMaterial>(null);
+  const ambientLightRef = useRef<THREE.AmbientLight>(null);
   const light1Ref = useRef<THREE.PointLight>(null);
   const light2Ref = useRef<THREE.PointLight>(null);
   const light1Angle = useRef(0);
   const light2Angle = useRef(Math.PI);
   const prevState = useRef(state);
   const burstProgress = useRef(0);
-  const { camera } = useThree();
-
   const rawFFT = useRef(new Uint8Array(128));
 
   const audioLevel = state === "recording" ? inputLevel : state === "tts" ? outputLevel : 0;
   const isActive = state === "recording" || state === "tts";
   const colors = STATE_COLORS[state];
+  const activeAnalyser = getActiveAnalyser(state, micAnalyserRef, ttsAnalyserRef);
+  const orbGeometry = useMemo(() => new THREE.SphereGeometry(0.62, 64, 64), []);
+  const shaderMaterial = GLOBAL_ORB_SHADER_MATERIAL;
 
   // Chromatic aberration spike on state change
   useEffect(() => {
@@ -387,127 +587,78 @@ function OrbScene({
     }
   }, [state]);
 
+  useEffect(() => {
+    if (meshRef.current) {
+      meshRef.current.geometry = orbGeometry;
+      meshRef.current.material = shaderMaterial;
+    }
+    return () => {
+      orbGeometry.dispose();
+    };
+  }, [orbGeometry, shaderMaterial]);
+
+  useEffect(() => {
+    const uniforms = shaderMaterial.uniforms as Record<string, { value: unknown }>;
+    (uniforms.baseColor.value as THREE.Color).copy(colors.base);
+    (uniforms.emissionColor.value as THREE.Color).copy(colors.emission);
+    if (uniforms.iridescenceEnabled) {
+      uniforms.iridescenceEnabled.value = effectsConfig.iridescence ? 1 : 0;
+    }
+  }, [colors, effectsConfig.iridescence, shaderMaterial]);
+
+  useEffect(() => {
+    if (ambientLightRef.current) {
+      ambientLightRef.current.intensity = 0.15;
+    }
+    if (light1Ref.current) {
+      light1Ref.current.color.copy(colors.emission);
+      light1Ref.current.distance = 5;
+      light1Ref.current.decay = 2;
+    }
+    if (light2Ref.current) {
+      light2Ref.current.color.copy(colors.base);
+      light2Ref.current.distance = 5;
+      light2Ref.current.decay = 2;
+    }
+  }, [colors]);
+
   useFrame((frameState, delta) => {
-    const mat = matRef.current;
-    if (!mat) return;
-
     const t = frameState.clock.elapsedTime;
-
-    // Update FFT texture
-    const activeAnalyser =
-      state === "recording" ? micAnalyserRef?.current :
-      state === "tts" ? ttsAnalyserRef?.current : null;
-
-    if (activeAnalyser) {
-      activeAnalyser.getByteFrequencyData(rawFFT.current);
-      const fftArr = GLOBAL_FFT_DATA_ARRAY;
-      for (let i = 0; i < 128; i++) {
-        const val = rawFFT.current[i] ?? 0;
-        fftArr[i * 4]     = val;
-        fftArr[i * 4 + 1] = val;
-        fftArr[i * 4 + 2] = val;
-        fftArr[i * 4 + 3] = 255;
-      }
-      GLOBAL_FFT_TEXTURE.needsUpdate = true;
-    }
-
-    // Update material uniforms
-    mat.uniforms.fftTexture = { value: GLOBAL_FFT_TEXTURE };
-    mat.uniforms.audioLevel = { value: audioLevel };
-    mat.uniforms.time = { value: t };
-    mat.uniforms.blobEnabled = { value: effectsConfig.blob && isActive ? 1 : 0 };
-    mat.uniforms.fftEnabled = { value: effectsConfig.frequencyRing && !!activeAnalyser ? 1 : 0 };
-    mat.uniforms.iridescenceEnabled = { value: effectsConfig.iridescence ? 1 : 0 };
-
-    // Lerp colors toward target state
-    const currentBase = (mat.uniforms.baseColor?.value as THREE.Color) ?? colors.base.clone();
-    const currentEmission = (mat.uniforms.emissionColor?.value as THREE.Color) ?? colors.emission.clone();
-    currentBase.lerp(colors.base, delta * 4);
-    currentEmission.lerp(colors.emission, delta * 4);
-    mat.uniforms.baseColor = { value: currentBase };
-    mat.uniforms.emissionColor = { value: currentEmission };
-
-    // Emission intensity per state + audio reactivity
-    let emissionTarget = 0.1;
-    if (state === "recording") emissionTarget = 0.25 + audioLevel * 0.6;
-    else if (state === "tts") emissionTarget = 0.3 + audioLevel * 0.9;
-    else if (state === "thinking") emissionTarget = 0.3 + Math.sin(t * 2.2) * 0.15;
-    else if (state === "complete") emissionTarget = Math.max(0, burstProgress.current);
-    else if (state === "ready") emissionTarget = 0.15 + Math.sin(t * 1.5) * 0.05;
-
-    if (state === "complete" && burstProgress.current > 0) {
-      burstProgress.current = Math.max(0, burstProgress.current - delta * 1.8);
-    }
-
-    const prevEmission = (mat.uniforms.emissionIntensity?.value as number) ?? 0;
-    mat.uniforms.emissionIntensity = { value: prevEmission + (emissionTarget - prevEmission) * delta * 5 };
-
-    // Bloom intensity
-    GLOBAL_BLOOM_TARGET.current =
-      state === "recording" ? 0.4 + audioLevel * 0.8 :
-      state === "tts" ? 0.5 + audioLevel * 1.2 :
-      state === "thinking" ? 0.4 + Math.sin(t * 2) * 0.15 :
-      state === "complete" ? 1.2 * burstProgress.current :
-      state === "ready" ? 0.25 : 0.1;
-
-    // Volumetric orbiting lights
-    if (effectsConfig.volumetricLights) {
-      light1Angle.current += delta * (Math.PI * 2 / 6);
-      light2Angle.current += delta * (Math.PI * 2 / 10);
-      if (light1Ref.current) {
-        light1Ref.current.position.set(
-          Math.cos(light1Angle.current) * 2,
-          Math.sin(light1Angle.current * 0.7) * 1.2,
-          Math.sin(light1Angle.current) * 2,
-        );
-        light1Ref.current.intensity = 0.6 + audioLevel * 1.0;
-      }
-      if (light2Ref.current) {
-        light2Ref.current.position.set(
-          Math.cos(light2Angle.current + Math.PI) * 2.5,
-          Math.sin(light2Angle.current * 0.5) * 1.5,
-          Math.sin(light2Angle.current + Math.PI) * 2.5,
-        );
-        light2Ref.current.intensity = 0.4 + audioLevel * 0.6;
-      }
-    }
-
-    // Suppress unused variable warning
-    void camera;
+    updateShaderMaterial(
+      shaderMaterial,
+      state,
+      colors,
+      audioLevel,
+      t,
+      delta,
+      effectsConfig,
+      activeAnalyser,
+      rawFFT,
+      burstProgress,
+    );
+    updateVolumetricLights(
+      light1Ref.current,
+      light2Ref.current,
+      delta,
+      audioLevel,
+      effectsConfig.volumetricLights,
+      light1Angle,
+      light2Angle,
+    );
   });
-
-  const shaderUniforms = {
-    fftTexture: { value: GLOBAL_FFT_TEXTURE },
-    audioLevel: { value: 0 },
-    time: { value: 0 },
-    blobEnabled: { value: 1 },
-    fftEnabled: { value: 1 },
-    iridescenceEnabled: { value: effectsConfig.iridescence ? 1 : 0 },
-    baseColor: { value: colors.base.clone() },
-    emissionColor: { value: colors.emission.clone() },
-    emissionIntensity: { value: 0.2 },
-  };
 
   return (
     <>
-      <ambientLight intensity={0.15} />
+      <ambientLight ref={ambientLightRef} />
 
       {effectsConfig.volumetricLights && (
         <>
-          <pointLight ref={light1Ref} color={colors.emission} intensity={0.6} distance={5} decay={2} />
-          <pointLight ref={light2Ref} color={colors.base} intensity={0.4} distance={5} decay={2} />
+          <pointLight ref={light1Ref} />
+          <pointLight ref={light2Ref} />
         </>
       )}
 
-      <mesh ref={meshRef}>
-        <sphereGeometry args={[0.62, 64, 64]} />
-        <shaderMaterial
-          ref={matRef}
-          vertexShader={vertexShader}
-          fragmentShader={fragmentShader}
-          uniforms={shaderUniforms}
-        />
-      </mesh>
+      <mesh ref={meshRef} />
 
       {effectsConfig.particles ? (
         <OrbParticles3D active={isActive} color={colors.emission} audioLevel={audioLevel} />
@@ -575,7 +726,7 @@ export function VoiceOrb3D({
     <div
       style={{ width: size, height: size }}
       aria-label="Voice orb visualization"
-      role="presentation"
+      role="img"
       data-orb-state={effectiveState}
     >
       <Canvas

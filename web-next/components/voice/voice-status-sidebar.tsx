@@ -14,7 +14,7 @@ function getProbeTone(status?: string | null): "success" | "warning" | "danger" 
   return "neutral";
 }
 
-function ReadyDot({ ready }: { ready?: boolean | null }) {
+function ReadyDot({ ready }: Readonly<{ ready?: boolean | null }>) {
   return (
     <span
       className={`inline-block h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-400" : "bg-zinc-600"}`}
@@ -22,7 +22,7 @@ function ReadyDot({ ready }: { ready?: boolean | null }) {
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function Row({ label, value }: Readonly<{ label: string; value: React.ReactNode }>) {
   return (
     <div className="flex items-center justify-between gap-2 py-1 border-b border-white/[0.04] last:border-0">
       <span className="text-caption shrink-0">{label}</span>
@@ -134,10 +134,10 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
 function StatusCard({
   title,
   children,
-}: {
+}: Readonly<{
   title: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3 text-xs text-zinc-300">
       <p className="eyebrow mb-2">{title}</p>

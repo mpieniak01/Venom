@@ -14,6 +14,22 @@ type OrbDialogWindowProps = Readonly<{
 const FADE_DELAY_MS = 5000;
 const TYPEWRITER_INTERVAL_MS = 18;
 
+function getBubbleClass(role: "user" | "assistant", isEmpty: boolean): string {
+  if (isEmpty) return "border-transparent bg-transparent";
+  return role === "user"
+    ? "border-white/10 bg-white/[0.05] text-zinc-200 self-end text-right"
+    : "border-white/10 bg-white/[0.04] text-zinc-100 self-start text-left";
+}
+
+function getEnterClass(
+  role: "user" | "assistant",
+  entering: boolean,
+  reducedMotion: boolean,
+): string {
+  if (!entering || reducedMotion) return "";
+  return role === "user" ? "animate-orb-dialog-in-top" : "animate-orb-dialog-in-bottom";
+}
+
 export function OrbDialogWindow({
   role,
   text,
@@ -32,16 +48,16 @@ export function OrbDialogWindow({
     if (role !== "assistant" || !text) return;
 
     if (reducedMotion) {
-      const id = window.setTimeout(() => setDisplayed(text), 0);
-      return () => window.clearTimeout(id);
+      const id = globalThis.setTimeout(() => setDisplayed(text), 0);
+      return () => globalThis.clearTimeout(id);
     }
 
     let i = prevTextRef.current === text ? text.length : 0;
     prevTextRef.current = text;
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    const startId = window.setTimeout(() => {
+    const startId = globalThis.setTimeout(() => {
       setDisplayed(text.slice(0, i));
-      intervalId = window.setInterval(() => {
+      intervalId = globalThis.setInterval(() => {
         i += 1;
         setDisplayed(text.slice(0, i));
         if (i >= text.length && intervalId) {
@@ -51,7 +67,7 @@ export function OrbDialogWindow({
     }, 0);
 
     return () => {
-      window.clearTimeout(startId);
+      globalThis.clearTimeout(startId);
       if (intervalId) clearInterval(intervalId);
     };
   }, [text, role, reducedMotion]);
@@ -60,8 +76,8 @@ export function OrbDialogWindow({
   useEffect(() => {
     if (role !== "user") return;
     prevTextRef.current = text;
-    const id = window.setTimeout(() => setDisplayed(text), 0);
-    return () => window.clearTimeout(id);
+    const id = globalThis.setTimeout(() => setDisplayed(text), 0);
+    return () => globalThis.clearTimeout(id);
   }, [text, role]);
 
   // Visibility + enter animation on text change
@@ -69,19 +85,19 @@ export function OrbDialogWindow({
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
 
     if (text) {
-      const visibleId = window.setTimeout(() => setVisible(true), 0);
+      const visibleId = globalThis.setTimeout(() => setVisible(true), 0);
       if (!reducedMotion) {
-        const enterId = window.setTimeout(() => setEntering(true), 0);
-        const exitId = window.setTimeout(() => setEntering(false), 240);
+        const enterId = globalThis.setTimeout(() => setEntering(true), 0);
+        const exitId = globalThis.setTimeout(() => setEntering(false), 240);
         return () => {
-          window.clearTimeout(visibleId);
-          window.clearTimeout(enterId);
-          window.clearTimeout(exitId);
+          globalThis.clearTimeout(visibleId);
+          globalThis.clearTimeout(enterId);
+          globalThis.clearTimeout(exitId);
         };
       }
     } else {
-      const id = window.setTimeout(() => setVisible(false), 0);
-      return () => window.clearTimeout(id);
+      const id = globalThis.setTimeout(() => setVisible(false), 0);
+      return () => globalThis.clearTimeout(id);
     }
   }, [text, reducedMotion]);
 
@@ -113,21 +129,14 @@ export function OrbDialogWindow({
   const bubbleClasses = [
     "w-full rounded-2xl border px-4 py-3 text-sm leading-relaxed",
     "transition-all duration-300",
-    role === "user"
-      ? "border-white/10 bg-white/[0.05] text-zinc-200 self-end text-right"
-      : "border-white/10 bg-white/[0.04] text-zinc-100 self-start text-left",
-    isEmpty ? "border-transparent bg-transparent" : "",
+    getBubbleClass(role, isEmpty),
     isActive ? "border-white/15" : "",
-    entering && !reducedMotion
-      ? role === "user"
-        ? "animate-orb-dialog-in-top"
-        : "animate-orb-dialog-in-bottom"
-      : "",
+    getEnterClass(role, entering, reducedMotion),
   ]
     .filter(Boolean)
     .join(" ");
 
-  const opacity = !visible ? 0 : isActive ? 1 : 0.45;
+  const opacity = visible ? (isActive ? 1 : 0.45) : 0;
 
   return (
     <div

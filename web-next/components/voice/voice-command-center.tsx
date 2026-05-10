@@ -165,12 +165,12 @@ const TIMING_STAGES: Array<{ key: string; label: string; accent?: boolean }> = [
   { key: "total_backend_ms", label: "Total", accent: true },
 ];
 
-function TimingStrip({
-  timings,
-}: {
+type TimingStripProps = Readonly<{
   timings?: Record<string, number | null | undefined> | null;
-}) {
-  const hasAny = timings && TIMING_STAGES.some((s) => timings[s.key] != null);
+}>;
+
+function TimingStrip({ timings }: TimingStripProps) {
+  const hasAny = Boolean(timings) && TIMING_STAGES.some((s) => timings[s.key] != null);
   return (
     <div className="grid grid-cols-5 gap-1.5 text-xs">
       {TIMING_STAGES.map(({ key, label, accent }) => {
@@ -183,7 +183,7 @@ function TimingStrip({
               accent
                 ? "border border-white/10 bg-white/[0.06]"
                 : "rounded-xl box-muted"
-            } ${!hasAny ? "opacity-40" : ""}`}
+            } ${hasAny ? "" : "opacity-40"}`}
           >
             <p className="text-caption leading-none">{label}</p>
             <p className={`mt-1 font-mono font-semibold leading-none ${accent ? "text-white" : "text-zinc-200"}`}>
@@ -236,6 +236,32 @@ const isWebSocketOpen = (ws: WebSocket | null | undefined): ws is WebSocket =>
 
 const buildReconnectDelay = (attempt: number): number =>
   Math.min(30000, 1000 * 2 ** attempt) + secureRandomInt(500);
+
+const closeAudioContext = (ctx: AudioContext | null | undefined) => {
+  if (!ctx) return;
+  try {
+    ctx.close().catch(() => undefined);
+  } catch {
+    // ignore close races during reconnects
+  }
+};
+
+const createPlaybackContext = (
+  AudioContextCtor: typeof AudioContext,
+  sourceRef: RefObject<MediaElementAudioSourceNode | null>,
+): AudioContext | null => {
+  try {
+    const context = new AudioContextCtor();
+    context.onstatechange = () => {
+      if (context.state === "suspended" && sourceRef.current) {
+        context.resume().catch(() => undefined);
+      }
+    };
+    return context;
+  } catch {
+    return null;
+  }
+};
 
 const syncVoiceModeSelection = (
   deps: Pick<
@@ -1124,27 +1150,14 @@ export function VoiceCommandCenter({
     const AudioContextCtor = browserWindow.AudioContext || browserWindow.webkitAudioContext;
     if (!AudioContextCtor) return null;
 
-    const makeContext = (): AudioContext | null => {
-      try {
-        const c = new AudioContextCtor();
-        // Auto-resume if the browser suspends the context mid-playback
-        c.onstatechange = () => {
-          if (c.state === "suspended" && ttsSourceRef.current) {
-            c.resume().catch(() => undefined);
-          }
-        };
-        ttsAudioContextRef.current = c;
-        return c;
-      } catch {
-        return null;
-      }
-    };
-
     let ctx = ttsAudioContextRef.current;
 
     // Rebuild closed context
     if (!ctx || ctx.state === "closed") {
-      ctx = makeContext();
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) {
+        ttsAudioContextRef.current = ctx;
+      }
       if (!ctx) return null;
     }
 
@@ -1153,16 +1166,22 @@ export function VoiceCommandCenter({
         await ctx.resume();
       } catch {
         // Resume failed — create a fresh context for this play
-        try { ctx.close().catch(() => undefined); } catch { /* ignore */ }
-        ctx = makeContext();
+        closeAudioContext(ctx);
+        ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+        if (ctx) {
+          ttsAudioContextRef.current = ctx;
+        }
         if (!ctx) return null;
       }
     }
 
     // Final guard: if still not running, replace with a fresh context
     if (ctx.state !== "running") {
-      try { ctx.close().catch(() => undefined); } catch { /* ignore */ }
-      ctx = makeContext();
+      closeAudioContext(ctx);
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) {
+        ttsAudioContextRef.current = ctx;
+      }
     }
 
     return ctx;
@@ -1474,7 +1493,8 @@ export function VoiceCommandCenter({
 
   const showDevButton =
     process.env.NEXT_PUBLIC_SHOW_DEV_PANEL === "true" ||
-    (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("dev"));
+    (typeof globalThis.location !== "undefined" &&
+      new URLSearchParams(globalThis.location.search).has("dev"));
 
   return (
     <>

@@ -286,14 +286,15 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
       });
 
       currents.current.forEach((r, i) => {
-        const def         = ARC_DEFS[i]!;
-        const pct         = Math.max(0, Math.min(1, (r - MIN_R) / (MAX_R - MIN_R)));
+        const def = ARC_DEFS[i];
+        if (!def) return;
+        const pct = Math.max(0, Math.min(1, (r - MIN_R) / (MAX_R - MIN_R)));
         const breathPhase = t * 2.1 + (PHASES[i] ?? 0);
-        const breathe     = Math.sin(breathPhase);
-        const effR        = r + breathe * orbSize * 0.012;
-        const sw          = 1.8 + 3.8 * pct + breathe * (0.8 + 1.2 * pct);
-        const opa         = 0.35 + 0.65 * pct;
-        const d           = arcPath(cx, cy, Math.max(MIN_R * 0.95, effR), def.startDeg, def.endDeg);
+        const breathe = Math.sin(breathPhase);
+        const effR = r + breathe * orbSize * 0.012;
+        const sw = 1.8 + 3.8 * pct + breathe * (0.8 + 1.2 * pct);
+        const opa = 0.35 + 0.65 * pct;
+        const d = arcPath(cx, cy, Math.max(MIN_R * 0.95, effR), def.startDeg, def.endDeg);
 
         const core = coreRefs.current[i];
         if (core) {
@@ -306,14 +307,14 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
         if (glow) {
           glow.setAttribute("d",            d);
           glow.setAttribute("stroke-width", String(Math.max(4, sw * 3.5).toFixed(2)));
-          glow.setAttribute("opacity",      String((0.10 + 0.22 * pct).toFixed(3)));
+          glow.setAttribute("opacity",      String((0.1 + 0.22 * pct).toFixed(3)));
         }
 
         // Ripple arc: spawns when radius spikes (load surge)
         const prev = prevRadii.current[i] ?? MIN_R;
         const rp   = rippleSt.current[i] ?? 0;
         if (r - prev > (MAX_R - MIN_R) * 0.06 && pct > 0.15 && rp === 0) {
-          rippleSt.current[i] = 1.0;
+          rippleSt.current[i] = 1;
         }
         prevRadii.current[i] = r;
 
@@ -322,7 +323,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
           if (rp > 0) {
             const rOuter = effR + (1 - rp) * orbSize * 0.28;
             ripple.setAttribute("d",            arcPath(cx, cy, Math.max(MIN_R, rOuter), def.startDeg, def.endDeg));
-            ripple.setAttribute("stroke-width", "2.0");
+            ripple.setAttribute("stroke-width", "2");
             ripple.setAttribute("opacity",      String((rp * 0.65).toFixed(3)));
             rippleSt.current[i] = Math.max(0, rp - 0.018);
           } else {

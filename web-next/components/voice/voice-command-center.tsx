@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
+import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
+import { useOrbEffectsConfig, type OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 
 type AudioStatus = {
   enabled: boolean;
@@ -447,8 +449,6 @@ type VoiceControlDeps = {
   analyserRef?: RefObject<AnalyserNode | null>;
   mediaRecorderRef?: RefObject<MediaRecorder | null>;
   mediaStreamRef?: RefObject<MediaStream | null>;
-  canvasRef?: RefObject<HTMLCanvasElement | null>;
-  visualizerFrameRef: RefObject<number | null>;
   recordingRef: RefObject<boolean>;
   recordingStartPendingRef: RefObject<boolean>;
   stopRequestedRef: RefObject<boolean>;
@@ -460,7 +460,6 @@ type VoiceControlDeps = {
   setStatusMessage: (value: string | null) => void;
   setAudioChunkCount: (value: number | ((current: number) => number)) => void;
   setLastAudioSignal: (value: string) => void;
-  clearVisualizer?: () => void;
   releaseAudioResources: () => void;
   releasePlaybackResources: () => void;
   refreshAudioStatus: () => Promise<void>;
@@ -468,10 +467,6 @@ type VoiceControlDeps = {
   sendControlMessage: (payload: Record<string, unknown>) => boolean;
   getMediaRecorderMimeType: () => string;
   ensurePlaybackContext: () => Promise<AudioContext | null>;
-  drawVisualizer?: (samples: Float32Array) => void;
-  scaleAudioChunkForDisplay: (
-    samples: Float32Array,
-  ) => { normalized: Float32Array; peak: number; gain: number };
   activeWindow?: Window;
 };
 
@@ -620,13 +615,36 @@ const getPlaybackStateLabel = (
   return t("voice.status.playbackIdleShort");
 };
 
+const deriveOrbState = (
+  connected: boolean,
+  recording: boolean,
+  processingStatus: string | null,
+  playbackState: PlaybackState,
+  lastAudioSignal: string,
+): VoiceOrbState => {
+  if (!connected) return "offline";
+  if (recording) return "recording";
+  if (processingStatus) {
+    const s = processingStatus.toLowerCase();
+    if (s.includes("stt") || s.includes("transcri") || s.includes("whisper")) return "stt";
+    if (s.includes("tts") || s.includes("speak")) return "tts";
+    return "thinking";
+  }
+  if (playbackState === "playing") return "tts";
+  if (playbackState === "error") return "error";
+  if (lastAudioSignal === "complete") return "complete";
+  return "ready";
+};
+
 const handleVoiceRecordingStarted = (
   t: Translator,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
+  setProcessingStatus?: (value: string | null) => void,
 ) => {
   setStatusMessage(t("voice.status.recordingStarted"));
   setLastAudioSignal("recording:started");
+  setProcessingStatus?.(null);
 };
 
 const handleVoiceProcessing = (
@@ -634,10 +652,12 @@ const handleVoiceProcessing = (
   data: Record<string, unknown>,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
+  setProcessingStatus?: (value: string | null) => void,
 ) => {
   const status = toPrimitiveString(data.status) ?? "unknown";
   setStatusMessage(t("voice.status.processing", { status }));
   setLastAudioSignal(`processing:${status}`);
+  setProcessingStatus?.(status);
 };
 
 const handleVoiceTranscript = (
@@ -683,9 +703,11 @@ const handleVoiceCompletion = (
   t: Translator,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
+  setProcessingStatus?: (value: string | null) => void,
 ) => {
   setStatusMessage(t("voice.status.complete"));
   setLastAudioSignal("complete");
+  setProcessingStatus?.(null);
 };
 
 const handleVoiceError = (
@@ -825,35 +847,6 @@ const createVoiceCaptureEnvironment = async (
   }
   deps.mediaRecorderRef.current = recorder;
   return { mediaStream, audioContext, source, analyser, recorder, mimeType };
-};
-
-const startAnalyserLoop = (deps: VoiceControlDeps, analyser: AnalyserNode) => {
-  const {
-    recordingRef,
-    visualizerFrameRef,
-    activeWindow,
-    scaleAudioChunkForDisplay,
-    drawVisualizer,
-    setLastAudioSignal,
-  } = deps;
-  const timeDomain = new Uint8Array(analyser.fftSize);
-  const drawFromAnalyser = () => {
-    if (!recordingRef.current) {
-      return;
-    }
-    analyser.getByteTimeDomainData(timeDomain);
-    const samples = new Float32Array(timeDomain.length);
-    for (let index = 0; index < timeDomain.length; index += 1) {
-      samples[index] = ((timeDomain[index] ?? 128) - 128) / 128;
-    }
-    const { normalized, peak } = scaleAudioChunkForDisplay(samples);
-    if (peak > 0) {
-      setLastAudioSignal(`media:peak ${peak.toFixed(3)}`);
-    }
-    drawVisualizer?.(normalized);
-    visualizerFrameRef.current = activeWindow?.requestAnimationFrame(drawFromAnalyser) ?? null;
-  };
-  visualizerFrameRef.current = activeWindow?.requestAnimationFrame(drawFromAnalyser) ?? null;
 };
 
 const sendRecordingStartMessages = (
@@ -1005,7 +998,6 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
       return;
     }
     environment.recorder.start(250);
-    startAnalyserLoop(deps, environment.analyser);
   } catch (error) {
     console.error("recording error", error);
     releaseAudioResources();
@@ -1045,6 +1037,13 @@ type VoiceCommandCenterStatusSidebarProps = Readonly<{
   runtimeSummary: string;
   transcription: string;
   response: string;
+  orbState: VoiceOrbState;
+  reducedMotion: boolean;
+  isVoiceModeEnabled: boolean;
+  audioEnabled: boolean;
+  effectsConfig: OrbEffectsConfig;
+  micAnalyserRef: RefObject<AnalyserNode | null>;
+  ttsAnalyserRef: RefObject<AnalyserNode | null>;
 }>;
 
 function VoiceCommandCenterStatusSidebar({
@@ -1057,9 +1056,29 @@ function VoiceCommandCenterStatusSidebar({
   runtimeSummary,
   transcription,
   response,
+  orbState,
+  reducedMotion,
+  isVoiceModeEnabled,
+  audioEnabled,
+  effectsConfig,
+  micAnalyserRef,
+  ttsAnalyserRef,
 }: VoiceCommandCenterStatusSidebarProps) {
   return (
     <div className="space-y-3">
+      {isVoiceModeEnabled ? (
+        <div className="flex justify-center rounded-2xl box-muted py-6">
+          <VoiceOrb
+            state={orbState}
+            disabled={!audioEnabled}
+            reducedMotion={reducedMotion}
+            label={t(`voice.orb.stateLabel.${orbState}`)}
+            effectsConfig={effectsConfig}
+            micAnalyserRef={micAnalyserRef}
+            ttsAnalyserRef={ttsAnalyserRef}
+          />
+        </div>
+      ) : null}
       <div className="rounded-2xl box-muted p-4">
         <p className="eyebrow">{t("voice.controls.audioWs")}</p>
         {audioStatus ? (
@@ -1168,30 +1187,31 @@ export function VoiceCommandCenter({
   const [ttsMuted, setTtsMuted] = useState(false);
   const [audioChunkCount, setAudioChunkCount] = useState(0);
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const ttsAudioContextRef = useRef<AudioContext | null>(null);
   const ttsSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const ttsAnalyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const visualizerFrameRef = useRef<number | null>(null);
   const recordingRef = useRef(false);
   const recordingStartPendingRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const lastAudioResponseRef = useRef<{ audio: string; sampleRate: number } | null>(null);
   const lastVoiceModeSentRef = useRef<string | null>(null);
 
-  const clearVisualizer = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  useEffect(() => {
+    const mq = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
   useEffect(() => {
@@ -1205,31 +1225,6 @@ export function VoiceCommandCenter({
       setStatusMessage,
     });
   }, [audioEnabled, connected, t, voiceModePreset]);
-
-  const drawVisualizer = useCallback((samples: Float32Array) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(15,23,42,0.9)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#34d399";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const sliceWidth = canvas.width / Math.max(samples.length, 1);
-    let x = 0;
-    for (const [index, value] of samples.entries()) {
-      const y = (0.5 + value / 2) * canvas.height;
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-      x += sliceWidth;
-    }
-    ctx.stroke();
-  }, []);
 
   const refreshAudioStatus = useCallback(async () => {
     try {
@@ -1257,24 +1252,8 @@ export function VoiceCommandCenter({
     }
     ttsSourceRef.current?.disconnect();
     ttsSourceRef.current = null;
-  }, []);
-
-  const scaleAudioChunkForDisplay = useCallback((samples: Float32Array) => {
-    let peak = 0;
-    for (const sample of samples) {
-      const value = Math.abs(sample);
-      if (value > peak) {
-        peak = value;
-      }
-    }
-    const targetPeak = 0.6;
-    const gain = peak > 0 ? Math.min(24, Math.max(1, targetPeak / peak)) : 1;
-    const normalized = new Float32Array(samples.length);
-    for (let index = 0; index < samples.length; index += 1) {
-      const value = (samples[index] ?? 0) * gain;
-      normalized[index] = Math.max(-1, Math.min(1, value));
-    }
-    return { normalized, peak, gain };
+    ttsAnalyserRef.current?.disconnect();
+    ttsAnalyserRef.current = null;
   }, []);
 
   const getMediaRecorderMimeType = useCallback(() => {
@@ -1340,11 +1319,17 @@ export function VoiceCommandCenter({
         }
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(ctx.destination);
+        const ttsAnalyser = ctx.createAnalyser();
+        ttsAnalyser.fftSize = 512;
+        source.connect(ttsAnalyser);
+        ttsAnalyser.connect(ctx.destination);
+        ttsAnalyserRef.current = ttsAnalyser;
         source.onended = () => {
           if (ttsSourceRef.current === source) {
             setPlaybackState("idle");
             ttsSourceRef.current = null;
+            ttsAnalyser.disconnect();
+            ttsAnalyserRef.current = null;
           }
         };
         ttsSourceRef.current = source;
@@ -1372,11 +1357,11 @@ export function VoiceCommandCenter({
     (data: Record<string, unknown>) => {
       const messageType = toPrimitiveString(data.type) ?? "";
       if (messageType === "recording_started") {
-        handleVoiceRecordingStarted(t, setStatusMessage, setLastAudioSignal);
+        handleVoiceRecordingStarted(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
         return;
       }
       if (messageType === "processing") {
-        handleVoiceProcessing(t, data, setStatusMessage, setLastAudioSignal);
+        handleVoiceProcessing(t, data, setStatusMessage, setLastAudioSignal, setProcessingStatus);
         return;
       }
       if (messageType === "transcription") {
@@ -1392,7 +1377,7 @@ export function VoiceCommandCenter({
         return;
       }
       if (messageType === "complete") {
-        handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal);
+        handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
         return;
       }
       if (messageType === "error") {
@@ -1403,11 +1388,6 @@ export function VoiceCommandCenter({
   );
 
   const releaseAudioResources = useCallback(() => {
-    const browserWindow = getBrowserWindow();
-    if (visualizerFrameRef.current !== null) {
-      browserWindow?.cancelAnimationFrame(visualizerFrameRef.current);
-      visualizerFrameRef.current = null;
-    }
     if (mediaRecorderRef.current?.state === "recording") {
       try {
         mediaRecorderRef.current.stop();
@@ -1495,7 +1475,6 @@ export function VoiceCommandCenter({
     stopRequestedRef.current = false;
     setRecording(false);
     setLastAudioSignal("recording:stop");
-    clearVisualizer();
     setStatusMessage(t("voice.status.recordingEnded"));
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === "recording") {
@@ -1504,7 +1483,7 @@ export function VoiceCommandCenter({
       sendControlMessage({ command: "stop_recording" });
       releaseAudioResources();
     }
-  }, [clearVisualizer, releaseAudioResources, sendControlMessage, t]);
+  }, [releaseAudioResources, sendControlMessage, t]);
 
   const startRecording = useCallback(
     async () =>
@@ -1518,7 +1497,6 @@ export function VoiceCommandCenter({
         analyserRef,
         mediaRecorderRef,
         mediaStreamRef,
-        visualizerFrameRef,
         recordingRef,
         recordingStartPendingRef,
         stopRequestedRef,
@@ -1530,24 +1508,23 @@ export function VoiceCommandCenter({
         sendControlMessage,
         getMediaRecorderMimeType,
         ensurePlaybackContext,
-        drawVisualizer,
-        scaleAudioChunkForDisplay,
         stopRecording,
         activeWindow: getBrowserWindow(),
       }),
     [
-      drawVisualizer,
       ensurePlaybackContext,
       getMediaRecorderMimeType,
       audioEnabled,
       isVoiceModeEnabled,
       releaseAudioResources,
-      scaleAudioChunkForDisplay,
       sendControlMessage,
       stopRecording,
       t,
     ],
   );
+
+  const orbState = deriveOrbState(connected, recording, processingStatus, playbackState, lastAudioSignal);
+  const effectsConfig = useOrbEffectsConfig();
 
   const recordingButtonClass = getRecordingButtonClass(
     audioEnabled,
@@ -1688,7 +1665,6 @@ export function VoiceCommandCenter({
             runtimeSnapshot={runtimeSnapshot}
             runtimeSnapshotSummary={runtimeSnapshotSummary}
           />
-          <canvas ref={canvasRef} width={320} height={80} className="w-full rounded-2xl box-muted" />
           <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
           <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
             <div className="grid grid-cols-2 gap-2">
@@ -1713,6 +1689,13 @@ export function VoiceCommandCenter({
           runtimeSummary={runtimeSummary}
           transcription={transcription}
           response={response}
+          orbState={orbState}
+          reducedMotion={reducedMotion}
+          isVoiceModeEnabled={isVoiceModeEnabled}
+          audioEnabled={audioEnabled}
+          effectsConfig={effectsConfig}
+          micAnalyserRef={analyserRef}
+          ttsAnalyserRef={ttsAnalyserRef}
         />
       </div>
     </Panel>

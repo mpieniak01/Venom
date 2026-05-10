@@ -886,3 +886,28 @@ html[data-theme="venom-light"] body::before {
 html[data-theme="venom-light"] body::after {
   background: radial-gradient(circle at center, transparent 30%, rgba(71, 85, 105, 0.22) 130%);
 }
+
+/* ── Voice Orb WOW effects ──────────────────────────────────────────── */
+/* orb-ripple / orb-blob / orb-flash / orb-burst are defined in            */
+/* tailwind.config.ts (keyframes + animation utilities). Only the three    */
+/* effects NOT representable in Tailwind (plasma rotations, particle-rise) */
+/* live here as plain CSS classes.                                         */
+
+@keyframes orb-particle-rise {
+  0%   { transform: translateY(0)     scale(1);   opacity: 0.65; }
+  100% { transform: translateY(-56px) scale(0.2); opacity: 0; }
+}
+
+@keyframes orb-plasma-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes orb-plasma-fast {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+.animate-orb-particle-rise { animation: orb-particle-rise  2.1s ease-out forwards; }
+.animate-orb-plasma-slow   { animation: orb-plasma-slow    9s   linear infinite; }
+.animate-orb-plasma-fast   { animation: orb-plasma-fast    5.5s linear infinite; }

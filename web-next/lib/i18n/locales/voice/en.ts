@@ -81,6 +81,19 @@ export const voice = {
     playbackErrorShort: "Error",
     playbackIdleShort: "Idle",
     replayUnavailable: "No previous audio response to replay.",
+    complete: "Response ready.",
+  },
+  orb: {
+    stateLabel: {
+      offline: "Offline",
+      ready: "Ready",
+      recording: "Listening…",
+      stt: "Transcribing…",
+      thinking: "Thinking…",
+      tts: "Speaking…",
+      complete: "Done",
+      error: "Error",
+    },
   },
   modes: {
     title: "Voice modes",

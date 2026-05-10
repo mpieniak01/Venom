@@ -39,6 +39,29 @@ const config: Config = {
           "0%, 100%": { opacity: "0.4", transform: "scale(1)" },
           "50%": { opacity: "1", transform: "scale(1.2)" },
         },
+        "orb-thinking": {
+          "0%, 100%": { opacity: "0.6", transform: "scale(1)" },
+          "50%": { opacity: "1", transform: "scale(1.15)" },
+        },
+        "orb-ripple": {
+          "0%": { transform: "scale(1)", opacity: "0.55" },
+          "100%": { transform: "scale(2.6)", opacity: "0" },
+        },
+        "orb-blob": {
+          "0%, 100%": { borderRadius: "60% 40% 70% 30% / 50% 60% 40% 70%" },
+          "25%": { borderRadius: "40% 60% 30% 70% / 65% 35% 70% 45%" },
+          "50%": { borderRadius: "70% 30% 55% 45% / 40% 70% 55% 60%" },
+          "75%": { borderRadius: "35% 65% 45% 55% / 70% 45% 60% 40%" },
+        },
+        "orb-flash": {
+          "0%": { opacity: "0" },
+          "25%": { opacity: "0.55" },
+          "100%": { opacity: "0" },
+        },
+        "orb-burst": {
+          "0%": { transform: "scale(1)", opacity: "0.75" },
+          "100%": { transform: "scale(2.4)", opacity: "0" },
+        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -50,6 +73,11 @@ const config: Config = {
       },
       animation: {
         "pulse-signal": "pulse-signal 1.6s ease-in-out infinite",
+        "orb-thinking": "orb-thinking 2.4s ease-in-out infinite",
+        "orb-ripple": "orb-ripple 1.9s ease-out infinite",
+        "orb-blob": "orb-blob 3.2s ease-in-out infinite",
+        "orb-flash": "orb-flash 0.32s ease-out forwards",
+        "orb-burst": "orb-burst 0.58s ease-out forwards",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },

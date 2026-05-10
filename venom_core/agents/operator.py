@@ -3,11 +3,13 @@
 import re
 from typing import Any, Optional
 
+import httpx
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 
 from venom_core.agents.base import BaseAgent
+from venom_core.config import SETTINGS
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 from venom_core.utils.logger import get_logger
 
@@ -53,6 +55,64 @@ def _coerce_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _ollama_extra_body() -> dict[str, Any] | None:
+    """Returns extra_body to disable thinking for Ollama models (e.g. gemma4).
+
+    Thinking models (gemma4, deepseek-r1, qwen3 etc.) served via Ollama return
+    an empty `content` field and put the answer in `thinking`/`reasoning` when
+    thinking is enabled.  Passing `think: false` forces the regular response path.
+    """
+    if SETTINGS.LLM_SERVICE_TYPE == "local" and not SETTINGS.OLLAMA_ENABLE_THINK:
+        return {"think": False}
+    return None
+
+
+async def _ollama_native_call(
+    chat_history: ChatHistory,
+    max_tokens: int,
+    temperature: float,
+) -> str:
+    """Call Ollama native API (/api/chat) with think:false.
+
+    Fallback for thinking models (gemma4, qwen3, deepseek-r1) where Ollama's
+    OpenAI-compat endpoint (/v1/chat/completions) ignores the `think` flag and
+    returns an empty `content` with the answer placed in `reasoning`/`thinking`.
+    The native endpoint reliably respects `think: false`.
+    """
+    base_url = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
+    if base_url.endswith("/v1"):
+        base_url = base_url[:-3]
+    native_url = f"{base_url}/api/chat"
+
+    messages = []
+    for msg in chat_history.messages:
+        role_raw = str(getattr(msg, "role", "user")).lower()
+        if "system" in role_raw:
+            role = "system"
+        elif "assistant" in role_raw:
+            role = "assistant"
+        else:
+            role = "user"
+        messages.append({"role": role, "content": str(msg.content or "")})
+
+    payload: dict[str, Any] = {
+        "model": SETTINGS.LLM_MODEL_NAME,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+        "options": {"num_predict": max_tokens, "temperature": temperature},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(native_url, json=payload)
+            resp.raise_for_status()
+            return resp.json().get("message", {}).get("content", "") or ""
+    except Exception as exc:
+        logger.error("Ollama native fallback failed: %s", exc)
+        return ""
 
 
 class OperatorAgent(BaseAgent):
@@ -285,6 +345,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 service_id=service_id,
                 max_tokens=_coerce_int(mode_prompt["max_tokens"], 0),
                 temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+                extra_body=_ollama_extra_body(),
             )
 
             # Pobierz usługę czatu
@@ -298,7 +359,33 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 enable_functions=False,
             )
 
-            assistant_message = str(response)
+            # Guard against None or empty list before str() — str(None) → 'None'
+            # and str([]) → '[]' are both truthy and would bypass the empty check.
+            if not response or (isinstance(response, list) and not response):
+                assistant_message = ""
+            else:
+                item = response[0] if isinstance(response, list) else response
+                assistant_message = str(item).strip()
+            if not assistant_message and SETTINGS.LLM_SERVICE_TYPE == "local":
+                # Ollama's OpenAI-compat endpoint ignores think:false for some
+                # thinking models (gemma4, qwen3, deepseek-r1). Fall back to the
+                # native /api/chat endpoint which reliably disables thinking.
+                logger.warning(
+                    "SK returned empty content (thinking model?), falling back to "
+                    "native Ollama API for input: %s",
+                    input_text[:80],
+                )
+                assistant_message = await _ollama_native_call(
+                    chat_history=temp_history,
+                    max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
+                    temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+                )
+
+            if not assistant_message:
+                logger.warning(
+                    "LLM zwrócił pustą odpowiedź dla input: %s", input_text[:80]
+                )
+                return "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
 
             # Dodaj do historii
             self.chat_history.add_user_message(input_text)
@@ -361,6 +448,7 @@ Streszczenie:"""
                 service_id=service_id,
                 max_tokens=100,
                 temperature=0.5,
+                extra_body=_ollama_extra_body(),
             )
 
             chat_service: Any = self.kernel.get_service(service_id=service_id)

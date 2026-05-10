@@ -1,0 +1,131 @@
+import assert from "node:assert/strict";
+import { afterEach, describe, it } from "node:test";
+import { cleanup, render } from "@testing-library/react";
+import { VoiceOrb, type VoiceOrbState } from "../components/voice/voice-orb";
+
+afterEach(() => cleanup());
+
+const ALL_STATES: VoiceOrbState[] = [
+  "offline",
+  "ready",
+  "recording",
+  "stt",
+  "thinking",
+  "tts",
+  "complete",
+  "error",
+];
+
+describe("VoiceOrb", () => {
+  for (const state of ALL_STATES) {
+    it(`renders state=${state} without crashing`, () => {
+      const { container } = render(
+        <VoiceOrb state={state} inputLevel={0} outputLevel={0} />,
+      );
+      assert.ok(container.firstChild, `VoiceOrb state=${state} should render`);
+    });
+  }
+
+  it("exposes data-orb-state attribute reflecting active state", () => {
+    const { getByRole } = render(
+      <VoiceOrb state="recording" inputLevel={0.5} outputLevel={0} />,
+    );
+    const orb = getByRole("img");
+    assert.equal(orb.getAttribute("data-orb-state"), "recording");
+  });
+
+  it("overrides state to offline when disabled=true", () => {
+    const { getByRole } = render(
+      <VoiceOrb state="recording" inputLevel={0.8} outputLevel={0} disabled />,
+    );
+    assert.equal(getByRole("img").getAttribute("data-orb-state"), "offline");
+  });
+
+  it("uses the label prop as aria-label", () => {
+    const { getByRole } = render(
+      <VoiceOrb state="ready" inputLevel={0} outputLevel={0} label="Gotowy" />,
+    );
+    assert.equal(getByRole("img").getAttribute("aria-label"), "Gotowy");
+  });
+
+  it("falls back to state name when no label provided", () => {
+    const { getByRole } = render(
+      <VoiceOrb state="thinking" inputLevel={0} outputLevel={0} />,
+    );
+    assert.equal(getByRole("img").getAttribute("aria-label"), "thinking");
+  });
+
+  describe("inputLevel → core scale (recording state)", () => {
+    it("applies scale > 1 when inputLevel > 0 in recording state", () => {
+      const { getByTestId } = render(
+        <VoiceOrb state="recording" inputLevel={0.5} outputLevel={0} />,
+      );
+      const core = getByTestId("voice-orb-core");
+      const transform = (core as HTMLElement).style.transform;
+      const scaleValue = parseFloat(transform.replace("scale(", "").replace(")", ""));
+      assert.ok(scaleValue > 1, `expected scale > 1, got ${scaleValue}`);
+    });
+
+    it("keeps scale=1 when inputLevel=0 in recording state", () => {
+      const { getByTestId } = render(
+        <VoiceOrb state="recording" inputLevel={0} outputLevel={0} />,
+      );
+      const core = getByTestId("voice-orb-core");
+      assert.equal((core as HTMLElement).style.transform, "scale(1)");
+    });
+  });
+
+  describe("outputLevel → core scale (tts state)", () => {
+    it("applies scale > 1 when outputLevel > 0 in tts state", () => {
+      const { getByTestId } = render(
+        <VoiceOrb state="tts" inputLevel={0} outputLevel={0.7} />,
+      );
+      const core = getByTestId("voice-orb-core");
+      const scaleValue = parseFloat(
+        (core as HTMLElement).style.transform.replace("scale(", "").replace(")", ""),
+      );
+      assert.ok(scaleValue > 1, `expected scale > 1, got ${scaleValue}`);
+    });
+
+    it("does NOT use outputLevel when state is not tts", () => {
+      const { getByTestId } = render(
+        <VoiceOrb state="ready" inputLevel={0} outputLevel={0.9} />,
+      );
+      const core = getByTestId("voice-orb-core");
+      assert.equal((core as HTMLElement).style.transform, "scale(1)");
+    });
+  });
+
+  describe("reducedMotion", () => {
+    it("keeps scale=1 even with high inputLevel when reducedMotion=true", () => {
+      const { getByTestId } = render(
+        <VoiceOrb state="recording" inputLevel={1} outputLevel={0} reducedMotion />,
+      );
+      const core = getByTestId("voice-orb-core");
+      assert.equal((core as HTMLElement).style.transform, "scale(1)");
+    });
+
+    it("removes ring animation classes when reducedMotion=true", () => {
+      const { container } = render(
+        <VoiceOrb state="thinking" inputLevel={0} outputLevel={0} reducedMotion />,
+      );
+      assert.ok(
+        !container.innerHTML.includes("animate-orb-thinking"),
+        "should not include animate-orb-thinking when reducedMotion=true",
+      );
+    });
+  });
+
+  describe("container dimensions", () => {
+    it("sets minHeight on the container for layout stability", () => {
+      const { getByRole } = render(
+        <VoiceOrb state="ready" inputLevel={0} outputLevel={0} />,
+      );
+      const orb = getByRole("img");
+      assert.ok(
+        (orb as HTMLElement).style.minHeight,
+        "container should have minHeight for layout stability",
+      );
+    });
+  });
+});

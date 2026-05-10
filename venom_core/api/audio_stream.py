@@ -655,6 +655,20 @@ class AudioStreamHandler:
                     },
                 )
 
+                if not response_text:
+                    logger.warning(
+                        "Agent zwrócił pustą odpowiedź dla connection_id=%s",
+                        connection_id,
+                    )
+                    await self._send_json(
+                        connection_id,
+                        {
+                            "type": "error",
+                            "message": "Agent returned empty response. Check runtime status.",
+                        },
+                    )
+                    return
+
                 # Wyślij tekst odpowiedzi
                 await self._send_json(
                     connection_id, {"type": "response_text", "text": response_text}
@@ -789,6 +803,20 @@ class AudioStreamHandler:
                         "timings_ms": timings_ms,
                     },
                 )
+                if not response_text:
+                    logger.warning(
+                        "Agent zwrócił pustą odpowiedź dla connection_id=%s (encoded)",
+                        connection_id,
+                    )
+                    await self._send_json(
+                        connection_id,
+                        {
+                            "type": "error",
+                            "message": "Agent returned empty response. Check runtime status.",
+                        },
+                    )
+                    return
+
                 await self._send_json(
                     connection_id, {"type": "response_text", "text": response_text}
                 )

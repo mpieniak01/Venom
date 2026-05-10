@@ -16,6 +16,13 @@ Aktualna bezpieczna ścieżka produkcyjna:
 5. TTS wykonuje Piper, jeśli model głosu jest dostępny,
 6. `/voice` pokazuje transkrypcję, odpowiedź, link do nagrania, czasy, metryki jakości i snapshot runtime.
 
+Ta gałąź traktuje też orb voice jako osobny stos UI, a nie luźny widget:
+
+1. `VoiceCommandCenter` zarządza stanem ekranu `/voice` i podpina orb do reszty strony,
+2. `VoiceOrb3D` to ścieżka renderowania `react-three` dla orba, gdy włączone są wizualizacje 3D,
+3. CSS orb pozostaje bezpiecznym fallbackiem, gdy WebGL jest niedostępny albo 3D jest wyłączone,
+4. smoke coverage dla voice siedzi w `web-next/tests/voice-orb.spec.ts`.
+
 ### Aktualny baseline STT
 
 Domyślny model speech-to-text to `medium`.

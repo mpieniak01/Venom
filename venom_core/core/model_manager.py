@@ -1,8 +1,11 @@
 """Moduł: model_manager - Zarządca Modeli i Hot Swap dla Adapterów LoRA."""
 
 import asyncio
+import math
 import subprocess
+import time
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import psutil
@@ -69,6 +72,39 @@ MAX_STORAGE_GB = 50  # Limit na modele w GB
 DEFAULT_MODEL_SIZE_GB = 4.0  # Szacowany domyślny rozmiar modelu dla Resource Guard
 BYTES_IN_GB = 1024**3
 _OLLAMA_GGUF_ADAPTER_FILENAMES = ("Adapter-F16-LoRA.gguf", "Adapter-F32-LoRA.gguf")
+
+# Network metrics sampling state (module-level, shared across calls)
+_NET_MAX_BPS: float = 10_000_000  # 10 MB/s = 100%
+_net_prev: object = None
+_net_prev_t: float = 0.0
+_net_state_lock = Lock()
+
+
+def _get_net_normalized() -> float:
+    """Return log-scaled network utilization 0-100. First call returns 0."""
+    global _net_prev, _net_prev_t  # noqa: PLW0603
+    now = time.monotonic()
+    try:
+        cur = psutil.net_io_counters()
+    except Exception:
+        return 0.0
+    with _net_state_lock:
+        if _net_prev is None:
+            _net_prev, _net_prev_t = cur, now
+            return 0.0
+        dt = max(now - _net_prev_t, 0.01)
+        prev = _net_prev
+        raw_bps = (
+            cur.bytes_sent + cur.bytes_recv - prev.bytes_sent - prev.bytes_recv
+        ) / dt  # type: ignore[union-attr]
+        bps = max(0.0, raw_bps)
+        _net_prev, _net_prev_t = cur, now
+
+    try:
+        scale = math.log10(1.0 + _NET_MAX_BPS)
+        return min(100.0, 100.0 * math.log10(1.0 + bps) / scale)
+    except ValueError:
+        return 0.0
 
 
 class ModelVersion:
@@ -888,6 +924,7 @@ PARAMETER top_k 40
             "models_count": models_count,
         }
         metrics.update(await self._collect_gpu_metrics())
+        metrics["net_usage_percent"] = round(_get_net_normalized(), 1)
 
         return metrics
 

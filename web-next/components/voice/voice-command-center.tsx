@@ -14,10 +14,13 @@ import {
 } from "@/components/ui/select";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
-import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
-import { useOrbEffectsConfig, type OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
+import type { VoiceOrbState } from "@/components/voice/voice-orb";
+import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
+import { useOrbMetrics } from "@/components/voice/use-orb-metrics";
+import { OrbZone } from "@/components/voice/orb-zone";
+import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
 
-type AudioStatus = {
+export type AudioStatus = {
   enabled: boolean;
   connected_clients: number;
   active_recordings: number;
@@ -96,8 +99,6 @@ type TtsModelOption = {
 };
 
 type Translator = (key: string, variables?: Record<string, string | number>) => string;
-type VoiceRuntime = NonNullable<NonNullable<AudioStatus["latest_voice_session"]>["runtime"]>;
-type RuntimeSnapshot = NonNullable<AudioStatus["runtime_snapshot"]>;
 
 declare global {
   interface Window {
@@ -156,231 +157,44 @@ const formatTimingSeconds = (milliseconds?: number | null): string | null => {
 const getBrowserWindow = (): BrowserWindowLike | undefined =>
   globalThis as unknown as BrowserWindowLike;
 
-const getVoiceModeMeta = (t: Translator, mode: VoiceModePreset) => ({
-  title: t(VOICE_MODE_TITLE_KEYS[mode]),
-  description: t(VOICE_MODE_HINT_KEYS[mode]),
-});
+const TIMING_STAGES: Array<{ key: string; label: string; accent?: boolean }> = [
+  { key: "decode_ms", label: "Decode" },
+  { key: "stt_ms", label: "STT" },
+  { key: "llm_ms", label: "LLM" },
+  { key: "tts_ms", label: "TTS" },
+  { key: "total_backend_ms", label: "Total", accent: true },
+];
 
-const buildTimingSummary = (timings?: Record<string, number | null | undefined> | null): string => {
-  if (!timings) return "";
-  const entries: Array<[string, string | null]> = [
-    ["decode", formatTimingSeconds(timings.decode_ms)],
-    ["STT", formatTimingSeconds(timings.stt_ms)],
-    ["LLM", formatTimingSeconds(timings.llm_ms)],
-    ["TTS", formatTimingSeconds(timings.tts_ms)],
-    ["total", formatTimingSeconds(timings.total_backend_ms)],
-  ];
-  return entries
-    .filter((entry): entry is [string, string] => Boolean(entry[1]))
-    .map(([label, value]) => `${label} ${value}`)
-    .join(" · ");
-};
-
-const buildRuntimeSummary = (runtime?: VoiceRuntime | null): string => {
-  if (!runtime) return "";
-  const parts: Array<string | null> = [
-    runtime.llm_model
-      ? `LLM ${runtime.llm_service_id ?? "runtime"}:${runtime.llm_model}`
-      : null,
-    runtime.stt_model
-      ? `STT ${runtime.stt_model}/${runtime.stt_device ?? "?"}`
-      : null,
-    runtime.tts_sample_rate ? `TTS ${runtime.tts_sample_rate} Hz` : null,
-  ];
-  return parts.filter((part): part is string => Boolean(part)).join(" · ");
-};
-
-const buildRuntimeSnapshotSummary = (
-  runtimeSnapshot: AudioStatus["runtime_snapshot"],
-): string => {
-  if (!runtimeSnapshot) return "";
-  if (runtimeSnapshot.error) return runtimeSnapshot.error;
-  const profile = runtimeSnapshot.runtime_capabilities?.compatibility_profile ?? "";
-  const probeStatus = runtimeSnapshot.runtime_capabilities?.probe_status ?? "";
-  const pipeline = runtimeSnapshot.voice_pipeline;
-  const parts = [
-    profile ? `profile ${profile}` : null,
-    probeStatus ? `probe ${probeStatus}` : null,
-    pipeline?.stt ? `stt ${pipeline.stt}` : null,
-    pipeline?.reasoning ? `reasoning ${pipeline.reasoning}` : null,
-    pipeline?.tools ? `tools ${pipeline.tools}` : null,
-    pipeline?.vision ? `vision ${pipeline.vision}` : null,
-    pipeline?.tts ? `tts ${pipeline.tts}` : null,
-  ];
-  return parts.filter((part): part is string => Boolean(part)).join(" · ");
-};
-
-const getProbeTone = (status?: string | null): "success" | "warning" | "danger" | "neutral" => {
-  if (status === "verified") return "success";
-  if (status === "failed") return "danger";
-  if (status === "metadata_only") return "warning";
-  return "neutral";
-};
-
-const getRuntimeSnapshotContainerClass = (
-  tone: "success" | "warning" | "danger" | "neutral",
-): string => {
-  if (tone === "danger") {
-    return "border-rose-400/25 bg-rose-500/[0.06] shadow-[0_0_32px_rgba(244,63,94,0.08)]";
-  }
-  if (tone === "warning") {
-    return "border-amber-400/25 bg-amber-500/[0.06] shadow-[0_0_32px_rgba(245,158,11,0.08)]";
-  }
-  if (tone === "neutral") {
-    return "border-white/10 bg-white/[0.03] shadow-none";
-  }
-  return "border-emerald-400/25 bg-emerald-500/[0.06] shadow-[0_0_32px_rgba(16,185,129,0.08)]";
-};
-
-const buildProbeSummary = (runtimeSnapshot: RuntimeSnapshot): string => {
-  const probes = runtimeSnapshot.runtime_capabilities?.probes ?? {};
-  return Object.entries(probes)
-    .map(([name, probe]) => `${name}:${probe.status ?? "?"}`)
-    .join(" · ");
-};
-
-const buildPipelineEntries = (runtimeSnapshot: RuntimeSnapshot): Array<[string, string]> => {
-  const pipeline = runtimeSnapshot.voice_pipeline;
-  return [
-    ["STT", pipeline?.stt ?? "—"],
-    ["Reasoning", pipeline?.reasoning ?? "—"],
-    ["Tools", pipeline?.tools ?? "—"],
-    ["Vision", pipeline?.vision ?? "—"],
-    ["TTS", pipeline?.tts ?? "—"],
-  ];
-};
-
-type RuntimeSnapshotPanelProps = Readonly<{
-  t: Translator;
-  runtimeSnapshot: RuntimeSnapshot | null;
-  runtimeSnapshotSummary: string;
+type TimingStripProps = Readonly<{
+  timings?: Record<string, number | null | undefined> | null;
 }>;
 
-function RuntimeSnapshotPanel({
-  t,
-  runtimeSnapshot,
-  runtimeSnapshotSummary,
-}: RuntimeSnapshotPanelProps) {
-  if (!runtimeSnapshot) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="eyebrow">{t("voice.controls.runtimeSnapshot")}</p>
-            <p className="mt-1 text-sm text-zinc-300">{t("voice.controls.noRuntimeSnapshot")}</p>
-          </div>
-          <Badge tone="neutral">{t("voice.controls.offline")}</Badge>
-        </div>
-      </div>
-    );
-  }
-
-  const capabilities = runtimeSnapshot.runtime_capabilities;
-  const probeStatus = capabilities?.probe_status ?? "unknown";
-  const containerTone = getProbeTone(runtimeSnapshot.error ? "failed" : probeStatus);
-  const probeSummary = buildProbeSummary(runtimeSnapshot);
-  const pipelineEntries = buildPipelineEntries(runtimeSnapshot);
-  const notes = runtimeSnapshot.voice_pipeline?.notes ?? [];
-
+function TimingStrip({ timings }: TimingStripProps) {
+  const hasAny = Boolean(timings) && TIMING_STAGES.some((s) => timings[s.key] != null);
   return (
-    <div className={`rounded-2xl border p-4 ${getRuntimeSnapshotContainerClass(containerTone)}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow">{t("voice.controls.runtimeSnapshot")}</p>
-          <p className="mt-1 text-base font-semibold text-white">
-            {runtimeSnapshot.model_name ?? t("voice.controls.unknownModel")}
-          </p>
-          <p className="mt-1 text-xs text-zinc-400">
-            {runtimeSnapshotSummary || runtimeSnapshot.provider || "—"}
-          </p>
-          {runtimeSnapshot.error ? (
-            <p className="mt-2 text-xs text-rose-200">{runtimeSnapshot.error}</p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge tone={getProbeTone(probeStatus)}>
-            {t("voice.controls.probeStatus")}: {probeStatus}
-          </Badge>
-          <Badge tone="neutral">
-            {capabilities?.compatibility_profile ?? runtimeSnapshot.voice_pipeline?.profile ?? "unknown"}
-          </Badge>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="text-caption">{t("voice.controls.provider")}</p>
-          <p className="mt-1 text-white">{runtimeSnapshot.provider ?? runtimeSnapshot.runtime_id ?? "—"}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="text-caption">{t("voice.controls.profile")}</p>
-          <p className="mt-1 text-white">{capabilities?.compatibility_profile ?? "—"}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="text-caption">{t("voice.controls.pipeline")}</p>
-          <p className="mt-1 text-white">{runtimeSnapshot.voice_pipeline?.profile ?? "—"}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-5">
-        {pipelineEntries.map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs">
-            <p className="text-caption">{label}</p>
-            <p className="mt-1 text-white">{value}</p>
+    <div className="grid grid-cols-5 gap-1.5 text-xs">
+      {TIMING_STAGES.map(({ key, label, accent }) => {
+        const raw = timings?.[key];
+        const val = formatTimingSeconds(typeof raw === "number" ? raw : null);
+        return (
+          <div
+            key={key}
+            className={`rounded-xl p-2 text-center ${
+              accent
+                ? "border border-white/10 bg-white/[0.06]"
+                : "rounded-xl box-muted"
+            } ${hasAny ? "" : "opacity-40"}`}
+          >
+            <p className="text-caption leading-none">{label}</p>
+            <p className={`mt-1 font-mono font-semibold leading-none ${accent ? "text-white" : "text-zinc-200"}`}>
+              {val ?? "—"}
+            </p>
           </div>
-        ))}
-      </div>
-
-      <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-        <p className="text-caption">{t("voice.controls.probes")}</p>
-        <p className="mt-1 text-white">{probeSummary || "—"}</p>
-        {notes.length > 0 && <p className="mt-2 text-hint">{notes.join(" · ")}</p>}
-      </div>
+        );
+      })}
     </div>
   );
 }
-
-const buildQualitySummary = (latestVoiceSession: AudioStatus["latest_voice_session"]): string => {
-  const parts: string[] = [];
-  if (latestVoiceSession) {
-    const peak = latestVoiceSession.peak_before_normalization;
-    if (typeof peak === "number" && Number.isFinite(peak)) {
-      parts.push(`peak ${peak.toFixed(2)}`);
-    }
-    const rms = latestVoiceSession.rms_after_normalization;
-    if (typeof rms === "number" && Number.isFinite(rms)) {
-      parts.push(`rms ${rms.toFixed(3)}`);
-    }
-  }
-  return parts.join(" · ");
-};
-
-const buildLatestRecordingSummary = (latestVoiceSession: AudioStatus["latest_voice_session"]): string => {
-  const parts: string[] = [];
-  if (latestVoiceSession) {
-    const duration = latestVoiceSession.duration_sec;
-    if (typeof duration === "number" && Number.isFinite(duration)) {
-      parts.push(`${duration.toFixed(1)} s`);
-    }
-    if (
-      typeof latestVoiceSession.sample_rate === "number" &&
-      Number.isFinite(latestVoiceSession.sample_rate)
-    ) {
-      parts.push(`${latestVoiceSession.sample_rate} Hz`);
-    }
-    if (latestVoiceSession.input_format) {
-      parts.push(latestVoiceSession.input_format);
-    }
-    if (latestVoiceSession.voice_mode) {
-      parts.push(latestVoiceSession.voice_mode);
-    }
-    const gain = latestVoiceSession.gain_applied;
-    if (typeof gain === "number" && Number.isFinite(gain)) {
-      parts.push(`gain ${gain.toFixed(1)}`);
-    }
-  }
-  return parts.join(" · ");
-};
 
 const getRecordingButtonClass = (
   audioEnabled: boolean,
@@ -422,6 +236,37 @@ const isWebSocketOpen = (ws: WebSocket | null | undefined): ws is WebSocket =>
 
 const buildReconnectDelay = (attempt: number): number =>
   Math.min(30000, 1000 * 2 ** attempt) + secureRandomInt(500);
+
+const closeAudioContext = (ctx: AudioContext | null | undefined) => {
+  if (!ctx) return;
+  ctx.close().catch(() => undefined);
+};
+
+const createPlaybackContext = (
+  AudioContextCtor: typeof AudioContext,
+  sourceRef: RefObject<MediaElementAudioSourceNode | null>,
+): AudioContext | null => {
+  try {
+    const context = new AudioContextCtor();
+    context.onstatechange = () => {
+      if (context.state === "suspended" && sourceRef.current) {
+        context.resume().catch(() => undefined);
+      }
+    };
+    return context;
+  } catch {
+    return null;
+  }
+};
+
+const tryResumeAudioContext = async (ctx: AudioContext): Promise<boolean> => {
+  try {
+    await ctx.resume();
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const syncVoiceModeSelection = (
   deps: Pick<
@@ -1104,6 +949,11 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
 };
 
 export type VoiceModePreset = "standard" | "deep_analysis" | "summary" | "action_items";
+export type VoiceStatusUpdate = Pick<AudioStatus,
+  | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
+  | "whisper_model_size" | "stt_backend" | "tts_backend"
+  | "vad_threshold" | "dependencies" | "runtime_snapshot"
+>;
 
 const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
   standard: "voice.modes.standard.title",
@@ -1112,159 +962,16 @@ const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
   action_items: "voice.modes.actionItems.title",
 };
 
-const VOICE_MODE_HINT_KEYS: Record<VoiceModePreset, string> = {
-  standard: "voice.modes.standard.description",
-  deep_analysis: "voice.modes.deepAnalysis.description",
-  summary: "voice.modes.summary.description",
-  action_items: "voice.modes.actionItems.description",
-};
-
-type VoiceCommandCenterStatusSidebarProps = Readonly<{
-  t: Translator;
-  audioStatus: AudioStatus | null;
-  latestVoiceSession: AudioStatus["latest_voice_session"];
-  latestRecordingSummary: string;
-  qualitySummary: string;
-  timingSummary: string;
-  runtimeSummary: string;
-  transcription: string;
-  response: string;
-  orbState: VoiceOrbState;
-  reducedMotion: boolean;
-  isVoiceModeEnabled: boolean;
-  audioEnabled: boolean;
-  effectsConfig: OrbEffectsConfig;
-  micAnalyserRef: RefObject<AnalyserNode | null>;
-  ttsAnalyserRef: RefObject<AnalyserNode | null>;
-}>;
-
-function VoiceCommandCenterStatusSidebar({
-  t,
-  audioStatus,
-  latestVoiceSession,
-  latestRecordingSummary,
-  qualitySummary,
-  timingSummary,
-  runtimeSummary,
-  transcription,
-  response,
-  orbState,
-  reducedMotion,
-  isVoiceModeEnabled,
-  audioEnabled,
-  effectsConfig,
-  micAnalyserRef,
-  ttsAnalyserRef,
-}: VoiceCommandCenterStatusSidebarProps) {
-  return (
-    <div className="space-y-3">
-      {isVoiceModeEnabled ? (
-        <div className="flex justify-center rounded-2xl box-muted py-6">
-          <VoiceOrb
-            state={orbState}
-            disabled={!audioEnabled}
-            reducedMotion={reducedMotion}
-            label={t(`voice.orb.stateLabel.${orbState}`)}
-            effectsConfig={effectsConfig}
-            micAnalyserRef={micAnalyserRef}
-            ttsAnalyserRef={ttsAnalyserRef}
-          />
-        </div>
-      ) : null}
-      <div className="rounded-2xl box-muted p-4">
-        <p className="eyebrow">{t("voice.controls.audioWs")}</p>
-        {audioStatus ? (
-          <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-            <div>
-              <p className="text-caption">{t("voice.controls.enabled")}</p>
-              <p className="text-white">{audioStatus.enabled ? t("common.yes") : t("common.no")}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.clients")}</p>
-              <p className="text-white">{audioStatus.connected_clients}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.recordings")}</p>
-              <p className="text-white">{audioStatus.active_recordings}</p>
-            </div>
-            <div>
-              <p className="text-caption">VAD</p>
-              <p className="text-white">{audioStatus.vad_threshold ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.whisper")}</p>
-              <p className="text-white">{audioStatus.whisper_model_size ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.sttReady")}</p>
-              <p className="text-white">{audioStatus.stt_ready ? t("common.yes") : t("common.no")}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.ttsReady")}</p>
-              <p className="text-white">{audioStatus.tts_ready ? t("common.yes") : t("common.no")}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.ttsFallback")}</p>
-              <p className="text-white">{audioStatus.tts_fallback ? t("common.yes") : t("common.no")}</p>
-            </div>
-            {audioStatus.dependencies && (
-              <div className="sm:col-span-2">
-                <p className="text-caption">{t("voice.controls.dependencies")}</p>
-                <p className="text-white">
-                  {Object.entries(audioStatus.dependencies)
-                    .map(([name, ok]) => `${name}:${ok ? "yes" : "no"}`)
-                    .join(" · ")}
-                </p>
-              </div>
-            )}
-            {latestVoiceSession?.download_url && (
-              <div className="sm:col-span-2">
-                <p className="text-caption">{t("voice.controls.latestRecording")}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <Button asChild size="xs" variant="outline">
-                    <a href={latestVoiceSession.download_url} target="_blank" rel="noreferrer">
-                      {t("voice.controls.downloadWav")}
-                    </a>
-                  </Button>
-                  <span className="text-[11px] text-zinc-400">{latestRecordingSummary || "—"}</span>
-                </div>
-                <p className="mt-1 text-hint">
-                  {t("voice.controls.sessionId")}: {latestVoiceSession.session_id}
-                </p>
-                {qualitySummary && <p className="mt-1 text-hint">{t("voice.controls.quality")}: {qualitySummary}</p>}
-                {timingSummary && <p className="mt-1 text-hint">{t("voice.controls.timings")}: {timingSummary}</p>}
-                {runtimeSummary && <p className="mt-1 text-hint">{t("voice.controls.runtime")}: {runtimeSummary}</p>}
-                {latestVoiceSession.transcription && (
-                  <p className="mt-1 text-hint">STT: {latestVoiceSession.transcription}</p>
-                )}
-              </div>
-            )}
-            {audioStatus.message && <div className="sm:col-span-2 text-hint">{audioStatus.message}</div>}
-          </div>
-        ) : (
-          <p className="mt-2 text-hint">{t("voice.controls.noRecordingYet")}</p>
-        )}
-      </div>
-      <div className="rounded-2xl box-muted p-4">
-        <p className="eyebrow">{t("voice.controls.transcription")}</p>
-        <p className="mt-2 text-sm text-white">{transcription || t("voice.status.waitingForVoiceCommand")}</p>
-      </div>
-      <div className="rounded-2xl box-muted p-4">
-        <p className="eyebrow">{t("voice.controls.response")}</p>
-        <p className="mt-2 text-sm text-white">{response || t("voice.status.noResponseYet")}</p>
-      </div>
-    </div>
-  );
-}
-
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
+  onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
 }>;
 
 export function VoiceCommandCenter({
   onTranscriptReady,
   voiceModePreset = "standard",
+  onStatusUpdate,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -1284,6 +991,7 @@ export function VoiceCommandCenter({
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [devDrawerOpen, setDevDrawerOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -1308,6 +1016,23 @@ export function VoiceCommandCenter({
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  useEffect(() => {
+    if (!onStatusUpdate) return;
+    if (!audioStatus) { onStatusUpdate(null); return; }
+    onStatusUpdate({
+      enabled:           audioStatus.enabled,
+      stt_ready:         audioStatus.stt_ready,
+      tts_ready:         audioStatus.tts_ready,
+      tts_fallback:      audioStatus.tts_fallback,
+      whisper_model_size:audioStatus.whisper_model_size,
+      stt_backend:       audioStatus.stt_backend,
+      tts_backend:       audioStatus.tts_backend,
+      vad_threshold:     audioStatus.vad_threshold,
+      dependencies:      audioStatus.dependencies,
+      runtime_snapshot:  audioStatus.runtime_snapshot,
+    });
+  }, [audioStatus, onStatusUpdate]);
 
   useEffect(() => {
     syncVoiceModeSelection({
@@ -1359,15 +1084,13 @@ export function VoiceCommandCenter({
   }, []);
 
   const releasePlaybackResources = useCallback(() => {
-    try {
-      ttsSourceRef.current?.stop();
-    } catch {
-      // ignore
-    }
-    ttsSourceRef.current?.disconnect();
+    const src = ttsSourceRef.current;
+    const analyser = ttsAnalyserRef.current;
     ttsSourceRef.current = null;
-    ttsAnalyserRef.current?.disconnect();
     ttsAnalyserRef.current = null;
+    try { src?.stop(); } catch { /* ignore races with natural end */ }
+    try { src?.disconnect(); } catch { /* ignore */ }
+    try { analyser?.disconnect(); } catch { /* ignore */ }
   }, []);
 
   const applyTtsModel = useCallback(
@@ -1398,11 +1121,7 @@ export function VoiceCommandCenter({
         );
         if (effectiveModelPath === modelPath) {
           releasePlaybackResources();
-          try {
-            wsRef.current?.close();
-          } catch {
-            // ignore socket close races after model switch
-          }
+          wsRef.current?.close();
         }
         await refreshAudioStatus();
         await refreshTtsModelOptions();
@@ -1429,22 +1148,30 @@ export function VoiceCommandCenter({
   const ensurePlaybackContext = useCallback(async () => {
     const browserWindow = getBrowserWindow();
     if (!browserWindow) return null;
-    const AudioContextCtor = browserWindow.AudioContext || browserWindow.webkitAudioContext;
-    if (!AudioContextCtor) {
-      return null;
-    }
+    const AudioContextCtor = getAudioContextCtor(browserWindow);
+    if (!AudioContextCtor) return null;
+
     let ctx = ttsAudioContextRef.current;
-    if (!ctx) {
-      ctx = new AudioContextCtor();
-      ttsAudioContextRef.current = ctx;
+
+    if (!ctx || ctx.state === "closed") {
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) ttsAudioContextRef.current = ctx;
+      return ctx;
     }
-    if (ctx.state === "suspended") {
-      try {
-        await ctx.resume();
-      } catch {
-        // ignore autoplay policy failures; user can replay after a gesture
-      }
+
+    if (ctx.state === "suspended" && !(await tryResumeAudioContext(ctx))) {
+      closeAudioContext(ctx);
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) ttsAudioContextRef.current = ctx;
+      return ctx;
     }
+
+    if (ctx.state !== "running") {
+      closeAudioContext(ctx);
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) ttsAudioContextRef.current = ctx;
+    }
+
     return ctx;
   }, []);
 
@@ -1484,10 +1211,12 @@ export function VoiceCommandCenter({
         ttsAnalyser.connect(ctx.destination);
         ttsAnalyserRef.current = ttsAnalyser;
         source.onended = () => {
+          // Always clean up the graph nodes for this play
+          try { source.disconnect(); } catch { /* ignore */ }
+          try { ttsAnalyser.disconnect(); } catch { /* ignore */ }
           if (ttsSourceRef.current === source) {
             setPlaybackState("idle");
             ttsSourceRef.current = null;
-            ttsAnalyser.disconnect();
             ttsAnalyserRef.current = null;
           }
         };
@@ -1735,6 +1464,7 @@ export function VoiceCommandCenter({
 
   const orbState = deriveOrbState(connected, recording, processingStatus, playbackState, lastAudioSignal);
   const effectsConfig = useOrbEffectsConfig();
+  const metricsRef = useOrbMetrics();
 
   const recordingButtonClass = getRecordingButtonClass(
     audioEnabled,
@@ -1743,201 +1473,200 @@ export function VoiceCommandCenter({
     connected,
   );
   const recordingButtonLabel = getRecordingButtonLabel(t, recording, isVoiceModeEnabled);
-  const latestVoiceSession = audioStatus?.latest_voice_session;
-  const runtimeSnapshot = audioStatus?.runtime_snapshot ?? null;
-  const activeVoiceMode: VoiceModePreset = voiceModePreset || "standard";
-  const activeVoiceModeMeta = getVoiceModeMeta(t, activeVoiceMode);
-  const timingSummary = buildTimingSummary(latestVoiceSession?.timings_ms);
-  const runtimeSummary = buildRuntimeSummary(latestVoiceSession?.runtime ?? null);
-  const runtimeSnapshotSummary = buildRuntimeSnapshotSummary(runtimeSnapshot);
-  const qualitySummary = buildQualitySummary(latestVoiceSession);
-  const latestRecordingSummary = buildLatestRecordingSummary(latestVoiceSession);
   const voiceChatModeLabel = isVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat");
   const playbackStateLabel = getPlaybackStateLabel(t, playbackState, ttsMuted);
   const audioWsStateLabel = audioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline");
 
   useEffect(() => bindRecordingReleaseListeners(recording, stopRecording), [recording, stopRecording]);
 
+  const showDevButton =
+    process.env.NEXT_PUBLIC_SHOW_DEV_PANEL === "true" ||
+    (globalThis.location !== undefined &&
+      new URLSearchParams(globalThis.location.search).has("dev"));
+
   return (
+    <>
     <Panel
       title={t("voice.page.title")}
       description={t("voice.page.description")}
       action={
-        <Badge tone={connected ? "success" : "warning"}>
-          {connected ? t("voice.status.connected") : t("voice.status.offline")}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone={connected ? "success" : "warning"}>
+            {connected ? t("voice.status.connected") : t("voice.status.offline")}
+          </Badge>
+          {showDevButton && (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => setDevDrawerOpen(true)}
+              title={t("voice.controls.diagnostics")}
+              aria-label={t("voice.controls.diagnostics")}
+            >
+              ⚙
+            </Button>
+          )}
+        </div>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="card-shell card-base space-y-3 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="eyebrow">{t("voice.controls.voiceChat")}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="xs"
-                variant={isVoiceModeEnabled ? "primary" : "outline"}
-                onClick={() =>
-                  setIsVoiceModeEnabled((current) => {
-                    const next = !current;
-                    setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
-                    return next;
-                  })
-                }
-                disabled={!audioEnabled}
-              >
-                {isVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                onClick={() => setTtsMuted((current) => !current)}
-                disabled={!audioEnabled}
-              >
-                {ttsMuted ? t("voice.controls.ttsMuted") : t("voice.controls.ttsOn")}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  replayLastResponse().catch(() => undefined);
-                }}
-                disabled={!audioEnabled || !lastAudioResponseRef.current}
-              >
-                {t("voice.controls.replay")}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  refreshAudioStatus().catch(() => undefined);
-                  refreshTtsModelOptions().catch(() => undefined);
-                }}
-              >
-                {t("voice.controls.refresh")}
-              </Button>
-            </div>
-          </div>
-          <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-            <p className="text-caption">{t("voice.controls.ttsVoice")}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <div className="min-w-[260px] flex-1">
-                <Select
-                  value={selectedTtsModelPath}
-                  onValueChange={(value) => {
-                    setSelectedTtsModelPath(value);
-                    applyTtsModel(value).catch(() => undefined);
-                  }}
-                  disabled={!audioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
-                >
-                  <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
-                    <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
-                  </SelectTrigger>
-                  <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
-                    {ttsModelOptions.map((option) => (
-                      <SelectItem key={option.path} value={option.path}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <span className="text-[11px] text-zinc-400">
-                {ttsModelChanging ? t("voice.controls.ttsVoiceChanging") : t("voice.controls.ttsVoiceAuto")}
-              </span>
-            </div>
-          </div>
-          <Button
-            type="button"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              if (!recordingRef.current) {
-                try {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                } catch {
-                  // ignore pointer capture failures
-                }
-                startRecording().catch(() => undefined);
-              }
-            }}
-            onPointerUp={(event) => {
-              event.preventDefault();
-              stopRecording();
+      <div className="space-y-4">
+        {/* Orb zone — orb + dialog bubbles */}
+        {isVoiceModeEnabled && (
+          <OrbZone
+            transcription={transcription}
+            response={response}
+            orbState={orbState}
+            effectsConfig={effectsConfig}
+            reducedMotion={reducedMotion}
+            audioEnabled={audioEnabled}
+            micAnalyserRef={analyserRef}
+            ttsAnalyserRef={ttsAnalyserRef}
+            metricsRef={metricsRef}
+          />
+        )}
+
+        {/* Push-to-talk */}
+        <Button
+          type="button"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            if (!recordingRef.current) {
               try {
-                event.currentTarget.releasePointerCapture(event.pointerId);
+                event.currentTarget.setPointerCapture(event.pointerId);
               } catch {
                 // ignore pointer capture failures
               }
-            }}
-            onPointerCancel={() => stopRecording()}
-            onLostPointerCapture={() => stopRecording()}
-            variant="outline"
-            size="md"
-            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
-            disabled={!connected || !isVoiceModeEnabled}
+              startRecording().catch(() => undefined);
+            }
+          }}
+          onPointerUp={(event) => {
+            event.preventDefault();
+            stopRecording();
+            try {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            } catch {
+              // ignore pointer capture failures
+            }
+          }}
+          onPointerCancel={() => stopRecording()}
+          onLostPointerCapture={() => stopRecording()}
+          variant="outline"
+          size="md"
+          className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
+          disabled={!connected || !isVoiceModeEnabled}
+        >
+          🎙 {recordingButtonLabel}
+        </Button>
+
+        {/* Controls row */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="xs"
+            variant={isVoiceModeEnabled ? "primary" : "outline"}
+            onClick={() =>
+              setIsVoiceModeEnabled((current) => {
+                const next = !current;
+                setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
+                return next;
+              })
+            }
+            disabled={!audioEnabled}
           >
-            🎙 {recordingButtonLabel}
+            {isVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
           </Button>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">{t("voice.controls.voiceChat")}</p>
-              <p className="text-white">{voiceChatModeLabel}</p>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => setTtsMuted((current) => !current)}
+            disabled={!audioEnabled}
+          >
+            {ttsMuted ? t("voice.controls.ttsMuted") : t("voice.controls.ttsOn")}
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => replayLastResponse().catch(() => undefined)}
+            disabled={!audioEnabled || !lastAudioResponseRef.current}
+          >
+            {t("voice.controls.replay")}
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              refreshAudioStatus().catch(() => undefined);
+              refreshTtsModelOptions().catch(() => undefined);
+            }}
+          >
+            {t("voice.controls.refresh")}
+          </Button>
+        </div>
+
+        {/* TTS voice selector */}
+        <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
+          <p className="text-caption">{t("voice.controls.ttsVoice")}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="min-w-[260px] flex-1">
+              <Select
+                value={selectedTtsModelPath}
+                onValueChange={(value) => {
+                  setSelectedTtsModelPath(value);
+                  applyTtsModel(value).catch(() => undefined);
+                }}
+                disabled={!audioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
+              >
+                <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
+                  <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
+                  {ttsModelOptions.map((option) => (
+                    <SelectItem key={option.path} value={option.path}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">{t("voice.controls.playback")}</p>
-              <p className="text-white">{playbackStateLabel}</p>
-            </div>
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">{t("voice.controls.audioWs")}</p>
-              <p className="text-white">{audioWsStateLabel}</p>
-            </div>
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300 sm:col-span-3">
-              <p className="text-caption">{t("voice.modes.title")}</p>
-              <p className="text-white">{activeVoiceModeMeta.title}</p>
-              <p className="text-[11px] text-zinc-400">{activeVoiceModeMeta.description}</p>
-            </div>
-          </div>
-          <RuntimeSnapshotPanel
-            t={t}
-            runtimeSnapshot={runtimeSnapshot}
-            runtimeSnapshotSummary={runtimeSnapshotSummary}
-          />
-          <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
-          <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <p className="text-caption">{t("voice.controls.signal")}</p>
-                <p className="text-white">{lastAudioSignal}</p>
-              </div>
-              <div>
-                <p className="text-caption">{t("voice.controls.chunks")}</p>
-              <p className="text-white">{audioChunkCount}</p>
-              </div>
-            </div>
+            <span className="text-[11px] text-zinc-400">
+              {ttsModelChanging ? t("voice.controls.ttsVoiceChanging") : t("voice.controls.ttsVoiceAuto")}
+            </span>
           </div>
         </div>
-        <VoiceCommandCenterStatusSidebar
-          t={t}
-          audioStatus={audioStatus}
-          latestVoiceSession={latestVoiceSession}
-          latestRecordingSummary={latestRecordingSummary}
-          qualitySummary={qualitySummary}
-          timingSummary={timingSummary}
-          runtimeSummary={runtimeSummary}
-          transcription={transcription}
-          response={response}
-          orbState={orbState}
-          reducedMotion={reducedMotion}
-          isVoiceModeEnabled={isVoiceModeEnabled}
-          audioEnabled={audioEnabled}
-          effectsConfig={effectsConfig}
-          micAnalyserRef={analyserRef}
-          ttsAnalyserRef={ttsAnalyserRef}
-        />
+
+        {/* Status strip */}
+        <div className="grid gap-2 sm:grid-cols-3 text-xs">
+          <div className="rounded-2xl box-muted p-3 text-zinc-300">
+            <p className="text-caption">{t("voice.controls.voiceChat")}</p>
+            <p className="text-white">{voiceChatModeLabel}</p>
+          </div>
+          <div className="rounded-2xl box-muted p-3 text-zinc-300">
+            <p className="text-caption">{t("voice.controls.playback")}</p>
+            <p className="text-white">{playbackStateLabel}</p>
+          </div>
+          <div className="rounded-2xl box-muted p-3 text-zinc-300">
+            <p className="text-caption">{t("voice.controls.audioWs")}</p>
+            <p className="text-white">{audioWsStateLabel}</p>
+          </div>
+        </div>
+
+        {/* Timing strip — last session stage durations */}
+        <TimingStrip timings={audioStatus?.latest_voice_session?.timings_ms} />
+
+        <p className="text-hint text-xs">{statusMessage ?? t("voice.status.channelReady")}</p>
       </div>
     </Panel>
+    <DevDiagnosticsDrawer
+      isOpen={devDrawerOpen}
+      onClose={() => setDevDrawerOpen(false)}
+      audioStatus={audioStatus}
+      lastAudioSignal={lastAudioSignal}
+      audioChunkCount={audioChunkCount}
+      statusMessage={statusMessage}
+    />
+    </>
   );
 }

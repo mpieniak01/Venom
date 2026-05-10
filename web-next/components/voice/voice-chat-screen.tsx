@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowLeft, Brain, MessageSquareText, Sparkles, ListTodo } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,9 @@ import { useTranslation } from "@/lib/i18n";
 import {
   VoiceCommandCenter,
   type VoiceModePreset,
+  type VoiceStatusUpdate,
 } from "@/components/voice/voice-command-center";
+import { VoiceStatusSidebar } from "@/components/voice/voice-status-sidebar";
 
 type VoiceModeCard = {
   mode: VoiceModePreset;
@@ -49,7 +51,12 @@ const VOICE_MODES: VoiceModeCard[] = [
 
 export function VoiceChatScreen() {
   const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("standard");
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatusUpdate | null>(null);
   const t = useTranslation();
+
+  const handleStatusUpdate = useCallback((s: VoiceStatusUpdate | null) => {
+    setVoiceStatus(s);
+  }, []);
 
   return (
     <div className="space-y-6 pb-10">
@@ -71,8 +78,12 @@ export function VoiceChatScreen() {
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,0.85fr)]">
-        <VoiceCommandCenter voiceModePreset={voiceModePreset} />
-        <div className="space-y-6">
+        <VoiceCommandCenter
+          voiceModePreset={voiceModePreset}
+          onStatusUpdate={handleStatusUpdate}
+        />
+        <div className="space-y-4">
+          {/* Mode selector */}
           <div className="rounded-3xl box-muted p-4">
             <p className="eyebrow">{t("voice.modes.title")}</p>
             <p className="mt-1 text-sm text-zinc-300">{t("voice.modes.description")}</p>
@@ -101,6 +112,9 @@ export function VoiceChatScreen() {
             </div>
             <p className="mt-3 text-xs text-zinc-400">{t("voice.modes.hint")}</p>
           </div>
+
+          {/* STT/TTS + Runtime status — compact info boxes for tuning */}
+          <VoiceStatusSidebar status={voiceStatus} />
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ export const voice = {
     replay: "Replay",
     refresh: "Refresh",
     refreshing: "Refreshing…",
+    diagnostics: "Dev diagnostics",
     pushToTalk: "Hold to talk",
     recording: "Recording...",
     voiceChat: "Voice chat",

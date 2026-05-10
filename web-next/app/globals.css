@@ -911,3 +911,21 @@ html[data-theme="venom-light"] body::after {
 .animate-orb-particle-rise { animation: orb-particle-rise  2.1s ease-out forwards; }
 .animate-orb-plasma-slow   { animation: orb-plasma-slow    9s   linear infinite; }
 .animate-orb-plasma-fast   { animation: orb-plasma-fast    5.5s linear infinite; }
+
+/* OrbDialogWindow enter animations */
+@keyframes orb-dialog-in-top {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes orb-dialog-in-bottom {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-orb-dialog-in-top    { animation: orb-dialog-in-top    220ms ease-out both; }
+.animate-orb-dialog-in-bottom { animation: orb-dialog-in-bottom 220ms ease-out both; }
+
+/* DevDiagnosticsDrawer slide-up */
+@keyframes slideUpDrawer {
+  from { transform: translateY(40px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}

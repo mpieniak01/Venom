@@ -14,8 +14,10 @@ import {
 } from "@/components/ui/select";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
-import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
-import { useOrbEffectsConfig, type OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
+import type { VoiceOrbState } from "@/components/voice/voice-orb";
+import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
+import { OrbZone } from "@/components/voice/orb-zone";
+import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
 
 type AudioStatus = {
   enabled: boolean;
@@ -1119,144 +1121,6 @@ const VOICE_MODE_HINT_KEYS: Record<VoiceModePreset, string> = {
   action_items: "voice.modes.actionItems.description",
 };
 
-type VoiceCommandCenterStatusSidebarProps = Readonly<{
-  t: Translator;
-  audioStatus: AudioStatus | null;
-  latestVoiceSession: AudioStatus["latest_voice_session"];
-  latestRecordingSummary: string;
-  qualitySummary: string;
-  timingSummary: string;
-  runtimeSummary: string;
-  transcription: string;
-  response: string;
-  orbState: VoiceOrbState;
-  reducedMotion: boolean;
-  isVoiceModeEnabled: boolean;
-  audioEnabled: boolean;
-  effectsConfig: OrbEffectsConfig;
-  micAnalyserRef: RefObject<AnalyserNode | null>;
-  ttsAnalyserRef: RefObject<AnalyserNode | null>;
-}>;
-
-function VoiceCommandCenterStatusSidebar({
-  t,
-  audioStatus,
-  latestVoiceSession,
-  latestRecordingSummary,
-  qualitySummary,
-  timingSummary,
-  runtimeSummary,
-  transcription,
-  response,
-  orbState,
-  reducedMotion,
-  isVoiceModeEnabled,
-  audioEnabled,
-  effectsConfig,
-  micAnalyserRef,
-  ttsAnalyserRef,
-}: VoiceCommandCenterStatusSidebarProps) {
-  return (
-    <div className="space-y-3">
-      {isVoiceModeEnabled ? (
-        <div className="flex justify-center rounded-2xl box-muted py-6">
-          <VoiceOrb
-            state={orbState}
-            disabled={!audioEnabled}
-            reducedMotion={reducedMotion}
-            label={t(`voice.orb.stateLabel.${orbState}`)}
-            effectsConfig={effectsConfig}
-            micAnalyserRef={micAnalyserRef}
-            ttsAnalyserRef={ttsAnalyserRef}
-          />
-        </div>
-      ) : null}
-      <div className="rounded-2xl box-muted p-4">
-        <p className="eyebrow">{t("voice.controls.audioWs")}</p>
-        {audioStatus ? (
-          <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-            <div>
-              <p className="text-caption">{t("voice.controls.enabled")}</p>
-              <p className="text-white">{audioStatus.enabled ? t("common.yes") : t("common.no")}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.clients")}</p>
-              <p className="text-white">{audioStatus.connected_clients}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.recordings")}</p>
-              <p className="text-white">{audioStatus.active_recordings}</p>
-            </div>
-            <div>
-              <p className="text-caption">VAD</p>
-              <p className="text-white">{audioStatus.vad_threshold ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.whisper")}</p>
-              <p className="text-white">{audioStatus.whisper_model_size ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.sttReady")}</p>
-              <p className="text-white">{audioStatus.stt_ready ? t("common.yes") : t("common.no")}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.ttsReady")}</p>
-              <p className="text-white">{audioStatus.tts_ready ? t("common.yes") : t("common.no")}</p>
-            </div>
-            <div>
-              <p className="text-caption">{t("voice.controls.ttsFallback")}</p>
-              <p className="text-white">{audioStatus.tts_fallback ? t("common.yes") : t("common.no")}</p>
-            </div>
-            {audioStatus.dependencies && (
-              <div className="sm:col-span-2">
-                <p className="text-caption">{t("voice.controls.dependencies")}</p>
-                <p className="text-white">
-                  {Object.entries(audioStatus.dependencies)
-                    .map(([name, ok]) => `${name}:${ok ? "yes" : "no"}`)
-                    .join(" · ")}
-                </p>
-              </div>
-            )}
-            {latestVoiceSession?.download_url && (
-              <div className="sm:col-span-2">
-                <p className="text-caption">{t("voice.controls.latestRecording")}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <Button asChild size="xs" variant="outline">
-                    <a href={latestVoiceSession.download_url} target="_blank" rel="noreferrer">
-                      {t("voice.controls.downloadWav")}
-                    </a>
-                  </Button>
-                  <span className="text-[11px] text-zinc-400">{latestRecordingSummary || "—"}</span>
-                </div>
-                <p className="mt-1 text-hint">
-                  {t("voice.controls.sessionId")}: {latestVoiceSession.session_id}
-                </p>
-                {qualitySummary && <p className="mt-1 text-hint">{t("voice.controls.quality")}: {qualitySummary}</p>}
-                {timingSummary && <p className="mt-1 text-hint">{t("voice.controls.timings")}: {timingSummary}</p>}
-                {runtimeSummary && <p className="mt-1 text-hint">{t("voice.controls.runtime")}: {runtimeSummary}</p>}
-                {latestVoiceSession.transcription && (
-                  <p className="mt-1 text-hint">STT: {latestVoiceSession.transcription}</p>
-                )}
-              </div>
-            )}
-            {audioStatus.message && <div className="sm:col-span-2 text-hint">{audioStatus.message}</div>}
-          </div>
-        ) : (
-          <p className="mt-2 text-hint">{t("voice.controls.noRecordingYet")}</p>
-        )}
-      </div>
-      <div className="rounded-2xl box-muted p-4">
-        <p className="eyebrow">{t("voice.controls.transcription")}</p>
-        <p className="mt-2 text-sm text-white">{transcription || t("voice.status.waitingForVoiceCommand")}</p>
-      </div>
-      <div className="rounded-2xl box-muted p-4">
-        <p className="eyebrow">{t("voice.controls.response")}</p>
-        <p className="mt-2 text-sm text-white">{response || t("voice.status.noResponseYet")}</p>
-      </div>
-    </div>
-  );
-}
-
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -1284,6 +1148,7 @@ export function VoiceCommandCenter({
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [devDrawerOpen, setDevDrawerOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -1743,201 +1608,194 @@ export function VoiceCommandCenter({
     connected,
   );
   const recordingButtonLabel = getRecordingButtonLabel(t, recording, isVoiceModeEnabled);
-  const latestVoiceSession = audioStatus?.latest_voice_session;
-  const runtimeSnapshot = audioStatus?.runtime_snapshot ?? null;
-  const activeVoiceMode: VoiceModePreset = voiceModePreset || "standard";
-  const activeVoiceModeMeta = getVoiceModeMeta(t, activeVoiceMode);
-  const timingSummary = buildTimingSummary(latestVoiceSession?.timings_ms);
-  const runtimeSummary = buildRuntimeSummary(latestVoiceSession?.runtime ?? null);
-  const runtimeSnapshotSummary = buildRuntimeSnapshotSummary(runtimeSnapshot);
-  const qualitySummary = buildQualitySummary(latestVoiceSession);
-  const latestRecordingSummary = buildLatestRecordingSummary(latestVoiceSession);
   const voiceChatModeLabel = isVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat");
   const playbackStateLabel = getPlaybackStateLabel(t, playbackState, ttsMuted);
   const audioWsStateLabel = audioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline");
 
   useEffect(() => bindRecordingReleaseListeners(recording, stopRecording), [recording, stopRecording]);
 
+  const showDevButton =
+    process.env.NEXT_PUBLIC_SHOW_DEV_PANEL === "true" ||
+    (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("dev"));
+
   return (
+    <>
     <Panel
       title={t("voice.page.title")}
       description={t("voice.page.description")}
       action={
-        <Badge tone={connected ? "success" : "warning"}>
-          {connected ? t("voice.status.connected") : t("voice.status.offline")}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone={connected ? "success" : "warning"}>
+            {connected ? t("voice.status.connected") : t("voice.status.offline")}
+          </Badge>
+          {showDevButton && (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => setDevDrawerOpen(true)}
+              title="Dev diagnostics"
+            >
+              ⚙
+            </Button>
+          )}
+        </div>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="card-shell card-base space-y-3 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="eyebrow">{t("voice.controls.voiceChat")}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="xs"
-                variant={isVoiceModeEnabled ? "primary" : "outline"}
-                onClick={() =>
-                  setIsVoiceModeEnabled((current) => {
-                    const next = !current;
-                    setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
-                    return next;
-                  })
-                }
-                disabled={!audioEnabled}
-              >
-                {isVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                onClick={() => setTtsMuted((current) => !current)}
-                disabled={!audioEnabled}
-              >
-                {ttsMuted ? t("voice.controls.ttsMuted") : t("voice.controls.ttsOn")}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  replayLastResponse().catch(() => undefined);
-                }}
-                disabled={!audioEnabled || !lastAudioResponseRef.current}
-              >
-                {t("voice.controls.replay")}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                onClick={() => {
-                  refreshAudioStatus().catch(() => undefined);
-                  refreshTtsModelOptions().catch(() => undefined);
-                }}
-              >
-                {t("voice.controls.refresh")}
-              </Button>
-            </div>
-          </div>
-          <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-            <p className="text-caption">{t("voice.controls.ttsVoice")}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <div className="min-w-[260px] flex-1">
-                <Select
-                  value={selectedTtsModelPath}
-                  onValueChange={(value) => {
-                    setSelectedTtsModelPath(value);
-                    applyTtsModel(value).catch(() => undefined);
-                  }}
-                  disabled={!audioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
-                >
-                  <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
-                    <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
-                  </SelectTrigger>
-                  <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
-                    {ttsModelOptions.map((option) => (
-                      <SelectItem key={option.path} value={option.path}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <span className="text-[11px] text-zinc-400">
-                {ttsModelChanging ? t("voice.controls.ttsVoiceChanging") : t("voice.controls.ttsVoiceAuto")}
-              </span>
-            </div>
-          </div>
-          <Button
-            type="button"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              if (!recordingRef.current) {
-                try {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                } catch {
-                  // ignore pointer capture failures
-                }
-                startRecording().catch(() => undefined);
-              }
-            }}
-            onPointerUp={(event) => {
-              event.preventDefault();
-              stopRecording();
+      <div className="space-y-4">
+        {/* Orb zone — orb + dialog bubbles */}
+        {isVoiceModeEnabled && (
+          <OrbZone
+            transcription={transcription}
+            response={response}
+            orbState={orbState}
+            effectsConfig={effectsConfig}
+            reducedMotion={reducedMotion}
+            audioEnabled={audioEnabled}
+            micAnalyserRef={analyserRef}
+            ttsAnalyserRef={ttsAnalyserRef}
+          />
+        )}
+
+        {/* Push-to-talk */}
+        <Button
+          type="button"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            if (!recordingRef.current) {
               try {
-                event.currentTarget.releasePointerCapture(event.pointerId);
+                event.currentTarget.setPointerCapture(event.pointerId);
               } catch {
                 // ignore pointer capture failures
               }
-            }}
-            onPointerCancel={() => stopRecording()}
-            onLostPointerCapture={() => stopRecording()}
-            variant="outline"
-            size="md"
-            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
-            disabled={!connected || !isVoiceModeEnabled}
+              startRecording().catch(() => undefined);
+            }
+          }}
+          onPointerUp={(event) => {
+            event.preventDefault();
+            stopRecording();
+            try {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            } catch {
+              // ignore pointer capture failures
+            }
+          }}
+          onPointerCancel={() => stopRecording()}
+          onLostPointerCapture={() => stopRecording()}
+          variant="outline"
+          size="md"
+          className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
+          disabled={!connected || !isVoiceModeEnabled}
+        >
+          🎙 {recordingButtonLabel}
+        </Button>
+
+        {/* Controls row */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="xs"
+            variant={isVoiceModeEnabled ? "primary" : "outline"}
+            onClick={() =>
+              setIsVoiceModeEnabled((current) => {
+                const next = !current;
+                setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
+                return next;
+              })
+            }
+            disabled={!audioEnabled}
           >
-            🎙 {recordingButtonLabel}
+            {isVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
           </Button>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">{t("voice.controls.voiceChat")}</p>
-              <p className="text-white">{voiceChatModeLabel}</p>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => setTtsMuted((current) => !current)}
+            disabled={!audioEnabled}
+          >
+            {ttsMuted ? t("voice.controls.ttsMuted") : t("voice.controls.ttsOn")}
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => replayLastResponse().catch(() => undefined)}
+            disabled={!audioEnabled || !lastAudioResponseRef.current}
+          >
+            {t("voice.controls.replay")}
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              refreshAudioStatus().catch(() => undefined);
+              refreshTtsModelOptions().catch(() => undefined);
+            }}
+          >
+            {t("voice.controls.refresh")}
+          </Button>
+        </div>
+
+        {/* TTS voice selector */}
+        <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
+          <p className="text-caption">{t("voice.controls.ttsVoice")}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="min-w-[260px] flex-1">
+              <Select
+                value={selectedTtsModelPath}
+                onValueChange={(value) => {
+                  setSelectedTtsModelPath(value);
+                  applyTtsModel(value).catch(() => undefined);
+                }}
+                disabled={!audioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
+              >
+                <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
+                  <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
+                  {ttsModelOptions.map((option) => (
+                    <SelectItem key={option.path} value={option.path}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">{t("voice.controls.playback")}</p>
-              <p className="text-white">{playbackStateLabel}</p>
-            </div>
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-              <p className="text-caption">{t("voice.controls.audioWs")}</p>
-              <p className="text-white">{audioWsStateLabel}</p>
-            </div>
-            <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300 sm:col-span-3">
-              <p className="text-caption">{t("voice.modes.title")}</p>
-              <p className="text-white">{activeVoiceModeMeta.title}</p>
-              <p className="text-[11px] text-zinc-400">{activeVoiceModeMeta.description}</p>
-            </div>
-          </div>
-          <RuntimeSnapshotPanel
-            t={t}
-            runtimeSnapshot={runtimeSnapshot}
-            runtimeSnapshotSummary={runtimeSnapshotSummary}
-          />
-          <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
-          <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <p className="text-caption">{t("voice.controls.signal")}</p>
-                <p className="text-white">{lastAudioSignal}</p>
-              </div>
-              <div>
-                <p className="text-caption">{t("voice.controls.chunks")}</p>
-              <p className="text-white">{audioChunkCount}</p>
-              </div>
-            </div>
+            <span className="text-[11px] text-zinc-400">
+              {ttsModelChanging ? t("voice.controls.ttsVoiceChanging") : t("voice.controls.ttsVoiceAuto")}
+            </span>
           </div>
         </div>
-        <VoiceCommandCenterStatusSidebar
-          t={t}
-          audioStatus={audioStatus}
-          latestVoiceSession={latestVoiceSession}
-          latestRecordingSummary={latestRecordingSummary}
-          qualitySummary={qualitySummary}
-          timingSummary={timingSummary}
-          runtimeSummary={runtimeSummary}
-          transcription={transcription}
-          response={response}
-          orbState={orbState}
-          reducedMotion={reducedMotion}
-          isVoiceModeEnabled={isVoiceModeEnabled}
-          audioEnabled={audioEnabled}
-          effectsConfig={effectsConfig}
-          micAnalyserRef={analyserRef}
-          ttsAnalyserRef={ttsAnalyserRef}
-        />
+
+        {/* Status strip */}
+        <div className="grid gap-2 sm:grid-cols-3 text-xs">
+          <div className="rounded-2xl box-muted p-3 text-zinc-300">
+            <p className="text-caption">{t("voice.controls.voiceChat")}</p>
+            <p className="text-white">{voiceChatModeLabel}</p>
+          </div>
+          <div className="rounded-2xl box-muted p-3 text-zinc-300">
+            <p className="text-caption">{t("voice.controls.playback")}</p>
+            <p className="text-white">{playbackStateLabel}</p>
+          </div>
+          <div className="rounded-2xl box-muted p-3 text-zinc-300">
+            <p className="text-caption">{t("voice.controls.audioWs")}</p>
+            <p className="text-white">{audioWsStateLabel}</p>
+          </div>
+        </div>
+
+        <p className="text-hint text-xs">{statusMessage ?? t("voice.status.channelReady")}</p>
       </div>
     </Panel>
+    <DevDiagnosticsDrawer
+      isOpen={devDrawerOpen}
+      onClose={() => setDevDrawerOpen(false)}
+      audioStatus={audioStatus}
+      lastAudioSignal={lastAudioSignal}
+      audioChunkCount={audioChunkCount}
+      statusMessage={statusMessage}
+    />
+    </>
   );
 }

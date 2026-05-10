@@ -126,37 +126,46 @@ export function VoiceOrb({
         : "";
     if (!cls) return;
 
-    setFlashClass(cls);
-    const id = setTimeout(() => setFlashClass(""), 350);
-    return () => clearTimeout(id);
+    let clearId: ReturnType<typeof setTimeout>;
+    const startId = setTimeout(() => {
+      setFlashClass(cls);
+      clearId = setTimeout(() => setFlashClass(""), 350);
+    }, 0);
+    return () => { clearTimeout(startId); clearTimeout(clearId); };
   }, [effectiveState, cfg.transitions, noAnim]);
 
   // ── Complete burst (one-shot ring that expands then vanishes) ─────────
   const [showBurst, setShowBurst] = useState(false);
-  const burstKeyRef = useRef(0);
+  const [burstKey, setBurstKey] = useState(0);
 
   useEffect(() => {
     if (!cfg.transitions || noAnim || effectiveState !== "complete") return;
-    burstKeyRef.current += 1;
-    setShowBurst(true);
-    const id = setTimeout(() => setShowBurst(false), 650);
-    return () => clearTimeout(id);
+    let hideId: ReturnType<typeof setTimeout>;
+    const startId = setTimeout(() => {
+      setBurstKey((k) => k + 1);
+      setShowBurst(true);
+      hideId = setTimeout(() => setShowBurst(false), 650);
+    }, 0);
+    return () => { clearTimeout(startId); clearTimeout(hideId); };
   }, [effectiveState, cfg.transitions, noAnim]);
 
   // ── Particles (generated client-side to avoid SSR mismatch) ──────────
   const [particles, setParticles] = useState<Particle[]>([]);
 
   useEffect(() => {
-    setParticles(
-      Array.from({ length: 9 }, (_, i) => ({
-        id: i,
-        angle: (360 / 9) * i + Math.random() * 20 - 10,
-        duration: 1.6 + Math.random() * 0.9,
-        delay: Math.random() * 1.1,
-        offset: 30 + Math.random() * 8,
-        size: 2 + Math.random() * 2,
-      }))
-    );
+    const id = setTimeout(() => {
+      setParticles(
+        Array.from({ length: 9 }, (_, i) => ({
+          id: i,
+          angle: (360 / 9) * i + Math.random() * 20 - 10,
+          duration: 1.6 + Math.random() * 0.9,
+          delay: Math.random() * 1.1,
+          offset: 30 + Math.random() * 8,
+          size: 2 + Math.random() * 2,
+        }))
+      );
+    }, 0);
+    return () => clearTimeout(id);
   }, []);
 
   const showParticles =
@@ -254,7 +263,7 @@ export function VoiceOrb({
         {/* ── Complete burst ring (one-shot) ── */}
         {showBurst && (
           <div
-            key={burstKeyRef.current}
+            key={burstKey}
             className="absolute inset-0 rounded-full border-2 border-teal-400/70 animate-orb-burst"
             style={{ pointerEvents: "none" }}
           />

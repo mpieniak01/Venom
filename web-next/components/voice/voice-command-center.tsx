@@ -178,6 +178,45 @@ const buildTimingSummary = (timings?: Record<string, number | null | undefined> 
     .join(" · ");
 };
 
+const TIMING_STAGES: Array<{ key: string; label: string; accent?: boolean }> = [
+  { key: "decode_ms", label: "Decode" },
+  { key: "stt_ms",    label: "STT" },
+  { key: "llm_ms",    label: "LLM" },
+  { key: "tts_ms",    label: "TTS" },
+  { key: "total_backend_ms", label: "Total", accent: true },
+];
+
+function TimingStrip({
+  timings,
+}: {
+  timings?: Record<string, number | null | undefined> | null;
+}) {
+  const hasAny = timings && TIMING_STAGES.some((s) => timings[s.key] != null);
+  return (
+    <div className="grid grid-cols-5 gap-1.5 text-xs">
+      {TIMING_STAGES.map(({ key, label, accent }) => {
+        const raw = timings?.[key];
+        const val = formatTimingSeconds(typeof raw === "number" ? raw : null);
+        return (
+          <div
+            key={key}
+            className={`rounded-xl p-2 text-center ${
+              accent
+                ? "border border-white/10 bg-white/[0.06]"
+                : "rounded-xl box-muted"
+            } ${!hasAny ? "opacity-40" : ""}`}
+          >
+            <p className="text-caption leading-none">{label}</p>
+            <p className={`mt-1 font-mono font-semibold leading-none ${accent ? "text-white" : "text-zinc-200"}`}>
+              {val ?? "—"}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const buildRuntimeSummary = (runtime?: VoiceRuntime | null): string => {
   if (!runtime) return "";
   const parts: Array<string | null> = [
@@ -1836,6 +1875,9 @@ export function VoiceCommandCenter({
             <p className="text-white">{audioWsStateLabel}</p>
           </div>
         </div>
+
+        {/* Timing strip — last session stage durations */}
+        <TimingStrip timings={audioStatus?.latest_voice_session?.timings_ms} />
 
         <p className="text-hint text-xs">{statusMessage ?? t("voice.status.channelReady")}</p>
       </div>

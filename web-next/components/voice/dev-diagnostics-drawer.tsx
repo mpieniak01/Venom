@@ -323,8 +323,8 @@ function RuntimeSnapshotSection({
           </p>
           {pipeline.notes && pipeline.notes.length > 0 && (
             <ul className="mt-2 list-disc pl-4 text-zinc-400">
-              {pipeline.notes.map((note, index) => (
-                <li key={index}>{note}</li>
+              {pipeline.notes.map((note) => (
+                <li key={note}>{note}</li>
               ))}
             </ul>
           )}

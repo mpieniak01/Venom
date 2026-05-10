@@ -29,6 +29,15 @@ function getEnterClass(
   return role === "user" ? "animate-orb-dialog-in-top" : "animate-orb-dialog-in-bottom";
 }
 
+function getOpacity(visible: boolean, isActive: boolean): number {
+  if (!visible) return 0;
+  return isActive ? 1 : 0.45;
+}
+
+function getSpeakerLabel(role: "user" | "assistant"): string {
+  return role === "user" ? "Ty" : "Asystent";
+}
+
 export function OrbDialogWindow({
   role,
   text,
@@ -112,7 +121,7 @@ export function OrbDialogWindow({
     .filter(Boolean)
     .join(" ");
 
-  const opacity = visible ? (isActive ? 1 : 0.45) : 0;
+  const opacity = getOpacity(visible, isActive);
 
   return (
     <div
@@ -130,7 +139,7 @@ export function OrbDialogWindow({
       {visible && (
         <div className={bubbleClasses}>
           <span className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-            {role === "user" ? "Ty" : "Asystent"}
+            {getSpeakerLabel(role)}
           </span>
           <span>{displayed || emptyLabel}</span>
         </div>

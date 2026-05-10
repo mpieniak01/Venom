@@ -140,129 +140,143 @@ type OrbMetricsBars3DProps = Readonly<{
   metricsRef: RefObject<OrbMetrics>;
 }>;
 
-function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
-  const groupRefs = useRef<Array<THREE.Group | null>>([null, null, null, null]);
-  const coreRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
-  const glowRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
-  const coreMaterialRefs = useRef<Array<THREE.MeshStandardMaterial | null>>([null, null, null, null]);
-  const glowMaterialRefs = useRef<Array<THREE.MeshStandardMaterial | null>>([null, null, null, null]);
-  const barGeo = useMemo(() => makeBarGeometry(), []);
-  const glowGeo = useMemo(() => makeGlowGeometry(), []);
+type OrbMetricBarRefs = Readonly<{
+  groupRef: RefObject<THREE.Group | null>;
+  coreRef: RefObject<THREE.Mesh | null>;
+  glowRef: RefObject<THREE.Mesh | null>;
+  coreMaterialRef: RefObject<THREE.MeshStandardMaterial | null>;
+  glowMaterialRef: RefObject<THREE.MeshStandardMaterial | null>;
+}>;
+
+function syncBarMaterial(
+  mat: THREE.MeshStandardMaterial | null,
+  color: string,
+  emissiveIntensity: number,
+  opacity: number,
+) {
+  if (!mat) return;
+  mat.color.set(color);
+  mat.emissive.set(color);
+  mat.emissiveIntensity = emissiveIntensity;
+  mat.transparent = true;
+  mat.opacity = opacity;
+  mat.depthWrite = false;
+}
+
+function syncOrbMetricBarFrame(
+  index: number,
+  metricsRef: RefObject<OrbMetrics>,
+  refs: OrbMetricBarRefs,
+) {
+  const metrics = metricsRef.current;
+  if (!metrics) return;
+  const rawValue = [metrics.cpu, metrics.gpu, metrics.net, metrics.ram][index];
+  const pct = Number.isFinite(rawValue) ? rawValue : 0;
+  const isGpuAbsent = index === 1 && !Number.isFinite(rawValue);
+  const target = MIN_BAR_SCALE + (pct / 100) * (MAX_BAR_RADIUS - MIN_BAR_SCALE);
+
+  const core = refs.coreRef.current;
+  if (core) {
+    core.scale.y += (target - core.scale.y) * BAR_LERP_ALPHA;
+    syncBarMaterial(
+      refs.coreMaterialRef.current,
+      BAR_DEFS[index]?.color ?? "#ffffff",
+      isGpuAbsent ? 0.04 : 0.35 + 0.65 * (pct / 100),
+      isGpuAbsent ? 0.2 : 0.92,
+    );
+  }
+
+  const glow = refs.glowRef.current;
+  if (glow) {
+    glow.scale.y += (target - glow.scale.y) * BAR_LERP_ALPHA;
+    syncBarMaterial(
+      refs.glowMaterialRef.current,
+      BAR_DEFS[index]?.color ?? "#ffffff",
+      isGpuAbsent ? 0.02 : 0.15 + 0.35 * (pct / 100),
+      isGpuAbsent ? 0.06 : 0.18 + 0.22 * (pct / 100),
+    );
+  }
+}
+
+function OrbMetricBar3D({
+  definition,
+  index,
+  metricsRef,
+  barGeo,
+  glowGeo,
+}: Readonly<{
+  definition: (typeof BAR_DEFS)[number];
+  index: number;
+  metricsRef: RefObject<OrbMetrics>;
+  barGeo: THREE.BoxGeometry;
+  glowGeo: THREE.BoxGeometry;
+}>) {
+  const groupRef = useRef<THREE.Group>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
+  const coreMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const glowMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const refs = { groupRef, coreRef, glowRef, coreMaterialRef, glowMaterialRef } as const;
 
   useEffect(() => {
-    coreRefs.current.forEach((mesh) => {
-      if (mesh) {
-        mesh.geometry = barGeo;
-      }
-    });
-    glowRefs.current.forEach((mesh) => {
-      if (mesh) {
-        mesh.geometry = glowGeo;
-      }
-    });
-    groupRefs.current.forEach((group, index) => {
-      const def = BAR_DEFS[index];
-      if (group && def) {
-        group.rotation.set(def.rotation[0], def.rotation[1], def.rotation[2]);
-      }
-    });
-  }, [barGeo, glowGeo]);
+    if (groupRef.current) {
+      groupRef.current.rotation.set(definition.rotation[0], definition.rotation[1], definition.rotation[2]);
+    }
+    if (coreRef.current) {
+      coreRef.current.geometry = barGeo;
+    }
+    if (glowRef.current) {
+      glowRef.current.geometry = glowGeo;
+    }
+  }, [barGeo, definition.rotation, glowGeo]);
 
   useFrame(() => {
-    const m = metricsRef.current;
-    if (!m) return;
-    const values: number[] = [m.cpu, m.gpu, m.net, m.ram];
-
-    values.forEach((pct, i) => {
-      const safePct = Number.isFinite(pct) ? pct : 0;
-      const isGpuAbsent = i === 1 && !Number.isFinite(pct);
-      const target = MIN_BAR_SCALE + (safePct / 100) * (MAX_BAR_RADIUS - MIN_BAR_SCALE);
-
-      const core = coreRefs.current[i];
-      if (core) {
-        core.scale.y += (target - core.scale.y) * BAR_LERP_ALPHA;
-        const mat = coreMaterialRefs.current[i];
-        if (mat) {
-          mat.color.set(BAR_DEFS[i]?.color ?? mat.color);
-          mat.emissive.set(BAR_DEFS[i]?.color ?? mat.emissive);
-          mat.emissiveIntensity = isGpuAbsent ? 0.04 : 0.35 + 0.65 * (safePct / 100);
-          mat.opacity = isGpuAbsent ? 0.2 : 0.92;
-          mat.transparent = true;
-          mat.depthWrite = false;
-        }
-      }
-
-      const glow = glowRefs.current[i];
-      if (glow) {
-        glow.scale.y += (target - glow.scale.y) * BAR_LERP_ALPHA;
-        const mat = glowMaterialRefs.current[i];
-        if (mat) {
-          mat.color.set(BAR_DEFS[i]?.color ?? mat.color);
-          mat.emissive.set(BAR_DEFS[i]?.color ?? mat.emissive);
-          mat.emissiveIntensity = isGpuAbsent ? 0.02 : 0.15 + 0.35 * (safePct / 100);
-          mat.opacity = isGpuAbsent ? 0.06 : 0.18 + 0.22 * (safePct / 100);
-          mat.transparent = true;
-          mat.depthWrite = false;
-        }
-      }
-    });
+    syncOrbMetricBarFrame(index, metricsRef, refs);
   });
 
   return (
+    <group ref={groupRef}>
+      <mesh ref={glowRef} scale={[1, MIN_BAR_SCALE, 1]}>
+        <meshStandardMaterial
+          ref={glowMaterialRef}
+          color={definition.color}
+          emissive={definition.color}
+          emissiveIntensity={0.15}
+          transparent
+          opacity={0.12}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={coreRef} scale={[1, MIN_BAR_SCALE, 1]}>
+        <meshStandardMaterial
+          ref={coreMaterialRef}
+          color={definition.color}
+          emissive={definition.color}
+          emissiveIntensity={0.35}
+          transparent
+          opacity={0.9}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
+  const barGeo = useMemo(() => makeBarGeometry(), []);
+  const glowGeo = useMemo(() => makeGlowGeometry(), []);
+
+  return (
     <>
-      {BAR_DEFS.map(({ key, color, rotation }, i) => (
-        <group
-          key={key}
-          ref={(group) => {
-            groupRefs.current[i] = group;
-            if (group) {
-              group.rotation.set(rotation[0], rotation[1], rotation[2]);
-            }
-          }}
-        >
-          {/* Glow halo — wide, semi-transparent */}
-          <mesh
-            ref={(el) => {
-              glowRefs.current[i] = el;
-            }}
-            scale={[1, MIN_BAR_SCALE, 1]}
-          >
-            <meshStandardMaterial
-              ref={(mat) => {
-                glowMaterialRefs.current[i] = mat;
-                if (mat) {
-                  mat.color.set(color);
-                  mat.emissive.set(color);
-                  mat.emissiveIntensity = 0.15;
-                  mat.transparent = true;
-                  mat.opacity = 0.12;
-                  mat.depthWrite = false;
-                }
-              }}
-            />
-          </mesh>
-          {/* Core beam */}
-          <mesh
-            ref={(el) => {
-              coreRefs.current[i] = el;
-            }}
-            scale={[1, MIN_BAR_SCALE, 1]}
-          >
-            <meshStandardMaterial
-              ref={(mat) => {
-                coreMaterialRefs.current[i] = mat;
-                if (mat) {
-                  mat.color.set(color);
-                  mat.emissive.set(color);
-                  mat.emissiveIntensity = 0.35;
-                  mat.transparent = true;
-                  mat.opacity = 0.9;
-                  mat.depthWrite = false;
-                }
-              }}
-            />
-          </mesh>
-        </group>
+      {BAR_DEFS.map((definition, index) => (
+        <OrbMetricBar3D
+          key={definition.key}
+          definition={definition}
+          index={index}
+          metricsRef={metricsRef}
+          barGeo={barGeo}
+          glowGeo={glowGeo}
+        />
       ))}
     </>
   );
@@ -395,18 +409,31 @@ function updateVolumetricLights(
   }
 }
 
-function updateShaderMaterial(
-  mat: THREE.ShaderMaterial | null,
-  state: VoiceOrbState,
-  colors: StateColors,
-  audioLevel: number,
-  elapsed: number,
-  delta: number,
-  effectsConfig: OrbEffectsConfig,
-  activeAnalyser: AnalyserNode | null,
-  rawFFT: MutableRefObject<Uint8Array>,
-  burstProgress: MutableRefObject<number>,
-) {
+type ShaderUpdateContext = Readonly<{
+  mat: THREE.ShaderMaterial | null;
+  state: VoiceOrbState;
+  colors: StateColors;
+  audioLevel: number;
+  elapsed: number;
+  delta: number;
+  effectsConfig: OrbEffectsConfig;
+  activeAnalyser: AnalyserNode | null;
+  rawFFT: MutableRefObject<Uint8Array>;
+  burstProgress: MutableRefObject<number>;
+}>;
+
+function updateShaderMaterial({
+  mat,
+  state,
+  colors,
+  audioLevel,
+  elapsed,
+  delta,
+  effectsConfig,
+  activeAnalyser,
+  rawFFT,
+  burstProgress,
+}: ShaderUpdateContext) {
   if (!mat) return;
   const uniforms = mat.uniforms as Record<string, { value: unknown }>;
   const setUniform = (name: string, value: unknown) => {
@@ -458,15 +485,13 @@ function updateShaderMaterial(
   GLOBAL_BLOOM_TARGET.current = getBloomTarget(state, audioLevel, elapsed, burstProgress.current);
 }
 
-function OrbParticles3D({
-  active,
-  color,
-  audioLevel,
-}: {
+type OrbParticles3DProps = Readonly<{
   active: boolean;
   color: THREE.Color;
   audioLevel: number;
-}) {
+}>;
+
+function OrbParticles3D({ active, color, audioLevel }: OrbParticles3DProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const geometryRef = useRef<THREE.BufferGeometry | null>(null);
   const materialRef = useRef<THREE.PointsMaterial | null>(null);
@@ -527,7 +552,7 @@ function OrbParticles3D({
 
 // ─── Main orb scene (inside Canvas) ─────────────────────────────────────────
 
-type OrbSceneProps = {
+type OrbSceneProps = Readonly<{
   state: VoiceOrbState;
   effectsConfig: OrbEffectsConfig;
   micAnalyserRef?: RefObject<AnalyserNode | null>;
@@ -536,7 +561,13 @@ type OrbSceneProps = {
   outputLevel: number;
   reducedMotion: boolean;
   metricsRef?: RefObject<OrbMetrics>;
-};
+}>;
+
+function getOrbAudioLevel(state: VoiceOrbState, inputLevel: number, outputLevel: number): number {
+  if (state === "recording") return inputLevel;
+  if (state === "tts") return outputLevel;
+  return 0;
+}
 
 function OrbScene({
   state,
@@ -558,7 +589,7 @@ function OrbScene({
   const burstProgress = useRef(0);
   const rawFFT = useRef(new Uint8Array(128));
 
-  const audioLevel = state === "recording" ? inputLevel : state === "tts" ? outputLevel : 0;
+  const audioLevel = getOrbAudioLevel(state, inputLevel, outputLevel);
   const isActive = state === "recording" || state === "tts";
   const colors = STATE_COLORS[state];
   const activeAnalyser = getActiveAnalyser(state, micAnalyserRef, ttsAnalyserRef);
@@ -626,16 +657,18 @@ function OrbScene({
   useFrame((frameState, delta) => {
     const t = frameState.clock.elapsedTime;
     updateShaderMaterial(
-      shaderMaterial,
-      state,
-      colors,
-      audioLevel,
-      t,
-      delta,
-      effectsConfig,
-      activeAnalyser,
-      rawFFT,
-      burstProgress,
+      {
+        mat: shaderMaterial,
+        state,
+        colors,
+        audioLevel,
+        elapsed: t,
+        delta,
+        effectsConfig,
+        activeAnalyser,
+        rawFFT,
+        burstProgress,
+      },
     );
     updateVolumetricLights(
       light1Ref.current,

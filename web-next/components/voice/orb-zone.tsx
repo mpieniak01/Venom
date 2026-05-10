@@ -17,7 +17,7 @@ const VoiceOrb3D = dynamic(
 );
 
 function supportsWebGL(): boolean {
-  if (typeof globalThis.window === "undefined") return false;
+  if (globalThis.window === undefined) return false;
   try {
     const canvas = document.createElement("canvas");
     return !!(

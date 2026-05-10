@@ -239,11 +239,7 @@ const buildReconnectDelay = (attempt: number): number =>
 
 const closeAudioContext = (ctx: AudioContext | null | undefined) => {
   if (!ctx) return;
-  try {
-    ctx.close().catch(() => undefined);
-  } catch {
-    // ignore close races during reconnects
-  }
+  ctx.close().catch(() => undefined);
 };
 
 const createPlaybackContext = (
@@ -260,6 +256,15 @@ const createPlaybackContext = (
     return context;
   } catch {
     return null;
+  }
+};
+
+const tryResumeAudioContext = async (ctx: AudioContext): Promise<boolean> => {
+  try {
+    await ctx.resume();
+    return true;
+  } catch {
+    return false;
   }
 };
 
@@ -1116,11 +1121,7 @@ export function VoiceCommandCenter({
         );
         if (effectiveModelPath === modelPath) {
           releasePlaybackResources();
-          try {
-            wsRef.current?.close();
-          } catch {
-            // ignore socket close races after model switch
-          }
+          wsRef.current?.close();
         }
         await refreshAudioStatus();
         await refreshTtsModelOptions();
@@ -1147,41 +1148,28 @@ export function VoiceCommandCenter({
   const ensurePlaybackContext = useCallback(async () => {
     const browserWindow = getBrowserWindow();
     if (!browserWindow) return null;
-    const AudioContextCtor = browserWindow.AudioContext || browserWindow.webkitAudioContext;
+    const AudioContextCtor = getAudioContextCtor(browserWindow);
     if (!AudioContextCtor) return null;
 
     let ctx = ttsAudioContextRef.current;
 
-    // Rebuild closed context
     if (!ctx || ctx.state === "closed") {
       ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
-      if (ctx) {
-        ttsAudioContextRef.current = ctx;
-      }
-      if (!ctx) return null;
+      if (ctx) ttsAudioContextRef.current = ctx;
+      return ctx;
     }
 
-    if (ctx.state === "suspended") {
-      try {
-        await ctx.resume();
-      } catch {
-        // Resume failed — create a fresh context for this play
-        closeAudioContext(ctx);
-        ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
-        if (ctx) {
-          ttsAudioContextRef.current = ctx;
-        }
-        if (!ctx) return null;
-      }
+    if (ctx.state === "suspended" && !(await tryResumeAudioContext(ctx))) {
+      closeAudioContext(ctx);
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) ttsAudioContextRef.current = ctx;
+      return ctx;
     }
 
-    // Final guard: if still not running, replace with a fresh context
     if (ctx.state !== "running") {
       closeAudioContext(ctx);
       ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
-      if (ctx) {
-        ttsAudioContextRef.current = ctx;
-      }
+      if (ctx) ttsAudioContextRef.current = ctx;
     }
 
     return ctx;
@@ -1493,7 +1481,7 @@ export function VoiceCommandCenter({
 
   const showDevButton =
     process.env.NEXT_PUBLIC_SHOW_DEV_PANEL === "true" ||
-    (typeof globalThis.location !== "undefined" &&
+    (globalThis.location !== undefined &&
       new URLSearchParams(globalThis.location.search).has("dev"));
 
   return (

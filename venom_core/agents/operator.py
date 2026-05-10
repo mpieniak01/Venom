@@ -298,7 +298,12 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 enable_functions=False,
             )
 
-            assistant_message = str(response)
+            assistant_message = str(response).strip()
+            if not assistant_message:
+                logger.warning(
+                    "LLM zwrócił pustą odpowiedź dla input: %s", input_text[:80]
+                )
+                return "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
 
             # Dodaj do historii
             self.chat_history.add_user_message(input_text)

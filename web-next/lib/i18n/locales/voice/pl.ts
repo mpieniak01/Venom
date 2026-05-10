@@ -81,6 +81,7 @@ export const voice = {
     playbackErrorShort: "Błąd",
     playbackIdleShort: "Gotowy",
     replayUnavailable: "Brak ostatniej odpowiedzi audio do odtworzenia.",
+    complete: "Odpowiedź gotowa.",
   },
   orb: {
     stateLabel: {

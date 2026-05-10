@@ -81,6 +81,7 @@ export const voice = {
     playbackErrorShort: "Error",
     playbackIdleShort: "Idle",
     replayUnavailable: "No previous audio response to replay.",
+    complete: "Response ready.",
   },
   orb: {
     stateLabel: {

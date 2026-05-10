@@ -270,6 +270,173 @@ def test_get_latest_voice_session_record_falls_back_to_filesystem(monkeypatch):
     assert latest == {"session_id": "from-fs"}
 
 
+def test_resolve_tts_model_path_validates_location_suffix_and_existence(
+    monkeypatch, tmp_path
+):
+    piper_root = tmp_path / "data" / "models" / "piper"
+    piper_root.mkdir(parents=True)
+    valid_model = piper_root / "pl_PL-test.onnx"
+    valid_model.write_text("fake")
+    invalid_suffix = piper_root / "pl_PL-test.bin"
+    invalid_suffix.write_text("fake")
+
+    monkeypatch.setattr(main_module, "_get_piper_models_root", lambda: piper_root)
+
+    resolved = main_module._resolve_tts_model_path("pl_PL-test.onnx")
+    assert resolved == valid_model.resolve()
+
+    with pytest.raises(main_module.HTTPException) as exc_suffix:
+        main_module._resolve_tts_model_path("pl_PL-test.bin")
+    assert exc_suffix.value.status_code == 400
+
+    outside = tmp_path / "outside.onnx"
+    outside.write_text("fake")
+    with pytest.raises(main_module.HTTPException) as exc_outside:
+        main_module._resolve_tts_model_path(str(outside.resolve()))
+    assert exc_outside.value.status_code == 400
+
+    with pytest.raises(main_module.HTTPException) as exc_missing:
+        main_module._resolve_tts_model_path("missing.onnx")
+    assert exc_missing.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_audio_tts_models_prefers_audio_engine_model_path(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "_list_available_tts_models",
+        lambda: [{"id": "m1", "label": "m1", "path": "/tmp/m1.onnx"}],
+    )
+    monkeypatch.setattr(
+        main_module,
+        "audio_engine",
+        SimpleNamespace(voice=SimpleNamespace(model_path="/tmp/runtime.onnx")),
+    )
+    monkeypatch.setattr(main_module.SETTINGS, "TTS_MODEL_PATH", "/tmp/settings.onnx")
+
+    payload = await main_module.list_audio_tts_models()
+
+    assert payload["models"][0]["id"] == "m1"
+    assert payload["current_model_path"] == "/tmp/runtime.onnx"
+
+
+@pytest.mark.asyncio
+async def test_list_audio_tts_models_falls_back_to_settings(monkeypatch):
+    monkeypatch.setattr(main_module, "_list_available_tts_models", lambda: [])
+    monkeypatch.setattr(main_module, "audio_engine", None)
+    monkeypatch.setattr(main_module.SETTINGS, "TTS_MODEL_PATH", "/tmp/settings.onnx")
+
+    payload = await main_module.list_audio_tts_models()
+
+    assert payload["models"] == []
+    assert payload["current_model_path"] == "/tmp/settings.onnx"
+
+
+@pytest.mark.asyncio
+async def test_update_audio_tts_model_reloads_global_engine_and_syncs_handler(
+    monkeypatch, tmp_path
+):
+    model_path = tmp_path / "pl_PL-gosia-medium.onnx"
+    model_path.write_text("fake")
+    monkeypatch.setattr(main_module, "_resolve_tts_model_path", lambda _m: model_path)
+
+    config_updates: list[dict[str, str]] = []
+    fake_config_manager = SimpleNamespace(
+        update_config=lambda payload: config_updates.append(payload)
+    )
+    import venom_core.services.config_manager as config_manager_module
+
+    monkeypatch.setattr(config_manager_module, "config_manager", fake_config_manager)
+
+    global_engine_calls: list[str] = []
+
+    async def _global_reload(path: str):
+        global_engine_calls.append(path)
+        return {"tts_loaded": True, "tts_fallback": False}
+
+    global_engine = SimpleNamespace(
+        set_tts_model_path=AsyncMock(side_effect=_global_reload),
+        voice=SimpleNamespace(model_path=str(model_path)),
+    )
+    handler = SimpleNamespace(audio_engine=None)
+
+    monkeypatch.setattr(main_module, "audio_engine", global_engine)
+    monkeypatch.setattr(main_module, "audio_stream_handler", handler)
+
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioTtsModelUpdateRequest(model="pl_PL-gosia-medium.onnx")
+    response = await main_module.update_audio_tts_model(payload, request)
+
+    assert config_updates == [{"TTS_MODEL_PATH": str(model_path)}]
+    assert global_engine_calls == [str(model_path)]
+    assert handler.audio_engine is global_engine
+    assert response["status"] == "success"
+    assert response["effective_tts_model_path"] == str(model_path)
+    assert response["handler_reload_state"] == {
+        "tts_loaded": True,
+        "tts_fallback": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_audio_tts_model_uses_handler_engine_when_global_missing(
+    monkeypatch, tmp_path
+):
+    model_path = tmp_path / "pl_PL-darkman-medium.onnx"
+    model_path.write_text("fake")
+    monkeypatch.setattr(main_module, "_resolve_tts_model_path", lambda _m: model_path)
+
+    import venom_core.services.config_manager as config_manager_module
+
+    monkeypatch.setattr(
+        config_manager_module,
+        "config_manager",
+        SimpleNamespace(update_config=lambda _payload: None),
+    )
+
+    handler_calls: list[str] = []
+
+    async def _handler_reload(path: str):
+        handler_calls.append(path)
+        return {"tts_loaded": True, "tts_fallback": False}
+
+    handler_engine = SimpleNamespace(
+        set_tts_model_path=AsyncMock(side_effect=_handler_reload),
+        voice=SimpleNamespace(model_path=str(model_path)),
+    )
+    handler = SimpleNamespace(audio_engine=handler_engine)
+
+    monkeypatch.setattr(main_module, "audio_engine", None)
+    monkeypatch.setattr(main_module, "audio_stream_handler", handler)
+
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioTtsModelUpdateRequest(model=str(model_path))
+    response = await main_module.update_audio_tts_model(payload, request)
+
+    assert handler_calls == [str(model_path)]
+    assert response["reload_state"] == {"tts_loaded": False, "tts_fallback": True}
+    assert response["handler_reload_state"] == {
+        "tts_loaded": True,
+        "tts_fallback": False,
+    }
+    assert response["effective_tts_model_path"] == str(model_path)
+
+
+@pytest.mark.asyncio
+async def test_update_audio_tts_model_blocks_non_localhost(monkeypatch, tmp_path):
+    model_path = tmp_path / "pl_PL-mc_speech-medium.onnx"
+    model_path.write_text("fake")
+    monkeypatch.setattr(main_module, "_resolve_tts_model_path", lambda _m: model_path)
+
+    request = SimpleNamespace(client=SimpleNamespace(host="10.0.0.7"))
+    payload = main_module.AudioTtsModelUpdateRequest(model=str(model_path))
+
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        await main_module.update_audio_tts_model(payload, request)
+
+    assert excinfo.value.status_code == 403
+
+
 @pytest.mark.asyncio
 async def test_lifespan_schedules_audio_warmup_task(monkeypatch):
     """lifespan should schedule warmup when audio_engine exists."""

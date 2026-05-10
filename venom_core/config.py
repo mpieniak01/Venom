@@ -322,7 +322,7 @@ class Settings(BaseSettings):
     # Konfiguracja Audio Interface (THE_AVATAR)
     ENABLE_AUDIO_INTERFACE: bool = False  # Włącz interfejs głosowy (STT/TTS)
     WHISPER_MODEL_SIZE: str = (
-        "base"  # Rozmiar modelu Whisper ('tiny', 'base', 'small', 'medium', 'large')
+        "medium"  # Rozmiar modelu Whisper ('tiny', 'base', 'small', 'medium', 'large')
     )
     TTS_MODEL_PATH: str = ""  # Ścieżka do modelu Piper TTS (ONNX), puste = mock mode
     AUDIO_DEVICE: str = "cpu"  # Urządzenie dla modeli audio ('cpu', 'cuda')

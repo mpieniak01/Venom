@@ -296,7 +296,6 @@ class AudioStreamHandler:
             return
         if command == "ping":
             await self._send_json(connection_id, {"type": "pong"})
-            return
 
     async def _start_recording(self, connection_id: int, data: dict) -> None:
         conn = self.active_connections[connection_id]
@@ -411,41 +410,37 @@ class AudioStreamHandler:
             audio_bytes: Surowe dane audio
             operator_agent: Agent operatora
         """
-        try:
-            conn = self.active_connections[connection_id]
-            if conn.get("recording_format") != "pcm16":
-                conn["audio_bytes_buffer"].append(audio_bytes)
-                conn["speech_detected"] = True
-                self._cancel_silence_finalize_task(conn)
-                logger.debug(
-                    f"Odebrano encoded audio chunk: {len(audio_bytes)} B od {connection_id}"
-                )
-                return
-
-            # Konwertuj bytes na numpy array
-            # Zakładamy: 16-bit PCM, mono, 16kHz
-            audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
+        conn = self.active_connections[connection_id]
+        if conn.get("recording_format") != "pcm16":
+            conn["audio_bytes_buffer"].append(audio_bytes)
+            conn["speech_detected"] = True
+            self._cancel_silence_finalize_task(conn)
             logger.debug(
-                f"Odebrano audio chunk: {audio_data.size} próbek od {connection_id}"
+                f"Odebrano encoded audio chunk: {len(audio_bytes)} B od {connection_id}"
             )
+            return
 
-            # Dodaj do bufora
-            conn["audio_buffer"].append(audio_data)
+        # Konwertuj bytes na numpy array
+        # Zakładamy: 16-bit PCM, mono, 16kHz
+        audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
+        logger.debug(
+            f"Odebrano audio chunk: {audio_data.size} próbek od {connection_id}"
+        )
 
-            # Sprawdź VAD (czy użytkownik nadal mówi)
-            is_voice = self._detect_voice_activity(audio_data)
-            if is_voice:
-                conn["speech_detected"] = True
-                self._cancel_silence_finalize_task(conn)
-            elif conn["is_speaking"] and conn["speech_detected"]:
-                self._schedule_silence_finalize(
-                    connection_id,
-                    operator_agent,
-                    sample_rate=int(conn.get("sample_rate", 16000)),
-                )
+        # Dodaj do bufora
+        conn["audio_buffer"].append(audio_data)
 
-        except Exception as e:
-            logger.error(f"Błąd podczas obsługi audio data: {e}")
+        # Sprawdź VAD (czy użytkownik nadal mówi)
+        is_voice = self._detect_voice_activity(audio_data)
+        if is_voice:
+            conn["speech_detected"] = True
+            self._cancel_silence_finalize_task(conn)
+        elif conn["is_speaking"] and conn["speech_detected"]:
+            self._schedule_silence_finalize(
+                connection_id,
+                operator_agent,
+                sample_rate=int(conn.get("sample_rate", 16000)),
+            )
 
     def _detect_voice_activity(self, audio_data: np.ndarray) -> bool:
         """
@@ -517,8 +512,6 @@ class AudioStreamHandler:
                     operator_agent,
                     sample_rate=sample_rate,
                 )
-            except asyncio.CancelledError:
-                raise
             finally:
                 current = self.active_connections.get(connection_id)
                 if current and current.get("silence_finalize_task") is task:

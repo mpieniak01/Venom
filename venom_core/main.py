@@ -3,10 +3,12 @@ import json
 import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
@@ -215,6 +217,62 @@ def _resolve_voice_session_wav_path(session_id: str) -> Path:
     if not wav_path.is_relative_to(root_path):
         raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka nagrania.")
     return wav_path
+
+
+def _require_localhost_request(req: Request) -> None:
+    client_host = req.client.host if req.client else "unknown"
+    if client_host not in {"127.0.0.1", "::1"}:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
+def _get_piper_models_root() -> Path:
+    storage_root = Path(SETTINGS.STORAGE_PREFIX).resolve() / "data" / "models" / "piper"
+    if storage_root.exists():
+        return storage_root
+    return Path(SETTINGS.REPO_ROOT).resolve() / "data" / "models" / "piper"
+
+
+def _list_available_tts_models() -> list[dict[str, str]]:
+    root = _get_piper_models_root()
+    if not root.exists():
+        return []
+    models: list[dict[str, str]] = []
+    for model_file in sorted(root.glob("*.onnx")):
+        models.append(
+            {
+                "id": model_file.name,
+                "label": model_file.stem,
+                "path": str(model_file.resolve()),
+            }
+        )
+    return models
+
+
+def _resolve_tts_model_path(model: str) -> Path:
+    model_key = str(model).strip()
+    if not model_key:
+        raise HTTPException(status_code=400, detail="Model identifier is required.")
+
+    available = _list_available_tts_models()
+    by_id = {str(item.get("id", "")).strip(): item for item in available}
+    by_path = {str(item.get("path", "")).strip(): item for item in available}
+
+    selected = by_id.get(model_key) or by_path.get(model_key)
+    if selected is None:
+        raise HTTPException(status_code=404, detail="TTS model file not found.")
+
+    resolved = Path(str(selected["path"])).resolve()
+    if resolved.suffix != ".onnx":
+        raise HTTPException(
+            status_code=400, detail="Only .onnx TTS models are supported."
+        )
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="TTS model file not found.")
+    return resolved
+
+
+class AudioTtsModelUpdateRequest(BaseModel):
+    model: str
 
 
 async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
@@ -1294,6 +1352,83 @@ async def audio_status_endpoint(request: Request):
             "error": str(exc),
         }
     return status
+
+
+@app.get(
+    "/api/v1/audio/tts/models",
+    responses={
+        403: {"description": "Endpoint only available from localhost."},
+    },
+)
+async def list_audio_tts_models(request: Request):
+    _require_localhost_request(request)
+    current_model_path = ""
+    if audio_engine and getattr(audio_engine, "voice", None):
+        current_model_path = str(getattr(audio_engine.voice, "model_path", "") or "")
+    elif SETTINGS.TTS_MODEL_PATH:
+        current_model_path = str(SETTINGS.TTS_MODEL_PATH)
+    return {
+        "models": _list_available_tts_models(),
+        "current_model_path": current_model_path,
+    }
+
+
+@app.post(
+    "/api/v1/audio/tts/models",
+    responses={
+        400: {"description": "Invalid TTS model identifier or unsupported extension."},
+        403: {"description": "Endpoint only available from localhost."},
+        404: {"description": "Requested TTS model was not found."},
+    },
+)
+async def update_audio_tts_model(payload: AudioTtsModelUpdateRequest, request: Request):
+    global audio_stream_handler
+    _require_localhost_request(request)
+    model_path = _resolve_tts_model_path(payload.model)
+
+    from venom_core.services.config_manager import config_manager
+
+    config_manager.update_config({"TTS_MODEL_PATH": str(model_path)})
+    SETTINGS.TTS_MODEL_PATH = str(model_path)
+
+    reload_state: dict[str, Any] = {"tts_loaded": False, "tts_fallback": True}
+    if audio_engine is not None:
+        reload_state = await audio_engine.set_tts_model_path(str(model_path))
+
+    # Upewnij się, że handler audio korzysta z tej samej instancji engine
+    # i że jego runtime ma przeładowany nowy model TTS.
+    handler_reload_state: dict[str, Any] | None = None
+    if audio_stream_handler is not None:
+        handler_engine = getattr(audio_stream_handler, "audio_engine", None)
+        if audio_engine is not None:
+            audio_stream_handler.audio_engine = audio_engine
+            handler_engine = audio_engine
+
+        if handler_engine is not None and handler_engine is not audio_engine:
+            handler_reload_state = await handler_engine.set_tts_model_path(
+                str(model_path)
+            )
+        elif handler_engine is not None:
+            handler_reload_state = reload_state
+
+    effective_model_path = str(model_path)
+    if (
+        audio_stream_handler is not None
+        and getattr(audio_stream_handler, "audio_engine", None) is not None
+        and getattr(audio_stream_handler.audio_engine, "voice", None) is not None
+    ):
+        effective_model_path = str(
+            getattr(audio_stream_handler.audio_engine.voice, "model_path", "")
+            or model_path
+        )
+
+    return {
+        "status": "success",
+        "tts_model_path": str(model_path),
+        "effective_tts_model_path": effective_model_path,
+        "reload_state": reload_state,
+        "handler_reload_state": handler_reload_state,
+    }
 
 
 @app.get(

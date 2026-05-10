@@ -31,6 +31,10 @@ export const voice = {
     sttReady: "STT gotowe",
     ttsReady: "TTS gotowe",
     ttsFallback: "TTS fallback",
+    ttsVoice: "Głos TTS",
+    ttsVoiceSelect: "Wybierz model głosu",
+    ttsVoiceChanging: "Przełączam głos…",
+    ttsVoiceAuto: "zmiana działa od razu",
     dependencies: "Zależności",
     latestRecording: "Ostatnie nagranie",
     downloadWav: "Pobierz WAV",
@@ -82,6 +86,8 @@ export const voice = {
     playbackIdleShort: "Gotowy",
     replayUnavailable: "Brak ostatniej odpowiedzi audio do odtworzenia.",
     complete: "Odpowiedź gotowa.",
+    ttsVoiceUpdated: "Zmieniono głos TTS.",
+    ttsVoiceUpdateFailed: "Nie udało się zmienić głosu TTS.",
   },
   orb: {
     stateLabel: {

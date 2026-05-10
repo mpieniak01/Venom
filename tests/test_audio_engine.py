@@ -124,6 +124,17 @@ class TestVoiceSkill:
         assert isinstance(result, np.ndarray)
         assert len(result) == 16000
 
+    def test_stop_playback_sync_clears_queue_and_thread_reference(self):
+        """stop_playback_sync czyści kolejkę i resetuje referencję wątku."""
+        skill = VoiceSkill(model_path=None)
+        skill.audio_queue.put(np.zeros(8, dtype=np.int16))
+        skill.audio_queue.put(np.zeros(4, dtype=np.int16))
+
+        skill.stop_playback_sync()
+
+        assert skill.audio_queue.empty() is True
+        assert skill._playback_thread is None
+
 
 class TestAudioEngine:
     """Testy dla AudioEngine."""
@@ -193,6 +204,34 @@ class TestAudioEngine:
         result = await engine.speak("Test message")
         assert result is not None
         assert isinstance(result, np.ndarray)
+
+    @pytest.mark.asyncio
+    async def test_set_tts_model_path_reports_change_and_load_state(
+        self, monkeypatch, tmp_path
+    ):
+        """set_tts_model_path powinno raportować zmianę i stan załadowania modelu."""
+        tts_model_a = tmp_path / "voice_a.onnx"
+        tts_model_b = tmp_path / "voice_b.onnx"
+        tts_model_a.write_text("fake-a")
+        tts_model_b.write_text("fake-b")
+
+        engine = AudioEngine(tts_model_path=str(tts_model_a), device="cpu")
+
+        def _fake_tts_load(self):
+            self.voice = object()
+
+        monkeypatch.setattr(VoiceSkill, "_load_model", _fake_tts_load)
+
+        result_changed = await engine.set_tts_model_path(str(tts_model_b))
+        assert result_changed["tts_loaded"] is True
+        assert result_changed["tts_fallback"] is False
+        assert result_changed["tts_model_changed"] is True
+        assert engine.voice.model_path == str(tts_model_b)
+
+        result_same = await engine.set_tts_model_path(str(tts_model_b))
+        assert result_same["tts_loaded"] is True
+        assert result_same["tts_fallback"] is False
+        assert result_same["tts_model_changed"] is False
 
     def test_process_voice_command(self):
         """Test przetwarzania komendy głosowej."""

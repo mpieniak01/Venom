@@ -16,6 +16,54 @@ Current production-safe path:
 5. TTS uses Piper when a voice model is available,
 6. `/voice` shows the transcript, response, recording link, timings, quality metrics, and runtime snapshot.
 
+### Current STT baseline
+
+The default speech-to-text model is `medium`.
+
+Why:
+
+1. after additional Polish tests with natural speech, it gives a clearly better recognition quality than `base`,
+2. it remains acceptable for current local CPU latency targets,
+3. `large-v3` remains a fallback when we need one more quality step.
+
+Model guidance:
+
+1. `medium` - current default and recommended baseline,
+2. `base` - faster fallback when latency is critical and recognition quality remains acceptable,
+3. `large-v3` - quality fallback when you want to trade more latency for one more quality check,
+4. `large-v3-turbo` - available in newer faster-whisper releases, but treat it as a separate benchmark path before making it a default.
+
+### Available Polish TTS voices
+
+Current local Piper voices are stored in `data/models/piper` and can be selected by changing `TTS_MODEL_PATH`.
+
+| Voice | File | Quality note |
+| --- | --- | --- |
+| `gosia` | `data/models/piper/pl_PL-gosia-medium.onnx` | default-medium, already in use |
+| `darkman` | `data/models/piper/pl_PL-darkman-medium.onnx` | medium quality, already in use |
+| `mc_speech` | `data/models/piper/pl_PL-mc_speech-medium.onnx` | medium quality, newly added for comparison |
+| `mls_6892` | `data/models/piper/pl_PL-mls_6892-low.onnx` | low quality, useful as a weak baseline only |
+
+Switching example:
+
+```bash
+TTS_MODEL_PATH=/home/ubuntu/venom/data/models/piper/pl_PL-mc_speech-medium.onnx
+```
+
+### Measured Polish samples
+
+Cold-start CPU benchmarks collected on 2026-05-10:
+
+| Session | Prompt | Model | Time | Result |
+| --- | --- | ---: | ---: | --- |
+| `20260510_135543_886758_125913349432592_57be75fe` | `Co to jest kwadrat?` | `base` | `2.509 s` | `Co to jest kwadrat?` |
+| `20260510_135543_886758_125913349432592_57be75fe` | `Co to jest kwadrat?` | `medium` | `7.030 s` | `Co to jest kwadrat?` |
+| `20260510_135543_886758_125913349432592_57be75fe` | `Co to jest kwadrat?` | `large-v3` | `11.318 s` | `Co to jest kwadrat?` |
+| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `base` | `2.558 s` | `Jakie jest największy dzieło ulijama szekspira?` |
+| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `medium` | `7.380 s` | `Jakie jest największe dzieło Williama Shakespeare'a?` |
+| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `large-v3` | `12.095 s` | `Jakie jest największe dzieło Williama Szekspira?` |
+| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `large-v3-turbo` | `34.875 s` | `Jakie jest największe dzieło Williama Szekspira?` |
+
 Target direction:
 
 1. keep the stable Whisper/Piper fallback,

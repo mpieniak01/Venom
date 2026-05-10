@@ -5,6 +5,13 @@ import type { RefObject } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
 import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
@@ -82,6 +89,11 @@ type AudioStatus = {
 };
 
 type PlaybackState = "idle" | "playing" | "muted" | "error";
+type TtsModelOption = {
+  id: string;
+  label: string;
+  path: string;
+};
 
 type Translator = (key: string, variables?: Record<string, string | number>) => string;
 type VoiceRuntime = NonNullable<NonNullable<AudioStatus["latest_voice_session"]>["runtime"]>;
@@ -92,6 +104,11 @@ declare global {
     webkitAudioContext?: typeof AudioContext;
   }
 }
+
+type BrowserWindowLike = Window & {
+  AudioContext?: typeof AudioContext;
+  webkitAudioContext?: typeof AudioContext;
+};
 
 let secureRandomFallbackCounter = 0;
 
@@ -136,7 +153,8 @@ const formatTimingSeconds = (milliseconds?: number | null): string | null => {
   return `${(milliseconds / 1000).toFixed(2)}s`;
 };
 
-const getBrowserWindow = (): Window | undefined => globalThis as Window;
+const getBrowserWindow = (): BrowserWindowLike | undefined =>
+  globalThis as unknown as BrowserWindowLike;
 
 const getVoiceModeMeta = (t: Translator, mode: VoiceModePreset) => ({
   title: t(VOICE_MODE_TITLE_KEYS[mode]),
@@ -396,7 +414,7 @@ const getRecordingButtonLabel = (
   return t("voice.controls.textChat");
 };
 
-const getAudioContextCtor = (activeWindow?: Window | undefined): typeof AudioContext | null =>
+const getAudioContextCtor = (activeWindow?: BrowserWindowLike | undefined): typeof AudioContext | null =>
   activeWindow?.AudioContext || activeWindow?.webkitAudioContext || null;
 
 const isWebSocketOpen = (ws: WebSocket | null | undefined): ws is WebSocket =>
@@ -455,11 +473,13 @@ type VoiceControlDeps = {
   reconnectAttemptsRef: RefObject<number>;
   reconnectTimeoutRef: RefObject<number | null>;
   lastVoiceModeSentRef: RefObject<string | null>;
+  voiceModePreset?: VoiceModePreset | null;
   setConnected: (value: boolean) => void;
   setRecording: (value: boolean) => void;
   setStatusMessage: (value: string | null) => void;
   setAudioChunkCount: (value: number | ((current: number) => number)) => void;
   setLastAudioSignal: (value: string) => void;
+  releaseRecordingResources: () => void;
   releaseAudioResources: () => void;
   releasePlaybackResources: () => void;
   refreshAudioStatus: () => Promise<void>;
@@ -467,8 +487,62 @@ type VoiceControlDeps = {
   sendControlMessage: (payload: Record<string, unknown>) => boolean;
   getMediaRecorderMimeType: () => string;
   ensurePlaybackContext: () => Promise<AudioContext | null>;
-  activeWindow?: Window;
+  stopRecording: () => void;
+  activeWindow?: BrowserWindowLike;
 };
+
+type VoiceSocketDeps = Readonly<{
+  t: Translator;
+  wsRef: RefObject<WebSocket | null>;
+  reconnectAttemptsRef: RefObject<number>;
+  reconnectTimeoutRef: RefObject<number | null>;
+  lastVoiceModeSentRef: RefObject<string | null>;
+  setConnected: (value: boolean) => void;
+  setStatusMessage: (value: string | null) => void;
+  setLastAudioSignal: (value: string) => void;
+  refreshAudioStatus: () => Promise<void>;
+  handleAudioMessage: (payload: Record<string, unknown>) => void;
+  releaseAudioResources: () => void;
+  releasePlaybackResources: () => void;
+  ttsAudioContextRef: RefObject<AudioContext | null>;
+}>;
+
+type VoiceCaptureEnvironmentDeps = Readonly<{
+  activeWindow?: BrowserWindowLike;
+  audioContextRef: RefObject<AudioContext | null>;
+  getMediaRecorderMimeType: () => string;
+  mediaStreamRef: RefObject<MediaStream | null>;
+  sourceNodeRef: RefObject<MediaStreamAudioSourceNode | null>;
+  analyserRef: RefObject<AnalyserNode | null>;
+  mediaRecorderRef: RefObject<MediaRecorder | null>;
+  ensurePlaybackContext: () => Promise<AudioContext | null>;
+}>;
+
+type VoiceCaptureDeps = Readonly<{
+  t: Translator;
+  audioEnabled: boolean;
+  isVoiceModeEnabled: boolean;
+  wsRef: RefObject<WebSocket | null>;
+  audioContextRef: RefObject<AudioContext | null>;
+  sourceNodeRef: RefObject<MediaStreamAudioSourceNode | null>;
+  analyserRef: RefObject<AnalyserNode | null>;
+  mediaRecorderRef: RefObject<MediaRecorder | null>;
+  mediaStreamRef: RefObject<MediaStream | null>;
+  recordingRef: RefObject<boolean>;
+  recordingStartPendingRef: RefObject<boolean>;
+  stopRequestedRef: RefObject<boolean>;
+  setRecording: (value: boolean) => void;
+  setStatusMessage: (value: string | null) => void;
+  setAudioChunkCount: (value: number | ((current: number) => number)) => void;
+  setLastAudioSignal: (value: string) => void;
+  releaseRecordingResources: () => void;
+  releaseAudioResources: () => void;
+  sendControlMessage: (payload: Record<string, unknown>) => boolean;
+  getMediaRecorderMimeType: () => string;
+  ensurePlaybackContext: () => Promise<AudioContext | null>;
+  stopRecording: () => void;
+  activeWindow?: BrowserWindowLike;
+}>;
 
 const handleVoiceSocketOpen = (
   deps: Pick<
@@ -722,7 +796,7 @@ const handleVoiceError = (
   setLastAudioSignal("error");
 };
 
-const connectVoiceSocket = (deps: VoiceControlDeps): (() => void) => {
+const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
   const {
     t,
     wsRef,
@@ -799,18 +873,26 @@ type VoiceCaptureEnvironment = Readonly<{
 }>;
 
 const createVoiceCaptureEnvironment = async (
-  deps: Pick<
-    VoiceControlDeps,
-    | "activeWindow"
-    | "audioContextRef"
-    | "getMediaRecorderMimeType"
-    | "mediaStreamRef"
-    | "sourceNodeRef"
-    | "analyserRef"
-    | "mediaRecorderRef"
-    | "ensurePlaybackContext"
-  >,
+  deps: VoiceCaptureEnvironmentDeps,
 ): Promise<VoiceCaptureEnvironment | null> => {
+  const existingMediaStream = deps.mediaStreamRef.current;
+  const existingAudioContext = deps.audioContextRef?.current;
+  const existingSource = deps.sourceNodeRef?.current;
+  const existingAnalyser = deps.analyserRef?.current;
+  if (existingMediaStream && existingAudioContext && existingSource && existingAnalyser) {
+    const mimeType = deps.getMediaRecorderMimeType();
+    const recorder = new MediaRecorder(existingMediaStream, mimeType ? { mimeType } : undefined);
+    deps.mediaRecorderRef.current = recorder;
+    return {
+      mediaStream: existingMediaStream,
+      audioContext: existingAudioContext,
+      source: existingSource,
+      analyser: existingAnalyser,
+      recorder,
+      mimeType,
+    };
+  }
+
   const mediaStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
@@ -898,7 +980,7 @@ const attachRecordingStreamHandlers = (
   setAudioChunkCount: (value: number | ((current: number) => number)) => void,
   setLastAudioSignal: (value: string) => void,
   sendControlMessage: (payload: Record<string, unknown>) => boolean,
-  releaseAudioResources: () => void,
+  releaseRecordingResources: () => void,
 ) => {
   recorder.ondataavailable = (event) => {
     const ws = wsRef.current;
@@ -911,11 +993,11 @@ const attachRecordingStreamHandlers = (
   };
   recorder.onstop = () => {
     sendControlMessage({ command: "stop_recording" });
-    releaseAudioResources();
+    releaseRecordingResources();
   };
 };
 
-const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
+const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
   const {
     t,
     audioEnabled,
@@ -932,6 +1014,7 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
     setRecording,
     setAudioChunkCount,
     setLastAudioSignal,
+    releaseRecordingResources,
     setStatusMessage,
     releaseAudioResources,
     sendControlMessage,
@@ -939,7 +1022,7 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
     getMediaRecorderMimeType,
     stopRecording,
     activeWindow,
-  } = deps as VoiceControlDeps & { activeWindow: Window | undefined };
+  } = deps;
 
   const startError = getVoiceCaptureStartError(
     t,
@@ -980,7 +1063,7 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
       setAudioChunkCount,
       setLastAudioSignal,
       sendControlMessage,
-      releaseAudioResources,
+      releaseRecordingResources,
     );
 
     recordingRef.current = true;
@@ -997,7 +1080,16 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
       releaseAudioResources();
       return;
     }
-    environment.recorder.start(250);
+    environment.recorder.start(100);
+    getBrowserWindow()?.setTimeout(() => {
+      if (environment.recorder.state === "recording") {
+        try {
+          environment.recorder.requestData();
+        } catch {
+          // Ignore requestData races on fast stop/start.
+        }
+      }
+    }, 120);
   } catch (error) {
     console.error("recording error", error);
     releaseAudioResources();
@@ -1183,6 +1275,9 @@ export function VoiceCommandCenter({
   const [response, setResponse] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
+  const [ttsModelOptions, setTtsModelOptions] = useState<TtsModelOption[]>([]);
+  const [selectedTtsModelPath, setSelectedTtsModelPath] = useState("");
+  const [ttsModelChanging, setTtsModelChanging] = useState(false);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [ttsMuted, setTtsMuted] = useState(false);
   const [audioChunkCount, setAudioChunkCount] = useState(0);
@@ -1244,6 +1339,25 @@ export function VoiceCommandCenter({
     }
   }, [t]);
 
+  const refreshTtsModelOptions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v1/audio/tts/models");
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = (await response.json()) as {
+        models?: TtsModelOption[];
+        current_model_path?: string;
+      };
+      setTtsModelOptions(Array.isArray(data.models) ? data.models : []);
+      if (typeof data.current_model_path === "string") {
+        setSelectedTtsModelPath(data.current_model_path);
+      }
+    } catch {
+      setTtsModelOptions([]);
+    }
+  }, []);
+
   const releasePlaybackResources = useCallback(() => {
     try {
       ttsSourceRef.current?.stop();
@@ -1255,6 +1369,51 @@ export function VoiceCommandCenter({
     ttsAnalyserRef.current?.disconnect();
     ttsAnalyserRef.current = null;
   }, []);
+
+  const applyTtsModel = useCallback(
+    async (modelPath: string) => {
+      if (!modelPath) return;
+      setTtsModelChanging(true);
+      try {
+        const response = await fetch("/api/v1/audio/tts/models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: modelPath }),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = (await response.json()) as {
+          effective_tts_model_path?: string;
+        };
+        const effectiveModelPath =
+          typeof data.effective_tts_model_path === "string"
+            ? data.effective_tts_model_path
+            : modelPath;
+        setSelectedTtsModelPath(effectiveModelPath);
+        setStatusMessage(
+          effectiveModelPath === modelPath
+            ? t("voice.status.ttsVoiceUpdated")
+            : t("voice.status.ttsVoiceUpdateFailed"),
+        );
+        if (effectiveModelPath === modelPath) {
+          releasePlaybackResources();
+          try {
+            wsRef.current?.close();
+          } catch {
+            // ignore socket close races after model switch
+          }
+        }
+        await refreshAudioStatus();
+        await refreshTtsModelOptions();
+      } catch {
+        setStatusMessage(t("voice.status.ttsVoiceUpdateFailed"));
+      } finally {
+        setTtsModelChanging(false);
+      }
+    },
+    [refreshAudioStatus, refreshTtsModelOptions, releasePlaybackResources, t],
+  );
 
   const getMediaRecorderMimeType = useCallback(() => {
     if (typeof MediaRecorder === "undefined") return "";
@@ -1387,6 +1546,10 @@ export function VoiceCommandCenter({
     [onTranscriptReady, playAudioResponse, t],
   );
 
+  const releaseRecordingResources = useCallback(() => {
+    mediaRecorderRef.current = null;
+  }, []);
+
   const releaseAudioResources = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
       try {
@@ -1411,6 +1574,51 @@ export function VoiceCommandCenter({
     mediaStreamRef.current = null;
   }, []);
 
+  useEffect(() => {
+    if (!audioEnabled || !isVoiceModeEnabled) {
+      return;
+    }
+    if (
+      mediaStreamRef.current &&
+      audioContextRef.current &&
+      sourceNodeRef.current &&
+      analyserRef.current &&
+      mediaRecorderRef.current
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    void createVoiceCaptureEnvironment({
+      activeWindow: getBrowserWindow(),
+      audioContextRef,
+      getMediaRecorderMimeType,
+      mediaStreamRef,
+      sourceNodeRef,
+      analyserRef,
+      mediaRecorderRef,
+      ensurePlaybackContext,
+    }).catch((error) => {
+      if (!cancelled) {
+        console.warn("Voice capture warmup failed", error);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    audioEnabled,
+    analyserRef,
+    ensurePlaybackContext,
+    getMediaRecorderMimeType,
+    isVoiceModeEnabled,
+    mediaRecorderRef,
+    mediaStreamRef,
+    sourceNodeRef,
+    audioContextRef,
+  ]);
+
   useEffect(
     () =>
       bindVoiceConnectionLifecycle(
@@ -1422,16 +1630,12 @@ export function VoiceCommandCenter({
         () =>
           connectVoiceSocket({
             t,
-            audioEnabled,
-            isVoiceModeEnabled,
             wsRef,
             reconnectAttemptsRef,
             reconnectTimeoutRef,
             lastVoiceModeSentRef,
             setConnected,
-            setRecording,
             setStatusMessage,
-            setAudioChunkCount,
             setLastAudioSignal,
             releaseAudioResources,
             releasePlaybackResources,
@@ -1450,6 +1654,10 @@ export function VoiceCommandCenter({
       t,
     ],
   );
+
+  useEffect(() => {
+    refreshTtsModelOptions().catch(() => undefined);
+  }, [refreshTtsModelOptions]);
 
   const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
     const ws = wsRef.current;
@@ -1504,6 +1712,7 @@ export function VoiceCommandCenter({
         setStatusMessage,
         setAudioChunkCount,
         setLastAudioSignal,
+        releaseRecordingResources,
         releaseAudioResources,
         sendControlMessage,
         getMediaRecorderMimeType,
@@ -1516,6 +1725,7 @@ export function VoiceCommandCenter({
       getMediaRecorderMimeType,
       audioEnabled,
       isVoiceModeEnabled,
+      releaseRecordingResources,
       releaseAudioResources,
       sendControlMessage,
       stopRecording,
@@ -1604,10 +1814,40 @@ export function VoiceCommandCenter({
                 variant="outline"
                 onClick={() => {
                   refreshAudioStatus().catch(() => undefined);
+                  refreshTtsModelOptions().catch(() => undefined);
                 }}
               >
                 {t("voice.controls.refresh")}
               </Button>
+            </div>
+          </div>
+          <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
+            <p className="text-caption">{t("voice.controls.ttsVoice")}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="min-w-[260px] flex-1">
+                <Select
+                  value={selectedTtsModelPath}
+                  onValueChange={(value) => {
+                    setSelectedTtsModelPath(value);
+                    applyTtsModel(value).catch(() => undefined);
+                  }}
+                  disabled={!audioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
+                >
+                  <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
+                    <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
+                  </SelectTrigger>
+                  <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
+                    {ttsModelOptions.map((option) => (
+                      <SelectItem key={option.path} value={option.path}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <span className="text-[11px] text-zinc-400">
+                {ttsModelChanging ? t("voice.controls.ttsVoiceChanging") : t("voice.controls.ttsVoiceAuto")}
+              </span>
             </div>
           </div>
           <Button

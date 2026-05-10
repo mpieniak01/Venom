@@ -63,7 +63,7 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md) - Moduły backendu, odpowiedzialności i przepływy między komponentami.
 - [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md) - Zasady routingu LOCAL/HYBRID/CLOUD i polityki local-first.
 - [Workflow Control](docs/PL/THE_WORKFLOW_CONTROL.md) - Model sterowania workflow, operacje i reguły kontroli wykonania.
-- [Capability runtime voice](docs/PL/VOICE_RUNTIME_CAPABILITIES.md) - Aktualny status pętli głosowej i strategia multimodal dla `ollama`/`vllm`/`onnx`.
+- [Możliwości runtime voice](docs/PL/VOICE_RUNTIME_CAPABILITIES.md) - Aktualny status pętli głosowej i strategia multimodal dla `ollama`/`vllm`/`onnx`.
 
 ### Agenci i funkcje
 - [Katalog agentów systemu](docs/PL/SYSTEM_AGENTS_CATALOG.md) - Opis ról agentów, ich wejść/wyjść i współpracy w runtime.

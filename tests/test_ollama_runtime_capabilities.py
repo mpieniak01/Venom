@@ -1,4 +1,8 @@
-from venom_core.core.ollama_runtime_capabilities import normalize_ollama_show_payload
+from venom_core.core.ollama_runtime_capabilities import (
+    OllamaRuntimeCapabilities,
+    _resolve_compatibility_profile,
+    normalize_ollama_show_payload,
+)
 
 
 def test_normalize_ollama_show_payload_marks_legacy_text_only():
@@ -49,3 +53,32 @@ def test_normalize_ollama_show_payload_marks_multimodal_audio():
     assert caps.capabilities["tool_calling"] is True
     assert caps.capabilities["thinking"] is True
     assert caps.fallbacks["stt"] == "faster_whisper"
+
+
+def test_compatibility_profile_resolution_covers_all_profiles():
+    assert _resolve_compatibility_profile({"audio"}) == "multimodal_audio"
+    assert _resolve_compatibility_profile({"vision"}) == "vision_text"
+    assert _resolve_compatibility_profile({"tools"}) == "text_tools"
+    assert _resolve_compatibility_profile({"thinking"}) == "text_thinking"
+    assert _resolve_compatibility_profile(set()) == "legacy_text_only"
+
+
+def test_normalize_ollama_show_payload_handles_invalid_context_and_to_dict():
+    caps = normalize_ollama_show_payload(
+        model_name="fallback-model",
+        payload={
+            "capabilities": ["completion"],
+            "details": {"parameter_size": "1B", "context_length": "not-a-number"},
+            "model_info": {},
+        },
+        endpoint="http://localhost:11434/",
+        probe_status="verified",
+    )
+
+    assert isinstance(caps, OllamaRuntimeCapabilities)
+    assert caps.endpoint == "http://localhost:11434"
+    assert caps.context_length is None
+    payload = caps.to_dict()
+    assert payload["model_name"] == "fallback-model"
+    assert payload["probe_status"] == "verified"
+    assert payload["capabilities"]["text_completion"] is True

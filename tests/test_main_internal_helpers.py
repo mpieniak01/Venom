@@ -52,6 +52,71 @@ def test_select_startup_model_priority_chain():
 
 
 @pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_returns_none_for_non_ollama(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            runtime_id="vllm@localhost",
+            provider="vllm",
+            model_name="gemma4:latest",
+            endpoint="http://localhost:8000",
+            config_hash="abc123",
+        ),
+    )
+
+    assert await main_module._build_voice_runtime_snapshot() is None
+
+
+@pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_returns_pipeline_snapshot(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            runtime_id="ollama@localhost",
+            provider="ollama",
+            model_name="gemma4:latest",
+            endpoint="http://localhost:11434",
+            config_hash="abc123",
+        ),
+    )
+
+    class DummyCaps:
+        def to_dict(self):
+            return {"compatibility_profile": "multimodal_audio"}
+
+    class DummyPipeline:
+        def to_dict(self):
+            return {"stt": "faster_whisper"}
+
+    monkeypatch.setattr(
+        main_module,
+        "OllamaClient",
+        lambda endpoint: SimpleNamespace(endpoint=endpoint),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "probe_ollama_runtime_capabilities",
+        AsyncMock(return_value=DummyCaps()),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "resolve_voice_pipeline",
+        lambda _caps: DummyPipeline(),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+
+    assert snapshot["runtime_id"] == "ollama@localhost"
+    assert snapshot["provider"] == "ollama"
+    assert snapshot["runtime_capabilities"]["compatibility_profile"] == (
+        "multimodal_audio"
+    )
+    assert snapshot["voice_pipeline"]["stt"] == "faster_whisper"
+
+
+@pytest.mark.asyncio
 async def test_audio_status_endpoint_includes_latest_session_download_url(monkeypatch):
     class DummyHandler:
         def get_status(self, operator_agent=None):
@@ -106,6 +171,22 @@ async def test_audio_status_endpoint_returns_disabled_state_without_handler(
     assert status["enabled"] is False
     assert status["message"] == "Audio interface is disabled or not initialized."
     assert status["runtime_snapshot"]["runtime_id"] == "ollama@localhost"
+
+
+@pytest.mark.asyncio
+async def test_audio_status_endpoint_handles_runtime_snapshot_failure(monkeypatch):
+    monkeypatch.setattr(main_module, "audio_stream_handler", None)
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(side_effect=RuntimeError("boom")),
+    )
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["enabled"] is False
+    assert status["runtime_snapshot"]["error"] == "boom"
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+import venom_core.main as main_module
 from venom_core.core import model_registry_clients as mrc
+from venom_core.core.ollama_runtime_capabilities import (
+    _resolve_compatibility_profile,
+    normalize_ollama_show_payload,
+)
+from venom_core.core.ollama_runtime_probe import (
+    _probe_audio,
+    _probe_thinking,
+    _probe_tools,
+    _probe_vision,
+    probe_ollama_runtime_capabilities,
+    resolve_voice_pipeline,
+)
 
 
 def test_normalize_hf_papers_month_invalid_falls_back_current():
@@ -492,3 +505,182 @@ def test_remove_cached_model_success_missing_and_rmtree_error(tmp_path, monkeypa
 
     monkeypatch.setattr(mrc.shutil, "rmtree", _raise)
     assert client.remove_cached_model(tmp_path, model_name) is False
+
+
+@pytest.mark.asyncio
+async def test_ollama_get_model_show_and_chat_use_traffic_control_client():
+    client = mrc.OllamaClient(endpoint="http://localhost:11434")
+    show_response = MagicMock()
+    show_response.json.return_value = {"model": "gemma4:latest"}
+    chat_response = MagicMock()
+    chat_response.json.return_value = {"message": {"content": "ok"}}
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(side_effect=[show_response, chat_response])
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        show_payload = await client.get_model_show("gemma4:latest")
+        chat_payload = await client.chat({"model": "gemma4:latest"})
+
+    assert show_payload["model"] == "gemma4:latest"
+    assert chat_payload["message"]["content"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_ollama_get_model_show_and_chat_failure_paths_return_empty_dict():
+    client = mrc.OllamaClient(endpoint="http://localhost:11434")
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(side_effect=Exception("boom"))
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        assert await client.get_model_show("gemma4:latest") == {}
+        assert await client.chat({"model": "gemma4:latest"}) == {}
+
+
+@pytest.mark.asyncio
+async def test_voice_runtime_helpers_cover_branches(monkeypatch):
+    assert _resolve_compatibility_profile({"audio"}) == "multimodal_audio"
+    assert _resolve_compatibility_profile({"vision"}) == "vision_text"
+    assert _resolve_compatibility_profile({"tools"}) == "text_tools"
+    assert _resolve_compatibility_profile({"thinking"}) == "text_thinking"
+    assert _resolve_compatibility_profile(set()) == "legacy_text_only"
+
+    caps = normalize_ollama_show_payload(
+        model_name="gemma4:latest",
+        payload={
+            "capabilities": ["completion", "vision", "audio", "tools", "thinking"],
+            "details": {"parameter_size": "8.0B", "context_length": "131072"},
+            "model_info": {"general.context_length": "131072"},
+        },
+        endpoint="http://localhost:11434/",
+        probe_status="verified",
+    )
+
+    assert caps.endpoint == "http://localhost:11434"
+    assert caps.to_dict()["probe_status"] == "verified"
+    assert caps.context_length == 131072
+
+    class ProbeClient:
+        def __init__(self):
+            self.endpoint = "http://localhost:11434"
+
+        async def get_model_show(self, model_name: str):
+            return {
+                "capabilities": ["completion", "vision", "audio", "tools", "thinking"],
+                "details": {"parameter_size": "8.0B"},
+                "model_info": {"gemma4.context_length": 131072},
+            }
+
+        async def chat(self, payload):
+            if payload.get("think"):
+                return {
+                    "message": {
+                        "role": "assistant",
+                        "thinking": "trace",
+                        "content": "answer",
+                    }
+                }
+            if payload.get("tools"):
+                return {
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {"function": {"name": "noop_status", "arguments": {}}}
+                        ],
+                        "content": "",
+                    }
+                }
+            if payload.get("messages") and payload["messages"][-1].get("images"):
+                return {"message": {"role": "assistant", "content": "image ok"}}
+            return {"message": {"role": "assistant", "content": "audio ok"}}
+
+    caps = await probe_ollama_runtime_capabilities(
+        client=ProbeClient(),
+        model_name="gemma4:latest",
+        endpoint="http://localhost:11434",
+    )
+    decision = resolve_voice_pipeline(caps)
+    assert decision.reasoning == "think_api"
+    assert decision.tools == "policy_gated_tools"
+    assert decision.vision == "images_api"
+
+    class EmptyProbeClient(ProbeClient):
+        async def get_model_show(self, model_name: str):
+            return {}
+
+        async def chat(self, payload):
+            return {"message": {"role": "assistant", "content": ""}}
+
+    empty_caps = await probe_ollama_runtime_capabilities(
+        client=EmptyProbeClient(),
+        model_name="missing-model",
+        endpoint="http://localhost:11434",
+    )
+    assert empty_caps.probe_status == "failed"
+
+    assert (await _probe_thinking(EmptyProbeClient(), "model"))["status"] == "failed"
+    assert (await _probe_tools(EmptyProbeClient(), "model"))["status"] == "failed"
+    assert (await _probe_vision(EmptyProbeClient(), "model"))["status"] == "failed"
+    assert (await _probe_audio(EmptyProbeClient(), "model"))["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_and_audio_status(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            runtime_id="ollama@localhost",
+            provider="ollama",
+            model_name="gemma4:latest",
+            endpoint="http://localhost:11434",
+            config_hash="abc123",
+        ),
+    )
+
+    class DummyCaps:
+        def to_dict(self):
+            return {"compatibility_profile": "multimodal_audio"}
+
+    class DummyPipeline:
+        def to_dict(self):
+            return {"stt": "faster_whisper"}
+
+    monkeypatch.setattr(
+        main_module,
+        "OllamaClient",
+        lambda endpoint: SimpleNamespace(endpoint=endpoint),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "probe_ollama_runtime_capabilities",
+        AsyncMock(return_value=DummyCaps()),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "resolve_voice_pipeline",
+        lambda _caps: DummyPipeline(),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+    assert snapshot["provider"] == "ollama"
+    assert snapshot["voice_pipeline"]["stt"] == "faster_whisper"
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", None)
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(side_effect=RuntimeError("boom")),
+    )
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+    status = await main_module.audio_status_endpoint(request)
+    assert status["runtime_snapshot"]["error"] == "boom"

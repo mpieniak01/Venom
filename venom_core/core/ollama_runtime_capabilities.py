@@ -82,14 +82,10 @@ def normalize_ollama_show_payload(
     details = payload.get("details") or {}
     model_info = payload.get("model_info") or {}
 
-    context_length = (
-        _as_int(
-            model_info.get("general.context_length")
-            or model_info.get("gemma4.context_length")
-            or details.get("context_length")
-        )
-        if isinstance(model_info, dict)
-        else _as_int(details.get("context_length"))
+    context_length = _as_int(
+        model_info.get("general.context_length")
+        or model_info.get("gemma4.context_length")
+        or details.get("context_length")
     )
 
     parameter_size = details.get("parameter_size") or details.get("size")

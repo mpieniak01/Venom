@@ -946,3 +946,48 @@ async def test_schedule_silence_finalize_reraises_cancelled_error(monkeypatch):
         await task
 
     assert handler.active_connections[cid]["silence_finalize_task"] is None
+
+
+@pytest.mark.asyncio
+async def test_process_audio_buffer_runs_normal_flow(monkeypatch, tmp_path):
+    handler = _make_handler()
+    cid = 81
+    _add_connection(handler, cid, is_speaking=True)
+    handler.audio_engine = MagicMock()
+    handler.audio_engine.listen = AsyncMock(return_value="co to jest?")
+    handler.audio_engine.speak = AsyncMock(
+        return_value=np.array([1, 2], dtype=np.int16)
+    )
+
+    class DummyAgent:
+        def _resolve_chat_service_id(self):
+            return "chat"
+
+        async def process(self, text, mode="standard"):
+            return f"odpowiedź: {text}:{mode}"
+
+    sent = []
+
+    async def fake_send_json(_cid, payload):
+        sent.append(payload)
+
+    monkeypatch.setattr(handler, "_send_json", fake_send_json)
+    send_audio = AsyncMock()
+    monkeypatch.setattr(handler, "_send_audio", send_audio)
+    monkeypatch.setattr(handler, "_persist_voice_session", lambda *a, **k: tmp_path)
+    monkeypatch.setattr(handler, "_update_voice_session_metadata", lambda *a, **k: None)
+    monkeypatch.setattr(handler, "_build_runtime_metadata", lambda *_a, **_k: {"rt": 1})
+
+    await handler._process_audio_buffer(
+        cid,
+        [np.array([1, 2, 3], dtype=np.int16)],
+        DummyAgent(),
+        sample_rate=16000,
+    )
+
+    assert any(msg.get("status") == "stt" for msg in sent)
+    assert any(msg.get("type") == "transcription" for msg in sent)
+    assert any(msg.get("status") == "thinking" for msg in sent)
+    assert any(msg.get("status") == "tts" for msg in sent)
+    assert any(msg.get("type") == "complete" for msg in sent)
+    assert send_audio.await_count == 1

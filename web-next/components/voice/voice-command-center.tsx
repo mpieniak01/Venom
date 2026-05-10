@@ -179,7 +179,6 @@ const buildRuntimeSnapshotSummary = (
   const probeStatus = runtimeSnapshot.runtime_capabilities?.probe_status ?? "";
   const pipeline = runtimeSnapshot.voice_pipeline;
   const parts = [
-    runtimeSnapshot.model_name ? `${runtimeSnapshot.model_name}` : null,
     profile ? `profile ${profile}` : null,
     probeStatus ? `probe ${probeStatus}` : null,
     pipeline?.stt ? `stt ${pipeline.stt}` : null,

@@ -39,6 +39,10 @@ const config: Config = {
           "0%, 100%": { opacity: "0.4", transform: "scale(1)" },
           "50%": { opacity: "1", transform: "scale(1.2)" },
         },
+        "orb-thinking": {
+          "0%, 100%": { opacity: "0.6", transform: "scale(1)" },
+          "50%": { opacity: "1", transform: "scale(1.15)" },
+        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -50,6 +54,7 @@ const config: Config = {
       },
       animation: {
         "pulse-signal": "pulse-signal 1.6s ease-in-out infinite",
+        "orb-thinking": "orb-thinking 2.4s ease-in-out infinite",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },

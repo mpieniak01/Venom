@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
+import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
+import { useAudioLevel } from "@/components/voice/use-audio-level";
 
 type AudioStatus = {
   enabled: boolean;
@@ -620,13 +622,35 @@ const getPlaybackStateLabel = (
   return t("voice.status.playbackIdleShort");
 };
 
+const deriveOrbState = (
+  connected: boolean,
+  recording: boolean,
+  processingStatus: string | null,
+  playbackState: PlaybackState,
+  lastAudioSignal: string,
+): VoiceOrbState => {
+  if (!connected) return "offline";
+  if (recording) return "recording";
+  if (processingStatus) {
+    const s = processingStatus.toLowerCase();
+    if (s.includes("stt") || s.includes("transcri") || s.includes("whisper")) return "stt";
+    return "thinking";
+  }
+  if (playbackState === "playing") return "tts";
+  if (playbackState === "error") return "error";
+  if (lastAudioSignal === "complete") return "complete";
+  return "ready";
+};
+
 const handleVoiceRecordingStarted = (
   t: Translator,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
+  setProcessingStatus?: (value: string | null) => void,
 ) => {
   setStatusMessage(t("voice.status.recordingStarted"));
   setLastAudioSignal("recording:started");
+  setProcessingStatus?.(null);
 };
 
 const handleVoiceProcessing = (
@@ -634,10 +658,12 @@ const handleVoiceProcessing = (
   data: Record<string, unknown>,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
+  setProcessingStatus?: (value: string | null) => void,
 ) => {
   const status = toPrimitiveString(data.status) ?? "unknown";
   setStatusMessage(t("voice.status.processing", { status }));
   setLastAudioSignal(`processing:${status}`);
+  setProcessingStatus?.(status);
 };
 
 const handleVoiceTranscript = (
@@ -683,9 +709,11 @@ const handleVoiceCompletion = (
   t: Translator,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
+  setProcessingStatus?: (value: string | null) => void,
 ) => {
   setStatusMessage(t("voice.status.complete"));
   setLastAudioSignal("complete");
+  setProcessingStatus?.(null);
 };
 
 const handleVoiceError = (
@@ -1168,12 +1196,15 @@ export function VoiceCommandCenter({
   const [ttsMuted, setTtsMuted] = useState(false);
   const [audioChunkCount, setAudioChunkCount] = useState(0);
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const ttsAudioContextRef = useRef<AudioContext | null>(null);
   const ttsSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const ttsAnalyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1193,6 +1224,17 @@ export function VoiceCommandCenter({
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const inputLevel = useAudioLevel(analyserRef, recording);
+  const outputLevel = useAudioLevel(ttsAnalyserRef, playbackState === "playing");
 
   useEffect(() => {
     syncVoiceModeSelection({
@@ -1257,6 +1299,7 @@ export function VoiceCommandCenter({
     }
     ttsSourceRef.current?.disconnect();
     ttsSourceRef.current = null;
+    ttsAnalyserRef.current = null;
   }, []);
 
   const scaleAudioChunkForDisplay = useCallback((samples: Float32Array) => {
@@ -1340,11 +1383,16 @@ export function VoiceCommandCenter({
         }
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(ctx.destination);
+        const ttsAnalyser = ctx.createAnalyser();
+        ttsAnalyser.fftSize = 512;
+        source.connect(ttsAnalyser);
+        ttsAnalyser.connect(ctx.destination);
+        ttsAnalyserRef.current = ttsAnalyser;
         source.onended = () => {
           if (ttsSourceRef.current === source) {
             setPlaybackState("idle");
             ttsSourceRef.current = null;
+            ttsAnalyserRef.current = null;
           }
         };
         ttsSourceRef.current = source;
@@ -1372,11 +1420,11 @@ export function VoiceCommandCenter({
     (data: Record<string, unknown>) => {
       const messageType = toPrimitiveString(data.type) ?? "";
       if (messageType === "recording_started") {
-        handleVoiceRecordingStarted(t, setStatusMessage, setLastAudioSignal);
+        handleVoiceRecordingStarted(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
         return;
       }
       if (messageType === "processing") {
-        handleVoiceProcessing(t, data, setStatusMessage, setLastAudioSignal);
+        handleVoiceProcessing(t, data, setStatusMessage, setLastAudioSignal, setProcessingStatus);
         return;
       }
       if (messageType === "transcription") {
@@ -1392,7 +1440,7 @@ export function VoiceCommandCenter({
         return;
       }
       if (messageType === "complete") {
-        handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal);
+        handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
         return;
       }
       if (messageType === "error") {
@@ -1549,6 +1597,8 @@ export function VoiceCommandCenter({
     ],
   );
 
+  const orbState = deriveOrbState(connected, recording, processingStatus, playbackState, lastAudioSignal);
+
   const recordingButtonClass = getRecordingButtonClass(
     audioEnabled,
     isVoiceModeEnabled,
@@ -1688,7 +1738,19 @@ export function VoiceCommandCenter({
             runtimeSnapshot={runtimeSnapshot}
             runtimeSnapshotSummary={runtimeSnapshotSummary}
           />
-          <canvas ref={canvasRef} width={320} height={80} className="w-full rounded-2xl box-muted" />
+          {isVoiceModeEnabled ? (
+            <div className="flex justify-center rounded-2xl box-muted py-4">
+              <VoiceOrb
+                state={orbState}
+                inputLevel={inputLevel}
+                outputLevel={outputLevel}
+                disabled={!audioEnabled}
+                reducedMotion={reducedMotion}
+                label={t(`voice.orb.stateLabel.${orbState}`)}
+              />
+            </div>
+          ) : null}
+          <canvas ref={canvasRef} width={320} height={80} className="hidden" />
           <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
           <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
             <div className="grid grid-cols-2 gap-2">

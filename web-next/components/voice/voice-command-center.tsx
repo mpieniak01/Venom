@@ -1248,15 +1248,13 @@ export function VoiceCommandCenter({
   }, []);
 
   const releasePlaybackResources = useCallback(() => {
-    try {
-      ttsSourceRef.current?.stop();
-    } catch {
-      // ignore
-    }
-    ttsSourceRef.current?.disconnect();
+    const src = ttsSourceRef.current;
+    const analyser = ttsAnalyserRef.current;
     ttsSourceRef.current = null;
-    ttsAnalyserRef.current?.disconnect();
     ttsAnalyserRef.current = null;
+    try { src?.stop(); } catch { /* ignore races with natural end */ }
+    try { src?.disconnect(); } catch { /* ignore */ }
+    try { analyser?.disconnect(); } catch { /* ignore */ }
   }, []);
 
   const applyTtsModel = useCallback(
@@ -1319,21 +1317,49 @@ export function VoiceCommandCenter({
     const browserWindow = getBrowserWindow();
     if (!browserWindow) return null;
     const AudioContextCtor = browserWindow.AudioContext || browserWindow.webkitAudioContext;
-    if (!AudioContextCtor) {
-      return null;
-    }
+    if (!AudioContextCtor) return null;
+
+    const makeContext = (): AudioContext | null => {
+      try {
+        const c = new AudioContextCtor();
+        // Auto-resume if the browser suspends the context mid-playback
+        c.onstatechange = () => {
+          if (c.state === "suspended" && ttsSourceRef.current) {
+            c.resume().catch(() => undefined);
+          }
+        };
+        ttsAudioContextRef.current = c;
+        return c;
+      } catch {
+        return null;
+      }
+    };
+
     let ctx = ttsAudioContextRef.current;
-    if (!ctx) {
-      ctx = new AudioContextCtor();
-      ttsAudioContextRef.current = ctx;
+
+    // Rebuild closed context
+    if (!ctx || ctx.state === "closed") {
+      ctx = makeContext();
+      if (!ctx) return null;
     }
+
     if (ctx.state === "suspended") {
       try {
         await ctx.resume();
       } catch {
-        // ignore autoplay policy failures; user can replay after a gesture
+        // Resume failed — create a fresh context for this play
+        try { ctx.close().catch(() => undefined); } catch { /* ignore */ }
+        ctx = makeContext();
+        if (!ctx) return null;
       }
     }
+
+    // Final guard: if still not running, replace with a fresh context
+    if (ctx.state !== "running") {
+      try { ctx.close().catch(() => undefined); } catch { /* ignore */ }
+      ctx = makeContext();
+    }
+
     return ctx;
   }, []);
 
@@ -1373,10 +1399,12 @@ export function VoiceCommandCenter({
         ttsAnalyser.connect(ctx.destination);
         ttsAnalyserRef.current = ttsAnalyser;
         source.onended = () => {
+          // Always clean up the graph nodes for this play
+          try { source.disconnect(); } catch { /* ignore */ }
+          try { ttsAnalyser.disconnect(); } catch { /* ignore */ }
           if (ttsSourceRef.current === source) {
             setPlaybackState("idle");
             ttsSourceRef.current = null;
-            ttsAnalyser.disconnect();
             ttsAnalyserRef.current = null;
           }
         };

@@ -1073,6 +1073,12 @@ type VoiceCommandCenterStatusSidebarProps = Readonly<{
   runtimeSummary: string;
   transcription: string;
   response: string;
+  orbState: VoiceOrbState;
+  inputLevel: number;
+  outputLevel: number;
+  reducedMotion: boolean;
+  isVoiceModeEnabled: boolean;
+  audioEnabled: boolean;
 }>;
 
 function VoiceCommandCenterStatusSidebar({
@@ -1085,9 +1091,27 @@ function VoiceCommandCenterStatusSidebar({
   runtimeSummary,
   transcription,
   response,
+  orbState,
+  inputLevel,
+  outputLevel,
+  reducedMotion,
+  isVoiceModeEnabled,
+  audioEnabled,
 }: VoiceCommandCenterStatusSidebarProps) {
   return (
     <div className="space-y-3">
+      {isVoiceModeEnabled ? (
+        <div className="flex justify-center rounded-2xl box-muted py-4">
+          <VoiceOrb
+            state={orbState}
+            inputLevel={inputLevel}
+            outputLevel={outputLevel}
+            disabled={!audioEnabled}
+            reducedMotion={reducedMotion}
+            label={t(`voice.orb.stateLabel.${orbState}`)}
+          />
+        </div>
+      ) : null}
       <div className="rounded-2xl box-muted p-4">
         <p className="eyebrow">{t("voice.controls.audioWs")}</p>
         {audioStatus ? (
@@ -1738,18 +1762,6 @@ export function VoiceCommandCenter({
             runtimeSnapshot={runtimeSnapshot}
             runtimeSnapshotSummary={runtimeSnapshotSummary}
           />
-          {isVoiceModeEnabled ? (
-            <div className="flex justify-center rounded-2xl box-muted py-4">
-              <VoiceOrb
-                state={orbState}
-                inputLevel={inputLevel}
-                outputLevel={outputLevel}
-                disabled={!audioEnabled}
-                reducedMotion={reducedMotion}
-                label={t(`voice.orb.stateLabel.${orbState}`)}
-              />
-            </div>
-          ) : null}
           <canvas ref={canvasRef} width={320} height={80} className="hidden" />
           <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
           <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
@@ -1775,6 +1787,12 @@ export function VoiceCommandCenter({
           runtimeSummary={runtimeSummary}
           transcription={transcription}
           response={response}
+          orbState={orbState}
+          inputLevel={inputLevel}
+          outputLevel={outputLevel}
+          reducedMotion={reducedMotion}
+          isVoiceModeEnabled={isVoiceModeEnabled}
+          audioEnabled={audioEnabled}
         />
       </div>
     </Panel>

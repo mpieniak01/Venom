@@ -98,7 +98,7 @@ export function OrbDialogWindow({
   const isEmpty = !text;
 
   const bubbleClasses = [
-    "w-full max-w-[320px] rounded-2xl border px-4 py-3 text-sm leading-relaxed",
+    "w-full rounded-2xl border px-4 py-3 text-sm leading-relaxed",
     "transition-all duration-300",
     role === "user"
       ? "border-white/10 bg-white/[0.05] text-zinc-200 self-end text-right"
@@ -118,7 +118,7 @@ export function OrbDialogWindow({
 
   return (
     <div
-      className="flex w-full justify-center px-2"
+      className="w-full"
       style={{
         minHeight: "56px",
         display: "flex",

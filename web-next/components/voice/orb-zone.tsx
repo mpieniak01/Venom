@@ -54,11 +54,8 @@ export function OrbZone({
   const orbLabel = label ?? t(`voice.orb.stateLabel.${orbState}`);
 
   return (
-    <div
-      className="flex flex-col items-center gap-2 w-full"
-      style={{ minHeight: "520px" }}
-    >
-      {/* User bubble — above orb */}
+    <div className="flex flex-col gap-3 w-full" style={{ minHeight: "520px" }}>
+      {/* User bubble — above orb, full width */}
       <OrbDialogWindow
         role="user"
         text={transcription}
@@ -67,8 +64,8 @@ export function OrbZone({
         emptyLabel={t("voice.status.waitingForVoiceCommand")}
       />
 
-      {/* Orb — 2D CSS or 3D Three.js */}
-      <div className="flex items-center justify-center">
+      {/* Orb — centered, takes remaining vertical space */}
+      <div className="flex flex-1 items-center justify-center">
         {use3D ? (
           <VoiceOrb3D
             state={orbState}
@@ -77,10 +74,10 @@ export function OrbZone({
             micAnalyserRef={micAnalyserRef}
             ttsAnalyserRef={ttsAnalyserRef}
             disabled={!audioEnabled}
-            size={200}
+            size={240}
           />
         ) : (
-          <div className="flex justify-center rounded-2xl box-muted py-6 px-8">
+          <div className="flex justify-center rounded-2xl box-muted py-8 px-10">
             <VoiceOrb
               state={orbState}
               disabled={!audioEnabled}
@@ -94,7 +91,7 @@ export function OrbZone({
         )}
       </div>
 
-      {/* Assistant bubble — below orb */}
+      {/* Assistant bubble — below orb, full width */}
       <OrbDialogWindow
         role="assistant"
         text={response}

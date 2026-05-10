@@ -257,6 +257,8 @@ tests/test_node_protocol.py
 tests/test_nodes_init_exports.py
 tests/test_nodes_utility_contracts.py
 tests/test_notifier.py
+tests/test_ollama_runtime_capabilities.py
+tests/test_ollama_runtime_probe.py
 tests/test_ollama_tuning.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py

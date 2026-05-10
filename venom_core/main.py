@@ -106,6 +106,11 @@ from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import validate_environment_policy
 from venom_core.core.llm_server_controller import LlmServerController
 from venom_core.core.metrics import init_metrics_collector
+from venom_core.core.model_registry_clients import OllamaClient
+from venom_core.core.ollama_runtime_probe import (
+    probe_ollama_runtime_capabilities,
+    resolve_voice_pipeline,
+)
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.permission_guard import permission_guard
 from venom_core.core.scheduler import BackgroundScheduler
@@ -210,6 +215,29 @@ def _resolve_voice_session_wav_path(session_id: str) -> Path:
     if not wav_path.is_relative_to(root_path):
         raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka nagrania.")
     return wav_path
+
+
+async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
+    runtime = get_active_llm_runtime()
+    if runtime.provider != "ollama" or not runtime.model_name or not runtime.endpoint:
+        return None
+
+    client = OllamaClient(endpoint=runtime.endpoint)
+    runtime_capabilities = await probe_ollama_runtime_capabilities(
+        client=client,
+        model_name=runtime.model_name,
+        endpoint=runtime.endpoint,
+    )
+    voice_pipeline = resolve_voice_pipeline(runtime_capabilities)
+    return {
+        "runtime_id": runtime.runtime_id,
+        "provider": runtime.provider,
+        "model_name": runtime.model_name,
+        "endpoint": runtime.endpoint,
+        "config_hash": runtime.config_hash,
+        "runtime_capabilities": runtime_capabilities.to_dict(),
+        "voice_pipeline": voice_pipeline.to_dict(),
+    }
 
 
 # Inicjalizacja Model Registry (dla endpointów models)
@@ -1231,11 +1259,18 @@ async def audio_websocket_endpoint(websocket: WebSocket):
 async def audio_status_endpoint(request: Request):
     """Zwraca stan kanału audio i gotowość stacka STT/TTS."""
     if not audio_stream_handler:
+        runtime_snapshot = None
+        try:
+            runtime_snapshot = await _build_voice_runtime_snapshot()
+        except Exception as exc:  # pragma: no cover - best effort diagnostics
+            logger.warning("Nie udało się pobrać runtime snapshot: %s", exc)
+            runtime_snapshot = {"error": str(exc)}
         return {
             "enabled": False,
             "connected_clients": 0,
             "active_recordings": 0,
             "message": "Audio interface is disabled or not initialized.",
+            "runtime_snapshot": runtime_snapshot,
         }
 
     status = audio_stream_handler.get_status(operator_agent=operator_agent)
@@ -1251,6 +1286,13 @@ async def audio_status_endpoint(request: Request):
             request.url_for("download_latest_voice_session")
         )
     status["latest_voice_session"] = latest_session
+    try:
+        status["runtime_snapshot"] = await _build_voice_runtime_snapshot()
+    except Exception as exc:  # pragma: no cover - best effort diagnostics
+        logger.warning("Nie udało się pobrać runtime snapshot: %s", exc)
+        status["runtime_snapshot"] = {
+            "error": str(exc),
+        }
     return status
 
 

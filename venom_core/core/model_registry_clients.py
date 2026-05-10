@@ -56,6 +56,38 @@ class OllamaClient:
                 logger.warning(f"Ollama list_tags failed: {e}")
                 return {"models": []}
 
+    async def get_model_show(self, model_name: str) -> Dict[str, Any]:
+        async with TrafficControlledHttpClient(
+            provider="ollama",
+            timeout=10.0,
+        ) as client:
+            try:
+                response = await client.apost(
+                    f"{self.endpoint}/api/show",
+                    json={"model": model_name},
+                    follow_redirects=True,
+                )
+                return response.json()
+            except Exception as e:
+                logger.warning(f"Ollama show failed for {model_name}: {e}")
+                return {}
+
+    async def chat(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        async with TrafficControlledHttpClient(
+            provider="ollama",
+            timeout=30.0,
+        ) as client:
+            try:
+                response = await client.apost(
+                    f"{self.endpoint}/api/chat",
+                    json=payload,
+                    follow_redirects=True,
+                )
+                return response.json()
+            except Exception as e:
+                logger.warning(f"Ollama chat probe failed: {e}")
+                return {}
+
     async def search_models(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Przeszukuje modele na ollama.com (scraping)."""
         url = "https://ollama.com/search"

@@ -3901,6 +3901,30 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_ollama_runtime_capabilities.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_ollama_runtime_probe.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_onnx_llm_client.py",
       "domain": "runtime",
       "test_type": "unit",

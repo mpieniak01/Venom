@@ -67,6 +67,16 @@ async def test_audio_status_endpoint_includes_latest_session_download_url(monkey
 
     monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
     monkeypatch.setattr(main_module, "operator_agent", object())
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(
+            return_value={
+                "runtime_id": "ollama@localhost",
+                "model_name": "gemma4:latest",
+            }
+        ),
+    )
     request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
 
     status = await main_module.audio_status_endpoint(request)
@@ -76,6 +86,7 @@ async def test_audio_status_endpoint_includes_latest_session_download_url(monkey
         "https://example.test/download_latest_voice_session"
     )
     assert status["latest_voice_session"]["transcription"] == "hello"
+    assert status["runtime_snapshot"]["model_name"] == "gemma4:latest"
 
 
 @pytest.mark.asyncio
@@ -83,12 +94,18 @@ async def test_audio_status_endpoint_returns_disabled_state_without_handler(
     monkeypatch,
 ):
     monkeypatch.setattr(main_module, "audio_stream_handler", None)
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(return_value={"runtime_id": "ollama@localhost"}),
+    )
     request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
 
     status = await main_module.audio_status_endpoint(request)
 
     assert status["enabled"] is False
     assert status["message"] == "Audio interface is disabled or not initialized."
+    assert status["runtime_snapshot"]["runtime_id"] == "ollama@localhost"
 
 
 @pytest.mark.asyncio

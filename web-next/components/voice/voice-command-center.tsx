@@ -53,12 +53,37 @@ type AudioStatus = {
     download_url?: string | null;
   } | null;
   message?: string;
+  runtime_snapshot?: {
+    runtime_id?: string | null;
+    provider?: string | null;
+    model_name?: string | null;
+    endpoint?: string | null;
+    config_hash?: string | null;
+    runtime_capabilities?: {
+      compatibility_profile?: string | null;
+      probe_status?: string | null;
+      capabilities?: Record<string, boolean | string | null | undefined>;
+      probes?: Record<string, { status?: string | null; reason?: string | null }>;
+      fallbacks?: Record<string, string | null | undefined>;
+    } | null;
+    voice_pipeline?: {
+      profile?: string | null;
+      stt?: string | null;
+      reasoning?: string | null;
+      tools?: string | null;
+      vision?: string | null;
+      tts?: string | null;
+      notes?: string[] | null;
+    } | null;
+    error?: string | null;
+  } | null;
 };
 
 type PlaybackState = "idle" | "playing" | "muted" | "error";
 
 type Translator = (key: string, variables?: Record<string, string | number>) => string;
 type VoiceRuntime = NonNullable<NonNullable<AudioStatus["latest_voice_session"]>["runtime"]>;
+type RuntimeSnapshot = NonNullable<AudioStatus["runtime_snapshot"]>;
 
 declare global {
   interface Window {
@@ -144,6 +169,138 @@ const buildRuntimeSummary = (runtime?: VoiceRuntime | null): string => {
   ];
   return parts.filter((part): part is string => Boolean(part)).join(" · ");
 };
+
+const buildRuntimeSnapshotSummary = (
+  runtimeSnapshot: AudioStatus["runtime_snapshot"],
+): string => {
+  if (!runtimeSnapshot) return "";
+  if (runtimeSnapshot.error) return runtimeSnapshot.error;
+  const profile = runtimeSnapshot.runtime_capabilities?.compatibility_profile ?? "";
+  const probeStatus = runtimeSnapshot.runtime_capabilities?.probe_status ?? "";
+  const pipeline = runtimeSnapshot.voice_pipeline;
+  const parts = [
+    runtimeSnapshot.model_name ? `${runtimeSnapshot.model_name}` : null,
+    profile ? `profile ${profile}` : null,
+    probeStatus ? `probe ${probeStatus}` : null,
+    pipeline?.stt ? `stt ${pipeline.stt}` : null,
+    pipeline?.reasoning ? `reasoning ${pipeline.reasoning}` : null,
+    pipeline?.tools ? `tools ${pipeline.tools}` : null,
+    pipeline?.vision ? `vision ${pipeline.vision}` : null,
+    pipeline?.tts ? `tts ${pipeline.tts}` : null,
+  ];
+  return parts.filter((part): part is string => Boolean(part)).join(" · ");
+};
+
+const getProbeTone = (status?: string | null): "success" | "warning" | "danger" | "neutral" => {
+  if (status === "verified") return "success";
+  if (status === "failed") return "danger";
+  if (status === "metadata_only") return "warning";
+  return "neutral";
+};
+
+const buildProbeSummary = (runtimeSnapshot: RuntimeSnapshot): string => {
+  const probes = runtimeSnapshot.runtime_capabilities?.probes ?? {};
+  return Object.entries(probes)
+    .map(([name, probe]) => `${name}:${probe.status ?? "?"}`)
+    .join(" · ");
+};
+
+const buildPipelineEntries = (runtimeSnapshot: RuntimeSnapshot): Array<[string, string]> => {
+  const pipeline = runtimeSnapshot.voice_pipeline;
+  return [
+    ["STT", pipeline?.stt ?? "—"],
+    ["Reasoning", pipeline?.reasoning ?? "—"],
+    ["Tools", pipeline?.tools ?? "—"],
+    ["Vision", pipeline?.vision ?? "—"],
+    ["TTS", pipeline?.tts ?? "—"],
+  ];
+};
+
+type RuntimeSnapshotPanelProps = Readonly<{
+  t: Translator;
+  runtimeSnapshot: RuntimeSnapshot | null;
+  runtimeSnapshotSummary: string;
+}>;
+
+function RuntimeSnapshotPanel({
+  t,
+  runtimeSnapshot,
+  runtimeSnapshotSummary,
+}: RuntimeSnapshotPanelProps) {
+  if (!runtimeSnapshot) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="eyebrow">{t("voice.controls.runtimeSnapshot")}</p>
+            <p className="mt-1 text-sm text-zinc-300">{t("voice.controls.noRuntimeSnapshot")}</p>
+          </div>
+          <Badge tone="neutral">{t("voice.controls.offline")}</Badge>
+        </div>
+      </div>
+    );
+  }
+
+  const capabilities = runtimeSnapshot.runtime_capabilities;
+  const probeStatus = capabilities?.probe_status ?? "unknown";
+  const probeSummary = buildProbeSummary(runtimeSnapshot);
+  const pipelineEntries = buildPipelineEntries(runtimeSnapshot);
+  const notes = runtimeSnapshot.voice_pipeline?.notes ?? [];
+
+  return (
+    <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.06] p-4 shadow-[0_0_32px_rgba(16,185,129,0.08)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow">{t("voice.controls.runtimeSnapshot")}</p>
+          <p className="mt-1 text-base font-semibold text-white">
+            {runtimeSnapshot.model_name ?? t("voice.controls.unknownModel")}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {runtimeSnapshotSummary || runtimeSnapshot.provider || "—"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={getProbeTone(probeStatus)}>
+            {t("voice.controls.probeStatus")}: {probeStatus}
+          </Badge>
+          <Badge tone="neutral">
+            {capabilities?.compatibility_profile ?? runtimeSnapshot.voice_pipeline?.profile ?? "unknown"}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
+          <p className="text-caption">{t("voice.controls.provider")}</p>
+          <p className="mt-1 text-white">{runtimeSnapshot.provider ?? runtimeSnapshot.runtime_id ?? "—"}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
+          <p className="text-caption">{t("voice.controls.profile")}</p>
+          <p className="mt-1 text-white">{capabilities?.compatibility_profile ?? "—"}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
+          <p className="text-caption">{t("voice.controls.pipeline")}</p>
+          <p className="mt-1 text-white">{runtimeSnapshot.voice_pipeline?.profile ?? "—"}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-5">
+        {pipelineEntries.map(([label, value]) => (
+          <div key={label} className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs">
+            <p className="text-caption">{label}</p>
+            <p className="mt-1 text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
+        <p className="text-caption">{t("voice.controls.probes")}</p>
+        <p className="mt-1 text-white">{probeSummary || "—"}</p>
+        {notes.length > 0 && <p className="mt-2 text-hint">{notes.join(" · ")}</p>}
+      </div>
+    </div>
+  );
+}
 
 const buildQualitySummary = (latestVoiceSession: AudioStatus["latest_voice_session"]): string => {
   const parts: string[] = [];
@@ -1382,10 +1539,12 @@ export function VoiceCommandCenter({
   );
   const recordingButtonLabel = getRecordingButtonLabel(t, recording, isVoiceModeEnabled);
   const latestVoiceSession = audioStatus?.latest_voice_session;
+  const runtimeSnapshot = audioStatus?.runtime_snapshot ?? null;
   const activeVoiceMode: VoiceModePreset = voiceModePreset || "standard";
   const activeVoiceModeMeta = getVoiceModeMeta(t, activeVoiceMode);
   const timingSummary = buildTimingSummary(latestVoiceSession?.timings_ms);
   const runtimeSummary = buildRuntimeSummary(latestVoiceSession?.runtime ?? null);
+  const runtimeSnapshotSummary = buildRuntimeSnapshotSummary(runtimeSnapshot);
   const qualitySummary = buildQualitySummary(latestVoiceSession);
   const latestRecordingSummary = buildLatestRecordingSummary(latestVoiceSession);
   const voiceChatModeLabel = isVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat");
@@ -1506,6 +1665,11 @@ export function VoiceCommandCenter({
               <p className="text-[11px] text-zinc-400">{activeVoiceModeMeta.description}</p>
             </div>
           </div>
+          <RuntimeSnapshotPanel
+            t={t}
+            runtimeSnapshot={runtimeSnapshot}
+            runtimeSnapshotSummary={runtimeSnapshotSummary}
+          />
           <canvas ref={canvasRef} width={320} height={80} className="w-full rounded-2xl box-muted" />
           <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
           <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">

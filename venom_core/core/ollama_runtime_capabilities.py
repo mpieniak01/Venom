@@ -26,7 +26,7 @@ class OllamaRuntimeCapabilities:
     context_length: int | None = None
     parameter_size: str | None = None
     quantization: str | None = None
-    capabilities: dict[str, bool] = field(default_factory=dict)
+    capabilities: dict[str, bool | str] = field(default_factory=dict)
     raw_capabilities: list[str] = field(default_factory=list)
     details: dict[str, Any] = field(default_factory=dict)
     model_info: dict[str, Any] = field(default_factory=dict)
@@ -95,7 +95,7 @@ def normalize_ollama_show_payload(
     parameter_size = details.get("parameter_size") or details.get("size")
     quantization = details.get("quantization_level") or details.get("quantization")
 
-    capabilities = {
+    capabilities: dict[str, bool | str] = {
         "text_completion": True,
         "vision_input": "vision" in capability_set,
         "audio_input": "audio" in capability_set,

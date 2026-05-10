@@ -11,7 +11,7 @@ import uuid
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
 
 import numpy as np
 from fastapi import WebSocket, WebSocketDisconnect
@@ -38,7 +38,7 @@ VOICE_SESSION_WAV_FILENAME = "recording.wav"
 VOICE_SESSION_METADATA_FILENAME = "metadata.json"
 
 
-def _load_voice_session_metadata(metadata_path: Path) -> dict[str, object]:
+def _load_voice_session_metadata(metadata_path: Path) -> dict[str, Any]:
     if not metadata_path.exists():
         return {}
     try:
@@ -47,7 +47,7 @@ def _load_voice_session_metadata(metadata_path: Path) -> dict[str, object]:
         return {}
 
 
-def _is_voice_session_eligible(metadata: dict[str, object]) -> bool:
+def _is_voice_session_eligible(metadata: dict[str, Any]) -> bool:
     duration_sec = metadata.get("duration_sec")
     samples = metadata.get("samples")
     try:
@@ -67,8 +67,8 @@ def _is_voice_session_eligible(metadata: dict[str, object]) -> bool:
 
 
 def _build_voice_session_record(
-    session_dir: Path, metadata: dict[str, object]
-) -> dict[str, object]:
+    session_dir: Path, metadata: dict[str, Any]
+) -> dict[str, Any]:
     return {
         "session_id": session_dir.name,
         "created_at": metadata.get("created_at"),
@@ -90,14 +90,26 @@ def _build_voice_session_record(
     }
 
 
+def _coerce_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_str(value: Any, default: str) -> str:
+    text = str(value).strip()
+    return text or default
+
+
 def collect_latest_voice_session_record(
     session_root: Path = VOICE_SESSION_ROOT,
-) -> dict[str, object] | None:
+) -> dict[str, Any] | None:
     """Zwraca najnowszą sesję voice z katalogu sesji."""
     if not session_root.exists():
         return None
 
-    candidates: list[tuple[float, Path, dict[str, object]]] = []
+    candidates: list[tuple[float, Path, dict[str, Any]]] = []
     for session_dir in session_root.iterdir():
         if not session_dir.is_dir():
             continue
@@ -275,7 +287,7 @@ class AudioStreamHandler:
 
     async def _handle_control_message(
         self, connection_id: int, message: str, operator_agent
-    ):
+    ) -> None:
         """
         Obsługuje wiadomości sterujące (JSON).
 
@@ -308,25 +320,25 @@ class AudioStreamHandler:
         if command == "ping":
             await self._send_json(connection_id, {"type": "pong"})
 
-    async def _start_recording(self, connection_id: int, data: dict) -> None:
+    async def _start_recording(self, connection_id: int, data: dict[str, Any]) -> None:
         conn = self.active_connections[connection_id]
         conn["audio_buffer"] = []
         conn["audio_bytes_buffer"] = []
         conn["is_speaking"] = True
         self._cancel_silence_finalize_task(conn)
-        audio_config = conn.get("audio_config") or {}
-        conn["sample_rate"] = int(
-            data.get("sample_rate") or audio_config.get("sample_rate") or 16000
+        audio_config = conn["audio_config"]
+        conn["sample_rate"] = _coerce_int(
+            data.get("sample_rate") or audio_config.get("sample_rate"), 16000
         )
         conn["speech_detected"] = False
-        conn["recording_format"] = str(
-            data.get("format") or audio_config.get("format") or "pcm16"
+        conn["recording_format"] = _coerce_str(
+            data.get("format") or audio_config.get("format"), "pcm16"
         )
-        conn["mime_type"] = str(
-            data.get("mime_type") or audio_config.get("mime_type") or ""
+        conn["mime_type"] = _coerce_str(
+            data.get("mime_type") or audio_config.get("mime_type"), ""
         )
-        conn["channels"] = int(
-            data.get("channels") or audio_config.get("channels") or 1
+        conn["channels"] = _coerce_int(
+            data.get("channels") or audio_config.get("channels"), 1
         )
         conn["audio_config"] = {
             "sample_rate": conn["sample_rate"],
@@ -341,20 +353,22 @@ class AudioStreamHandler:
             connection_id, {"type": "recording_started", "status": "ok"}
         )
 
-    async def _apply_audio_config(self, connection_id: int, data: dict) -> None:
+    async def _apply_audio_config(
+        self, connection_id: int, data: dict[str, Any]
+    ) -> None:
         conn = self.active_connections[connection_id]
         conn["audio_config"] = {
-            "sample_rate": int(data.get("sample_rate") or 16000),
-            "channels": int(data.get("channels") or 1),
-            "format": str(data.get("format") or "pcm16"),
-            "mime_type": str(data.get("mime_type") or ""),
+            "sample_rate": _coerce_int(data.get("sample_rate"), 16000),
+            "channels": _coerce_int(data.get("channels"), 1),
+            "format": _coerce_str(data.get("format"), "pcm16"),
+            "mime_type": _coerce_str(data.get("mime_type"), ""),
         }
         if data.get("sample_rate"):
-            conn["sample_rate"] = int(data.get("sample_rate"))
+            conn["sample_rate"] = _coerce_int(data.get("sample_rate"), 16000)
         if data.get("format"):
-            conn["recording_format"] = str(data.get("format"))
+            conn["recording_format"] = _coerce_str(data.get("format"), "pcm16")
         if data.get("mime_type"):
-            conn["mime_type"] = str(data.get("mime_type"))
+            conn["mime_type"] = _coerce_str(data.get("mime_type"), "")
         logger.info(
             "Ustawiono audio_config dla %s: %s", connection_id, conn["audio_config"]
         )
@@ -367,9 +381,9 @@ class AudioStreamHandler:
             },
         )
 
-    async def _apply_voice_mode(self, connection_id: int, data: dict) -> None:
+    async def _apply_voice_mode(self, connection_id: int, data: dict[str, Any]) -> None:
         conn = self.active_connections[connection_id]
-        voice_mode = str(data.get("mode") or "standard").strip() or "standard"
+        voice_mode = _coerce_str(data.get("mode"), "standard")
         conn["voice_mode"] = voice_mode
         logger.info("Ustawiono voice_mode dla %s: %s", connection_id, voice_mode)
         await self._send_json(
@@ -397,7 +411,7 @@ class AudioStreamHandler:
                 connection_id,
                 conn["audio_bytes_buffer"],
                 operator_agent,
-                mime_type=conn.get("mime_type", ""),
+                mime_type=_coerce_str(conn.get("mime_type"), ""),
             )
             conn["audio_bytes_buffer"] = []
             return
@@ -406,7 +420,7 @@ class AudioStreamHandler:
                 connection_id,
                 conn["audio_buffer"],
                 operator_agent,
-                sample_rate=conn.get("sample_rate", 16000),
+                sample_rate=_coerce_int(conn.get("sample_rate"), 16000),
             )
             conn["audio_buffer"] = []
 
@@ -450,7 +464,7 @@ class AudioStreamHandler:
             self._schedule_silence_finalize(
                 connection_id,
                 operator_agent,
-                sample_rate=int(conn.get("sample_rate", 16000)),
+                sample_rate=_coerce_int(conn.get("sample_rate"), 16000),
             )
 
     def _detect_voice_activity(self, audio_data: np.ndarray) -> bool:
@@ -481,7 +495,7 @@ class AudioStreamHandler:
         except Exception:
             return False
 
-    def _cancel_silence_finalize_task(self, conn: dict[str, object] | None) -> None:
+    def _cancel_silence_finalize_task(self, conn: Any | None) -> None:
         if not conn:
             return
         task = conn.get("silence_finalize_task")
@@ -530,6 +544,13 @@ class AudioStreamHandler:
 
         task = asyncio.create_task(finalize_after_silence())
         conn["silence_finalize_task"] = task
+
+    def _connection_voice_mode(self, connection_id: int) -> str:
+        conn = self.active_connections.get(connection_id)
+        if not conn:
+            return "standard"
+        voice_mode = conn["voice_mode"]
+        return str(voice_mode).strip() or "standard"
 
     async def _process_audio_buffer(
         self,
@@ -594,9 +615,7 @@ class AudioStreamHandler:
                     "transcription": transcription,
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
-                    "voice_mode": self.active_connections.get(connection_id, {}).get(
-                        "voice_mode", "standard"
-                    ),
+                    "voice_mode": self._connection_voice_mode(connection_id),
                 },
             )
 
@@ -622,11 +641,7 @@ class AudioStreamHandler:
                 agent_started_at = time.perf_counter()
                 response_text = await operator_agent.process(
                     transcription,
-                    mode=str(
-                        self.active_connections.get(connection_id, {}).get(
-                            "voice_mode", "standard"
-                        )
-                    ),
+                    mode=self._connection_voice_mode(connection_id),
                 )
                 timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
                 self._update_voice_session_metadata(
@@ -710,9 +725,7 @@ class AudioStreamHandler:
                     else 0.0,
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
-                    "voice_mode": self.active_connections.get(connection_id, {}).get(
-                        "voice_mode", "standard"
-                    ),
+                    "voice_mode": self._connection_voice_mode(connection_id),
                 },
             )
             logger.info(f"Zapisano sesję audio MediaRecorder: {session_dir}")
@@ -763,11 +776,7 @@ class AudioStreamHandler:
                 agent_started_at = time.perf_counter()
                 response_text = await operator_agent.process(
                     transcription,
-                    mode=str(
-                        self.active_connections.get(connection_id, {}).get(
-                            "voice_mode", "standard"
-                        )
-                    ),
+                    mode=self._connection_voice_mode(connection_id),
                 )
                 timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
                 self._update_voice_session_metadata(
@@ -974,7 +983,7 @@ class AudioStreamHandler:
         """Zwraca czas etapu w milisekundach, zaokrąglony dla metadanych UI."""
         return round((time.perf_counter() - started_at) * 1000.0, 1)
 
-    def _build_runtime_metadata(self, operator_agent=None) -> dict[str, object]:
+    def _build_runtime_metadata(self, operator_agent=None) -> dict[str, Any]:
         """Buduje snapshot runtime STT/LLM/TTS dla sesji głosowej."""
         audio_engine = self.audio_engine
         whisper = getattr(audio_engine, "whisper", None) if audio_engine else None
@@ -998,10 +1007,12 @@ class AudioStreamHandler:
             "tts_sample_rate": self._get_tts_sample_rate(),
         }
 
-    def _update_voice_session_metadata(self, session_dir: Path, payload: dict) -> None:
+    def _update_voice_session_metadata(
+        self, session_dir: Path, payload: dict[str, Any]
+    ) -> None:
         """Dopisuje metadane do metadata.json."""
         metadata_path = session_dir / VOICE_SESSION_METADATA_FILENAME
-        current: dict = {}
+        current: dict[str, Any] = {}
         if metadata_path.exists():
             try:
                 current = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -1012,7 +1023,7 @@ class AudioStreamHandler:
             json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    async def _send_json(self, connection_id: int, data: dict):
+    async def _send_json(self, connection_id: int, data: dict[str, Any]) -> None:
         """
         Wysyła JSON przez WebSocket.
 

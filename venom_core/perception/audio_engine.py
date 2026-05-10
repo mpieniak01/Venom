@@ -119,7 +119,7 @@ class WhisperSkill:
         audio = np.clip(audio, -1.0, 1.0)
         if sample_rate and sample_rate != 16000 and audio.size > 1:
             try:
-                from scipy.signal import resample_poly
+                from scipy.signal import resample_poly  # type: ignore[import-untyped]
 
                 audio = resample_poly(audio.astype(np.float32), 16000, int(sample_rate))
             except Exception:

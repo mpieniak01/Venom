@@ -41,6 +41,20 @@ VOICE_MODE_PROMPTS = {
 }
 
 
+def _coerce_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class OperatorAgent(BaseAgent):
     """
     Agent interfejsu głosowo-sprzętowego (THE_AVATAR).
@@ -269,8 +283,8 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             # Ustawienia wykonania
             settings = OpenAIChatPromptExecutionSettings(
                 service_id=service_id,
-                max_tokens=int(mode_prompt["max_tokens"]),
-                temperature=float(mode_prompt["temperature"]),
+                max_tokens=_coerce_int(mode_prompt["max_tokens"], 0),
+                temperature=_coerce_float(mode_prompt["temperature"], 0.7),
             )
 
             # Pobierz usługę czatu

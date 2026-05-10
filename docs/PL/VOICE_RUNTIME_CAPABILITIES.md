@@ -18,19 +18,19 @@ Aktualna bezpieczna ścieżka produkcyjna:
 
 ### Aktualny baseline STT
 
-Domyślny model speech-to-text to `base`.
+Domyślny model speech-to-text to `medium`.
 
 Dlaczego:
 
-1. daje najlepszy balans latencji do jakości dla obecnej pętli voice,
-2. jest najbezpieczniejszym domyślnym wyborem dla przetestowanych komend po polsku,
-3. `medium` i `large-v3` zostają jako fallbacki, gdy jakość transkrypcji wymaga podniesienia poziomu.
+1. po dodatkowych testach po polsku na mowie potocznej daje wyraźnie lepszą jakość rozpoznawania niż `base`,
+2. nadal mieści się w akceptowalnej latencji dla obecnej lokalnej pętli voice na CPU,
+3. `large-v3` zostaje fallbackiem, gdy trzeba jeszcze podnieść jakość.
 
 Rekomendacja modeli:
 
-1. `base` - obecny domyślny i rekomendowany baseline,
-2. `medium` - pierwszy fallback, jeśli `base` gubi słowa lub nazwy własne,
-3. `large-v3` - drugi fallback, gdy warto zapłacić większą latencją za dodatkową próbę jakości,
+1. `medium` - obecny domyślny i rekomendowany baseline,
+2. `base` - szybszy fallback, gdy kluczowa jest latencja i jakość pozostaje akceptowalna,
+3. `large-v3` - jakościowy fallback, gdy warto zapłacić większą latencją za dodatkową próbę jakości,
 4. `large-v3-turbo` - dostępny w nowszych wydaniach `faster-whisper`, ale traktujemy go jako osobny benchmark przed ewentualnym ustawieniem jako default.
 
 ### Dostępne polskie głosy TTS

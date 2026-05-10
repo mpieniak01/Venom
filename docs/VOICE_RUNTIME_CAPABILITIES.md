@@ -18,19 +18,19 @@ Current production-safe path:
 
 ### Current STT baseline
 
-The default speech-to-text model is `base`.
+The default speech-to-text model is `medium`.
 
 Why:
 
-1. it gives the best latency-to-quality balance for the current voice loop,
-2. it is the safest default for the common Polish commands we tested,
-3. `medium` and `large-v3` are still useful fallbacks when transcript quality needs a step up.
+1. after additional Polish tests with natural speech, it gives a clearly better recognition quality than `base`,
+2. it remains acceptable for current local CPU latency targets,
+3. `large-v3` remains a fallback when we need one more quality step.
 
 Model guidance:
 
-1. `base` - current default and recommended baseline,
-2. `medium` - first fallback if `base` misses words or proper names,
-3. `large-v3` - second fallback when you want to trade more latency for one more quality check,
+1. `medium` - current default and recommended baseline,
+2. `base` - faster fallback when latency is critical and recognition quality remains acceptable,
+3. `large-v3` - quality fallback when you want to trade more latency for one more quality check,
 4. `large-v3-turbo` - available in newer faster-whisper releases, but treat it as a separate benchmark path before making it a default.
 
 ### Available Polish TTS voices

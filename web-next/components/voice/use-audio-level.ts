@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 const computeRms = (analyser: AnalyserNode, bufferRef: RefObject<Float32Array | null>): number => {
-  if (!bufferRef.current || bufferRef.current.length !== analyser.fftSize) {
+  if (bufferRef.current?.length !== analyser.fftSize) {
     bufferRef.current = new Float32Array(analyser.fftSize);
   }
 

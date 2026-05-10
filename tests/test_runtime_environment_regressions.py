@@ -146,6 +146,17 @@ def test_tts_helpers_resolve_list_and_root(monkeypatch, tmp_path):
     assert _resolve_tts_model_path("pl_PL-test.onnx") == model_file.resolve()
 
 
+def test_tts_helpers_root_falls_back_to_repo_and_list_empty(monkeypatch, tmp_path):
+    repo_root = tmp_path / "repo-root"
+    repo_root.mkdir(parents=True)
+    monkeypatch.setattr(SETTINGS, "STORAGE_PREFIX", str(tmp_path / "missing-storage"))
+    monkeypatch.setattr(SETTINGS, "REPO_ROOT", str(repo_root))
+
+    expected = repo_root / "data" / "models" / "piper"
+    assert _get_piper_models_root() == expected
+    assert _list_available_tts_models() == []
+
+
 def test_tts_helpers_reject_outside_or_invalid_model(monkeypatch, tmp_path):
     piper_root = tmp_path / "data" / "models" / "piper"
     piper_root.mkdir(parents=True)
@@ -163,6 +174,31 @@ def test_tts_helpers_reject_outside_or_invalid_model(monkeypatch, tmp_path):
     with pytest.raises(main_module.HTTPException) as exc_outside:
         _resolve_tts_model_path(str(outside.resolve()))
     assert exc_outside.value.status_code == 404
+
+
+def test_tts_helpers_reject_non_onnx_even_when_selected(monkeypatch, tmp_path):
+    piper_root = tmp_path / "data" / "models" / "piper"
+    piper_root.mkdir(parents=True)
+    wrong_ext = piper_root / "voice.bin"
+    wrong_ext.write_text("fake")
+
+    monkeypatch.setattr(
+        main_module,
+        "_list_available_tts_models",
+        lambda: [{"id": wrong_ext.name, "label": "voice", "path": str(wrong_ext)}],
+    )
+
+    with pytest.raises(main_module.HTTPException) as exc_ext:
+        _resolve_tts_model_path(wrong_ext.name)
+    assert exc_ext.value.status_code == 400
+
+
+def test_require_localhost_request_rejects_non_loopback():
+    with pytest.raises(main_module.HTTPException) as exc:
+        main_module._require_localhost_request(
+            SimpleNamespace(client=SimpleNamespace(host="10.1.2.3"))
+        )
+    assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -214,3 +250,62 @@ async def test_tts_models_list_and_update_endpoint_runtime_paths(monkeypatch, tm
     assert handler.audio_engine is global_engine
     assert result["status"] == "success"
     assert result["effective_tts_model_path"] == str(model_file)
+
+
+@pytest.mark.asyncio
+async def test_tts_models_list_uses_settings_when_engine_missing(monkeypatch, tmp_path):
+    model_file = tmp_path / "pl_PL-darkman-medium.onnx"
+    model_file.write_text("fake")
+    monkeypatch.setattr(main_module, "audio_engine", None)
+    monkeypatch.setattr(
+        main_module,
+        "_list_available_tts_models",
+        lambda: [
+            {"id": model_file.name, "label": model_file.stem, "path": str(model_file)}
+        ],
+    )
+    monkeypatch.setattr(SETTINGS, "TTS_MODEL_PATH", str(model_file))
+
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    listed = await main_module.list_audio_tts_models(request)
+    assert listed["current_model_path"] == str(model_file)
+
+
+@pytest.mark.asyncio
+async def test_tts_update_uses_handler_engine_when_global_engine_missing(
+    monkeypatch, tmp_path
+):
+    model_file = tmp_path / "pl_PL-mc_speech-medium.onnx"
+    model_file.write_text("fake")
+    monkeypatch.setattr(main_module, "_resolve_tts_model_path", lambda _m: model_file)
+    import venom_core.services.config_manager as config_manager_module
+
+    monkeypatch.setattr(
+        config_manager_module,
+        "config_manager",
+        SimpleNamespace(update_config=lambda _payload: None),
+    )
+
+    handler_calls: list[str] = []
+
+    async def _handler_reload(path: str):
+        handler_calls.append(path)
+        return {"tts_loaded": True, "tts_fallback": False}
+
+    handler_engine = SimpleNamespace(
+        set_tts_model_path=_handler_reload,
+        voice=SimpleNamespace(model_path=str(model_file)),
+    )
+    monkeypatch.setattr(main_module, "audio_engine", None)
+    monkeypatch.setattr(
+        main_module,
+        "audio_stream_handler",
+        SimpleNamespace(audio_engine=handler_engine),
+    )
+
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioTtsModelUpdateRequest(model=model_file.name)
+    result = await main_module.update_audio_tts_model(payload, request)
+
+    assert handler_calls == [str(model_file)]
+    assert result["handler_reload_state"] == {"tts_loaded": True, "tts_fallback": False}

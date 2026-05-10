@@ -886,3 +886,51 @@ html[data-theme="venom-light"] body::before {
 html[data-theme="venom-light"] body::after {
   background: radial-gradient(circle at center, transparent 30%, rgba(71, 85, 105, 0.22) 130%);
 }
+
+/* ── Voice Orb WOW effects ──────────────────────────────────────────── */
+
+@keyframes orb-ripple {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes orb-blob {
+  0%,  100% { border-radius: 60% 40% 70% 30% / 50% 60% 40% 70%; }
+  25%        { border-radius: 40% 60% 30% 70% / 65% 35% 70% 45%; }
+  50%        { border-radius: 70% 30% 55% 45% / 40% 70% 55% 60%; }
+  75%        { border-radius: 35% 65% 45% 55% / 70% 45% 60% 40%; }
+}
+
+@keyframes orb-particle-rise {
+  0%   { transform: translateY(0)     scale(1);   opacity: 0.65; }
+  100% { transform: translateY(-56px) scale(0.2); opacity: 0; }
+}
+
+@keyframes orb-flash {
+  0%   { opacity: 0; }
+  25%  { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+
+@keyframes orb-burst {
+  0%   { transform: scale(1);   opacity: 0.75; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+@keyframes orb-plasma-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes orb-plasma-fast {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+.animate-orb-ripple        { animation: orb-ripple        1.9s ease-out infinite; }
+.animate-orb-blob          { animation: orb-blob           3.2s ease-in-out infinite; }
+.animate-orb-particle-rise { animation: orb-particle-rise  2.1s ease-out forwards; }
+.animate-orb-flash         { animation: orb-flash          0.32s ease-out forwards; }
+.animate-orb-burst         { animation: orb-burst          0.58s ease-out forwards; }
+.animate-orb-plasma-slow   { animation: orb-plasma-slow    9s   linear infinite; }
+.animate-orb-plasma-fast   { animation: orb-plasma-fast    5.5s linear infinite; }

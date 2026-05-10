@@ -9,6 +9,7 @@ import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
 import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
 import { useAudioLevel } from "@/components/voice/use-audio-level";
+import { useOrbEffectsConfig, type OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 
 type AudioStatus = {
   enabled: boolean;
@@ -1079,6 +1080,9 @@ type VoiceCommandCenterStatusSidebarProps = Readonly<{
   reducedMotion: boolean;
   isVoiceModeEnabled: boolean;
   audioEnabled: boolean;
+  effectsConfig: OrbEffectsConfig;
+  micAnalyserRef: RefObject<AnalyserNode | null>;
+  ttsAnalyserRef: RefObject<AnalyserNode | null>;
 }>;
 
 function VoiceCommandCenterStatusSidebar({
@@ -1097,11 +1101,14 @@ function VoiceCommandCenterStatusSidebar({
   reducedMotion,
   isVoiceModeEnabled,
   audioEnabled,
+  effectsConfig,
+  micAnalyserRef,
+  ttsAnalyserRef,
 }: VoiceCommandCenterStatusSidebarProps) {
   return (
     <div className="space-y-3">
       {isVoiceModeEnabled ? (
-        <div className="flex justify-center rounded-2xl box-muted py-4">
+        <div className="flex justify-center rounded-2xl box-muted py-6">
           <VoiceOrb
             state={orbState}
             inputLevel={inputLevel}
@@ -1109,6 +1116,9 @@ function VoiceCommandCenterStatusSidebar({
             disabled={!audioEnabled}
             reducedMotion={reducedMotion}
             label={t(`voice.orb.stateLabel.${orbState}`)}
+            effectsConfig={effectsConfig}
+            micAnalyserRef={micAnalyserRef}
+            ttsAnalyserRef={ttsAnalyserRef}
           />
         </div>
       ) : null}
@@ -1622,6 +1632,7 @@ export function VoiceCommandCenter({
   );
 
   const orbState = deriveOrbState(connected, recording, processingStatus, playbackState, lastAudioSignal);
+  const effectsConfig = useOrbEffectsConfig();
 
   const recordingButtonClass = getRecordingButtonClass(
     audioEnabled,
@@ -1793,6 +1804,9 @@ export function VoiceCommandCenter({
           reducedMotion={reducedMotion}
           isVoiceModeEnabled={isVoiceModeEnabled}
           audioEnabled={audioEnabled}
+          effectsConfig={effectsConfig}
+          micAnalyserRef={analyserRef}
+          ttsAnalyserRef={ttsAnalyserRef}
         />
       </div>
     </Panel>

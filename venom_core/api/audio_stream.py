@@ -496,7 +496,7 @@ class AudioStreamHandler:
                     sample_rate=sample_rate,
                 )
             except asyncio.CancelledError:
-                return
+                raise
             finally:
                 current = self.active_connections.get(connection_id)
                 if current and current.get("silence_finalize_task") is task:

@@ -912,3 +912,25 @@ async def test_handle_audio_data_auto_finalizes_on_silence(monkeypatch):
     assert processed
     assert handler.active_connections[cid]["is_speaking"] is False
     assert handler.active_connections[cid]["audio_buffer"] == []
+
+
+@pytest.mark.asyncio
+async def test_schedule_silence_finalize_reraises_cancelled_error(monkeypatch):
+    """Cancelled silence-finalize tasks should clean up and propagate cancellation."""
+    handler = _make_handler(vad_threshold=0.1, silence_duration=60.0)
+    cid = 78
+    _add_connection(handler, cid, is_speaking=True)
+    handler.active_connections[cid]["audio_buffer"] = [np.ones(32, dtype=np.int16)]
+    handler.active_connections[cid]["speech_detected"] = True
+
+    handler._schedule_silence_finalize(cid, operator_agent=None, sample_rate=16000)
+    task = handler.active_connections[cid]["silence_finalize_task"]
+    assert isinstance(task, asyncio.Task)
+
+    await asyncio.sleep(0)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert handler.active_connections[cid]["silence_finalize_task"] is None

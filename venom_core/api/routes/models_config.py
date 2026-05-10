@@ -15,6 +15,8 @@ from venom_core.api.routes.models_utils import (
 )
 from venom_core.core import metrics as metrics_module
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
+from venom_core.core.model_registry_types import ModelProvider
+from venom_core.core.ollama_runtime_probe import probe_ollama_runtime_capabilities
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -25,6 +27,10 @@ MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
 SERVER_ERROR_DETAIL = "Błąd serwera"
 SERVER_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": SERVER_ERROR_DETAIL}
+}
+NOT_FOUND_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **SERVER_ERROR_RESPONSES,
+    404: {"description": "Model nie znaleziony"},
 }
 
 
@@ -132,6 +138,44 @@ def get_model_capabilities_endpoint(model_name: str):
         raise
     except Exception:
         logger.exception("Błąd podczas pobierania capabilities")
+        raise HTTPException(status_code=500, detail=SERVER_ERROR_DETAIL)
+
+
+@router.get("/models/{model_name}/runtime-capabilities", responses=NOT_FOUND_RESPONSES)
+async def get_model_runtime_capabilities_endpoint(model_name: str):
+    """Pobiera runtime capabilities modelu Ollama na podstawie `/api/show`."""
+    model_registry = get_model_registry()
+    if model_registry is None:
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
+
+    try:
+        provider = model_registry.providers.get(ModelProvider.OLLAMA)
+        if provider is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model {model_name} nie znaleziony w runtime Ollama",
+            )
+
+        runtime_capabilities = await probe_ollama_runtime_capabilities(
+            client=provider.client,
+            model_name=model_name,
+            endpoint=provider.endpoint,
+        )
+        show_probe = runtime_capabilities.probes.get("show") or {}
+        if show_probe.get("status") == "failed":
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model {model_name} nie znaleziony w runtime Ollama",
+            )
+        return {
+            "success": True,
+            "model_name": model_name,
+            "runtime_capabilities": runtime_capabilities.to_dict(),
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Błąd podczas pobierania runtime capabilities")
         raise HTTPException(status_code=500, detail=SERVER_ERROR_DETAIL)
 
 

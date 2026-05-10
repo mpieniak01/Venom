@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from venom_core.agents.operator import OperatorAgent
+from venom_core.agents.operator import OperatorAgent, _coerce_float, _coerce_int
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 
 
@@ -59,6 +59,12 @@ class TestOperatorAgent:
 
         mock_kernel.services = {}
         assert agent._resolve_chat_service_id() == "chat"
+
+    def test_voice_prompt_coercion_helpers(self):
+        assert _coerce_int("12", 0) == 12
+        assert _coerce_int(object(), 7) == 7
+        assert _coerce_float("0.5", 0.1) == pytest.approx(0.5)
+        assert _coerce_float(object(), 0.1) == pytest.approx(0.1)
 
     def test_is_hardware_command_true(self, mock_kernel):
         """Test rozpoznawania komend sprzętowych."""

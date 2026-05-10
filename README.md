@@ -63,6 +63,7 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - [Backend architecture](docs/BACKEND_ARCHITECTURE.md) - Backend modules, responsibilities, and component flows.
 - [Hybrid AI engine](docs/HYBRID_AI_ENGINE.md) - LOCAL/HYBRID/CLOUD routing and local-first policy.
 - [Workflow Control](docs/THE_WORKFLOW_CONTROL.md) - Workflow control model, operations, and guardrails.
+- [Voice runtime capabilities](docs/VOICE_RUNTIME_CAPABILITIES.md) - Current voice loop status and multimodal capability strategy for `ollama`/`vllm`/`onnx`.
 
 ### Agents and capabilities
 - [System agents catalog](docs/SYSTEM_AGENTS_CATALOG.md) - Agent roles, inputs/outputs, and runtime cooperation.

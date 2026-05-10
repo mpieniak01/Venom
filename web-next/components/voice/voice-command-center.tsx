@@ -197,6 +197,21 @@ const getProbeTone = (status?: string | null): "success" | "warning" | "danger" 
   return "neutral";
 };
 
+const getRuntimeSnapshotContainerClass = (
+  tone: "success" | "warning" | "danger" | "neutral",
+): string => {
+  if (tone === "danger") {
+    return "border-rose-400/25 bg-rose-500/[0.06] shadow-[0_0_32px_rgba(244,63,94,0.08)]";
+  }
+  if (tone === "warning") {
+    return "border-amber-400/25 bg-amber-500/[0.06] shadow-[0_0_32px_rgba(245,158,11,0.08)]";
+  }
+  if (tone === "neutral") {
+    return "border-white/10 bg-white/[0.03] shadow-none";
+  }
+  return "border-emerald-400/25 bg-emerald-500/[0.06] shadow-[0_0_32px_rgba(16,185,129,0.08)]";
+};
+
 const buildProbeSummary = (runtimeSnapshot: RuntimeSnapshot): string => {
   const probes = runtimeSnapshot.runtime_capabilities?.probes ?? {};
   return Object.entries(probes)
@@ -242,12 +257,13 @@ function RuntimeSnapshotPanel({
 
   const capabilities = runtimeSnapshot.runtime_capabilities;
   const probeStatus = capabilities?.probe_status ?? "unknown";
+  const containerTone = getProbeTone(runtimeSnapshot.error ? "failed" : probeStatus);
   const probeSummary = buildProbeSummary(runtimeSnapshot);
   const pipelineEntries = buildPipelineEntries(runtimeSnapshot);
   const notes = runtimeSnapshot.voice_pipeline?.notes ?? [];
 
   return (
-    <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.06] p-4 shadow-[0_0_32px_rgba(16,185,129,0.08)]">
+    <div className={`rounded-2xl border p-4 ${getRuntimeSnapshotContainerClass(containerTone)}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="eyebrow">{t("voice.controls.runtimeSnapshot")}</p>
@@ -257,6 +273,9 @@ function RuntimeSnapshotPanel({
           <p className="mt-1 text-xs text-zinc-400">
             {runtimeSnapshotSummary || runtimeSnapshot.provider || "—"}
           </p>
+          {runtimeSnapshot.error ? (
+            <p className="mt-2 text-xs text-rose-200">{runtimeSnapshot.error}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge tone={getProbeTone(probeStatus)}>

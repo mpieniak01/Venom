@@ -98,7 +98,9 @@ def _coerce_int(value: Any, default: int) -> int:
 
 
 def _coerce_str(value: Any, default: str) -> str:
-    text = str(value).strip()
+    if not isinstance(value, str):
+        return default
+    text = value.strip()
     return text or default
 
 

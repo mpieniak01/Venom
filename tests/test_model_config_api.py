@@ -173,3 +173,18 @@ class TestModelConfigAPI:
         )
         assert data["runtime_capabilities"]["capabilities"]["audio_input"] is True
         assert data["runtime_capabilities"]["fallbacks"]["stt"] == "faster_whisper"
+
+    def test_get_model_runtime_capabilities_returns_200_for_probe_failure(self, client):
+        registry = DummyRegistry()
+        ollama_provider = registry.providers[ModelProvider.OLLAMA]
+        ollama_provider.client.chat = AsyncMock(
+            return_value={"message": {"role": "assistant", "content": ""}}
+        )
+        _set_registry(registry)
+
+        response = client.get("/api/v1/models/gemma4:latest/runtime-capabilities")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["runtime_capabilities"]["probes"]["show"]["status"] == "verified"
+        assert data["runtime_capabilities"]["probe_status"] == "failed"

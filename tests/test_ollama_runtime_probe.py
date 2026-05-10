@@ -72,6 +72,7 @@ def test_probe_ollama_runtime_capabilities_builds_snapshot():
     assert caps.probes["tools"]["status"] == "verified"
     assert caps.probes["vision"]["status"] == "verified"
     assert caps.probes["audio"]["status"] == "metadata_only"
+    assert caps.probe_status == "metadata_only"
 
 
 def test_resolve_voice_pipeline_uses_whisper_fallback_for_audio_metadata_only():

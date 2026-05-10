@@ -90,6 +90,53 @@ def resolve_voice_pipeline(
     )
 
 
+def _aggregate_probe_status(probes: dict[str, dict[str, Any]]) -> str:
+    """Scala status probe z poziomu pojedynczych wyników."""
+
+    show_status = probes.get("show", {}).get("status")
+    if show_status == "failed":
+        return "failed"
+
+    probe_statuses = [
+        probe.get("status")
+        for probe_name, probe in probes.items()
+        if probe_name != "show"
+    ]
+    if any(status == "failed" for status in probe_statuses):
+        return "failed"
+    if any(status == "metadata_only" for status in probe_statuses):
+        return "metadata_only"
+    if show_status == "verified":
+        return "verified"
+    return "metadata_only"
+
+
+async def _record_optional_probe(
+    probes: dict[str, dict[str, Any]],
+    *,
+    capability_enabled: bool,
+    probe_name: str,
+    capability_missing_reason: str,
+    probe_fn,
+    client: OllamaClient,
+    model_name: str,
+) -> None:
+    if not capability_enabled:
+        probes[probe_name] = {
+            "status": "metadata_only",
+            "reason": capability_missing_reason,
+        }
+        return
+
+    try:
+        probes[probe_name] = await probe_fn(client, model_name)
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning(
+            "%s probe failed for %s: %s", probe_name.title(), model_name, exc
+        )
+        probes[probe_name] = {"status": "failed", "reason": str(exc)}
+
+
 async def _probe_thinking(client: OllamaClient, model_name: str) -> dict[str, Any]:
     response = await client.chat(
         {
@@ -227,44 +274,45 @@ async def probe_ollama_runtime_capabilities(
 
     probes: dict[str, dict[str, Any]] = {"show": {"status": "verified"}}
 
-    if capabilities.capabilities.get("thinking"):
-        try:
-            probes["thinking"] = await _probe_thinking(client, model_name)
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("Thinking probe failed for %s: %s", model_name, exc)
-            probes["thinking"] = {"status": "failed", "reason": str(exc)}
-    else:
-        probes["thinking"] = {"status": "metadata_only", "reason": "capability_missing"}
-
-    if capabilities.capabilities.get("tool_calling"):
-        try:
-            probes["tools"] = await _probe_tools(client, model_name)
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("Tool probe failed for %s: %s", model_name, exc)
-            probes["tools"] = {"status": "failed", "reason": str(exc)}
-    else:
-        probes["tools"] = {"status": "metadata_only", "reason": "capability_missing"}
-
-    if capabilities.capabilities.get("vision_input"):
-        try:
-            probes["vision"] = await _probe_vision(client, model_name)
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("Vision probe failed for %s: %s", model_name, exc)
-            probes["vision"] = {"status": "failed", "reason": str(exc)}
-    else:
-        probes["vision"] = {"status": "metadata_only", "reason": "capability_missing"}
-
-    if capabilities.capabilities.get("audio_input"):
-        try:
-            probes["audio"] = await _probe_audio(client, model_name)
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("Audio probe failed for %s: %s", model_name, exc)
-            probes["audio"] = {"status": "failed", "reason": str(exc)}
-    else:
-        probes["audio"] = {"status": "metadata_only", "reason": "capability_missing"}
+    await _record_optional_probe(
+        probes,
+        capability_enabled=bool(capabilities.capabilities.get("thinking")),
+        probe_name="thinking",
+        capability_missing_reason="capability_missing",
+        probe_fn=_probe_thinking,
+        client=client,
+        model_name=model_name,
+    )
+    await _record_optional_probe(
+        probes,
+        capability_enabled=bool(capabilities.capabilities.get("tool_calling")),
+        probe_name="tools",
+        capability_missing_reason="capability_missing",
+        probe_fn=_probe_tools,
+        client=client,
+        model_name=model_name,
+    )
+    await _record_optional_probe(
+        probes,
+        capability_enabled=bool(capabilities.capabilities.get("vision_input")),
+        probe_name="vision",
+        capability_missing_reason="capability_missing",
+        probe_fn=_probe_vision,
+        client=client,
+        model_name=model_name,
+    )
+    await _record_optional_probe(
+        probes,
+        capability_enabled=bool(capabilities.capabilities.get("audio_input")),
+        probe_name="audio",
+        capability_missing_reason="capability_missing",
+        probe_fn=_probe_audio,
+        client=client,
+        model_name=model_name,
+    )
 
     capabilities.probes = probes
-    capabilities.probe_status = "verified"
+    capabilities.probe_status = _aggregate_probe_status(probes)
     return capabilities
 
 

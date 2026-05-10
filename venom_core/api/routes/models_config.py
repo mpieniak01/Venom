@@ -161,7 +161,8 @@ async def get_model_runtime_capabilities_endpoint(model_name: str):
             model_name=model_name,
             endpoint=provider.endpoint,
         )
-        if runtime_capabilities.probe_status == "failed":
+        show_probe = runtime_capabilities.probes.get("show") or {}
+        if show_probe.get("status") == "failed":
             raise HTTPException(
                 status_code=404,
                 detail=f"Model {model_name} nie znaleziony w runtime Ollama",

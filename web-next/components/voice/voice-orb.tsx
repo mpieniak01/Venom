@@ -178,26 +178,18 @@ export function VoiceOrb({
     return () => clearTimeout(id);
   }, []);
 
-  const showParticles =
-    !noAnim && cfg.particles &&
-    (effectiveState === "recording" || effectiveState === "tts");
-
   // ── Derived booleans ─────────────────────────────────────────────────
-  const showRipple =
-    !noAnim && cfg.ripple &&
-    (effectiveState === "recording" || effectiveState === "tts");
+  const isActive = effectiveState === "recording" || effectiveState === "tts";
 
-  const showBlob =
-    !noAnim && cfg.blob &&
-    (effectiveState === "recording" || effectiveState === "tts");
+  const showParticles = !noAnim && cfg.particles && isActive;
+  const showRipple    = !noAnim && cfg.ripple    && isActive;
+  const showBlob      = !noAnim && cfg.blob      && isActive;
 
   let activeAnalyser: RefObject<AnalyserNode | null> | undefined;
   if (effectiveState === "recording") activeAnalyser = micAnalyserRef;
   else if (effectiveState === "tts") activeAnalyser = ttsAnalyserRef;
 
-  const showFreqRing =
-    !noAnim && cfg.frequencyRing && !!activeAnalyser &&
-    (effectiveState === "recording" || effectiveState === "tts");
+  const showFreqRing = !noAnim && cfg.frequencyRing && !!activeAnalyser && isActive;
 
   // ── Core scale ───────────────────────────────────────────────────────
   const coreScale = noAnim ? 1 : 1 + Math.min(1, audioLevel) * 0.35;

@@ -1,7 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { buildHttpUrl } from "./utils/url";
-
-const VOICE_URL = buildHttpUrl("127.0.0.1", 3000, "/voice");
 
 test.describe("VoiceOrb smoke", () => {
   test.beforeEach(async ({ page }) => {
@@ -26,30 +23,27 @@ test.describe("VoiceOrb smoke", () => {
   });
 
   test("voice orb is visible on /voice page in voice mode", async ({ page }) => {
-    await page.goto(VOICE_URL, { waitUntil: "domcontentloaded" });
+    await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
-    // The VoiceCommandCenter renders with isVoiceModeEnabled = audioEnabled.
-    // When NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE is not set, audioEnabled=false,
-    // so the toggle button puts us in text mode initially.
-    // We click the Voice/Text toggle to enable voice mode.
+    // Verify the page loaded and the core voice control chrome is rendered —
+    // confirms no JS crash during mount regardless of audio env-var config.
     const toggleButton = page.getByRole("button", { name: /Voice|Text/i }).first();
     await toggleButton.waitFor({ state: "visible", timeout: 10000 });
+    await expect(toggleButton).toBeVisible();
 
-    // When audio is disabled the orb should not be visible (voice mode blocked).
-    // If audio IS enabled (env var set), click to enable voice mode and verify orb.
-    // This test verifies the DOM structure regardless of env config.
+    // When audio is enabled the orb renders in voice mode; when disabled it does
+    // not. Either way, if the page loaded the data-orb-state attribute must have
+    // a valid value from VoiceOrbState when the orb is present.
     const orbContainer = page.locator("[data-orb-state]");
-
-    // orb renders only in voice mode - check if it exists in DOM at all
     const count = await orbContainer.count();
-
-    // Either orb is present (audio enabled + voice mode) or not (audio disabled).
-    // Both are valid - we just assert no JS crash occurred.
-    expect(count).toBeGreaterThanOrEqual(0);
+    if (count > 0) {
+      const orbStateAttr = await orbContainer.first().getAttribute("data-orb-state");
+      expect(["offline","ready","recording","stt","thinking","tts","complete","error"]).toContain(orbStateAttr);
+    }
   });
 
   test("voice page renders controls without layout shift from orb", async ({ page }) => {
-    await page.goto(VOICE_URL, { waitUntil: "domcontentloaded" });
+    await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
     // Push-to-talk button must always be accessible
     const pttButton = page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i });
@@ -67,7 +61,7 @@ test.describe("VoiceOrb smoke", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(VOICE_URL, { waitUntil: "domcontentloaded" });
+    await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
     await page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i }).waitFor({
       state: "visible",
@@ -79,7 +73,7 @@ test.describe("VoiceOrb smoke", () => {
 
   test("voice page mobile layout - controls remain accessible", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(VOICE_URL, { waitUntil: "domcontentloaded" });
+    await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
     await page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i }).waitFor({
       state: "visible",

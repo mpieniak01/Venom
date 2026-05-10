@@ -288,7 +288,7 @@ export function VoiceOrb({
           style={{
             width: CORE_SIZE,
             height: CORE_SIZE,
-            transform: `scale(${coreScale.toFixed(4)})`,
+            transform: `scale(${parseFloat(coreScale.toFixed(4))})`,
             willChange: hasMotion ? "transform" : undefined,
             transition: noAnim
               ? "background-color 300ms, border-radius 400ms"

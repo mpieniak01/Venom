@@ -634,6 +634,7 @@ const deriveOrbState = (
   if (processingStatus) {
     const s = processingStatus.toLowerCase();
     if (s.includes("stt") || s.includes("transcri") || s.includes("whisper")) return "stt";
+    if (s.includes("tts") || s.includes("speak")) return "tts";
     return "thinking";
   }
   if (playbackState === "playing") return "tts";
@@ -1323,6 +1324,7 @@ export function VoiceCommandCenter({
     }
     ttsSourceRef.current?.disconnect();
     ttsSourceRef.current = null;
+    ttsAnalyserRef.current?.disconnect();
     ttsAnalyserRef.current = null;
   }, []);
 
@@ -1416,6 +1418,7 @@ export function VoiceCommandCenter({
           if (ttsSourceRef.current === source) {
             setPlaybackState("idle");
             ttsSourceRef.current = null;
+            ttsAnalyser.disconnect();
             ttsAnalyserRef.current = null;
           }
         };

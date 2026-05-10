@@ -664,7 +664,7 @@ class AudioStreamHandler:
                         connection_id,
                         {
                             "type": "error",
-                            "message": "Model nie zwrócił odpowiedzi. Sprawdź status runtime.",
+                            "message": "Agent returned empty response. Check runtime status.",
                         },
                     )
                     return
@@ -812,7 +812,7 @@ class AudioStreamHandler:
                         connection_id,
                         {
                             "type": "error",
-                            "message": "Model nie zwrócił odpowiedzi. Sprawdź status runtime.",
+                            "message": "Agent returned empty response. Check runtime status.",
                         },
                     )
                     return

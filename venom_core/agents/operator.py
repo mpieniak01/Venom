@@ -106,7 +106,7 @@ async def _ollama_native_call(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(native_url, json=payload)
             resp.raise_for_status()
             return resp.json().get("message", {}).get("content", "") or ""

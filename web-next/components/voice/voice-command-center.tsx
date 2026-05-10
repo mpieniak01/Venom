@@ -1358,6 +1358,18 @@ export function VoiceCommandCenter({
     }
   }, []);
 
+  const releasePlaybackResources = useCallback(() => {
+    try {
+      ttsSourceRef.current?.stop();
+    } catch {
+      // ignore
+    }
+    ttsSourceRef.current?.disconnect();
+    ttsSourceRef.current = null;
+    ttsAnalyserRef.current?.disconnect();
+    ttsAnalyserRef.current = null;
+  }, []);
+
   const applyTtsModel = useCallback(
     async (modelPath: string) => {
       if (!modelPath) return;
@@ -1400,20 +1412,8 @@ export function VoiceCommandCenter({
         setTtsModelChanging(false);
       }
     },
-    [refreshAudioStatus, refreshTtsModelOptions, t],
+    [refreshAudioStatus, refreshTtsModelOptions, releasePlaybackResources, t],
   );
-
-  const releasePlaybackResources = useCallback(() => {
-    try {
-      ttsSourceRef.current?.stop();
-    } catch {
-      // ignore
-    }
-    ttsSourceRef.current?.disconnect();
-    ttsSourceRef.current = null;
-    ttsAnalyserRef.current?.disconnect();
-    ttsAnalyserRef.current = null;
-  }, []);
 
   const getMediaRecorderMimeType = useCallback(() => {
     if (typeof MediaRecorder === "undefined") return "";

@@ -249,15 +249,19 @@ def _list_available_tts_models() -> list[dict[str, str]]:
 
 
 def _resolve_tts_model_path(model: str) -> Path:
-    root = _get_piper_models_root().resolve()
-    candidate = Path(model)
-    if not candidate.is_absolute():
-        candidate = root / candidate
-    resolved = candidate.resolve()
-    if not resolved.is_relative_to(root):
-        raise HTTPException(
-            status_code=400, detail="Model path must be inside Piper models directory."
-        )
+    model_key = str(model).strip()
+    if not model_key:
+        raise HTTPException(status_code=400, detail="Model identifier is required.")
+
+    available = _list_available_tts_models()
+    by_id = {str(item.get("id", "")).strip(): item for item in available}
+    by_path = {str(item.get("path", "")).strip(): item for item in available}
+
+    selected = by_id.get(model_key) or by_path.get(model_key)
+    if selected is None:
+        raise HTTPException(status_code=404, detail="TTS model file not found.")
+
+    resolved = Path(str(selected["path"])).resolve()
     if resolved.suffix != ".onnx":
         raise HTTPException(
             status_code=400, detail="Only .onnx TTS models are supported."
@@ -1350,7 +1354,12 @@ async def audio_status_endpoint(request: Request):
     return status
 
 
-@app.get("/api/v1/audio/tts/models")
+@app.get(
+    "/api/v1/audio/tts/models",
+    responses={
+        403: {"description": "Endpoint only available from localhost."},
+    },
+)
 async def list_audio_tts_models(request: Request):
     _require_localhost_request(request)
     current_model_path = ""
@@ -1364,7 +1373,14 @@ async def list_audio_tts_models(request: Request):
     }
 
 
-@app.post("/api/v1/audio/tts/models")
+@app.post(
+    "/api/v1/audio/tts/models",
+    responses={
+        400: {"description": "Invalid TTS model identifier or unsupported extension."},
+        403: {"description": "Endpoint only available from localhost."},
+        404: {"description": "Requested TTS model was not found."},
+    },
+)
 async def update_audio_tts_model(payload: AudioTtsModelUpdateRequest, request: Request):
     global audio_stream_handler
     _require_localhost_request(request)
@@ -1383,15 +1399,17 @@ async def update_audio_tts_model(payload: AudioTtsModelUpdateRequest, request: R
     # i że jego runtime ma przeładowany nowy model TTS.
     handler_reload_state: dict[str, Any] | None = None
     if audio_stream_handler is not None:
+        handler_engine = getattr(audio_stream_handler, "audio_engine", None)
         if audio_engine is not None:
             audio_stream_handler.audio_engine = audio_engine
+            handler_engine = audio_engine
+
+        if handler_engine is not None and handler_engine is not audio_engine:
+            handler_reload_state = await handler_engine.set_tts_model_path(
+                str(model_path)
+            )
+        elif handler_engine is not None:
             handler_reload_state = reload_state
-        else:
-            handler_engine = getattr(audio_stream_handler, "audio_engine", None)
-            if handler_engine is not None:
-                handler_reload_state = await handler_engine.set_tts_model_path(
-                    str(model_path)
-                )
 
     effective_model_path = str(model_path)
     if (

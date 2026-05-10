@@ -158,11 +158,11 @@ def test_tts_helpers_reject_outside_or_invalid_model(monkeypatch, tmp_path):
 
     with pytest.raises(main_module.HTTPException) as exc_ext:
         _resolve_tts_model_path("voice.bin")
-    assert exc_ext.value.status_code == 400
+    assert exc_ext.value.status_code == 404
 
     with pytest.raises(main_module.HTTPException) as exc_outside:
         _resolve_tts_model_path(str(outside.resolve()))
-    assert exc_outside.value.status_code == 400
+    assert exc_outside.value.status_code == 404
 
 
 @pytest.mark.asyncio

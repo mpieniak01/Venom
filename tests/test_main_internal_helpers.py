@@ -287,13 +287,13 @@ def test_resolve_tts_model_path_validates_location_suffix_and_existence(
 
     with pytest.raises(main_module.HTTPException) as exc_suffix:
         main_module._resolve_tts_model_path("pl_PL-test.bin")
-    assert exc_suffix.value.status_code == 400
+    assert exc_suffix.value.status_code == 404
 
     outside = tmp_path / "outside.onnx"
     outside.write_text("fake")
     with pytest.raises(main_module.HTTPException) as exc_outside:
         main_module._resolve_tts_model_path(str(outside.resolve()))
-    assert exc_outside.value.status_code == 400
+    assert exc_outside.value.status_code == 404
 
     with pytest.raises(main_module.HTTPException) as exc_missing:
         main_module._resolve_tts_model_path("missing.onnx")

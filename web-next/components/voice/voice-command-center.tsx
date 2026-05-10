@@ -860,6 +860,117 @@ const VOICE_MODE_HINT_KEYS: Record<VoiceModePreset, string> = {
   action_items: "voice.modes.actionItems.description",
 };
 
+type VoiceCommandCenterStatusSidebarProps = Readonly<{
+  t: Translator;
+  audioStatus: AudioStatus | null;
+  latestVoiceSession: AudioStatus["latest_voice_session"];
+  latestRecordingSummary: string;
+  qualitySummary: string;
+  timingSummary: string;
+  runtimeSummary: string;
+  transcription: string;
+  response: string;
+}>;
+
+function VoiceCommandCenterStatusSidebar({
+  t,
+  audioStatus,
+  latestVoiceSession,
+  latestRecordingSummary,
+  qualitySummary,
+  timingSummary,
+  runtimeSummary,
+  transcription,
+  response,
+}: VoiceCommandCenterStatusSidebarProps) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl box-muted p-4">
+        <p className="eyebrow">{t("voice.controls.audioWs")}</p>
+        {audioStatus ? (
+          <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+            <div>
+              <p className="text-caption">{t("voice.controls.enabled")}</p>
+              <p className="text-white">{audioStatus.enabled ? t("common.yes") : t("common.no")}</p>
+            </div>
+            <div>
+              <p className="text-caption">{t("voice.controls.clients")}</p>
+              <p className="text-white">{audioStatus.connected_clients}</p>
+            </div>
+            <div>
+              <p className="text-caption">{t("voice.controls.recordings")}</p>
+              <p className="text-white">{audioStatus.active_recordings}</p>
+            </div>
+            <div>
+              <p className="text-caption">VAD</p>
+              <p className="text-white">{audioStatus.vad_threshold ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-caption">{t("voice.controls.whisper")}</p>
+              <p className="text-white">{audioStatus.whisper_model_size ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-caption">{t("voice.controls.sttReady")}</p>
+              <p className="text-white">{audioStatus.stt_ready ? t("common.yes") : t("common.no")}</p>
+            </div>
+            <div>
+              <p className="text-caption">{t("voice.controls.ttsReady")}</p>
+              <p className="text-white">{audioStatus.tts_ready ? t("common.yes") : t("common.no")}</p>
+            </div>
+            <div>
+              <p className="text-caption">{t("voice.controls.ttsFallback")}</p>
+              <p className="text-white">{audioStatus.tts_fallback ? t("common.yes") : t("common.no")}</p>
+            </div>
+            {audioStatus.dependencies && (
+              <div className="sm:col-span-2">
+                <p className="text-caption">{t("voice.controls.dependencies")}</p>
+                <p className="text-white">
+                  {Object.entries(audioStatus.dependencies)
+                    .map(([name, ok]) => `${name}:${ok ? "yes" : "no"}`)
+                    .join(" · ")}
+                </p>
+              </div>
+            )}
+            {latestVoiceSession?.download_url && (
+              <div className="sm:col-span-2">
+                <p className="text-caption">{t("voice.controls.latestRecording")}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Button asChild size="xs" variant="outline">
+                    <a href={latestVoiceSession.download_url} target="_blank" rel="noreferrer">
+                      {t("voice.controls.downloadWav")}
+                    </a>
+                  </Button>
+                  <span className="text-[11px] text-zinc-400">{latestRecordingSummary || "—"}</span>
+                </div>
+                <p className="mt-1 text-hint">
+                  {t("voice.controls.sessionId")}: {latestVoiceSession.session_id}
+                </p>
+                {qualitySummary && <p className="mt-1 text-hint">{t("voice.controls.quality")}: {qualitySummary}</p>}
+                {timingSummary && <p className="mt-1 text-hint">{t("voice.controls.timings")}: {timingSummary}</p>}
+                {runtimeSummary && <p className="mt-1 text-hint">{t("voice.controls.runtime")}: {runtimeSummary}</p>}
+                {latestVoiceSession.transcription && (
+                  <p className="mt-1 text-hint">STT: {latestVoiceSession.transcription}</p>
+                )}
+              </div>
+            )}
+            {audioStatus.message && <div className="sm:col-span-2 text-hint">{audioStatus.message}</div>}
+          </div>
+        ) : (
+          <p className="mt-2 text-hint">{t("voice.controls.noRecordingYet")}</p>
+        )}
+      </div>
+      <div className="rounded-2xl box-muted p-4">
+        <p className="eyebrow">{t("voice.controls.transcription")}</p>
+        <p className="mt-2 text-sm text-white">{transcription || t("voice.status.waitingForVoiceCommand")}</p>
+      </div>
+      <div className="rounded-2xl box-muted p-4">
+        <p className="eyebrow">{t("voice.controls.response")}</p>
+        <p className="mt-2 text-sm text-white">{response || t("voice.status.noResponseYet")}</p>
+      </div>
+    </div>
+  );
+}
+
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -1405,115 +1516,22 @@ export function VoiceCommandCenter({
               </div>
               <div>
                 <p className="text-caption">{t("voice.controls.chunks")}</p>
-                <p className="text-white">{audioChunkCount}</p>
+              <p className="text-white">{audioChunkCount}</p>
               </div>
             </div>
           </div>
         </div>
-        <div className="space-y-3">
-          <div className="rounded-2xl box-muted p-4">
-              <p className="eyebrow">{t("voice.controls.audioWs")}</p>
-            {audioStatus ? (
-              <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-                <div>
-                  <p className="text-caption">{t("voice.controls.enabled")}</p>
-                  <p className="text-white">{audioStatus.enabled ? t("common.yes") : t("common.no")}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.clients")}</p>
-                  <p className="text-white">{audioStatus.connected_clients}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.recordings")}</p>
-                  <p className="text-white">{audioStatus.active_recordings}</p>
-                </div>
-                <div>
-                  <p className="text-caption">VAD</p>
-                  <p className="text-white">{audioStatus.vad_threshold ?? "—"}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.whisper")}</p>
-                  <p className="text-white">{audioStatus.whisper_model_size ?? "—"}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.sttReady")}</p>
-                  <p className="text-white">{audioStatus.stt_ready ? t("common.yes") : t("common.no")}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.ttsReady")}</p>
-                  <p className="text-white">{audioStatus.tts_ready ? t("common.yes") : t("common.no")}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.ttsFallback")}</p>
-                  <p className="text-white">{audioStatus.tts_fallback ? t("common.yes") : t("common.no")}</p>
-                </div>
-                {audioStatus.dependencies && (
-                  <div className="sm:col-span-2">
-                    <p className="text-caption">{t("voice.controls.dependencies")}</p>
-                    <p className="text-white">
-                      {Object.entries(audioStatus.dependencies)
-                        .map(([name, ok]) => `${name}:${ok ? "yes" : "no"}`)
-                        .join(" · ")}
-                    </p>
-                  </div>
-                )}
-                {latestVoiceSession?.download_url && (
-                  <div className="sm:col-span-2">
-                    <p className="text-caption">{t("voice.controls.latestRecording")}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <Button asChild size="xs" variant="outline">
-                        <a
-                          href={latestVoiceSession.download_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {t("voice.controls.downloadWav")}
-                        </a>
-                      </Button>
-                      <span className="text-[11px] text-zinc-400">
-                        {latestRecordingSummary || "—"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-hint">
-                      {t("voice.controls.sessionId")}: {latestVoiceSession.session_id}
-                    </p>
-                    {qualitySummary && (
-                      <p className="mt-1 text-hint">{t("voice.controls.quality")}: {qualitySummary}</p>
-                    )}
-                    {timingSummary && (
-                      <p className="mt-1 text-hint">{t("voice.controls.timings")}: {timingSummary}</p>
-                    )}
-                    {runtimeSummary && (
-                      <p className="mt-1 text-hint">{t("voice.controls.runtime")}: {runtimeSummary}</p>
-                    )}
-                    {latestVoiceSession.transcription && (
-                      <p className="mt-1 text-hint">
-                        STT: {latestVoiceSession.transcription}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {audioStatus.message && (
-                  <div className="sm:col-span-2 text-hint">{audioStatus.message}</div>
-                )}
-              </div>
-            ) : (
-              <p className="mt-2 text-hint">{t("voice.controls.noRecordingYet")}</p>
-            )}
-          </div>
-          <div className="rounded-2xl box-muted p-4">
-            <p className="eyebrow">{t("voice.controls.transcription")}</p>
-            <p className="mt-2 text-sm text-white">
-              {transcription || t("voice.status.waitingForVoiceCommand")}
-            </p>
-          </div>
-          <div className="rounded-2xl box-muted p-4">
-            <p className="eyebrow">{t("voice.controls.response")}</p>
-            <p className="mt-2 text-sm text-white">
-              {response || t("voice.status.noResponseYet")}
-            </p>
-          </div>
-        </div>
+        <VoiceCommandCenterStatusSidebar
+          t={t}
+          audioStatus={audioStatus}
+          latestVoiceSession={latestVoiceSession}
+          latestRecordingSummary={latestRecordingSummary}
+          qualitySummary={qualitySummary}
+          timingSummary={timingSummary}
+          runtimeSummary={runtimeSummary}
+          transcription={transcription}
+          response={response}
+        />
       </div>
     </Panel>
   );

@@ -118,8 +118,8 @@ const BAR_DEFS: Array<{
 }> = [
   { key: "cpu", color: "#f97316", rotation: [0, 0, 0] },              // UP   (+Y)
   { key: "gpu", color: "#a855f7", rotation: [0, 0, -Math.PI / 2] },   // RIGHT (+X)
-  { key: "net", color: "#4ade80", rotation: [0, 0, Math.PI] },        // DOWN  (-Y)
-  { key: "ram", color: "#22d3ee", rotation: [0, 0, Math.PI / 2] },    // LEFT  (-X)
+  { key: "vram", color: "#22d3ee", rotation: [0, 0, Math.PI / 2] },   // LEFT  (-X)
+  { key: "ram", color: "#4ade80", rotation: [0, 0, Math.PI] },        // DOWN  (-Y)
 ];
 
 // BoxGeometry with translate(0, 0.5, 0): bottom at Y=0 → scales grow outward.
@@ -170,7 +170,7 @@ function syncOrbMetricBarFrame(
 ) {
   const metrics = metricsRef.current;
   if (!metrics) return;
-  const rawValue = [metrics.cpu, metrics.gpu, metrics.net, metrics.ram][index];
+  const rawValue = [metrics.cpu, metrics.gpu, metrics.vram, metrics.ram][index];
   const pct = Number.isFinite(rawValue) ? rawValue : 0;
   const isGpuAbsent = index === 1 && !Number.isFinite(rawValue);
   const target = MIN_BAR_SCALE + (pct / 100) * (MAX_BAR_RADIUS - MIN_BAR_SCALE);

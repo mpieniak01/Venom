@@ -7,11 +7,11 @@ import { useModelsUsage } from "@/hooks/use-api";
 export type OrbMetrics = {
   cpu: number;
   gpu: number;
-  net: number;
+  vram: number;
   ram: number;
 };
 
-const ZERO_METRICS: OrbMetrics = { cpu: 0, gpu: 0, net: 0, ram: 0 };
+const ZERO_METRICS: OrbMetrics = { cpu: 0, gpu: 0, vram: 0, ram: 0 };
 
 export function useOrbMetrics(): RefObject<OrbMetrics> {
   const metricsRef = useRef<OrbMetrics>({ ...ZERO_METRICS });
@@ -23,7 +23,7 @@ export function useOrbMetrics(): RefObject<OrbMetrics> {
     metricsRef.current = {
       cpu: u.cpu_usage_percent ?? 0,
       gpu: typeof u.gpu_usage_percent === "number" ? u.gpu_usage_percent : Number.NaN,
-      net: u.net_usage_percent ?? 0,
+      vram: u.vram_usage_percent ?? 0,
       ram: u.memory_usage_percent ?? 0,
     };
   }, [data]);

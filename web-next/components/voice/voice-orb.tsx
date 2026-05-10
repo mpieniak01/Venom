@@ -233,9 +233,11 @@ function useOrbParticles() {
 const ARC_DEFS = [
   { key: "cpu" as keyof OrbMetrics, color: "#f97316", startDeg:  45, endDeg: 135 }, // top
   { key: "gpu" as keyof OrbMetrics, color: "#a855f7", startDeg: -45, endDeg:  45 }, // right
-  { key: "net" as keyof OrbMetrics, color: "#4ade80", startDeg: 225, endDeg: 315 }, // bottom
-  { key: "ram" as keyof OrbMetrics, color: "#22d3ee", startDeg: 135, endDeg: 225 }, // left
+  { key: "vram" as keyof OrbMetrics, color: "#22d3ee", startDeg: 135, endDeg: 225 }, // left
+  { key: "ram" as keyof OrbMetrics, color: "#4ade80", startDeg: 225, endDeg: 315 }, // bottom
 ] as const;
+
+const MONO_METRIC_COLOR = "#6b7280";
 
 function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
   const s  = (startDeg * Math.PI) / 180;
@@ -248,6 +250,34 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
   return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 0 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
 }
 
+function sectorPath(
+  cx: number,
+  cy: number,
+  innerR: number,
+  outerR: number,
+  startDeg: number,
+  endDeg: number,
+): string {
+  const s = (startDeg * Math.PI) / 180;
+  const e = (endDeg * Math.PI) / 180;
+  const x1 = cx + outerR * Math.cos(s);
+  const y1 = cy - outerR * Math.sin(s);
+  const x2 = cx + outerR * Math.cos(e);
+  const y2 = cy - outerR * Math.sin(e);
+  const ix2 = cx + innerR * Math.cos(e);
+  const iy2 = cy - innerR * Math.sin(e);
+  const ix1 = cx + innerR * Math.cos(s);
+  const iy1 = cy - innerR * Math.sin(s);
+  return [
+    `M ${cx.toFixed(2)} ${cy.toFixed(2)}`,
+    `L ${x1.toFixed(2)} ${y1.toFixed(2)}`,
+    `A ${outerR.toFixed(2)} ${outerR.toFixed(2)} 0 0 0 ${x2.toFixed(2)} ${y2.toFixed(2)}`,
+    `L ${ix2.toFixed(2)} ${iy2.toFixed(2)}`,
+    `A ${innerR.toFixed(2)} ${innerR.toFixed(2)} 0 0 1 ${ix1.toFixed(2)} ${iy1.toFixed(2)}`,
+    "Z",
+  ].join(" ");
+}
+
 type OrbMetricsBars2DProps = Readonly<{
   metricsRef: RefObject<OrbMetrics>;
   orbSize: number;
@@ -255,6 +285,7 @@ type OrbMetricsBars2DProps = Readonly<{
 }>;
 
 function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DProps) {
+  const sectorRefs = useRef<Array<SVGPathElement | null>>([null, null, null, null]);
   const coreRefs   = useRef<Array<SVGPathElement | null>>([null, null, null, null]);
   const glowRefs   = useRef<Array<SVGPathElement | null>>([null, null, null, null]);
   const rippleRefs = useRef<Array<SVGPathElement | null>>([null, null, null, null]);
@@ -266,6 +297,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
     const cx     = orbSize / 2;
     const cy     = orbSize / 2;
     const ORB_R  = orbSize / 2;
+    const SECTOR_INNER_R = ORB_R * 0.84;
     const MIN_R  = ORB_R * 1.08; // just outside the orb edge
     const MAX_R  = ORB_R * 1.95; // fully loaded: arcs nearly double the orb radius
     const PHASES = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]; // 90° stagger per arc
@@ -278,7 +310,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
     const tick = (now: number) => {
       const t    = now / 1000;
       const m    = metricsRef.current;
-      const vals = [m.cpu, m.gpu, m.net, m.ram];
+      const vals = [m.cpu, m.gpu, m.vram, m.ram];
 
       currents.current = currents.current.map((c, i) => {
         const pct = Number.isFinite(vals[i] ?? Number.NaN) ? (vals[i] as number) : 0;
@@ -298,6 +330,15 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
         const sw = 1.8 + 3.8 * pct + breathe * (0.8 + 1.2 * pct);
         const opa = 0.35 + 0.65 * Math.max(pct, loadPct);
         const d = arcPath(cx, cy, Math.max(MIN_R * 0.95, effR), def.startDeg, def.endDeg);
+        const sectorOuter = Math.max(MIN_R * 0.98, effR + orbSize * 0.02);
+        const sectorOpacity = 0.14 + 0.18 * Math.max(pct, loadPct);
+        const sector = sectorRefs.current[i];
+        if (sector) {
+          sector.setAttribute("d", sectorPath(cx, cy, SECTOR_INNER_R, sectorOuter, def.startDeg, def.endDeg));
+          sector.setAttribute("fill", colorMode ? def.color : MONO_METRIC_COLOR);
+          sector.setAttribute("fill-opacity", String(sectorOpacity.toFixed(3)));
+          sector.setAttribute("stroke", "none");
+        }
 
         const core = coreRefs.current[i];
         if (core) {
@@ -340,9 +381,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [metricsRef, orbSize]);
-
-  const MONO = "#6b7280";
+  }, [colorMode, metricsRef, orbSize]);
 
   return (
     <svg
@@ -364,13 +403,24 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
         </filter>
       </defs>
 
+      {/* Filled quarter sectors — translucent outer layer */}
+      {ARC_DEFS.map(({ key, color }, i) => (
+        <path
+          key={`s-${key}`}
+          ref={(el) => { sectorRefs.current[i] = el; }}
+          fill={colorMode ? color : MONO}
+          fillOpacity={0.14}
+          stroke="none"
+        />
+      ))}
+
       {/* Glow bloom — wide blurred arc copies */}
       {ARC_DEFS.map(({ key, color }, i) => (
         <path
           key={`g-${key}`}
           ref={(el) => { glowRefs.current[i] = el; }}
           fill="none"
-          stroke={colorMode ? color : MONO}
+        stroke={colorMode ? color : MONO_METRIC_COLOR}
           strokeLinecap="round"
           filter="url(#orb-arc-glow)"
         />
@@ -382,7 +432,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
           key={`c-${key}`}
           ref={(el) => { coreRefs.current[i] = el; }}
           fill="none"
-          stroke={colorMode ? color : MONO}
+        stroke={colorMode ? color : MONO_METRIC_COLOR}
           strokeLinecap="round"
         />
       ))}
@@ -393,7 +443,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
           key={`r-${key}`}
           ref={(el) => { rippleRefs.current[i] = el; }}
           fill="none"
-          stroke={colorMode ? color : MONO}
+        stroke={colorMode ? color : MONO_METRIC_COLOR}
           strokeLinecap="round"
           opacity={0}
         />

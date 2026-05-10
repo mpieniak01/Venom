@@ -88,7 +88,7 @@ async def test_audio_status_endpoint_returns_disabled_state_without_handler(
     status = await main_module.audio_status_endpoint(request)
 
     assert status["enabled"] is False
-    assert "wyłączony" in status["message"]
+    assert status["message"] == "Audio interface is disabled or not initialized."
 
 
 @pytest.mark.asyncio

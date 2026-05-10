@@ -65,6 +65,8 @@ export const voice = {
     browserMediaRecorderMissing: "Brak wsparcia MediaRecorder w przeglądarce.",
     processing: "Przetwarzanie ({{status}})",
     noTranscript: "Nie rozpoznano mowy.",
+    waitingForVoiceCommand: "Oczekiwanie na komendę głosową...",
+    noResponseYet: "Brak jeszcze odpowiedzi.",
     transcriptionInserted: "Transkrypcja wstawiona do czatu.",
     channelError: "Błąd kanału audio.",
     playbackMuted: "Odpowiedź audio gotowa, ale odtwarzanie jest wyciszone.",
@@ -74,7 +76,7 @@ export const voice = {
     playbackPlaying: "Odtwarzam odpowiedź głosową.",
     playbackPlayingShort: "Odtwarzanie",
     playbackErrorShort: "Błąd",
-    playbackIdleShort: "Idle",
+    playbackIdleShort: "Gotowy",
     replayUnavailable: "Brak ostatniej odpowiedzi audio do odtworzenia.",
     iotDisabled: "Status IoT wyłączony w konfiguracji.",
     iotEndpointOffline: "Offline – endpoint /api/v1/iot/status nie jest dostępny.",
@@ -99,21 +101,6 @@ export const voice = {
     actionItems: {
       title: "Kroki do wykonania",
       description: "Konkretny plan dalszych kroków.",
-    },
-  },
-  sections: {
-    workflow: {
-      eyebrow: "Zakres",
-      title: "Rozdzielony workflow",
-      description: "Voice nie konkuruje z historią czatu pisanego.",
-      pushToTalk: "Push-to-talk i playback są obsługiwane w osobnym widoku.",
-      advancedModes: "Tryb deep analysis, summary i action items są dostępne wprost dla użytkownika.",
-    },
-    note: {
-      eyebrow: "Uwaga",
-      title: "Text chat pozostaje stabilny",
-      description: "Historia, composer i akcje czatu pisanego nie dzielą już miejsca z dużym panelem voice.",
-      body: "To rozwiązanie przygotowuje grunt pod kolejny PR z wizualizacją głosu bez degradacji układu cockpit.",
     },
   },
 };

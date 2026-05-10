@@ -1235,13 +1235,16 @@ async def audio_status_endpoint(request: Request):
             "enabled": False,
             "connected_clients": 0,
             "active_recordings": 0,
-            "message": "Interfejs audio jest wyłączony lub nie został zainicjalizowany.",
+            "message": "Audio interface is disabled or not initialized.",
         }
 
     status = audio_stream_handler.get_status(operator_agent=operator_agent)
-    status["message"] = (
-        "Audio channel ready." if status.get("enabled") else "Audio interface disabled."
-    )
+    if not status.get("message"):
+        status["message"] = (
+            "Audio channel ready."
+            if status.get("enabled")
+            else "Audio interface disabled."
+        )
     latest_session = _get_latest_voice_session_record()
     if latest_session:
         latest_session["download_url"] = str(

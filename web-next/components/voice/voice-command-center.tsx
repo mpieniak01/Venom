@@ -501,7 +501,7 @@ const handleVoiceResponseText = (
   setResponse: (value: string) => void,
   setLastAudioSignal: (value: string) => void,
 ) => {
-  setResponse(toPrimitiveString(data.text) ?? "—");
+  setResponse(toPrimitiveString(data.text) ?? "");
   setLastAudioSignal("response:text");
 };
 
@@ -889,8 +889,8 @@ export function VoiceCommandCenter({
   const [connected, setConnected] = useState(false);
   const [isVoiceModeEnabled, setIsVoiceModeEnabled] = useState<boolean>(audioEnabled);
   const [recording, setRecording] = useState(false);
-  const [transcription, setTranscription] = useState("Oczekiwanie na komendę głosową...");
-  const [response, setResponse] = useState("—");
+  const [transcription, setTranscription] = useState("");
+  const [response, setResponse] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [iotStatus, setIotStatus] = useState<IoTStatus | null>(null);
@@ -1558,11 +1558,15 @@ export function VoiceCommandCenter({
           </div>
           <div className="rounded-2xl box-muted p-4">
             <p className="eyebrow">{t("voice.controls.transcription")}</p>
-            <p className="mt-2 text-sm text-white">{transcription}</p>
+            <p className="mt-2 text-sm text-white">
+              {transcription || t("voice.status.waitingForVoiceCommand")}
+            </p>
           </div>
           <div className="rounded-2xl box-muted p-4">
             <p className="eyebrow">{t("voice.controls.response")}</p>
-            <p className="mt-2 text-sm text-white">{response}</p>
+            <p className="mt-2 text-sm text-white">
+              {response || t("voice.status.noResponseYet")}
+            </p>
           </div>
           <div className="rounded-2xl box-muted p-4 text-sm">
             <div className="flex items-center justify-between">

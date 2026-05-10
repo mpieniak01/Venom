@@ -65,6 +65,8 @@ export const voice = {
     browserMediaRecorderMissing: "MediaRecorder wird in diesem Browser nicht unterstützt.",
     processing: "Verarbeite ({{status}})",
     noTranscript: "Keine Sprache erkannt.",
+    waitingForVoiceCommand: "Warten auf einen Sprachbefehl...",
+    noResponseYet: "Noch keine Antwort.",
     transcriptionInserted: "Transkript in den Chat eingefügt.",
     channelError: "Fehler im Audiokanal.",
     playbackMuted: "Audioantwort ist bereit, aber die Wiedergabe ist stummgeschaltet.",
@@ -97,23 +99,8 @@ export const voice = {
       description: "Kürzeste Antwort in 1-2 Sätzen.",
     },
     actionItems: {
-      title: "Action items",
+      title: "Nächste Schritte",
       description: "Konkrete nächste Schritte.",
-    },
-  },
-  sections: {
-    workflow: {
-      eyebrow: "Umfang",
-      title: "Getrennter Workflow",
-      description: "Voice konkurriert nicht mit dem Verlauf des Textchats.",
-      pushToTalk: "Push-to-Talk und Playback werden in einer eigenen Ansicht behandelt.",
-      advancedModes: "Deep Analysis, Summary und Action Items sind direkt für den Nutzer sichtbar.",
-    },
-    note: {
-      eyebrow: "Hinweis",
-      title: "Textchat bleibt stabil",
-      description: "Verlauf, Composer und Aktionen des Textchats teilen sich nicht länger den Platz mit dem großen Voice-Panel.",
-      body: "Damit ist der Weg frei für die nächste PR mit Sprachvisualisierung, ohne das Cockpit-Layout zu verschlechtern.",
     },
   },
 };

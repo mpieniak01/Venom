@@ -127,13 +127,13 @@ export const getWsBaseUrl = (): string => {
 
 const buildWsEndpoint = (base: string, pathname: string): string => {
   try {
-    const url = new URL(pathname, coerceUrlWithScheme(base));
+    const url = new URL(pathname, normalizeWs(base));
     url.protocol = toWsProtocol(url.protocol);
     return sanitizeBase(url.toString());
   } catch {
-    return sanitizeBase(
-      coerceUrlWithScheme(base).replace(/^https:/, "wss:").replace(/^http:/, "ws:"),
-    ).replace(/\/$/, "") + pathname;
+    const fallback = normalizeWs(base);
+    return sanitizeBase(fallback.replace(/^https:/, "wss:").replace(/^http:/, "ws:"))
+      .replace(/\/$/, "") + pathname;
   }
 };
 

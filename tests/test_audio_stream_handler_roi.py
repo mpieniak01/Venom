@@ -676,6 +676,20 @@ def test_collect_latest_voice_session_record_returns_none_for_missing_root(tmp_p
     )
 
 
+def test_create_voice_session_dir_uses_unique_names(monkeypatch, tmp_path):
+    """Voice session directories should not collide for rapid consecutive calls."""
+    monkeypatch.setattr(audio_stream_mod, "VOICE_SESSION_ROOT", tmp_path)
+
+    first = audio_stream_mod._create_voice_session_dir(17)
+    second = audio_stream_mod._create_voice_session_dir(17)
+
+    assert first.exists()
+    assert second.exists()
+    assert first != second
+    assert first.parent == tmp_path
+    assert second.parent == tmp_path
+
+
 def test_get_latest_voice_session_falls_back_to_filesystem(monkeypatch, tmp_path):
     """Handler should fall back to filesystem scan when no in-memory latest exists."""
     handler = _make_handler()

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowLeft, Brain, MessageSquareText, Sparkles, ListTodo } from "lucide-react";
-import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -74,12 +73,10 @@ export function VoiceChatScreen() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,0.85fr)]">
         <VoiceCommandCenter voiceModePreset={voiceModePreset} />
         <div className="space-y-6">
-          <Panel
-            eyebrow={t("voice.modes.title")}
-            title={t("voice.modes.title")}
-            description={t("voice.modes.description")}
-          >
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+          <div className="rounded-3xl box-muted p-4">
+            <p className="eyebrow">{t("voice.modes.title")}</p>
+            <p className="mt-1 text-sm text-zinc-300">{t("voice.modes.description")}</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
               {VOICE_MODES.map((item) => {
                 const Icon = item.icon;
                 const selected = voiceModePreset === item.mode;
@@ -96,45 +93,14 @@ export function VoiceChatScreen() {
                     <Icon className="h-4 w-4 shrink-0" />
                     <span className="flex flex-col items-start gap-0.5">
                       <span className="font-semibold">{title}</span>
-                      <span className="text-[11px] leading-snug opacity-80">
-                        {description}
-                      </span>
+                      <span className="text-[11px] leading-snug opacity-80">{description}</span>
                     </span>
                   </Button>
                 );
               })}
             </div>
-            <p className="mt-3 text-xs text-zinc-400">
-              {t("voice.modes.hint")}
-            </p>
-          </Panel>
-
-          <Panel
-            eyebrow={t("voice.sections.workflow.eyebrow")}
-            title={t("voice.sections.workflow.title")}
-            description={t("voice.sections.workflow.description")}
-          >
-            <div className="space-y-3 text-sm text-zinc-300">
-              <div className="flex items-start gap-3 rounded-2xl box-muted p-3">
-                <MessageSquareText className="mt-0.5 h-4 w-4 text-emerald-300" />
-                <p>{t("voice.sections.workflow.pushToTalk")}</p>
-              </div>
-              <div className="flex items-start gap-3 rounded-2xl box-muted p-3">
-                <Sparkles className="mt-0.5 h-4 w-4 text-sky-300" />
-                <p>{t("voice.sections.workflow.advancedModes")}</p>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel
-            eyebrow={t("voice.sections.note.eyebrow")}
-            title={t("voice.sections.note.title")}
-            description={t("voice.sections.note.description")}
-          >
-            <p className="text-sm text-zinc-300">
-              {t("voice.sections.note.body")}
-            </p>
-          </Panel>
+            <p className="mt-3 text-xs text-zinc-400">{t("voice.modes.hint")}</p>
+          </div>
         </div>
       </div>
     </div>

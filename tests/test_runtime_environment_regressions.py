@@ -201,7 +201,8 @@ async def test_tts_models_list_and_update_endpoint_runtime_paths(monkeypatch, tm
     monkeypatch.setattr(main_module, "audio_stream_handler", handler)
     monkeypatch.setattr(SETTINGS, "TTS_MODEL_PATH", str(model_file))
 
-    listed = await main_module.list_audio_tts_models()
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    listed = await main_module.list_audio_tts_models(request)
     assert listed["current_model_path"] == str(model_file)
     assert listed["models"][0]["id"] == model_file.name
 

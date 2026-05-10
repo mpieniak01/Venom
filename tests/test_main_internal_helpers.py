@@ -314,7 +314,8 @@ async def test_list_audio_tts_models_prefers_audio_engine_model_path(monkeypatch
     )
     monkeypatch.setattr(main_module.SETTINGS, "TTS_MODEL_PATH", "/tmp/settings.onnx")
 
-    payload = await main_module.list_audio_tts_models()
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = await main_module.list_audio_tts_models(request)
 
     assert payload["models"][0]["id"] == "m1"
     assert payload["current_model_path"] == "/tmp/runtime.onnx"
@@ -326,7 +327,8 @@ async def test_list_audio_tts_models_falls_back_to_settings(monkeypatch):
     monkeypatch.setattr(main_module, "audio_engine", None)
     monkeypatch.setattr(main_module.SETTINGS, "TTS_MODEL_PATH", "/tmp/settings.onnx")
 
-    payload = await main_module.list_audio_tts_models()
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = await main_module.list_audio_tts_models(request)
 
     assert payload["models"] == []
     assert payload["current_model_path"] == "/tmp/settings.onnx"

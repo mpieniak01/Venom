@@ -221,7 +221,7 @@ def _resolve_voice_session_wav_path(session_id: str) -> Path:
 
 def _require_localhost_request(req: Request) -> None:
     client_host = req.client.host if req.client else "unknown"
-    if client_host not in {"127.0.0.1", "::1", "localhost"}:
+    if client_host not in {"127.0.0.1", "::1"}:
         raise HTTPException(status_code=403, detail="Access denied")
 
 
@@ -1351,7 +1351,8 @@ async def audio_status_endpoint(request: Request):
 
 
 @app.get("/api/v1/audio/tts/models")
-async def list_audio_tts_models():
+async def list_audio_tts_models(request: Request):
+    _require_localhost_request(request)
     current_model_path = ""
     if audio_engine and getattr(audio_engine, "voice", None):
         current_model_path = str(getattr(audio_engine.voice, "model_path", "") or "")
@@ -1382,24 +1383,15 @@ async def update_audio_tts_model(payload: AudioTtsModelUpdateRequest, request: R
     # i że jego runtime ma przeładowany nowy model TTS.
     handler_reload_state: dict[str, Any] | None = None
     if audio_stream_handler is not None:
-        if (
-            getattr(audio_stream_handler, "audio_engine", None) is None
-            and audio_engine is not None
-        ):
+        if audio_engine is not None:
             audio_stream_handler.audio_engine = audio_engine
-        elif (
-            audio_engine is not None
-            and getattr(audio_stream_handler, "audio_engine", None) is not audio_engine
-        ):
-            audio_stream_handler.audio_engine = audio_engine
-
-        handler_engine = getattr(audio_stream_handler, "audio_engine", None)
-        if handler_engine is not None and handler_engine is not audio_engine:
-            handler_reload_state = await handler_engine.set_tts_model_path(
-                str(model_path)
-            )
-        elif handler_engine is not None:
             handler_reload_state = reload_state
+        else:
+            handler_engine = getattr(audio_stream_handler, "audio_engine", None)
+            if handler_engine is not None:
+                handler_reload_state = await handler_engine.set_tts_model_path(
+                    str(model_path)
+                )
 
     effective_model_path = str(model_path)
     if (

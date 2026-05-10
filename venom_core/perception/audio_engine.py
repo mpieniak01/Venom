@@ -502,7 +502,7 @@ class AudioEngine:
         """
         current_voice = self.voice
         previous_model_path = str(getattr(current_voice, "model_path", "") or "")
-        current_voice.stop_playback_sync()
+        await asyncio.to_thread(current_voice.stop_playback_sync)
 
         self.voice = VoiceSkill(model_path=model_path)
         loaded = False

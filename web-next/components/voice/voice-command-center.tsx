@@ -449,8 +449,6 @@ type VoiceControlDeps = {
   analyserRef?: RefObject<AnalyserNode | null>;
   mediaRecorderRef?: RefObject<MediaRecorder | null>;
   mediaStreamRef?: RefObject<MediaStream | null>;
-  canvasRef?: RefObject<HTMLCanvasElement | null>;
-  visualizerFrameRef: RefObject<number | null>;
   recordingRef: RefObject<boolean>;
   recordingStartPendingRef: RefObject<boolean>;
   stopRequestedRef: RefObject<boolean>;
@@ -462,7 +460,6 @@ type VoiceControlDeps = {
   setStatusMessage: (value: string | null) => void;
   setAudioChunkCount: (value: number | ((current: number) => number)) => void;
   setLastAudioSignal: (value: string) => void;
-  clearVisualizer?: () => void;
   releaseAudioResources: () => void;
   releasePlaybackResources: () => void;
   refreshAudioStatus: () => Promise<void>;
@@ -470,10 +467,6 @@ type VoiceControlDeps = {
   sendControlMessage: (payload: Record<string, unknown>) => boolean;
   getMediaRecorderMimeType: () => string;
   ensurePlaybackContext: () => Promise<AudioContext | null>;
-  drawVisualizer?: (samples: Float32Array) => void;
-  scaleAudioChunkForDisplay: (
-    samples: Float32Array,
-  ) => { normalized: Float32Array; peak: number; gain: number };
   activeWindow?: Window;
 };
 
@@ -856,35 +849,6 @@ const createVoiceCaptureEnvironment = async (
   return { mediaStream, audioContext, source, analyser, recorder, mimeType };
 };
 
-const startAnalyserLoop = (deps: VoiceControlDeps, analyser: AnalyserNode) => {
-  const {
-    recordingRef,
-    visualizerFrameRef,
-    activeWindow,
-    scaleAudioChunkForDisplay,
-    drawVisualizer,
-    setLastAudioSignal,
-  } = deps;
-  const timeDomain = new Uint8Array(analyser.fftSize);
-  const drawFromAnalyser = () => {
-    if (!recordingRef.current) {
-      return;
-    }
-    analyser.getByteTimeDomainData(timeDomain);
-    const samples = new Float32Array(timeDomain.length);
-    for (let index = 0; index < timeDomain.length; index += 1) {
-      samples[index] = ((timeDomain[index] ?? 128) - 128) / 128;
-    }
-    const { normalized, peak } = scaleAudioChunkForDisplay(samples);
-    if (peak > 0) {
-      setLastAudioSignal(`media:peak ${peak.toFixed(3)}`);
-    }
-    drawVisualizer?.(normalized);
-    visualizerFrameRef.current = activeWindow?.requestAnimationFrame(drawFromAnalyser) ?? null;
-  };
-  visualizerFrameRef.current = activeWindow?.requestAnimationFrame(drawFromAnalyser) ?? null;
-};
-
 const sendRecordingStartMessages = (
   deps: Pick<VoiceControlDeps, "sendControlMessage" | "setStatusMessage" | "setAudioChunkCount" | "setLastAudioSignal">,
   audioContext: AudioContext,
@@ -1034,7 +998,6 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
       return;
     }
     environment.recorder.start(250);
-    startAnalyserLoop(deps, environment.analyser);
   } catch (error) {
     console.error("recording error", error);
     releaseAudioResources();
@@ -1237,21 +1200,11 @@ export function VoiceCommandCenter({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const visualizerFrameRef = useRef<number | null>(null);
   const recordingRef = useRef(false);
   const recordingStartPendingRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const lastAudioResponseRef = useRef<{ audio: string; sampleRate: number } | null>(null);
   const lastVoiceModeSentRef = useRef<string | null>(null);
-
-  const clearVisualizer = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }, []);
 
   useEffect(() => {
     const mq = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1272,31 +1225,6 @@ export function VoiceCommandCenter({
       setStatusMessage,
     });
   }, [audioEnabled, connected, t, voiceModePreset]);
-
-  const drawVisualizer = useCallback((samples: Float32Array) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(15,23,42,0.9)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#34d399";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const sliceWidth = canvas.width / Math.max(samples.length, 1);
-    let x = 0;
-    for (const [index, value] of samples.entries()) {
-      const y = (0.5 + value / 2) * canvas.height;
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-      x += sliceWidth;
-    }
-    ctx.stroke();
-  }, []);
 
   const refreshAudioStatus = useCallback(async () => {
     try {
@@ -1326,24 +1254,6 @@ export function VoiceCommandCenter({
     ttsSourceRef.current = null;
     ttsAnalyserRef.current?.disconnect();
     ttsAnalyserRef.current = null;
-  }, []);
-
-  const scaleAudioChunkForDisplay = useCallback((samples: Float32Array) => {
-    let peak = 0;
-    for (const sample of samples) {
-      const value = Math.abs(sample);
-      if (value > peak) {
-        peak = value;
-      }
-    }
-    const targetPeak = 0.6;
-    const gain = peak > 0 ? Math.min(24, Math.max(1, targetPeak / peak)) : 1;
-    const normalized = new Float32Array(samples.length);
-    for (let index = 0; index < samples.length; index += 1) {
-      const value = (samples[index] ?? 0) * gain;
-      normalized[index] = Math.max(-1, Math.min(1, value));
-    }
-    return { normalized, peak, gain };
   }, []);
 
   const getMediaRecorderMimeType = useCallback(() => {
@@ -1478,11 +1388,6 @@ export function VoiceCommandCenter({
   );
 
   const releaseAudioResources = useCallback(() => {
-    const browserWindow = getBrowserWindow();
-    if (visualizerFrameRef.current !== null) {
-      browserWindow?.cancelAnimationFrame(visualizerFrameRef.current);
-      visualizerFrameRef.current = null;
-    }
     if (mediaRecorderRef.current?.state === "recording") {
       try {
         mediaRecorderRef.current.stop();
@@ -1570,7 +1475,6 @@ export function VoiceCommandCenter({
     stopRequestedRef.current = false;
     setRecording(false);
     setLastAudioSignal("recording:stop");
-    clearVisualizer();
     setStatusMessage(t("voice.status.recordingEnded"));
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === "recording") {
@@ -1579,7 +1483,7 @@ export function VoiceCommandCenter({
       sendControlMessage({ command: "stop_recording" });
       releaseAudioResources();
     }
-  }, [clearVisualizer, releaseAudioResources, sendControlMessage, t]);
+  }, [releaseAudioResources, sendControlMessage, t]);
 
   const startRecording = useCallback(
     async () =>
@@ -1593,7 +1497,6 @@ export function VoiceCommandCenter({
         analyserRef,
         mediaRecorderRef,
         mediaStreamRef,
-        visualizerFrameRef,
         recordingRef,
         recordingStartPendingRef,
         stopRequestedRef,
@@ -1605,19 +1508,15 @@ export function VoiceCommandCenter({
         sendControlMessage,
         getMediaRecorderMimeType,
         ensurePlaybackContext,
-        drawVisualizer,
-        scaleAudioChunkForDisplay,
         stopRecording,
         activeWindow: getBrowserWindow(),
       }),
     [
-      drawVisualizer,
       ensurePlaybackContext,
       getMediaRecorderMimeType,
       audioEnabled,
       isVoiceModeEnabled,
       releaseAudioResources,
-      scaleAudioChunkForDisplay,
       sendControlMessage,
       stopRecording,
       t,
@@ -1766,7 +1665,6 @@ export function VoiceCommandCenter({
             runtimeSnapshot={runtimeSnapshot}
             runtimeSnapshotSummary={runtimeSnapshotSummary}
           />
-          <canvas ref={canvasRef} width={320} height={80} className="hidden" />
           <p className="text-hint">{statusMessage ?? t("voice.status.channelReady")}</p>
           <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
             <div className="grid grid-cols-2 gap-2">

@@ -3,8 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
-const computeRms = (analyser: AnalyserNode): number => {
-  const buffer = new Float32Array(analyser.fftSize);
+const computeRms = (analyser: AnalyserNode, bufferRef: RefObject<Float32Array | null>): number => {
+  if (!bufferRef.current || bufferRef.current.length !== analyser.fftSize) {
+    bufferRef.current = new Float32Array(analyser.fftSize);
+  }
+
+  const buffer = bufferRef.current;
+  if (!buffer) {
+    return 0;
+  }
+
   analyser.getFloatTimeDomainData(buffer);
   let sum = 0;
   for (const sample of buffer) {
@@ -19,6 +27,7 @@ export const useAudioLevel = (
 ): number => {
   const [level, setLevel] = useState(0);
   const decayRef = useRef(0);
+  const bufferRef = useRef<Float32Array | null>(null);
 
   useEffect(() => {
     if (!active) {
@@ -32,7 +41,7 @@ export const useAudioLevel = (
     const tick = () => {
       const analyser = analyserRef.current;
       if (analyser) {
-        const rms = computeRms(analyser);
+        const rms = computeRms(analyser, bufferRef);
         decayRef.current = Math.max(rms, decayRef.current * 0.85);
       } else {
         decayRef.current *= 0.85;

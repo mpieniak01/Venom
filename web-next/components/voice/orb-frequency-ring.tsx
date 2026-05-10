@@ -12,7 +12,7 @@ type OrbFrequencyRingProps = Readonly<{
 export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFrequencyRingProps) {
   const pathRef = useRef<SVGPathElement | null>(null);
   const rafRef = useRef<number | null>(null);
-  const bufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const bufferRef = useRef<Uint8Array | null>(null);
 
   useEffect(() => {
     if (!active) {

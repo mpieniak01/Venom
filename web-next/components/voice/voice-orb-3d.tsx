@@ -228,7 +228,9 @@ function OrbMetricBar3D({
     if (glowRef.current) {
       glowRef.current.geometry = glowGeo;
     }
-  }, [barGeo, definition.rotation, glowGeo]);
+    syncBarMaterial(coreMaterialRef.current, definition.color, 0.35, 0.9);
+    syncBarMaterial(glowMaterialRef.current, definition.color, 0.15, 0.12);
+  }, [barGeo, definition.color, definition.rotation, glowGeo]);
 
   useFrame(() => {
     syncOrbMetricBarFrame(index, metricsRef, refs);
@@ -237,26 +239,10 @@ function OrbMetricBar3D({
   return (
     <group ref={groupRef}>
       <mesh ref={glowRef} scale={[1, MIN_BAR_SCALE, 1]}>
-        <meshStandardMaterial
-          ref={glowMaterialRef}
-          color={definition.color}
-          emissive={definition.color}
-          emissiveIntensity={0.15}
-          transparent
-          opacity={0.12}
-          depthWrite={false}
-        />
+        <meshStandardMaterial ref={glowMaterialRef} />
       </mesh>
       <mesh ref={coreRef} scale={[1, MIN_BAR_SCALE, 1]}>
-        <meshStandardMaterial
-          ref={coreMaterialRef}
-          color={definition.color}
-          emissive={definition.color}
-          emissiveIntensity={0.35}
-          transparent
-          opacity={0.9}
-          depthWrite={false}
-        />
+        <meshStandardMaterial ref={coreMaterialRef} />
       </mesh>
     </group>
   );

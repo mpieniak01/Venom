@@ -281,7 +281,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
       const vals = [m.cpu, m.gpu, m.net, m.ram];
 
       currents.current = currents.current.map((c, i) => {
-        const pct = Number.isFinite(vals[i] ?? NaN) ? (vals[i] as number) : 0;
+        const pct = Number.isFinite(vals[i] ?? Number.NaN) ? (vals[i] as number) : 0;
         const tgt = MIN_R + (pct / 100) * (MAX_R - MIN_R);
         return c + (tgt - c) * 0.06;
       });
@@ -289,7 +289,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
       currents.current.forEach((r, i) => {
         const def = ARC_DEFS[i];
         if (!def) return;
-        const pctValue = Number.isFinite(vals[i] ?? NaN) ? (vals[i] as number) : 0;
+        const pctValue = Number.isFinite(vals[i] ?? Number.NaN) ? (vals[i] as number) : 0;
         const loadPct = Math.max(0, Math.min(1, pctValue / 100));
         const pct = Math.max(0, Math.min(1, (r - MIN_R) / (MAX_R - MIN_R)));
         const breathPhase = t * 2.1 + (PHASES[i] ?? 0);

@@ -19,7 +19,7 @@ import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import { OrbZone } from "@/components/voice/orb-zone";
 import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
 
-type AudioStatus = {
+export type AudioStatus = {
   enabled: boolean;
   connected_clients: number;
   active_recordings: number;
@@ -1106,6 +1106,11 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
 };
 
 export type VoiceModePreset = "standard" | "deep_analysis" | "summary" | "action_items";
+export type VoiceStatusUpdate = Pick<AudioStatus,
+  | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
+  | "whisper_model_size" | "stt_backend" | "tts_backend"
+  | "vad_threshold" | "dependencies" | "runtime_snapshot"
+>;
 
 const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
   standard: "voice.modes.standard.title",
@@ -1124,11 +1129,13 @@ const VOICE_MODE_HINT_KEYS: Record<VoiceModePreset, string> = {
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
+  onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
 }>;
 
 export function VoiceCommandCenter({
   onTranscriptReady,
   voiceModePreset = "standard",
+  onStatusUpdate,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -1173,6 +1180,23 @@ export function VoiceCommandCenter({
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  useEffect(() => {
+    if (!onStatusUpdate) return;
+    if (!audioStatus) { onStatusUpdate(null); return; }
+    onStatusUpdate({
+      enabled:           audioStatus.enabled,
+      stt_ready:         audioStatus.stt_ready,
+      tts_ready:         audioStatus.tts_ready,
+      tts_fallback:      audioStatus.tts_fallback,
+      whisper_model_size:audioStatus.whisper_model_size,
+      stt_backend:       audioStatus.stt_backend,
+      tts_backend:       audioStatus.tts_backend,
+      vad_threshold:     audioStatus.vad_threshold,
+      dependencies:      audioStatus.dependencies,
+      runtime_snapshot:  audioStatus.runtime_snapshot,
+    });
+  }, [audioStatus, onStatusUpdate]);
 
   useEffect(() => {
     syncVoiceModeSelection({

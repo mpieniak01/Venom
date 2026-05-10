@@ -2,9 +2,18 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+from semantic_kernel.contents.chat_history import ChatHistory
 
-from venom_core.agents.operator import OperatorAgent, _coerce_float, _coerce_int
+import venom_core.agents.operator as op_module
+from venom_core.agents.operator import (
+    OperatorAgent,
+    _coerce_float,
+    _coerce_int,
+    _ollama_extra_body,
+    _ollama_native_call,
+)
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 
 
@@ -299,3 +308,279 @@ class TestOperatorAgent:
         assert captured["tokens"] == 100
         assert captured["temperature"] == pytest.approx(0.5)
         assert captured["messages"].count("system") == 2
+
+
+class TestOllamaExtraBody:
+    """Tests for the _ollama_extra_body() helper."""
+
+    def test_returns_think_false_when_local_and_think_disabled(self, monkeypatch):
+        mock_settings = MagicMock()
+        mock_settings.LLM_SERVICE_TYPE = "local"
+        mock_settings.OLLAMA_ENABLE_THINK = False
+        monkeypatch.setattr(op_module, "SETTINGS", mock_settings)
+
+        result = _ollama_extra_body()
+
+        assert result == {"think": False}
+
+    def test_returns_none_when_not_local(self, monkeypatch):
+        mock_settings = MagicMock()
+        mock_settings.LLM_SERVICE_TYPE = "openai"
+        mock_settings.OLLAMA_ENABLE_THINK = False
+        monkeypatch.setattr(op_module, "SETTINGS", mock_settings)
+
+        result = _ollama_extra_body()
+
+        assert result is None
+
+    def test_returns_none_when_think_enabled(self, monkeypatch):
+        mock_settings = MagicMock()
+        mock_settings.LLM_SERVICE_TYPE = "local"
+        mock_settings.OLLAMA_ENABLE_THINK = True
+        monkeypatch.setattr(op_module, "SETTINGS", mock_settings)
+
+        result = _ollama_extra_body()
+
+        assert result is None
+
+
+class TestOllamaNativeCall:
+    """Tests for the _ollama_native_call() async helper."""
+
+    def _make_settings(self, endpoint="http://localhost:11434/v1", model="test-model"):
+        mock_settings = MagicMock()
+        mock_settings.LLM_LOCAL_ENDPOINT = endpoint
+        mock_settings.LLM_MODEL_NAME = model
+        return mock_settings
+
+    def _make_mock_client_cls(self, response_data):
+        """Build an async context manager mock for httpx.AsyncClient."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value=response_data)
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        mock_client_cls = MagicMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        return mock_client_cls, mock_client
+
+    @pytest.mark.asyncio
+    async def test_success_returns_content(self, monkeypatch):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings())
+        mock_client_cls, _ = self._make_mock_client_cls(
+            {"message": {"content": "answer"}}
+        )
+        monkeypatch.setattr(httpx, "AsyncClient", mock_client_cls)
+
+        chat_history = ChatHistory()
+        chat_history.add_user_message("hello")
+
+        result = await _ollama_native_call(
+            chat_history, max_tokens=150, temperature=0.7
+        )
+
+        assert result == "answer"
+
+    @pytest.mark.asyncio
+    async def test_strips_v1_from_endpoint(self, monkeypatch):
+        monkeypatch.setattr(
+            op_module,
+            "SETTINGS",
+            self._make_settings(endpoint="http://localhost:11434/v1"),
+        )
+        captured_urls = []
+
+        async def fake_post(url, **kwargs):
+            captured_urls.append(url)
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_resp.json = MagicMock(return_value={"message": {"content": "ok"}})
+            return mock_resp
+
+        mock_client = AsyncMock()
+        mock_client.post = fake_post
+
+        mock_client_cls = MagicMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(httpx, "AsyncClient", mock_client_cls)
+
+        chat_history = ChatHistory()
+        chat_history.add_user_message("test")
+
+        await _ollama_native_call(chat_history, max_tokens=100, temperature=0.5)
+
+        assert len(captured_urls) == 1
+        assert captured_urls[0] == "http://localhost:11434/api/chat"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_http_error(self, monkeypatch):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings())
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "500", request=MagicMock(), response=MagicMock()
+            )
+        )
+
+        mock_client_cls = MagicMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(httpx, "AsyncClient", mock_client_cls)
+
+        chat_history = ChatHistory()
+        chat_history.add_user_message("test")
+
+        result = await _ollama_native_call(
+            chat_history, max_tokens=100, temperature=0.5
+        )
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_connection_error(self, monkeypatch):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings())
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            side_effect=httpx.ConnectError("Connection refused")
+        )
+
+        mock_client_cls = MagicMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(httpx, "AsyncClient", mock_client_cls)
+
+        chat_history = ChatHistory()
+        chat_history.add_user_message("test")
+
+        result = await _ollama_native_call(
+            chat_history, max_tokens=100, temperature=0.5
+        )
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_payload_has_think_false(self, monkeypatch):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings())
+        captured_payloads = []
+
+        async def fake_post(url, **kwargs):
+            captured_payloads.append(kwargs.get("json", {}))
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_resp.json = MagicMock(return_value={"message": {"content": "ok"}})
+            return mock_resp
+
+        mock_client = AsyncMock()
+        mock_client.post = fake_post
+
+        mock_client_cls = MagicMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(httpx, "AsyncClient", mock_client_cls)
+
+        chat_history = ChatHistory()
+        chat_history.add_user_message("test payload")
+
+        await _ollama_native_call(chat_history, max_tokens=200, temperature=0.8)
+
+        assert len(captured_payloads) == 1
+        assert captured_payloads[0]["think"] is False
+
+
+class TestGenerateVoiceResponseGuards:
+    """Tests for the None/empty-list guard and Ollama fallback in _generate_voice_response."""
+
+    @pytest.fixture
+    def mock_kernel(self):
+        kernel = MagicMock()
+        kernel.get_service = MagicMock(return_value=MagicMock())
+        kernel.services = {"chat": MagicMock()}
+        return kernel
+
+    def _make_settings(self, service_type="openai"):
+        mock_settings = MagicMock()
+        mock_settings.LLM_SERVICE_TYPE = service_type
+        mock_settings.OLLAMA_ENABLE_THINK = False
+        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_MODEL_NAME = "test-model"
+        return mock_settings
+
+    @pytest.mark.asyncio
+    async def test_none_response_triggers_fallback_message(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(return_value=None)
+
+        response = await agent._generate_voice_response("test input")
+
+        assert (
+            response == "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_list_response_triggers_fallback_message(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(return_value=[])
+
+        response = await agent._generate_voice_response("test input")
+
+        assert (
+            response == "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
+        )
+
+    @pytest.mark.asyncio
+    async def test_list_response_uses_first_item(self, mock_kernel, monkeypatch):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        agent = OperatorAgent(kernel=mock_kernel)
+
+        mock_item = MagicMock()
+        mock_item.__str__ = lambda self: "answer"
+        agent._invoke_chat_with_fallbacks = AsyncMock(return_value=[mock_item])
+
+        response = await agent._generate_voice_response("test input")
+
+        assert response == "answer"
+
+    @pytest.mark.asyncio
+    async def test_empty_sk_with_local_service_calls_ollama_native(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("local"))
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(return_value="")
+        monkeypatch.setattr(
+            op_module, "_ollama_native_call", AsyncMock(return_value="native answer")
+        )
+
+        response = await agent._generate_voice_response("test input")
+
+        assert response == "native answer"
+
+    @pytest.mark.asyncio
+    async def test_empty_sk_non_local_no_ollama_fallback(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(return_value="")
+
+        native_mock = AsyncMock(return_value="should not be called")
+        monkeypatch.setattr(op_module, "_ollama_native_call", native_mock)
+
+        response = await agent._generate_voice_response("test input")
+
+        assert (
+            response == "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
+        )
+        native_mock.assert_not_called()

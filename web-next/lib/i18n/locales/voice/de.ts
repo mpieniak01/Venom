@@ -31,6 +31,10 @@ export const voice = {
     sttReady: "STT bereit",
     ttsReady: "TTS bereit",
     ttsFallback: "TTS-Fallback",
+    ttsVoice: "TTS-Stimme",
+    ttsVoiceSelect: "Stimmenmodell auswählen",
+    ttsVoiceChanging: "Stimme wird gewechselt…",
+    ttsVoiceAuto: "wird sofort angewendet",
     dependencies: "Abhängigkeiten",
     latestRecording: "Neueste Aufnahme",
     downloadWav: "WAV herunterladen",
@@ -82,6 +86,8 @@ export const voice = {
     playbackIdleShort: "Bereit",
     replayUnavailable: "Keine vorherige Audioantwort zum Wiederholen.",
     complete: "Antwort bereit.",
+    ttsVoiceUpdated: "TTS-Stimme aktualisiert.",
+    ttsVoiceUpdateFailed: "TTS-Stimme konnte nicht aktualisiert werden.",
   },
   orb: {
     stateLabel: {

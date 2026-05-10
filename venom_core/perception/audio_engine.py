@@ -432,6 +432,18 @@ class VoiceSkill:
             await asyncio.to_thread(self._playback_thread.join, 2.0)
             logger.info("Wątek odtwarzania audio zatrzymany")
 
+    def stop_playback_sync(self) -> None:
+        """Synchronous helper używany przy przełączaniu modelu TTS."""
+        self._stop_playback.set()
+        if self._playback_thread and self._playback_thread.is_alive():
+            self._playback_thread.join(timeout=2.0)
+        self._playback_thread = None
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+            except queue.Empty:
+                break
+
 
 class AudioEngine:
     """
@@ -480,6 +492,32 @@ class AudioEngine:
     def transcribe_file(self, file_path: str, language: str = "pl") -> str:
         """Synchronously transcribe an audio file from disk."""
         return self.whisper.transcribe_file(file_path, language=language)
+
+    async def set_tts_model_path(self, model_path: Optional[str]) -> dict[str, bool]:
+        """
+        Przełącza model TTS i opcjonalnie podgrzewa nowy głos.
+
+        Returns:
+            Stan po przełączeniu.
+        """
+        current_voice = self.voice
+        previous_model_path = str(getattr(current_voice, "model_path", "") or "")
+        current_voice.stop_playback_sync()
+
+        self.voice = VoiceSkill(model_path=model_path)
+        loaded = False
+        if not self.voice.is_fallback_mode:
+            try:
+                await asyncio.to_thread(self.voice._load_model)
+                loaded = self.voice.voice is not None
+            except Exception as exc:
+                logger.warning(f"Nie udało się załadować nowego modelu TTS: {exc}")
+        return {
+            "tts_loaded": loaded,
+            "tts_fallback": bool(self.voice.is_fallback_mode),
+            "tts_model_changed": previous_model_path
+            != str(getattr(self.voice, "model_path", "") or ""),
+        }
 
     async def warmup(self) -> dict[str, bool]:
         """Preload STT/TTS models so first user-facing request is faster."""

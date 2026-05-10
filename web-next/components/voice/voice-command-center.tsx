@@ -305,7 +305,7 @@ type VoiceControlDeps = {
   scaleAudioChunkForDisplay: (
     samples: Float32Array,
   ) => { normalized: Float32Array; peak: number; gain: number };
-  activeWindow?: Window | undefined;
+  activeWindow?: Window;
 };
 
 const handleVoiceSocketOpen = (
@@ -389,6 +389,45 @@ const handleVoiceSocketError = (
 ) => {
   deps.setStatusMessage(deps.t("voice.status.channelOffline"));
   deps.setLastAudioSignal("ws:error");
+};
+
+const bindRecordingReleaseListeners = (recording: boolean, stopRecording: () => void) => {
+  if (!recording) {
+    return undefined;
+  }
+  const stopOnRelease = () => {
+    stopRecording();
+  };
+  const browserWindow = getBrowserWindow();
+  browserWindow?.addEventListener("pointerup", stopOnRelease);
+  browserWindow?.addEventListener("mouseup", stopOnRelease);
+  browserWindow?.addEventListener("touchend", stopOnRelease);
+  browserWindow?.addEventListener("touchcancel", stopOnRelease);
+  browserWindow?.addEventListener("blur", stopOnRelease);
+  return () => {
+    browserWindow?.removeEventListener("pointerup", stopOnRelease);
+    browserWindow?.removeEventListener("mouseup", stopOnRelease);
+    browserWindow?.removeEventListener("touchend", stopOnRelease);
+    browserWindow?.removeEventListener("touchcancel", stopOnRelease);
+    browserWindow?.removeEventListener("blur", stopOnRelease);
+  };
+};
+
+const bindVoiceConnectionLifecycle = (
+  audioEnabled: boolean,
+  t: Translator,
+  setConnected: (value: boolean) => void,
+  setStatusMessage: (value: string | null) => void,
+  setIsVoiceModeEnabled: (value: boolean) => void,
+  connect: () => (() => void) | undefined,
+) => {
+  if (!audioEnabled) {
+    setConnected(false);
+    setStatusMessage(t("voice.status.channelDisabled"));
+    setIsVoiceModeEnabled(false);
+    return undefined;
+  }
+  return connect();
 };
 
 const connectVoiceSocket = (deps: VoiceControlDeps): (() => void) => {
@@ -707,7 +746,7 @@ export function VoiceCommandCenter({
   const [response, setResponse] = useState("—");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
-  const [iotStatus, setIoTStatus] = useState<IoTStatus | null>(null);
+  const [iotStatus, setIotStatus] = useState<IoTStatus | null>(null);
   const [loadingIoT, setLoadingIoT] = useState(false);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [ttsMuted, setTtsMuted] = useState(false);
@@ -992,33 +1031,34 @@ export function VoiceCommandCenter({
   }, []);
 
   useEffect(
-    () => {
-      if (!audioEnabled) {
-        setConnected(false);
-        setStatusMessage(t("voice.status.channelDisabled"));
-        setIsVoiceModeEnabled(false);
-        return undefined;
-      }
-      return connectVoiceSocket({
-        t,
+    () =>
+      bindVoiceConnectionLifecycle(
         audioEnabled,
-        isVoiceModeEnabled,
-        wsRef,
-        reconnectAttemptsRef,
-        reconnectTimeoutRef,
-        lastVoiceModeSentRef,
+        t,
         setConnected,
-        setRecording,
         setStatusMessage,
-        setAudioChunkCount,
-        setLastAudioSignal,
-        releaseAudioResources,
-        releasePlaybackResources,
-        refreshAudioStatus,
-        handleAudioMessage,
-        ttsAudioContextRef,
-      });
-    },
+        setIsVoiceModeEnabled,
+        () =>
+          connectVoiceSocket({
+            t,
+            audioEnabled,
+            isVoiceModeEnabled,
+            wsRef,
+            reconnectAttemptsRef,
+            reconnectTimeoutRef,
+            lastVoiceModeSentRef,
+            setConnected,
+            setRecording,
+            setStatusMessage,
+            setAudioChunkCount,
+            setLastAudioSignal,
+            releaseAudioResources,
+            releasePlaybackResources,
+            refreshAudioStatus,
+            handleAudioMessage,
+            ttsAudioContextRef,
+          }),
+      ),
     [
       audioEnabled,
       handleAudioMessage,
@@ -1032,7 +1072,7 @@ export function VoiceCommandCenter({
 
   const refreshIoTStatus = useCallback(async () => {
     if (!iotStatusEnabled) {
-      setIoTStatus({
+      setIotStatus({
         connected: false,
         message: "Status IoT wyłączony w konfiguracji.",
       });
@@ -1043,9 +1083,9 @@ export function VoiceCommandCenter({
       const res = await fetch("/api/v1/iot/status");
       if (res.ok) {
         const data = (await res.json()) as IoTStatus;
-        setIoTStatus(data);
+        setIotStatus(data);
       } else if (res.status === 404) {
-        setIoTStatus({
+        setIotStatus({
           connected: false,
           message: "Offline – endpoint /api/v1/iot/status nie jest dostępny.",
         });
@@ -1053,7 +1093,7 @@ export function VoiceCommandCenter({
         throw new Error(`HTTP ${res.status}`);
       }
     } catch {
-      setIoTStatus({
+      setIotStatus({
         connected: false,
         message: "Offline – brak danych IoT.",
       });
@@ -1159,25 +1199,7 @@ export function VoiceCommandCenter({
   const qualitySummary = buildQualitySummary(latestVoiceSession);
   const latestRecordingSummary = buildLatestRecordingSummary(latestVoiceSession);
 
-  useEffect(() => {
-    if (!recording) return;
-    const stopOnRelease = () => {
-      stopRecording();
-    };
-    const browserWindow = getBrowserWindow();
-    browserWindow?.addEventListener("pointerup", stopOnRelease);
-    browserWindow?.addEventListener("mouseup", stopOnRelease);
-    browserWindow?.addEventListener("touchend", stopOnRelease);
-    browserWindow?.addEventListener("touchcancel", stopOnRelease);
-    browserWindow?.addEventListener("blur", stopOnRelease);
-    return () => {
-      browserWindow?.removeEventListener("pointerup", stopOnRelease);
-      browserWindow?.removeEventListener("mouseup", stopOnRelease);
-      browserWindow?.removeEventListener("touchend", stopOnRelease);
-      browserWindow?.removeEventListener("touchcancel", stopOnRelease);
-      browserWindow?.removeEventListener("blur", stopOnRelease);
-    };
-  }, [recording, stopRecording]);
+  useEffect(() => bindRecordingReleaseListeners(recording, stopRecording), [recording, stopRecording]);
 
   return (
     <Panel

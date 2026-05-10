@@ -63,11 +63,9 @@ test.describe("VoiceOrb smoke", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
-    await page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i }).waitFor({
-      state: "visible",
-      timeout: 10000,
-    });
-
+    const pttButton = page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i });
+    await pttButton.waitFor({ state: "visible", timeout: 10000 });
+    await expect(pttButton).toBeVisible();
     await page.screenshot({ path: "test-results/voice-orb-desktop.png", fullPage: false });
   });
 
@@ -75,11 +73,9 @@ test.describe("VoiceOrb smoke", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
-    await page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i }).waitFor({
-      state: "visible",
-      timeout: 10000,
-    });
-
+    const pttButton = page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i });
+    await pttButton.waitFor({ state: "visible", timeout: 10000 });
+    await expect(pttButton).toBeVisible();
     await page.screenshot({ path: "test-results/voice-orb-mobile.png", fullPage: false });
   });
 });

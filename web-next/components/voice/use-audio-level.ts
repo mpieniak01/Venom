@@ -7,8 +7,8 @@ const computeRms = (analyser: AnalyserNode): number => {
   const buffer = new Float32Array(analyser.fftSize);
   analyser.getFloatTimeDomainData(buffer);
   let sum = 0;
-  for (let i = 0; i < buffer.length; i++) {
-    sum += (buffer[i] ?? 0) ** 2;
+  for (const sample of buffer) {
+    sum += sample ** 2;
   }
   return Math.sqrt(sum / buffer.length);
 };

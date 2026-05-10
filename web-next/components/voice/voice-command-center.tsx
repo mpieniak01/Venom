@@ -1254,7 +1254,7 @@ export function VoiceCommandCenter({
   }, []);
 
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const mq = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(mq.matches);
     const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
     mq.addEventListener("change", handler);

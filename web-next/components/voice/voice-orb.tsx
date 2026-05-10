@@ -78,6 +78,10 @@ const DEFAULT_EFFECTS: OrbEffectsConfig = {
 const ORB_SIZE = 120;
 const CORE_SIZE = 72;
 
+function getFlashClass(state: VoiceOrbState): string {
+  return state === "recording" || state === "complete" ? "animate-orb-flash" : "";
+}
+
 type VoiceOrbProps = Readonly<{
   state: VoiceOrbState;
   /** Override audio level — used in tests; omit in production (computed internally). */
@@ -98,11 +102,11 @@ export function VoiceOrb({
   disabled = false,
   reducedMotion = false,
   label,
-  effectsConfig,
+  effectsConfig = DEFAULT_EFFECTS,
   micAnalyserRef,
   ttsAnalyserRef,
 }: VoiceOrbProps) {
-  const cfg = effectsConfig ?? DEFAULT_EFFECTS;
+  const cfg = effectsConfig;
   const effectiveState: VoiceOrbState = disabled ? "offline" : state;
   const visual = ORB_VISUALS[effectiveState];
   const noAnim = reducedMotion;
@@ -116,10 +120,9 @@ export function VoiceOrb({
   const inputLevel  = inputLevelProp  ?? inputLevelHook;
   const outputLevel = outputLevelProp ?? outputLevelHook;
 
-  const audioLevel =
-    effectiveState === "recording" ? inputLevel
-    : effectiveState === "tts"     ? outputLevel
-    : 0;
+  let audioLevel = 0;
+  if (effectiveState === "recording") audioLevel = inputLevel;
+  else if (effectiveState === "tts") audioLevel = outputLevel;
 
   // ── Transition flash on state change ─────────────────────────────────
   const [flashClass, setFlashClass] = useState("");
@@ -130,10 +133,7 @@ export function VoiceOrb({
     if (prevStateRef.current === effectiveState) return;
     prevStateRef.current = effectiveState;
 
-    const cls =
-      effectiveState === "recording" || effectiveState === "complete"
-        ? "animate-orb-flash"
-        : "";
+    const cls = getFlashClass(effectiveState);
     if (!cls) return;
 
     let clearId: ReturnType<typeof setTimeout>;
@@ -191,10 +191,9 @@ export function VoiceOrb({
     !noAnim && cfg.blob &&
     (effectiveState === "recording" || effectiveState === "tts");
 
-  const activeAnalyser =
-    effectiveState === "recording" ? micAnalyserRef
-    : effectiveState === "tts"     ? ttsAnalyserRef
-    : undefined;
+  let activeAnalyser: RefObject<AnalyserNode | null> | undefined;
+  if (effectiveState === "recording") activeAnalyser = micAnalyserRef;
+  else if (effectiveState === "tts") activeAnalyser = ttsAnalyserRef;
 
   const showFreqRing =
     !noAnim && cfg.frequencyRing && !!activeAnalyser &&

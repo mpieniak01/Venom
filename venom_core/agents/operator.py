@@ -359,7 +359,13 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 enable_functions=False,
             )
 
-            assistant_message = str(response).strip()
+            # Guard against None or empty list before str() — str(None) → 'None'
+            # and str([]) → '[]' are both truthy and would bypass the empty check.
+            if not response or (isinstance(response, list) and not response):
+                assistant_message = ""
+            else:
+                item = response[0] if isinstance(response, list) else response
+                assistant_message = str(item).strip()
             if not assistant_message and SETTINGS.LLM_SERVICE_TYPE == "local":
                 # Ollama's OpenAI-compat endpoint ignores think:false for some
                 # thinking models (gemma4, qwen3, deepseek-r1). Fall back to the

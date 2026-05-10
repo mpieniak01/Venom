@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
 import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
-import { useAudioLevel } from "@/components/voice/use-audio-level";
 import { useOrbEffectsConfig, type OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 
 type AudioStatus = {
@@ -1075,8 +1074,6 @@ type VoiceCommandCenterStatusSidebarProps = Readonly<{
   transcription: string;
   response: string;
   orbState: VoiceOrbState;
-  inputLevel: number;
-  outputLevel: number;
   reducedMotion: boolean;
   isVoiceModeEnabled: boolean;
   audioEnabled: boolean;
@@ -1096,8 +1093,6 @@ function VoiceCommandCenterStatusSidebar({
   transcription,
   response,
   orbState,
-  inputLevel,
-  outputLevel,
   reducedMotion,
   isVoiceModeEnabled,
   audioEnabled,
@@ -1111,8 +1106,6 @@ function VoiceCommandCenterStatusSidebar({
         <div className="flex justify-center rounded-2xl box-muted py-6">
           <VoiceOrb
             state={orbState}
-            inputLevel={inputLevel}
-            outputLevel={outputLevel}
             disabled={!audioEnabled}
             reducedMotion={reducedMotion}
             label={t(`voice.orb.stateLabel.${orbState}`)}
@@ -1266,9 +1259,6 @@ export function VoiceCommandCenter({
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  const inputLevel = useAudioLevel(analyserRef, recording);
-  const outputLevel = useAudioLevel(ttsAnalyserRef, playbackState === "playing");
 
   useEffect(() => {
     syncVoiceModeSelection({
@@ -1799,8 +1789,6 @@ export function VoiceCommandCenter({
           transcription={transcription}
           response={response}
           orbState={orbState}
-          inputLevel={inputLevel}
-          outputLevel={outputLevel}
           reducedMotion={reducedMotion}
           isVoiceModeEnabled={isVoiceModeEnabled}
           audioEnabled={audioEnabled}

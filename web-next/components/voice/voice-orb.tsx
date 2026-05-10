@@ -1,7 +1,8 @@
 "use client";
 
-import { RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
 
+import { useAudioLevel } from "@/components/voice/use-audio-level";
 import { OrbFrequencyRing } from "@/components/voice/orb-frequency-ring";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 
@@ -79,8 +80,9 @@ const CORE_SIZE = 72;
 
 type VoiceOrbProps = Readonly<{
   state: VoiceOrbState;
-  inputLevel: number;
-  outputLevel: number;
+  /** Override audio level — used in tests; omit in production (computed internally). */
+  inputLevel?: number;
+  outputLevel?: number;
   disabled?: boolean;
   reducedMotion?: boolean;
   label?: string;
@@ -91,8 +93,8 @@ type VoiceOrbProps = Readonly<{
 
 export function VoiceOrb({
   state,
-  inputLevel,
-  outputLevel,
+  inputLevel: inputLevelProp,
+  outputLevel: outputLevelProp,
   disabled = false,
   reducedMotion = false,
   label,
@@ -105,7 +107,15 @@ export function VoiceOrb({
   const visual = ORB_VISUALS[effectiveState];
   const noAnim = reducedMotion;
 
-  // ── Audio level for active state ─────────────────────────────────────
+  // ── Audio level (computed here to avoid 60fps re-renders in parent) ──
+  // inputLevelProp / outputLevelProp are accepted as test overrides; in
+  // production the parent passes analyserRefs instead and omits these.
+  const fallbackRef = useRef<AnalyserNode | null>(null);
+  const inputLevelHook  = useAudioLevel(micAnalyserRef ?? fallbackRef, effectiveState === "recording");
+  const outputLevelHook = useAudioLevel(ttsAnalyserRef ?? fallbackRef, effectiveState === "tts");
+  const inputLevel  = inputLevelProp  ?? inputLevelHook;
+  const outputLevel = outputLevelProp ?? outputLevelHook;
+
   const audioLevel =
     effectiveState === "recording" ? inputLevel
     : effectiveState === "tts"     ? outputLevel
@@ -195,15 +205,17 @@ export function VoiceOrb({
   const hasMotion = coreScale !== 1;
 
   // ── Ambient glow box-shadow (3 layers, audio-reactive) ───────────────
-  const glowShadow = useMemo(() => {
-    if (!cfg.glow || noAnim || effectiveState === "offline") return undefined;
+  // Not memoized: depends on audioLevel which updates every animation frame,
+  // so memo overhead exceeds any benefit.
+  let glowShadow: string | undefined;
+  if (cfg.glow && !noAnim && effectiveState !== "offline") {
     const [c1, c2, c3] = ORB_GLOW[effectiveState];
     const l = Math.min(1, audioLevel);
     const r1 = (16 + l * 18).toFixed(0);
     const r2 = (30 + l * 32).toFixed(0);
     const r3 = (52 + l * 62).toFixed(0);
-    return `0 0 ${r1}px ${c1}, 0 0 ${r2}px ${c2}, 0 0 ${r3}px ${c3}`;
-  }, [cfg.glow, noAnim, effectiveState, audioLevel]);
+    glowShadow = `0 0 ${r1}px ${c1}, 0 0 ${r2}px ${c2}, 0 0 ${r3}px ${c3}`;
+  }
 
   const ringAnimation = noAnim ? "" : visual.ringAnimation;
   const coreAnimation = noAnim ? "" : visual.coreAnimation;

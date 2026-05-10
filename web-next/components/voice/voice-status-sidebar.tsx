@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
+import { useTranslation } from "@/lib/i18n";
 
 type VoiceStatusSidebarProps = Readonly<{
   status: VoiceStatusUpdate | null;
@@ -32,14 +33,16 @@ function Row({ label, value }: Readonly<{ label: string; value: React.ReactNode 
 }
 
 export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
+  const t = useTranslation();
+
   if (!status) {
     return (
       <div className="space-y-3">
-        <StatusCard title="STT / TTS">
-          <p className="text-hint text-xs py-2">Oczekiwanie na połączenie…</p>
+        <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
+          <p className="text-hint text-xs py-2">{t("voice.status.channelConnecting")}</p>
         </StatusCard>
-        <StatusCard title="Runtime">
-          <p className="text-hint text-xs py-2">Brak danych</p>
+        <StatusCard title={t("voice.controls.runtime")}>
+          <p className="text-hint text-xs py-2">{t("voice.status.noData")}</p>
         </StatusCard>
       </div>
     );
@@ -55,9 +58,9 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
   return (
     <div className="space-y-3">
       {/* STT / TTS box */}
-      <StatusCard title="STT / TTS">
+      <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
         <Row
-          label="STT"
+          label={t("voice.controls.stt")}
           value={
             <span className="flex items-center gap-1.5">
               <ReadyDot ready={status.stt_ready} />
@@ -66,27 +69,30 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
           }
         />
         <Row
-          label="TTS"
+          label={t("voice.controls.tts")}
           value={
             <span className="flex items-center gap-1.5">
               <ReadyDot ready={status.tts_ready} />
               <span>
                 {status.tts_backend ?? "—"}
-                {status.tts_fallback ? " (fallback)" : ""}
+                {status.tts_fallback ? ` (${t("voice.controls.ttsFallback")})` : ""}
               </span>
             </span>
           }
         />
         {status.vad_threshold != null && (
-          <Row label="VAD" value={status.vad_threshold} />
+          <Row label={t("voice.controls.vad")} value={status.vad_threshold} />
         )}
         {depKeys.length > 0 && (
           <Row
-            label="Zależności"
+            label={t("voice.controls.dependencies")}
             value={
               <span className="flex flex-wrap gap-x-2 gap-y-0.5 justify-end">
                 {depKeys.map((k) => (
-                  <span key={k} className={`text-[10px] ${deps[k] ? "text-emerald-400" : "text-rose-400"}`}>
+                  <span
+                    key={k}
+                    className={`text-[10px] ${deps[k] ? "text-emerald-400" : "text-rose-400"}`}
+                  >
                     {k}
                   </span>
                 ))}
@@ -97,12 +103,12 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
       </StatusCard>
 
       {/* Runtime box */}
-      <StatusCard title="Runtime">
+      <StatusCard title={t("voice.controls.runtime")}>
         {runtime ? (
           <>
             <div className="flex items-center justify-between gap-2 mb-2">
               <span className="text-sm font-semibold text-white truncate">
-                {runtime.model_name ?? "—"}
+                {runtime.model_name ?? t("voice.controls.unknownModel")}
               </span>
               {probeStatus && (
                 <Badge tone={getProbeTone(probeStatus)} className="shrink-0 text-[10px]">
@@ -111,20 +117,20 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
               )}
             </div>
             {runtime.provider && (
-              <Row label="Provider" value={runtime.provider} />
+              <Row label={t("voice.controls.provider")} value={runtime.provider} />
             )}
             {caps?.compatibility_profile && (
-              <Row label="Profil" value={caps.compatibility_profile} />
+              <Row label={t("voice.controls.profile")} value={caps.compatibility_profile} />
             )}
-            {pipeline?.stt && <Row label="STT" value={pipeline.stt} />}
-            {pipeline?.reasoning && <Row label="Reasoning" value={pipeline.reasoning} />}
-            {pipeline?.tts && <Row label="TTS" value={pipeline.tts} />}
+            {pipeline?.stt && <Row label={t("voice.controls.stt")} value={pipeline.stt} />}
+            {pipeline?.reasoning && <Row label={t("voice.controls.pipeline")} value={pipeline.reasoning} />}
+            {pipeline?.tts && <Row label={t("voice.controls.tts")} value={pipeline.tts} />}
             {runtime.error && (
               <p className="mt-1 text-[11px] text-rose-300">{runtime.error}</p>
             )}
           </>
         ) : (
-          <p className="text-hint text-xs py-2">Brak snapshot runtime</p>
+          <p className="text-hint text-xs py-2">{t("voice.controls.noRuntimeSnapshot")}</p>
         )}
       </StatusCard>
     </div>

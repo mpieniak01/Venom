@@ -8,10 +8,12 @@ import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config
 import type { OrbMetrics } from "@/components/voice/use-orb-metrics";
 import { useTranslation } from "@/lib/i18n";
 
+const ORB_3D_SIZE = 240;
+
 // Lazy-load 3D orb — never included in initial bundle, SSR disabled
 const VoiceOrb3D = dynamic(
   () => import("@/components/voice/voice-orb-3d").then((m) => ({ default: m.VoiceOrb3D })),
-  { ssr: false, loading: () => <div style={{ width: 200, height: 200 }} /> },
+  { ssr: false, loading: () => <div style={{ width: ORB_3D_SIZE, height: ORB_3D_SIZE }} /> },
 );
 
 function supportsWebGL(): boolean {
@@ -77,7 +79,7 @@ export function OrbZone({
             micAnalyserRef={micAnalyserRef}
             ttsAnalyserRef={ttsAnalyserRef}
             disabled={!audioEnabled}
-            size={240}
+            size={ORB_3D_SIZE}
             metricsRef={metricsRef}
           />
         ) : (

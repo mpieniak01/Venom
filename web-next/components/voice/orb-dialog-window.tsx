@@ -11,7 +11,6 @@ type OrbDialogWindowProps = Readonly<{
   emptyLabel?: string;
 }>;
 
-const FADE_DELAY_MS = 5000;
 const TYPEWRITER_INTERVAL_MS = 18;
 
 function getBubbleClass(role: "user" | "assistant", isEmpty: boolean): string {
@@ -41,38 +40,39 @@ export function OrbDialogWindow({
   const [visible, setVisible] = useState(!!text);
   const [entering, setEntering] = useState(false);
   const prevTextRef = useRef(text);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Typewriter for assistant bubble
   useEffect(() => {
     if (role !== "assistant" || !text) return;
 
     if (reducedMotion) {
+      prevTextRef.current = text;
       const id = globalThis.setTimeout(() => setDisplayed(text), 0);
       return () => globalThis.clearTimeout(id);
     }
 
-    let i = prevTextRef.current === text ? text.length : 0;
+    const previousText = prevTextRef.current;
+    const startIndex = text.startsWith(previousText) ? previousText.length : 0;
     prevTextRef.current = text;
+    let index = startIndex;
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startId = globalThis.setTimeout(() => {
-      setDisplayed(text.slice(0, i));
+      setDisplayed(text.slice(0, index));
       intervalId = globalThis.setInterval(() => {
-        i += 1;
-        setDisplayed(text.slice(0, i));
-        if (i >= text.length && intervalId) {
-          clearInterval(intervalId);
+        index += 1;
+        setDisplayed(text.slice(0, index));
+        if (index >= text.length && intervalId) {
+          globalThis.clearInterval(intervalId);
+          intervalId = null;
         }
       }, TYPEWRITER_INTERVAL_MS);
     }, 0);
 
     return () => {
       globalThis.clearTimeout(startId);
-      if (intervalId) clearInterval(intervalId);
+      if (intervalId) globalThis.clearInterval(intervalId);
     };
   }, [text, role, reducedMotion]);
 
-  // For user bubble just show full text immediately
   useEffect(() => {
     if (role !== "user") return;
     prevTextRef.current = text;
@@ -80,45 +80,21 @@ export function OrbDialogWindow({
     return () => globalThis.clearTimeout(id);
   }, [text, role]);
 
-  // Visibility + enter animation on text change
   useEffect(() => {
-    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
-
     if (text) {
       const visibleId = globalThis.setTimeout(() => setVisible(true), 0);
-      if (!reducedMotion) {
-        const enterId = globalThis.setTimeout(() => setEntering(true), 0);
-        const exitId = globalThis.setTimeout(() => setEntering(false), 240);
-        return () => {
-          globalThis.clearTimeout(visibleId);
-          globalThis.clearTimeout(enterId);
-          globalThis.clearTimeout(exitId);
-        };
-      }
-    } else {
-      const id = globalThis.setTimeout(() => setVisible(false), 0);
-      return () => globalThis.clearTimeout(id);
+      const enterId = reducedMotion ? null : globalThis.setTimeout(() => setEntering(true), 0);
+      const exitId = reducedMotion ? null : globalThis.setTimeout(() => setEntering(false), 240);
+      return () => {
+        globalThis.clearTimeout(visibleId);
+        if (enterId) globalThis.clearTimeout(enterId);
+        if (exitId) globalThis.clearTimeout(exitId);
+      };
     }
+
+    const hideId = globalThis.setTimeout(() => setVisible(false), 0);
+    return () => globalThis.clearTimeout(hideId);
   }, [text, reducedMotion]);
-
-  // Auto-fade after conversation ends
-  useEffect(() => {
-    if (!text) return;
-    const isActive =
-      orbState === "recording" ||
-      orbState === "stt" ||
-      orbState === "thinking" ||
-      orbState === "tts";
-
-    if (!isActive) {
-      fadeTimerRef.current = setTimeout(() => {
-        // just dim — don't remove from DOM so layout stays stable
-      }, FADE_DELAY_MS);
-    }
-    return () => {
-      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
-    };
-  }, [orbState, text]);
 
   const isActive =
     (role === "user" && (orbState === "recording" || orbState === "stt")) ||
@@ -153,7 +129,7 @@ export function OrbDialogWindow({
     >
       {visible && (
         <div className={bubbleClasses}>
-          <span className="block text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-1">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
             {role === "user" ? "Ty" : "Asystent"}
           </span>
           <span>{displayed || emptyLabel}</span>

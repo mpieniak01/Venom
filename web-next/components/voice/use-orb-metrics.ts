@@ -15,14 +15,14 @@ const ZERO_METRICS: OrbMetrics = { cpu: 0, gpu: 0, net: 0, ram: 0 };
 
 export function useOrbMetrics(): RefObject<OrbMetrics> {
   const metricsRef = useRef<OrbMetrics>({ ...ZERO_METRICS });
-  const { data } = useModelsUsage(2000);
+  const { data } = useModelsUsage(5000);
 
   useEffect(() => {
     if (!data?.usage) return;
     const u = data.usage as Record<string, number | undefined>;
     metricsRef.current = {
       cpu: u.cpu_usage_percent ?? 0,
-      gpu: u.gpu_usage_percent ?? 0,
+      gpu: typeof u.gpu_usage_percent === "number" ? u.gpu_usage_percent : Number.NaN,
       net: u.net_usage_percent ?? 0,
       ram: u.memory_usage_percent ?? 0,
     };

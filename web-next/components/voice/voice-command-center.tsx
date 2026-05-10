@@ -1512,7 +1512,8 @@ export function VoiceCommandCenter({
               size="xs"
               variant="outline"
               onClick={() => setDevDrawerOpen(true)}
-              title="Dev diagnostics"
+              title={t("voice.controls.diagnostics")}
+              aria-label={t("voice.controls.diagnostics")}
             >
               ⚙
             </Button>

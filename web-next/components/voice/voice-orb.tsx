@@ -281,19 +281,22 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
       const vals = [m.cpu, m.gpu, m.net, m.ram];
 
       currents.current = currents.current.map((c, i) => {
-        const tgt = MIN_R + ((vals[i] ?? 0) / 100) * (MAX_R - MIN_R);
+        const pct = Number.isFinite(vals[i] ?? NaN) ? (vals[i] as number) : 0;
+        const tgt = MIN_R + (pct / 100) * (MAX_R - MIN_R);
         return c + (tgt - c) * 0.06;
       });
 
       currents.current.forEach((r, i) => {
         const def = ARC_DEFS[i];
         if (!def) return;
+        const pctValue = Number.isFinite(vals[i] ?? NaN) ? (vals[i] as number) : 0;
+        const loadPct = Math.max(0, Math.min(1, pctValue / 100));
         const pct = Math.max(0, Math.min(1, (r - MIN_R) / (MAX_R - MIN_R)));
         const breathPhase = t * 2.1 + (PHASES[i] ?? 0);
         const breathe = Math.sin(breathPhase);
         const effR = r + breathe * orbSize * 0.012;
         const sw = 1.8 + 3.8 * pct + breathe * (0.8 + 1.2 * pct);
-        const opa = 0.35 + 0.65 * pct;
+        const opa = 0.35 + 0.65 * Math.max(pct, loadPct);
         const d = arcPath(cx, cy, Math.max(MIN_R * 0.95, effR), def.startDeg, def.endDeg);
 
         const core = coreRefs.current[i];
@@ -307,13 +310,13 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
         if (glow) {
           glow.setAttribute("d",            d);
           glow.setAttribute("stroke-width", String(Math.max(4, sw * 3.5).toFixed(2)));
-          glow.setAttribute("opacity",      String((0.1 + 0.22 * pct).toFixed(3)));
+          glow.setAttribute("opacity",      String((0.1 + 0.22 * Math.max(pct, loadPct)).toFixed(3)));
         }
 
         // Ripple arc: spawns when radius spikes (load surge)
         const prev = prevRadii.current[i] ?? MIN_R;
         const rp   = rippleSt.current[i] ?? 0;
-        if (r - prev > (MAX_R - MIN_R) * 0.06 && pct > 0.15 && rp === 0) {
+        if (r - prev > (MAX_R - MIN_R) * 0.06 && Math.max(pct, loadPct) > 0.15 && rp === 0) {
           rippleSt.current[i] = 1;
         }
         prevRadii.current[i] = r;

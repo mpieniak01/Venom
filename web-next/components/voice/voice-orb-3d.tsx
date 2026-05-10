@@ -136,9 +136,9 @@ function makeGlowGeometry() {
   return geo;
 }
 
-type OrbMetricsBars3DProps = {
+type OrbMetricsBars3DProps = Readonly<{
   metricsRef: RefObject<OrbMetrics>;
-};
+}>;
 
 function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
   const groupRefs = useRef<Array<THREE.Group | null>>([null, null, null, null]);
@@ -174,8 +174,9 @@ function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
     const values: number[] = [m.cpu, m.gpu, m.net, m.ram];
 
     values.forEach((pct, i) => {
-      const isGpuAbsent = i === 1 && pct === 0;
-      const target = MIN_BAR_SCALE + (pct / 100) * (MAX_BAR_RADIUS - MIN_BAR_SCALE);
+      const safePct = Number.isFinite(pct) ? pct : 0;
+      const isGpuAbsent = i === 1 && !Number.isFinite(pct);
+      const target = MIN_BAR_SCALE + (safePct / 100) * (MAX_BAR_RADIUS - MIN_BAR_SCALE);
 
       const core = coreRefs.current[i];
       if (core) {
@@ -184,7 +185,7 @@ function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
         if (mat) {
           mat.color.set(BAR_DEFS[i]?.color ?? mat.color);
           mat.emissive.set(BAR_DEFS[i]?.color ?? mat.emissive);
-          mat.emissiveIntensity = isGpuAbsent ? 0.04 : 0.35 + 0.65 * (pct / 100);
+          mat.emissiveIntensity = isGpuAbsent ? 0.04 : 0.35 + 0.65 * (safePct / 100);
           mat.opacity = isGpuAbsent ? 0.2 : 0.92;
           mat.transparent = true;
           mat.depthWrite = false;
@@ -198,8 +199,8 @@ function OrbMetricsBars3D({ metricsRef }: OrbMetricsBars3DProps) {
         if (mat) {
           mat.color.set(BAR_DEFS[i]?.color ?? mat.color);
           mat.emissive.set(BAR_DEFS[i]?.color ?? mat.emissive);
-          mat.emissiveIntensity = isGpuAbsent ? 0.02 : 0.15 + 0.35 * (pct / 100);
-          mat.opacity = isGpuAbsent ? 0.06 : 0.18 + 0.22 * (pct / 100);
+          mat.emissiveIntensity = isGpuAbsent ? 0.02 : 0.15 + 0.35 * (safePct / 100);
+          mat.opacity = isGpuAbsent ? 0.06 : 0.18 + 0.22 * (safePct / 100);
           mat.transparent = true;
           mat.depthWrite = false;
         }

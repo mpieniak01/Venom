@@ -13,6 +13,7 @@ export const voice = {
     replay: "Wiederholen",
     refresh: "Aktualisieren",
     refreshing: "Wird aktualisiert…",
+    diagnostics: "Dev-Diagnose",
     pushToTalk: "Gedrückt halten und sprechen",
     recording: "Aufnahme läuft...",
     voiceChat: "Sprachchat",

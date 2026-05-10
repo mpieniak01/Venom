@@ -8,14 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
 
-type IoTStatus = {
-  connected: boolean;
-  cpu_temp?: string;
-  memory?: string;
-  disk?: string;
-  message?: string;
-};
-
 type AudioStatus = {
   enabled: boolean;
   connected_clients: number;
@@ -453,12 +445,6 @@ const getPlaybackStateLabel = (
   return t("voice.status.playbackIdleShort");
 };
 
-const getIoTConnectionLabel = (t: Translator, connected: boolean): string =>
-  connected ? t("voice.status.online") : t("voice.status.offlineState");
-
-const getIoTRefreshLabel = (t: Translator, loading: boolean): string =>
-  loading ? t("voice.controls.refreshing") : t("voice.controls.refresh");
-
 const handleVoiceRecordingStarted = (
   t: Translator,
   setStatusMessage: (value: string | null) => void,
@@ -885,7 +871,6 @@ export function VoiceCommandCenter({
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
-  const iotStatusEnabled = process.env.NEXT_PUBLIC_ENABLE_IOT_STATUS === "true";
   const [connected, setConnected] = useState(false);
   const [isVoiceModeEnabled, setIsVoiceModeEnabled] = useState<boolean>(audioEnabled);
   const [recording, setRecording] = useState(false);
@@ -893,8 +878,6 @@ export function VoiceCommandCenter({
   const [response, setResponse] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
-  const [iotStatus, setIotStatus] = useState<IoTStatus | null>(null);
-  const [loadingIoT, setLoadingIoT] = useState(false);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [ttsMuted, setTtsMuted] = useState(false);
   const [audioChunkCount, setAudioChunkCount] = useState(0);
@@ -1202,42 +1185,6 @@ export function VoiceCommandCenter({
     ],
   );
 
-  const refreshIoTStatus = useCallback(async () => {
-    if (!iotStatusEnabled) {
-      setIotStatus({
-        connected: false,
-        message: t("voice.status.iotDisabled"),
-      });
-      return;
-    }
-    setLoadingIoT(true);
-    try {
-      const res = await fetch("/api/v1/iot/status");
-      if (res.ok) {
-        const data = (await res.json()) as IoTStatus;
-        setIotStatus(data);
-      } else if (res.status === 404) {
-        setIotStatus({
-          connected: false,
-          message: t("voice.status.iotEndpointOffline"),
-        });
-      } else {
-        throw new Error(`HTTP ${res.status}`);
-      }
-    } catch {
-      setIotStatus({
-        connected: false,
-        message: t("voice.status.iotNoData"),
-      });
-    } finally {
-      setLoadingIoT(false);
-    }
-  }, [iotStatusEnabled, t]);
-
-  useEffect(() => {
-    refreshIoTStatus().catch(() => undefined);
-  }, [refreshIoTStatus]);
-
   const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
@@ -1333,8 +1280,6 @@ export function VoiceCommandCenter({
   const voiceChatModeLabel = isVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat");
   const playbackStateLabel = getPlaybackStateLabel(t, playbackState, ttsMuted);
   const audioWsStateLabel = audioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline");
-  const iotRefreshLabel = getIoTRefreshLabel(t, loadingIoT);
-  const iotConnectionLabel = getIoTConnectionLabel(t, iotStatus?.connected ?? false);
 
   useEffect(() => bindRecordingReleaseListeners(recording, stopRecording), [recording, stopRecording]);
 
@@ -1567,37 +1512,6 @@ export function VoiceCommandCenter({
             <p className="mt-2 text-sm text-white">
               {response || t("voice.status.noResponseYet")}
             </p>
-          </div>
-          <div className="rounded-2xl box-muted p-4 text-sm">
-            <div className="flex items-center justify-between">
-              <p className="eyebrow">{t("voice.controls.riderPi")}</p>
-              <Button size="xs" variant="outline" onClick={() => { refreshIoTStatus().catch(() => undefined); }} disabled={loadingIoT}>
-                {iotRefreshLabel}
-              </Button>
-            </div>
-            {iotStatus ? (
-              <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-3">
-                <div>
-                  <p className="text-caption">{t("voice.controls.connection")}</p>
-                  <p className="text-white">{iotConnectionLabel}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.cpu")}</p>
-                  <p className="text-white">{iotStatus.cpu_temp ?? "—"}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.memory")}</p>
-                  <p className="text-white">{iotStatus.memory ?? "—"}</p>
-                </div>
-                <div>
-                  <p className="text-caption">{t("voice.controls.disk")}</p>
-                  <p className="text-white">{iotStatus.disk ?? "—"}</p>
-                </div>
-                {iotStatus.message && <div className="sm:col-span-3 text-hint">{iotStatus.message}</div>}
-              </div>
-            ) : (
-              <p className="mt-2 text-hint">{t("voice.status.iotNoData")}</p>
-            )}
           </div>
         </div>
       </div>

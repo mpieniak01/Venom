@@ -41,11 +41,6 @@ export const voice = {
     runtime: "Runtime",
     sessionId: "Session ID",
     noRecordingYet: "No voice session yet.",
-    riderPi: "Rider-Pi",
-    connection: "Connection",
-    cpu: "CPU",
-    memory: "Memory",
-    disk: "Disk",
   },
   status: {
     connected: "WS connected",
@@ -78,9 +73,6 @@ export const voice = {
     playbackErrorShort: "Error",
     playbackIdleShort: "Idle",
     replayUnavailable: "No previous audio response to replay.",
-    iotDisabled: "IoT status is disabled in configuration.",
-    iotEndpointOffline: "Offline – the /api/v1/iot/status endpoint is unavailable.",
-    iotNoData: "No IoT data.",
   },
   modes: {
     title: "Voice modes",

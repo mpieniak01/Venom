@@ -53,7 +53,7 @@
   "tests": [
     {
       "path": "tests/api/test_academy_openapi_contract.py",
-      "domain": "api",
+      "domain": "core",
       "test_type": "route_contract",
       "intent": "contract",
       "primary_lane": "release",
@@ -65,7 +65,7 @@
     },
     {
       "path": "tests/api/test_memory_api_pruning.py",
-      "domain": "api",
+      "domain": "core",
       "test_type": "route_contract",
       "intent": "contract",
       "primary_lane": "release",
@@ -836,7 +836,7 @@
     },
     {
       "path": "tests/test_artifact_strategy.py",
-      "domain": "environment",
+      "domain": "core",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "release",
@@ -865,16 +865,46 @@
       "domain": "misc",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_audio_smoke_script.py",
+      "domain": "misc",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_audio_stream_handler_roi.py",
-      "domain": "api",
+      "domain": "core",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_piper_voice_assets.py",
+      "domain": "misc",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
@@ -1032,7 +1062,7 @@
     },
     {
       "path": "tests/test_boot_id.py",
-      "domain": "environment",
+      "domain": "core",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
@@ -3180,7 +3210,7 @@
     },
     {
       "path": "tests/test_main_internal_helpers.py",
-      "domain": "environment",
+      "domain": "core",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",

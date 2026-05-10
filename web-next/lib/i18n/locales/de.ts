@@ -14,6 +14,7 @@ import { queueCardLocale } from "./queue-card/de";
 import { statusBarLocale } from "./status-bar/de";
 import { configLocale } from "./config/de";
 import { cockpitLocale } from "./cockpit/de";
+import { voice } from "./voice/de";
 import { logsLocale } from "./logs/de";
 import { tasksLocale } from "./tasks/de";
 import { brainLocale } from "./brain/de";
@@ -35,6 +36,8 @@ export const de = {
     completed: "Abgeschlossen",
     failed: "Fehlgeschlagen",
     unknown: "Unbekannt",
+    yes: "Ja",
+    no: "Nein",
     total: "Gesamt",
     loading: "Laden...",
   },
@@ -93,6 +96,7 @@ export const de = {
   statusBar: statusBarLocale,
   config: configLocale,
   cockpit: cockpitLocale,
+  voice,
   academy,
   logs: logsLocale,
   tasks: tasksLocale,

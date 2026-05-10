@@ -523,6 +523,8 @@ if [[ -z "$ui_skip" ]]; then
       export NODE_PATH="$WEB_NODE_PATH"
       export NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION"
       export NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
+      export NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")"
+      export NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}"
       export NEXT_TELEMETRY_DISABLED=1
       unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
 
@@ -567,7 +569,7 @@ if [[ -z "$ui_skip" ]]; then
     echo "🛠  Buduję Next.js (npm run build)"
     if ! (
       cd "$WEB_DIR"
-      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 "$NPM" run build >/dev/null 2>&1
+      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE="$(env_contract_get ENABLE_AUDIO_INTERFACE "false" "$ENV_FILE")" NEXT_PUBLIC_AUDIO_WS_BASE="ws://${WEB_DISPLAY}:${PORT}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 "$NPM" run build >/dev/null 2>&1
     ); then
       echo "❌ Build UI (Next.js) nie powiódł się (tryb prod)." >&2
       if [[ -f "$PID_FILE" ]]; then

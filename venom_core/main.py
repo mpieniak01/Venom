@@ -4,15 +4,21 @@ import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
 from venom_core.agents.ghost_agent import GhostAgent
 from venom_core.agents.operator import OperatorAgent
 from venom_core.api import dependencies as api_deps
-from venom_core.api.audio_stream import AudioStreamHandler
+from venom_core.api.audio_stream import (
+    VOICE_SESSION_ROOT,
+    VOICE_SESSION_WAV_FILENAME,
+    AudioStreamHandler,
+    collect_latest_voice_session_record,
+)
 from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 
 # Import routers
@@ -92,6 +98,9 @@ from venom_core.bootstrap.runtime_stack import (
 )
 from venom_core.bootstrap.runtime_stack import (
     initialize_shadow_stack as rt_initialize_shadow_stack,
+)
+from venom_core.bootstrap.runtime_stack import (
+    warmup_audio_engine_if_enabled as rt_warmup_audio_engine_if_enabled,
 )
 from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import validate_environment_policy
@@ -184,6 +193,24 @@ benchmark_service = None
 # Inicjalizacja Coding Benchmark Service
 coding_benchmark_service = None
 runtime_exclusive_guard = None
+
+
+def _get_latest_voice_session_record() -> dict[str, object] | None:
+    """Zwraca najnowszą sesję voice wraz ze ścieżkami lokalnymi."""
+    if audio_stream_handler is not None:
+        latest = audio_stream_handler.get_latest_voice_session()
+        if latest:
+            return latest
+    return collect_latest_voice_session_record(VOICE_SESSION_ROOT)
+
+
+def _resolve_voice_session_wav_path(session_id: str) -> Path:
+    root_path = VOICE_SESSION_ROOT.resolve()
+    wav_path = (VOICE_SESSION_ROOT / session_id / VOICE_SESSION_WAV_FILENAME).resolve()
+    if not wav_path.is_relative_to(root_path):
+        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka nagrania.")
+    return wav_path
+
 
 # Inicjalizacja Model Registry (dla endpointów models)
 model_registry = None
@@ -816,6 +843,10 @@ async def lifespan(app: FastAPI):
     await _initialize_background_scheduler()
     await _initialize_documenter_and_watcher(workspace_path)
     await _initialize_avatar_stack()
+    if audio_engine is not None:
+        app.state.startup_audio_task = asyncio.create_task(
+            rt_warmup_audio_engine_if_enabled(audio_engine=audio_engine, logger=logger)
+        )
     await _initialize_shadow_stack()
     _initialize_ghost_agent_if_enabled()
     setup_router_dependencies()
@@ -1194,6 +1225,62 @@ async def audio_websocket_endpoint(websocket: WebSocket):
         )
     except Exception as e:
         logger.error(f"Audio WebSocket error: {e}")
+
+
+@app.get("/api/v1/audio/status")
+async def audio_status_endpoint(request: Request):
+    """Zwraca stan kanału audio i gotowość stacka STT/TTS."""
+    if not audio_stream_handler:
+        return {
+            "enabled": False,
+            "connected_clients": 0,
+            "active_recordings": 0,
+            "message": "Audio interface is disabled or not initialized.",
+        }
+
+    status = audio_stream_handler.get_status(operator_agent=operator_agent)
+    if not status.get("message"):
+        status["message"] = (
+            "Audio channel ready."
+            if status.get("enabled")
+            else "Audio interface disabled."
+        )
+    latest_session = _get_latest_voice_session_record()
+    if latest_session:
+        latest_session["download_url"] = str(
+            request.url_for("download_latest_voice_session")
+        )
+    status["latest_voice_session"] = latest_session
+    return status
+
+
+@app.get(
+    "/api/v1/audio/sessions/latest/download",
+    name="download_latest_voice_session",
+    responses={
+        400: {"description": "Nieprawidłowa ścieżka nagrania."},
+        404: {"description": "Brak zapisanej sesji lub pliku nagrania."},
+    },
+)
+async def download_latest_voice_session():
+    """Pobiera ostatnie zapisane nagranie voice jako WAV."""
+    latest_session = _get_latest_voice_session_record()
+    if not latest_session:
+        raise HTTPException(status_code=404, detail="Brak zapisanych sesji voice.")
+
+    session_id = str(latest_session.get("session_id") or "")
+    if not session_id:
+        raise HTTPException(status_code=404, detail="Brak identyfikatora sesji voice.")
+
+    wav_path = _resolve_voice_session_wav_path(session_id)
+    if not wav_path.exists():
+        raise HTTPException(status_code=404, detail="Plik nagrania nie istnieje.")
+
+    return FileResponse(
+        path=str(wav_path),
+        media_type="audio/wav",
+        filename=wav_path.name,
+    )
 
 
 @app.websocket("/ws/nodes")

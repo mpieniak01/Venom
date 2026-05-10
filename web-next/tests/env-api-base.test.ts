@@ -80,4 +80,20 @@ describe("env api base policy", () => {
     const mod = await loadEnvModule("explicit-base");
     assert.equal(mod.getApiBaseUrl(), "http://api.example.test");
   });
+
+  it("preserves explicit wss websocket bases for audio", async () => {
+    process.env.NEXT_PUBLIC_AUDIO_WS_BASE = "wss://audio.example.test";
+    setWindowLocation("https://app.example.test");
+
+    const mod = await loadEnvModule("audio-wss-base");
+    assert.equal(mod.getAudioWsUrl(), "wss://audio.example.test/ws/audio");
+  });
+
+  it("normalizes websocket bases without scheme", async () => {
+    process.env.NEXT_PUBLIC_AUDIO_WS_BASE = "localhost:8000";
+    setWindowLocation("http://localhost:3000");
+
+    const mod = await loadEnvModule("audio-host-base");
+    assert.equal(mod.getAudioWsUrl(), "ws://localhost:8000/ws/audio");
+  });
 });

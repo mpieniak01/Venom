@@ -13,6 +13,7 @@ export const sidebar = {
     models: "Modelle",
     academy: "Akademie",
     workflowControl: "Workflow",
+    voice: "Sprachchat",
     calendar: "Kalender",
     benchmark: "Benchmark",
     config: "Konfiguration",

@@ -322,6 +322,21 @@ def initialize_audio_engine_if_enabled(
         return None
 
 
+async def warmup_audio_engine_if_enabled(
+    *, audio_engine: Any, logger: Any
+) -> dict[str, bool] | None:
+    """Warm up audio models after startup without blocking bootstrap."""
+    if audio_engine is None:
+        return None
+    try:
+        warmup_state = await audio_engine.warmup()
+        logger.info(f"AudioEngine podgrzany: {warmup_state}")
+        return warmup_state
+    except Exception as exc:
+        logger.warning(f"Nie udało się podgrzać AudioEngine: {exc}")
+        return None
+
+
 async def initialize_hardware_bridge_if_enabled(
     *,
     settings: Any,

@@ -49,26 +49,26 @@ Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykac
 
 ## 2. Model biologiczny Venoma – organizm sztucznej inteligencji
 <table>
-<tr><th>Organ</th><th>Funkcja</th><th>Rola w organizmie</th><th>Technologia</th><th>Wersja</th></tr>
-<tr><td>System nerwowy</td><td>Orkiestracja</td><td>Dialog, pętle decyzyjne</td><td>AutoGen + Orchestrator (FastAPI)</td><td>v1.0</td></tr>
-<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td></tr>
-<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td></tr>
-<tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td></tr>
-<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td></tr>
-<tr><td>Móżdżek (Cerebellum)</td><td>Uczenie (Fine-tuning)</td><td>Pamięć mięśniowa, odruchy</td><td>The Academy (LoRA/QLoRA)</td><td>v1.5</td></tr>
-<tr><td>Kora przedczołowa (Prefrontal Cortex)</td><td>Kontrola</td><td>Świadome planowanie</td><td>Workflow Control Plane</td><td>v1.5</td></tr>
-<tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td></tr>
-<tr><td>Synapsy narzędziowe (MCP)</td><td>Rozszerzenia narzędzi</td><td>Import narzędzi z Git, standaryzacja integracji</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Docelowy engine lokalny</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
-<tr><td>Uszy</td><td>Słuch (STT)</td><td>Transkrypcja audio (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
-<tr><td>Usta</td><td>Mowa (TTS)</td><td>Synteza głosu (VoiceSkill)</td><td>Piper TTS (ONNX)</td><td>v1.0</td></tr>
-<tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>Obiekty, przeszkody</td><td>YOLO ONNX</td><td>v2.0</td></tr>
-<tr><td>Nogi</td><td>Ruch</td><td>Mobilność</td><td>Rider-Pi</td><td>v2.0</td></tr>
-<tr><td>Metabolizm</td><td>Wydajność</td><td>Wykonanie modeli</td><td>ONNX / GGUF</td><td>v1.0</td></tr>
-<tr><td>Układ krążenia (Hive)</td><td>Kolejki i dystrybucja</td><td>Routing i statusy zadań</td><td>Redis + ARQ</td><td>v1.0</td></tr>
-<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Silnik inferencji</td><td>Ollama / vLLM / ONNX<br>FastAPI + WebSocket<br>Next.js</td><td>v1.0</td></tr>
-<tr><td>Habitat</td><td>Środowisko</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td></tr>
+<tr><th>Organ</th><th>Funkcja</th><th>Rola w organizmie</th><th>Technologia</th><th>Wersja wizji</th><th>Wersja stosu w środowisku (2026-04-11)</th></tr>
+<tr><td>System nerwowy</td><td>Orkiestracja</td><td>Dialog, pętle decyzyjne</td><td>AutoGen + Orchestrator (FastAPI)</td><td>v1.0</td><td>Python `3.12.3`; `pyautogen>=0.2.0`; FastAPI `0.128.0` (pin)</td></tr>
+<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td><td>Ollama `0.17.4` (lokalnie); `vllm==0.11.0` (pin profilu); pakiety ONNX Runtime aktywne (bez pina)</td></tr>
+<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td><td>`openai>=1.98.0,<2`; `anthropic` (bez pina); Gemini przez API providera</td></tr>
+<tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td><td>Warstwa integracyjna w repo; brak jednej pinowanej wersji binarnej na hoście</td></tr>
+<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td><td>`graphrag==2.7.0`; `lancedb==0.25.3`</td></tr>
+<tr><td>Móżdżek (Cerebellum)</td><td>Uczenie (Fine-tuning)</td><td>Pamięć mięśniowa, odruchy</td><td>The Academy (LoRA/QLoRA)</td><td>v1.5</td><td>Pipeline Academy w repo (brak jednej pinowanej zewnętrznej wersji runtime)</td></tr>
+<tr><td>Kora przedczołowa (Prefrontal Cortex)</td><td>Kontrola</td><td>Świadome planowanie</td><td>Workflow Control Plane</td><td>v1.5</td><td>Linia aplikacji Venom `v1.8.0` (wersja pakietu `web-next`)</td></tr>
+<tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td><td>`semantic-kernel==1.39.4` (pin CI/minimal); Git `2.43.0`</td></tr>
+<tr><td>Synapsy narzędziowe (MCP)</td><td>Rozszerzenia narzędzi</td><td>Import narzędzi z Git, standaryzacja integracji</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td><td>Integracja MCP zaimplementowana w repo (brak dedykowanej pinowanej wersji serwera MCP)</td></tr>
+<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td><td>Ollama `0.17.4`; `openai>=1.98.0,<2`</td></tr>
+<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Docelowy engine lokalny</td><td>Florence-2 ONNX</td><td>v2.0</td><td>ONNX Runtime / ONNX Runtime GenAI aktywne (bez pina w profilach)</td></tr>
+<tr><td>Uszy</td><td>Słuch (STT)</td><td>Transkrypcja audio (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td><td>`faster-whisper` (profil extras, bez pina); CTranslate2 przez łańcuch zależności</td></tr>
+<tr><td>Usta</td><td>Mowa (TTS)</td><td>Synteza głosu (VoiceSkill)</td><td>Piper TTS (ONNX)</td><td>v1.0</td><td>`piper-tts` (profil extras, bez pina)</td></tr>
+<tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>Obiekty, przeszkody</td><td>YOLO ONNX</td><td>v2.0</td><td>Pakiety ONNX Runtime aktywne (bez pina)</td></tr>
+<tr><td>Nogi</td><td>Ruch</td><td>Mobilność</td><td>Rider-Pi</td><td>v2.0</td><td>Cel integracyjny/planowany; brak wersji runtime na tym hoście deweloperskim</td></tr>
+<tr><td>Metabolizm</td><td>Wydajność</td><td>Wykonanie modeli</td><td>ONNX / GGUF</td><td>v1.0</td><td>Ollama `0.17.4`; pakiety ONNX Runtime aktywne (bez pina)</td></tr>
+<tr><td>Układ krążenia (Hive)</td><td>Kolejki i dystrybucja</td><td>Routing i statusy zadań</td><td>Redis + ARQ</td><td>v1.0</td><td>Obraz Redis `redis:7-alpine`; `redis==5.3.1` (klient py); `arq>=0.26.0`</td></tr>
+<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Silnik inferencji</td><td>Ollama / vLLM / ONNX<br>FastAPI + WebSocket<br>Next.js</td><td>v1.0</td><td>Ollama `0.17.4`; `vllm==0.11.0`; FastAPI `0.128.0`; `websockets==15.0.1`; Next.js `16.1.6`; React `19.1.0`; Node `20.19.0`</td></tr>
+<tr><td>Habitat</td><td>Środowisko</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td><td>WSL `2.6.1.0`; Docker `28.2.2`; Docker Compose `5.0.2`; obrazy bazowe `python:3.12-slim`, `node:20-alpine`</td></tr>
 </table>
 
 ## 2A. Warstwa modeli – Strategia 3-stack

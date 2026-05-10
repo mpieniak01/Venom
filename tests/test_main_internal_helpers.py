@@ -52,6 +52,182 @@ def test_select_startup_model_priority_chain():
 
 
 @pytest.mark.asyncio
+async def test_audio_status_endpoint_includes_latest_session_download_url(monkeypatch):
+    class DummyHandler:
+        def get_status(self, operator_agent=None):
+            return {
+                "enabled": True,
+                "connected_clients": 1,
+                "active_recordings": 0,
+                "message": "ok",
+            }
+
+        def get_latest_voice_session(self):
+            return {"session_id": "session-1", "transcription": "hello"}
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(main_module, "operator_agent", object())
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["enabled"] is True
+    assert status["latest_voice_session"]["download_url"] == (
+        "https://example.test/download_latest_voice_session"
+    )
+    assert status["latest_voice_session"]["transcription"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_audio_status_endpoint_returns_disabled_state_without_handler(
+    monkeypatch,
+):
+    monkeypatch.setattr(main_module, "audio_stream_handler", None)
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["enabled"] is False
+    assert status["message"] == "Audio interface is disabled or not initialized."
+
+
+@pytest.mark.asyncio
+async def test_download_latest_voice_session_validates_session_path(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(main_module, "VOICE_SESSION_ROOT", tmp_path)
+    session_dir = tmp_path / "20260101_010101_1"
+    session_dir.mkdir(parents=True)
+    wav_path = session_dir / "recording.wav"
+    wav_path.write_bytes(b"RIFFTEST")
+    monkeypatch.setattr(
+        main_module,
+        "_get_latest_voice_session_record",
+        lambda: {"session_id": session_dir.name},
+    )
+
+    class DummyFileResponse:
+        def __init__(self, *, path, media_type, filename):
+            self.path = path
+            self.media_type = media_type
+            self.filename = filename
+
+    monkeypatch.setattr(main_module, "FileResponse", DummyFileResponse)
+
+    response = await main_module.download_latest_voice_session()
+
+    assert response.path == str(wav_path.resolve())
+    assert response.media_type == "audio/wav"
+    assert response.filename == "recording.wav"
+
+
+@pytest.mark.asyncio
+async def test_download_latest_voice_session_rejects_path_traversal(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(main_module, "VOICE_SESSION_ROOT", tmp_path)
+    monkeypatch.setattr(
+        main_module,
+        "_get_latest_voice_session_record",
+        lambda: {"session_id": "../evil"},
+    )
+
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        await main_module.download_latest_voice_session()
+
+    assert excinfo.value.status_code == 400
+
+
+def test_get_latest_voice_session_record_prefers_handler(monkeypatch):
+    class DummyHandler:
+        def get_latest_voice_session(self):
+            return {"session_id": "from-handler"}
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(
+        main_module,
+        "collect_latest_voice_session_record",
+        lambda _root: {"session_id": "from-fs"},
+    )
+
+    latest = main_module._get_latest_voice_session_record()
+
+    assert latest == {"session_id": "from-handler"}
+
+
+def test_get_latest_voice_session_record_falls_back_to_filesystem(monkeypatch):
+    class DummyHandler:
+        def get_latest_voice_session(self):
+            return None
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(
+        main_module,
+        "collect_latest_voice_session_record",
+        lambda _root: {"session_id": "from-fs"},
+    )
+
+    latest = main_module._get_latest_voice_session_record()
+
+    assert latest == {"session_id": "from-fs"}
+
+
+@pytest.mark.asyncio
+async def test_lifespan_schedules_audio_warmup_task(monkeypatch):
+    """lifespan should schedule warmup when audio_engine exists."""
+
+    class DummyApp:
+        def __init__(self):
+            self.state = SimpleNamespace()
+
+    async def noop_async(*args, **kwargs):
+        return None
+
+    def noop_sync(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(main_module, "validate_environment_policy", noop_sync)
+    monkeypatch.setattr(main_module, "_initialize_observability", noop_async)
+    monkeypatch.setattr(main_module, "_initialize_model_services", noop_sync)
+    monkeypatch.setattr(main_module, "_initialize_calendar_skill", noop_sync)
+    monkeypatch.setattr(main_module, "_initialize_node_manager", noop_async)
+    monkeypatch.setattr(main_module, "_initialize_orchestrator", noop_sync)
+    monkeypatch.setattr(main_module, "_ensure_storage_dirs", lambda: "/tmp")
+    monkeypatch.setattr(main_module, "_initialize_memory_stores", noop_sync)
+    monkeypatch.setattr(main_module, "_initialize_academy", noop_sync)
+    monkeypatch.setattr(main_module, "_initialize_token_economist", noop_sync)
+    monkeypatch.setattr(main_module, "_initialize_gardener_and_git", noop_async)
+    monkeypatch.setattr(main_module, "_initialize_background_scheduler", noop_async)
+    monkeypatch.setattr(main_module, "_initialize_documenter_and_watcher", noop_async)
+    monkeypatch.setattr(main_module, "_initialize_avatar_stack", noop_async)
+    monkeypatch.setattr(main_module, "_initialize_shadow_stack", noop_async)
+    monkeypatch.setattr(main_module, "_initialize_ghost_agent_if_enabled", noop_sync)
+    monkeypatch.setattr(main_module, "setup_router_dependencies", noop_sync)
+    monkeypatch.setattr(main_module, "_ensure_local_llm_ready", noop_async)
+    monkeypatch.setattr(main_module, "_shutdown_runtime_components", noop_async)
+    monkeypatch.setattr(main_module, "audio_engine", object())
+
+    warmup_calls = []
+
+    async def fake_warmup_audio_engine_if_enabled(*, audio_engine, logger):
+        warmup_calls.append(audio_engine)
+        return {"whisper_loaded": True, "tts_loaded": True}
+
+    monkeypatch.setattr(
+        main_module,
+        "rt_warmup_audio_engine_if_enabled",
+        fake_warmup_audio_engine_if_enabled,
+    )
+
+    app = DummyApp()
+    async with main_module.lifespan(app):
+        assert hasattr(app.state, "startup_audio_task")
+        await app.state.startup_audio_task
+
+    assert warmup_calls == [main_module.audio_engine]
+
+
+@pytest.mark.asyncio
 async def test_handle_node_message_returns_false_when_manager_missing(monkeypatch):
     monkeypatch.setattr(main_module, "node_manager", None)
     message = SimpleNamespace(

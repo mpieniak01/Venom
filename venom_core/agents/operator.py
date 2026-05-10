@@ -14,6 +14,32 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 HARDWARE_BRIDGE_UNAVAILABLE_MSG = "Hardware Bridge nie jest dostępny."
 
+VOICE_MODE_PROMPTS = {
+    "standard": {
+        "instruction": "Odpowiadaj krótko, naturalnie i zwięźle.",
+        "max_tokens": 150,
+        "temperature": 0.7,
+    },
+    "deep_analysis": {
+        "instruction": (
+            "Udziel odpowiedzi analitycznej. Wskaż wnioski, ryzyka i rekomendacje, "
+            "ale nadal mów naturalnie i bez markdown."
+        ),
+        "max_tokens": 220,
+        "temperature": 0.6,
+    },
+    "summary": {
+        "instruction": "Streść odpowiedź do 1-2 zdań, bez zbędnych szczegółów.",
+        "max_tokens": 100,
+        "temperature": 0.5,
+    },
+    "action_items": {
+        "instruction": "Podaj konkretne następne kroki w 2-4 punktach, bez markdown.",
+        "max_tokens": 120,
+        "temperature": 0.6,
+    },
+}
+
 
 class OperatorAgent(BaseAgent):
     """
@@ -73,7 +99,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         self.chat_history.add_system_message(self.SYSTEM_PROMPT)
         logger.info("OperatorAgent zainicjalizowany")
 
-    async def process(self, input_text: str) -> str:
+    async def process(self, input_text: str, mode: str = "standard") -> str:
         """
         Przetwarza komendę głosową i zwraca odpowiedź zoptymalizowaną dla TTS.
 
@@ -83,14 +109,15 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         Returns:
             Krótka odpowiedź gotowa do syntezy mowy
         """
-        logger.info(f"OperatorAgent przetwarza: {input_text}")
+        normalized_mode = (mode or "standard").strip().lower()
+        logger.info(f"OperatorAgent przetwarza: {input_text} (mode={normalized_mode})")
 
         # Sprawdź czy to komenda sprzętowa
         if self._is_hardware_command(input_text):
             return await self._handle_hardware_command(input_text)
 
         # W przeciwnym wypadku, deleguj do LLM z kontekstem głosowym
-        return await self._generate_voice_response(input_text)
+        return await self._generate_voice_response(input_text, mode=normalized_mode)
 
     def _is_hardware_command(self, text: str) -> bool:
         """
@@ -211,7 +238,12 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             return None
         return int(match.group(1))
 
-    async def _generate_voice_response(self, input_text: str) -> str:
+    def _get_voice_mode_prompt(self, mode: str) -> dict[str, object]:
+        return VOICE_MODE_PROMPTS.get(mode, VOICE_MODE_PROMPTS["standard"])
+
+    async def _generate_voice_response(
+        self, input_text: str, mode: str = "standard"
+    ) -> str:
         """
         Generuje odpowiedź głosową przy użyciu LLM.
 
@@ -222,23 +254,32 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             Odpowiedź zoptymalizowana dla TTS
         """
         try:
-            # Dodaj wiadomość użytkownika
-            self.chat_history.add_user_message(input_text)
+            mode_prompt = self._get_voice_mode_prompt(mode)
+            temp_history = ChatHistory()
+            temp_history.add_system_message(self.SYSTEM_PROMPT)
+            if mode != "standard":
+                temp_history.add_system_message(str(mode_prompt["instruction"]))
+            for message in self.chat_history.messages:
+                if getattr(message, "role", None) == "system":
+                    continue
+                temp_history.add_message(message)
+            temp_history.add_user_message(input_text)
+            service_id = self._resolve_chat_service_id()
 
             # Ustawienia wykonania
             settings = OpenAIChatPromptExecutionSettings(
-                service_id="chat",
-                max_tokens=150,  # Krótkie odpowiedzi
-                temperature=0.7,
+                service_id=service_id,
+                max_tokens=int(mode_prompt["max_tokens"]),
+                temperature=float(mode_prompt["temperature"]),
             )
 
             # Pobierz usługę czatu
-            chat_service: Any = self.kernel.get_service(service_id="chat")
+            chat_service: Any = self.kernel.get_service(service_id=service_id)
 
             # Wygeneruj odpowiedź
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
-                chat_history=self.chat_history,
+                chat_history=temp_history,
                 settings=settings,
                 enable_functions=False,
             )
@@ -246,6 +287,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             assistant_message = str(response)
 
             # Dodaj do historii
+            self.chat_history.add_user_message(input_text)
             self.chat_history.add_assistant_message(assistant_message)
 
             # Ogranicz historię (tylko ostatnie 10 wiadomości)
@@ -262,6 +304,17 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         except Exception as e:
             logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
             return "Przepraszam, wystąpił błąd. Spróbuj ponownie."
+
+    def _resolve_chat_service_id(self) -> str:
+        """Wybiera dostępny serwis czatu w kernelu OperatorAgent."""
+        services = getattr(self.kernel, "services", {}) or {}
+        if "chat" in services:
+            return "chat"
+        if "local" in services:
+            return "local"
+        if services:
+            return next(iter(services.keys()))
+        return "chat"
 
     async def summarize_for_voice(self, long_text: str) -> str:
         """
@@ -289,13 +342,14 @@ Streszczenie:"""
             temp_history.add_system_message(self.SYSTEM_PROMPT)
             temp_history.add_user_message(prompt)
 
+            service_id = self._resolve_chat_service_id()
             settings = OpenAIChatPromptExecutionSettings(
-                service_id="chat",
+                service_id=service_id,
                 max_tokens=100,
                 temperature=0.5,
             )
 
-            chat_service: Any = self.kernel.get_service(service_id="chat")
+            chat_service: Any = self.kernel.get_service(service_id=service_id)
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
                 chat_history=temp_history,

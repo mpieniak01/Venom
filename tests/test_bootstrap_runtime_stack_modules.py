@@ -259,15 +259,29 @@ async def test_runtime_stack_scheduler_audio_and_aux_paths(tmp_path: Path):
     )
     assert handler["silence_duration"] == 1.2
 
-    shadow = await stack.initialize_shadow_stack(
-        settings=settings,
+
+@pytest.mark.asyncio
+async def test_warmup_audio_engine_if_enabled_success_and_disabled():
+    logger = _logger()
+
+    class DummyEngine:
+        async def warmup(self):
+            return {"whisper_loaded": True, "tts_loaded": True}
+
+    warmup_state = await stack.warmup_audio_engine_if_enabled(
+        audio_engine=DummyEngine(),
         logger=logger,
-        orchestrator=None,
-        lessons_store=None,
-        event_broadcaster=None,
-        system_log_event_type="SYS",
     )
-    assert shadow == (None, None, None)
+    assert warmup_state == {"whisper_loaded": True, "tts_loaded": True}
+    logger.info.assert_called_once()
+
+    assert (
+        await stack.warmup_audio_engine_if_enabled(
+            audio_engine=None,
+            logger=logger,
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio

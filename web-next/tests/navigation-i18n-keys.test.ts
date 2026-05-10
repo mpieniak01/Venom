@@ -16,6 +16,9 @@ import { systemStatus as systemStatusDe } from "../lib/i18n/locales/system-statu
 import { mobileNav as mobileNavPl } from "../lib/i18n/locales/mobile-nav/pl";
 import { mobileNav as mobileNavEn } from "../lib/i18n/locales/mobile-nav/en";
 import { mobileNav as mobileNavDe } from "../lib/i18n/locales/mobile-nav/de";
+import { voice as voicePl } from "../lib/i18n/locales/voice/pl";
+import { voice as voiceEn } from "../lib/i18n/locales/voice/en";
+import { voice as voiceDe } from "../lib/i18n/locales/voice/de";
 
 function resolvePath(locale: Record<string, unknown>, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, part) => {
@@ -44,6 +47,7 @@ function collectLeafKeys(value: unknown, prefix = ""): string[] {
 
 const REQUIRED_NAVIGATION_KEYS = [
   "sidebar.modulesTitle",
+  "sidebar.nav.voice",
   "sidebar.nav.workflowControl",
   "sidebar.autonomy.title",
   "moduleHost.moduleId",
@@ -102,5 +106,14 @@ describe("navigation i18n keys", () => {
 
     assert.deepEqual([...enKeys].sort(), [...plKeys].sort(), "mobileNav key drift: en vs pl");
     assert.deepEqual([...deKeys].sort(), [...plKeys].sort(), "mobileNav key drift: de vs pl");
+  });
+
+  it("keeps voice leaf keys synchronized across pl/en/de", () => {
+    const plKeys = new Set(collectLeafKeys(voicePl));
+    const enKeys = new Set(collectLeafKeys(voiceEn));
+    const deKeys = new Set(collectLeafKeys(voiceDe));
+
+    assert.deepEqual([...enKeys].sort(), [...plKeys].sort(), "voice key drift: en vs pl");
+    assert.deepEqual([...deKeys].sort(), [...plKeys].sort(), "voice key drift: de vs pl");
   });
 });

@@ -23,14 +23,24 @@ const isLocalhostFallbackEnabled = (): boolean =>
 
 const sanitizeBase = (value: string): string => value.replace(/\/$/, "");
 
+const toWsProtocol = (protocol: string): "wss:" | "ws:" =>
+  protocol === "https:" || protocol === "wss:" ? "wss:" : "ws:";
+
+const coerceUrlWithScheme = (value: string): string => {
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(value)) {
+    return value;
+  }
+  return `http://${value}`;
+};
+
 const normalizeWs = (url: string): string => {
   try {
-    const parsed = new URL(url);
-    parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+    const parsed = new URL(coerceUrlWithScheme(url));
+    parsed.protocol = toWsProtocol(parsed.protocol);
     return sanitizeBase(parsed.toString());
   } catch {
     const fallback = buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);
-    return sanitizeBase(fallback.replace(/^http/, "ws"));
+    return sanitizeBase(fallback.replace(/^https/, "wss").replace(/^http/, "ws"));
   }
 };
 
@@ -86,9 +96,9 @@ const resolveBrowserWsBase = (): string => {
       return normalizeWs(parsed.toString());
     }
   } catch {
-    return sanitizeBase(origin.replace(/^http/, "ws"));
+    return sanitizeBase(origin.replace(/^https/, "wss").replace(/^http/, "ws"));
   }
-  return sanitizeBase(origin.replace(/^http/, "ws"));
+  return sanitizeBase(origin.replace(/^https:/, "wss:").replace(/^http:/, "ws:"));
 };
 
 export const getServerApiBaseUrl = (): string => {
@@ -113,4 +123,22 @@ export const getWsBaseUrl = (): string => {
     return resolveBrowserWsBase();
   }
   return normalizeWs(httpBase);
+};
+
+const buildWsEndpoint = (base: string, pathname: string): string => {
+  try {
+    const url = new URL(pathname, normalizeWs(base));
+    url.protocol = toWsProtocol(url.protocol);
+    return sanitizeBase(url.toString());
+  } catch {
+    const fallback = normalizeWs(base);
+    return sanitizeBase(fallback.replace(/^https:/, "wss:").replace(/^http:/, "ws:"))
+      .replace(/\/$/, "") + pathname;
+  }
+};
+
+export const getAudioWsUrl = (): string => {
+  const explicit = getEnv("NEXT_PUBLIC_AUDIO_WS_BASE");
+  const base = explicit || getEnvApiBase() || buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);
+  return buildWsEndpoint(base, "/ws/audio");
 };

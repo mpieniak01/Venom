@@ -301,7 +301,7 @@ async def test_handle_control_message_start_stop_encoded(monkeypatch):
         ),
         None,
     )
-    await handler._handle_audio_data(cid, b"encoded-audio", operator_agent=None)
+    handler._handle_audio_data(cid, b"encoded-audio", operator_agent=None)
     await handler._handle_control_message(
         cid, json.dumps({"command": "stop_recording"}), None
     )
@@ -904,9 +904,7 @@ async def test_handle_audio_data_auto_finalizes_on_silence(monkeypatch):
 
     monkeypatch.setattr(handler, "_process_audio_buffer", fake_process)
 
-    await handler._handle_audio_data(
-        cid, np.zeros(32, dtype=np.int16), operator_agent=None
-    )
+    handler._handle_audio_data(cid, np.zeros(32, dtype=np.int16), operator_agent=None)
     await asyncio.sleep(0.05)
 
     assert processed

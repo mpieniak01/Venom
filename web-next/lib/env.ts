@@ -91,7 +91,7 @@ const resolveBrowserWsBase = (): string => {
   } catch {
     return sanitizeBase(origin.replace(/^https/, "wss").replace(/^http/, "ws"));
   }
-  return sanitizeBase(origin.replace(/^https/, "wss").replace(/^http/, "ws"));
+  return sanitizeBase(origin.replace(/^https:/, "wss:").replace(/^http:/, "ws:"));
 };
 
 export const getServerApiBaseUrl = (): string => {
@@ -124,7 +124,7 @@ const buildWsEndpoint = (base: string, pathname: string): string => {
     url.protocol = toWsProtocol(url.protocol);
     return sanitizeBase(url.toString());
   } catch {
-    return sanitizeBase(base.replace(/^https/, "wss").replace(/^http/, "ws")).replace(/\/$/, "") + pathname;
+    return sanitizeBase(base.replace(/^https:/, "wss:").replace(/^http:/, "ws:")).replace(/\/$/, "") + pathname;
   }
 };
 

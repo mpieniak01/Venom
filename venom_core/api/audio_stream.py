@@ -33,6 +33,64 @@ def _detect_project_root() -> Path:
 PROJECT_ROOT = _detect_project_root()
 VOICE_SESSION_ROOT = PROJECT_ROOT / "data" / "audio" / "voice_sessions"
 MIN_VOICE_SESSION_DURATION_SEC = 0.25
+VOICE_SESSION_WAV_FILENAME = "recording.wav"
+VOICE_SESSION_METADATA_FILENAME = "metadata.json"
+
+
+def _load_voice_session_metadata(metadata_path: Path) -> dict[str, object]:
+    if not metadata_path.exists():
+        return {}
+    try:
+        return json.loads(metadata_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _is_voice_session_eligible(metadata: dict[str, object]) -> bool:
+    duration_sec = metadata.get("duration_sec")
+    samples = metadata.get("samples")
+    try:
+        if (
+            duration_sec is not None
+            and float(duration_sec) < MIN_VOICE_SESSION_DURATION_SEC
+        ):
+            return False
+    except Exception:
+        pass
+    try:
+        if samples is not None and int(samples) < 4096:
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _build_voice_session_record(
+    session_dir: Path, metadata: dict[str, object]
+) -> dict[str, object]:
+    metadata_path = session_dir / VOICE_SESSION_METADATA_FILENAME
+    wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
+    return {
+        "session_id": session_dir.name,
+        "created_at": metadata.get("created_at"),
+        "duration_sec": metadata.get("duration_sec"),
+        "sample_rate": metadata.get("sample_rate"),
+        "input_format": metadata.get("input_format"),
+        "mime_type": metadata.get("mime_type"),
+        "voice_mode": metadata.get("voice_mode") or "standard",
+        "gain_applied": metadata.get("gain_applied"),
+        "peak_before_normalization": metadata.get("peak_before_normalization"),
+        "dc_offset": metadata.get("dc_offset"),
+        "rms_before_normalization": metadata.get("rms_before_normalization"),
+        "rms_after_normalization": metadata.get("rms_after_normalization"),
+        "peak_after_normalization": metadata.get("peak_after_normalization"),
+        "timings_ms": metadata.get("timings_ms") or {},
+        "runtime": metadata.get("runtime") or {},
+        "wav_path": str(wav_path),
+        "metadata_path": str(metadata_path) if metadata_path.exists() else None,
+        "transcription": metadata.get("transcription") or "",
+        "response_text": metadata.get("response_text") or "",
+    }
 
 
 def collect_latest_voice_session_record(
@@ -46,67 +104,26 @@ def collect_latest_voice_session_record(
     for session_dir in session_root.iterdir():
         if not session_dir.is_dir():
             continue
-        wav_path = session_dir / "recording.wav"
+        wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
         if not wav_path.exists():
             continue
 
-        metadata_path = session_dir / "metadata.json"
+        metadata_path = session_dir / VOICE_SESSION_METADATA_FILENAME
         stat_source = metadata_path if metadata_path.exists() else wav_path
         try:
             mtime = stat_source.stat().st_mtime
         except OSError:
             continue
 
-        metadata: dict[str, object] = {}
-        if metadata_path.exists():
-            try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            except Exception:
-                metadata = {}
+        metadata = _load_voice_session_metadata(metadata_path)
         candidates.append((mtime, session_dir, metadata))
 
     for _mtime, latest_dir, metadata in sorted(
         candidates, key=lambda item: item[0], reverse=True
     ):
-        duration_sec = metadata.get("duration_sec")
-        samples = metadata.get("samples")
-        try:
-            if (
-                duration_sec is not None
-                and float(duration_sec) < MIN_VOICE_SESSION_DURATION_SEC
-            ):
-                continue
-        except Exception:
-            pass
-        try:
-            if samples is not None and int(samples) < 4096:
-                continue
-        except Exception:
-            pass
-
-        metadata_path = latest_dir / "metadata.json"
-        wav_path = latest_dir / "recording.wav"
-        return {
-            "session_id": latest_dir.name,
-            "created_at": metadata.get("created_at"),
-            "duration_sec": duration_sec,
-            "sample_rate": metadata.get("sample_rate"),
-            "input_format": metadata.get("input_format"),
-            "mime_type": metadata.get("mime_type"),
-            "voice_mode": metadata.get("voice_mode") or "standard",
-            "gain_applied": metadata.get("gain_applied"),
-            "peak_before_normalization": metadata.get("peak_before_normalization"),
-            "dc_offset": metadata.get("dc_offset"),
-            "rms_before_normalization": metadata.get("rms_before_normalization"),
-            "rms_after_normalization": metadata.get("rms_after_normalization"),
-            "peak_after_normalization": metadata.get("peak_after_normalization"),
-            "timings_ms": metadata.get("timings_ms") or {},
-            "runtime": metadata.get("runtime") or {},
-            "wav_path": str(wav_path),
-            "metadata_path": str(metadata_path) if metadata_path.exists() else None,
-            "transcription": metadata.get("transcription") or "",
-            "response_text": metadata.get("response_text") or "",
-        }
+        if not _is_voice_session_eligible(metadata):
+            continue
+        return _build_voice_session_record(latest_dir, metadata)
 
     return None
 
@@ -233,7 +250,7 @@ class AudioStreamHandler:
 
                 elif "bytes" in data:
                     # Audio blob
-                    await self._handle_audio_data(
+                    self._handle_audio_data(
                         connection_id, data["bytes"], operator_agent
                     )
 
@@ -260,125 +277,130 @@ class AudioStreamHandler:
 
         try:
             data = json.loads(message)
-            command = data.get("command")
-
-            if command == "start_recording":
-                # Rozpocznij nagrywanie
-                conn = self.active_connections[connection_id]
-                conn["audio_buffer"] = []
-                conn["audio_bytes_buffer"] = []
-                conn["is_speaking"] = True
-                self._cancel_silence_finalize_task(conn)
-                audio_config = conn.get("audio_config") or {}
-                conn["sample_rate"] = int(
-                    data.get("sample_rate") or audio_config.get("sample_rate") or 16000
-                )
-                conn["speech_detected"] = False
-                conn["recording_format"] = str(
-                    data.get("format") or audio_config.get("format") or "pcm16"
-                )
-                conn["mime_type"] = str(
-                    data.get("mime_type") or audio_config.get("mime_type") or ""
-                )
-                conn["channels"] = int(
-                    data.get("channels") or audio_config.get("channels") or 1
-                )
-                conn["audio_config"] = {
-                    "sample_rate": conn["sample_rate"],
-                    "channels": conn["channels"],
-                    "format": conn["recording_format"],
-                    "mime_type": conn["mime_type"],
-                }
-                logger.info(
-                    "Rozpoczęto nagrywanie: "
-                    f"{connection_id} config={conn['audio_config']}"
-                )
-
-                # Wyślij potwierdzenie
-                await self._send_json(
-                    connection_id, {"type": "recording_started", "status": "ok"}
-                )
-
-            elif command == "audio_config":
-                conn = self.active_connections[connection_id]
-                conn["audio_config"] = {
-                    "sample_rate": int(data.get("sample_rate") or 16000),
-                    "channels": int(data.get("channels") or 1),
-                    "format": str(data.get("format") or "pcm16"),
-                    "mime_type": str(data.get("mime_type") or ""),
-                }
-                if data.get("sample_rate"):
-                    conn["sample_rate"] = int(data.get("sample_rate"))
-                if data.get("format"):
-                    conn["recording_format"] = str(data.get("format"))
-                if data.get("mime_type"):
-                    conn["mime_type"] = str(data.get("mime_type"))
-                logger.info(
-                    f"Ustawiono audio_config dla {connection_id}: {conn['audio_config']}"
-                )
-                await self._send_json(
-                    connection_id,
-                    {
-                        "type": "audio_config",
-                        "status": "ok",
-                        "config": conn["audio_config"],
-                    },
-                )
-
-            elif command == "voice_mode":
-                conn = self.active_connections[connection_id]
-                voice_mode = str(data.get("mode") or "standard").strip() or "standard"
-                conn["voice_mode"] = voice_mode
-                logger.info(f"Ustawiono voice_mode dla {connection_id}: {voice_mode}")
-                await self._send_json(
-                    connection_id,
-                    {
-                        "type": "voice_mode",
-                        "status": "ok",
-                        "mode": voice_mode,
-                    },
-                )
-
-            elif command == "stop_recording":
-                # Zakończ nagrywanie i przetwórz
-                conn = self.active_connections[connection_id]
-                conn["is_speaking"] = False
-                self._cancel_silence_finalize_task(conn)
-                logger.info(
-                    "Zakończono nagrywanie: "
-                    f"{connection_id} (pcm_chunks={len(conn['audio_buffer'])}, "
-                    f"encoded_chunks={len(conn['audio_bytes_buffer'])}, "
-                    f"format={conn['recording_format']})"
-                )
-
-                # Przetwórz audio
-                if conn["audio_bytes_buffer"] and conn["recording_format"] != "pcm16":
-                    await self._process_encoded_audio_buffer(
-                        connection_id,
-                        conn["audio_bytes_buffer"],
-                        operator_agent,
-                        mime_type=conn.get("mime_type", ""),
-                    )
-                    conn["audio_bytes_buffer"] = []
-                elif conn["audio_buffer"]:
-                    await self._process_audio_buffer(
-                        connection_id,
-                        conn["audio_buffer"],
-                        operator_agent,
-                        sample_rate=conn.get("sample_rate", 16000),
-                    )
-                    conn["audio_buffer"] = []
-
-            elif command == "ping":
-                # Keep-alive
-                await self._send_json(connection_id, {"type": "pong"})
-
         except json.JSONDecodeError:
             logger.error(f"Nieprawidłowy JSON: {message}")
-        except Exception as e:
-            logger.error(f"Błąd podczas obsługi wiadomości sterującej: {e}")
+            return
 
-    async def _handle_audio_data(
+        command = data.get("command")
+        if command == "start_recording":
+            await self._start_recording(connection_id, data)
+            return
+        if command == "audio_config":
+            await self._apply_audio_config(connection_id, data)
+            return
+        if command == "voice_mode":
+            await self._apply_voice_mode(connection_id, data)
+            return
+        if command == "stop_recording":
+            await self._stop_recording(connection_id, operator_agent)
+            return
+        if command == "ping":
+            await self._send_json(connection_id, {"type": "pong"})
+            return
+
+    async def _start_recording(self, connection_id: int, data: dict) -> None:
+        conn = self.active_connections[connection_id]
+        conn["audio_buffer"] = []
+        conn["audio_bytes_buffer"] = []
+        conn["is_speaking"] = True
+        self._cancel_silence_finalize_task(conn)
+        audio_config = conn.get("audio_config") or {}
+        conn["sample_rate"] = int(
+            data.get("sample_rate") or audio_config.get("sample_rate") or 16000
+        )
+        conn["speech_detected"] = False
+        conn["recording_format"] = str(
+            data.get("format") or audio_config.get("format") or "pcm16"
+        )
+        conn["mime_type"] = str(
+            data.get("mime_type") or audio_config.get("mime_type") or ""
+        )
+        conn["channels"] = int(
+            data.get("channels") or audio_config.get("channels") or 1
+        )
+        conn["audio_config"] = {
+            "sample_rate": conn["sample_rate"],
+            "channels": conn["channels"],
+            "format": conn["recording_format"],
+            "mime_type": conn["mime_type"],
+        }
+        logger.info(
+            "Rozpoczęto nagrywanie: %s config=%s", connection_id, conn["audio_config"]
+        )
+        await self._send_json(
+            connection_id, {"type": "recording_started", "status": "ok"}
+        )
+
+    async def _apply_audio_config(self, connection_id: int, data: dict) -> None:
+        conn = self.active_connections[connection_id]
+        conn["audio_config"] = {
+            "sample_rate": int(data.get("sample_rate") or 16000),
+            "channels": int(data.get("channels") or 1),
+            "format": str(data.get("format") or "pcm16"),
+            "mime_type": str(data.get("mime_type") or ""),
+        }
+        if data.get("sample_rate"):
+            conn["sample_rate"] = int(data.get("sample_rate"))
+        if data.get("format"):
+            conn["recording_format"] = str(data.get("format"))
+        if data.get("mime_type"):
+            conn["mime_type"] = str(data.get("mime_type"))
+        logger.info(
+            "Ustawiono audio_config dla %s: %s", connection_id, conn["audio_config"]
+        )
+        await self._send_json(
+            connection_id,
+            {
+                "type": "audio_config",
+                "status": "ok",
+                "config": conn["audio_config"],
+            },
+        )
+
+    async def _apply_voice_mode(self, connection_id: int, data: dict) -> None:
+        conn = self.active_connections[connection_id]
+        voice_mode = str(data.get("mode") or "standard").strip() or "standard"
+        conn["voice_mode"] = voice_mode
+        logger.info("Ustawiono voice_mode dla %s: %s", connection_id, voice_mode)
+        await self._send_json(
+            connection_id,
+            {
+                "type": "voice_mode",
+                "status": "ok",
+                "mode": voice_mode,
+            },
+        )
+
+    async def _stop_recording(self, connection_id: int, operator_agent) -> None:
+        conn = self.active_connections[connection_id]
+        conn["is_speaking"] = False
+        self._cancel_silence_finalize_task(conn)
+        logger.info(
+            "Zakończono nagrywanie: %s (pcm_chunks=%s, encoded_chunks=%s, format=%s)",
+            connection_id,
+            len(conn["audio_buffer"]),
+            len(conn["audio_bytes_buffer"]),
+            conn["recording_format"],
+        )
+        if conn["audio_bytes_buffer"] and conn["recording_format"] != "pcm16":
+            await self._process_encoded_audio_buffer(
+                connection_id,
+                conn["audio_bytes_buffer"],
+                operator_agent,
+                mime_type=conn.get("mime_type", ""),
+            )
+            conn["audio_bytes_buffer"] = []
+            return
+        if conn["audio_buffer"]:
+            await self._process_audio_buffer(
+                connection_id,
+                conn["audio_buffer"],
+                operator_agent,
+                sample_rate=conn.get("sample_rate", 16000),
+            )
+            conn["audio_buffer"] = []
+
+    def _handle_audio_data(
         self, connection_id: int, audio_bytes: bytes, operator_agent
     ):
         """
@@ -667,7 +689,7 @@ class AudioStreamHandler:
                 mime_type,
             )
             timings_ms["decode_ms"] = self._elapsed_ms(decode_started_at)
-            wav_path = session_dir / "recording.wav"
+            wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
             normalize_started_at = time.perf_counter()
             audio, sample_rate = self._load_wav_int16(wav_path)
             audio, audio_stats = self._normalize_recorded_audio(audio)
@@ -797,7 +819,7 @@ class AudioStreamHandler:
             else:
                 for chunk in encoded_audio:
                     original_file.write(chunk)
-        wav_path = session_dir / "recording.wav"
+        wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
 
         command = [
             "ffmpeg",
@@ -865,7 +887,7 @@ class AudioStreamHandler:
                 audio_int16 = np.clip(audio_int16 * 32768.0, -32768, 32767)
             audio_int16 = audio_int16.astype(np.int16, copy=False)
 
-        wav_path = session_dir / "recording.wav"
+        wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
         with wave.open(str(wav_path), "wb") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
@@ -978,7 +1000,7 @@ class AudioStreamHandler:
 
     def _update_voice_session_metadata(self, session_dir: Path, payload: dict) -> None:
         """Dopisuje metadane do session.json."""
-        metadata_path = session_dir / "metadata.json"
+        metadata_path = session_dir / VOICE_SESSION_METADATA_FILENAME
         current: dict = {}
         if metadata_path.exists():
             try:

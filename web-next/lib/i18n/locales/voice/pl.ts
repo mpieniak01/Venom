@@ -2,7 +2,7 @@ export const voice = {
   page: {
     eyebrow: "// voice chat",
     title: "Voice Command Center",
-    description: "Osobny ekran dla push-to-talk, transkrypcji, odpowiedzi i trybów analizy. Tekstowy chat zostaje lekki.",
+    description: "Osobny ekran dla push-to-talk, transkrypcji, odpowiedzi i trybów analizy. Tekstowy czat zostaje lekki.",
     backToChat: "Wróć do chatu pisanego",
   },
   controls: {
@@ -50,10 +50,10 @@ export const voice = {
     channelDisabled: "Kanał audio wyłączony w konfiguracji.",
     noData: "Brak danych o stanie audio.",
   },
-  modes: {
-    title: "Tryby voice",
-    description: "Wybierz jak ma być traktowana kolejna wypowiedź.",
-    hint: "Aktywny tryb jest wysyłany do backendu jako część sesji voice i zmienia styl odpowiedzi agenta.",
+    modes: {
+      title: "Tryby voice",
+      description: "Wybierz jak ma być traktowana kolejna wypowiedź.",
+      hint: "Aktywny tryb jest wysyłany do backendu jako część sesji voice i zmienia styl odpowiedzi agenta.",
     standard: {
       title: "Standard",
       description: "Krótka i bezpośrednia odpowiedź.",
@@ -67,7 +67,7 @@ export const voice = {
       description: "Najkrótsza odpowiedź w 1-2 zdaniach.",
     },
     actionItems: {
-      title: "Action items",
+      title: "Kroki do wykonania",
       description: "Konkretny plan dalszych kroków.",
     },
   },
@@ -75,15 +75,15 @@ export const voice = {
     workflow: {
       eyebrow: "Zakres",
       title: "Rozdzielony workflow",
-      description: "Voice nie konkuruje z historia chatu pisanego.",
-      pushToTalk: "Push-to-talk i playback sa obsługiwane w osobnym widoku.",
+      description: "Voice nie konkuruje z historią czatu pisanego.",
+      pushToTalk: "Push-to-talk i playback są obsługiwane w osobnym widoku.",
       advancedModes: "Tryb deep analysis, summary i action items są dostępne wprost dla użytkownika.",
     },
     note: {
       eyebrow: "Uwaga",
       title: "Text chat pozostaje stabilny",
-      description: "Historia, composer i akcje chatu pisanego nie dzielą już miejsca z dużym panelem voice.",
-      body: "To rozwiązanie przygotowuje grunt pod kolejny PR z wizualizacją głosu bez degradacji layoutu cockpit.",
+      description: "Historia, composer i akcje czatu pisanego nie dzielą już miejsca z dużym panelem voice.",
+      body: "To rozwiązanie przygotowuje grunt pod kolejny PR z wizualizacją głosu bez degradacji układu cockpit.",
     },
   },
 };

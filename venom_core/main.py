@@ -15,6 +15,7 @@ from venom_core.agents.operator import OperatorAgent
 from venom_core.api import dependencies as api_deps
 from venom_core.api.audio_stream import (
     VOICE_SESSION_ROOT,
+    VOICE_SESSION_WAV_FILENAME,
     AudioStreamHandler,
     collect_latest_voice_session_record,
 )
@@ -201,6 +202,14 @@ def _get_latest_voice_session_record() -> dict[str, object] | None:
         if latest:
             return latest
     return collect_latest_voice_session_record(VOICE_SESSION_ROOT)
+
+
+def _resolve_voice_session_wav_path(session_id: str) -> Path:
+    root_path = VOICE_SESSION_ROOT.resolve()
+    wav_path = (VOICE_SESSION_ROOT / session_id / VOICE_SESSION_WAV_FILENAME).resolve()
+    if not wav_path.is_relative_to(root_path):
+        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka nagrania.")
+    return wav_path
 
 
 # Inicjalizacja Model Registry (dla endpointów models)
@@ -1242,7 +1251,14 @@ async def audio_status_endpoint(request: Request):
     return status
 
 
-@app.get("/api/v1/audio/sessions/latest/download", name="download_latest_voice_session")
+@app.get(
+    "/api/v1/audio/sessions/latest/download",
+    name="download_latest_voice_session",
+    responses={
+        400: {"description": "Nieprawidłowa ścieżka nagrania."},
+        404: {"description": "Brak zapisanej sesji lub pliku nagrania."},
+    },
+)
 async def download_latest_voice_session():
     """Pobiera ostatnie zapisane nagranie voice jako WAV."""
     latest_session = _get_latest_voice_session_record()
@@ -1253,10 +1269,7 @@ async def download_latest_voice_session():
     if not session_id:
         raise HTTPException(status_code=404, detail="Brak identyfikatora sesji voice.")
 
-    wav_path = (VOICE_SESSION_ROOT / session_id / "recording.wav").resolve()
-    root_path = VOICE_SESSION_ROOT.resolve()
-    if not wav_path.is_relative_to(root_path):
-        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka nagrania.")
+    wav_path = _resolve_voice_session_wav_path(session_id)
     if not wav_path.exists():
         raise HTTPException(status_code=404, detail="Plik nagrania nie istnieje.")
 

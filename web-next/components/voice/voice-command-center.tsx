@@ -377,7 +377,7 @@ const handleVoiceSocketClose = (
   const attempt = reconnectAttemptsRef.current;
   const delay = buildReconnectDelay(attempt);
   reconnectAttemptsRef.current = Math.min(attempt + 1, 6);
-  setStatusMessage(`${t("voice.status.channelOffline")} – ponawiam za ${Math.ceil(delay / 1000)}s…`);
+  setStatusMessage(buildVoiceChannelOfflineMessage(t, Math.ceil(delay / 1000)));
   if (reconnectTimeoutRef.current) {
     getBrowserWindow()?.clearTimeout(reconnectTimeoutRef.current);
   }
@@ -430,36 +430,68 @@ const bindVoiceConnectionLifecycle = (
   return connect();
 };
 
+const buildVoiceChannelOfflineMessage = (t: Translator, delaySeconds: number): string =>
+  t("voice.status.channelRetrying", { seconds: delaySeconds });
+
+const getPlaybackStateLabel = (
+  t: Translator,
+  playbackState: PlaybackState,
+  ttsMuted: boolean,
+): string => {
+  if (ttsMuted) {
+    return t("voice.status.playbackMutedShort");
+  }
+  if (playbackState === "playing") {
+    return t("voice.status.playbackPlayingShort");
+  }
+  if (playbackState === "error") {
+    return t("voice.status.playbackErrorShort");
+  }
+  if (playbackState === "muted") {
+    return t("voice.status.playbackMutedShort");
+  }
+  return t("voice.status.playbackIdleShort");
+};
+
+const getIoTConnectionLabel = (t: Translator, connected: boolean): string =>
+  connected ? t("voice.status.online") : t("voice.status.offlineState");
+
+const getIoTRefreshLabel = (t: Translator, loading: boolean): string =>
+  loading ? t("voice.controls.refreshing") : t("voice.controls.refresh");
+
 const handleVoiceRecordingStarted = (
+  t: Translator,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
 ) => {
-  setStatusMessage("Nagrywanie rozpoczęte.");
+  setStatusMessage(t("voice.status.recordingStarted"));
   setLastAudioSignal("recording:started");
 };
 
 const handleVoiceProcessing = (
+  t: Translator,
   data: Record<string, unknown>,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
 ) => {
   const status = toPrimitiveString(data.status) ?? "unknown";
-  setStatusMessage(`Przetwarzanie (${status})`);
+  setStatusMessage(t("voice.status.processing", { status }));
   setLastAudioSignal(`processing:${status}`);
 };
 
 const handleVoiceTranscript = (
+  t: Translator,
   data: Record<string, unknown>,
   onTranscriptReady: ((text: string) => void) | undefined,
   setTranscription: (value: string) => void,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
 ) => {
-  const transcript = toPrimitiveString(data.text) ?? "Nie rozpoznano mowy.";
+  const transcript = toPrimitiveString(data.text) ?? t("voice.status.noTranscript");
   setTranscription(transcript);
   if (transcript.trim()) {
     onTranscriptReady?.(transcript.trim());
-    setStatusMessage("Transkrypcja wstawiona do czatu.");
+    setStatusMessage(t("voice.status.transcriptionInserted"));
     setLastAudioSignal("stt:ok");
   }
 };
@@ -487,21 +519,23 @@ const handleVoiceAudioResponse = (
 };
 
 const handleVoiceCompletion = (
+  t: Translator,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
 ) => {
-  setStatusMessage("Gotowe.");
+  setStatusMessage(t("voice.status.complete"));
   setLastAudioSignal("complete");
 };
 
 const handleVoiceError = (
+  t: Translator,
   data: Record<string, unknown>,
   setPlaybackState: (value: PlaybackState) => void,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
 ) => {
   setPlaybackState("error");
-  setStatusMessage(toPrimitiveString(data.message) ?? "Błąd kanału audio.");
+  setStatusMessage(toPrimitiveString(data.message) ?? t("voice.status.channelError"));
   setLastAudioSignal("error");
 };
 
@@ -686,6 +720,47 @@ const sendRecordingStartMessages = (
   return audioConfigured && recordingStarted;
 };
 
+const getVoiceCaptureStartError = (
+  t: Translator,
+  audioEnabled: boolean,
+  isVoiceModeEnabled: boolean,
+  isConnected: boolean,
+): string | null => {
+  if (!isVoiceModeEnabled) {
+    return t("voice.controls.textChat");
+  }
+  if (!audioEnabled) {
+    return t("voice.status.channelDisabled");
+  }
+  if (!isConnected) {
+    return t("voice.status.channelOffline");
+  }
+  return null;
+};
+
+const attachRecordingStreamHandlers = (
+  recorder: MediaRecorder,
+  wsRef: RefObject<WebSocket | null>,
+  setAudioChunkCount: (value: number | ((current: number) => number)) => void,
+  setLastAudioSignal: (value: string) => void,
+  sendControlMessage: (payload: Record<string, unknown>) => boolean,
+  releaseAudioResources: () => void,
+) => {
+  recorder.ondataavailable = (event) => {
+    const ws = wsRef.current;
+    if (event.data.size <= 0 || !isWebSocketOpen(ws)) {
+      return;
+    }
+    ws.send(event.data);
+    setAudioChunkCount((current) => current + 1);
+    setLastAudioSignal(`media:${event.data.size}B`);
+  };
+  recorder.onstop = () => {
+    sendControlMessage({ command: "stop_recording" });
+    releaseAudioResources();
+  };
+};
+
 const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
   const {
     t,
@@ -712,25 +787,24 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
     activeWindow,
   } = deps as VoiceControlDeps & { activeWindow: Window | undefined };
 
-  if (!isVoiceModeEnabled) {
-    setStatusMessage(t("voice.controls.textChat"));
-    return;
-  }
-  if (!audioEnabled) {
-    setStatusMessage(t("voice.status.channelDisabled"));
-    return;
-  }
-  if (!isWebSocketOpen(wsRef.current)) {
-    setStatusMessage(t("voice.status.channelOffline"));
+  const startError = getVoiceCaptureStartError(
+    t,
+    audioEnabled,
+    isVoiceModeEnabled,
+    Boolean(wsRef.current),
+  );
+  if (startError) {
+    setStatusMessage(startError);
     return;
   }
   if (recordingRef.current || recordingStartPendingRef.current) {
     return;
   }
 
+  recordingStartPendingRef.current = true;
+  stopRequestedRef.current = false;
+
   try {
-    recordingStartPendingRef.current = true;
-    stopRequestedRef.current = false;
     const environment = await createVoiceCaptureEnvironment({
       activeWindow,
       audioContextRef,
@@ -742,21 +816,19 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
       ensurePlaybackContext,
     });
     if (!environment) {
-      setStatusMessage("Brak wsparcia AudioContext w przeglądarce.");
+      setStatusMessage(t("voice.status.browserAudioContextMissing"));
       return;
     }
-    environment.recorder.ondataavailable = (event) => {
-      if (event.data.size <= 0 || !isWebSocketOpen(wsRef.current)) {
-        return;
-      }
-      wsRef.current.send(event.data);
-      setAudioChunkCount((current) => current + 1);
-      setLastAudioSignal(`media:${event.data.size}B`);
-    };
-    environment.recorder.onstop = () => {
-      sendControlMessage({ command: "stop_recording" });
-      releaseAudioResources();
-    };
+
+    attachRecordingStreamHandlers(
+      environment.recorder,
+      wsRef,
+      setAudioChunkCount,
+      setLastAudioSignal,
+      sendControlMessage,
+      releaseAudioResources,
+    );
+
     recordingRef.current = true;
     setRecording(true);
     setStatusMessage(t("voice.controls.recording"));
@@ -776,7 +848,7 @@ const startVoiceCapture = async (deps: VoiceControlDeps): Promise<void> => {
   } catch (error) {
     console.error("recording error", error);
     releaseAudioResources();
-    setStatusMessage("Nie udało się uruchomić mikrofonu.");
+    setStatusMessage(t("voice.status.recordingFailed"));
   } finally {
     recordingStartPendingRef.current = false;
   }
@@ -974,7 +1046,7 @@ export function VoiceCommandCenter({
       lastAudioResponseRef.current = { audio: base64Audio, sampleRate };
       if (ttsMuted) {
         setPlaybackState("muted");
-        setStatusMessage("Odpowiedź audio gotowa, ale odtwarzanie jest wyciszone.");
+        setStatusMessage(t("voice.status.playbackMuted"));
         return;
       }
       const browserWindow = getBrowserWindow();
@@ -982,13 +1054,13 @@ export function VoiceCommandCenter({
         const ctx = await ensurePlaybackContext();
         if (!ctx) {
           setPlaybackState("error");
-          setStatusMessage("Brak wsparcia AudioContext dla playbacku TTS.");
+          setStatusMessage(t("voice.status.playbackNoAudioContext"));
           return;
         }
         const pcm16 = decodeBase64Pcm16(base64Audio);
         if (pcm16.length === 0) {
           setPlaybackState("error");
-          setStatusMessage("Otrzymano pusty bufor audio.");
+          setStatusMessage(t("voice.status.playbackEmptyBuffer"));
           return;
         }
         releasePlaybackResources();
@@ -1008,38 +1080,38 @@ export function VoiceCommandCenter({
         };
         ttsSourceRef.current = source;
         setPlaybackState("playing");
-        setStatusMessage("Odtwarzam odpowiedź głosową.");
+        setStatusMessage(t("voice.status.playbackPlaying"));
         source.start();
         return;
       }
       setPlaybackState("error");
-      setStatusMessage("Brak wsparcia AudioContext dla playbacku TTS.");
+      setStatusMessage(t("voice.status.playbackNoAudioContext"));
     },
-    [ensurePlaybackContext, releasePlaybackResources, ttsMuted],
+    [ensurePlaybackContext, releasePlaybackResources, t, ttsMuted],
   );
 
   const replayLastResponse = useCallback(async () => {
     const last = lastAudioResponseRef.current;
     if (!last) {
-      setStatusMessage("Brak ostatniej odpowiedzi audio do odtworzenia.");
+      setStatusMessage(t("voice.status.replayUnavailable"));
       return;
     }
     await playAudioResponse(last.audio, last.sampleRate);
-  }, [playAudioResponse]);
+  }, [playAudioResponse, t]);
 
   const handleAudioMessage = useCallback(
     (data: Record<string, unknown>) => {
       const messageType = toPrimitiveString(data.type) ?? "";
       if (messageType === "recording_started") {
-        handleVoiceRecordingStarted(setStatusMessage, setLastAudioSignal);
+        handleVoiceRecordingStarted(t, setStatusMessage, setLastAudioSignal);
         return;
       }
       if (messageType === "processing") {
-        handleVoiceProcessing(data, setStatusMessage, setLastAudioSignal);
+        handleVoiceProcessing(t, data, setStatusMessage, setLastAudioSignal);
         return;
       }
       if (messageType === "transcription") {
-        handleVoiceTranscript(data, onTranscriptReady, setTranscription, setStatusMessage, setLastAudioSignal);
+        handleVoiceTranscript(t, data, onTranscriptReady, setTranscription, setStatusMessage, setLastAudioSignal);
         return;
       }
       if (messageType === "response_text") {
@@ -1051,14 +1123,14 @@ export function VoiceCommandCenter({
         return;
       }
       if (messageType === "complete") {
-        handleVoiceCompletion(setStatusMessage, setLastAudioSignal);
+        handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal);
         return;
       }
       if (messageType === "error") {
-        handleVoiceError(data, setPlaybackState, setStatusMessage, setLastAudioSignal);
+        handleVoiceError(t, data, setPlaybackState, setStatusMessage, setLastAudioSignal);
       }
     },
-    [onTranscriptReady, playAudioResponse],
+    [onTranscriptReady, playAudioResponse, t],
   );
 
   const releaseAudioResources = useCallback(() => {
@@ -1134,7 +1206,7 @@ export function VoiceCommandCenter({
     if (!iotStatusEnabled) {
       setIotStatus({
         connected: false,
-        message: "Status IoT wyłączony w konfiguracji.",
+        message: t("voice.status.iotDisabled"),
       });
       return;
     }
@@ -1147,7 +1219,7 @@ export function VoiceCommandCenter({
       } else if (res.status === 404) {
         setIotStatus({
           connected: false,
-          message: "Offline – endpoint /api/v1/iot/status nie jest dostępny.",
+          message: t("voice.status.iotEndpointOffline"),
         });
       } else {
         throw new Error(`HTTP ${res.status}`);
@@ -1155,12 +1227,12 @@ export function VoiceCommandCenter({
     } catch {
       setIotStatus({
         connected: false,
-        message: "Offline – brak danych IoT.",
+        message: t("voice.status.iotNoData"),
       });
     } finally {
       setLoadingIoT(false);
     }
-  }, [iotStatusEnabled]);
+  }, [iotStatusEnabled, t]);
 
   useEffect(() => {
     refreshIoTStatus().catch(() => undefined);
@@ -1191,7 +1263,7 @@ export function VoiceCommandCenter({
     setRecording(false);
     setLastAudioSignal("recording:stop");
     clearVisualizer();
-    setStatusMessage("Nagrywanie zakończone.");
+    setStatusMessage(t("voice.status.recordingEnded"));
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === "recording") {
       recorder.stop();
@@ -1258,6 +1330,11 @@ export function VoiceCommandCenter({
   const runtimeSummary = buildRuntimeSummary(latestVoiceSession?.runtime ?? null);
   const qualitySummary = buildQualitySummary(latestVoiceSession);
   const latestRecordingSummary = buildLatestRecordingSummary(latestVoiceSession);
+  const voiceChatModeLabel = isVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat");
+  const playbackStateLabel = getPlaybackStateLabel(t, playbackState, ttsMuted);
+  const audioWsStateLabel = audioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline");
+  const iotRefreshLabel = getIoTRefreshLabel(t, loadingIoT);
+  const iotConnectionLabel = getIoTConnectionLabel(t, iotStatus?.connected ?? false);
 
   useEffect(() => bindRecordingReleaseListeners(recording, stopRecording), [recording, stopRecording]);
 
@@ -1357,15 +1434,15 @@ export function VoiceCommandCenter({
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
               <p className="text-caption">{t("voice.controls.voiceChat")}</p>
-              <p className="text-white">{isVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat")}</p>
+              <p className="text-white">{voiceChatModeLabel}</p>
             </div>
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
               <p className="text-caption">{t("voice.controls.playback")}</p>
-              <p className="text-white">{ttsMuted ? t("voice.controls.ttsMuted") : playbackState}</p>
+              <p className="text-white">{playbackStateLabel}</p>
             </div>
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
               <p className="text-caption">{t("voice.controls.audioWs")}</p>
-              <p className="text-white">{audioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline")}</p>
+              <p className="text-white">{audioWsStateLabel}</p>
             </div>
             <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300 sm:col-span-3">
               <p className="text-caption">{t("voice.modes.title")}</p>
@@ -1390,7 +1467,7 @@ export function VoiceCommandCenter({
         </div>
         <div className="space-y-3">
           <div className="rounded-2xl box-muted p-4">
-            <p className="eyebrow">{t("voice.controls.audioWs")}</p>
+              <p className="eyebrow">{t("voice.controls.audioWs")}</p>
             {audioStatus ? (
               <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
                 <div>
@@ -1489,33 +1566,33 @@ export function VoiceCommandCenter({
           </div>
           <div className="rounded-2xl box-muted p-4 text-sm">
             <div className="flex items-center justify-between">
-              <p className="eyebrow">Rider-Pi</p>
+              <p className="eyebrow">{t("voice.controls.riderPi")}</p>
               <Button size="xs" variant="outline" onClick={() => { refreshIoTStatus().catch(() => undefined); }} disabled={loadingIoT}>
-                {loadingIoT ? "Odświeżam…" : t("voice.controls.refresh")}
+                {iotRefreshLabel}
               </Button>
             </div>
             {iotStatus ? (
               <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-3">
                 <div>
-                  <p className="text-caption">Połączenie</p>
-                  <p className="text-white">{iotStatus.connected ? "Online" : "Offline"}</p>
+                  <p className="text-caption">{t("voice.controls.connection")}</p>
+                  <p className="text-white">{iotConnectionLabel}</p>
                 </div>
                 <div>
-                  <p className="text-caption">CPU</p>
+                  <p className="text-caption">{t("voice.controls.cpu")}</p>
                   <p className="text-white">{iotStatus.cpu_temp ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-caption">Pamięć</p>
+                  <p className="text-caption">{t("voice.controls.memory")}</p>
                   <p className="text-white">{iotStatus.memory ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-caption">Dysk</p>
+                  <p className="text-caption">{t("voice.controls.disk")}</p>
                   <p className="text-white">{iotStatus.disk ?? "—"}</p>
                 </div>
                 {iotStatus.message && <div className="sm:col-span-3 text-hint">{iotStatus.message}</div>}
               </div>
             ) : (
-              <p className="mt-2 text-hint">Brak danych IoT.</p>
+              <p className="mt-2 text-hint">{t("voice.status.iotNoData")}</p>
             )}
           </div>
         </div>

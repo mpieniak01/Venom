@@ -7,6 +7,7 @@ import json
 import shutil
 import subprocess
 import time
+import uuid
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,8 +69,6 @@ def _is_voice_session_eligible(metadata: dict[str, object]) -> bool:
 def _build_voice_session_record(
     session_dir: Path, metadata: dict[str, object]
 ) -> dict[str, object]:
-    metadata_path = session_dir / VOICE_SESSION_METADATA_FILENAME
-    wav_path = session_dir / VOICE_SESSION_WAV_FILENAME
     return {
         "session_id": session_dir.name,
         "created_at": metadata.get("created_at"),
@@ -86,8 +85,6 @@ def _build_voice_session_record(
         "peak_after_normalization": metadata.get("peak_after_normalization"),
         "timings_ms": metadata.get("timings_ms") or {},
         "runtime": metadata.get("runtime") or {},
-        "wav_path": str(wav_path),
-        "metadata_path": str(metadata_path) if metadata_path.exists() else None,
         "transcription": metadata.get("transcription") or "",
         "response_text": metadata.get("response_text") or "",
     }
@@ -126,6 +123,20 @@ def collect_latest_voice_session_record(
         return _build_voice_session_record(latest_dir, metadata)
 
     return None
+
+
+def _create_voice_session_dir(connection_id: int) -> Path:
+    """Tworzy unikalny katalog sesji voice bez ryzyka kolizji nazw."""
+    for _attempt in range(3):
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
+        session_id = f"{timestamp}_{connection_id}_{uuid.uuid4().hex[:8]}"
+        session_dir = VOICE_SESSION_ROOT / session_id
+        try:
+            session_dir.mkdir(parents=True, exist_ok=False)
+            return session_dir
+        except FileExistsError:
+            continue
+    raise RuntimeError("Nie udało się utworzyć unikalnego katalogu sesji voice.")
 
 
 class AudioStreamHandler:
@@ -799,9 +810,7 @@ class AudioStreamHandler:
         mime_type: str = "",
     ) -> Path:
         """Zapisuje oryginalne MediaRecorder audio i dekoduje je do WAV 16 kHz."""
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        session_dir = VOICE_SESSION_ROOT / f"{timestamp}_{connection_id}"
-        session_dir.mkdir(parents=True, exist_ok=True)
+        session_dir = _create_voice_session_dir(connection_id)
         session_id = session_dir.name
 
         original_suffix = ".webm" if "webm" in mime_type.lower() else ".bin"
@@ -869,9 +878,7 @@ class AudioStreamHandler:
         audio_stats: dict[str, float] | None = None,
     ) -> Path:
         """Zapisuje surowe nagranie i zwraca katalog sesji."""
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        session_dir = VOICE_SESSION_ROOT / f"{timestamp}_{connection_id}"
-        session_dir.mkdir(parents=True, exist_ok=True)
+        session_dir = _create_voice_session_dir(connection_id)
         session_id = session_dir.name
 
         audio_int16 = np.asarray(audio)
@@ -992,7 +999,7 @@ class AudioStreamHandler:
         }
 
     def _update_voice_session_metadata(self, session_dir: Path, payload: dict) -> None:
-        """Dopisuje metadane do session.json."""
+        """Dopisuje metadane do metadata.json."""
         metadata_path = session_dir / VOICE_SESSION_METADATA_FILENAME
         current: dict = {}
         if metadata_path.exists():

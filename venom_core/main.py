@@ -1240,7 +1240,7 @@ async def audio_status_endpoint(request: Request):
 
     status = audio_stream_handler.get_status(operator_agent=operator_agent)
     status["message"] = (
-        "Kanał audio gotowy." if status.get("enabled") else "Audio interface disabled."
+        "Audio channel ready." if status.get("enabled") else "Audio interface disabled."
     )
     latest_session = _get_latest_voice_session_record()
     if latest_session:

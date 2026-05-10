@@ -26,9 +26,16 @@ const sanitizeBase = (value: string): string => value.replace(/\/$/, "");
 const toWsProtocol = (protocol: string): "wss:" | "ws:" =>
   protocol === "https:" || protocol === "wss:" ? "wss:" : "ws:";
 
+const coerceUrlWithScheme = (value: string): string => {
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(value)) {
+    return value;
+  }
+  return `http://${value}`;
+};
+
 const normalizeWs = (url: string): string => {
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(coerceUrlWithScheme(url));
     parsed.protocol = toWsProtocol(parsed.protocol);
     return sanitizeBase(parsed.toString());
   } catch {
@@ -120,11 +127,13 @@ export const getWsBaseUrl = (): string => {
 
 const buildWsEndpoint = (base: string, pathname: string): string => {
   try {
-    const url = new URL(pathname, base);
+    const url = new URL(pathname, coerceUrlWithScheme(base));
     url.protocol = toWsProtocol(url.protocol);
     return sanitizeBase(url.toString());
   } catch {
-    return sanitizeBase(base.replace(/^https:/, "wss:").replace(/^http:/, "ws:")).replace(/\/$/, "") + pathname;
+    return sanitizeBase(
+      coerceUrlWithScheme(base).replace(/^https:/, "wss:").replace(/^http:/, "ws:"),
+    ).replace(/\/$/, "") + pathname;
   }
 };
 

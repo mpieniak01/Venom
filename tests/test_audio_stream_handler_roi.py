@@ -665,7 +665,7 @@ def test_collect_latest_voice_session_record_handles_edge_cases(monkeypatch, tmp
     assert latest["session_id"] == valid.name
     assert latest["voice_mode"] == "summary"
     assert latest["created_at"] == "valid"
-    assert latest["wav_path"] == str(wav_path)
+    assert "wav_path" not in latest
 
 
 def test_collect_latest_voice_session_record_returns_none_for_missing_root(tmp_path):
@@ -683,7 +683,7 @@ def test_get_latest_voice_session_falls_back_to_filesystem(monkeypatch, tmp_path
     monkeypatch.setattr(
         audio_stream_mod,
         "collect_latest_voice_session_record",
-        lambda _root: {"session_id": "from_fs", "wav_path": "x"},
+        lambda _root: {"session_id": "from_fs"},
     )
 
     latest = handler.get_latest_voice_session()

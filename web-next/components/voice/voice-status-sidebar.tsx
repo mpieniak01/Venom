@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control";
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
 import { useTranslation } from "@/lib/i18n";
 
@@ -57,6 +58,9 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
 
   return (
     <div className="space-y-3">
+      {/* Gemma 4 daemon controls */}
+      <Gemma4RuntimeControl variant="voice" />
+
       {/* STT / TTS box */}
       <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
         <Row

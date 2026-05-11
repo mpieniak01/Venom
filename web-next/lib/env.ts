@@ -142,3 +142,19 @@ export const getAudioWsUrl = (): string => {
   const base = explicit || getEnvApiBase() || buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);
   return buildWsEndpoint(base, "/ws/audio");
 };
+
+const DEFAULT_GEMMA4_PORT = 8014;
+
+export const getGemma4ApiBaseUrl = (): string => {
+  const explicit = getEnv("NEXT_PUBLIC_GEMMA4_API_BASE");
+  if (explicit) return sanitizeBase(explicit);
+  const httpBase = getApiBaseUrl();
+  if (httpBase) {
+    try {
+      const url = new URL(httpBase.startsWith("http") ? httpBase : `http://${httpBase}`);
+      url.port = String(DEFAULT_GEMMA4_PORT);
+      return sanitizeBase(url.toString());
+    } catch { /* fall through */ }
+  }
+  return buildHttpBaseUrl("127.0.0.1", DEFAULT_GEMMA4_PORT);
+};

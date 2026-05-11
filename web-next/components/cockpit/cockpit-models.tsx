@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
+import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control";
 import { HelpCircle, Package } from "lucide-react";
 import Link from "next/link";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
@@ -225,6 +226,9 @@ export function CockpitModels({
           </Button>
           {selectedLlmServer === "gemma4_audio" && gemma4AudioRuntimeInfo && (
             <Gemma4AudioCapabilityInfo info={gemma4AudioRuntimeInfo} />
+          )}
+          {selectedLlmServer === "gemma4_audio" && (
+            <Gemma4RuntimeControl variant="cockpit" />
           )}
         </div>
       </div>

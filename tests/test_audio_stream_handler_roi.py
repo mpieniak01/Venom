@@ -942,8 +942,36 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
     monkeypatch.setattr(
         handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
     )
+    monkeypatch.setattr(
+        audio_stream_mod.Path,
+        "open",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("sync Path.open() should not be used")
+        ),
+    )
 
     calls = {}
+
+    class _AsyncBinaryFile:
+        def __init__(self, path: str):
+            self.path = path
+
+    class _AsyncOpenContext:
+        def __init__(self, path, mode):
+            self.path = path
+            self.mode = mode
+
+        async def __aenter__(self):
+            return _AsyncBinaryFile(str(self.path))
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _fake_open_file(path, mode):
+        calls["open_file"] = (str(path), mode)
+        return _AsyncOpenContext(path, mode)
+
+    monkeypatch.setattr(audio_stream_mod.anyio, "open_file", _fake_open_file)
 
     class _AsyncClient:
         def __init__(self, *args, **kwargs):
@@ -976,6 +1004,7 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
     assert result["text"] == "25"
     assert result["response_text"] == "25"
     assert result["connection_id"] == 17
+    assert calls["open_file"] == (str(wav_path), "rb")
     assert calls["url"] == "http://runtime/v1/respond"
     request_payload = json.loads(calls["data"]["request"])
     assert request_payload["task"] == "question"

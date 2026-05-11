@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
 
+import anyio
 import httpx
 import numpy as np
 from fastapi import WebSocket, WebSocketDisconnect
@@ -667,7 +668,7 @@ class AudioStreamHandler:
         }
 
         timeout = httpx.Timeout(GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC, connect=5.0)
-        with wav_path.open("rb") as audio_file:
+        async with await anyio.open_file(wav_path, "rb") as audio_file:
             files = {
                 "audio": (wav_path.name, audio_file, "audio/wav"),
             }

@@ -16,4 +16,3 @@
 faster-whisper
 piper-tts
 hydra-core
-natsort

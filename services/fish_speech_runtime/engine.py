@@ -28,9 +28,7 @@ def _model_snapshot_dir(model_id: str, cache_dir: Path) -> Path | None:
             if snapshots.exists():
                 children = list(snapshots.iterdir())
                 if children:
-                    from natsort import natsorted
-
-                    return natsorted(children, reverse=True)[0]
+                    return max(children, key=lambda path: path.stat().st_mtime)
     return None
 
 

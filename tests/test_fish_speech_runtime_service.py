@@ -273,6 +273,74 @@ class TestEngineIntegration:
         assert wav_bytes[:4] == b"RIFF"
         assert len(wav_bytes) > 44
 
+    def test_engine_prefers_newest_snapshot_directory(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        self._reset_engine_singleton(monkeypatch)
+        for module_name in list(sys.modules):
+            if module_name == "tools" or module_name.startswith("tools."):
+                sys.modules.pop(module_name, None)
+
+        source_root = tmp_path / "fish-speech-src"
+        (source_root / "tools" / "server").mkdir(parents=True)
+        (source_root / "tools" / "__init__.py").write_text("")
+        (source_root / "tools" / "server" / "__init__.py").write_text("")
+        (source_root / "tools" / "server" / "model_manager.py").write_text(
+            textwrap.dedent(
+                """
+                class _DummyDecoder:
+                    class spec_transform:
+                        sample_rate = 24000
+
+
+                class ModelManager:
+                    def __init__(self, **kwargs):
+                        self.kwargs = kwargs
+                        self.tts_inference_engine = type(
+                            "DummyEngine",
+                            (),
+                            {"decoder_model": _DummyDecoder()},
+                        )()
+                """
+            )
+        )
+
+        cache_dir = tmp_path / "cache"
+        older_snapshot = (
+            cache_dir / "models--fishaudio--fish-speech-1.5" / "snapshots" / "000old"
+        )
+        newer_snapshot = (
+            cache_dir / "models--fishaudio--fish-speech-1.5" / "snapshots" / "999new"
+        )
+        older_snapshot.mkdir(parents=True)
+        newer_snapshot.mkdir(parents=True)
+        for snapshot in (older_snapshot, newer_snapshot):
+            (snapshot / "model.pth").write_bytes(b"model")
+            (snapshot / "tokenizer.tiktoken").write_text("tokenizer")
+            (snapshot / "firefly-gan-vq-fsq-8x1024-21hz-generator.pth").write_bytes(
+                b"decoder"
+            )
+        os.utime(older_snapshot, (1_000_000_000, 1_000_000_000))
+        os.utime(newer_snapshot, (2_000_000_000, 2_000_000_000))
+
+        monkeypatch.setenv("FISH_SPEECH_SOURCE_DIR", str(source_root))
+        monkeypatch.setenv("FISH_SPEECH_MODEL_ID", "fishaudio/fish-speech-1.5")
+        monkeypatch.setenv("FISH_SPEECH_CACHE_DIR", str(cache_dir))
+        monkeypatch.setenv("FISH_SPEECH_DEVICE", "cpu")
+
+        from services.fish_speech_runtime.engine import FishSpeechEngine
+
+        engine = FishSpeechEngine(
+            model_id="fishaudio/fish-speech-1.5",
+            cache_dir=str(cache_dir),
+            device="cpu",
+        )
+
+        assert engine.load() is True
+        assert engine._model_manager.kwargs["llama_checkpoint_path"] == str(
+            newer_snapshot
+        )
+
 
 class TestUptimeEndpoint:
     def test_uptime_returns_float(self) -> None:

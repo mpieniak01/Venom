@@ -129,7 +129,6 @@ piper-tts               # Local TTS (Text-to-Speech) engine (ONNX-based)
 sounddevice             # Audio I/O
 webrtcvad               # Voice Activity Detection (optional, can use simple RMS)
 hydra-core              # Fish Speech runtime dependency
-natsort                 # Fish Speech runtime dependency
 
 # IoT & Hardware Bridge (Rider-Pi)
 paramiko                # SSH client for Raspberry Pi communication

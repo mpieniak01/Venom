@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from fastapi.testclient import TestClient
 
 import services.gemma4_audio_runtime.main as runtime_main
+from services.gemma4_audio_runtime.engine import Gemma4Daemon
+
+
+def _make_test_daemon(engine_stub) -> Gemma4Daemon:
+    """Construct a daemon wired to a pre-built engine stub."""
+    daemon = Gemma4Daemon(cache_dir="models_cache/hf")
+    daemon._target_engine = engine_stub  # noqa: SLF001
+    return daemon
 
 
 def test_extract_text_prompt_from_openai_messages_prefers_latest_user_text() -> None:
@@ -30,7 +36,8 @@ def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> Non
             captured.update(kwargs)
             return "to jest odpowiedz", 0.25
 
-    monkeypatch.setattr(runtime_main, "get_engine", lambda: EngineStub())
+    daemon = _make_test_daemon(EngineStub())
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
 
     client = TestClient(runtime_main.app)
     response = client.post(
@@ -58,11 +65,15 @@ def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> Non
 
 
 def test_chat_completions_rejects_streaming(monkeypatch) -> None:
-    monkeypatch.setattr(
-        runtime_main,
-        "get_engine",
-        lambda: SimpleNamespace(is_loaded=lambda: True, model_id="m"),
-    )
+    class EngineStub:
+        model_id = "m"
+
+        def is_loaded(self) -> bool:
+            return True
+
+    daemon = _make_test_daemon(EngineStub())
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+
     client = TestClient(runtime_main.app)
 
     response = client.post(

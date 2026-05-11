@@ -146,3 +146,77 @@ class HealthResponse(BaseModel):
 
     status: Literal["ok", "warming", "error"] = Field("ok")
     message: str = Field(...)
+
+
+# ---------------------------------------------------------------------------
+# Daemon control schemas
+# ---------------------------------------------------------------------------
+
+
+class VRAMStatus(BaseModel):
+    backend: str = Field("cpu")
+    allocated_mb: float = Field(0.0)
+    reserved_mb: float = Field(0.0)
+    total_mb: float = Field(0.0)
+    free_mb: float = Field(0.0)
+
+
+class DaemonParamsInfo(BaseModel):
+    max_new_tokens: int
+    enable_thinking: bool
+    cache_implementation: Optional[str] = None
+
+
+class DaemonStatusResponse(BaseModel):
+    """Full daemon state: models, params, VRAM, reload signal."""
+
+    target_model: str
+    assistant_model: Optional[str] = None
+    mode: Literal["target_only", "target_with_assistant"]
+    target_loaded: bool
+    assistant_loaded: bool
+    params: DaemonParamsInfo
+    vram: VRAMStatus
+    pending_reload: bool
+    reload_reason: Optional[str] = None
+
+
+class DaemonConfigRequest(BaseModel):
+    """Live parameter update. Returns required reload signal."""
+
+    max_new_tokens: Optional[int] = Field(None, ge=1, le=32768)
+    enable_thinking: Optional[bool] = None
+    cache_implementation: Optional[str] = None
+
+
+class DaemonConfigResponse(BaseModel):
+    reload_signal: Literal["none", "soft_reload", "hard_restart"]
+    applied: DaemonParamsInfo
+    message: str
+
+
+class AssistantAttachRequest(BaseModel):
+    model_id: str = Field(..., description="HuggingFace model ID of the assistant")
+
+
+class AssistantAttachResponse(BaseModel):
+    assistant_model: str
+    mode: Literal["target_only", "target_with_assistant"]
+    message: str
+
+
+class SoftReloadResponse(BaseModel):
+    reason: str
+    target_model: str
+    message: str
+
+
+class FallbackResponse(BaseModel):
+    reload_signal: Literal["none", "soft_reload", "hard_restart"]
+    target_model: str
+    message: str
+
+
+class RestartResponse(BaseModel):
+    status: Literal["restarting"]
+    message: str

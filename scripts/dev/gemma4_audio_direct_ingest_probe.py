@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import subprocess
 import sys
 import tempfile
@@ -59,6 +60,14 @@ def _parse_args() -> argparse.Namespace:
             "Return only the transcription, with no bullets and no extra commentary."
         ),
         help="Instruction sent together with the audio.",
+    )
+    parser.add_argument(
+        "--question",
+        default="",
+        help=(
+            "Optional question to answer from the audio instead of transcription. "
+            "The script will ask the model to answer only from what can be heard."
+        ),
     )
     parser.add_argument(
         "--max-new-tokens",
@@ -189,6 +198,22 @@ def _build_messages(audio_path: Path, prompt: str) -> list[dict[str, Any]]:
     ]
 
 
+def _build_prompt(prompt: str, question: str) -> str:
+    if not question.strip():
+        return prompt
+    return (
+        "Listen to the audio and answer the question using only the audio as evidence. "
+        "If the answer is not clear from the audio, say so briefly.\n"
+        f"Question: {question.strip()}"
+    )
+
+
+def _clean_generated_text(text: str) -> str:
+    cleaned = text.replace("<bos>", "").replace("<turn|>", "").replace("<|turn>", "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
 def _run_inference(
     *,
     model: Any,
@@ -206,12 +231,25 @@ def _run_inference(
     if hasattr(inputs, "to"):
         inputs = inputs.to(model.device)
     outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
-    decoded = processor.batch_decode(
-        outputs,
+    input_len = 0
+    if hasattr(inputs, "input_ids"):
+        try:
+            input_len = int(inputs.input_ids.shape[-1])
+        except Exception:
+            input_len = 0
+    if hasattr(outputs, "__getitem__") and len(outputs) > 0 and input_len > 0:
+        output_ids = outputs[0][input_len:]
+    else:
+        output_ids = (
+            outputs[0]
+            if hasattr(outputs, "__getitem__") and len(outputs) > 0
+            else outputs
+        )
+    return processor.decode(
+        output_ids,
         skip_special_tokens=False,
         clean_up_tokenization_spaces=False,
     )
-    return decoded[0] if decoded else ""
 
 
 def main() -> int:
@@ -245,14 +283,16 @@ def main() -> int:
                     duration_sec=normalized.duration_sec,
                     sample_count=normalized.sample_count,
                 )
+            effective_prompt = _build_prompt(args.prompt, args.question)
             model, processor, model_class_name = _load_model(args.model_id)
-            messages = _build_messages(normalized.normalized_path, args.prompt)
+            messages = _build_messages(normalized.normalized_path, effective_prompt)
             generated_text = _run_inference(
                 model=model,
                 processor=processor,
                 messages=messages,
                 max_new_tokens=args.max_new_tokens,
             )
+            generated_text = _clean_generated_text(generated_text)
             report = {
                 "ok": True,
                 "model_id": args.model_id,
@@ -263,6 +303,7 @@ def main() -> int:
                 "channels": normalized.channels,
                 "duration_sec": round(normalized.duration_sec, 3),
                 "sample_count": normalized.sample_count,
+                "prompt": effective_prompt,
                 "generated_text": generated_text,
             }
         except Exception as exc:
@@ -275,6 +316,9 @@ def main() -> int:
                 "channels": normalized.channels,
                 "duration_sec": round(normalized.duration_sec, 3),
                 "sample_count": normalized.sample_count,
+                "prompt": effective_prompt
+                if "effective_prompt" in locals()
+                else args.prompt,
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
@@ -290,6 +334,8 @@ def main() -> int:
                 f"sr={report['sample_rate']}Hz, channels={report['channels']}, "
                 f"duration={report['duration_sec']}s, samples={report['sample_count']}"
             )
+            if report.get("prompt"):
+                print(f"  prompt: {report['prompt']}")
             if report.get("ok"):
                 print(f"  model_class: {report['model_class']}")
                 print("  generated_text:")

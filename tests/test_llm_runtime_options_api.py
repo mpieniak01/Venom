@@ -621,3 +621,26 @@ def test_runtime_target_payload_no_gemma4_fields_for_other_runtimes() -> None:
     assert "supports_text_input" not in payload
     assert "supports_audio_input" not in payload
     assert "supported_models" not in payload
+
+
+def test_resolve_selected_model_for_switch_gemma4_audio_prefers_request() -> None:
+    request = SimpleNamespace(model="google/gemma-4-E4B-it", model_alias="")
+    selected, key = system_llm._resolve_selected_model_for_switch(  # noqa: SLF001
+        request=request,
+        server_name="gemma4_audio",
+        config={"LAST_MODEL_GEMMA4_AUDIO": "google/gemma-4-E2B-it"},
+        models=[],
+    )
+    assert selected == "google/gemma-4-E4B-it"
+    assert key == "LAST_MODEL_GEMMA4_AUDIO"
+
+
+def test_resolve_selected_model_for_switch_gemma4_audio_invalid_request() -> None:
+    request = SimpleNamespace(model="google/gemma-4-unknown", model_alias="")
+    with pytest.raises(system_llm.HTTPException):  # noqa: PT011
+        system_llm._resolve_selected_model_for_switch(  # noqa: SLF001
+            request=request,
+            server_name="gemma4_audio",
+            config={},
+            models=[],
+        )

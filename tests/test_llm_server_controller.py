@@ -19,6 +19,8 @@ def _dummy_settings(**kwargs):
         "OLLAMA_STOP_COMMAND": "",
         "OLLAMA_RESTART_COMMAND": "",
         "GEMMA4_AUDIO_ENDPOINT": "http://localhost:8014/v1",
+        "GEMMA4_AUDIO_HOST": "127.0.0.1",
+        "GEMMA4_AUDIO_PORT": 8014,
         "GEMMA4_AUDIO_START_COMMAND": "",
         "GEMMA4_AUDIO_STOP_COMMAND": "",
         "GEMMA4_AUDIO_RESTART_COMMAND": "",
@@ -38,6 +40,15 @@ def test_list_servers_contains_known_entries():
     assert "ollama" in names
     assert "onnx" in names
     assert "gemma4_audio" in names
+
+
+def test_gemma4_audio_health_url_is_derived_from_stack_config():
+    controller = LlmServerController(
+        _dummy_settings(GEMMA4_AUDIO_HOST="gemma-host", GEMMA4_AUDIO_PORT=8123)
+    )
+    servers = {srv["name"]: srv for srv in controller.list_servers()}
+    assert servers["gemma4_audio"]["health_url"].endswith("/health")
+    assert "gemma-host:8123" in servers["gemma4_audio"]["health_url"]
 
 
 @pytest.mark.asyncio

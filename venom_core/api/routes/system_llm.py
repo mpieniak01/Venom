@@ -2093,28 +2093,11 @@ def _resolve_selected_model_for_switch(
     models: list[dict[str, Any]],
 ) -> tuple[str, str]:
     if server_name == "gemma4_audio":
-        requested_last_model_key = _last_model_key_for_server(server_name)
-        requested_model = str(request.model or "").strip()
-        if requested_model:
-            if requested_model not in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Model '{requested_model}' nie jest dostępny na serwerze "
-                        f"'{server_name}'. Dozwolone: {', '.join(_GEMMA4_AUDIO_COMPATIBLE_MODELS)}."
-                    ),
-                )
-            return requested_model, requested_last_model_key
-
-        previous_choice = str(config.get("LAST_MODEL_GEMMA4_AUDIO") or "").strip()
-        if previous_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
-            return previous_choice, requested_last_model_key
-
-        default_choice = str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "")).strip()
-        if default_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
-            return default_choice, requested_last_model_key
-
-        return _GEMMA4_AUDIO_COMPATIBLE_MODELS[0], requested_last_model_key
+        return _resolve_gemma4_audio_selected_model_for_switch(
+            request=request,
+            server_name=server_name,
+            config=config,
+        )
 
     available_models = set(
         _available_models_for_server(models=models, server_name=server_name)
@@ -2146,6 +2129,51 @@ def _resolve_selected_model_for_switch(
         if fallback is None:
             raise
         return fallback
+
+
+def _resolve_gemma4_audio_selected_model_for_switch(
+    *,
+    request: ActiveLlmServerRequest,
+    server_name: str,
+    config: dict[str, Any],
+) -> tuple[str, str]:
+    requested_last_model_key = _last_model_key_for_server(server_name)
+    requested_model = str(request.model or "").strip()
+
+    if requested_model:
+        _validate_gemma4_audio_requested_model(
+            requested_model=requested_model, server_name=server_name
+        )
+        return requested_model, requested_last_model_key
+
+    selected = _resolve_gemma4_audio_fallback_model(config=config)
+    return selected, requested_last_model_key
+
+
+def _validate_gemma4_audio_requested_model(
+    *, requested_model: str, server_name: str
+) -> None:
+    if requested_model in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Model '{requested_model}' nie jest dostępny na serwerze "
+            f"'{server_name}'. Dozwolone: {', '.join(_GEMMA4_AUDIO_COMPATIBLE_MODELS)}."
+        ),
+    )
+
+
+def _resolve_gemma4_audio_fallback_model(*, config: dict[str, Any]) -> str:
+    previous_choice = str(config.get("LAST_MODEL_GEMMA4_AUDIO") or "").strip()
+    if previous_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+        return previous_choice
+
+    default_choice = str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "")).strip()
+    if default_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+        return default_choice
+
+    return _GEMMA4_AUDIO_COMPATIBLE_MODELS[0]
 
 
 def _last_model_key_for_server(server_name: str) -> str:

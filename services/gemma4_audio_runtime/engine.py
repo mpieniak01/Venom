@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Any, Optional
 
 import numpy as np
-import transformers
 
 from .audio import get_audio_duration, normalize_audio
 
@@ -114,6 +113,8 @@ class Gemma4AudioEngine:
 
     def load(self) -> None:
         """Load model and processor, trying multimodal then causal-LM classes."""
+        import transformers
+
         try:
             self.processor = transformers.AutoProcessor.from_pretrained(
                 self.model_id,

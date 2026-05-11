@@ -276,6 +276,120 @@ async def test_audio_status_endpoint_handles_runtime_snapshot_failure(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_audio_status_endpoint_marks_fish_speech_fallback_when_offline(
+    monkeypatch,
+):
+    class DummyHandler:
+        def get_status(self, operator_agent=None):
+            del operator_agent
+            return {
+                "enabled": True,
+                "connected_clients": 1,
+                "active_recordings": 0,
+                "message": "",
+                "tts_engine": "fish_speech",
+                "tts_fallback": False,
+                "tts_ready": False,
+            }
+
+        def get_latest_voice_session(self):
+            return None
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(
+        main_module,
+        "_get_fish_speech_engine_status",
+        AsyncMock(return_value="offline"),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(return_value={"runtime_id": "fish_speech"}),
+    )
+    monkeypatch.setattr(main_module, "operator_agent", object())
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["tts_engine"] == "fish_speech"
+    assert status["tts_fallback"] is True
+    assert status["tts_ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_sync_fish_speech_runtime_process_handles_missing_script(monkeypatch):
+    monkeypatch.setattr(main_module.Path, "exists", lambda self: False)
+
+    result = await main_module._sync_fish_speech_runtime_process("fish_speech")
+
+    assert result["fish_speech_service_action"] == "start"
+    assert result["fish_speech_service_skipped"] is True
+    assert result["fish_speech_service_reason"] == "script_missing"
+
+
+@pytest.mark.asyncio
+async def test_sync_fish_speech_runtime_process_handles_timeout(monkeypatch):
+    monkeypatch.setattr(main_module.Path, "exists", lambda self: True)
+
+    class DummyProcess:
+        def __init__(self):
+            self.returncode = None
+            self.kill_called = False
+
+        async def communicate(self):
+            raise asyncio.TimeoutError
+
+        def kill(self):
+            self.kill_called = True
+
+        async def wait(self):
+            return None
+
+    dummy_process = DummyProcess()
+
+    async def _fake_create_subprocess_exec(*args, **kwargs):
+        del args, kwargs
+        return dummy_process
+
+    monkeypatch.setattr(
+        main_module.asyncio, "create_subprocess_exec", _fake_create_subprocess_exec
+    )
+
+    result = await main_module._sync_fish_speech_runtime_process("fish_speech")
+
+    assert dummy_process.kill_called is True
+    assert result["fish_speech_service_ok"] is False
+    assert result["fish_speech_service_stderr"] == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_sync_fish_speech_runtime_process_returns_success_payload(monkeypatch):
+    monkeypatch.setattr(main_module.Path, "exists", lambda self: True)
+
+    class DummyProcess:
+        def __init__(self):
+            self.returncode = 0
+
+        async def communicate(self):
+            return b"done\n", b""
+
+    async def _fake_create_subprocess_exec(*args, **kwargs):
+        del args, kwargs
+        return DummyProcess()
+
+    monkeypatch.setattr(
+        main_module.asyncio, "create_subprocess_exec", _fake_create_subprocess_exec
+    )
+
+    result = await main_module._sync_fish_speech_runtime_process("piper_local")
+
+    assert result["fish_speech_service_action"] == "stop"
+    assert result["fish_speech_service_ok"] is True
+    assert result["fish_speech_service_exit_code"] == 0
+    assert result["fish_speech_service_stdout"] == "done"
+
+
+@pytest.mark.asyncio
 async def test_download_latest_voice_session_validates_session_path(
     monkeypatch, tmp_path
 ):

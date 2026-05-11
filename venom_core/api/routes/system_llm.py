@@ -1151,7 +1151,12 @@ async def _local_models_by_runtime(
     *,
     local_models: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
-    grouped: dict[str, list[dict[str, Any]]] = {"ollama": [], "vllm": [], "onnx": []}
+    grouped: dict[str, list[dict[str, Any]]] = {
+        "ollama": [],
+        "vllm": [],
+        "onnx": [],
+        "gemma4_audio": [],
+    }
     audit_issues: list[dict[str, Any]] = []
     if local_models is None:
         try:
@@ -1541,7 +1546,7 @@ def _local_runtime_targets(
     targets: list[dict[str, Any]] = []
     allowed = _allowed_local_servers()
     installed = _installed_local_servers()
-    for runtime_id in ("ollama", "vllm", "onnx"):
+    for runtime_id in ("ollama", "vllm", "gemma4_audio", "onnx"):
         info = server_status.get(runtime_id, {})
         status = str(info.get("status") or "unknown")
         reason = None

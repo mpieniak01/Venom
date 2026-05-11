@@ -11,6 +11,9 @@ tests/api/test_memory_openapi_contract.py
 tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/security/test_autonomy_enforcement.py
+tests/test_204a_canonical_control_state.py
+tests/test_academy_202c_signing_coverage.py
+tests/test_academy_202d_lora_onnx_deploy.py
 tests/test_academy_adapter_runtime_service.py
 tests/test_academy_api.py
 tests/test_academy_api_contracts.py
@@ -18,6 +21,7 @@ tests/test_academy_api_dataset_edge_cases.py
 tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_edges_contract.py
 tests/test_academy_conversion_contracts.py
+tests/test_academy_conversion_light_coverage.py
 tests/test_academy_dataset_conversion.py
 tests/test_academy_file_resolution_service.py
 tests/test_academy_history_module.py
@@ -27,6 +31,7 @@ tests/test_academy_route_helpers_modules.py
 tests/test_academy_self_learning_routes.py
 tests/test_academy_self_learning_service.py
 tests/test_academy_training_service.py
+tests/test_adapter_audit_service.py
 tests/test_admin_audit.py
 tests/test_agent_improvements.py
 tests/test_agents.py
@@ -46,7 +51,6 @@ tests/test_architect_agent.py
 tests/test_artifact_strategy.py
 tests/test_assistant_skill.py
 tests/test_audio_engine.py
-tests/test_audio_smoke_script.py
 tests/test_audio_stream_handler_roi.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
@@ -56,6 +60,7 @@ tests/test_benchmark_routes_guard.py
 tests/test_benchmark_service.py
 tests/test_benchmark_service_activation.py
 tests/test_benchmark_service_runtime_selection.py
+tests/test_boot_id.py
 tests/test_bootstrap_routes_contracts.py
 tests/test_bootstrap_runtime_stack_modules.py
 tests/test_brain_graph_view_modes.py
@@ -120,6 +125,7 @@ tests/test_ensure_env_file_script.py
 tests/test_env_audit.py
 tests/test_env_cleanup.py
 tests/test_env_contract_sh.py
+tests/test_env_contracts.py
 tests/test_env_report_diff.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py
@@ -140,6 +146,7 @@ tests/test_forge_flow.py
 tests/test_generation_params_adapter.py
 tests/test_generation_schema.py
 tests/test_ghost_agent.py
+tests/test_ghost_agent_hil.py
 tests/test_git_routes_logic.py
 tests/test_git_skill.py
 tests/test_git_skill_roi.py
@@ -193,6 +200,7 @@ tests/test_knowledge_hygiene.py
 tests/test_knowledge_hygiene_api.py
 tests/test_knowledge_ttl.py
 tests/test_launchpad_agents.py
+tests/test_learning.py
 tests/test_learning_logs.py
 tests/test_lessons_governance.py
 tests/test_lessons_manager.py
@@ -284,6 +292,7 @@ tests/test_platform_skill.py
 tests/test_policy_autonomy_contract.py
 tests/test_policy_engine.py
 tests/test_policy_gate.py
+tests/test_policy_gate_runtime_contract.py
 tests/test_port_authority.py
 tests/test_port_pids_script.py
 tests/test_preprod_mutation_guards.py

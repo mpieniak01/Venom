@@ -24,7 +24,7 @@ def allowed_local_servers(*, profile: str, onnx_enabled: bool) -> set[str]:
         return {"ollama"}
     if profile == "llm_off":
         return set()
-    allowed = {"ollama", "vllm"}
+    allowed = {"ollama", "vllm", "gemma4_audio"}
     if onnx_enabled:
         allowed.add("onnx")
     return allowed
@@ -54,6 +54,8 @@ def installed_local_servers(
         installed.add("vllm")
     if onnx_installed:
         installed.add("onnx")
+    # Gemma4 Audio is always available (pure Python daemon)
+    installed.add("gemma4_audio")
     return installed
 
 

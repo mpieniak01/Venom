@@ -769,6 +769,8 @@ async def test_runtime_module_branches_for_activation_and_restart(monkeypatch):
         REPO_ROOT=".",
         LLM_MODEL_NAME="",
         ACTIVE_LLM_SERVER="",
+        LLM_LOCAL_ENDPOINT="http://localhost:8001/v1",
+        GEMMA4_AUDIO_ENDPOINT="http://localhost:8014/v1",
     )
     with (
         pytest.MonkeyPatch.context() as mp,

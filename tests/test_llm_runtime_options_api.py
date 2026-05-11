@@ -473,7 +473,7 @@ async def test_local_models_by_runtime_reports_unknown_provider_issue(
             local_models=local_models,
         )
 
-    assert grouped == {"ollama": [], "vllm": [], "onnx": []}
+    assert grouped == {"ollama": [], "vllm": [], "onnx": [], "gemma4_audio": []}
     assert audit == [
         {
             "name": "mystery-model",

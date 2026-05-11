@@ -186,6 +186,31 @@ class Settings(BaseSettings):
     OLLAMA_ENABLE_STRUCTURED_OUTPUTS: bool = True
     OLLAMA_ENABLE_TOOL_CALLING: bool = True
     OLLAMA_ENABLE_THINK: bool = False
+
+    # Konfiguracja Gemma 4 Audio Native Runtime Service
+    GEMMA4_AUDIO_ENABLED: bool = False  # Włącz runtime Gemma4 Audio
+    GEMMA4_AUDIO_MODEL_ID: str = "google/gemma-4-E2B-it"  # Model ID z Hugging Face
+    GEMMA4_AUDIO_ENDPOINT: str = _default_url(
+        "localhost", 8014, "/v1"
+    )  # Endpoint daemona
+    GEMMA4_AUDIO_HOST: str = "127.0.0.1"  # Host dla daemona
+    GEMMA4_AUDIO_PORT: int = 8014  # Port dla daemona
+    GEMMA4_AUDIO_CACHE_DIR: str = "models_cache/hf"  # Katalog cache HF
+    GEMMA4_AUDIO_DEVICE: str = "auto"  # Urządzenie (auto|cuda|cpu)
+    GEMMA4_AUDIO_MAX_NEW_TOKENS: int = 128  # Max nowych tokenów
+    GEMMA4_AUDIO_MAX_CONCURRENCY: int = 1  # Max równoczesnych requestów
+    GEMMA4_AUDIO_STARTUP_TIMEOUT_SECONDS: int = (
+        600  # Maksymalny czas oczekiwania na gotowość startu
+    )
+    GEMMA4_AUDIO_START_COMMAND: str = ""  # Komenda start (z env file)
+    GEMMA4_AUDIO_STOP_COMMAND: str = ""  # Komenda stop (z env file)
+    GEMMA4_AUDIO_RESTART_COMMAND: str = ""  # Komenda restart (z env file)
+    GEMMA4_AUDIO_SUPPORTS_AUDIO: bool = True  # Potrafi przetwarzać audio
+    GEMMA4_AUDIO_SUPPORTS_TEXT: bool = True  # Potrafi przetwarzać text
+    GEMMA4_AUDIO_LOG_PATH: str = "logs/gemma4_audio_service.log"  # Plik logu
+    GEMMA4_AUDIO_PID_PATH: str = ".venom_runtime/gemma4_audio.pid"  # Plik PID
+    LAST_MODEL_GEMMA4_AUDIO: str = ""  # Ostatnio wybrany model
+
     # Czy w trybach LOCAL/ECO zawsze wymuszać darmowe źródła (np. DuckDuckGo)
     LOW_COST_FORCE_DDG: bool = False
 

@@ -29,7 +29,7 @@ async def main() -> int:
 
     if health.status_code != 200 or status.status_code != 200:
         return 1
-    if tts.status_code not in {501, 503}:
+    if tts.status_code != 503:
         return 1
     return 0
 

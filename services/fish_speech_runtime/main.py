@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ from services.fish_speech_runtime.schemas import (
 )
 
 _START_TIME = time.time()
+_engine_load_lock = asyncio.Lock()
 
 
 def _is_enabled() -> bool:
@@ -62,9 +64,12 @@ async def health() -> HealthResponse:
 @app.get("/status", response_model=StatusResponse)
 async def status() -> StatusResponse:
     status_value, _ = _runtime_status()
+    model_loaded = False
+    if status_value != "disabled":
+        model_loaded = get_engine().is_loaded
     return StatusResponse(
         status=status_value,
-        model_loaded=get_engine().is_loaded,
+        model_loaded=model_loaded,
         model_id=os.getenv("FISH_SPEECH_MODEL_ID", "fishaudio/fish-speech-1.5"),
         device=os.getenv("FISH_SPEECH_DEVICE", "auto"),
         endpoint=os.getenv("FISH_SPEECH_ENDPOINT", "http://127.0.0.1:8024/v1"),
@@ -109,9 +114,10 @@ async def tts(request: TtsRequest) -> Response:
 
 
 async def _load_engine_async(engine: object) -> bool:
-    import asyncio
-
-    return await asyncio.to_thread(engine.load)  # type: ignore[attr-defined]
+    async with _engine_load_lock:
+        if bool(getattr(engine, "is_loaded", False)):
+            return True
+        return await asyncio.to_thread(engine.load)  # type: ignore[attr-defined]
 
 
 @app.get("/uptime")

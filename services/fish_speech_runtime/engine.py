@@ -27,7 +27,9 @@ def _model_snapshot_dir(model_id: str, cache_dir: Path) -> Path | None:
             if snapshots.exists():
                 children = list(snapshots.iterdir())
                 if children:
-                    return children[0]
+                    from natsort import natsorted
+
+                    return natsorted(children, reverse=True)[0]
     return None
 
 
@@ -91,7 +93,7 @@ class FishSpeechEngine:
         if snapshot is None:
             self._load_error = (
                 f"Model weights not found for {self.model_id} in {self.cache_dir}. "
-                "Download via: huggingface-cli download fishaudio/fish-speech-1.5"
+                f"Download via: huggingface-cli download {self.model_id}"
             )
             logger.warning(self._load_error)
             return False

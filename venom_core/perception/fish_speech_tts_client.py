@@ -39,15 +39,12 @@ class FishSpeechTtsClient:
         return self._client
 
     async def health_check(self) -> bool:
-        """Return True if the daemon is reachable and enabled."""
+        """Return True only when daemon reports fully ready status."""
         try:
             client = await self._get_client()
             resp = await client.get(f"{self.base_url}/health")  # type: ignore[attr-defined]
             data = resp.json()
-            return resp.status_code == 200 and data.get("status") not in (
-                "disabled",
-                "error",
-            )
+            return resp.status_code == 200 and data.get("status") == "ok"
         except Exception as exc:
             logger.debug(f"Fish Speech health check failed: {exc}")
             return False

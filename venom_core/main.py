@@ -963,6 +963,12 @@ async def _shutdown_runtime_components() -> None:
     if hardware_bridge:
         await hardware_bridge.disconnect()
         logger.info("HardwareBridge rozłączony")
+    if audio_engine and hasattr(audio_engine, "aclose"):
+        try:
+            await audio_engine.aclose()
+            logger.info("AudioEngine zasoby asynchroniczne zwolnione")
+        except Exception:
+            logger.warning("Nie udało się zamknąć zasobów AudioEngine.")
 
     await state_manager.shutdown()
     logger.info("Aplikacja zamknięta")

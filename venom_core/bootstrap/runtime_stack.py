@@ -321,9 +321,10 @@ def initialize_audio_engine_if_enabled(
         if tts_engine == "fish_speech" and _supports_keyword_argument(
             audio_engine_cls, "fish_speech_endpoint"
         ):
-            kwargs["fish_speech_endpoint"] = getattr(
+            endpoint = getattr(
                 settings, "FISH_SPEECH_ENDPOINT", "http://127.0.0.1:8024"
-            ).removesuffix("/v1")
+            ).rstrip("/")
+            kwargs["fish_speech_endpoint"] = endpoint.removesuffix("/v1")
         audio_engine = audio_engine_cls(**kwargs)
         logger.info("AudioEngine zainicjalizowany")
         return audio_engine

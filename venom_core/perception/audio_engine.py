@@ -565,6 +565,9 @@ class AudioEngine:
         """
         Syntetyzuje mowę z tekstu.
 
+        Args:
+            text: Tekst do wypowiedzenia.
+
         Returns:
             Audio as float32 numpy array, or None on failure.
         """
@@ -575,6 +578,11 @@ class AudioEngine:
             logger.warning("Fish Speech speak() returned None; falling back to Piper")
 
         return await self.voice.speak(text)
+
+    async def aclose(self) -> None:
+        """Release async resources owned by AudioEngine."""
+        if self._fish_client is not None:
+            await self._fish_client.aclose()
 
     async def process_voice_command(
         self, audio_buffer: np.ndarray, language: str = "pl", sample_rate: int = 16000

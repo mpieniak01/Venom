@@ -66,7 +66,7 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
     localCache !== null;
 
   async function handleApply() {
-    const params: Record<string, unknown> = {};
+    const params: import("@/lib/gemma4-daemon-api").DaemonConfigRequest = {};
     if (localThinking !== null) params.enable_thinking = localThinking;
     if (localTokens !== "") {
       const n = parseInt(localTokens, 10);
@@ -128,7 +128,7 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
         </div>
         <div className="flex gap-1 flex-shrink-0">
           {!status?.target_loaded && (
-            <Badge tone="warning" className="text-[10px]">warming</Badge>
+            <Badge tone="warning" className="text-[10px]">{t("voice.daemon.warming")}</Badge>
           )}
           {status?.mode === "target_with_assistant" && (
             <Badge tone="success" className="text-[10px]">
@@ -166,8 +166,8 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
                 {localThinking !== null
                   ? t("voice.daemon.signalLive")
                   : status.params.enable_thinking
-                  ? "on"
-                  : "off"}
+                  ? t("voice.daemon.thinkingOn")
+                  : t("voice.daemon.thinkingOff")}
               </span>
             )}
           </div>
@@ -252,7 +252,7 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
               disabled={busy}
             >
               {actionPending === "detach"
-                ? "…"
+                ? t("voice.daemon.busy")
                 : t("voice.daemon.detachDrafter")}
             </Button>
           ) : (
@@ -287,7 +287,7 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
               onClick={handleAttach}
               disabled={busy || !drafterInput.trim()}
             >
-              {actionPending === "attach" ? "…" : "OK"}
+              {actionPending === "attach" ? t("voice.daemon.busy") : t("voice.daemon.ok")}
             </Button>
           </div>
         )}
@@ -357,7 +357,7 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
           disabled={busy}
           data-testid="fallback-button"
         >
-          {actionPending === "fallback" ? "…" : t("voice.daemon.fallback")}
+          {actionPending === "fallback" ? t("voice.daemon.busy") : t("voice.daemon.fallback")}
         </Button>
       </div>
 

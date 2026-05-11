@@ -134,6 +134,11 @@ export const voice = {
     signalReload: "Neustart erforderlich",
     signalRestart: "Prozess-Neustart erforderlich",
     assistantActive: "Drafter aktiv",
+    warming: "aufwärmen",
+    thinkingOn: "ein",
+    thinkingOff: "aus",
+    ok: "OK",
+    busy: "…",
   },
   modes: {
     title: "Voice-Modi",

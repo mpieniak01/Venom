@@ -142,7 +142,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.getenv("GEMMA4_CORS_ORIGINS", "http://localhost:3000").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -198,15 +198,14 @@ def _get_vram() -> DaemonVRAMStatus:
         import torch
 
         if torch.cuda.is_available():
-            allocated = torch.cuda.memory_allocated(0) // (1024 * 1024)
-            reserved = torch.cuda.memory_reserved(0) // (1024 * 1024)
-            total = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
+            device_idx = torch.cuda.current_device()
+            free, total = torch.cuda.mem_get_info(device_idx)
             return DaemonVRAMStatus(
                 backend="cuda",
-                allocated_mb=allocated,
-                reserved_mb=reserved,
-                total_mb=total,
-                free_mb=max(0, total - reserved),
+                allocated_mb=torch.cuda.memory_allocated(device_idx) // (1024 * 1024),
+                reserved_mb=torch.cuda.memory_reserved(device_idx) // (1024 * 1024),
+                total_mb=total // (1024 * 1024),
+                free_mb=free // (1024 * 1024),
             )
     except Exception:
         pass
@@ -666,12 +665,14 @@ async def daemon_config(req: DaemonConfigRequest) -> DaemonConfigResponse:
     if req.enable_thinking is not None:
         _daemon_enable_thinking = req.enable_thinking
 
-    if req.cache_implementation is not None:
+    if "cache_implementation" in req.model_fields_set:
         new_cache = req.cache_implementation or None
         if new_cache != _daemon_cache_implementation:
             _daemon_cache_implementation = new_cache
-            _pending_reload = True
-            _reload_reason = "cache_implementation changed"
+            _pending_reload = new_cache is not None
+            _reload_reason = (
+                "cache_implementation changed" if new_cache is not None else None
+            )
             reload_signal = "soft_reload"
 
     return DaemonConfigResponse(
@@ -713,14 +714,18 @@ async def daemon_reload() -> Response:
 @app.post("/v1/daemon/restart", status_code=204)
 async def daemon_restart() -> Response:
     """Restart the daemon process via os.execv — all models are unloaded first."""
-    try:
-        engine = get_engine()
-        engine.unload()
-    except RuntimeError:
-        pass
+    global _assistant_model_id, _assistant_engine
+    for eng in [_engine, _assistant_engine]:
+        try:
+            if eng is not None:
+                eng.unload()
+        except RuntimeError:
+            pass
+    _assistant_model_id = None
+    _assistant_engine = None
     logger.info("Daemon restart requested — re-exec process")
     # Delay slightly so the 204 response is sent before the process replaces itself.
-    asyncio.get_event_loop().call_later(
+    asyncio.get_running_loop().call_later(
         0.2, lambda: os.execv(sys.executable, [sys.executable] + sys.argv)
     )
     return Response(status_code=204)

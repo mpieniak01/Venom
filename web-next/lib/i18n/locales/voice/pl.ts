@@ -134,6 +134,11 @@ export const voice = {
     signalReload: "wymaga reload",
     signalRestart: "wymaga restart",
     assistantActive: "drafter aktywny",
+    warming: "ładowanie",
+    thinkingOn: "wł.",
+    thinkingOff: "wył.",
+    ok: "OK",
+    busy: "…",
   },
   modes: {
     title: "Tryby voice",

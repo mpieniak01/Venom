@@ -41,7 +41,7 @@ export function useGemma4Daemon(pollingIntervalMs = 10_000): Gemma4DaemonState {
   const [lastAppliedSignal, setLastAppliedSignal] = useState<ReloadSignal | null>(null);
 
   const baseUrlRef = useRef<string>("");
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -68,11 +68,18 @@ export function useGemma4Daemon(pollingIntervalMs = 10_000): Gemma4DaemonState {
   useEffect(() => {
     mountedRef.current = true;
     baseUrlRef.current = getGemma4ApiBaseUrl();
-    doFetch();
-    timerRef.current = setInterval(doFetch, pollingIntervalMs);
+
+    const tick = async () => {
+      await doFetch();
+      if (mountedRef.current) {
+        timerRef.current = setTimeout(tick, pollingIntervalMs);
+      }
+    };
+
+    tick();
     return () => {
       mountedRef.current = false;
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [doFetch, pollingIntervalMs]);
 

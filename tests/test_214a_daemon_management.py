@@ -151,6 +151,19 @@ def test_daemon_config_same_cache_no_reload(monkeypatch) -> None:
     assert resp.json()["reload_signal"] == "none"
 
 
+def test_daemon_config_null_cache_clears_implementation(monkeypatch) -> None:
+    _patch_engine(monkeypatch)
+    _reset_daemon_state(monkeypatch)
+    monkeypatch.setattr(runtime_main, "_daemon_cache_implementation", "static")
+    monkeypatch.setattr(runtime_main, "_pending_reload", True)
+    client = TestClient(runtime_main.app)
+    resp = client.post("/v1/daemon/config", json={"cache_implementation": None})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["applied"]["cache_implementation"] is None
+    assert runtime_main._pending_reload is False  # noqa: SLF001
+
+
 def test_daemon_config_empty_body_is_no_op(monkeypatch) -> None:
     _patch_engine(monkeypatch)
     _reset_daemon_state(monkeypatch)
@@ -240,4 +253,4 @@ def test_daemon_status_cors_header(monkeypatch) -> None:
     _reset_daemon_state(monkeypatch)
     client = TestClient(runtime_main.app)
     resp = client.get("/v1/daemon/status", headers={"Origin": "http://localhost:3000"})
-    assert resp.headers.get("access-control-allow-origin") == "*"
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"

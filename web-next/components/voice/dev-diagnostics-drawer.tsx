@@ -34,6 +34,14 @@ type AudioStatus = {
       llm_model?: string | null;
       tts_sample_rate?: number | null;
     };
+    pipeline_id?: string | null;
+    audio_runtime_provider?: string | null;
+    audio_runtime_model?: string | null;
+    audio_input_status?: string | null;
+    decoder_source?: string | null;
+    fallback_reason?: string | null;
+    native_audio_ms?: number | null;
+    runtime_log_path?: string | null;
   } | null;
   runtime_snapshot?: {
     runtime_id?: string | null;
@@ -254,6 +262,35 @@ function LatestRecordingSection({
           </p>
         )}
         {latestVoiceSession.transcription && <p>STT: {latestVoiceSession.transcription}</p>}
+        {latestVoiceSession.pipeline_id && (
+          <p>Pipeline: {latestVoiceSession.pipeline_id}</p>
+        )}
+        {latestVoiceSession.audio_runtime_provider && (
+          <p>
+            STT backend:{" "}
+            {latestVoiceSession.audio_runtime_provider === "gemma4_audio"
+              ? "gemma4_audio"
+              : "faster-whisper"}
+            {latestVoiceSession.audio_runtime_model
+              ? ` (${latestVoiceSession.audio_runtime_model})`
+              : ""}
+          </p>
+        )}
+        {latestVoiceSession.decoder_source && (
+          <p>Decoder source: {latestVoiceSession.decoder_source}</p>
+        )}
+        {latestVoiceSession.audio_input_status && (
+          <p>Audio input: {latestVoiceSession.audio_input_status}</p>
+        )}
+        {latestVoiceSession.fallback_reason && (
+          <p className="text-amber-400">Fallback: {latestVoiceSession.fallback_reason}</p>
+        )}
+        {latestVoiceSession.native_audio_ms != null && (
+          <p>Native audio: {formatSeconds(latestVoiceSession.native_audio_ms)}</p>
+        )}
+        {latestVoiceSession.runtime_log_path && (
+          <p className="truncate text-zinc-500">Log: {latestVoiceSession.runtime_log_path}</p>
+        )}
       </div>
     </div>
   );

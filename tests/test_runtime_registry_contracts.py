@@ -631,3 +631,37 @@ async def test_runtime_stack_scheduler_documenter_and_shadow_disabled():
     assert shadow is None
     assert desktop_sensor is None
     assert notifier is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_model_metadata_for_gemma4_audio_known_models():
+    """Znane modele gemma4_audio mogą być aktywowane bez wpisu w manifeście."""
+    registry = SimpleNamespace(manifest={}, providers={})
+    assert await model_registry_runtime.ensure_model_metadata_for_activation(
+        registry, "google/gemma-4-E2B-it", "gemma4_audio"
+    )
+    assert await model_registry_runtime.ensure_model_metadata_for_activation(
+        registry, "google/gemma-4-E4B-it", "gemma4_audio"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ensure_model_metadata_for_gemma4_audio_unknown_model_fails():
+    """Nieznany model dla gemma4_audio (brak w manifeście) zwraca False."""
+    registry = SimpleNamespace(manifest={}, providers={})
+    result = await model_registry_runtime.ensure_model_metadata_for_activation(
+        registry, "google/gemma-4-unknown", "gemma4_audio"
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_model_metadata_for_gemma4_audio_manifest_entry_wins():
+    """Model w manifeście zawsze zwraca True niezależnie od runtime."""
+    registry = SimpleNamespace(
+        manifest={"google/gemma-4-unknown": SimpleNamespace()},
+        providers={},
+    )
+    assert await model_registry_runtime.ensure_model_metadata_for_activation(
+        registry, "google/gemma-4-unknown", "gemma4_audio"
+    )

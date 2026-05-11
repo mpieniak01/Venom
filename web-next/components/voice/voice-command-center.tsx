@@ -63,6 +63,14 @@ export type AudioStatus = {
     transcription?: string;
     response_text?: string;
     download_url?: string | null;
+    pipeline_id?: string | null;
+    audio_runtime_provider?: string | null;
+    audio_runtime_model?: string | null;
+    audio_input_status?: string | null;
+    decoder_source?: string | null;
+    fallback_reason?: string | null;
+    native_audio_ms?: number | null;
+    runtime_log_path?: string | null;
   } | null;
   message?: string;
   runtime_snapshot?: {

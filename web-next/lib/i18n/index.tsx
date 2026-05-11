@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { pl } from "./locales/pl";
@@ -63,7 +64,7 @@ function applyReplacements(value: string, replacements?: Record<string, string |
   }, value);
 }
 
-function resolveInitialLanguage(): LanguageCode {
+function resolvePreferredLanguage(): LanguageCode {
   if (globalThis.window === undefined) return "pl";
   const stored = globalThis.window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
   if (stored && stored in translations) {
@@ -76,8 +77,25 @@ function resolveInitialLanguage(): LanguageCode {
   return "pl";
 }
 
+function subscribeToLanguagePreference(onStoreChange: () => void): () => void {
+  if (globalThis.window === undefined) return () => undefined;
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY) {
+      onStoreChange();
+    }
+  };
+  globalThis.window.addEventListener("storage", handleStorage);
+  return () => globalThis.window.removeEventListener("storage", handleStorage);
+}
+
 export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [language, setLanguage] = useState<LanguageCode>(() => resolveInitialLanguage());
+  const preferredLanguage = useSyncExternalStore(
+    subscribeToLanguagePreference,
+    resolvePreferredLanguage,
+    () => "pl",
+  );
+  const [userSelectedLanguage, setUserSelectedLanguage] = useState<LanguageCode | null>(null);
+  const language = userSelectedLanguage ?? preferredLanguage;
 
   useEffect(() => {
     if (globalThis.window === undefined) return;
@@ -88,6 +106,7 @@ export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>
     if (globalThis.window === undefined) return;
     globalThis.window.localStorage.setItem(STORAGE_KEY, language);
     dayjs.locale(language);
+    document.documentElement.lang = language;
   }, [language]);
 
   const translate = useCallback(
@@ -104,10 +123,10 @@ export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>
   const value = useMemo(
     () => ({
       language,
-      setLanguage,
+      setLanguage: setUserSelectedLanguage,
       t: translate,
     }),
-    [language, translate],
+    [language, translate, setUserSelectedLanguage],
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

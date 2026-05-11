@@ -573,6 +573,19 @@ export function useCockpitSectionProps() {
     tuningLabel,
   ]);
 
+  const gemma4AudioRuntimeInfo = useMemo(() => {
+    const target = runtimeTargets.find((rt) => rt.runtime_id === "gemma4_audio");
+    if (!target) return null;
+    return {
+      supports_text_input: target.supports_text_input,
+      supports_audio_input: target.supports_audio_input,
+      supports_text_output: target.supports_text_output,
+      supports_image_input: target.supports_image_input,
+      log_path: target.log_path,
+      pid_path: target.pid_path,
+    };
+  }, [runtimeTargets]);
+
   const llmOpsPanelProps = useMemo(() => ({
     llmServersLoading,
     llmServers,
@@ -595,6 +608,7 @@ export function useCockpitSectionProps() {
     activeServerName,
     llmActionPending,
     onActivateServer,
+    gemma4AudioRuntimeInfo,
     connected,
     logFilter,
     onLogFilterChange,
@@ -611,6 +625,7 @@ export function useCockpitSectionProps() {
     availableModelsForServer,
     connected,
     exportingPinned,
+    gemma4AudioRuntimeInfo,
     llmActionPending,
     llmModelOptionsPanel,
     llmServerOptionsPanel,

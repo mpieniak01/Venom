@@ -1,7 +1,7 @@
 "use client";
 
 import type { LogEntryType } from "@/lib/logs";
-import type { LlmServerInfo, Task } from "@/lib/types";
+import type { LlmRuntimeTargetOption, LlmServerInfo, Task } from "@/lib/types";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { CockpitLogs } from "@/components/cockpit/cockpit-logs";
 import { CockpitModels } from "@/components/cockpit/cockpit-models";
@@ -38,6 +38,15 @@ type CockpitLlmOpsPanelProps = Readonly<{
   onExportPinnedLogs: () => void;
   onClearPinnedLogs: () => void;
   tasksPreview: Task[];
+  gemma4AudioRuntimeInfo?: Pick<
+    LlmRuntimeTargetOption,
+    | "supports_text_input"
+    | "supports_audio_input"
+    | "supports_text_output"
+    | "supports_image_input"
+    | "log_path"
+    | "pid_path"
+  > | null;
 }>;
 
 export function CockpitLlmOpsPanel({
@@ -62,6 +71,7 @@ export function CockpitLlmOpsPanel({
   activeServerName,
   llmActionPending,
   onActivateServer,
+  gemma4AudioRuntimeInfo,
   connected,
   logFilter,
   onLogFilterChange,
@@ -97,6 +107,7 @@ export function CockpitLlmOpsPanel({
         activeServerName={activeServerName}
         llmActionPending={llmActionPending}
         onActivateServer={onActivateServer}
+        gemma4AudioRuntimeInfo={gemma4AudioRuntimeInfo}
       />
       <CockpitLogs
         connected={connected}

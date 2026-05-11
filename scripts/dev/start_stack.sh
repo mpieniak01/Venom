@@ -308,6 +308,33 @@ start_vllm() {
   return 1
 }
 
+start_gemma4_audio() {
+  echo "▶️  Uruchamiam Gemma4 Audio..."
+  mk vllm-stop >/dev/null || true
+  mk ollama-stop >/dev/null || true
+  if ! bash scripts/llm/gemma4_audio_service.sh start; then
+    echo "❌ Nie udało się uruchomić Gemma4 Audio (sprawdź logi wyżej)."
+    return 1
+  fi
+
+  echo "⏳ Czekam na Gemma4 Audio (/health)..."
+  for _ in {1..90}; do
+    if curl -fsS "http://127.0.0.1:8014/health" >/dev/null 2>&1; then
+      echo "✅ Gemma4 Audio gotowy"
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "❌ Gemma4 Audio nie wystartował w czasie (brak odpowiedzi z /health)"
+  if [[ -f logs/gemma4_audio_service.log ]]; then
+    echo "ℹ️  Ostatnie logi Gemma4 Audio:"
+    tail -n 40 logs/gemma4_audio_service.log || true
+  fi
+  bash scripts/llm/gemma4_audio_service.sh stop >/dev/null 2>&1 || true
+  return 1
+}
+
 llm_ready=""
 case "$active_server" in
   onnx)
@@ -324,14 +351,18 @@ case "$active_server" in
     mk ollama-stop >/dev/null || true
     if start_vllm; then llm_ready="vllm"; fi
     ;;
+  gemma4_audio)
+    if start_gemma4_audio; then llm_ready="gemma4_audio"; fi
+    ;;
   none)
     echo "▶️  ACTIVE_LLM_SERVER=none (start bez lokalnego serwera LLM)"
     mk vllm-stop >/dev/null || true
     mk ollama-stop >/dev/null || true
+    bash scripts/llm/gemma4_audio_service.sh stop >/dev/null 2>&1 || true
     llm_ready="none"
     ;;
   *)
-    echo "❌ Nieznany ACTIVE_LLM_SERVER='$active_server' (dozwolone: ollama|vllm|onnx|none)"
+    echo "❌ Nieznany ACTIVE_LLM_SERVER='$active_server' (dozwolone: ollama|vllm|gemma4_audio|onnx|none)"
     exit 1
     ;;
 esac

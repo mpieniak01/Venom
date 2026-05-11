@@ -153,6 +153,13 @@ export interface LlmRuntimeTargetOption {
   supports_adapter_import_safetensors?: boolean;
   supports_adapter_import_gguf?: boolean;
   supports_adapter_runtime_apply?: boolean;
+  supports_text_input?: boolean;
+  supports_audio_input?: boolean;
+  supports_text_output?: boolean;
+  supports_image_input?: boolean;
+  supported_models?: string[];
+  log_path?: string;
+  pid_path?: string;
 }
 
 export interface LlmRuntimeOptionsResponse {

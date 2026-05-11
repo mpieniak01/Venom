@@ -277,6 +277,62 @@ class AudioTtsModelUpdateRequest(BaseModel):
 
 async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
     runtime = get_active_llm_runtime()
+    if runtime.provider == "gemma4_audio":
+        runtime_capabilities = {
+            "compatibility_profile": "gemma4_audio_native",
+            "probe_status": "verified"
+            if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+            else "metadata_only",
+            "capabilities": {
+                "audio_input": bool(
+                    getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
+                ),
+                "text_input": bool(
+                    getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_TEXT", True)
+                ),
+                "text_output": True,
+                "vision_input": False,
+                "tool_calling": False,
+                "thinking": False,
+            },
+            "probes": {
+                "health": {
+                    "status": "verified"
+                    if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+                    else "metadata_only",
+                    "reason": None
+                    if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+                    else "runtime_not_enabled",
+                }
+            },
+            "fallbacks": {
+                "voice_fallback_pipeline": "whisper_llm_piper",
+                "tts": "piper",
+            },
+        }
+        voice_pipeline = {
+            "profile": "gemma4_audio_native",
+            "stt": "native_audio"
+            if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+            else "faster_whisper",
+            "reasoning": "native_audio_model",
+            "tools": "disabled",
+            "vision": "disabled",
+            "tts": "piper",
+            "notes": [],
+        }
+        return {
+            "runtime_id": runtime.runtime_id,
+            "provider": runtime.provider,
+            "model_name": runtime.model_name
+            or str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "") or "").strip(),
+            "endpoint": runtime.endpoint
+            or str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", "") or "").strip(),
+            "config_hash": runtime.config_hash,
+            "runtime_capabilities": runtime_capabilities,
+            "voice_pipeline": voice_pipeline,
+        }
+
     if runtime.provider != "ollama" or not runtime.model_name or not runtime.endpoint:
         return None
 

@@ -58,6 +58,13 @@ def _prepend_source_root() -> Path:
     return source_root
 
 
+def _clear_fish_speech_import_cache() -> None:
+    """Drop cached Fish Speech modules so the source checkout wins imports."""
+    for module_name in list(sys.modules):
+        if module_name == "tools" or module_name.startswith("tools."):
+            sys.modules.pop(module_name, None)
+
+
 class FishSpeechEngine:
     """Lazy-loading Fish Speech TTS inference engine."""
 
@@ -132,6 +139,7 @@ class FishSpeechEngine:
 
         try:
             _prepend_source_root()
+            _clear_fish_speech_import_cache()
         except Exception as exc:
             self._load_error = str(exc)
             logger.warning(self._load_error)
@@ -196,6 +204,7 @@ class FishSpeechEngine:
 
         try:
             _prepend_source_root()
+            _clear_fish_speech_import_cache()
             from tools.schema import ServeTTSRequest
             from tools.server.inference import inference_wrapper
 

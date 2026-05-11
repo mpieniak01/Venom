@@ -5,10 +5,10 @@ import type { RefObject } from "react";
 
 const computeRms = (
   analyser: AnalyserNode,
-  bufferRef: RefObject<Float32Array<ArrayBuffer> | null>,
+  bufferRef: RefObject<Float32Array | null>,
 ): number => {
   if (bufferRef.current?.length !== analyser.fftSize) {
-    bufferRef.current = new Float32Array(new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT));
+    bufferRef.current = new Float32Array(analyser.fftSize);
   }
 
   const buffer = bufferRef.current;
@@ -30,7 +30,7 @@ export const useAudioLevel = (
 ): number => {
   const [level, setLevel] = useState(0);
   const decayRef = useRef(0);
-  const bufferRef = useRef<Float32Array<ArrayBuffer> | null>(null);
+  const bufferRef = useRef<Float32Array | null>(null);
 
   useEffect(() => {
     if (!active) {

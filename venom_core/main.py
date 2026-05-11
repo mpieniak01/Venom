@@ -396,6 +396,8 @@ async def _sync_fish_speech_runtime_process(tts_engine: str) -> dict[str, Any]:
         )
     except asyncio.TimeoutError:
         process.kill()
+        with suppress(Exception):
+            await asyncio.wait_for(process.wait(), timeout=5.0)
         return {
             "fish_speech_service_action": desired_action,
             "fish_speech_service_ok": False,
@@ -1550,9 +1552,10 @@ async def audio_status_endpoint(request: Request):
     status = audio_stream_handler.get_status(operator_agent=operator_agent)
     if status.get("tts_engine") == "fish_speech":
         fish_engine_status = await _get_fish_speech_engine_status()
-        status["tts_ready"] = fish_engine_status == "ready"
         if fish_engine_status in {"offline", "error", "disabled"}:
             status["tts_fallback"] = True
+            if not status.get("tts_ready"):
+                status["tts_ready"] = True
     if not status.get("message"):
         status["message"] = (
             "Audio channel ready."

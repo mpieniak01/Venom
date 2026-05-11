@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n";
 import {
   Select,
   SelectContent,
@@ -14,17 +15,27 @@ const ENGINE_LABELS: Record<string, string> = {
   fish_speech: "Fish Speech",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  ready: "Ready",
-  fallback: "Fallback",
-  no_model: "No model",
-  disabled: "Disabled",
-  offline: "Offline",
-  error: "Error",
-  unknown: "Unknown",
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  ready: "voice.controls.ttsStatusReady",
+  fallback: "voice.controls.ttsStatusFallback",
+  no_model: "voice.controls.ttsStatusNoModel",
+  disabled: "voice.controls.ttsStatusDisabled",
+  offline: "voice.controls.ttsStatusOffline",
+  error: "voice.controls.ttsStatusError",
+  unknown: "voice.controls.ttsStatusUnknown",
 };
 
 function StatusDot({ status }: { status: string }) {
+  const t = useTranslation();
+  const statusLabels: Record<string, string> = {
+    ready: t("voice.controls.ttsStatusReady"),
+    fallback: t("voice.controls.ttsStatusFallback"),
+    no_model: t("voice.controls.ttsStatusNoModel"),
+    disabled: t("voice.controls.ttsStatusDisabled"),
+    offline: t("voice.controls.ttsStatusOffline"),
+    error: t("voice.controls.ttsStatusError"),
+    unknown: t("voice.controls.ttsStatusUnknown"),
+  };
   const colorClass =
     status === "ready"
       ? "bg-emerald-400"
@@ -33,7 +44,7 @@ function StatusDot({ status }: { status: string }) {
         : "bg-zinc-500";
   return (
     <span
-      aria-label={STATUS_LABELS[status] ?? status}
+      aria-label={statusLabels[status] ?? status}
       className={`inline-block h-2 w-2 rounded-full ${colorClass}`}
     />
   );
@@ -61,7 +72,7 @@ export function TtsRuntimeSelector({
   if (!runtimeState) {
     return (
       <p className="text-xs text-zinc-500">
-        {engineChanging ? "Updating TTS runtime…" : "TTS runtime unavailable"}
+        {engineChanging ? t("voice.controls.ttsRuntimeUpdating") : t("voice.controls.ttsRuntimeUnavailable")}
       </p>
     );
   }
@@ -70,13 +81,16 @@ export function TtsRuntimeSelector({
     runtimeState;
 
   const activeEngineStatus = engine_status[tts_engine] ?? "unknown";
+  const activeEngineStatusLabel = t(STATUS_LABEL_KEYS[activeEngineStatus] ?? STATUS_LABEL_KEYS.unknown);
   const isDisabled = disabled || engineChanging;
+  const showVoiceOptions = tts_engine === "piper_local" && options.length > 0;
+  const isFishSpeech = tts_engine === "fish_speech";
 
   if (mode === "compact") {
     return (
       <div className="flex items-center gap-2 text-xs text-zinc-300">
         <StatusDot status={activeEngineStatus} />
-        <span className="text-zinc-400">TTS:</span>
+        <span className="text-zinc-400">{t("voice.controls.ttsEngineShort")}</span>
         <Select value={tts_engine} onValueChange={onSelectEngine} disabled={isDisabled}>
           <SelectTrigger className="h-7 w-36 border-white/10 bg-white/5 text-xs text-zinc-100">
             <SelectValue />
@@ -99,9 +113,9 @@ export function TtsRuntimeSelector({
       {/* Engine selector row */}
       <div>
         <p className="text-caption mb-2 flex items-center gap-2">
-          TTS Engine
+          {t("voice.controls.ttsEngine")}
           <StatusDot status={activeEngineStatus} />
-          <span className="text-zinc-500">{STATUS_LABELS[activeEngineStatus] ?? activeEngineStatus}</span>
+          <span className="text-zinc-500">{activeEngineStatusLabel}</span>
         </p>
         <Select value={tts_engine} onValueChange={onSelectEngine} disabled={isDisabled}>
           <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
@@ -119,15 +133,17 @@ export function TtsRuntimeSelector({
           </SelectContent>
         </Select>
         {engineChanging && (
-          <p className="mt-1 text-zinc-500">Switching TTS engine…</p>
+          <p className="mt-1 text-zinc-500">{t("voice.controls.ttsEngineSwitching")}</p>
         )}
       </div>
 
       {/* Voice / profile options */}
-      {options.length > 0 && (
+      {showVoiceOptions && (
         <div>
           <p className="text-caption mb-2">
-            {tts_engine === "piper_local" ? "Voice model" : "Profile"}
+            {tts_engine === "piper_local"
+              ? t("voice.controls.ttsVoiceModel")
+              : t("voice.controls.profile")}
           </p>
           <Select
             value={current_option_id ?? ""}
@@ -135,7 +151,7 @@ export function TtsRuntimeSelector({
             disabled={isDisabled || optionChanging || options.length === 0}
           >
             <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
-              <SelectValue placeholder="Select voice…" />
+              <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
             </SelectTrigger>
             <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
               {options.map((opt: TtsVoiceOption) => (
@@ -146,26 +162,26 @@ export function TtsRuntimeSelector({
             </SelectContent>
           </Select>
           {optionChanging && (
-            <p className="mt-1 text-zinc-500">Applying voice…</p>
+            <p className="mt-1 text-zinc-500">{t("voice.controls.ttsVoiceApplying")}</p>
           )}
         </div>
       )}
 
       {/* Fish Speech status notice */}
-      {tts_engine === "fish_speech" && activeEngineStatus !== "ready" && (
+      {isFishSpeech && activeEngineStatus !== "ready" && (
         <p className="text-amber-400">
-          Fish Speech daemon {activeEngineStatus === "disabled"
-            ? "is disabled (set FISH_SPEECH_ENABLED=true)"
+          {activeEngineStatus === "disabled"
+            ? t("voice.controls.fishSpeechDisabled")
             : activeEngineStatus === "offline"
-              ? "is offline — responses will fall back to Piper"
-              : "is not ready"}
+              ? t("voice.controls.fishSpeechOffline")
+              : t("voice.controls.fishSpeechNotReady")}
         </p>
       )}
 
       {/* Fallback notice */}
       {runtimeState.fallback_enabled && tts_engine !== "piper_local" && (
         <p className="text-zinc-500">
-          Fallback to {ENGINE_LABELS[runtimeState.fallback_target ?? "piper_local"] ?? runtimeState.fallback_target} is enabled
+          {t("voice.controls.fallbackToPiperEnabled")}
         </p>
       )}
     </div>

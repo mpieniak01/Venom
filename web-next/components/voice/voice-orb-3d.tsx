@@ -575,7 +575,7 @@ function OrbScene({
   const light2Angle = useRef(Math.PI);
   const prevState = useRef(state);
   const burstProgress = useRef(0);
-  const rawFFT = useRef<Uint8Array<ArrayBuffer>>(new Uint8Array(new ArrayBuffer(128)));
+  const rawFFT = useRef<Uint8Array>(new Uint8Array(128));
 
   const audioLevel = getOrbAudioLevel(state, inputLevel, outputLevel);
   const isActive = state === "recording" || state === "tts";

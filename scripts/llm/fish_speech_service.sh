@@ -24,14 +24,10 @@ DEVICE="$(env_contract_get FISH_SPEECH_DEVICE "auto" "$ENV_FILE")"
 STARTUP_TIMEOUT_SECONDS="$(env_contract_get FISH_SPEECH_STARTUP_TIMEOUT_SECONDS "600" "$ENV_FILE")"
 
 cleanup_orphan_processes() {
-  pkill -TERM -f "uvicorn.*services.fish_speech_runtime.main:app" 2>/dev/null || true
-  pkill -TERM -f "services.fish_speech_runtime.main:app" 2>/dev/null || true
   if command -v fuser >/dev/null 2>&1; then
     fuser -k -n tcp "$PORT" >/dev/null 2>&1 || true
   fi
   sleep 1
-  pkill -KILL -f "uvicorn.*services.fish_speech_runtime.main:app" 2>/dev/null || true
-  pkill -KILL -f "services.fish_speech_runtime.main:app" 2>/dev/null || true
 }
 
 health_status() {
@@ -46,6 +42,10 @@ health_status() {
 
 start() {
   mkdir -p "$RUNTIME_DIR" "$LOG_DIR" "$ROOT_DIR/$CACHE_DIR"
+  if [[ ! -x "$UVICORN_BIN" ]]; then
+    echo "uvicorn binary not found at $UVICORN_BIN" >&2
+    return 1
+  fi
   cleanup_orphan_processes
   if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     echo "Fish Speech already running (PID $(cat "$PID_FILE"))"

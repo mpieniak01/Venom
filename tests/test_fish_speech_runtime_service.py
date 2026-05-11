@@ -120,9 +120,15 @@ class TestTtsEndpoint:
 
 
 class TestEngineIntegration:
+    def _reset_engine_singleton(self, monkeypatch) -> None:
+        import services.fish_speech_runtime.engine as engine_module
+
+        monkeypatch.setattr(engine_module, "_engine_instance", None, raising=False)
+
     def test_engine_loads_from_source_checkout_and_snapshot(
         self, tmp_path: Path, monkeypatch
     ) -> None:
+        self._reset_engine_singleton(monkeypatch)
         for module_name in list(sys.modules):
             if module_name == "tools" or module_name.startswith("tools."):
                 sys.modules.pop(module_name, None)
@@ -188,6 +194,7 @@ class TestEngineIntegration:
     def test_engine_synthesize_uses_source_inference_wrapper(
         self, tmp_path: Path, monkeypatch
     ) -> None:
+        self._reset_engine_singleton(monkeypatch)
         for module_name in list(sys.modules):
             if module_name == "tools" or module_name.startswith("tools."):
                 sys.modules.pop(module_name, None)

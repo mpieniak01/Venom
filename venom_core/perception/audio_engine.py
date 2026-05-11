@@ -543,14 +543,6 @@ class AudioEngine:
             )
 
         logger.info(f"TTS engine switched: {previous} -> {engine}")
-        if engine == "fish_speech" and self._fish_client is not None:
-            self.last_tts_sample_rate = int(
-                getattr(self._fish_client, "last_sample_rate", 24000) or 24000
-            )
-        else:
-            self.last_tts_sample_rate = int(
-                getattr(self.voice, "output_sample_rate", 22050) or 22050
-            )
         return {
             "tts_engine": engine,
             "tts_engine_changed": previous != engine,
@@ -620,7 +612,8 @@ class AudioEngine:
             text: Tekst do wypowiedzenia.
 
         Returns:
-            Audio as float32 numpy array, or None on failure.
+            Audio as a numpy array; Piper returns float32 PCM while Fish Speech
+            returns int16 PCM. Callers normalize before transport if needed.
         """
         if self.tts_engine == "fish_speech" and self._fish_client is not None:
             try:

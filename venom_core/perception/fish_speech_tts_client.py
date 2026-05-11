@@ -59,7 +59,7 @@ class FishSpeechTtsClient:
         """
         Synthesize speech via the Fish Speech daemon.
 
-        Returns float32 numpy array on success, None on any failure.
+        Returns int16 numpy array on success, None on any failure.
         Failures are logged as warnings — callers should fall back to Piper.
         """
         try:

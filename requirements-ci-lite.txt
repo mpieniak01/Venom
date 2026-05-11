@@ -36,7 +36,7 @@ types-psutil
 types-bleach
 types-aiofiles
 bleach
-gitpython==3.1.46
+gitpython==3.1.50
 networkx==3.6.1
 pyautogen>=0.2.0
 

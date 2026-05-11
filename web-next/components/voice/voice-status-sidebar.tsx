@@ -39,6 +39,7 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
   if (!status) {
     return (
       <div className="space-y-3">
+        <Gemma4RuntimeControl variant="voice" />
         <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
           <p className="text-hint text-xs py-2">{t("voice.status.channelConnecting")}</p>
         </StatusCard>

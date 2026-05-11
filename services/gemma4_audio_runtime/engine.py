@@ -80,7 +80,7 @@ def _get_vram_info() -> VRAMInfo:
                 total_mb=round(total / 1024**2, 1),
                 free_mb=round((total - allocated) / 1024**2, 1),
             )
-    except Exception:
+    except (ImportError, AttributeError, RuntimeError):
         pass
     return VRAMInfo()
 
@@ -238,10 +238,17 @@ class Gemma4AudioEngine:
             if enable_thinking:
                 apply_template_kwargs["enable_thinking"] = True
 
-            inputs = self.processor.apply_chat_template(
-                messages,
-                **apply_template_kwargs,
-            )
+            try:
+                inputs = self.processor.apply_chat_template(
+                    messages,
+                    **apply_template_kwargs,
+                )
+            except TypeError:
+                apply_template_kwargs.pop("enable_thinking", None)
+                inputs = self.processor.apply_chat_template(
+                    messages,
+                    **apply_template_kwargs,
+                )
 
             if hasattr(inputs, "to"):
                 inputs = inputs.to(self.model.device)
@@ -255,7 +262,11 @@ class Gemma4AudioEngine:
             if cache_implementation is not None:
                 generate_kwargs["cache_implementation"] = cache_implementation
 
-            outputs = self.model.generate(**inputs, **generate_kwargs)
+            try:
+                outputs = self.model.generate(**inputs, **generate_kwargs)
+            except TypeError:
+                generate_kwargs.pop("cache_implementation", None)
+                outputs = self.model.generate(**inputs, **generate_kwargs)
 
             input_len = 0
             if hasattr(inputs, "input_ids"):
@@ -324,12 +335,18 @@ class Gemma4Daemon:
 
     DEFAULT_TARGET = "google/gemma-4-E2B-it"
 
-    def __init__(self, cache_dir: str, device: str = "auto"):
-        self._target_id: str = self.DEFAULT_TARGET
+    def __init__(
+        self,
+        cache_dir: str,
+        device: str = "auto",
+        model_id: Optional[str] = None,
+        max_new_tokens: int = 128,
+    ):
+        self._target_id: str = model_id or self.DEFAULT_TARGET
         self._assistant_id: Optional[str] = None
         self._target_engine: Optional[Gemma4AudioEngine] = None
         self._assistant_engine: Optional[Gemma4AudioEngine] = None
-        self._params: DaemonParams = DaemonParams()
+        self._params: DaemonParams = DaemonParams(max_new_tokens=max_new_tokens)
         self._cache_dir = cache_dir
         self._device = device
         self._reload_reason: Optional[str] = None

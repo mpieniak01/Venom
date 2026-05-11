@@ -48,6 +48,7 @@ _daemon: Optional[Gemma4Daemon] = None
 _start_time: float = 0
 _warming: bool = False
 _startup_error: Optional[str] = None
+_lifecycle_lock: asyncio.Lock = asyncio.Lock()
 
 
 def get_daemon() -> Gemma4Daemon:
@@ -71,11 +72,12 @@ async def initialize_daemon(
     _startup_error = None
     try:
         logger.info("Initializing Gemma 4 Daemon with target model %s", model_id)
-        daemon = Gemma4Daemon(cache_dir=cache_dir, device=device)
-        # Override default target if explicitly specified
-        if model_id and model_id != Gemma4Daemon.DEFAULT_TARGET:
-            daemon._target_id = model_id  # noqa: SLF001
-        daemon._params.max_new_tokens = max_new_tokens  # noqa: SLF001
+        daemon = Gemma4Daemon(
+            cache_dir=cache_dir,
+            device=device,
+            model_id=model_id,
+            max_new_tokens=max_new_tokens,
+        )
         # Expose daemon immediately so control endpoints work during warmup.
         _daemon = daemon
         logger.info("Loading target model...")
@@ -310,13 +312,17 @@ async def daemon_reload() -> SoftReloadResponse:
     except RuntimeError:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
 
-    if not daemon.is_ready() and not _warming:
+    if _warming:
+        raise HTTPException(status_code=409, detail="Cannot reload while warming up")
+
+    if not daemon.is_ready():
         raise HTTPException(status_code=503, detail="Target model is not loaded")
 
-    try:
-        reason = await asyncio.to_thread(daemon.soft_reload)
-    except ModelLoadError as e:
-        raise HTTPException(status_code=500, detail=f"Soft reload failed: {e}")
+    async with _lifecycle_lock:
+        try:
+            reason = await asyncio.to_thread(daemon.soft_reload)
+        except ModelLoadError as e:
+            raise HTTPException(status_code=500, detail=f"Soft reload failed: {e}")
 
     return SoftReloadResponse(
         reason=reason,
@@ -331,11 +337,12 @@ async def daemon_restart() -> RestartResponse:
 
     The OS process manager (Docker, systemd) is expected to restart the service.
     """
-    try:
-        daemon = get_daemon()
-        daemon.unload_all()
-    except RuntimeError:
-        pass  # Not initialized — still proceed with restart
+    async with _lifecycle_lock:
+        try:
+            daemon = get_daemon()
+            daemon.unload_all()
+        except RuntimeError:
+            pass  # Not initialized — still proceed with restart
 
     async def _do_restart():
         await asyncio.sleep(0.2)
@@ -365,13 +372,14 @@ async def daemon_assistant_attach(
     if not daemon.is_ready():
         raise HTTPException(status_code=503, detail="Target model must be loaded first")
 
-    try:
-        await asyncio.to_thread(daemon.attach_assistant, body.model_id)
-    except ModelLoadError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot attach assistant: {e}",
-        )
+    async with _lifecycle_lock:
+        try:
+            await asyncio.to_thread(daemon.attach_assistant, body.model_id)
+        except ModelLoadError as e:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot attach assistant: {e}",
+            )
 
     return AssistantAttachResponse(
         assistant_model=body.model_id,
@@ -388,7 +396,8 @@ async def daemon_assistant_detach() -> dict:
     except RuntimeError:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
 
-    daemon.detach_assistant()
+    async with _lifecycle_lock:
+        daemon.detach_assistant()
     return {"mode": "target_only", "message": "Assistant model detached. VRAM freed."}
 
 

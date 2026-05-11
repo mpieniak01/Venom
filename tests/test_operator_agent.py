@@ -95,6 +95,17 @@ class TestOperatorAgent:
         assert agent._is_hardware_command("napisz kod w Python") is False
         assert agent._is_hardware_command("zrób research o AI") is False
 
+    def test_low_level_hardware_command_detectors(self, mock_kernel):
+        """Low-level helpers should classify GPIO/emergency commands correctly."""
+        agent = OperatorAgent(kernel=mock_kernel)
+
+        assert agent._is_gpio_disable_command("wyłącz gpio 21") is True
+        assert agent._is_gpio_disable_command("włącz gpio 21") is False
+        assert agent._is_emergency_command("procedura awaryjna reset gpio") is True
+        assert agent._is_emergency_command("zwykła komenda") is False
+        assert agent._extract_gpio_pin("wyłącz gpio 17") == 17
+        assert agent._extract_gpio_pin("wyłącz pin bez numeru") is None
+
     @pytest.mark.asyncio
     async def test_handle_hardware_command_no_bridge(self, mock_kernel):
         """Test obsługi komendy sprzętowej bez hardware bridge."""

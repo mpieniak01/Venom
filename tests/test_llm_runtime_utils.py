@@ -32,6 +32,10 @@ def test_infer_local_provider_variants():
     assert llm_runtime.infer_local_provider("") == "local"
     assert llm_runtime.infer_local_provider(LOCALHOST_11434) == "ollama"
     assert llm_runtime.infer_local_provider(http_url("vllm.local")) == "vllm"
+    assert (
+        llm_runtime.infer_local_provider("http://gemma4.local:8014/v1")
+        == "gemma4_audio"
+    )
     assert llm_runtime.infer_local_provider(http_url("onnx.local")) == "onnx"
     assert llm_runtime.infer_local_provider(http_url("lmstudio.local")) == "lmstudio"
     assert llm_runtime.infer_local_provider(LOCALHOST_8001) == "vllm"
@@ -144,6 +148,18 @@ def test_format_runtime_label_and_health_url():
             )
         )
         is None
+    )
+    assert (
+        llm_runtime._build_health_url(
+            llm_runtime.LLMRuntimeInfo(
+                provider="gemma4_audio",
+                model_name="x",
+                endpoint="http://localhost:8014/v1",
+                service_type="local",
+                mode="LOCAL",
+            )
+        )
+        == "http://localhost:8014/health"
     )
 
 

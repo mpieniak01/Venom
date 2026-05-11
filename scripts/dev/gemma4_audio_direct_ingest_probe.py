@@ -23,14 +23,9 @@ if str(ROOT_DIR) not in sys.path:
 
 import transformers  # noqa: E402
 
-try:
-    import torch  # noqa: E402
-except Exception as exc:  # pragma: no cover - hard dependency in practice
-    raise SystemExit(f"PyTorch is required for this probe: {exc}") from exc
-
-
 DEFAULT_MODEL_ID = "google/gemma-4-E2B-it"
 TARGET_SAMPLE_RATE = 16_000
+CACHE_DIR = ROOT_DIR / "models_cache" / "hf"
 
 
 @dataclass(slots=True)
@@ -166,13 +161,18 @@ def _resolve_model_class() -> type[Any]:
 
 
 def _load_model(model_id: str) -> tuple[Any, Any, str]:
-    processor = transformers.AutoProcessor.from_pretrained(model_id)
+    processor = transformers.AutoProcessor.from_pretrained(
+        model_id,
+        cache_dir=str(CACHE_DIR),
+        local_files_only=True,
+    )
     model_class = _resolve_model_class()
-    torch_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     model = model_class.from_pretrained(
         model_id,
-        torch_dtype=torch_dtype,
+        dtype="auto",
         device_map="auto",
+        cache_dir=str(CACHE_DIR),
+        local_files_only=True,
     )
     return model, processor, model_class.__name__
 

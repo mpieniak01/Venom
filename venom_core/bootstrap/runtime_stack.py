@@ -310,11 +310,22 @@ def initialize_audio_engine_if_enabled(
     if not settings.ENABLE_AUDIO_INTERFACE:
         return None
     try:
-        audio_engine = audio_engine_cls(
-            whisper_model_size=settings.WHISPER_MODEL_SIZE,
-            tts_model_path=settings.TTS_MODEL_PATH,
-            device=settings.AUDIO_DEVICE,
-        )
+        kwargs: dict[str, Any] = {
+            "whisper_model_size": settings.WHISPER_MODEL_SIZE,
+            "tts_model_path": settings.TTS_MODEL_PATH,
+            "device": settings.AUDIO_DEVICE,
+        }
+        tts_engine = getattr(settings, "TTS_ENGINE", "piper_local")
+        if _supports_keyword_argument(audio_engine_cls, "tts_engine"):
+            kwargs["tts_engine"] = tts_engine
+        if tts_engine == "fish_speech" and _supports_keyword_argument(
+            audio_engine_cls, "fish_speech_endpoint"
+        ):
+            endpoint = getattr(
+                settings, "FISH_SPEECH_ENDPOINT", "http://127.0.0.1:8024"
+            ).rstrip("/")
+            kwargs["fish_speech_endpoint"] = endpoint.removesuffix("/v1")
+        audio_engine = audio_engine_cls(**kwargs)
         logger.info("AudioEngine zainicjalizowany")
         return audio_engine
     except Exception as exc:

@@ -349,7 +349,26 @@ class Settings(BaseSettings):
     WHISPER_MODEL_SIZE: str = (
         "base"  # Rozmiar modelu Whisper ('tiny', 'base', 'small', 'medium', 'large')
     )
+    TTS_ENGINE: str = "piper_local"  # piper_local|fish_speech
     TTS_MODEL_PATH: str = ""  # Ścieżka do modelu Piper TTS (ONNX), puste = mock mode
+    FISH_SPEECH_ENABLED: bool = False  # Włącz lokalny daemon Fish Speech TTS
+    FISH_SPEECH_ENDPOINT: str = _default_url("127.0.0.1", 8024, "/v1")
+    FISH_SPEECH_HOST: str = "127.0.0.1"
+    FISH_SPEECH_PORT: int = 8024
+    FISH_SPEECH_MODEL_ID: str = "fishaudio/fish-speech-1.5"
+    FISH_SPEECH_CACHE_DIR: str = "models_cache/hf"
+    FISH_SPEECH_DEVICE: str = "auto"  # auto|cuda|cpu
+    FISH_SPEECH_COMPILE: bool = False
+    FISH_SPEECH_HALF: bool = True
+    FISH_SPEECH_OUTPUT_FORMAT: str = "wav"
+    FISH_SPEECH_STARTUP_TIMEOUT_SECONDS: int = 600
+    FISH_SPEECH_START_COMMAND: str = ""
+    FISH_SPEECH_STOP_COMMAND: str = ""
+    FISH_SPEECH_RESTART_COMMAND: str = ""
+    FISH_SPEECH_LOG_PATH: str = "logs/fish_speech_service.log"
+    FISH_SPEECH_PID_PATH: str = ".venom_runtime/fish_speech.pid"
+    FISH_SPEECH_REFERENCE_ROOT: str = _storage_path("./data/audio/tts_references")
+    LAST_MODEL_FISH_SPEECH: str = "fishaudio/fish-speech-1.5"
     AUDIO_DEVICE: str = "cpu"  # Urządzenie dla modeli audio ('cpu', 'cuda')
     VAD_THRESHOLD: float = 0.5  # Próg Voice Activity Detection (0.0-1.0)
     SILENCE_DURATION: float = 1.5  # Czas ciszy (sekundy) oznaczający koniec wypowiedzi

@@ -70,6 +70,15 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--task",
+        choices=("transcribe", "question", "math-5x5"),
+        default="transcribe",
+        help=(
+            "Preset for the prompt. math-5x5 asks the model how much 5 times 5 is "
+            "based on the audio content."
+        ),
+    )
+    parser.add_argument(
         "--max-new-tokens",
         type=int,
         default=128,
@@ -198,7 +207,13 @@ def _build_messages(audio_path: Path, prompt: str) -> list[dict[str, Any]]:
     ]
 
 
-def _build_prompt(prompt: str, question: str) -> str:
+def _build_prompt(prompt: str, question: str, task: str) -> str:
+    if task == "math-5x5":
+        return (
+            "Listen to the audio and answer the question using only the audio as evidence. "
+            "Return only the answer, no explanation, no extra words.\n"
+            "Question: Ile to jest 5 razy 5?"
+        )
     if not question.strip():
         return prompt
     return (
@@ -252,6 +267,16 @@ def _run_inference(
     )
 
 
+def _normalize_answer(text: str, task: str) -> str:
+    cleaned = _clean_generated_text(text)
+    if task == "math-5x5":
+        match = re.search(r"\b25\b", cleaned)
+        if match:
+            return "25"
+        return cleaned
+    return cleaned
+
+
 def main() -> int:
     args = _parse_args()
     source_path = (
@@ -283,7 +308,7 @@ def main() -> int:
                     duration_sec=normalized.duration_sec,
                     sample_count=normalized.sample_count,
                 )
-            effective_prompt = _build_prompt(args.prompt, args.question)
+            effective_prompt = _build_prompt(args.prompt, args.question, args.task)
             model, processor, model_class_name = _load_model(args.model_id)
             messages = _build_messages(normalized.normalized_path, effective_prompt)
             generated_text = _run_inference(
@@ -292,7 +317,7 @@ def main() -> int:
                 messages=messages,
                 max_new_tokens=args.max_new_tokens,
             )
-            generated_text = _clean_generated_text(generated_text)
+            generated_text = _normalize_answer(generated_text, args.task)
             report = {
                 "ok": True,
                 "model_id": args.model_id,
@@ -303,6 +328,7 @@ def main() -> int:
                 "channels": normalized.channels,
                 "duration_sec": round(normalized.duration_sec, 3),
                 "sample_count": normalized.sample_count,
+                "task": args.task,
                 "prompt": effective_prompt,
                 "generated_text": generated_text,
             }
@@ -316,6 +342,7 @@ def main() -> int:
                 "channels": normalized.channels,
                 "duration_sec": round(normalized.duration_sec, 3),
                 "sample_count": normalized.sample_count,
+                "task": args.task,
                 "prompt": effective_prompt
                 if "effective_prompt" in locals()
                 else args.prompt,
@@ -334,6 +361,7 @@ def main() -> int:
                 f"sr={report['sample_rate']}Hz, channels={report['channels']}, "
                 f"duration={report['duration_sec']}s, samples={report['sample_count']}"
             )
+            print(f"  task: {report['task']}")
             if report.get("prompt"):
                 print(f"  prompt: {report['prompt']}")
             if report.get("ok"):

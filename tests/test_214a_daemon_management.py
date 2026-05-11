@@ -2,48 +2,75 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from fastapi.testclient import TestClient
 
 import services.gemma4_audio_runtime.main as runtime_main
+from services.gemma4_audio_runtime.engine import ReloadSignal
 
 
-class _EngineStub:
-    model_id = "google/gemma-4-E2B-it"
-    default_max_new_tokens = 64
+def _make_vram_dict(**kw):
+    return {
+        "backend": "cpu",
+        "allocated_mb": 0,
+        "reserved_mb": 0,
+        "total_mb": 0,
+        "free_mb": 0,
+        **kw,
+    }
 
-    def is_loaded(self) -> bool:
-        return True
 
-    def unload(self) -> None:
-        pass
+def _make_params_dict(**kw):
+    return {
+        "max_new_tokens": 64,
+        "enable_thinking": False,
+        "cache_implementation": None,
+        **kw,
+    }
 
 
-def _patch_engine(monkeypatch, loaded: bool = True) -> _EngineStub:
-    stub = _EngineStub()
-    stub.is_loaded = lambda: loaded  # type: ignore[method-assign]
-    monkeypatch.setattr(runtime_main, "_engine", stub)
-    monkeypatch.setattr(runtime_main, "_warming", False)
-    monkeypatch.setattr(runtime_main, "_startup_error", None)
+def _make_status_dict(**kw):
+    base = {
+        "target_model": "google/gemma-4-E2B-it",
+        "assistant_model": None,
+        "mode": "target_only",
+        "target_loaded": True,
+        "assistant_loaded": False,
+        "params": _make_params_dict(),
+        "vram": _make_vram_dict(),
+        "pending_reload": False,
+        "reload_reason": None,
+    }
+    base.update(kw)
+    return base
+
+
+def _daemon_stub(status_dict=None, update_signal=ReloadSignal.NONE):
+    """Build a MagicMock that looks like Gemma4Daemon."""
+    stub = MagicMock()
+    stub.status.return_value = status_dict or _make_status_dict()
+    stub.update_params.return_value = update_signal
+    stub._target_id = "google/gemma-4-E2B-it"  # noqa: SLF001
+    stub.is_ready.return_value = True
+    stub.soft_reload.return_value = "manual_reload"
+    stub.fallback.return_value = ReloadSignal.NONE
     return stub
 
 
-def _reset_daemon_state(monkeypatch) -> None:
-    monkeypatch.setattr(runtime_main, "_daemon_max_new_tokens", 64)
-    monkeypatch.setattr(runtime_main, "_daemon_enable_thinking", False)
-    monkeypatch.setattr(runtime_main, "_daemon_cache_implementation", None)
-    monkeypatch.setattr(runtime_main, "_pending_reload", False)
-    monkeypatch.setattr(runtime_main, "_reload_reason", None)
-    monkeypatch.setattr(runtime_main, "_assistant_model_id", None)
-    monkeypatch.setattr(runtime_main, "_assistant_engine", None)
+def _client_with(daemon):
+    runtime_main._daemon = daemon  # noqa: SLF001
+    runtime_main._warming = False
+    runtime_main._startup_error = None
+    return TestClient(runtime_main.app)
 
 
 # ── GET /v1/daemon/status ────────────────────────────────────────────────────
 
 
-def test_daemon_status_returns_target_model(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_status_returns_target_model():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     resp = client.get("/v1/daemon/status")
     assert resp.status_code == 200
     data = resp.json()
@@ -52,55 +79,52 @@ def test_daemon_status_returns_target_model(monkeypatch) -> None:
     assert data["mode"] == "target_only"
 
 
-def test_daemon_status_returns_params(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_status_returns_params():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     data = client.get("/v1/daemon/status").json()
     assert data["params"]["max_new_tokens"] == 64
     assert data["params"]["enable_thinking"] is False
     assert data["params"]["cache_implementation"] is None
 
 
-def test_daemon_status_includes_vram_field(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_status_includes_vram_field():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     data = client.get("/v1/daemon/status").json()
     assert "vram" in data
     assert data["vram"]["backend"] in ("cpu", "cuda")
 
 
-def test_daemon_status_no_engine_shows_not_loaded(monkeypatch) -> None:
-    monkeypatch.setattr(runtime_main, "_engine", None)
-    monkeypatch.setattr(runtime_main, "_warming", False)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
-    data = client.get("/v1/daemon/status").json()
-    assert data["target_loaded"] is False
+def test_daemon_status_no_daemon_returns_503():
+    runtime_main._daemon = None  # noqa: SLF001
+    runtime_main._warming = False
+    client = TestClient(runtime_main.app, raise_server_exceptions=False)
+    resp = client.get("/v1/daemon/status")
+    assert resp.status_code == 503
 
 
-def test_daemon_status_pending_reload_flag(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    monkeypatch.setattr(runtime_main, "_pending_reload", True)
-    monkeypatch.setattr(runtime_main, "_reload_reason", "cache_implementation changed")
-    client = TestClient(runtime_main.app)
+def test_daemon_status_pending_reload_flag():
+    stub = _daemon_stub(
+        status_dict=_make_status_dict(
+            pending_reload=True, reload_reason="cache_implementation changed"
+        )
+    )
+    client = _client_with(stub)
     data = client.get("/v1/daemon/status").json()
     assert data["pending_reload"] is True
     assert data["reload_reason"] == "cache_implementation changed"
 
 
-def test_daemon_status_assistant_mode(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    monkeypatch.setattr(
-        runtime_main, "_assistant_model_id", "google/gemma-4-E2B-it-assistant"
+def test_daemon_status_assistant_mode():
+    stub = _daemon_stub(
+        status_dict=_make_status_dict(
+            assistant_model="google/gemma-4-E2B-it-assistant",
+            mode="target_with_assistant",
+            assistant_loaded=True,
+        )
     )
-    assistant_stub = _EngineStub()
-    assistant_stub.model_id = "google/gemma-4-E2B-it-assistant"
-    monkeypatch.setattr(runtime_main, "_assistant_engine", assistant_stub)
-    client = TestClient(runtime_main.app)
+    client = _client_with(stub)
     data = client.get("/v1/daemon/status").json()
     assert data["mode"] == "target_with_assistant"
     assert data["assistant_model"] == "google/gemma-4-E2B-it-assistant"
@@ -110,10 +134,12 @@ def test_daemon_status_assistant_mode(monkeypatch) -> None:
 # ── POST /v1/daemon/config ───────────────────────────────────────────────────
 
 
-def test_daemon_config_updates_max_new_tokens(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_config_updates_max_new_tokens():
+    stub = _daemon_stub()
+    stub.status.return_value = _make_status_dict(
+        params=_make_params_dict(max_new_tokens=256)
+    )
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/config", json={"max_new_tokens": 256})
     assert resp.status_code == 200
     data = resp.json()
@@ -121,53 +147,48 @@ def test_daemon_config_updates_max_new_tokens(monkeypatch) -> None:
     assert data["reload_signal"] == "none"
 
 
-def test_daemon_config_enable_thinking(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_config_enable_thinking():
+    stub = _daemon_stub()
+    stub.status.return_value = _make_status_dict(
+        params=_make_params_dict(enable_thinking=True)
+    )
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/config", json={"enable_thinking": True})
     assert resp.status_code == 200
     assert resp.json()["applied"]["enable_thinking"] is True
 
 
-def test_daemon_config_cache_change_triggers_soft_reload(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_config_cache_change_triggers_soft_reload():
+    stub = _daemon_stub(update_signal=ReloadSignal.SOFT_RELOAD)
+    stub.status.return_value = _make_status_dict(
+        params=_make_params_dict(cache_implementation="static"),
+        pending_reload=True,
+        reload_reason="cache_implementation changed to 'static'",
+    )
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/config", json={"cache_implementation": "static"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["reload_signal"] == "soft_reload"
     assert data["applied"]["cache_implementation"] == "static"
-    assert runtime_main._pending_reload is True  # noqa: SLF001
+    stub.update_params.assert_called_once_with(
+        max_new_tokens=None, enable_thinking=None, cache_implementation="static"
+    )
 
 
-def test_daemon_config_same_cache_no_reload(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    monkeypatch.setattr(runtime_main, "_daemon_cache_implementation", "static")
-    client = TestClient(runtime_main.app)
+def test_daemon_config_same_cache_no_reload():
+    stub = _daemon_stub(update_signal=ReloadSignal.NONE)
+    stub.status.return_value = _make_status_dict(
+        params=_make_params_dict(cache_implementation="static")
+    )
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/config", json={"cache_implementation": "static"})
     assert resp.json()["reload_signal"] == "none"
 
 
-def test_daemon_config_null_cache_clears_implementation(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    monkeypatch.setattr(runtime_main, "_daemon_cache_implementation", "static")
-    monkeypatch.setattr(runtime_main, "_pending_reload", True)
-    client = TestClient(runtime_main.app)
-    resp = client.post("/v1/daemon/config", json={"cache_implementation": None})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["applied"]["cache_implementation"] is None
-    assert runtime_main._pending_reload is False  # noqa: SLF001
-
-
-def test_daemon_config_empty_body_is_no_op(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_config_empty_body_is_no_op():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/config", json={})
     assert resp.status_code == 200
     assert resp.json()["reload_signal"] == "none"
@@ -176,81 +197,93 @@ def test_daemon_config_empty_body_is_no_op(monkeypatch) -> None:
 # ── POST /v1/daemon/reload ───────────────────────────────────────────────────
 
 
-def test_daemon_reload_returns_204(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-
-    async def _noop_init(*_a, **_kw) -> None:
-        pass
-
-    monkeypatch.setattr(runtime_main, "initialize_engine", _noop_init)
-    client = TestClient(runtime_main.app)
+def test_daemon_reload_returns_200():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/reload")
-    assert resp.status_code == 204
+    assert resp.status_code == 200
 
 
-def test_daemon_reload_clears_pending_flag(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    monkeypatch.setattr(runtime_main, "_pending_reload", True)
-    monkeypatch.setattr(runtime_main, "_reload_reason", "cache_implementation changed")
-
-    async def _noop_init(*_a, **_kw) -> None:
-        pass
-
-    monkeypatch.setattr(runtime_main, "initialize_engine", _noop_init)
-    client = TestClient(runtime_main.app)
+def test_daemon_reload_calls_soft_reload():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     client.post("/v1/daemon/reload")
-    assert runtime_main._pending_reload is False  # noqa: SLF001
-    assert runtime_main._reload_reason is None  # noqa: SLF001
+    stub.soft_reload.assert_called_once()
+
+
+# ── POST /v1/daemon/restart ──────────────────────────────────────────────────
+
+
+def test_daemon_restart_returns_200():
+    stub = _daemon_stub()
+    client = _client_with(stub)
+    # Patch os.execv so the process doesn't actually replace itself in CI.
+    with patch("services.gemma4_audio_runtime.main.os.execv"):
+        resp = client.post("/v1/daemon/restart")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "restarting"
 
 
 # ── POST /v1/daemon/fallback ─────────────────────────────────────────────────
 
 
-def test_daemon_fallback_detaches_assistant(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    monkeypatch.setattr(
-        runtime_main, "_assistant_model_id", "google/gemma-4-E2B-it-drafter"
-    )
-    monkeypatch.setattr(runtime_main, "_assistant_engine", _EngineStub())
-    client = TestClient(runtime_main.app)
+def test_daemon_fallback_returns_reload_signal():
+    stub = _daemon_stub()
+    stub.fallback.return_value = ReloadSignal.NONE
+    stub._target_id = "google/gemma-4-E2B-it"  # noqa: SLF001
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/fallback")
     assert resp.status_code == 200
     assert resp.json()["reload_signal"] == "none"
-    assert runtime_main._assistant_model_id is None  # noqa: SLF001
-    assert runtime_main._assistant_engine is None  # noqa: SLF001
 
 
-def test_daemon_fallback_no_assistant_is_noop(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
-    resp = client.post("/v1/daemon/fallback")
+def test_daemon_fallback_calls_fallback():
+    stub = _daemon_stub()
+    client = _client_with(stub)
+    client.post("/v1/daemon/fallback")
+    stub.fallback.assert_called_once()
+
+
+# ── POST /v1/daemon/assistant/attach ─────────────────────────────────────────
+
+
+def test_daemon_assistant_attach_returns_200():
+    stub = _daemon_stub()
+    stub.status.return_value = _make_status_dict(
+        assistant_model="google/gemma-4-E2B-it-drafter",
+        mode="target_with_assistant",
+        assistant_loaded=True,
+    )
+    client = _client_with(stub)
+    with patch(
+        "services.gemma4_audio_runtime.main.asyncio.to_thread"
+    ) as mock_to_thread:
+        mock_to_thread.return_value = None
+        resp = client.post(
+            "/v1/daemon/assistant/attach",
+            json={"model_id": "google/gemma-4-E2B-it-drafter"},
+        )
     assert resp.status_code == 200
+    assert resp.json()["assistant_model"] == "google/gemma-4-E2B-it-drafter"
 
 
 # ── POST /v1/daemon/assistant/detach ─────────────────────────────────────────
 
 
-def test_daemon_detach_returns_204(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    monkeypatch.setattr(runtime_main, "_assistant_model_id", "drafter")
-    monkeypatch.setattr(runtime_main, "_assistant_engine", _EngineStub())
-    client = TestClient(runtime_main.app)
+def test_daemon_detach_calls_detach_assistant():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     resp = client.post("/v1/daemon/assistant/detach")
-    assert resp.status_code == 204
-    assert runtime_main._assistant_model_id is None  # noqa: SLF001
+    assert resp.status_code == 200
+    stub.detach_assistant.assert_called_once()
 
 
 # ── CORS headers ─────────────────────────────────────────────────────────────
 
 
-def test_daemon_status_cors_header(monkeypatch) -> None:
-    _patch_engine(monkeypatch)
-    _reset_daemon_state(monkeypatch)
-    client = TestClient(runtime_main.app)
+def test_daemon_status_cors_header():
+    stub = _daemon_stub()
+    client = _client_with(stub)
     resp = client.get("/v1/daemon/status", headers={"Origin": "http://localhost:3000"})
     assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"

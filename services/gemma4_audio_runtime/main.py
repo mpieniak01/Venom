@@ -9,37 +9,47 @@ import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
-from .engine import Gemma4AudioEngine, InferenceError
+from .engine import Gemma4Daemon, InferenceError, ModelLoadError, ReloadSignal
 from .schemas import (
+    AssistantAttachRequest,
+    AssistantAttachResponse,
     AudioMetadata,
     Capabilities,
+    DaemonConfigRequest,
+    DaemonConfigResponse,
+    DaemonParamsInfo,
+    DaemonStatusResponse,
+    FallbackResponse,
     GenerationConfig,
     HealthResponse,
     ModelInfo,
     RespondRequest,
     RespondResponse,
+    RestartResponse,
+    SoftReloadResponse,
     StatusResponse,
     TranscribeResponse,
+    VRAMStatus,
 )
 
 logger = logging.getLogger(__name__)
 
 
-# Global engine instance
-_engine: Optional[Gemma4AudioEngine] = None
+# Global daemon instance
+_daemon: Optional[Gemma4Daemon] = None
 _start_time: float = 0
 _warming: bool = False
 _startup_error: Optional[str] = None
+_lifecycle_lock: asyncio.Lock = asyncio.Lock()
 
 # Daemon management state (214A)
 _daemon_max_new_tokens: int = int(os.getenv("GEMMA4_AUDIO_MAX_NEW_TOKENS", "128"))
@@ -48,74 +58,69 @@ _daemon_cache_implementation: Optional[str] = None
 _pending_reload: bool = False
 _reload_reason: Optional[str] = None
 _assistant_model_id: Optional[str] = None
-_assistant_engine: Optional[Gemma4AudioEngine] = None
-_assistant_warming: bool = False
 
 
-def get_engine() -> Gemma4AudioEngine:
-    """Get the global engine instance."""
-    global _engine
-    if _engine is None:
-        raise RuntimeError("Engine not initialized")
-    return _engine
+def get_daemon() -> Gemma4Daemon:
+    global _daemon
+    if _daemon is None:
+        raise RuntimeError("Daemon not initialized")
+    return _daemon
 
 
-async def initialize_engine(
+def get_engine():
+    """Return the active inference engine from the daemon (backward compat)."""
+    return get_daemon().active_engine()
+
+
+async def initialize_daemon(
     model_id: str, cache_dir: str, device: str = "auto", max_new_tokens: int = 128
 ) -> None:
-    """Initialize the engine with model loading."""
-    global _engine, _warming, _startup_error
+    global _daemon, _warming, _startup_error
 
     _warming = True
     _startup_error = None
     try:
-        logger.info(f"Initializing Gemma 4 Audio Engine with model {model_id}")
-        _engine = Gemma4AudioEngine(
-            model_id=model_id,
+        logger.info("Initializing Gemma 4 Daemon with target model %s", model_id)
+        daemon = Gemma4Daemon(
             cache_dir=cache_dir,
             device=device,
+            model_id=model_id,
             max_new_tokens=max_new_tokens,
         )
-        logger.info("Loading model...")
-        await asyncio.to_thread(_engine.load)
-        logger.info(f"Model loaded successfully. Class: {_engine.model_class_name}")
+        # Expose daemon immediately so control endpoints work during warmup.
+        _daemon = daemon
+        logger.info("Loading target model...")
+        await asyncio.to_thread(daemon.load_target)
+        logger.info("Daemon ready. Target: %s", daemon._target_id)  # noqa: SLF001
         _warming = False
     except Exception as e:
-        logger.error(f"Failed to initialize engine: {e}")
+        logger.error("Failed to initialize daemon: %s", e)
         _startup_error = str(e)
         _warming = False
 
 
 async def _startup_model_loader() -> None:
-    """Background model loader that keeps the API server available during warmup."""
     model_id = os.getenv("GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it")
     cache_dir = os.getenv("GEMMA4_AUDIO_CACHE_DIR", "models_cache/hf")
     device = os.getenv("GEMMA4_AUDIO_DEVICE", "auto")
     max_tokens = int(os.getenv("GEMMA4_AUDIO_MAX_NEW_TOKENS", "128"))
-    await initialize_engine(model_id, cache_dir, device, max_tokens)
+    await initialize_daemon(model_id, cache_dir, device, max_tokens)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI lifespan context manager."""
     global _start_time
     _start_time = time.time()
-
-    # Startup: keep API available while the model is loading in background.
     asyncio.create_task(_startup_model_loader())
-
     yield
-
-    # Shutdown
-    if _engine is not None:
-        _engine.unload()
-        logger.info("Engine unloaded")
+    if _daemon is not None:
+        _daemon.unload_all()
+        logger.info("Daemon unloaded")
 
 
 async def _parse_respond_request(
     request: Request,
 ) -> tuple[RespondRequest, bytes | None]:
-    """Parse /v1/respond input from JSON or multipart form."""
     content_type = request.headers.get("content-type", "").lower()
     if "multipart/form-data" in content_type:
         form = await request.form()
@@ -136,7 +141,7 @@ async def _parse_respond_request(
 app = FastAPI(
     title="Gemma 4 Audio Runtime Service",
     description="Local native audio inference daemon for Gemma 4 models",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -148,125 +153,49 @@ app.add_middleware(
 )
 
 
-# ── 214A Daemon Management Schemas ────────────────────────────────────────────
-
-
-class DaemonVRAMStatus(BaseModel):
-    backend: str
-    allocated_mb: int
-    reserved_mb: int
-    total_mb: int
-    free_mb: int
-
-
-class DaemonParamsInfo(BaseModel):
-    max_new_tokens: int
-    enable_thinking: bool
-    cache_implementation: Optional[str]
-
-
-class DaemonStatusResponse(BaseModel):
-    target_model: str
-    assistant_model: Optional[str]
-    mode: Literal["target_only", "target_with_assistant"]
-    target_loaded: bool
-    assistant_loaded: bool
-    params: DaemonParamsInfo
-    vram: DaemonVRAMStatus
-    pending_reload: bool
-    reload_reason: Optional[str]
-
-
-class DaemonConfigRequest(BaseModel):
-    max_new_tokens: Optional[int] = None
-    enable_thinking: Optional[bool] = None
-    cache_implementation: Optional[str] = None
-
-
-class DaemonConfigResponse(BaseModel):
-    reload_signal: Literal["none", "soft_reload", "hard_restart"]
-    applied: DaemonParamsInfo
-    message: str
-
-
-class AttachAssistantRequest(BaseModel):
-    model_id: str
-
-
-def _get_vram() -> DaemonVRAMStatus:
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            device_idx = torch.cuda.current_device()
-            free, total = torch.cuda.mem_get_info(device_idx)
-            return DaemonVRAMStatus(
-                backend="cuda",
-                allocated_mb=torch.cuda.memory_allocated(device_idx) // (1024 * 1024),
-                reserved_mb=torch.cuda.memory_reserved(device_idx) // (1024 * 1024),
-                total_mb=total // (1024 * 1024),
-                free_mb=free // (1024 * 1024),
-            )
-    except Exception:
-        pass
-    return DaemonVRAMStatus(
-        backend="cpu", allocated_mb=0, reserved_mb=0, total_mb=0, free_mb=0
-    )
+# ---------------------------------------------------------------------------
+# Health / status
+# ---------------------------------------------------------------------------
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    """Health check endpoint."""
     try:
-        engine = get_engine()
+        daemon = get_daemon()
         if _warming:
             return HealthResponse(
-                status="warming",
-                message="Model is warming up, please wait...",
+                status="warming", message="Model is warming up, please wait..."
             )
-        if not engine.is_loaded():
-            return HealthResponse(
-                status="error",
-                message="Model is not loaded",
-            )
-        return HealthResponse(
-            status="ok",
-            message="Service is healthy and ready",
-        )
+        if not daemon.is_ready():
+            return HealthResponse(status="error", message="Model is not loaded")
+        return HealthResponse(status="ok", message="Service is healthy and ready")
     except RuntimeError:
         if _startup_error:
             return HealthResponse(
-                status="error",
-                message=f"Startup failed: {_startup_error}",
+                status="error", message=f"Startup failed: {_startup_error}"
             )
         if _warming:
             return HealthResponse(
-                status="warming",
-                message="Service is initializing...",
+                status="warming", message="Service is initializing..."
             )
-        return HealthResponse(
-            status="error",
-            message="Service not initialized",
-        )
+        return HealthResponse(status="error", message="Service not initialized")
 
 
 @app.get("/v1/health", response_model=HealthResponse)
 async def v1_health() -> HealthResponse:
-    """Compatibility health endpoint for clients probing /v1/health."""
     return await health()
 
 
 @app.get("/status", response_model=StatusResponse)
 async def status() -> StatusResponse:
-    """Get service status."""
     try:
-        engine = get_engine()
-        is_loaded = engine.is_loaded()
+        daemon = get_daemon()
+        is_loaded = daemon.is_ready()
 
         model_info = None
         if is_loaded:
             model_info = ModelInfo(
-                model_id=engine.model_id,
+                model_id=daemon._target_id,  # noqa: SLF001
                 instruction_tuned=True,
                 supports_text_input=True,
                 supports_audio_input=True,
@@ -277,7 +206,6 @@ async def status() -> StatusResponse:
             )
 
         status_val = "warming" if _warming else ("running" if is_loaded else "error")
-
         return StatusResponse(
             service="gemma4_audio",
             status=status_val,
@@ -296,138 +224,322 @@ async def status() -> StatusResponse:
 
 @app.get("/v1/models")
 async def list_models():
-    """List available models."""
     try:
-        engine = get_engine()
-        return {
-            "object": "list",
-            "data": [
+        daemon = get_daemon()
+        models = [
+            {
+                "id": daemon._target_id,  # noqa: SLF001
+                "object": "model",
+                "owned_by": "google",
+                "role": "target",
+                "instruction_tuned": True,
+                "supports_text_input": True,
+                "supports_audio_input": True,
+                "supports_image_input": False,
+                "supports_text_output": True,
+                "runtime_mode": "processor_model",
+                "status": "loaded" if daemon.is_ready() else "warming",
+            }
+        ]
+        if daemon._assistant_id:  # noqa: SLF001
+            models.append(
                 {
-                    "id": engine.model_id,
+                    "id": daemon._assistant_id,  # noqa: SLF001
                     "object": "model",
                     "owned_by": "google",
-                    "instruction_tuned": True,
-                    "supports_text_input": True,
-                    "supports_audio_input": True,
-                    "supports_image_input": False,
-                    "supports_text_output": True,
-                    "runtime_mode": "processor_model",
-                    "status": "loaded" if engine.is_loaded() else "warming",
+                    "role": "assistant",
+                    "status": "loaded"
+                    if daemon._assistant_engine and daemon._assistant_engine.is_loaded()
+                    else "error",  # noqa: SLF001
                 }
-            ],
-        }
+            )
+        return {"object": "list", "data": models}
     except RuntimeError:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
 
-@app.post("/v1/respond", response_model=RespondResponse)
-async def respond(
-    request: Request,
-) -> RespondResponse:
-    """Generate response from multimodal input (audio and/or text)."""
+# ---------------------------------------------------------------------------
+# Daemon control API
+# ---------------------------------------------------------------------------
+
+
+@app.get("/v1/daemon/status", response_model=DaemonStatusResponse)
+async def daemon_status() -> DaemonStatusResponse:
+    """Full daemon state: active models, params, VRAM, reload requirements."""
     try:
-        engine = get_engine()
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
 
-        if not engine.is_loaded():
-            raise HTTPException(status_code=503, detail="Model not loaded")
+    raw = daemon.status()
+    return DaemonStatusResponse(
+        target_model=raw["target_model"],
+        assistant_model=raw["assistant_model"],
+        mode=raw["mode"],
+        target_loaded=raw["target_loaded"],
+        assistant_loaded=raw["assistant_loaded"],
+        params=DaemonParamsInfo(**raw["params"]),
+        vram=VRAMStatus(**raw["vram"]),
+        pending_reload=raw["pending_reload"],
+        reload_reason=raw["reload_reason"],
+    )
 
-        request_payload, audio_bytes = await _parse_respond_request(request)
 
-        start_time = time.time()
+@app.post("/v1/daemon/config", response_model=DaemonConfigResponse)
+async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
+    """Update daemon parameters. Returns the minimum reload action required.
 
-        # Extract audio and text from messages
-        audio_array = None
-        sample_rate = 16000
-        text_content = None
+    - `none` — change applied live, no reload needed.
+    - `soft_reload` — call POST /v1/daemon/reload to apply.
+    - `hard_restart` — full process restart required.
+    """
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
 
-        if audio_bytes is not None:
-            try:
-                audio_array, sample_rate = audio_from_bytes(audio_bytes)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Failed to process uploaded audio: {e}",
-                )
-        else:
-            for message in request_payload.messages:
-                for content in message.content:
-                    if content.type == "audio" and content.path:
-                        # Audio referenced by path - load from file
-                        audio_path = Path(content.path)
-                        try:
-                            audio_array, sample_rate = audio_from_file(audio_path)
-                        except Exception as e:
-                            raise HTTPException(
-                                status_code=400,
-                                detail=f"Failed to load audio from {content.path}: {e}",
-                            )
-                    elif content.type == "text" and content.text:
-                        text_content = content.text
+    signal = daemon.update_params(
+        max_new_tokens=body.max_new_tokens,
+        enable_thinking=body.enable_thinking,
+        cache_implementation=body.cache_implementation,
+    )
 
-        if audio_array is None and not text_content:
-            raise HTTPException(
-                status_code=400, detail="No audio or text content provided"
-            )
+    raw = daemon.status()
+    msg_map = {
+        ReloadSignal.NONE: "Parameters applied live — no reload required.",
+        ReloadSignal.SOFT_RELOAD: "Parameters staged — run POST /v1/daemon/reload to apply.",
+        ReloadSignal.HARD_RESTART: "Parameters staged — hard restart required to apply.",
+    }
+    return DaemonConfigResponse(
+        reload_signal=signal.value,
+        applied=DaemonParamsInfo(**raw["params"]),
+        message=msg_map[signal],
+    )
 
-        # Use provided prompt or build from task
-        prompt = text_content or request_payload.system_prompt or "Respond to the audio"
 
-        # Run inference
+@app.post("/v1/daemon/reload", response_model=SoftReloadResponse)
+async def daemon_reload() -> SoftReloadResponse:
+    """Soft reload: free VRAM and reload the target model.
+
+    The assistant model is dropped and must be re-attached explicitly.
+    """
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+
+    if _warming:
+        raise HTTPException(status_code=409, detail="Cannot reload while warming up")
+
+    if not daemon.is_ready():
+        raise HTTPException(status_code=503, detail="Target model is not loaded")
+
+    async with _lifecycle_lock:
         try:
-            generated_text, duration = engine.respond(
-                audio_array
-                if audio_array is not None
-                else np.zeros(16000, dtype=np.float32),
-                sample_rate=sample_rate,
-                prompt=prompt,
-                task=request_payload.task,
-                question=request_payload.question,
-                system_prompt=request_payload.system_prompt,
-                max_new_tokens=request_payload.max_new_tokens,
-                temperature=request_payload.temperature,
-                top_p=request_payload.top_p,
-                do_sample=request_payload.do_sample,
+            reason = await asyncio.to_thread(daemon.soft_reload)
+        except ModelLoadError as e:
+            raise HTTPException(status_code=500, detail=f"Soft reload failed: {e}")
+
+    return SoftReloadResponse(
+        reason=reason,
+        target_model=daemon._target_id,  # noqa: SLF001
+        message="Soft reload complete. VRAM freed and target model reloaded.",
+    )
+
+
+@app.post("/v1/daemon/restart", response_model=RestartResponse)
+async def daemon_restart() -> RestartResponse:
+    """Hard restart: unload everything and restart the process.
+
+    The OS process manager (Docker, systemd) is expected to restart the service.
+    """
+    async with _lifecycle_lock:
+        try:
+            daemon = get_daemon()
+            daemon.unload_all()
+        except RuntimeError:
+            pass  # Not initialized — still proceed with restart
+
+    async def _do_restart():
+        await asyncio.sleep(0.2)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    asyncio.create_task(_do_restart())
+    return RestartResponse(
+        status="restarting",
+        message="All models unloaded. Process will restart in ~200ms.",
+    )
+
+
+@app.post("/v1/daemon/assistant/attach", response_model=AssistantAttachResponse)
+async def daemon_assistant_attach(
+    body: AssistantAttachRequest,
+) -> AssistantAttachResponse:
+    """Attach an assistant/drafter model alongside the target.
+
+    The assistant is loaded into VRAM in addition to the target.
+    Only one assistant at a time — attaching a new one replaces the current.
+    """
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+
+    if not daemon.is_ready():
+        raise HTTPException(status_code=503, detail="Target model must be loaded first")
+
+    async with _lifecycle_lock:
+        try:
+            await asyncio.to_thread(daemon.attach_assistant, body.model_id)
+        except ModelLoadError as e:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot attach assistant: {e}",
             )
-        except InferenceError as e:
-            raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
 
-        total_duration_ms = int((time.time() - start_time) * 1000)
+    return AssistantAttachResponse(
+        assistant_model=body.model_id,
+        mode=daemon.status()["mode"],
+        message=f"Assistant '{body.model_id}' attached successfully.",
+    )
 
-        return RespondResponse(
-            model=engine.model_id,
+
+@app.post("/v1/daemon/assistant/detach")
+async def daemon_assistant_detach() -> dict:
+    """Detach and unload the assistant model. VRAM freed immediately."""
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+
+    async with _lifecycle_lock:
+        daemon.detach_assistant()
+    return {"mode": "target_only", "message": "Assistant model detached. VRAM freed."}
+
+
+@app.post("/v1/daemon/fallback", response_model=FallbackResponse)
+async def daemon_fallback() -> FallbackResponse:
+    """Reset daemon to safe defaults (target-only, default params).
+
+    Returns a reload signal indicating what action is needed to complete the fallback.
+    If reload_signal is 'soft_reload', call POST /v1/daemon/reload.
+    If reload_signal is 'hard_restart', call POST /v1/daemon/restart.
+    """
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+
+    signal = daemon.fallback()
+
+    msg_map = {
+        ReloadSignal.NONE: "Fallback complete — no reload needed.",
+        ReloadSignal.SOFT_RELOAD: "Fallback staged — run POST /v1/daemon/reload to complete.",
+        ReloadSignal.HARD_RESTART: "Target model changed — run POST /v1/daemon/restart to complete.",
+    }
+    return FallbackResponse(
+        reload_signal=signal.value,
+        target_model=daemon._target_id,  # noqa: SLF001
+        message=msg_map[signal],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Inference endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/v1/respond", response_model=RespondResponse)
+async def respond(request: Request) -> RespondResponse:
+    try:
+        daemon = get_daemon()
+        engine = daemon.active_engine()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    if not engine.is_loaded():
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    request_payload, audio_bytes = await _parse_respond_request(request)
+
+    start_time = time.time()
+    audio_array = None
+    sample_rate = 16000
+    text_content = None
+
+    if audio_bytes is not None:
+        try:
+            audio_array, sample_rate = audio_from_bytes(audio_bytes)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to process uploaded audio: {e}"
+            )
+    else:
+        for message in request_payload.messages:
+            for content in message.content:
+                if content.type == "audio" and content.path:
+                    audio_path = Path(content.path)
+                    try:
+                        audio_array, sample_rate = audio_from_file(audio_path)
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to load audio from {content.path}: {e}",
+                        )
+                elif content.type == "text" and content.text:
+                    text_content = content.text
+
+    if audio_array is None and not text_content:
+        raise HTTPException(status_code=400, detail="No audio or text content provided")
+
+    prompt = text_content or request_payload.system_prompt or "Respond to the audio"
+
+    try:
+        generated_text, duration = engine.respond(
+            audio_array
+            if audio_array is not None
+            else np.zeros(16000, dtype=np.float32),
+            sample_rate=sample_rate,
+            prompt=prompt,
             task=request_payload.task,
-            text=generated_text,
-            duration_ms=total_duration_ms,
-            audio=AudioMetadata(
-                sample_rate=sample_rate,
-                duration_sec=duration,
-            ),
-            input_modalities=["text", "audio"] if audio_array is not None else ["text"],
-            output_modalities=["text"],
-            runtime_mode="processor_model",
-            capabilities=Capabilities(
-                audio_input="verified" if audio_array is not None else "unknown",
-                audio_reasoning="verified" if audio_array is not None else "unknown",
-                audio_transcription="verified"
-                if audio_array is not None
-                else "unknown",
-            ),
-            generation_config=GenerationConfig(
-                max_new_tokens=request_payload.max_new_tokens,
-                temperature=request_payload.temperature,
-                top_p=request_payload.top_p,
-                do_sample=request_payload.do_sample,
-            ),
+            question=request_payload.question,
+            system_prompt=request_payload.system_prompt,
+            max_new_tokens=request_payload.max_new_tokens,
+            temperature=request_payload.temperature,
+            top_p=request_payload.top_p,
+            do_sample=request_payload.do_sample,
+            enable_thinking=daemon._params.enable_thinking,  # noqa: SLF001
+            cache_implementation=daemon._params.cache_implementation,  # noqa: SLF001
         )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Respond endpoint error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+    except InferenceError as e:
+        raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
+
+    total_duration_ms = int((time.time() - start_time) * 1000)
+
+    return RespondResponse(
+        model=engine.model_id,
+        task=request_payload.task,
+        text=generated_text,
+        duration_ms=total_duration_ms,
+        audio=AudioMetadata(sample_rate=sample_rate, duration_sec=duration),
+        input_modalities=["text", "audio"] if audio_array is not None else ["text"],
+        output_modalities=["text"],
+        runtime_mode="processor_model",
+        capabilities=Capabilities(
+            audio_input="verified" if audio_array is not None else "unknown",
+            audio_reasoning="verified" if audio_array is not None else "unknown",
+            audio_transcription="verified" if audio_array is not None else "unknown",
+        ),
+        generation_config=GenerationConfig(
+            max_new_tokens=request_payload.max_new_tokens,
+            temperature=request_payload.temperature,
+            top_p=request_payload.top_p,
+            do_sample=request_payload.do_sample,
+        ),
+    )
 
 
 def _extract_text_prompt_from_openai_messages(messages: list[dict]) -> str:
-    """Extract a text prompt from OpenAI-style chat messages."""
     for message in reversed(messages):
         if str(message.get("role", "")).strip().lower() != "user":
             continue
@@ -471,330 +583,135 @@ class ChatCompletionRequest(BaseModel):
 async def chat_completions(payload: ChatCompletionRequest) -> dict:
     """OpenAI-compatible text chat endpoint for Semantic Kernel connectors."""
     try:
-        engine = get_engine()
-        if not engine.is_loaded():
-            raise HTTPException(status_code=503, detail="Model not loaded")
+        daemon = get_daemon()
+        engine = daemon.active_engine()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
-        model = str(payload.model or engine.model_id)
-        messages = [message.model_dump(mode="python") for message in payload.messages]
+    if not engine.is_loaded():
+        raise HTTPException(status_code=503, detail="Model not loaded")
 
-        prompt = _extract_text_prompt_from_openai_messages(messages)
-        max_tokens = int(payload.max_tokens or payload.max_completion_tokens or 128)
-        temperature_raw = payload.temperature
-        top_p_raw = payload.top_p
-        if payload.stream:
-            raise HTTPException(
-                status_code=400,
-                detail="Streaming is not supported by gemma4_audio runtime",
-            )
+    model = str(payload.model or engine.model_id)
+    messages = [message.model_dump(mode="python") for message in payload.messages]
 
-        # Text-only path: use 1s silence placeholder expected by the current engine API.
-        dummy_audio = np.zeros(16000, dtype=np.float32)
-        text, _ = engine.respond(
-            dummy_audio,
-            sample_rate=16000,
-            prompt=prompt,
-            max_new_tokens=max_tokens,
-            temperature=float(temperature_raw) if temperature_raw is not None else None,
-            top_p=float(top_p_raw) if top_p_raw is not None else None,
-            do_sample=bool(temperature_raw is not None or top_p_raw is not None),
+    prompt = _extract_text_prompt_from_openai_messages(messages)
+    max_tokens = int(payload.max_tokens or payload.max_completion_tokens or 128)
+    temperature_raw = payload.temperature
+    top_p_raw = payload.top_p
+
+    if payload.stream:
+        raise HTTPException(
+            status_code=400,
+            detail="Streaming is not supported by gemma4_audio runtime",
         )
 
-        now = int(time.time())
-        completion_tokens = max(1, len(text) // 4)
-        prompt_tokens = max(1, len(prompt) // 4)
-        return {
-            "id": f"chatcmpl-gemma4-{int(time.time() * 1000)}",
-            "object": "chat.completion",
-            "created": now,
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": text},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-            },
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"chat/completions error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+    dummy_audio = np.zeros(16000, dtype=np.float32)
+    text, _ = engine.respond(
+        dummy_audio,
+        sample_rate=16000,
+        prompt=prompt,
+        max_new_tokens=max_tokens,
+        temperature=float(temperature_raw) if temperature_raw is not None else None,
+        top_p=float(top_p_raw) if top_p_raw is not None else None,
+        do_sample=bool(temperature_raw is not None or top_p_raw is not None),
+        enable_thinking=daemon._params.enable_thinking,  # noqa: SLF001
+        cache_implementation=daemon._params.cache_implementation,  # noqa: SLF001
+    )
+
+    now = int(time.time())
+    completion_tokens = max(1, len(text) // 4)
+    prompt_tokens = max(1, len(prompt) // 4)
+    return {
+        "id": f"chatcmpl-gemma4-{int(time.time() * 1000)}",
+        "object": "chat.completion",
+        "created": now,
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+    }
 
 
 @app.post("/audio/transcribe", response_model=TranscribeResponse)
-async def transcribe(
-    audio: UploadFile = File(...),
-) -> TranscribeResponse:
-    """Transcribe audio file."""
+async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
     try:
-        engine = get_engine()
+        daemon = get_daemon()
+        engine = daemon.active_engine()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
-        if not engine.is_loaded():
-            raise HTTPException(status_code=503, detail="Model not loaded")
+    if not engine.is_loaded():
+        raise HTTPException(status_code=503, detail="Model not loaded")
 
-        start_time = time.time()
+    start_time = time.time()
 
-        # Read uploaded file
-        try:
-            file_bytes = await audio.read()
-            audio_array, sample_rate = audio_from_bytes(file_bytes)
-        except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Failed to process audio file: {e}"
-            )
-
-        # Transcribe
-        try:
-            text = engine.transcribe(audio_array, sample_rate)
-        except InferenceError as e:
-            raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
-
-        duration_sec = get_audio_duration(audio_array, sample_rate)
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        return TranscribeResponse(
-            text=text,
-            duration_ms=duration_ms,
-            audio=AudioMetadata(
-                sample_rate=sample_rate,
-                duration_sec=duration_sec,
-            ),
-        )
-    except HTTPException:
-        raise
+    try:
+        file_bytes = await audio.read()
+        audio_array, sample_rate = audio_from_bytes(file_bytes)
     except Exception as e:
-        logger.error(f"Transcribe endpoint error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Failed to process audio file: {e}"
+        )
+
+    try:
+        text = engine.transcribe(audio_array, sample_rate)
+    except InferenceError as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+    duration_sec = get_audio_duration(audio_array, sample_rate)
+    duration_ms = int((time.time() - start_time) * 1000)
+
+    return TranscribeResponse(
+        text=text,
+        duration_ms=duration_ms,
+        audio=AudioMetadata(sample_rate=sample_rate, duration_sec=duration_sec),
+    )
 
 
 @app.post("/warmup")
 async def warmup():
-    """Warmup the model by running a dummy inference."""
     try:
-        engine = get_engine()
+        daemon = get_daemon()
+        engine = daemon.active_engine()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
-        if not engine.is_loaded():
-            raise HTTPException(status_code=503, detail="Model not loaded")
+    if not engine.is_loaded():
+        raise HTTPException(status_code=503, detail="Model not loaded")
 
-        # Run a small dummy inference to warm up
-        dummy_audio = np.zeros(16000, dtype=np.float32)  # 1 second of silence
-        try:
-            text, _ = engine.respond(
-                dummy_audio,
-                sample_rate=16000,
-                prompt="Say hello",
-                max_new_tokens=10,
-            )
-            return {"status": "warmed", "sample_output": text}
-        except InferenceError as e:
-            raise HTTPException(status_code=500, detail=f"Warmup failed: {e}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Warmup error: {e}")
+    dummy_audio = np.zeros(16000, dtype=np.float32)
+    try:
+        text, _ = engine.respond(
+            dummy_audio, sample_rate=16000, prompt="Say hello", max_new_tokens=10
+        )
+        return {"status": "warmed", "sample_output": text}
+    except InferenceError as e:
         raise HTTPException(status_code=500, detail=f"Warmup failed: {e}")
 
 
 @app.get("/")
 async def root():
-    """Root endpoint."""
-    return {
-        "service": "Gemma 4 Audio Runtime",
-        "version": "0.1.0",
-        "status": "running",
-    }
+    return {"service": "Gemma 4 Audio Runtime", "version": "0.2.0", "status": "running"}
 
 
-# ── 214A Daemon Management Endpoints ─────────────────────────────────────────
-
-
-@app.get("/v1/daemon/status", response_model=DaemonStatusResponse)
-async def daemon_status() -> DaemonStatusResponse:
-    """Return daemon runtime state for the frontend control panel."""
-    global _daemon_max_new_tokens
-    target_loaded = False
-    target_model = os.getenv("GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it")
-    try:
-        engine = get_engine()
-        target_loaded = engine.is_loaded()
-        target_model = engine.model_id
-        _daemon_max_new_tokens = engine.default_max_new_tokens
-    except RuntimeError:
-        pass
-
-    return DaemonStatusResponse(
-        target_model=target_model,
-        assistant_model=_assistant_model_id,
-        mode="target_with_assistant" if _assistant_model_id else "target_only",
-        target_loaded=target_loaded,
-        assistant_loaded=_assistant_engine is not None
-        and _assistant_engine.is_loaded(),
-        params=DaemonParamsInfo(
-            max_new_tokens=_daemon_max_new_tokens,
-            enable_thinking=_daemon_enable_thinking,
-            cache_implementation=_daemon_cache_implementation,
-        ),
-        vram=_get_vram(),
-        pending_reload=_pending_reload,
-        reload_reason=_reload_reason,
-    )
-
-
-@app.post("/v1/daemon/config", response_model=DaemonConfigResponse)
-async def daemon_config(req: DaemonConfigRequest) -> DaemonConfigResponse:
-    """Apply generation parameter changes. Returns reload_signal if model reload is needed."""
-    global _daemon_max_new_tokens, _daemon_enable_thinking, _daemon_cache_implementation
-    global _pending_reload, _reload_reason
-
-    reload_signal: Literal["none", "soft_reload", "hard_restart"] = "none"
-
-    if req.max_new_tokens is not None and req.max_new_tokens > 0:
-        _daemon_max_new_tokens = req.max_new_tokens
-        try:
-            get_engine().default_max_new_tokens = req.max_new_tokens
-        except RuntimeError:
-            pass
-
-    if req.enable_thinking is not None:
-        _daemon_enable_thinking = req.enable_thinking
-
-    if "cache_implementation" in req.model_fields_set:
-        new_cache = req.cache_implementation or None
-        if new_cache != _daemon_cache_implementation:
-            _daemon_cache_implementation = new_cache
-            _pending_reload = new_cache is not None
-            _reload_reason = (
-                "cache_implementation changed" if new_cache is not None else None
-            )
-            reload_signal = "soft_reload"
-
-    return DaemonConfigResponse(
-        reload_signal=reload_signal,
-        applied=DaemonParamsInfo(
-            max_new_tokens=_daemon_max_new_tokens,
-            enable_thinking=_daemon_enable_thinking,
-            cache_implementation=_daemon_cache_implementation,
-        ),
-        message="Config applied"
-        + (" — soft reload required" if reload_signal != "none" else ""),
-    )
-
-
-@app.post("/v1/daemon/reload", status_code=204)
-async def daemon_reload() -> Response:
-    """Reload the target model (soft reload — frees VRAM and reloads)."""
-    global _pending_reload, _reload_reason, _assistant_model_id, _assistant_engine
-    model_id = os.getenv("GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it")
-    cache_dir = os.getenv("GEMMA4_AUDIO_CACHE_DIR", "models_cache/hf")
-    device = os.getenv("GEMMA4_AUDIO_DEVICE", "auto")
-    try:
-        engine = get_engine()
-        model_id = engine.model_id
-        engine.unload()
-    except RuntimeError:
-        pass
-    # Detach assistant if present
-    if _assistant_engine:
-        _assistant_engine.unload()
-        _assistant_engine = None
-        _assistant_model_id = None
-    await initialize_engine(model_id, cache_dir, device, _daemon_max_new_tokens)
-    _pending_reload = False
-    _reload_reason = None
-    return Response(status_code=204)
-
-
-@app.post("/v1/daemon/restart", status_code=204)
-async def daemon_restart() -> Response:
-    """Restart the daemon process via os.execv — all models are unloaded first."""
-    global _assistant_model_id, _assistant_engine
-    for eng in [_engine, _assistant_engine]:
-        try:
-            if eng is not None:
-                eng.unload()
-        except RuntimeError:
-            pass
-    _assistant_model_id = None
-    _assistant_engine = None
-    logger.info("Daemon restart requested — re-exec process")
-    # Delay slightly so the 204 response is sent before the process replaces itself.
-    asyncio.get_running_loop().call_later(
-        0.2, lambda: os.execv(sys.executable, [sys.executable] + sys.argv)
-    )
-    return Response(status_code=204)
-
-
-@app.post("/v1/daemon/fallback", response_model=DaemonConfigResponse)
-async def daemon_fallback() -> DaemonConfigResponse:
-    """Detach assistant model and reset to target-only mode."""
-    global _assistant_model_id, _assistant_engine
-    if _assistant_engine:
-        _assistant_engine.unload()
-        _assistant_engine = None
-    _assistant_model_id = None
-    return DaemonConfigResponse(
-        reload_signal="none",
-        applied=DaemonParamsInfo(
-            max_new_tokens=_daemon_max_new_tokens,
-            enable_thinking=_daemon_enable_thinking,
-            cache_implementation=_daemon_cache_implementation,
-        ),
-        message="Fallback to target-only mode",
-    )
-
-
-@app.post("/v1/daemon/assistant/attach", status_code=204)
-async def daemon_attach_assistant(req: AttachAssistantRequest) -> Response:
-    """Attach a drafter/assistant model."""
-    global _assistant_model_id, _assistant_engine, _assistant_warming
-    cache_dir = os.getenv("GEMMA4_AUDIO_CACHE_DIR", "models_cache/hf")
-    device = os.getenv("GEMMA4_AUDIO_DEVICE", "auto")
-    if _assistant_engine:
-        _assistant_engine.unload()
-    _assistant_model_id = req.model_id
-    _assistant_warming = True
-    try:
-        _assistant_engine = Gemma4AudioEngine(
-            model_id=req.model_id,
-            cache_dir=cache_dir,
-            device=device,
-            max_new_tokens=_daemon_max_new_tokens,
-        )
-        await asyncio.to_thread(_assistant_engine.load)
-    except Exception as e:
-        logger.error(f"Failed to load assistant model {req.model_id}: {e}")
-        _assistant_engine = None
-        _assistant_model_id = None
-        raise HTTPException(status_code=500, detail=f"Failed to load assistant: {e}")
-    finally:
-        _assistant_warming = False
-    return Response(status_code=204)
-
-
-@app.post("/v1/daemon/assistant/detach", status_code=204)
-async def daemon_detach_assistant() -> Response:
-    """Detach and unload the assistant model."""
-    global _assistant_model_id, _assistant_engine
-    if _assistant_engine:
-        _assistant_engine.unload()
-        _assistant_engine = None
-    _assistant_model_id = None
-    return Response(status_code=204)
+# ---------------------------------------------------------------------------
+# Server helpers
+# ---------------------------------------------------------------------------
 
 
 def configure_logging(log_file: Optional[str] = None, level: int = logging.INFO):
-    """Configure logging for the service."""
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
 
-    # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     formatter = logging.Formatter(
@@ -803,26 +720,18 @@ def configure_logging(log_file: Optional[str] = None, level: int = logging.INFO)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
-    # File handler if specified
     if log_file:
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
 
-    logger.info(f"Logging configured. Level: {logging.getLevelName(level)}")
-
 
 def run_server(
-    host: str = "127.0.0.1",
-    port: int = 8014,
-    log_file: Optional[str] = None,
+    host: str = "127.0.0.1", port: int = 8014, log_file: Optional[str] = None
 ):
-    """Run the FastAPI server."""
     configure_logging(log_file)
-
-    logger.info(f"Starting Gemma 4 Audio Runtime Service on {host}:{port}")
-
+    logger.info("Starting Gemma 4 Audio Runtime Service on %s:%d", host, port)
     uvicorn.run(
         "services.gemma4_audio_runtime.main:app",
         host=host,
@@ -833,9 +742,7 @@ def run_server(
 
 
 if __name__ == "__main__":
-    # Get configuration from environment
     host = os.getenv("GEMMA4_AUDIO_HOST", "127.0.0.1")
     port = int(os.getenv("GEMMA4_AUDIO_PORT", "8014"))
     log_file = os.getenv("GEMMA4_AUDIO_LOG_PATH", "logs/gemma4_audio_service.log")
-
     run_server(host, port, log_file)

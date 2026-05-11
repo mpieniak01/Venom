@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
-import soundfile as sf
-from scipy.signal import resample_poly
 
 TARGET_SAMPLE_RATE = 16_000
 
@@ -24,6 +22,8 @@ class AudioNormalizationError(Exception):
 
 def read_audio_file(path: Path) -> Tuple[np.ndarray, int]:
     """Read audio file using soundfile with ffmpeg fallback."""
+    import soundfile as sf
+
     try:
         audio, sample_rate = sf.read(str(path), always_2d=True, dtype="float32")
         return audio, int(sample_rate)
@@ -64,6 +64,8 @@ def read_audio_bytes(
     file_bytes: bytes, sample_rate_hint: Optional[int] = None
 ) -> Tuple[np.ndarray, int]:
     """Read audio from bytes using soundfile with ffmpeg fallback."""
+    import soundfile as sf
+
     try:
         with io.BytesIO(file_bytes) as buf:
             audio, sample_rate = sf.read(buf, always_2d=True, dtype="float32")
@@ -133,6 +135,8 @@ def normalize_audio(
 
         # Resample if needed
         if sample_rate != target_sr:
+            from scipy.signal import resample_poly
+
             gcd = math.gcd(sample_rate, target_sr)
             up = target_sr // gcd
             down = sample_rate // gcd

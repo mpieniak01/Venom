@@ -8,6 +8,7 @@ source "$ROOT_DIR/scripts/lib/env_contract.sh"
 
 VENV_BIN="$ROOT_DIR/.venv/bin"
 PYTHON_BIN="$VENV_BIN/python"
+UVICORN_BIN="$VENV_BIN/uvicorn"
 RUNTIME_DIR="$ROOT_DIR/.venom_runtime"
 LOG_DIR="$ROOT_DIR/logs"
 PID_FILE="$RUNTIME_DIR/fish_speech.pid"
@@ -50,7 +51,11 @@ start() {
   export FISH_SPEECH_PID_PATH="$PID_FILE"
   export PYTHONUNBUFFERED=1
 
-  nohup "$PYTHON_BIN" -m services.fish_speech_runtime.main >>"$LOG_FILE" 2>&1 &
+  nohup "$UVICORN_BIN" services.fish_speech_runtime.main:app \
+    --host "$HOST" \
+    --port "$PORT" \
+    --log-level info \
+    >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
   local pid
   pid="$(cat "$PID_FILE")"

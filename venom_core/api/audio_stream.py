@@ -165,6 +165,30 @@ def _create_voice_session_dir(connection_id: int) -> Path:
     raise RuntimeError("Nie udało się utworzyć unikalnego katalogu sesji voice.")
 
 
+def _resolve_tts_backend(audio_engine: object | None) -> str | None:
+    """Return human-readable TTS backend name based on active engine."""
+    if audio_engine is None:
+        return None
+    tts_engine = getattr(audio_engine, "tts_engine", "piper_local")
+    if tts_engine == "fish_speech":
+        return "fish_speech"
+    voice = getattr(audio_engine, "voice", None)
+    return "piper" if voice else None
+
+
+def _resolve_tts_ready(
+    audio_engine: object | None, voice: object | None, voice_loaded: bool
+) -> bool:
+    """Return TTS ready state accounting for fish_speech engine."""
+    if audio_engine is None:
+        return False
+    tts_engine = getattr(audio_engine, "tts_engine", "piper_local")
+    if tts_engine == "fish_speech":
+        fish_client = getattr(audio_engine, "_fish_client", None)
+        return fish_client is not None
+    return voice_loaded and not bool(getattr(voice, "is_fallback_mode", False))
+
+
 class AudioStreamHandler:
     """
     Handler do obsługi streaming audio przez WebSocket.
@@ -231,9 +255,11 @@ class AudioStreamHandler:
             "stt_ready": whisper_loaded,
             "whisper_model_size": getattr(whisper, "model_size", None),
             "whisper_device": getattr(whisper, "device", None),
-            "tts_backend": "piper" if voice else None,
-            "tts_ready": voice_loaded
-            and not bool(getattr(voice, "is_fallback_mode", False)),
+            "tts_engine": getattr(audio_engine, "tts_engine", "piper_local")
+            if audio_engine
+            else None,
+            "tts_backend": _resolve_tts_backend(audio_engine),
+            "tts_ready": _resolve_tts_ready(audio_engine, voice, voice_loaded),
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "dependencies": dependencies,
@@ -670,14 +696,15 @@ class AudioStreamHandler:
 
         timeout = httpx.Timeout(GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC, connect=5.0)
         async with await anyio.open_file(wav_path, "rb") as audio_file:
-            files = {
-                "audio": (wav_path.name, audio_file, "audio/wav"),
-            }
-            data = {
-                "request": json.dumps(payload, ensure_ascii=False),
-            }
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(respond_url, data=data, files=files)
+            audio_bytes = await audio_file.read()
+        files = {
+            "audio": (wav_path.name, audio_bytes, "audio/wav"),
+        }
+        data = {
+            "request": json.dumps(payload, ensure_ascii=False),
+        }
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(respond_url, data=data, files=files)
 
         if response.status_code >= 400:
             raise RuntimeError(

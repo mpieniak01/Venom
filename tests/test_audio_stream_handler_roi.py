@@ -956,6 +956,9 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
         def __init__(self, path: str):
             self.path = path
 
+        async def read(self):
+            return b"RIFF....WAVEfmt "
+
     class _AsyncOpenContext:
         def __init__(self, path, mode):
             self.path = path

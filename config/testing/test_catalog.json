@@ -2129,6 +2129,42 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_fish_speech_runtime_service.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_fish_speech_tts_client.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_fish_speech_tts_routing.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_flow_coordinator.py",
       "domain": "orchestrator",
       "test_type": "unit",
@@ -2217,6 +2253,20 @@
       "rationale": "Integration-heavy behavior delegated to release lane."
     },
     {
+      "path": "tests/test_gemma4_audio_runtime_main.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_generation_params_adapter.py",
       "domain": "misc",
       "test_type": "unit",
@@ -2280,20 +2330,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
-    },
-    {
-      "path": "tests/test_gemma4_audio_runtime_main.py",
-      "domain": "runtime",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_git_routes_logic.py",

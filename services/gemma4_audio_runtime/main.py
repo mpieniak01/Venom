@@ -16,7 +16,6 @@ import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
-from .audio import audio_from_bytes, audio_from_file, get_audio_duration
 from .engine import Gemma4AudioEngine, InferenceError
 from .schemas import (
     AudioMetadata,
@@ -257,6 +256,8 @@ async def respond(
 
         if audio_bytes is not None:
             try:
+                from .audio import audio_from_bytes
+
                 audio_array, sample_rate = audio_from_bytes(audio_bytes)
             except Exception as e:
                 raise HTTPException(
@@ -270,6 +271,8 @@ async def respond(
                         # Audio referenced by path - load from file
                         audio_path = Path(content.path)
                         try:
+                            from .audio import audio_from_file
+
                             audio_array, sample_rate = audio_from_file(audio_path)
                         except Exception as e:
                             raise HTTPException(
@@ -459,6 +462,8 @@ async def transcribe(
         # Read uploaded file
         try:
             file_bytes = await audio.read()
+            from .audio import audio_from_bytes, get_audio_duration
+
             audio_array, sample_rate = audio_from_bytes(file_bytes)
         except Exception as e:
             raise HTTPException(

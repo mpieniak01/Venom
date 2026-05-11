@@ -137,6 +137,9 @@ tests/test_feedback_loop_policy.py
 tests/test_feedback_routes_logic.py
 tests/test_file_floor_threshold_guard.py
 tests/test_file_skill.py
+tests/test_fish_speech_runtime_service.py
+tests/test_fish_speech_tts_client.py
+tests/test_fish_speech_tts_routing.py
 tests/test_flow_coordinator.py
 tests/test_flow_inspector_api.py
 tests/test_flow_mermaid_generation.py

@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 
 def _read_env_keys(path: str) -> dict:
     data = {}
@@ -18,6 +20,11 @@ def _read_env_keys(path: str) -> dict:
 
 
 def test_gemma4_keys_present_in_env_dev():
+    if os.getenv("CI", "").strip().lower() in {"1", "true", "yes"}:
+        pytest.skip(
+            ".env.dev jest lokalnym plikiem deweloperskim i nie jest kontraktem CI."
+        )
+
     example = _read_env_keys(".env.dev.example")
     dev = _read_env_keys(".env.dev")
 

@@ -923,3 +923,26 @@ export interface CodingBenchmarkRun {
   finished_at?: string | null;
   error_message?: string | null;
 }
+
+export interface TtsRuntimeEngineOption {
+  engine_id: string;
+  label: string;
+  status: string;
+  available: boolean;
+}
+
+export interface TtsVoiceOption {
+  id: string;
+  label: string;
+  path: string;
+}
+
+export interface TtsRuntimeState {
+  tts_engine: string;
+  available_engines: TtsRuntimeEngineOption[];
+  engine_status: Record<string, string>;
+  current_option_id: string | null;
+  options: TtsVoiceOption[];
+  fallback_enabled: boolean;
+  fallback_target: string | null;
+}

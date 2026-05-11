@@ -16,6 +16,14 @@ Aktualna bezpieczna ścieżka produkcyjna:
 5. TTS wykonuje Piper, jeśli model głosu jest dostępny,
 6. `/voice` pokazuje transkrypcję, odpowiedź, link do nagrania, czasy, metryki jakości i snapshot runtime.
 
+Po PR 211/212/213 Venom udostępnia też opcjonalny runtime TTS Fish Speech:
+
+1. Fish Speech działa jako osobny daemon i osobny wybór silnika,
+2. `GET /api/v1/audio/tts/runtime` oraz `POST /api/v1/audio/tts/runtime` wystawiają aktywny silnik TTS i jego dostępność,
+3. `/voice` oraz cockpit korzystają z tej samej engine-aware kontrolki,
+4. na RTX 3060 Fish Speech jest wyraźnie wolniejszy od Piper/Gosia, więc Piper pozostaje domyślną i rekomendowaną ścieżką,
+5. Fish Speech traktujemy jako eksperymentalną alternatywę, a nie zamiennik stabilnego fallbacku Piper.
+
 Ta gałąź traktuje też orb voice jako osobny stos UI, a nie luźny widget:
 
 1. `VoiceCommandCenter` zarządza stanem ekranu `/voice` i podpina orb do reszty strony,
@@ -56,6 +64,12 @@ Przełączenie przykładowo:
 ```bash
 TTS_MODEL_PATH=/home/ubuntu/venom/data/models/piper/pl_PL-mc_speech-medium.onnx
 ```
+
+Uwaga dla Fish Speech:
+
+1. Fish Speech jest dostępny przez osobny silnik `fish_speech`, a nie przez `TTS_MODEL_PATH`,
+2. UI pokazuje go jako osobny wpis w selektorze runtime,
+3. na obecnym hoście testowym RTX 3060 Piper/Gosia pozostaje rekomendowanym domyślnym wyborem, bo Fish Speech jest kilka razy wolniejszy w testach end-to-end voice.
 
 ### Zmierzone próbki po polsku
 
@@ -114,6 +128,24 @@ Aktualna decyzja:
 1. `audio` w metadata Ollama nie jest dowodem używalnego raw audio input,
 2. `gemma4:latest` może poprawić rozumowanie po transkrypcji, szczególnie dla głębokiej analizy, jeśli probe thinking jest zweryfikowane,
 3. natywne audio zostaje za jawną probe i flagami eksperymentalnymi.
+
+### PR 211 / 212 / 213 - runtime Gemma4 audio i selektor silnika TTS
+
+Stan dostarczony:
+
+1. Gemma4 Audio jest dostępny jako opcjonalny daemon runtime dla natywnego audio,
+2. Fish Speech jest dostępny jako opcjonalny daemon TTS i osobny wpis selektora engine,
+3. `GET /api/v1/audio/tts/runtime` oraz `POST /api/v1/audio/tts/runtime` wystawiają aktywny silnik TTS i listę opcji,
+4. `GET /api/v1/audio/status` pokazuje aktywny engine TTS, gotowość runtime i fallback,
+5. `/voice` pokazuje, który silnik faktycznie obsłużył odpowiedź głosową,
+6. cockpit korzysta z tej samej logiki selektora TTS, bez duplikowania implementacji komponentu.
+
+Wniosek operacyjny:
+
+1. Fish Speech jest funkcjonalny i testowalny lokalnie,
+2. na RTX 3060 jest jednak kilka razy wolniejszy od Piper/Gosia dla tego samego flow użytkownika,
+3. Piper pozostaje domyślną ścieżką wyjścia głosowego,
+4. Fish Speech powinien pozostać jawnie dostępną alternatywą do eksperymentów i porównań, a nie domyślną ścieżką produkcyjną na tym GPU.
 
 ## Trzy lokalne stosy runtime
 

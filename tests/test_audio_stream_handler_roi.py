@@ -125,6 +125,19 @@ def test_get_status_reports_loaded_backends_and_dependencies(monkeypatch):
     }
 
 
+def test_get_tts_sample_rate_prefers_fish_engine_sample_rate():
+    handler = _make_handler()
+
+    class DummyFishClient:
+        last_sample_rate = 24000
+
+    handler.audio_engine = MagicMock()
+    handler.audio_engine.tts_engine = "fish_speech"
+    handler.audio_engine._fish_client = DummyFishClient()
+
+    assert handler._get_tts_sample_rate() == 24000
+
+
 # ---------------------------------------------------------------------------
 # Singleton helper
 # ---------------------------------------------------------------------------

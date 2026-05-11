@@ -391,6 +391,7 @@ tests/test_traffic_control.py
 tests/test_traffic_control_routes.py
 tests/test_training_metrics_parser.py
 tests/test_translation_service.py
+tests/test_tts_runtime_api.py
 tests/test_update_sonar_scope_group.py
 tests/test_url_policy.py
 tests/test_ux_analyst.py

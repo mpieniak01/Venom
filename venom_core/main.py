@@ -275,6 +275,146 @@ class AudioTtsModelUpdateRequest(BaseModel):
     model: str
 
 
+class AudioTtsRuntimeUpdateRequest(BaseModel):
+    tts_engine: str
+
+
+_TTS_ENGINES: list[dict[str, str]] = [
+    {"engine_id": "piper_local", "label": "Piper Local"},
+    {"engine_id": "fish_speech", "label": "Fish Speech"},
+]
+
+
+async def _get_fish_speech_engine_status() -> str:
+    """Return health status string for the Fish Speech daemon."""
+    if not getattr(SETTINGS, "FISH_SPEECH_ENABLED", False):
+        return "disabled"
+    try:
+        from venom_core.perception.fish_speech_tts_client import FishSpeechTtsClient
+
+        endpoint = str(
+            getattr(SETTINGS, "FISH_SPEECH_ENDPOINT", "http://127.0.0.1:8024/v1")
+        )
+        base_url = endpoint.removesuffix("/v1")
+        client = FishSpeechTtsClient(base_url=base_url)
+        healthy = await client.health_check()
+        await client.aclose()
+        return "ready" if healthy else "offline"
+    except Exception:
+        return "error"
+
+
+async def _get_tts_runtime_state() -> dict[str, Any]:
+    """Build the full TTS runtime state for the UI."""
+    active_engine = str(getattr(SETTINGS, "TTS_ENGINE", "piper_local"))
+
+    piper_status = "ready"
+    if audio_engine is not None:
+        voice = getattr(audio_engine, "voice", None)
+        if voice is not None and getattr(voice, "is_fallback_mode", False):
+            piper_status = "fallback"
+    elif not SETTINGS.TTS_MODEL_PATH:
+        piper_status = "no_model"
+
+    fish_status = await _get_fish_speech_engine_status()
+
+    engine_status: dict[str, str] = {
+        "piper_local": piper_status,
+        "fish_speech": fish_status,
+    }
+
+    available_engines = [
+        {
+            **eng,
+            "status": engine_status.get(eng["engine_id"], "unknown"),
+            "available": engine_status.get(eng["engine_id"], "unknown")
+            not in ("disabled", "error", "offline"),
+        }
+        for eng in _TTS_ENGINES
+    ]
+
+    current_option_id: str | None = None
+    piper_options: list[dict[str, str]] = []
+    if active_engine == "piper_local":
+        piper_options = _list_available_tts_models()
+        if audio_engine is not None:
+            voice = getattr(audio_engine, "voice", None)
+            current_option_id = str(getattr(voice, "model_path", "") or "") or None
+        if not current_option_id:
+            current_option_id = str(SETTINGS.TTS_MODEL_PATH) or None
+
+    fish_options: list[dict[str, str]] = []
+    if active_engine == "fish_speech":
+        model_id = str(
+            getattr(SETTINGS, "FISH_SPEECH_MODEL_ID", "fishaudio/fish-speech-1.5")
+        )
+        fish_options = [
+            {
+                "id": model_id,
+                "label": model_id.split("/")[-1] if "/" in model_id else model_id,
+                "path": model_id,
+            }
+        ]
+        current_option_id = model_id
+
+    options = piper_options if active_engine == "piper_local" else fish_options
+
+    return {
+        "tts_engine": active_engine,
+        "available_engines": available_engines,
+        "engine_status": engine_status,
+        "current_option_id": current_option_id,
+        "options": options,
+        "fallback_enabled": True,
+        "fallback_target": "piper_local",
+    }
+
+
+async def _sync_fish_speech_runtime_process(tts_engine: str) -> dict[str, Any]:
+    """Start or stop the Fish Speech daemon to match the selected TTS engine."""
+    desired_action = "start" if tts_engine == "fish_speech" else "stop"
+    repo_root = Path(__file__).resolve().parents[1]
+    script_path = repo_root / "scripts" / "llm" / "fish_speech_service.sh"
+    if not script_path.exists():
+        return {
+            "fish_speech_service_action": desired_action,
+            "fish_speech_service_skipped": True,
+            "fish_speech_service_reason": "script_missing",
+        }
+
+    process = await asyncio.create_subprocess_exec(
+        "bash",
+        str(script_path),
+        desired_action,
+        cwd=str(repo_root),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(), timeout=600.0
+        )
+    except asyncio.TimeoutError:
+        process.kill()
+        return {
+            "fish_speech_service_action": desired_action,
+            "fish_speech_service_ok": False,
+            "fish_speech_service_exit_code": None,
+            "fish_speech_service_stdout": "",
+            "fish_speech_service_stderr": "timeout",
+        }
+
+    stdout = stdout_bytes.decode().strip()
+    stderr = stderr_bytes.decode().strip()
+    return {
+        "fish_speech_service_action": desired_action,
+        "fish_speech_service_ok": process.returncode == 0,
+        "fish_speech_service_exit_code": process.returncode,
+        "fish_speech_service_stdout": stdout,
+        "fish_speech_service_stderr": stderr,
+    }
+
+
 async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
     runtime = get_active_llm_runtime()
     if runtime.provider == "gemma4_audio":
@@ -1408,6 +1548,11 @@ async def audio_status_endpoint(request: Request):
         }
 
     status = audio_stream_handler.get_status(operator_agent=operator_agent)
+    if status.get("tts_engine") == "fish_speech":
+        fish_engine_status = await _get_fish_speech_engine_status()
+        status["tts_ready"] = fish_engine_status == "ready"
+        if fish_engine_status in {"offline", "error", "disabled"}:
+            status["tts_fallback"] = True
     if not status.get("message"):
         status["message"] = (
             "Audio channel ready."
@@ -1504,6 +1649,69 @@ async def update_audio_tts_model(payload: AudioTtsModelUpdateRequest, request: R
         "effective_tts_model_path": effective_model_path,
         "reload_state": reload_state,
         "handler_reload_state": handler_reload_state,
+    }
+
+
+@app.get(
+    "/api/v1/audio/tts/runtime",
+    responses={
+        403: {"description": "Endpoint only available from localhost."},
+    },
+)
+async def get_tts_runtime(request: Request):
+    """Return engine-aware TTS runtime state for UI selectors."""
+    _require_localhost_request(request)
+    return await _get_tts_runtime_state()
+
+
+@app.post(
+    "/api/v1/audio/tts/runtime",
+    responses={
+        400: {"description": "Invalid tts_engine value."},
+        403: {"description": "Endpoint only available from localhost."},
+    },
+)
+async def update_tts_runtime(payload: AudioTtsRuntimeUpdateRequest, request: Request):
+    """Switch the active TTS engine and persist the change."""
+    _require_localhost_request(request)
+    valid_engines = {e["engine_id"] for e in _TTS_ENGINES}
+    if payload.tts_engine not in valid_engines:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid tts_engine. Supported: {sorted(valid_engines)}",
+        )
+
+    from venom_core.services.config_manager import config_manager
+
+    config_manager.update_config({"TTS_ENGINE": payload.tts_engine})
+    SETTINGS.TTS_ENGINE = payload.tts_engine
+
+    engine_reload_state: dict[str, Any] = {"tts_engine_changed": False}
+    fish_endpoint = str(
+        getattr(SETTINGS, "FISH_SPEECH_ENDPOINT", "http://127.0.0.1:8024/v1")
+    )
+    base_url = fish_endpoint.removesuffix("/v1")
+
+    if audio_engine is not None:
+        engine_reload_state = await audio_engine.set_tts_engine(
+            payload.tts_engine, fish_speech_endpoint=base_url
+        )
+    if audio_stream_handler is not None:
+        handler_engine = getattr(audio_stream_handler, "audio_engine", None)
+        if handler_engine is not None and handler_engine is not audio_engine:
+            await handler_engine.set_tts_engine(
+                payload.tts_engine, fish_speech_endpoint=base_url
+            )
+
+    fish_service_state = await _sync_fish_speech_runtime_process(payload.tts_engine)
+
+    runtime_state = await _get_tts_runtime_state()
+    return {
+        "status": "success",
+        **engine_reload_state,
+        **fish_service_state,
+        "tts_engine": payload.tts_engine,
+        "engine_status": runtime_state["engine_status"],
     }
 
 

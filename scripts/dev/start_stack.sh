@@ -38,6 +38,7 @@ ENV_EXAMPLE_FILE="$(env_contract_resolve_file "$ENV_EXAMPLE_FILE_RAW" "$ROOT_DIR
 VLLM_ENDPOINT="$(env_contract_get VLLM_ENDPOINT "http://127.0.0.1:8001/v1" "$ENV_FILE")"
 OLLAMA_BASE_URL="$(env_contract_get OLLAMA_BASE_URL "http://localhost:11434" "$ENV_FILE")"
 OLLAMA_HEALTH_URL="$(env_contract_get OLLAMA_HEALTH_URL "${OLLAMA_BASE_URL%/}/api/tags" "$ENV_FILE")"
+TTS_ENGINE="$(env_contract_get TTS_ENGINE "piper_local" "$ENV_FILE")"
 VLLM_START_TIMEOUT_SEC="${VLLM_START_TIMEOUT_SEC:-240}"
 NPM="${NPM:-npm}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -337,6 +338,23 @@ start_gemma4_audio() {
   return 1
 }
 
+start_fish_speech() {
+  local tts_engine_normalized
+  tts_engine_normalized="$(printf '%s' "$TTS_ENGINE" | tr '[:upper:]' '[:lower:]' | tr -d '\r')"
+  if [[ "$tts_engine_normalized" != "fish_speech" ]]; then
+    mk fish-speech-stop >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  echo "▶️  Uruchamiam Fish Speech..."
+  if ! mk fish-speech-start; then
+    echo "❌ Nie udało się uruchomić Fish Speech (aktywny TTS_ENGINE=fish_speech)."
+    return 1
+  fi
+
+  return 0
+}
+
 llm_ready=""
 case "$active_server" in
   onnx)
@@ -379,6 +397,15 @@ if [[ -z "$llm_ready" ]]; then
     llm_ready="none"
   else
     echo "❌ Nie udało się uruchomić aktywnego LLM: $active_server"
+    exit 1
+  fi
+fi
+
+if ! start_fish_speech; then
+  if [[ "$ALLOW_DEGRADED_START" == "1" ]]; then
+    echo "⚠️  Fish Speech niedostępny. Kontynuuję start w trybie zdegradowanym (fallback do Piper)."
+  else
+    echo "❌ Fish Speech nie wystartował."
     exit 1
   fi
 fi

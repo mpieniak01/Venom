@@ -14,6 +14,8 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+_FISH_SPEECH_SYNTHESIS_TIMEOUT_SECONDS = 20.0
+
 
 class WhisperSkill:
     """
@@ -475,6 +477,11 @@ class AudioEngine:
         )
         self.voice = VoiceSkill(model_path=tts_model_path)
         self.tts_engine = tts_engine
+        self.last_tts_sample_rate = (
+            24000
+            if tts_engine == "fish_speech"
+            else int(getattr(self.voice, "output_sample_rate", 22050) or 22050)
+        )
 
         self._fish_client: Optional[Any] = None
         if tts_engine == "fish_speech":
@@ -504,6 +511,50 @@ class AudioEngine:
     def transcribe_file(self, file_path: str, language: str = "pl") -> str:
         """Synchronously transcribe an audio file from disk."""
         return self.whisper.transcribe_file(file_path, language=language)
+
+    async def set_tts_engine(
+        self,
+        engine: str,
+        fish_speech_endpoint: str = "http://127.0.0.1:8024",
+    ) -> dict[str, Any]:
+        """Hot-swap the active TTS engine without restarting AudioEngine.
+
+        Returns state dict with tts_engine and tts_engine_changed flag.
+        """
+        previous = self.tts_engine
+        self.tts_engine = engine
+
+        if engine == "fish_speech":
+            if self._fish_client is None:
+                from venom_core.perception.fish_speech_tts_client import (
+                    FishSpeechTtsClient,
+                )
+
+                self._fish_client = FishSpeechTtsClient(base_url=fish_speech_endpoint)
+            self.last_tts_sample_rate = int(
+                getattr(self._fish_client, "last_sample_rate", 24000) or 24000
+            )
+        else:
+            if self._fish_client is not None:
+                await self._fish_client.aclose()
+                self._fish_client = None
+            self.last_tts_sample_rate = int(
+                getattr(self.voice, "output_sample_rate", 22050) or 22050
+            )
+
+        logger.info(f"TTS engine switched: {previous} -> {engine}")
+        if engine == "fish_speech" and self._fish_client is not None:
+            self.last_tts_sample_rate = int(
+                getattr(self._fish_client, "last_sample_rate", 24000) or 24000
+            )
+        else:
+            self.last_tts_sample_rate = int(
+                getattr(self.voice, "output_sample_rate", 22050) or 22050
+            )
+        return {
+            "tts_engine": engine,
+            "tts_engine_changed": previous != engine,
+        }
 
     async def set_tts_model_path(self, model_path: Optional[str]) -> dict[str, bool]:
         """
@@ -572,12 +623,35 @@ class AudioEngine:
             Audio as float32 numpy array, or None on failure.
         """
         if self.tts_engine == "fish_speech" and self._fish_client is not None:
-            result = await self._fish_client.speak(text)
+            try:
+                result = await asyncio.wait_for(
+                    self._fish_client.speak(text),
+                    timeout=_FISH_SPEECH_SYNTHESIS_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Fish Speech synthesis timed out after %.1fs; falling back to Piper",
+                    _FISH_SPEECH_SYNTHESIS_TIMEOUT_SECONDS,
+                )
+                result = None
+            except Exception as exc:
+                logger.warning(
+                    f"Fish Speech speak() failed; falling back to Piper: {exc}"
+                )
+                result = None
+
             if result is not None:
+                self.last_tts_sample_rate = int(
+                    getattr(self._fish_client, "last_sample_rate", 24000) or 24000
+                )
                 return result
             logger.warning("Fish Speech speak() returned None; falling back to Piper")
 
-        return await self.voice.speak(text)
+        result = await self.voice.speak(text)
+        self.last_tts_sample_rate = int(
+            getattr(self.voice, "output_sample_rate", 22050) or 22050
+        )
+        return result
 
     async def aclose(self) -> None:
         """Release async resources owned by AudioEngine."""

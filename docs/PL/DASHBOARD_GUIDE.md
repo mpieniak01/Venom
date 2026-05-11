@@ -92,6 +92,7 @@ web-next/
 ### 1.7 Cockpit – panel operacyjny
 Najważniejsze bloki w Cockpicie (web-next):
 - **Serwery LLM** – wybór runtime (Ollama/vLLM/ONNX), lista modeli dla wybranego runtime, aktywacja modelu.
+- **Wyjście głosowe** – engine-aware selektor TTS współdzielony z `/voice` i cockpitem, z Piper jako stabilnym defaultem i Fish Speech jako jawnie dostępną alternatywą, jeśli jest dostępny.
 - **Slash commands** – `/gpt`, `/gem`, `/<tool>` z autouzupełnianiem, wymuszenie routingu i badge „Forced”.
 - **Język odpowiedzi** – ustawienie PL/EN/DE w UI jest przekazywane do backendu i służy do tłumaczenia wyniku.
 - **Feedback użytkownika** – kciuk w górę/dół przy odpowiedzi, logi feedbacku i metryki jakości (👍/👎).

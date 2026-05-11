@@ -38,6 +38,25 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
 - `venom_core/core/generation_params_adapter.py` – mapowanie parametrow generacji na format OpenAI/vLLM/Ollama/ONNX.
 - Konfiguracja runtime znajduje sie w `venom_core/config.py` oraz `.env` (np. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
+### Kontrola runtime TTS (PR 211 / 212 / 213)
+- Wyjście głosowe jest traktowane jako osobna warstwa runtime, niezależna od warstwy LLM.
+- `venom_core/main.py` wystawia kanoniczne API sterowania TTS aware of engine:
+  - `GET /api/v1/audio/tts/runtime`
+  - `POST /api/v1/audio/tts/runtime`
+- Aktualnie wspierane silniki TTS widoczne dla użytkownika:
+  - `piper_local`
+  - `fish_speech`
+- `venom_core/perception/audio_engine.py` routuje syntezę mowy do aktywnego silnika i utrzymuje Pipera jako stabilny fallback.
+- `venom_core/perception/fish_speech_tts_client.py` to cienki adapter HTTP do daemona Fish Speech.
+- `scripts/llm/fish_speech_service.sh` zarządza cyklem życia opcjonalnego daemona Fish Speech.
+- `scripts/dev/start_stack.sh` oraz `scripts/stop_venom.sh` zamykają niepotrzebne usługi runtime przy przełączaniu stosu lub zatrzymaniu środowiska.
+
+Wniosek operacyjny:
+
+1. Piper/Gosia pozostaje domyślną i rekomendowaną ścieżką TTS na obecnym hoście testowym RTX 3060.
+2. Fish Speech jest dostępny jako eksperymentalny alternatywny silnik, ale w testach end-to-end voice działa wyraźnie wolniej.
+3. UI musi jawnie pokazywać aktywny silnik TTS i stan fallbacku zamiast ukrywać je za `TTS_MODEL_PATH`.
+
 ### Ujednolicony kontrakt opcji runtime (PR 185)
 - `GET /api/v1/system/llm-runtime/options` jest kanonicznym kontraktem UI dla selektorow runtime/model.
 - Odpowiedz zawiera:

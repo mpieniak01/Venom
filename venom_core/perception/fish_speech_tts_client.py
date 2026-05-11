@@ -12,7 +12,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT = 3.0
-_READ_TIMEOUT = 30.0
+_READ_TIMEOUT = 180.0
 
 
 class FishSpeechTtsClient:
@@ -21,6 +21,7 @@ class FishSpeechTtsClient:
     def __init__(self, base_url: str = "http://127.0.0.1:8024") -> None:
         self.base_url = base_url.rstrip("/")
         self._client: Optional[object] = None
+        self.last_sample_rate: int = 24000
 
     def _get_client(self) -> object:
         try:
@@ -62,6 +63,7 @@ class FishSpeechTtsClient:
         Failures are logged as warnings — callers should fall back to Piper.
         """
         try:
+            self.last_sample_rate = int(sample_rate or 24000)
             client = self._get_client()
             resp = await client.post(  # type: ignore[attr-defined]
                 f"{self.base_url}/v1/tts",
@@ -84,7 +86,7 @@ class FishSpeechTtsClient:
 
 
 def _wav_bytes_to_ndarray(wav_bytes: bytes) -> np.ndarray:
-    """Convert WAV bytes to float32 numpy array."""
+    """Convert WAV bytes to int16 numpy array."""
     buf = io.BytesIO(wav_bytes)
     with wave.open(buf, "rb") as wf:
         n_frames = wf.getnframes()
@@ -92,9 +94,11 @@ def _wav_bytes_to_ndarray(wav_bytes: bytes) -> np.ndarray:
         sample_width = wf.getsampwidth()
 
     if sample_width == 2:
-        audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        audio = np.frombuffer(raw, dtype=np.int16)
     elif sample_width == 4:
-        audio = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
+        audio = np.clip(np.frombuffer(raw, dtype=np.int32) >> 16, -32768, 32767).astype(
+            np.int16
+        )
     else:
         raise ValueError(f"Unsupported WAV sample width: {sample_width}")
 

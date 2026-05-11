@@ -25,3 +25,15 @@ ollama-stop:
 ollama-restart:
 	@echo "🔄 Restartuję Ollama..."
 	@bash scripts/llm/ollama_service.sh restart
+
+fish-speech-start:
+	@echo "🚀 Uruchamiam Fish Speech..."
+	@bash scripts/llm/fish_speech_service.sh start
+
+fish-speech-stop:
+	@echo "⏹️  Zatrzymuję Fish Speech..."
+	@bash scripts/llm/fish_speech_service.sh stop
+
+fish-speech-restart:
+	@echo "🔄 Restartuję Fish Speech..."
+	@bash scripts/llm/fish_speech_service.sh restart

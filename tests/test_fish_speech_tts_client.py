@@ -38,9 +38,9 @@ class TestWavBytesToNdarray:
         original = np.array([0.0, 0.5, -0.5, 1.0, -1.0], dtype=np.float32)
         wav = _make_wav_bytes(original)
         recovered = _wav_bytes_to_ndarray(wav)
-        assert recovered.dtype == np.float32
+        assert recovered.dtype == np.int16
         assert len(recovered) == len(original)
-        np.testing.assert_allclose(recovered, original, atol=1e-4)
+        np.testing.assert_array_equal(recovered, (original * 32767).astype(np.int16))
 
     def test_unsupported_sample_width_raises(self) -> None:
         buf = io.BytesIO()

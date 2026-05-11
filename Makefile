@@ -61,6 +61,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
 		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check prebackup prerestore preverify preaudit predrill prereadiness \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
+		fish-speech-start fish-speech-stop fish-speech-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit llm-runtime-stability-audit llm-runtime-stability-cycle-start llm-runtime-stability-cycle-start2 test-preprod-readonly-smoke help \

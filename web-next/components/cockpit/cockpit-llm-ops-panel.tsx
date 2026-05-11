@@ -1,10 +1,11 @@
 "use client";
 
 import type { LogEntryType } from "@/lib/logs";
-import type { LlmRuntimeTargetOption, LlmServerInfo, Task } from "@/lib/types";
+import type { LlmRuntimeTargetOption, LlmServerInfo, Task, TtsRuntimeState } from "@/lib/types";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { CockpitLogs } from "@/components/cockpit/cockpit-logs";
 import { CockpitModels } from "@/components/cockpit/cockpit-models";
+import { TtsRuntimeSelector } from "@/components/audio/tts-runtime-selector";
 
 type CockpitLlmOpsPanelProps = Readonly<{
   llmServersLoading: boolean;
@@ -47,6 +48,9 @@ type CockpitLlmOpsPanelProps = Readonly<{
     | "log_path"
     | "pid_path"
   > | null;
+  ttsRuntimeState?: TtsRuntimeState | null;
+  onSelectTtsEngine?: (engineId: string) => void;
+  ttsEngineChanging?: boolean;
 }>;
 
 export function CockpitLlmOpsPanel({
@@ -72,6 +76,9 @@ export function CockpitLlmOpsPanel({
   llmActionPending,
   onActivateServer,
   gemma4AudioRuntimeInfo,
+  ttsRuntimeState,
+  onSelectTtsEngine,
+  ttsEngineChanging,
   connected,
   logFilter,
   onLogFilterChange,
@@ -109,6 +116,17 @@ export function CockpitLlmOpsPanel({
         onActivateServer={onActivateServer}
         gemma4AudioRuntimeInfo={gemma4AudioRuntimeInfo}
       />
+      {ttsRuntimeState && (
+        <div className="px-4 py-2">
+          <TtsRuntimeSelector
+            runtimeState={ttsRuntimeState}
+            onSelectEngine={onSelectTtsEngine ?? (() => undefined)}
+            onSelectOption={() => undefined}
+            engineChanging={ttsEngineChanging}
+            mode="compact"
+          />
+        </div>
+      )}
       <CockpitLogs
         connected={connected}
         logFilter={logFilter}

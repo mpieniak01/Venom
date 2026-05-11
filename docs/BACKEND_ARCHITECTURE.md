@@ -57,6 +57,25 @@ Architecture guard tests:
 - `venom_core/core/generation_params_adapter.py` – maps generation params to OpenAI/vLLM/Ollama/ONNX formats.
 - Runtime configuration lives in `venom_core/config.py` and `.env` (e.g. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
+### TTS runtime control (PR 211 / 212 / 213)
+- Voice output is now treated as an engine-aware runtime plane, separate from the LLM plane.
+- `venom_core/main.py` exposes the canonical engine-aware TTS control API:
+  - `GET /api/v1/audio/tts/runtime`
+  - `POST /api/v1/audio/tts/runtime`
+- Supported user-facing TTS engines in the current implementation:
+  - `piper_local`
+  - `fish_speech`
+- `venom_core/perception/audio_engine.py` routes voice synthesis to the active engine and keeps Piper as the stable fallback.
+- `venom_core/perception/fish_speech_tts_client.py` is the thin HTTP adapter to the Fish Speech daemon.
+- `scripts/llm/fish_speech_service.sh` manages the optional Fish Speech daemon lifecycle.
+- `scripts/dev/start_stack.sh` and `scripts/stop_venom.sh` stop irrelevant runtime services when switching stack roles or shutting down the environment.
+
+Operational conclusion:
+
+1. Piper/Gosia remains the default and recommended TTS path on the current RTX 3060 test host.
+2. Fish Speech is available as an experimental alternative engine, but it is slower in end-to-end voice tests.
+3. The UI must surface the active TTS engine and the fallback state explicitly instead of hiding them behind `TTS_MODEL_PATH`.
+
 ### Unified runtime options contract (PR 185)
 - `GET /api/v1/system/llm-runtime/options` is the canonical UI contract for runtime/model selectors.
 - Response includes:

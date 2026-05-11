@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -56,6 +57,25 @@ class TestAudioEngineTtsEngineParam:
 
             engine = AudioEngine(tts_engine="piper_local")
         assert engine._fish_client is None
+
+    @pytest.mark.asyncio
+    async def test_switching_to_fish_speech_preserves_fish_sample_rate(self) -> None:
+        with (
+            patch("venom_core.perception.audio_engine.WhisperSkill"),
+            patch("venom_core.perception.audio_engine.VoiceSkill"),
+        ):
+            from venom_core.perception.audio_engine import AudioEngine
+            from venom_core.perception.fish_speech_tts_client import FishSpeechTtsClient
+
+            engine = AudioEngine(tts_engine="piper_local")
+            mock_client = AsyncMock(spec=FishSpeechTtsClient)
+            mock_client.last_sample_rate = 24000
+            engine._fish_client = mock_client
+
+            state = await engine.set_tts_engine("fish_speech")
+
+        assert state["tts_engine"] == "fish_speech"
+        assert engine.last_tts_sample_rate == 24000
 
 
 class TestAudioEngineSpeakRouting:
@@ -120,6 +140,41 @@ class TestAudioEngineSpeakRouting:
 
         assert result is fallback_audio
         mock_voice.speak.assert_called_once_with("fallback test")
+
+    @pytest.mark.asyncio
+    async def test_fish_speech_falls_back_to_piper_on_timeout(
+        self, monkeypatch
+    ) -> None:
+        fallback_audio = np.zeros(50, dtype=np.float32)
+        monkeypatch.setattr(
+            "venom_core.perception.audio_engine._FISH_SPEECH_SYNTHESIS_TIMEOUT_SECONDS",
+            0.001,
+        )
+        with (
+            patch("venom_core.perception.audio_engine.WhisperSkill"),
+            patch("venom_core.perception.audio_engine.VoiceSkill") as mock_voice_cls,
+        ):
+            from venom_core.perception.audio_engine import AudioEngine
+            from venom_core.perception.fish_speech_tts_client import FishSpeechTtsClient
+
+            mock_voice = MagicMock()
+            mock_voice.speak = AsyncMock(return_value=fallback_audio)
+            mock_voice_cls.return_value = mock_voice
+
+            engine = AudioEngine(tts_engine="fish_speech")
+
+            async def _slow_speak(_text: str):
+                await asyncio.sleep(0.01)
+                return np.ones(10, dtype=np.int16)
+
+            mock_client = AsyncMock(spec=FishSpeechTtsClient)
+            mock_client.speak = AsyncMock(side_effect=_slow_speak)
+            engine._fish_client = mock_client
+
+            result = await engine.speak("timeout test")
+
+        assert result is fallback_audio
+        mock_voice.speak.assert_called_once_with("timeout test")
 
 
 class TestAudioEngineWarmupRouting:

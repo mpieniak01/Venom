@@ -10,6 +10,7 @@ import time
 import uuid
 import wave
 from datetime import UTC, datetime
+from numbers import Real
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
 
@@ -1409,8 +1410,11 @@ class AudioStreamHandler:
         try:
             conn = self.active_connections.get(connection_id)
             if conn:
-                # Konwertuj do bytes
-                audio_bytes = audio_data.tobytes()
+                audio_array = np.asarray(audio_data)
+                if audio_array.dtype != np.int16:
+                    if np.issubdtype(audio_array.dtype, np.floating):
+                        audio_array = np.clip(audio_array * 32767.0, -32768, 32767)
+                    audio_array = audio_array.astype(np.int16, copy=False)
 
                 # Zakoduj jako base64 (dla JSON) lub wyślij bezpośrednio jako bytes
                 # Tutaj używamy JSON dla prostoty
@@ -1418,11 +1422,11 @@ class AudioStreamHandler:
 
                 message = {
                     "type": "audio_response",
-                    "audio": base64.b64encode(audio_bytes).decode("utf-8"),
+                    "audio": base64.b64encode(audio_array.tobytes()).decode("utf-8"),
                     "sample_rate": self._get_tts_sample_rate(),
                     "format": "int16",
                     "channels": 1,
-                    "bytes": len(audio_bytes),
+                    "bytes": int(audio_array.nbytes),
                 }
 
                 await conn["websocket"].send_text(json.dumps(message))
@@ -1432,8 +1436,22 @@ class AudioStreamHandler:
 
     def _get_tts_sample_rate(self) -> int:
         """Zwraca sample rate ostatniej syntezy TTS."""
-        voice = getattr(self.audio_engine, "voice", None) if self.audio_engine else None
-        return int(getattr(voice, "output_sample_rate", 22050) or 22050)
+        if self.audio_engine is None:
+            return 22050
+        if getattr(self.audio_engine, "tts_engine", "piper_local") == "fish_speech":
+            fish_client = getattr(self.audio_engine, "_fish_client", None)
+            fish_sample_rate = getattr(fish_client, "last_sample_rate", None)
+            if isinstance(fish_sample_rate, Real):
+                return int(fish_sample_rate or 24000)
+            return 24000
+        last_sample_rate = getattr(self.audio_engine, "last_tts_sample_rate", None)
+        if isinstance(last_sample_rate, Real):
+            return int(last_sample_rate or 22050)
+        voice = getattr(self.audio_engine, "voice", None)
+        voice_sample_rate = getattr(voice, "output_sample_rate", None)
+        if isinstance(voice_sample_rate, Real):
+            return int(voice_sample_rate or 22050)
+        return 22050
 
 
 # Singleton instance

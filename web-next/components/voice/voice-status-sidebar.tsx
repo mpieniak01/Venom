@@ -74,7 +74,9 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
             <span className="flex items-center gap-1.5">
               <ReadyDot ready={status.tts_ready} />
               <span>
-                {status.tts_backend ?? "—"}
+                {status.tts_engine === "fish_speech"
+                  ? "Fish Speech"
+                  : (status.tts_backend ?? "—")}
                 {status.tts_fallback ? ` (${t("voice.controls.ttsFallback")})` : ""}
               </span>
             </span>

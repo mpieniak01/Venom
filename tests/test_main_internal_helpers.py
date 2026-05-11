@@ -37,6 +37,16 @@ def test_extract_available_local_models_skips_missing_name_key():
     assert main_module._extract_available_local_models(models, "ollama") == {"ok"}
 
 
+def test_main_app_includes_runtime_and_system_routes():
+    """Main app should expose the expected runtime/system route prefixes."""
+    paths = {route.path for route in main_module.app.routes if hasattr(route, "path")}
+
+    assert "/api/v1/system/llm-servers" in paths
+    assert "/api/v1/system/llm-servers/active" in paths
+    assert "/api/v1/system/llm-runtime/options" in paths
+    assert "/api/v1/audio/status" in paths
+
+
 def test_select_startup_model_priority_chain():
     available = {"model-a", "model-b"}
     assert (

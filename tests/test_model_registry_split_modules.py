@@ -219,6 +219,8 @@ async def test_runtime_paths(monkeypatch, tmp_path: Path):
         REPO_ROOT=str(tmp_path),
         LLM_MODEL_NAME="",
         ACTIVE_LLM_SERVER="",
+        LLM_LOCAL_ENDPOINT="http://localhost:8001/v1",
+        GEMMA4_AUDIO_ENDPOINT="http://localhost:8014/v1",
     )
     config_manager = SimpleNamespace(update_config=Mock())
 

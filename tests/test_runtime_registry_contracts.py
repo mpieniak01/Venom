@@ -24,7 +24,7 @@ def test_module_registry_manifest_path_helpers():
     assert module_registry._looks_like_manifest_path("id|a.b:router") is False
 
 
-def test_onnx_helpers_and_model_runtime_branch(tmp_path):
+def test_onnx_helpers_and_model_runtime_branch(monkeypatch, tmp_path):
     assert OnnxLlmClient._normalize_execution_provider("unknown") == "cuda"
     assert OnnxLlmClient._provider_fallback_order("cpu") == ["cpu"]
     assert "DML" in OnnxLlmClient._provider_aliases("directml")
@@ -39,6 +39,28 @@ def test_onnx_helpers_and_model_runtime_branch(tmp_path):
         "model-x", meta, updates, settings
     )
     assert updates["VLLM_SERVED_MODEL_NAME"] == "model-x"
+
+    from venom_core import config as config_module
+    from venom_core.services.config_manager import config_manager
+
+    settings = config_module.SETTINGS
+    monkeypatch.setattr(
+        settings, "GEMMA4_AUDIO_ENDPOINT", "http://localhost:8014/v1", raising=False
+    )
+    monkeypatch.setattr(
+        settings, "LLM_LOCAL_ENDPOINT", "http://localhost:11434", raising=False
+    )
+    monkeypatch.setattr(settings, "LLM_MODEL_NAME", "old-model", raising=False)
+    monkeypatch.setattr(settings, "ACTIVE_LLM_SERVER", "ollama", raising=False)
+    monkeypatch.setattr(settings, "LLM_SERVICE_TYPE", "local", raising=False)
+    monkeypatch.setattr(config_manager, "update_config", MagicMock(), raising=False)
+
+    configured = model_registry_runtime.apply_model_activation_config(
+        "model-gemma4", "gemma4_audio", SimpleNamespace(local_path="")
+    )
+    assert configured.ACTIVE_LLM_SERVER == "gemma4_audio"
+    assert configured.LLM_LOCAL_ENDPOINT == "http://localhost:8014/v1"
+    assert configured.LAST_MODEL_GEMMA4_AUDIO == "model-gemma4"
 
 
 @pytest.mark.asyncio

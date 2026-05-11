@@ -52,15 +52,14 @@ def infer_local_provider(endpoint: Optional[str]) -> str:
         return "local"
     if "ollama" in endpoint_lower or "11434" in endpoint_lower:
         return "ollama"
-    if "vllm" in endpoint_lower:
+    if "vllm" in endpoint_lower or ":8001" in endpoint_lower:
         return "vllm"
+    if "gemma4" in endpoint_lower or "8014" in endpoint_lower:
+        return "gemma4_audio"
     if "onnx" in endpoint_lower:
         return "onnx"
     if "lmstudio" in endpoint_lower:
         return "lmstudio"
-    if ":8000" in endpoint_lower or ":8001" in endpoint_lower:
-        # Najczęstsze porty nowych instancji vLLM w tym projekcie
-        return "vllm"
     return "local"
 
 
@@ -153,6 +152,12 @@ def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
             f"{base}/api/tags"
             if base
             else build_http_url("localhost", 11434, "/api/tags")
+        )
+
+    if runtime.provider == "gemma4_audio":
+        base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+        return (
+            f"{base}/health" if base else build_http_url("localhost", 8014, "/health")
         )
 
     endpoint = runtime.endpoint.rstrip("/")

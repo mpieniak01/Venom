@@ -12,7 +12,7 @@ accelerate>=1.12.0,<2.0       # Runtime treningu (HF accelerate)
 datasets>=4.6.0,<5.0          # Hugging Face Datasets library
 trl>=0.8.6,<0.9.0             # TRL (SFTTrainer) - pin kompatybilny z obecnym kodem
 peft>=0.18.0,<0.19.0          # Parameter-Efficient Fine-Tuning (LoRA)
-transformers>=4.57.0,<5.0.0   # Modele/tokenizacja HF (jawnie, nie tylko tranzytywnie)
+transformers>=5.0.0,<6.0.0    # Modele/tokenizacja HF (zgodnie ze stosem Gemma 4 runtime)
 torch==2.8.0                  # Pin kompatybilny z obecnym stosem runtime (vllm/torchvision/torchaudio/xformers)
 pypandoc>=1.14,<2.0           # Wrapper Pandoc do konwersji dokumentów
 pypdf>=4.0.0                  # Ekstrakcja tekstu z PDF

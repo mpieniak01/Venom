@@ -14,11 +14,13 @@ def test_runtime_profile_name_and_allowed_servers():
     assert svc.allowed_local_servers(profile="full", onnx_enabled=False) == {
         "ollama",
         "vllm",
+        "gemma4_audio",
     }
     assert svc.allowed_local_servers(profile="full", onnx_enabled=True) == {
         "ollama",
         "vllm",
         "onnx",
+        "gemma4_audio",
     }
 
 
@@ -27,7 +29,7 @@ def test_installed_local_servers_composition():
         ollama_installed=True,
         vllm_installed=False,
         onnx_installed=True,
-    ) == {"ollama", "onnx"}
+    ) == {"ollama", "onnx", "gemma4_audio"}
 
 
 def test_provider_and_model_key_helpers():

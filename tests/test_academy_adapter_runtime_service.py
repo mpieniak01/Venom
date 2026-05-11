@@ -614,6 +614,16 @@ def test_resolve_limits_fall_back_to_defaults(monkeypatch) -> None:
     ) == pytest.approx(0.25)
 
 
+def test_resolve_limits_use_defaults_for_non_positive_values(monkeypatch) -> None:
+    monkeypatch.setenv("ACADEMY_ADAPTER_MERGE_MAX_RSS_MB", "0")
+    monkeypatch.setenv("ACADEMY_ADAPTER_MEMORY_MONITOR_INTERVAL_SEC", "-1")
+
+    assert ars._resolve_merge_memory_limit_mb(settings_obj=SimpleNamespace()) == 15360
+    assert ars._resolve_memory_monitor_interval_sec(
+        settings_obj=SimpleNamespace()
+    ) == pytest.approx(0.25)
+
+
 def test_read_process_rss_mb_returns_zero_for_missing_pid() -> None:
     assert ars._read_process_rss_mb(pid=999_999_999) == pytest.approx(0.0)
 
@@ -696,6 +706,23 @@ def test_build_hf_cache_env_sets_local_cache_paths(tmp_path: Path) -> None:
     )
     assert env["TRANSFORMERS_CACHE"] == str(
         (tmp_path / "models" / "cache" / "huggingface" / "hub").resolve()
+    )
+
+
+def test_build_hf_cache_env_warns_when_cache_dirs_cannot_be_created(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
+    warning = MagicMock()
+
+    monkeypatch.setattr(ars.logger, "warning", warning)
+    monkeypatch.setattr(ars.Path, "mkdir", MagicMock(side_effect=OSError("denied")))
+
+    env = ars._build_hf_cache_env(base_env={}, settings_obj=settings)
+
+    assert env["HF_HOME"].endswith("models/cache/huggingface")
+    warning.assert_called_once_with(
+        "Failed to ensure local Hugging Face cache directories."
     )
 
 
@@ -949,6 +976,35 @@ def test_deploy_adapter_to_vllm_runtime_raises_for_non_runtime_model_dir(
             )
 
 
+def test_deploy_adapter_to_vllm_runtime_rejects_missing_adapter_and_empty_base_model(
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(ACADEMY_MODELS_DIR=str(tmp_path / "models"))
+
+    with pytest.raises(FileNotFoundError, match="Adapter not found"):
+        ars._deploy_adapter_to_vllm_runtime(
+            adapter_id="missing-adapter",
+            settings_obj=settings,
+        )
+
+    adapter_dir = Path(settings.ACADEMY_MODELS_DIR) / "adapter-empty-base"
+    (adapter_dir / "adapter").mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch.object(ars, "_require_trusted_adapter_base_model", return_value=""),
+        patch.object(
+            ars, "_resolve_local_training_base_model_for_merge", return_value=""
+        ),
+    ):
+        with pytest.raises(
+            RuntimeError, match="Adapter base model is empty; cannot deploy to vLLM"
+        ):
+            ars._deploy_adapter_to_vllm_runtime(
+                adapter_id="adapter-empty-base",
+                settings_obj=settings,
+            )
+
+
 def test_runtime_helper_paths_and_onnx_export_cmd(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir(parents=True, exist_ok=True)
@@ -981,6 +1037,23 @@ def test_runtime_helper_paths_and_onnx_export_cmd(tmp_path: Path) -> None:
     assert runtime_tmp.exists()
     ars._cleanup_optional_dir(runtime_tmp)
     assert not runtime_tmp.exists()
+    ars._cleanup_optional_dir(None)
+
+
+def test_runtime_path_helpers_reject_unsafe_targets_and_cleanup_optional_dir() -> None:
+    with pytest.raises(ValueError, match="Invalid file name"):
+        ars._resolve_safe_child_file_path(
+            parent_dir=Path("/tmp"),
+            file_name="../escape.json",
+        )
+
+    with pytest.raises(ValueError, match="Invalid file name"):
+        ars._write_json_file_in_dir(
+            directory=Path("/tmp"),
+            file_name="../escape.json",
+            payload={"ok": False},
+        )
+
     ars._cleanup_optional_dir(None)
 
 
@@ -1027,3 +1100,80 @@ def test_subprocess_guard_helpers_timeout_and_memory_exceeded(monkeypatch) -> No
     )
     assert state["exceeded"] is True
     assert terminate_called["value"] is True
+
+
+def test_process_termination_helpers_cover_error_paths(monkeypatch) -> None:
+    class _KillErrorProcess:
+        def kill(self):
+            raise OSError("nope")
+
+    ars._kill_process_safely(process=_KillErrorProcess())
+
+    class _GraceProcess:
+        def __init__(self):
+            self.poll_calls = 0
+            self.sent = False
+
+        def send_signal(self, _sig):
+            self.sent = True
+            raise OSError("sigterm failed")
+
+        def poll(self):
+            self.poll_calls += 1
+            return None if self.poll_calls < 2 else None
+
+    kill_called = {"value": False}
+    monkeypatch.setattr(
+        ars,
+        "_kill_process_safely",
+        lambda **_kwargs: kill_called.__setitem__("value", True),
+    )
+    monkeypatch.setattr(ars.time, "sleep", lambda _seconds: None)
+
+    process = _GraceProcess()
+    ars._terminate_process_with_grace(
+        process=process,
+        stop_event=threading.Event(),
+    )
+
+    assert process.sent is True
+    assert kill_called["value"] is True
+
+
+def test_restart_vllm_runtime_runs_service_and_surfaces_failures(
+    tmp_path: Path,
+) -> None:
+    scripts_dir = tmp_path / "scripts" / "llm"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    service_script = scripts_dir / "vllm_service.sh"
+    service_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+    with patch.object(
+        ars.subprocess,
+        "run",
+        return_value=SimpleNamespace(returncode=0, stdout="ok", stderr=""),
+    ) as mocked_run:
+        ars._restart_vllm_runtime(
+            resolve_repo_root_fn=lambda **_kwargs: tmp_path,
+            settings_obj=SimpleNamespace(),
+        )
+
+    mocked_run.assert_called_once_with(
+        ["bash", str(service_script), "restart"],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+
+    with patch.object(
+        ars.subprocess,
+        "run",
+        return_value=SimpleNamespace(returncode=1, stdout="", stderr="broken"),
+    ):
+        with pytest.raises(
+            RuntimeError, match="Failed to restart vLLM runtime: broken"
+        ):
+            ars._restart_vllm_runtime(
+                resolve_repo_root_fn=lambda **_kwargs: tmp_path,
+                settings_obj=SimpleNamespace(),
+            )

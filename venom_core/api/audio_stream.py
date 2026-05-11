@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
 
+import anyio
+import httpx
 import numpy as np
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -36,6 +38,8 @@ VOICE_SESSION_ROOT = PROJECT_ROOT / "data" / "audio" / "voice_sessions"
 MIN_VOICE_SESSION_DURATION_SEC = 0.25
 VOICE_SESSION_WAV_FILENAME = "recording.wav"
 VOICE_SESSION_METADATA_FILENAME = "metadata.json"
+GEMMA4_AUDIO_HEALTH_TIMEOUT_SEC = 5.0
+GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC = 120.0
 
 
 def _load_voice_session_metadata(metadata_path: Path) -> dict[str, Any]:
@@ -85,6 +89,13 @@ def _build_voice_session_record(
         "peak_after_normalization": metadata.get("peak_after_normalization"),
         "timings_ms": metadata.get("timings_ms") or {},
         "runtime": metadata.get("runtime") or {},
+        "pipeline_id": metadata.get("pipeline_id"),
+        "audio_runtime_provider": metadata.get("audio_runtime_provider"),
+        "audio_runtime_model": metadata.get("audio_runtime_model"),
+        "audio_input_status": metadata.get("audio_input_status"),
+        "fallback_reason": metadata.get("fallback_reason"),
+        "native_audio_ms": metadata.get("native_audio_ms"),
+        "runtime_log_path": metadata.get("runtime_log_path"),
         "transcription": metadata.get("transcription") or "",
         "response_text": metadata.get("response_text") or "",
     }
@@ -225,6 +236,7 @@ class AudioStreamHandler:
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "dependencies": dependencies,
+            **self._gemma4_audio_runtime_snapshot(),
         }
 
     def get_latest_voice_session(self) -> dict[str, object] | None:
@@ -554,6 +566,250 @@ class AudioStreamHandler:
         voice_mode = conn["voice_mode"]
         return str(voice_mode).strip() or "standard"
 
+    def _gemma4_audio_runtime_snapshot(self) -> dict[str, Any]:
+        endpoint = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""), "")
+        log_path = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), "")
+        pid_path = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_PID_PATH", ""), "")
+        return {
+            "audio_runtime_provider": "gemma4_audio",
+            "audio_runtime_model": _coerce_str(
+                getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", ""), ""
+            ),
+            "audio_runtime_endpoint": endpoint,
+            "audio_runtime_enabled": bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False)
+            ),
+            "audio_runtime_selected": self._gemma4_audio_runtime_selected(),
+            "audio_runtime_supports_audio": bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
+            ),
+            "audio_runtime_supports_text": bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_TEXT", True)
+            ),
+            "audio_runtime_supports_unified_multimodal_respond": True,
+            "audio_runtime_runtime_mode": "processor_model",
+            "audio_runtime_log_path": log_path,
+            "audio_runtime_pid_path": pid_path,
+        }
+
+    def _gemma4_audio_service_origin(self) -> str:
+        endpoint = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""), "")
+        if not endpoint:
+            return ""
+        endpoint = endpoint.rstrip("/")
+        if endpoint.endswith("/v1"):
+            return endpoint[:-3].rstrip("/")
+        return endpoint
+
+    def _gemma4_audio_respond_url(self) -> str:
+        origin = self._gemma4_audio_service_origin()
+        return f"{origin}/v1/respond" if origin else ""
+
+    def _gemma4_audio_health_url(self) -> str:
+        origin = self._gemma4_audio_service_origin()
+        return f"{origin}/health" if origin else ""
+
+    def _gemma4_audio_runtime_enabled(self) -> bool:
+        return bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+
+    def _gemma4_audio_runtime_selected(self) -> bool:
+        if not self._gemma4_audio_runtime_enabled():
+            return False
+        active_server = _coerce_str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", ""), "")
+        return active_server == "gemma4_audio"
+
+    async def _gemma4_audio_health_ok(self) -> bool:
+        health_url = self._gemma4_audio_health_url()
+        if not health_url:
+            return False
+        try:
+            timeout = httpx.Timeout(GEMMA4_AUDIO_HEALTH_TIMEOUT_SEC, connect=2.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(health_url)
+            if response.status_code != 200:
+                return False
+            payload = response.json()
+            status = str(payload.get("status") or "").strip().lower()
+            return status in {"ok", "warming"}
+        except Exception:
+            return False
+
+    async def _invoke_gemma4_audio_runtime(
+        self,
+        wav_path: Path,
+        connection_id: int,
+    ) -> dict[str, Any]:
+        respond_url = self._gemma4_audio_respond_url()
+        if not respond_url:
+            raise RuntimeError("Gemma4 audio endpoint is not configured")
+
+        prompt = (
+            "Odpowiedz po polsku na wypowiedź użytkownika z nagrania. "
+            "Jeśli to polecenie, wykonaj je krótko i bez dodatkowych komentarzy."
+        )
+        payload = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "audio", "path": str(wav_path.name)},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+            "task": "question",
+            "question": prompt,
+            "system_prompt": _coerce_str(
+                getattr(SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
+            ),
+            "max_new_tokens": _coerce_int(
+                getattr(SETTINGS, "GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
+            ),
+        }
+
+        timeout = httpx.Timeout(GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC, connect=5.0)
+        async with await anyio.open_file(wav_path, "rb") as audio_file:
+            files = {
+                "audio": (wav_path.name, audio_file, "audio/wav"),
+            }
+            data = {
+                "request": json.dumps(payload, ensure_ascii=False),
+            }
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(respond_url, data=data, files=files)
+
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"Gemma4 audio runtime HTTP {response.status_code}: {response.text}"
+            )
+
+        data = response.json()
+        text = _coerce_str(data.get("text"), "")
+        if not text:
+            raise RuntimeError("Gemma4 audio runtime returned an empty response")
+
+        return {
+            "text": text,
+            "response_text": text,
+            "model": _coerce_str(
+                data.get("model") or getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", ""),
+                "",
+            ),
+            "duration_ms": data.get("duration_ms"),
+            "connection_id": connection_id,
+        }
+
+    async def _process_native_gemma4_audio_pipeline(
+        self,
+        connection_id: int,
+        session_dir: Path,
+        wav_path: Path,
+        timings_ms: dict[str, float],
+        total_started_at: float,
+        operator_agent,
+    ) -> bool:
+        if not self._gemma4_audio_runtime_selected():
+            return False
+        if not self.audio_engine:
+            return False
+
+        snapshot = self._gemma4_audio_runtime_snapshot()
+        if not await self._gemma4_audio_health_ok():
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    **snapshot,
+                    "pipeline_id": "whisper_llm_piper",
+                    "audio_input_status": "fallback",
+                    "fallback_reason": "gemma4_audio health check failed",
+                    "timings_ms": timings_ms,
+                    "runtime": self._build_runtime_metadata(operator_agent),
+                    "voice_mode": self._connection_voice_mode(connection_id),
+                },
+            )
+            return False
+
+        await self._send_json(
+            connection_id, {"type": "processing", "status": "native_audio"}
+        )
+
+        native_started_at = time.perf_counter()
+        try:
+            runtime_result = await self._invoke_gemma4_audio_runtime(
+                wav_path, connection_id
+            )
+        except Exception as exc:
+            timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    **snapshot,
+                    "pipeline_id": "whisper_llm_piper",
+                    "audio_input_status": "fallback",
+                    "fallback_reason": str(exc),
+                    "native_audio_ms": timings_ms["native_audio_ms"],
+                    "timings_ms": timings_ms,
+                    "runtime": self._build_runtime_metadata(operator_agent),
+                    "voice_mode": self._connection_voice_mode(connection_id),
+                },
+            )
+            logger.warning(
+                "Gemma4 audio runtime failed for connection_id=%s: %s",
+                connection_id,
+                exc,
+            )
+            return False
+
+        timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
+        transcription = runtime_result["text"]
+        response_text = runtime_result.get("response_text") or transcription
+
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                **snapshot,
+                "pipeline_id": "gemma4_audio_piper",
+                "audio_input_status": "verified",
+                "fallback_reason": "",
+                "native_audio_ms": timings_ms["native_audio_ms"],
+                "transcription": transcription,
+                "transcription_length": len(transcription or ""),
+                "response_text": response_text,
+                "response_length": len(response_text or ""),
+                "timings_ms": timings_ms,
+                "runtime": self._build_runtime_metadata(operator_agent),
+                "voice_mode": self._connection_voice_mode(connection_id),
+            },
+        )
+
+        await self._send_json(
+            connection_id,
+            {"type": "transcription", "text": transcription, "confidence": 1.0},
+        )
+        await self._send_json(
+            connection_id, {"type": "response_text", "text": response_text}
+        )
+        await self._send_json(connection_id, {"type": "processing", "status": "tts"})
+
+        tts_started_at = time.perf_counter()
+        audio_response = await self.audio_engine.speak(response_text)
+        timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
+        timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                "timings_ms": timings_ms,
+                "runtime": self._build_runtime_metadata(operator_agent),
+                "pipeline_id": "gemma4_audio_piper",
+            },
+        )
+
+        if audio_response is not None:
+            await self._send_audio(connection_id, audio_response)
+
+        await self._send_json(connection_id, {"type": "complete"})
+        return True
+
     async def _process_audio_buffer(
         self,
         connection_id: int,
@@ -592,6 +848,16 @@ class AudioStreamHandler:
             )
             logger.info(f"Zapisano sesję audio: {session_dir}")
 
+            if await self._process_native_gemma4_audio_pipeline(
+                connection_id,
+                session_dir,
+                session_dir / VOICE_SESSION_WAV_FILENAME,
+                timings_ms,
+                total_started_at,
+                operator_agent,
+            ):
+                return
+
             # STT
             if not self.audio_engine:
                 logger.warning("AudioEngine nie jest dostępny")
@@ -614,10 +880,16 @@ class AudioStreamHandler:
             self._update_voice_session_metadata(
                 session_dir,
                 {
+                    "pipeline_id": "whisper_llm_piper",
                     "transcription": transcription,
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
                     "voice_mode": self._connection_voice_mode(connection_id),
+                    "audio_input_status": "verified",
+                    "fallback_reason": "",
+                    "runtime_log_path": _coerce_str(
+                        getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""
+                    ),
                 },
             )
 
@@ -649,6 +921,7 @@ class AudioStreamHandler:
                 self._update_voice_session_metadata(
                     session_dir,
                     {
+                        "pipeline_id": "whisper_llm_piper",
                         "response_text": response_text,
                         "response_length": len(response_text or ""),
                         "timings_ms": timings_ms,
@@ -746,6 +1019,16 @@ class AudioStreamHandler:
             )
             logger.info(f"Zapisano sesję audio MediaRecorder: {session_dir}")
 
+            if await self._process_native_gemma4_audio_pipeline(
+                connection_id,
+                session_dir,
+                wav_path,
+                timings_ms,
+                total_started_at,
+                operator_agent,
+            ):
+                return
+
             if not self.audio_engine:
                 logger.warning("AudioEngine nie jest dostępny")
                 await self._send_json(
@@ -767,9 +1050,15 @@ class AudioStreamHandler:
             self._update_voice_session_metadata(
                 session_dir,
                 {
+                    "pipeline_id": "whisper_llm_piper",
                     "transcription": transcription,
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
+                    "audio_input_status": "verified",
+                    "fallback_reason": "",
+                    "runtime_log_path": _coerce_str(
+                        getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""
+                    ),
                 },
             )
 
@@ -798,6 +1087,7 @@ class AudioStreamHandler:
                 self._update_voice_session_metadata(
                     session_dir,
                     {
+                        "pipeline_id": "whisper_llm_piper",
                         "response_text": response_text,
                         "response_length": len(response_text or ""),
                         "timings_ms": timings_ms,
@@ -1039,6 +1329,7 @@ class AudioStreamHandler:
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "tts_sample_rate": self._get_tts_sample_rate(),
+            **self._gemma4_audio_runtime_snapshot(),
         }
 
     def _update_voice_session_metadata(

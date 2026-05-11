@@ -117,6 +117,34 @@ class LlmServerController:
             },
         )
 
+        # Gemma 4 Audio Native Runtime Service
+        gemma4_audio_start_cmd = _normalize(
+            cfg.GEMMA4_AUDIO_START_COMMAND,
+            f"bash {repo_root / 'scripts/llm/gemma4_audio_service.sh'} start",
+        )
+        gemma4_audio_stop_cmd = _normalize(
+            cfg.GEMMA4_AUDIO_STOP_COMMAND,
+            f"bash {repo_root / 'scripts/llm/gemma4_audio_service.sh'} stop",
+        )
+        gemma4_audio_restart_cmd = _normalize(
+            cfg.GEMMA4_AUDIO_RESTART_COMMAND,
+            f"bash {repo_root / 'scripts/llm/gemma4_audio_service.sh'} restart",
+        )
+
+        servers["gemma4_audio"] = LlmServerConfig(
+            name="gemma4_audio",
+            display_name="Gemma 4 Audio",
+            provider="gemma4_audio",
+            description="Native audio inference daemon for Gemma 4 models (port 8014).",
+            endpoint=cfg.GEMMA4_AUDIO_ENDPOINT,
+            health_url=f"{cfg.GEMMA4_AUDIO_ENDPOINT.rstrip('/')}/health",
+            commands={
+                "start": gemma4_audio_start_cmd,
+                "stop": gemma4_audio_stop_cmd,
+                "restart": gemma4_audio_restart_cmd,
+            },
+        )
+
         # ONNX Runtime działa in-process, ale utrzymujemy spójny wpis serwera
         # żeby testy i UI mogły traktować ONNX jako trzeci lokalny stack.
         servers["onnx"] = LlmServerConfig(

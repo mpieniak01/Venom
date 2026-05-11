@@ -18,6 +18,10 @@ def _dummy_settings(**kwargs):
         "OLLAMA_START_COMMAND": "",
         "OLLAMA_STOP_COMMAND": "",
         "OLLAMA_RESTART_COMMAND": "",
+        "GEMMA4_AUDIO_ENDPOINT": "http://localhost:8014/v1",
+        "GEMMA4_AUDIO_START_COMMAND": "",
+        "GEMMA4_AUDIO_STOP_COMMAND": "",
+        "GEMMA4_AUDIO_RESTART_COMMAND": "",
         "LLM_SERVICE_TYPE": "local",
         "OPENAI_API_KEY": "",
         "ENABLE_SANDBOX": False,
@@ -33,6 +37,7 @@ def test_list_servers_contains_known_entries():
     assert "vllm" in names
     assert "ollama" in names
     assert "onnx" in names
+    assert "gemma4_audio" in names
 
 
 @pytest.mark.asyncio

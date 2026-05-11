@@ -9,11 +9,13 @@ import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
@@ -38,6 +40,16 @@ _engine: Optional[Gemma4AudioEngine] = None
 _start_time: float = 0
 _warming: bool = False
 _startup_error: Optional[str] = None
+
+# Daemon management state (214A)
+_daemon_max_new_tokens: int = int(os.getenv("GEMMA4_AUDIO_MAX_NEW_TOKENS", "128"))
+_daemon_enable_thinking: bool = False
+_daemon_cache_implementation: Optional[str] = None
+_pending_reload: bool = False
+_reload_reason: Optional[str] = None
+_assistant_model_id: Optional[str] = None
+_assistant_engine: Optional[Gemma4AudioEngine] = None
+_assistant_warming: bool = False
 
 
 def get_engine() -> Gemma4AudioEngine:
@@ -127,6 +139,80 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── 214A Daemon Management Schemas ────────────────────────────────────────────
+
+
+class DaemonVRAMStatus(BaseModel):
+    backend: str
+    allocated_mb: int
+    reserved_mb: int
+    total_mb: int
+    free_mb: int
+
+
+class DaemonParamsInfo(BaseModel):
+    max_new_tokens: int
+    enable_thinking: bool
+    cache_implementation: Optional[str]
+
+
+class DaemonStatusResponse(BaseModel):
+    target_model: str
+    assistant_model: Optional[str]
+    mode: Literal["target_only", "target_with_assistant"]
+    target_loaded: bool
+    assistant_loaded: bool
+    params: DaemonParamsInfo
+    vram: DaemonVRAMStatus
+    pending_reload: bool
+    reload_reason: Optional[str]
+
+
+class DaemonConfigRequest(BaseModel):
+    max_new_tokens: Optional[int] = None
+    enable_thinking: Optional[bool] = None
+    cache_implementation: Optional[str] = None
+
+
+class DaemonConfigResponse(BaseModel):
+    reload_signal: Literal["none", "soft_reload", "hard_restart"]
+    applied: DaemonParamsInfo
+    message: str
+
+
+class AttachAssistantRequest(BaseModel):
+    model_id: str
+
+
+def _get_vram() -> DaemonVRAMStatus:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated(0) // (1024 * 1024)
+            reserved = torch.cuda.memory_reserved(0) // (1024 * 1024)
+            total = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
+            return DaemonVRAMStatus(
+                backend="cuda",
+                allocated_mb=allocated,
+                reserved_mb=reserved,
+                total_mb=total,
+                free_mb=max(0, total - reserved),
+            )
+    except Exception:
+        pass
+    return DaemonVRAMStatus(
+        backend="cpu", allocated_mb=0, reserved_mb=0, total_mb=0, free_mb=0
+    )
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -525,6 +611,177 @@ async def root():
         "version": "0.1.0",
         "status": "running",
     }
+
+
+# ── 214A Daemon Management Endpoints ─────────────────────────────────────────
+
+
+@app.get("/v1/daemon/status", response_model=DaemonStatusResponse)
+async def daemon_status() -> DaemonStatusResponse:
+    """Return daemon runtime state for the frontend control panel."""
+    global _daemon_max_new_tokens
+    target_loaded = False
+    target_model = os.getenv("GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it")
+    try:
+        engine = get_engine()
+        target_loaded = engine.is_loaded()
+        target_model = engine.model_id
+        _daemon_max_new_tokens = engine.default_max_new_tokens
+    except RuntimeError:
+        pass
+
+    return DaemonStatusResponse(
+        target_model=target_model,
+        assistant_model=_assistant_model_id,
+        mode="target_with_assistant" if _assistant_model_id else "target_only",
+        target_loaded=target_loaded,
+        assistant_loaded=_assistant_engine is not None
+        and _assistant_engine.is_loaded(),
+        params=DaemonParamsInfo(
+            max_new_tokens=_daemon_max_new_tokens,
+            enable_thinking=_daemon_enable_thinking,
+            cache_implementation=_daemon_cache_implementation,
+        ),
+        vram=_get_vram(),
+        pending_reload=_pending_reload,
+        reload_reason=_reload_reason,
+    )
+
+
+@app.post("/v1/daemon/config", response_model=DaemonConfigResponse)
+async def daemon_config(req: DaemonConfigRequest) -> DaemonConfigResponse:
+    """Apply generation parameter changes. Returns reload_signal if model reload is needed."""
+    global _daemon_max_new_tokens, _daemon_enable_thinking, _daemon_cache_implementation
+    global _pending_reload, _reload_reason
+
+    reload_signal: Literal["none", "soft_reload", "hard_restart"] = "none"
+
+    if req.max_new_tokens is not None and req.max_new_tokens > 0:
+        _daemon_max_new_tokens = req.max_new_tokens
+        try:
+            get_engine().default_max_new_tokens = req.max_new_tokens
+        except RuntimeError:
+            pass
+
+    if req.enable_thinking is not None:
+        _daemon_enable_thinking = req.enable_thinking
+
+    if req.cache_implementation is not None:
+        new_cache = req.cache_implementation or None
+        if new_cache != _daemon_cache_implementation:
+            _daemon_cache_implementation = new_cache
+            _pending_reload = True
+            _reload_reason = "cache_implementation changed"
+            reload_signal = "soft_reload"
+
+    return DaemonConfigResponse(
+        reload_signal=reload_signal,
+        applied=DaemonParamsInfo(
+            max_new_tokens=_daemon_max_new_tokens,
+            enable_thinking=_daemon_enable_thinking,
+            cache_implementation=_daemon_cache_implementation,
+        ),
+        message="Config applied"
+        + (" — soft reload required" if reload_signal != "none" else ""),
+    )
+
+
+@app.post("/v1/daemon/reload", status_code=204)
+async def daemon_reload() -> Response:
+    """Reload the target model (soft reload — frees VRAM and reloads)."""
+    global _pending_reload, _reload_reason, _assistant_model_id, _assistant_engine
+    model_id = os.getenv("GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it")
+    cache_dir = os.getenv("GEMMA4_AUDIO_CACHE_DIR", "models_cache/hf")
+    device = os.getenv("GEMMA4_AUDIO_DEVICE", "auto")
+    try:
+        engine = get_engine()
+        model_id = engine.model_id
+        engine.unload()
+    except RuntimeError:
+        pass
+    # Detach assistant if present
+    if _assistant_engine:
+        _assistant_engine.unload()
+        _assistant_engine = None
+        _assistant_model_id = None
+    await initialize_engine(model_id, cache_dir, device, _daemon_max_new_tokens)
+    _pending_reload = False
+    _reload_reason = None
+    return Response(status_code=204)
+
+
+@app.post("/v1/daemon/restart", status_code=204)
+async def daemon_restart() -> Response:
+    """Restart the daemon process via os.execv — all models are unloaded first."""
+    try:
+        engine = get_engine()
+        engine.unload()
+    except RuntimeError:
+        pass
+    logger.info("Daemon restart requested — re-exec process")
+    # Delay slightly so the 204 response is sent before the process replaces itself.
+    asyncio.get_event_loop().call_later(
+        0.2, lambda: os.execv(sys.executable, [sys.executable] + sys.argv)
+    )
+    return Response(status_code=204)
+
+
+@app.post("/v1/daemon/fallback", response_model=DaemonConfigResponse)
+async def daemon_fallback() -> DaemonConfigResponse:
+    """Detach assistant model and reset to target-only mode."""
+    global _assistant_model_id, _assistant_engine
+    if _assistant_engine:
+        _assistant_engine.unload()
+        _assistant_engine = None
+    _assistant_model_id = None
+    return DaemonConfigResponse(
+        reload_signal="none",
+        applied=DaemonParamsInfo(
+            max_new_tokens=_daemon_max_new_tokens,
+            enable_thinking=_daemon_enable_thinking,
+            cache_implementation=_daemon_cache_implementation,
+        ),
+        message="Fallback to target-only mode",
+    )
+
+
+@app.post("/v1/daemon/assistant/attach", status_code=204)
+async def daemon_attach_assistant(req: AttachAssistantRequest) -> Response:
+    """Attach a drafter/assistant model."""
+    global _assistant_model_id, _assistant_engine, _assistant_warming
+    cache_dir = os.getenv("GEMMA4_AUDIO_CACHE_DIR", "models_cache/hf")
+    device = os.getenv("GEMMA4_AUDIO_DEVICE", "auto")
+    if _assistant_engine:
+        _assistant_engine.unload()
+    _assistant_model_id = req.model_id
+    _assistant_warming = True
+    try:
+        _assistant_engine = Gemma4AudioEngine(
+            model_id=req.model_id,
+            cache_dir=cache_dir,
+            device=device,
+            max_new_tokens=_daemon_max_new_tokens,
+        )
+        await asyncio.to_thread(_assistant_engine.load)
+    except Exception as e:
+        logger.error(f"Failed to load assistant model {req.model_id}: {e}")
+        _assistant_engine = None
+        _assistant_model_id = None
+        raise HTTPException(status_code=500, detail=f"Failed to load assistant: {e}")
+    finally:
+        _assistant_warming = False
+    return Response(status_code=204)
+
+
+@app.post("/v1/daemon/assistant/detach", status_code=204)
+async def daemon_detach_assistant() -> Response:
+    """Detach and unload the assistant model."""
+    global _assistant_model_id, _assistant_engine
+    if _assistant_engine:
+        _assistant_engine.unload()
+        _assistant_engine = None
+    _assistant_model_id = None
+    return Response(status_code=204)
 
 
 def configure_logging(log_file: Optional[str] = None, level: int = logging.INFO):

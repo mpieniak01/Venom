@@ -2296,6 +2296,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_214a_daemon_management.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Daemon management endpoint coverage for 214A — status, config, reload, fallback, assistant detach."
+    },
+    {
       "path": "tests/test_git_routes_logic.py",
       "domain": "api",
       "test_type": "route_contract",

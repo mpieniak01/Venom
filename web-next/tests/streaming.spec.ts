@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { ensureChatRuntimeReadyOrSkip } from "./utils/chat-runtime-readiness";
 
 const emptyJson = JSON.stringify([]);
@@ -317,5 +317,10 @@ test.describe("Cockpit streaming SSE", () => {
       undefined,
       { timeout: 10000 },
     );
+    const streamEventsCount = await page.evaluate(() => {
+      const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+      return Array.isArray(win.__taskStreamEvents) ? win.__taskStreamEvents.length : 0;
+    });
+    expect(streamEventsCount).toBeGreaterThan(0);
   });
 });

@@ -130,7 +130,6 @@ sounddevice             # Audio I/O
 webrtcvad               # Voice Activity Detection (optional, can use simple RMS)
 hydra-core              # Fish Speech runtime dependency
 natsort                 # Fish Speech runtime dependency
-gradio                  # Fish Speech runtime dependency (API/server compatibility)
 
 # IoT & Hardware Bridge (Rider-Pi)
 paramiko                # SSH client for Raspberry Pi communication

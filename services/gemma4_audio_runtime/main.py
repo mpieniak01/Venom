@@ -9,14 +9,13 @@ import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
-from .engine import Gemma4AudioEngine, InferenceError
 from .schemas import (
     AudioMetadata,
     Capabilities,
@@ -33,13 +32,23 @@ logger = logging.getLogger(__name__)
 
 
 # Global engine instance
-_engine: Optional[Gemma4AudioEngine] = None
+_engine: Optional[Any] = None
 _start_time: float = 0
 _warming: bool = False
 _startup_error: Optional[str] = None
+_inference_error_cls: type[Exception] | None = None
 
 
-def get_engine() -> Gemma4AudioEngine:
+def _load_engine_classes() -> tuple[type[Any], type[Exception]]:
+    """Lazy-load engine classes to avoid import-time heavy deps in CI-lite."""
+    global _inference_error_cls
+    from .engine import Gemma4AudioEngine, InferenceError
+
+    _inference_error_cls = InferenceError
+    return Gemma4AudioEngine, InferenceError
+
+
+def get_engine() -> Any:
     """Get the global engine instance."""
     global _engine
     if _engine is None:
@@ -56,8 +65,9 @@ async def initialize_engine(
     _warming = True
     _startup_error = None
     try:
+        engine_cls, _ = _load_engine_classes()
         logger.info(f"Initializing Gemma 4 Audio Engine with model {model_id}")
-        _engine = Gemma4AudioEngine(
+        _engine = engine_cls(
             model_id=model_id,
             cache_dir=cache_dir,
             device=device,
@@ -306,7 +316,9 @@ async def respond(
                 top_p=request_payload.top_p,
                 do_sample=request_payload.do_sample,
             )
-        except InferenceError as e:
+        except Exception as e:
+            if _inference_error_cls is not None and isinstance(e, _inference_error_cls):
+                raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
             raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
 
         total_duration_ms = int((time.time() - start_time) * 1000)
@@ -473,7 +485,11 @@ async def transcribe(
         # Transcribe
         try:
             text = engine.transcribe(audio_array, sample_rate)
-        except InferenceError as e:
+        except Exception as e:
+            if _inference_error_cls is not None and isinstance(e, _inference_error_cls):
+                raise HTTPException(
+                    status_code=500, detail=f"Transcription failed: {e}"
+                )
             raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
 
         duration_sec = get_audio_duration(audio_array, sample_rate)
@@ -513,7 +529,9 @@ async def warmup():
                 max_new_tokens=10,
             )
             return {"status": "warmed", "sample_output": text}
-        except InferenceError as e:
+        except Exception as e:
+            if _inference_error_cls is not None and isinstance(e, _inference_error_cls):
+                raise HTTPException(status_code=500, detail=f"Warmup failed: {e}")
             raise HTTPException(status_code=500, detail=f"Warmup failed: {e}")
     except HTTPException:
         raise

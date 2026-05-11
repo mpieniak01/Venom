@@ -119,6 +119,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ripgrep
 
+      - name: Bootstrap dev env file from example
+        run: cp .env.dev.example .env.dev
+
       - name: Test lane contracts guard
         run: |
           make test-lane-contracts-check

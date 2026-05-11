@@ -656,3 +656,12 @@ async def test_runtime_ensure_model_metadata_activation_branches():
         await runtime.ensure_model_metadata_for_activation(registry, "m2", "ollama")
         is False
     )
+
+    # gemma4_audio known models should pass without manifest/provider
+    registry = SimpleNamespace(manifest={}, providers={})
+    assert (
+        await runtime.ensure_model_metadata_for_activation(
+            registry, "google/gemma-4-E2B-it", "gemma4_audio"
+        )
+        is True
+    )

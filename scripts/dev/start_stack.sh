@@ -309,6 +309,8 @@ start_vllm() {
 }
 
 start_gemma4_audio() {
+  local gemma4_audio_port
+  gemma4_audio_port="$(env_contract_get GEMMA4_AUDIO_PORT "8014" "$ENV_FILE")"
   echo "▶️  Uruchamiam Gemma4 Audio..."
   mk vllm-stop >/dev/null || true
   mk ollama-stop >/dev/null || true
@@ -319,7 +321,7 @@ start_gemma4_audio() {
 
   echo "⏳ Czekam na Gemma4 Audio (/health)..."
   for _ in {1..90}; do
-    if curl -fsS "http://127.0.0.1:8014/health" >/dev/null 2>&1; then
+    if curl -fsS "http://127.0.0.1:${gemma4_audio_port}/health" >/dev/null 2>&1; then
       echo "✅ Gemma4 Audio gotowy"
       return 0
     fi

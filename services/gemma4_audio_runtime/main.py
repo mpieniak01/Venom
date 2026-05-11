@@ -14,6 +14,7 @@ from typing import Optional
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from pydantic import BaseModel, ConfigDict, Field
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
 from .engine import Gemma4AudioEngine, InferenceError
@@ -359,28 +360,44 @@ def _extract_text_prompt_from_openai_messages(messages: list[dict]) -> str:
     return "Hello"
 
 
+class ChatCompletionContentPart(BaseModel):
+    type: str
+    text: str | None = None
+
+
+class ChatCompletionMessage(BaseModel):
+    role: str
+    content: str | list[ChatCompletionContentPart]
+
+
+class ChatCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    model: str | None = None
+    messages: list[ChatCompletionMessage] = Field(default_factory=list)
+    max_tokens: int | None = None
+    max_completion_tokens: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    stream: bool = False
+
+
 @app.post("/v1/chat/completions")
-async def chat_completions(request: Request) -> dict:
+async def chat_completions(payload: ChatCompletionRequest) -> dict:
     """OpenAI-compatible text chat endpoint for Semantic Kernel connectors."""
     try:
         engine = get_engine()
         if not engine.is_loaded():
             raise HTTPException(status_code=503, detail="Model not loaded")
 
-        payload = await request.json()
-        model = str(payload.get("model") or engine.model_id)
-        messages = payload.get("messages") or []
-        if not isinstance(messages, list):
-            raise HTTPException(status_code=400, detail="Invalid messages payload")
+        model = str(payload.model or engine.model_id)
+        messages = [message.model_dump(mode="python") for message in payload.messages]
 
         prompt = _extract_text_prompt_from_openai_messages(messages)
-        max_tokens = int(
-            payload.get("max_tokens") or payload.get("max_completion_tokens") or 128
-        )
-        temperature_raw = payload.get("temperature")
-        top_p_raw = payload.get("top_p")
-        stream = bool(payload.get("stream", False))
-        if stream:
+        max_tokens = int(payload.max_tokens or payload.max_completion_tokens or 128)
+        temperature_raw = payload.temperature
+        top_p_raw = payload.top_p
+        if payload.stream:
             raise HTTPException(
                 status_code=400,
                 detail="Streaming is not supported by gemma4_audio runtime",
@@ -395,12 +412,12 @@ async def chat_completions(request: Request) -> dict:
             max_new_tokens=max_tokens,
             temperature=float(temperature_raw) if temperature_raw is not None else None,
             top_p=float(top_p_raw) if top_p_raw is not None else None,
-            do_sample=None,
+            do_sample=bool(temperature_raw is not None or top_p_raw is not None),
         )
 
         now = int(time.time())
-        completion_tokens = max(1, len(text.split()))
-        prompt_tokens = max(1, len(prompt.split()))
+        completion_tokens = max(1, len(text) // 4)
+        prompt_tokens = max(1, len(prompt) // 4)
         return {
             "id": f"chatcmpl-gemma4-{int(time.time() * 1000)}",
             "object": "chat.completion",

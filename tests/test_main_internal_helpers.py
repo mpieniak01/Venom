@@ -127,6 +127,82 @@ async def test_build_voice_runtime_snapshot_returns_pipeline_snapshot(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_returns_gemma4_audio_snapshot_enabled(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        main_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            runtime_id="gemma4_audio@localhost",
+            provider="gemma4_audio",
+            model_name="google/gemma-4-E2B-it",
+            endpoint="http://127.0.0.1:8014",
+            config_hash="cfg123",
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "SETTINGS",
+        SimpleNamespace(
+            GEMMA4_AUDIO_ENABLED=True,
+            GEMMA4_AUDIO_SUPPORTS_AUDIO=True,
+            GEMMA4_AUDIO_SUPPORTS_TEXT=True,
+            GEMMA4_AUDIO_MODEL_ID="google/gemma-4-E2B-it",
+            GEMMA4_AUDIO_ENDPOINT="http://127.0.0.1:8014",
+        ),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+
+    assert snapshot["runtime_id"] == "gemma4_audio@localhost"
+    assert snapshot["provider"] == "gemma4_audio"
+    assert snapshot["runtime_capabilities"]["compatibility_profile"] == (
+        "gemma4_audio_native"
+    )
+    assert snapshot["runtime_capabilities"]["probe_status"] == "verified"
+    assert snapshot["voice_pipeline"]["stt"] == "native_audio"
+
+
+@pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_returns_gemma4_audio_snapshot_metadata_only(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        main_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            runtime_id="gemma4_audio@localhost",
+            provider="gemma4_audio",
+            model_name="",
+            endpoint="",
+            config_hash="cfg999",
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "SETTINGS",
+        SimpleNamespace(
+            GEMMA4_AUDIO_ENABLED=False,
+            GEMMA4_AUDIO_SUPPORTS_AUDIO=True,
+            GEMMA4_AUDIO_SUPPORTS_TEXT=True,
+            GEMMA4_AUDIO_MODEL_ID="google/gemma-4-E4B-it",
+            GEMMA4_AUDIO_ENDPOINT="http://127.0.0.1:8014",
+        ),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+
+    assert snapshot["model_name"] == "google/gemma-4-E4B-it"
+    assert snapshot["endpoint"] == "http://127.0.0.1:8014"
+    assert snapshot["runtime_capabilities"]["probe_status"] == "metadata_only"
+    assert snapshot["runtime_capabilities"]["probes"]["health"]["reason"] == (
+        "runtime_not_enabled"
+    )
+    assert snapshot["voice_pipeline"]["stt"] == "faster_whisper"
+
+
+@pytest.mark.asyncio
 async def test_audio_status_endpoint_includes_latest_session_download_url(monkeypatch):
     class DummyHandler:
         def get_status(self, operator_agent=None):

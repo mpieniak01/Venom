@@ -198,6 +198,74 @@ def test_select_startup_model_prefers_first_available_when_no_match():
     assert selected in {"model-a", "model-b"}
 
 
+@pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_gemma4_audio_enabled(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            runtime_id="gemma4_audio@localhost",
+            provider="gemma4_audio",
+            model_name="google/gemma-4-E2B-it",
+            endpoint="http://127.0.0.1:8014",
+            config_hash="cfg-a",
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "SETTINGS",
+        SimpleNamespace(
+            GEMMA4_AUDIO_ENABLED=True,
+            GEMMA4_AUDIO_SUPPORTS_AUDIO=True,
+            GEMMA4_AUDIO_SUPPORTS_TEXT=True,
+            GEMMA4_AUDIO_MODEL_ID="google/gemma-4-E2B-it",
+            GEMMA4_AUDIO_ENDPOINT="http://127.0.0.1:8014",
+        ),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+
+    assert snapshot["runtime_capabilities"]["compatibility_profile"] == (
+        "gemma4_audio_native"
+    )
+    assert snapshot["voice_pipeline"]["stt"] == "native_audio"
+
+
+@pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_gemma4_audio_metadata_only(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            runtime_id="gemma4_audio@localhost",
+            provider="gemma4_audio",
+            model_name="",
+            endpoint="",
+            config_hash="cfg-b",
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "SETTINGS",
+        SimpleNamespace(
+            GEMMA4_AUDIO_ENABLED=False,
+            GEMMA4_AUDIO_SUPPORTS_AUDIO=True,
+            GEMMA4_AUDIO_SUPPORTS_TEXT=True,
+            GEMMA4_AUDIO_MODEL_ID="google/gemma-4-E4B-it",
+            GEMMA4_AUDIO_ENDPOINT="http://127.0.0.1:8014",
+        ),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+
+    assert snapshot["model_name"] == "google/gemma-4-E4B-it"
+    assert snapshot["endpoint"] == "http://127.0.0.1:8014"
+    assert snapshot["runtime_capabilities"]["probes"]["health"]["reason"] == (
+        "runtime_not_enabled"
+    )
+    assert snapshot["voice_pipeline"]["stt"] == "faster_whisper"
+
+
 def _patch_setup_routes(monkeypatch):
     def make_dummy():
         return SimpleNamespace(

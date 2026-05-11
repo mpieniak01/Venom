@@ -80,6 +80,11 @@ _runtime_options_catalog_cache_lock = remote_models_service.Lock()
 _runtime_options_catalog_cache: dict[str, dict[str, Any]] = {}
 _runtime_options_probe_cache_lock = remote_models_service.Lock()
 _runtime_options_probe_cache: dict[str, dict[str, Any]] = {}
+
+_GEMMA4_AUDIO_COMPATIBLE_MODELS: list[str] = [
+    "google/gemma-4-E2B-it",
+    "google/gemma-4-E4B-it",
+]
 _MODEL_ALIAS_TO_CANONICAL: dict[str, str] = {
     "gemma3:latest": "gemma-3-4b-it",
     "gemma3:4b": "gemma-3-4b-it",
@@ -292,6 +297,8 @@ def _resolve_local_endpoint(server_name: str, target: dict) -> str | None:
         return build_http_url("localhost", 11434, "/v1")
     if server_name == "vllm":
         return SETTINGS.VLLM_ENDPOINT
+    if server_name == "gemma4_audio":
+        return SETTINGS.GEMMA4_AUDIO_ENDPOINT
     if server_name == "onnx":
         return None
     return endpoint
@@ -539,6 +546,10 @@ def _build_model_updates(
         "HYBRID_LOCAL_MODEL": selected_model,
         last_model_key: selected_model,
     }
+    if server_name == "gemma4_audio":
+        updates["LAST_MODEL_GEMMA4_AUDIO"] = selected_model
+        updates["GEMMA4_AUDIO_MODEL_ID"] = selected_model
+        updates["GEMMA4_AUDIO_ENABLED"] = "true"
     if server_name == "vllm":
         model_info = next((m for m in models if m["name"] == selected_model), None)
         if model_info and model_info.get("path"):
@@ -567,11 +578,32 @@ def _persist_selected_model_settings(
     try:
         SETTINGS.LLM_MODEL_NAME = selected_model
         SETTINGS.HYBRID_LOCAL_MODEL = selected_model
+        if server_name in {"ollama", "vllm", "gemma4_audio"}:
+            SETTINGS.LLM_SERVICE_TYPE = "local"
+        if server_name == "gemma4_audio":
+            SETTINGS.GEMMA4_AUDIO_ENABLED = True
+            SETTINGS.GEMMA4_AUDIO_MODEL_ID = selected_model
+            SETTINGS.LLM_LOCAL_ENDPOINT = endpoint or SETTINGS.GEMMA4_AUDIO_ENDPOINT
+        else:
+            SETTINGS.GEMMA4_AUDIO_ENABLED = False
     except Exception:
         logger.warning("Nie udało się zaktualizować SETTINGS dla modelu LLM.")
 
     config_hash = compute_llm_config_hash(server_name, endpoint, selected_model)
-    config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+    config_updates: dict[str, Any] = {
+        "LLM_CONFIG_HASH": config_hash,
+        "ACTIVE_LLM_SERVER": server_name,
+    }
+    if server_name in {"ollama", "vllm", "gemma4_audio"}:
+        config_updates["LLM_SERVICE_TYPE"] = "local"
+    if endpoint:
+        config_updates["LLM_LOCAL_ENDPOINT"] = endpoint
+    if server_name == "gemma4_audio":
+        config_updates["GEMMA4_AUDIO_ENABLED"] = "true"
+        config_updates["GEMMA4_AUDIO_MODEL_ID"] = selected_model
+    else:
+        config_updates["GEMMA4_AUDIO_ENABLED"] = "false"
+    config_manager.update_config(config_updates)
     try:
         SETTINGS.LLM_CONFIG_HASH = config_hash
         SETTINGS.ACTIVE_LLM_SERVER = server_name
@@ -1181,7 +1213,31 @@ async def _local_models_by_runtime(
             runtime_id = str(payload.get("runtime_id") or "").strip().lower()
             if runtime_id in grouped:
                 grouped[runtime_id].append(payload)
+    grouped["gemma4_audio"] = _gemma4_audio_static_models(
+        active_provider=active_provider,
+        active_model=active_model,
+    )
     return grouped, audit_issues
+
+
+def _gemma4_audio_static_models(
+    *,
+    active_provider: str,
+    active_model: str,
+) -> list[dict[str, Any]]:
+    return [
+        _runtime_model_payload(
+            runtime_id="gemma4_audio",
+            model_id=model_id,
+            name=model_id,
+            provider="gemma4_audio",
+            source_type="local-runtime",
+            active=(active_provider == "gemma4_audio" and active_model == model_id),
+            capabilities=["text", "audio", "voice"],
+            chat_compatible=True,
+        )
+        for model_id in _GEMMA4_AUDIO_COMPATIBLE_MODELS
+    ]
 
 
 def _runtime_payload_or_audit_issue(
@@ -1319,6 +1375,21 @@ def _runtime_target_payload(
         "supports_adapter_runtime_apply": runtime_capabilities[
             "supports_adapter_runtime_apply"
         ],
+        **_gemma4_audio_runtime_input_capabilities(runtime_id),
+    }
+
+
+def _gemma4_audio_runtime_input_capabilities(runtime_id: str) -> dict[str, Any]:
+    if runtime_id.strip().lower() != "gemma4_audio":
+        return {}
+    return {
+        "supports_text_input": True,
+        "supports_audio_input": True,
+        "supports_text_output": True,
+        "supports_image_input": False,
+        "supported_models": _GEMMA4_AUDIO_COMPATIBLE_MODELS,
+        "log_path": str(getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", "")),
+        "pid_path": str(getattr(SETTINGS, "GEMMA4_AUDIO_PID_PATH", "")),
     }
 
 
@@ -1345,6 +1416,13 @@ def _runtime_capabilities(*, runtime_id: str, source_type: str) -> dict[str, boo
             "supports_adapter_import_safetensors": False,
             "supports_adapter_import_gguf": False,
             "supports_adapter_runtime_apply": True,
+        }
+    if runtime == "gemma4_audio":
+        return {
+            "supports_native_training": False,
+            "supports_adapter_import_safetensors": False,
+            "supports_adapter_import_gguf": False,
+            "supports_adapter_runtime_apply": False,
         }
     return {
         "supports_native_training": False,
@@ -2014,6 +2092,13 @@ def _resolve_selected_model_for_switch(
     config: dict[str, Any],
     models: list[dict[str, Any]],
 ) -> tuple[str, str]:
+    if server_name == "gemma4_audio":
+        return _resolve_gemma4_audio_selected_model_for_switch(
+            request=request,
+            server_name=server_name,
+            config=config,
+        )
+
     available_models = set(
         _available_models_for_server(models=models, server_name=server_name)
     )
@@ -2046,11 +2131,58 @@ def _resolve_selected_model_for_switch(
         return fallback
 
 
+def _resolve_gemma4_audio_selected_model_for_switch(
+    *,
+    request: ActiveLlmServerRequest,
+    server_name: str,
+    config: dict[str, Any],
+) -> tuple[str, str]:
+    requested_last_model_key = _last_model_key_for_server(server_name)
+    requested_model = str(request.model or "").strip()
+
+    if requested_model:
+        _validate_gemma4_audio_requested_model(
+            requested_model=requested_model, server_name=server_name
+        )
+        return requested_model, requested_last_model_key
+
+    selected = _resolve_gemma4_audio_fallback_model(config=config)
+    return selected, requested_last_model_key
+
+
+def _validate_gemma4_audio_requested_model(
+    *, requested_model: str, server_name: str
+) -> None:
+    if requested_model in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Model '{requested_model}' nie jest dostępny na serwerze "
+            f"'{server_name}'. Dozwolone: {', '.join(_GEMMA4_AUDIO_COMPATIBLE_MODELS)}."
+        ),
+    )
+
+
+def _resolve_gemma4_audio_fallback_model(*, config: dict[str, Any]) -> str:
+    previous_choice = str(config.get("LAST_MODEL_GEMMA4_AUDIO") or "").strip()
+    if previous_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+        return previous_choice
+
+    default_choice = str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "")).strip()
+    if default_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+        return default_choice
+
+    return _GEMMA4_AUDIO_COMPATIBLE_MODELS[0]
+
+
 def _last_model_key_for_server(server_name: str) -> str:
     if server_name == "ollama":
         return "LAST_MODEL_OLLAMA"
     if server_name == "onnx":
         return "LAST_MODEL_ONNX"
+    if server_name == "gemma4_audio":
+        return "LAST_MODEL_GEMMA4_AUDIO"
     return "LAST_MODEL_VLLM"
 
 

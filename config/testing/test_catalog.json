@@ -893,7 +893,7 @@
         "release"
       ],
       "legacy_targeted": true,
-      "rationale": "Audio runtime validation for Gemma 4 service; legacy targeted for expanded coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_audio_stream_handler_roi.py",
@@ -2280,6 +2280,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_gemma4_audio_runtime_main.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_git_routes_logic.py",
@@ -4349,7 +4363,7 @@
     },
     {
       "path": "tests/test_port_pids_script.py",
-      "domain": "system",
+      "domain": "environment",
       "test_type": "unit",
       "intent": "legacy_coverage",
       "primary_lane": "new-code",
@@ -4359,7 +4373,7 @@
         "release"
       ],
       "legacy_targeted": true,
-      "rationale": "System-level port and process validation; legacy targeted for infrastructure coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_preprod_mutation_guards.py",
@@ -4882,8 +4896,8 @@
     {
       "path": "tests/test_runtime_registry_contracts.py",
       "domain": "runtime",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "service_contract",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",

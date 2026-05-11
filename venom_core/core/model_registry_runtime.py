@@ -39,10 +39,17 @@ async def activate_model(registry: Any, model_name: str, runtime: str) -> bool:
     return True
 
 
+_GEMMA4_AUDIO_KNOWN_MODELS: frozenset[str] = frozenset(
+    ["google/gemma-4-E2B-it", "google/gemma-4-E4B-it"]
+)
+
+
 async def ensure_model_metadata_for_activation(
     registry: Any, model_name: str, runtime: str
 ) -> bool:
     if model_name in registry.manifest:
+        return True
+    if runtime == "gemma4_audio" and model_name in _GEMMA4_AUDIO_KNOWN_MODELS:
         return True
     if runtime != "ollama":
         logger.error(f"Model {model_name} nie znaleziony w manifeście")

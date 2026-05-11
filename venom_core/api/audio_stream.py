@@ -93,6 +93,7 @@ def _build_voice_session_record(
         "audio_runtime_provider": metadata.get("audio_runtime_provider"),
         "audio_runtime_model": metadata.get("audio_runtime_model"),
         "audio_input_status": metadata.get("audio_input_status"),
+        "decoder_source": metadata.get("decoder_source"),
         "fallback_reason": metadata.get("fallback_reason"),
         "native_audio_ms": metadata.get("native_audio_ms"),
         "runtime_log_path": metadata.get("runtime_log_path"),
@@ -721,6 +722,7 @@ class AudioStreamHandler:
                     **snapshot,
                     "pipeline_id": "whisper_llm_piper",
                     "audio_input_status": "fallback",
+                    "decoder_source": "faster_whisper",
                     "fallback_reason": "gemma4_audio health check failed",
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
@@ -746,6 +748,7 @@ class AudioStreamHandler:
                     **snapshot,
                     "pipeline_id": "whisper_llm_piper",
                     "audio_input_status": "fallback",
+                    "decoder_source": "faster_whisper",
                     "fallback_reason": str(exc),
                     "native_audio_ms": timings_ms["native_audio_ms"],
                     "timings_ms": timings_ms,
@@ -770,6 +773,7 @@ class AudioStreamHandler:
                 **snapshot,
                 "pipeline_id": "gemma4_audio_piper",
                 "audio_input_status": "verified",
+                "decoder_source": "gemma4_audio",
                 "fallback_reason": "",
                 "native_audio_ms": timings_ms["native_audio_ms"],
                 "transcription": transcription,
@@ -886,6 +890,7 @@ class AudioStreamHandler:
                     "timings_ms": timings_ms,
                     "voice_mode": self._connection_voice_mode(connection_id),
                     "audio_input_status": "verified",
+                    "decoder_source": "faster_whisper",
                     "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
                         getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""
@@ -1055,6 +1060,7 @@ class AudioStreamHandler:
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
                     "audio_input_status": "verified",
+                    "decoder_source": "faster_whisper",
                     "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
                         getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""

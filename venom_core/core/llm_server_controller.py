@@ -137,7 +137,9 @@ class LlmServerController:
             provider="gemma4_audio",
             description="Native audio inference daemon for Gemma 4 models (port 8014).",
             endpoint=cfg.GEMMA4_AUDIO_ENDPOINT,
-            health_url=f"{cfg.GEMMA4_AUDIO_ENDPOINT.rstrip('/')}/health",
+            health_url=build_http_url(
+                cfg.GEMMA4_AUDIO_HOST, cfg.GEMMA4_AUDIO_PORT, "/health"
+            ),
             commands={
                 "start": gemma4_audio_start_cmd,
                 "stop": gemma4_audio_stop_cmd,

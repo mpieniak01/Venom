@@ -473,7 +473,12 @@ async def test_local_models_by_runtime_reports_unknown_provider_issue(
             local_models=local_models,
         )
 
-    assert grouped == {"ollama": [], "vllm": [], "onnx": [], "gemma4_audio": []}
+    assert grouped["ollama"] == []
+    assert grouped["vllm"] == []
+    assert grouped["onnx"] == []
+    gemma_ids = [m["id"] for m in grouped["gemma4_audio"]]
+    assert "google/gemma-4-E2B-it" in gemma_ids
+    assert "google/gemma-4-E4B-it" in gemma_ids
     assert audit == [
         {
             "name": "mystery-model",
@@ -482,3 +487,160 @@ async def test_local_models_by_runtime_reports_unknown_provider_issue(
             "reason": "provider_unknown",
         }
     ]
+
+
+def test_gemma4_audio_static_models_returns_two_models() -> None:
+    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+        active_provider="gemma4_audio",
+        active_model="google/gemma-4-E2B-it",
+    )
+    ids = [m["id"] for m in models]
+    assert "google/gemma-4-E2B-it" in ids
+    assert "google/gemma-4-E4B-it" in ids
+    assert len(models) == 2
+
+
+def test_gemma4_audio_static_models_active_flag() -> None:
+    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+        active_provider="gemma4_audio",
+        active_model="google/gemma-4-E4B-it",
+    )
+    by_id = {m["id"]: m for m in models}
+    assert by_id["google/gemma-4-E4B-it"]["active"] is True
+    assert by_id["google/gemma-4-E2B-it"]["active"] is False
+
+
+def test_gemma4_audio_static_models_inactive_when_different_provider() -> None:
+    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+        active_provider="ollama",
+        active_model="google/gemma-4-E2B-it",
+    )
+    assert all(not m["active"] for m in models)
+
+
+def test_gemma4_audio_static_models_capabilities() -> None:
+    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+        active_provider="gemma4_audio",
+        active_model="",
+    )
+    for model in models:
+        caps = model.get("capabilities") or []
+        assert "text" in caps
+        assert "audio" in caps
+        assert "voice" in caps
+        assert model["chat_compatible"] is True
+        assert model["runtime_id"] == "gemma4_audio"
+
+
+@pytest.mark.asyncio
+async def test_local_models_by_runtime_injects_gemma4_audio_static_models() -> None:
+    from unittest.mock import patch
+
+    active_runtime = SimpleNamespace(
+        provider="gemma4_audio", model_name="google/gemma-4-E2B-it"
+    )
+    with patch.object(
+        system_llm, "get_active_llm_runtime", return_value=active_runtime
+    ):
+        grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
+            model_manager=object(),
+            local_models=[],
+        )
+
+    gemma_models = grouped["gemma4_audio"]
+    ids = [m["id"] for m in gemma_models]
+    assert "google/gemma-4-E2B-it" in ids
+    assert "google/gemma-4-E4B-it" in ids
+    assert audit == []
+
+
+def test_gemma4_audio_runtime_input_capabilities_present() -> None:
+    info = system_llm._gemma4_audio_runtime_input_capabilities("gemma4_audio")  # noqa: SLF001
+    assert info["supports_text_input"] is True
+    assert info["supports_audio_input"] is True
+    assert info["supports_text_output"] is True
+    assert info["supports_image_input"] is False
+    assert "google/gemma-4-E2B-it" in info["supported_models"]
+    assert "google/gemma-4-E4B-it" in info["supported_models"]
+    assert "log_path" in info
+    assert "pid_path" in info
+
+
+def test_gemma4_audio_runtime_input_capabilities_empty_for_other_runtimes() -> None:
+    for runtime in ("ollama", "vllm", "onnx", "openai"):
+        result = system_llm._gemma4_audio_runtime_input_capabilities(runtime)  # noqa: SLF001
+        assert result == {}, f"Expected empty dict for runtime={runtime}"
+
+
+def test_runtime_target_payload_includes_gemma4_audio_capabilities() -> None:
+    from unittest.mock import patch
+
+    active_runtime = SimpleNamespace(
+        provider="gemma4_audio", model_name="google/gemma-4-E2B-it"
+    )
+    with patch.object(
+        system_llm,
+        "SETTINGS",
+        SimpleNamespace(
+            GEMMA4_AUDIO_LOG_PATH="logs/gemma4_audio.log",
+            GEMMA4_AUDIO_PID_PATH=".venom_runtime/gemma4_audio.pid",
+        ),
+    ):
+        payload = system_llm._runtime_target_payload(  # noqa: SLF001
+            runtime_id="gemma4_audio",
+            source_type="local-runtime",
+            configured=True,
+            available=True,
+            status="online",
+            reason=None,
+            models=[],
+            active_runtime=active_runtime,
+        )
+
+    assert payload["supports_text_input"] is True
+    assert payload["supports_audio_input"] is True
+    assert payload["supports_text_output"] is True
+    assert payload["supports_image_input"] is False
+    assert "google/gemma-4-E2B-it" in payload["supported_models"]
+    assert payload["log_path"] == "logs/gemma4_audio.log"
+    assert payload["pid_path"] == ".venom_runtime/gemma4_audio.pid"
+
+
+def test_runtime_target_payload_no_gemma4_fields_for_other_runtimes() -> None:
+    active_runtime = SimpleNamespace(provider="ollama", model_name="phi3:latest")
+    payload = system_llm._runtime_target_payload(  # noqa: SLF001
+        runtime_id="ollama",
+        source_type="local-runtime",
+        configured=True,
+        available=True,
+        status="online",
+        reason=None,
+        models=[],
+        active_runtime=active_runtime,
+    )
+    assert "supports_text_input" not in payload
+    assert "supports_audio_input" not in payload
+    assert "supported_models" not in payload
+
+
+def test_resolve_selected_model_for_switch_gemma4_audio_prefers_request() -> None:
+    request = SimpleNamespace(model="google/gemma-4-E4B-it", model_alias="")
+    selected, key = system_llm._resolve_selected_model_for_switch(  # noqa: SLF001
+        request=request,
+        server_name="gemma4_audio",
+        config={"LAST_MODEL_GEMMA4_AUDIO": "google/gemma-4-E2B-it"},
+        models=[],
+    )
+    assert selected == "google/gemma-4-E4B-it"
+    assert key == "LAST_MODEL_GEMMA4_AUDIO"
+
+
+def test_resolve_selected_model_for_switch_gemma4_audio_invalid_request() -> None:
+    request = SimpleNamespace(model="google/gemma-4-unknown", model_alias="")
+    with pytest.raises(system_llm.HTTPException):  # noqa: PT011
+        system_llm._resolve_selected_model_for_switch(  # noqa: SLF001
+            request=request,
+            server_name="gemma4_audio",
+            config={},
+            models=[],
+        )

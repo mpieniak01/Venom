@@ -79,6 +79,7 @@ pkill -f "uvicorn.*venom_core.main:app" 2>/dev/null || true
 echo "🧠 Zwalniam zasoby LLM..."
 bash scripts/llm/vllm_service.sh stop >/dev/null 2>&1 || true
 bash scripts/llm/ollama_service.sh stop >/dev/null 2>&1 || true
+bash scripts/llm/gemma4_audio_service.sh stop >/dev/null 2>&1 || true
 
 # 4. Academy training jobs (local runtime)
 echo "🧪 Zatrzymuję lokalne joby treningowe Academy..."
@@ -98,7 +99,7 @@ echo "🐳 Zatrzymuję kontenery Venom..."
 stop_venom_containers
 
 # 7. Czyszczenie portów (API/Web/LLM + data services)
-PORTS_TO_CLEAN="8000 3000 11434 8001"
+PORTS_TO_CLEAN="8000 3000 11434 8001 8014"
 if [[ "$STOP_DATA_PORTS" == "1" ]]; then
     PORTS_TO_CLEAN="$PORTS_TO_CLEAN 6379 5432 3306 27017 5672 15672 6333 6334 9200"
 fi

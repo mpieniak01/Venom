@@ -14,6 +14,7 @@ from typing import Optional
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from pydantic import BaseModel, ConfigDict, Field
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
 from .engine import Gemma4AudioEngine, InferenceError
@@ -162,6 +163,12 @@ async def health() -> HealthResponse:
             status="error",
             message="Service not initialized",
         )
+
+
+@app.get("/v1/health", response_model=HealthResponse)
+async def v1_health() -> HealthResponse:
+    """Compatibility health endpoint for clients probing /v1/health."""
+    return await health()
 
 
 @app.get("/status", response_model=StatusResponse)
@@ -331,6 +338,108 @@ async def respond(
         raise
     except Exception as e:
         logger.error(f"Respond endpoint error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+
+
+def _extract_text_prompt_from_openai_messages(messages: list[dict]) -> str:
+    """Extract a text prompt from OpenAI-style chat messages."""
+    for message in reversed(messages):
+        if str(message.get("role", "")).strip().lower() != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        if isinstance(content, list):
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "text":
+                    text = str(item.get("text", "")).strip()
+                    if text:
+                        return text
+    return "Hello"
+
+
+class ChatCompletionContentPart(BaseModel):
+    type: str
+    text: str | None = None
+
+
+class ChatCompletionMessage(BaseModel):
+    role: str
+    content: str | list[ChatCompletionContentPart]
+
+
+class ChatCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    model: str | None = None
+    messages: list[ChatCompletionMessage] = Field(default_factory=list)
+    max_tokens: int | None = None
+    max_completion_tokens: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    stream: bool = False
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(payload: ChatCompletionRequest) -> dict:
+    """OpenAI-compatible text chat endpoint for Semantic Kernel connectors."""
+    try:
+        engine = get_engine()
+        if not engine.is_loaded():
+            raise HTTPException(status_code=503, detail="Model not loaded")
+
+        model = str(payload.model or engine.model_id)
+        messages = [message.model_dump(mode="python") for message in payload.messages]
+
+        prompt = _extract_text_prompt_from_openai_messages(messages)
+        max_tokens = int(payload.max_tokens or payload.max_completion_tokens or 128)
+        temperature_raw = payload.temperature
+        top_p_raw = payload.top_p
+        if payload.stream:
+            raise HTTPException(
+                status_code=400,
+                detail="Streaming is not supported by gemma4_audio runtime",
+            )
+
+        # Text-only path: use 1s silence placeholder expected by the current engine API.
+        dummy_audio = np.zeros(16000, dtype=np.float32)
+        text, _ = engine.respond(
+            dummy_audio,
+            sample_rate=16000,
+            prompt=prompt,
+            max_new_tokens=max_tokens,
+            temperature=float(temperature_raw) if temperature_raw is not None else None,
+            top_p=float(top_p_raw) if top_p_raw is not None else None,
+            do_sample=bool(temperature_raw is not None or top_p_raw is not None),
+        )
+
+        now = int(time.time())
+        completion_tokens = max(1, len(text) // 4)
+        prompt_tokens = max(1, len(prompt) // 4)
+        return {
+            "id": f"chatcmpl-gemma4-{int(time.time() * 1000)}",
+            "object": "chat.completion",
+            "created": now,
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": text},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"chat/completions error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal error: {e}")
 
 

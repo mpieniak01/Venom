@@ -8,7 +8,17 @@ import Link from "next/link";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { useTranslation } from "@/lib/i18n";
-import type { LlmServerInfo } from "@/lib/types";
+import type { LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
+
+type Gemma4AudioRuntimeInfo = Pick<
+  LlmRuntimeTargetOption,
+  | "supports_text_input"
+  | "supports_audio_input"
+  | "supports_text_output"
+  | "supports_image_input"
+  | "log_path"
+  | "pid_path"
+>;
 
 type CockpitModelsProps = Readonly<{
   llmServersLoading: boolean;
@@ -32,6 +42,7 @@ type CockpitModelsProps = Readonly<{
   activeServerName?: string | null;
   llmActionPending: string | null;
   onActivateServer: () => void;
+  gemma4AudioRuntimeInfo?: Gemma4AudioRuntimeInfo | null;
 }>;
 
 export function CockpitModels({
@@ -56,6 +67,7 @@ export function CockpitModels({
   activeServerName,
   llmActionPending,
   onActivateServer,
+  gemma4AudioRuntimeInfo,
 }: CockpitModelsProps) {
   const t = useTranslation();
   let activateServerLabel = "Aktywuj serwer";
@@ -211,8 +223,46 @@ export function CockpitModels({
           >
             {activateServerLabel}
           </Button>
+          {selectedLlmServer === "gemma4_audio" && gemma4AudioRuntimeInfo && (
+            <Gemma4AudioCapabilityInfo info={gemma4AudioRuntimeInfo} />
+          )}
         </div>
       </div>
     </Panel>
+  );
+}
+
+const GEMMA4_AUDIO_CAPABILITY_BADGES = [
+  { key: "text", label: "text" },
+  { key: "audio", label: "audio" },
+  { key: "voice", label: "voice" },
+  { key: "tts", label: "Piper TTS" },
+] as const;
+
+function Gemma4AudioCapabilityInfo({
+  info,
+}: Readonly<{ info: Gemma4AudioRuntimeInfo }>) {
+  return (
+    <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-400">
+      <p className="mb-2 text-[10px] uppercase tracking-widest text-zinc-500">
+        Gemma 4 Audio — capability
+      </p>
+      <div className="mb-2 flex flex-wrap gap-1">
+        {GEMMA4_AUDIO_CAPABILITY_BADGES.map(({ key, label }) => (
+          <span
+            key={key}
+            className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-300"
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+      {info.log_path && (
+        <p className="truncate text-zinc-500">log: {info.log_path}</p>
+      )}
+      {info.pid_path && (
+        <p className="truncate text-zinc-500">pid: {info.pid_path}</p>
+      )}
+    </div>
   );
 }

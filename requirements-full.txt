@@ -111,7 +111,7 @@ loguru==0.7.3           # Nowoczesne logowanie błędów (pin zgodny z profilem 
 tqdm==4.67.1            # Paski postępu (pin zgodny z profilem CI Lite)
 chardet<6               # Kompatybilność z requests (eliminuje RequestsDependencyWarning)
 docker                  # Docker SDK dla Python (Docker Sandbox)
-gitpython==3.1.46       # Git operations (Git Skill) (pin zgodny z profilem CI Lite)
+gitpython==3.1.50       # Git operations (Git Skill) (pin zgodny z profilem CI Lite)
 apscheduler             # Advanced Python Scheduler (background jobs)
 watchdog>=6.0.0         # File system monitoring, aligned with CI-lite baseline
 radon                   # Code complexity analysis

@@ -189,6 +189,36 @@ Kryteria akceptacji dla native audio:
 6. Traktować ONNX jako osobne badanie edge/ASR, nie jako pierwszy kierunek Gemma4 audio-native.
 7. Budować PR 206 voice orb dopiero na stabilnych stanach runtime emitowanych przez PR 207.
 
+## Operacyjna strategia Gemma 4
+
+Aktualny kierunek dla Gemma 4 to utrzymanie daemona opartego o Transformers i
+traktowanie oficjalnych checkpointów Google jako bazy runtime.
+
+Założenia robocze:
+
+1. model bazowy: `google/gemma-4-E2B-it`,
+2. opcjonalny drafter/asystent: `google/gemma-4-E2B-it-assistant`,
+3. główne kontrolki runtime:
+   - `enable_thinking` on/off,
+   - `max_new_tokens`,
+   - `cache_implementation="static"`,
+   - limity multimodalne,
+4. kierunki optymalizacji:
+   - speculative decoding przez MTP,
+   - kompresja KV cache, np. TurboQuant,
+5. wymaganie operacyjne:
+   - po reloadzie lub zmianie modelu VRAM ma być faktycznie zwalniany,
+   - drugi model nie może wisieć w pamięci po przełączeniu.
+
+Z tego wynika, że następny krok implementacyjny powinien dotyczyć:
+
+1. przełączania wariantów modelu z poziomu daemona / API / UX,
+2. wystawienia kontroli thinking i kontekstu,
+3. bezpiecznych reguł reloadu daemona,
+4. pokazania stanu VRAM i stanu reloadu w UI,
+5. utrzymania przyszłych wariantów kwantyzowanych jako zgodnych z tym samym
+   daemonem, a nie jako nowego osobnego stosu.
+
 ## Źródła
 
 1. Ollama show model details: https://docs.ollama.com/api-reference/show-model-details

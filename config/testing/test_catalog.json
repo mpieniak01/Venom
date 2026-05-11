@@ -2282,6 +2282,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_214a_gemma4_daemon.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Daemon engine and control API tests for PR 214A (Gemma 4 Runtime Ops: daemon, VRAM hygiene, reload signals, assistant attach/detach, fallback)."
+    },
+    {
       "path": "tests/test_gemma4_audio_runtime_main.py",
       "domain": "runtime",
       "test_type": "service_contract",

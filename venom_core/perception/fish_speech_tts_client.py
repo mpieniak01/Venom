@@ -22,7 +22,7 @@ class FishSpeechTtsClient:
         self.base_url = base_url.rstrip("/")
         self._client: Optional[object] = None
 
-    async def _get_client(self) -> object:
+    def _get_client(self) -> object:
         try:
             import httpx  # type: ignore[import]
         except ImportError as exc:
@@ -41,7 +41,7 @@ class FishSpeechTtsClient:
     async def health_check(self) -> bool:
         """Return True only when daemon reports fully ready status."""
         try:
-            client = await self._get_client()
+            client = self._get_client()
             resp = await client.get(f"{self.base_url}/health")  # type: ignore[attr-defined]
             data = resp.json()
             return resp.status_code == 200 and data.get("status") == "ok"
@@ -62,7 +62,7 @@ class FishSpeechTtsClient:
         Failures are logged as warnings — callers should fall back to Piper.
         """
         try:
-            client = await self._get_client()
+            client = self._get_client()
             resp = await client.post(  # type: ignore[attr-defined]
                 f"{self.base_url}/v1/tts",
                 json={"text": text, "language": language, "sample_rate": sample_rate},

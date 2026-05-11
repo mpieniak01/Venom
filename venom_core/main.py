@@ -919,17 +919,16 @@ def _clear_startup_runtime_retention_task() -> None:
     startup_runtime_retention_task = None
 
 
-async def _cancel_startup_runtime_retention_task() -> None:
+async def _shutdown_runtime_components() -> None:
     global startup_runtime_retention_task
-    task = startup_runtime_retention_task
-    if task and not task.done():
-        task.cancel()
+    logger.info("Zamykanie aplikacji...")
+
+    if startup_runtime_retention_task and not startup_runtime_retention_task.done():
+        startup_runtime_retention_task.cancel()
         with suppress(asyncio.CancelledError):
-            await task
+            await startup_runtime_retention_task
     startup_runtime_retention_task = None
 
-
-def _release_onnx_runtime_resources() -> None:
     # Release in-process ONNX caches/pools early to free VRAM/RAM on shutdown.
     try:
         llm_simple_routes.release_onnx_simple_client()
@@ -940,8 +939,6 @@ def _release_onnx_runtime_resources() -> None:
     except Exception:
         logger.warning("Nie udało się zwolnić runtime ONNX (tasks mode).")
 
-
-async def _stop_runtime_services() -> None:
     if request_tracer:
         await request_tracer.stop_watchdog()
         logger.info("RequestTracer watchdog zatrzymany")
@@ -966,23 +963,6 @@ async def _stop_runtime_services() -> None:
     if hardware_bridge:
         await hardware_bridge.disconnect()
         logger.info("HardwareBridge rozłączony")
-
-
-async def _close_audio_engine_resources() -> None:
-    if audio_engine and hasattr(audio_engine, "aclose"):
-        try:
-            await audio_engine.aclose()
-            logger.info("AudioEngine zasoby asynchroniczne zwolnione")
-        except Exception:
-            logger.warning("Nie udało się zamknąć zasobów AudioEngine.")
-
-
-async def _shutdown_runtime_components() -> None:
-    logger.info("Zamykanie aplikacji...")
-    await _cancel_startup_runtime_retention_task()
-    _release_onnx_runtime_resources()
-    await _stop_runtime_services()
-    await _close_audio_engine_resources()
 
     await state_manager.shutdown()
     logger.info("Aplikacja zamknięta")

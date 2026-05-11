@@ -15,5 +15,3 @@
 # Audio/voice ONNX-adjacent extras
 faster-whisper
 piper-tts
-hydra-core
-natsort

@@ -456,33 +456,21 @@ class AudioEngine:
         whisper_model_size: str = "base",
         tts_model_path: Optional[str] = None,
         device: str = "cpu",
-        tts_engine: str = "piper_local",
-        fish_speech_endpoint: str = "http://127.0.0.1:8024",
     ):
         """
         Inicjalizacja silnika audio.
 
         Args:
             whisper_model_size: Rozmiar modelu Whisper
-            tts_model_path: Ścieżka do modelu TTS (Piper)
+            tts_model_path: Ścieżka do modelu TTS
             device: Urządzenie ('cpu', 'cuda')
-            tts_engine: Backend TTS — 'piper_local' or 'fish_speech'
-            fish_speech_endpoint: Base URL for the Fish Speech daemon
         """
         self.whisper = WhisperSkill(
             model_size=whisper_model_size,
             device=device,
         )
         self.voice = VoiceSkill(model_path=tts_model_path)
-        self.tts_engine = tts_engine
-
-        self._fish_client: Optional[Any] = None
-        if tts_engine == "fish_speech":
-            from venom_core.perception.fish_speech_tts_client import FishSpeechTtsClient
-
-            self._fish_client = FishSpeechTtsClient(base_url=fish_speech_endpoint)
-
-        logger.info(f"AudioEngine zainicjalizowany (tts_engine={tts_engine})")
+        logger.info("AudioEngine zainicjalizowany")
 
     async def listen(
         self, audio_buffer: np.ndarray, language: str = "pl", sample_rate: int = 16000
@@ -541,23 +529,14 @@ class AudioEngine:
         except Exception as exc:
             logger.warning(f"Nie udało się podgrzać Whisper: {exc}")
 
-        if self.tts_engine == "fish_speech" and self._fish_client is not None:
-            try:
-                reachable = await self._fish_client.health_check()
-                warmup_state["tts_loaded"] = reachable
-                if not reachable:
-                    logger.warning("Fish Speech daemon not reachable during warmup")
-            except Exception as exc:
-                logger.warning(f"Fish Speech warmup check failed: {exc}")
-        else:
-            try:
-                if not self.voice.is_fallback_mode:
-                    await asyncio.to_thread(self.voice._load_model)
-                    warmup_state["tts_loaded"] = self.voice.voice is not None
-                else:
-                    warmup_state["tts_loaded"] = False
-            except Exception as exc:
-                logger.warning(f"Nie udało się podgrzać Piper: {exc}")
+        try:
+            if not self.voice.is_fallback_mode:
+                await asyncio.to_thread(self.voice._load_model)
+                warmup_state["tts_loaded"] = self.voice.voice is not None
+            else:
+                warmup_state["tts_loaded"] = False
+        except Exception as exc:
+            logger.warning(f"Nie udało się podgrzać Piper: {exc}")
 
         return warmup_state
 
@@ -566,23 +545,12 @@ class AudioEngine:
         Syntetyzuje mowę z tekstu.
 
         Args:
-            text: Tekst do wypowiedzenia.
+            text: Tekst do wypowiedzenia
 
         Returns:
-            Audio as float32 numpy array, or None on failure.
+            Audio stream
         """
-        if self.tts_engine == "fish_speech" and self._fish_client is not None:
-            result = await self._fish_client.speak(text)
-            if result is not None:
-                return result
-            logger.warning("Fish Speech speak() returned None; falling back to Piper")
-
         return await self.voice.speak(text)
-
-    async def aclose(self) -> None:
-        """Release async resources owned by AudioEngine."""
-        if self._fish_client is not None:
-            await self._fish_client.aclose()
 
     async def process_voice_command(
         self, audio_buffer: np.ndarray, language: str = "pl", sample_rate: int = 16000

@@ -61,6 +61,7 @@ const PARTICLE_COLORS: Partial<Record<VoiceOrbState, string>> = {
   recording: "rgba(52,211,153,0.72)",
   tts: "rgba(34,211,238,0.72)",
 };
+const MONO = "rgba(148,163,184,0.42)";
 
 const ORB_PARTICLE_COUNT = 9;
 const ORB_PARTICLE_RANDOMS_PER_PARTICLE = 5;

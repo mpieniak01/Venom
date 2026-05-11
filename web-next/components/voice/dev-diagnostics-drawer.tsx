@@ -11,6 +11,7 @@ type AudioStatus = {
   vad_threshold?: number;
   whisper_model_size?: string | null;
   stt_ready?: boolean;
+  tts_engine?: string | null;
   tts_ready?: boolean;
   tts_fallback?: boolean | null;
   dependencies?: Record<string, boolean>;
@@ -180,6 +181,10 @@ function AudioStatusSection({ audioStatus }: Readonly<{ audioStatus: AudioStatus
             <p className="text-white">{audioStatus.stt_ready ? "Tak" : "Nie"}</p>
           </div>
           <div>
+            <p className="text-caption">TTS Engine</p>
+            <p className="text-white">{audioStatus.tts_engine ?? "piper_local"}</p>
+          </div>
+          <div>
             <p className="text-caption">TTS gotowe</p>
             <p className="text-white">{audioStatus.tts_ready ? "Tak" : "Nie"}</p>
           </div>
@@ -257,7 +262,7 @@ function LatestRecordingSection({
             {joinParts([
               runtime.llm_model && `LLM ${runtime.llm_service_id}:${runtime.llm_model}`,
               runtime.stt_model && `STT ${runtime.stt_model}/${runtime.stt_device}`,
-              runtime.tts_sample_rate && `TTS ${runtime.tts_sample_rate} Hz`,
+              runtime.tts_sample_rate != null ? `TTS ${runtime.tts_sample_rate} Hz` : null,
             ])}
           </p>
         )}

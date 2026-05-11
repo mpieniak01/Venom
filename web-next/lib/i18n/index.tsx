@@ -89,7 +89,7 @@ function subscribeToLanguagePreference(onStoreChange: () => void): () => void {
 }
 
 export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const preferredLanguage = useSyncExternalStore(
+  const preferredLanguage = useSyncExternalStore<LanguageCode>(
     subscribeToLanguagePreference,
     resolvePreferredLanguage,
     () => "pl",

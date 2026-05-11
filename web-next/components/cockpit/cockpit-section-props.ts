@@ -1,12 +1,14 @@
 "use client";
 
-import { createElement, useMemo, useCallback } from "react";
+import { createElement, useMemo, useCallback, useState, useEffect } from "react";
 import type {
   ServiceStatus,
   HistoryRequest,
   GenerationParams,
   ContextUsed,
   LlmRuntimeModelOption,
+  LlmRuntimeTargetOption,
+  TtsRuntimeState,
 } from "@/lib/types";
 import type { LogEntryType } from "@/lib/logs";
 import { CockpitHiddenPromptsPanel } from "@/components/cockpit/cockpit-hidden-prompts-panel";
@@ -140,8 +142,8 @@ export function useCockpitSectionProps() {
     [selectedLlmServer, setSelectedLlmModel, setSelectedLlmServer],
   );
 
-  const runtimeTargets = useMemo(
-    () => data.unifiedModelCatalog?.runtimes ?? [],
+  const runtimeTargets = useMemo<LlmRuntimeTargetOption[]>(
+    () => (data.unifiedModelCatalog?.runtimes ?? []) as LlmRuntimeTargetOption[],
     [data.unifiedModelCatalog],
   );
   const normalizedSelectedLlmServer = useMemo(
@@ -586,6 +588,39 @@ export function useCockpitSectionProps() {
     };
   }, [runtimeTargets]);
 
+  const [ttsRuntimeState, setTtsRuntimeState] = useState<TtsRuntimeState | null>(null);
+  const [ttsEngineChanging, setTtsEngineChanging] = useState(false);
+
+  const refreshTtsRuntimeState = useCallback(async () => {
+    try {
+      const resp = await fetch("/api/v1/audio/tts/runtime");
+      if (!resp.ok) return;
+      setTtsRuntimeState((await resp.json()) as TtsRuntimeState);
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshTtsRuntimeState().catch(() => undefined);
+  }, [refreshTtsRuntimeState]);
+
+  const handleSelectTtsEngine = useCallback(async (engineId: string) => {
+    setTtsEngineChanging(true);
+    try {
+      await fetch("/api/v1/audio/tts/runtime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tts_engine: engineId }),
+      });
+      await refreshTtsRuntimeState();
+    } catch {
+      /* ignore */
+    } finally {
+      setTtsEngineChanging(false);
+    }
+  }, [refreshTtsRuntimeState]);
+
   const llmOpsPanelProps = useMemo(() => ({
     llmServersLoading,
     llmServers,
@@ -609,6 +644,9 @@ export function useCockpitSectionProps() {
     llmActionPending,
     onActivateServer,
     gemma4AudioRuntimeInfo,
+    ttsRuntimeState,
+    onSelectTtsEngine: handleSelectTtsEngine,
+    ttsEngineChanging,
     connected,
     logFilter,
     onLogFilterChange,
@@ -626,6 +664,9 @@ export function useCockpitSectionProps() {
     connected,
     exportingPinned,
     gemma4AudioRuntimeInfo,
+    ttsRuntimeState,
+    ttsEngineChanging,
+    handleSelectTtsEngine,
     llmActionPending,
     llmModelOptionsPanel,
     llmServerOptionsPanel,

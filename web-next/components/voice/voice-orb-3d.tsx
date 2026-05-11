@@ -432,7 +432,9 @@ function updateShaderMaterial({
   };
 
   if (activeAnalyser) {
-    activeAnalyser.getByteFrequencyData(rawFFT.current);
+    activeAnalyser.getByteFrequencyData(
+      rawFFT.current as unknown as Uint8Array<ArrayBuffer>,
+    );
     for (let i = 0; i < 128; i++) {
       const val = rawFFT.current[i] ?? 0;
       GLOBAL_FFT_DATA_ARRAY[i * 4] = val;
@@ -573,7 +575,7 @@ function OrbScene({
   const light2Angle = useRef(Math.PI);
   const prevState = useRef(state);
   const burstProgress = useRef(0);
-  const rawFFT = useRef(new Uint8Array(128));
+  const rawFFT = useRef<Uint8Array<ArrayBuffer>>(new Uint8Array(new ArrayBuffer(128)));
 
   const audioLevel = getOrbAudioLevel(state, inputLevel, outputLevel);
   const isActive = state === "recording" || state === "tts";

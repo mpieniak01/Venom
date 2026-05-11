@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Cpu, Database } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AcademyStatus } from "@/lib/academy-api";
 import { useTranslation } from "@/lib/i18n";
@@ -29,7 +30,7 @@ const ComponentStatus = ({ name, active }: ComponentStatusProps) => (
 interface StatCardProps {
   readonly label: string;
   readonly value: string | number;
-  readonly icon: React.ElementType;
+  readonly icon: LucideIcon;
   readonly color?: "emerald" | "blue" | "yellow" | "red";
 }
 

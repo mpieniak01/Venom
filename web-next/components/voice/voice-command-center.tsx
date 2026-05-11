@@ -19,6 +19,8 @@ import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import { useOrbMetrics } from "@/components/voice/use-orb-metrics";
 import { OrbZone } from "@/components/voice/orb-zone";
 import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
+import { TtsRuntimeSelector } from "@/components/audio/tts-runtime-selector";
+import type { TtsRuntimeState } from "@/lib/types";
 
 export type AudioStatus = {
   enabled: boolean;
@@ -31,6 +33,7 @@ export type AudioStatus = {
   stt_ready?: boolean;
   whisper_model_size?: string | null;
   whisper_device?: string | null;
+  tts_engine?: string | null;
   tts_backend?: string | null;
   tts_ready?: boolean;
   tts_model_path?: string | null;
@@ -178,7 +181,7 @@ type TimingStripProps = Readonly<{
 }>;
 
 function TimingStrip({ timings }: TimingStripProps) {
-  const hasAny = Boolean(timings) && TIMING_STAGES.some((s) => timings[s.key] != null);
+  const hasAny = TIMING_STAGES.some((s) => timings?.[s.key] != null);
   return (
     <div className="grid grid-cols-5 gap-1.5 text-xs">
       {TIMING_STAGES.map(({ key, label, accent }) => {
@@ -252,7 +255,7 @@ const closeAudioContext = (ctx: AudioContext | null | undefined) => {
 
 const createPlaybackContext = (
   AudioContextCtor: typeof AudioContext,
-  sourceRef: RefObject<MediaElementAudioSourceNode | null>,
+  sourceRef: RefObject<AudioNode | null>,
 ): AudioContext | null => {
   try {
     const context = new AudioContextCtor();
@@ -959,7 +962,7 @@ const startVoiceCapture = async (deps: VoiceCaptureDeps): Promise<void> => {
 export type VoiceModePreset = "standard" | "deep_analysis" | "summary" | "action_items";
 export type VoiceStatusUpdate = Pick<AudioStatus,
   | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
-  | "whisper_model_size" | "stt_backend" | "tts_backend"
+  | "whisper_model_size" | "stt_backend" | "tts_backend" | "tts_engine"
   | "vad_threshold" | "dependencies" | "runtime_snapshot"
 >;
 
@@ -993,6 +996,8 @@ export function VoiceCommandCenter({
   const [ttsModelOptions, setTtsModelOptions] = useState<TtsModelOption[]>([]);
   const [selectedTtsModelPath, setSelectedTtsModelPath] = useState("");
   const [ttsModelChanging, setTtsModelChanging] = useState(false);
+  const [ttsRuntimeState, setTtsRuntimeState] = useState<TtsRuntimeState | null>(null);
+  const [ttsEngineChanging, setTtsEngineChanging] = useState(false);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [ttsMuted, setTtsMuted] = useState(false);
   const [audioChunkCount, setAudioChunkCount] = useState(0);
@@ -1031,6 +1036,7 @@ export function VoiceCommandCenter({
     onStatusUpdate({
       enabled:           audioStatus.enabled,
       stt_ready:         audioStatus.stt_ready,
+      tts_engine:        audioStatus.tts_engine,
       tts_ready:         audioStatus.tts_ready,
       tts_fallback:      audioStatus.tts_fallback,
       whisper_model_size:audioStatus.whisper_model_size,
@@ -1090,6 +1096,38 @@ export function VoiceCommandCenter({
       setTtsModelOptions([]);
     }
   }, []);
+
+  const refreshTtsRuntimeState = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v1/audio/tts/runtime");
+      if (!response.ok) return;
+      const data = (await response.json()) as TtsRuntimeState;
+      setTtsRuntimeState(data);
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  const applyTtsEngine = useCallback(
+    async (engineId: string) => {
+      setTtsEngineChanging(true);
+      try {
+        const response = await fetch("/api/v1/audio/tts/runtime", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tts_engine: engineId }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        await refreshTtsRuntimeState();
+        await refreshAudioStatus();
+      } catch {
+        /* ignore — state will remain unchanged */
+      } finally {
+        setTtsEngineChanging(false);
+      }
+    },
+    [refreshTtsRuntimeState, refreshAudioStatus],
+  );
 
   const releasePlaybackResources = useCallback(() => {
     const src = ttsSourceRef.current;
@@ -1394,7 +1432,8 @@ export function VoiceCommandCenter({
 
   useEffect(() => {
     refreshTtsModelOptions().catch(() => undefined);
-  }, [refreshTtsModelOptions]);
+    refreshTtsRuntimeState().catch(() => undefined);
+  }, [refreshTtsModelOptions, refreshTtsRuntimeState]);
 
   const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
     const ws = wsRef.current;
@@ -1608,42 +1647,28 @@ export function VoiceCommandCenter({
             onClick={() => {
               refreshAudioStatus().catch(() => undefined);
               refreshTtsModelOptions().catch(() => undefined);
+              refreshTtsRuntimeState().catch(() => undefined);
             }}
           >
             {t("voice.controls.refresh")}
           </Button>
         </div>
 
-        {/* TTS voice selector */}
-        <div className="rounded-2xl box-muted p-3 text-xs text-zinc-300">
-          <p className="text-caption">{t("voice.controls.ttsVoice")}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <div className="min-w-[260px] flex-1">
-              <Select
-                value={selectedTtsModelPath}
-                onValueChange={(value) => {
-                  setSelectedTtsModelPath(value);
-                  applyTtsModel(value).catch(() => undefined);
-                }}
-                disabled={!audioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
-              >
-                <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
-                  <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
-                </SelectTrigger>
-                <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
-                  {ttsModelOptions.map((option) => (
-                    <SelectItem key={option.path} value={option.path}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <span className="text-[11px] text-zinc-400">
-              {ttsModelChanging ? t("voice.controls.ttsVoiceChanging") : t("voice.controls.ttsVoiceAuto")}
-            </span>
-          </div>
-        </div>
+        {/* TTS runtime selector */}
+        <TtsRuntimeSelector
+          runtimeState={ttsRuntimeState}
+          onSelectEngine={(engineId) => {
+            applyTtsEngine(engineId).catch(() => undefined);
+          }}
+          onSelectOption={(optionId) => {
+            setSelectedTtsModelPath(optionId);
+            applyTtsModel(optionId).catch(() => undefined);
+          }}
+          engineChanging={ttsEngineChanging}
+          optionChanging={ttsModelChanging}
+          disabled={!audioEnabled}
+          mode="full"
+        />
 
         {/* Status strip */}
         <div className="grid gap-2 sm:grid-cols-3 text-xs">

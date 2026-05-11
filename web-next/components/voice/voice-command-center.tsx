@@ -5,13 +5,6 @@ import type { RefObject } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { getAudioWsUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
@@ -103,11 +96,6 @@ export type AudioStatus = {
 };
 
 type PlaybackState = "idle" | "playing" | "muted" | "error";
-type TtsModelOption = {
-  id: string;
-  label: string;
-  path: string;
-};
 
 type Translator = (key: string, variables?: Record<string, string | number>) => string;
 
@@ -993,8 +981,6 @@ export function VoiceCommandCenter({
   const [response, setResponse] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
-  const [ttsModelOptions, setTtsModelOptions] = useState<TtsModelOption[]>([]);
-  const [selectedTtsModelPath, setSelectedTtsModelPath] = useState("");
   const [ttsModelChanging, setTtsModelChanging] = useState(false);
   const [ttsRuntimeState, setTtsRuntimeState] = useState<TtsRuntimeState | null>(null);
   const [ttsEngineChanging, setTtsEngineChanging] = useState(false);
@@ -1078,25 +1064,6 @@ export function VoiceCommandCenter({
     }
   }, [t]);
 
-  const refreshTtsModelOptions = useCallback(async () => {
-    try {
-      const response = await fetch("/api/v1/audio/tts/models");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as {
-        models?: TtsModelOption[];
-        current_model_path?: string;
-      };
-      setTtsModelOptions(Array.isArray(data.models) ? data.models : []);
-      if (typeof data.current_model_path === "string") {
-        setSelectedTtsModelPath(data.current_model_path);
-      }
-    } catch {
-      setTtsModelOptions([]);
-    }
-  }, []);
-
   const refreshTtsRuntimeState = useCallback(async () => {
     try {
       const response = await fetch("/api/v1/audio/tts/runtime");
@@ -1159,7 +1126,6 @@ export function VoiceCommandCenter({
           typeof data.effective_tts_model_path === "string"
             ? data.effective_tts_model_path
             : modelPath;
-        setSelectedTtsModelPath(effectiveModelPath);
         setStatusMessage(
           effectiveModelPath === modelPath
             ? t("voice.status.ttsVoiceUpdated")
@@ -1170,14 +1136,14 @@ export function VoiceCommandCenter({
           wsRef.current?.close();
         }
         await refreshAudioStatus();
-        await refreshTtsModelOptions();
+        await refreshTtsRuntimeState();
       } catch {
         setStatusMessage(t("voice.status.ttsVoiceUpdateFailed"));
       } finally {
         setTtsModelChanging(false);
       }
     },
-    [refreshAudioStatus, refreshTtsModelOptions, releasePlaybackResources, t],
+    [refreshAudioStatus, refreshTtsRuntimeState, releasePlaybackResources, t],
   );
 
   const getMediaRecorderMimeType = useCallback(() => {
@@ -1431,9 +1397,8 @@ export function VoiceCommandCenter({
   );
 
   useEffect(() => {
-    refreshTtsModelOptions().catch(() => undefined);
     refreshTtsRuntimeState().catch(() => undefined);
-  }, [refreshTtsModelOptions, refreshTtsRuntimeState]);
+  }, [refreshTtsRuntimeState]);
 
   const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
     const ws = wsRef.current;
@@ -1646,7 +1611,6 @@ export function VoiceCommandCenter({
             variant="outline"
             onClick={() => {
               refreshAudioStatus().catch(() => undefined);
-              refreshTtsModelOptions().catch(() => undefined);
               refreshTtsRuntimeState().catch(() => undefined);
             }}
           >
@@ -1661,7 +1625,6 @@ export function VoiceCommandCenter({
             applyTtsEngine(engineId).catch(() => undefined);
           }}
           onSelectOption={(optionId) => {
-            setSelectedTtsModelPath(optionId);
             applyTtsModel(optionId).catch(() => undefined);
           }}
           engineChanging={ttsEngineChanging}

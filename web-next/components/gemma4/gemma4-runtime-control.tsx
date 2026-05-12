@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "@/lib/i18n";
+import type { DaemonConfigRequest } from "@/lib/gemma4-daemon-api";
 import { type Gemma4DaemonState, useGemma4Daemon } from "@/hooks/use-gemma4-daemon";
 
 const CACHE_OPTIONS = [
@@ -42,6 +43,17 @@ type InnerProps = Readonly<{
   variant: Variant;
 }>;
 
+function vramBarColor(pct: number): string {
+  if (pct > 90) return "bg-rose-500";
+  if (pct > 70) return "bg-amber-400";
+  return "bg-emerald-400";
+}
+
+function parseTokenInput(raw: string): number | undefined {
+  const n = Number.parseInt(raw, 10);
+  return Number.isNaN(n) || n <= 0 ? undefined : n;
+}
+
 export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
   const t = useTranslation();
   const { status, loading, error, actionPending } = daemon;
@@ -56,21 +68,18 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
 
   const effectiveThinking = localThinking ?? status?.params.enable_thinking ?? false;
   const effectiveTokens =
-    localTokens !== "" ? localTokens : String(status?.params.max_new_tokens ?? 128);
+    localTokens === "" ? String(status?.params.max_new_tokens ?? 128) : localTokens;
   const effectiveCache =
-    localCache !== null ? localCache : (status?.params.cache_implementation ?? "");
+    localCache === null ? (status?.params.cache_implementation ?? "") : localCache;
 
-  const hasLocalChanges =
-    localThinking !== null ||
-    localTokens !== "" ||
-    localCache !== null;
+  const hasLocalChanges = localThinking !== null || localTokens !== "" || localCache !== null;
 
   async function handleApply() {
-    const params: import("@/lib/gemma4-daemon-api").DaemonConfigRequest = {};
+    const params: DaemonConfigRequest = {};
     if (localThinking !== null) params.enable_thinking = localThinking;
     if (localTokens !== "") {
-      const n = parseInt(localTokens, 10);
-      if (!isNaN(n) && n > 0) params.max_new_tokens = n;
+      const n = parseTokenInput(localTokens);
+      if (n !== undefined) params.max_new_tokens = n;
     }
     if (localCache !== null) {
       params.cache_implementation = localCache === "" ? null : localCache;
@@ -127,7 +136,7 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
           </p>
         </div>
         <div className="flex gap-1 flex-shrink-0">
-          {!status?.target_loaded && (
+          {status?.target_loaded === false && (
             <Badge tone="warning" className="text-[10px]">{t("voice.daemon.warming")}</Badge>
           )}
           {status?.mode === "target_with_assistant" && (
@@ -162,13 +171,7 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
               aria-label={t("voice.daemon.thinking")}
             />
             {status && (
-              <span className="text-[10px] text-zinc-500">
-                {localThinking !== null
-                  ? t("voice.daemon.signalLive")
-                  : status.params.enable_thinking
-                  ? t("voice.daemon.thinkingOn")
-                  : t("voice.daemon.thinkingOff")}
-              </span>
+              <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
             )}
           </div>
         </div>
@@ -209,89 +212,21 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
 
       {/* VRAM */}
       {vram && (
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500">
-              {t("voice.daemon.vram")}
-            </span>
-            <span className="text-[10px] text-zinc-400">
-              {vram.backend === "cuda"
-                ? `${vram.allocated_mb} / ${vram.total_mb} MB`
-                : t("voice.daemon.vramCpu")}
-            </span>
-          </div>
-          {vram.backend === "cuda" && vramPercent !== null && (
-            <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
-              <div
-                data-testid="vram-bar"
-                className={`h-full rounded-full transition-all ${
-                  vramPercent > 90
-                    ? "bg-rose-500"
-                    : vramPercent > 70
-                    ? "bg-amber-400"
-                    : "bg-emerald-400"
-                }`}
-                style={{ width: `${vramPercent}%` }}
-              />
-            </div>
-          )}
-        </div>
+        <VramSection vram={vram} vramPercent={vramPercent} />
       )}
 
       {/* Drafter */}
-      <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500">
-            {t("voice.daemon.assistantDrafter")}
-          </span>
-          {status?.assistant_model ? (
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={daemon.detachAssistant}
-              disabled={busy}
-            >
-              {actionPending === "detach"
-                ? t("voice.daemon.busy")
-                : t("voice.daemon.detachDrafter")}
-            </Button>
-          ) : (
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() => setShowDrafterInput((v) => !v)}
-              disabled={busy}
-            >
-              {t("voice.daemon.attachDrafter")}
-            </Button>
-          )}
-        </div>
-        {status?.assistant_model ? (
-          <p className="mt-1 text-xs text-white truncate">{status.assistant_model}</p>
-        ) : (
-          <p className="mt-1 text-[10px] text-zinc-600">{t("voice.daemon.noDrafter")}</p>
-        )}
-        {showDrafterInput && !status?.assistant_model && (
-          <div className="mt-2 flex gap-2">
-            <input
-              type="text"
-              value={drafterInput}
-              onChange={(e) => setDrafterInput(e.target.value)}
-              placeholder={t("voice.daemon.drafterModelPlaceholder")}
-              disabled={busy}
-              className="flex-1 min-w-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-            />
-            <Button
-              size="xs"
-              variant="primary"
-              onClick={handleAttach}
-              disabled={busy || !drafterInput.trim()}
-            >
-              {actionPending === "attach" ? t("voice.daemon.busy") : t("voice.daemon.ok")}
-            </Button>
-          </div>
-        )}
-      </div>
+      <DrafterBox
+        daemon={daemon}
+        assistantModel={status?.assistant_model ?? null}
+        busy={busy}
+        actionPending={actionPending}
+        drafterInput={drafterInput}
+        setDrafterInput={setDrafterInput}
+        showDrafterInput={showDrafterInput}
+        setShowDrafterInput={setShowDrafterInput}
+        onAttach={handleAttach}
+      />
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
@@ -374,6 +309,134 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
         <p className="mt-2 text-[10px] text-rose-400 truncate">{error}</p>
       )}
     </DaemonCard>
+  );
+}
+
+// ── Sub-components extracted to reduce cognitive complexity ───────────────────
+
+function ThinkingStatusLabel({
+  localThinking,
+  enabled,
+}: Readonly<{ localThinking: boolean | null; enabled: boolean }>) {
+  const t = useTranslation();
+  if (localThinking !== null) {
+    return <span className="text-[10px] text-zinc-500">{t("voice.daemon.signalLive")}</span>;
+  }
+  const label = enabled ? t("voice.daemon.thinkingOn") : t("voice.daemon.thinkingOff");
+  return <span className="text-[10px] text-zinc-500">{label}</span>;
+}
+
+type VramInfo = Readonly<{
+  backend: string;
+  allocated_mb: number;
+  total_mb: number;
+}>;
+
+function VramSection({
+  vram,
+  vramPercent,
+}: Readonly<{ vram: VramInfo; vramPercent: number | null }>) {
+  const t = useTranslation();
+  const label =
+    vram.backend === "cuda"
+      ? `${vram.allocated_mb} / ${vram.total_mb} MB`
+      : t("voice.daemon.vramCpu");
+
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] uppercase tracking-widest text-zinc-500">
+          {t("voice.daemon.vram")}
+        </span>
+        <span className="text-[10px] text-zinc-400">{label}</span>
+      </div>
+      {vram.backend === "cuda" && vramPercent !== null && (
+        <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+          <div
+            data-testid="vram-bar"
+            className={`h-full rounded-full transition-all ${vramBarColor(vramPercent)}`}
+            style={{ width: `${vramPercent}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+type DrafterBoxProps = Readonly<{
+  daemon: Gemma4DaemonState;
+  assistantModel: string | null;
+  busy: boolean;
+  actionPending: string | null;
+  drafterInput: string;
+  setDrafterInput: (v: string) => void;
+  showDrafterInput: boolean;
+  setShowDrafterInput: (v: boolean) => void;
+  onAttach: () => void;
+}>;
+
+function DrafterBox({
+  daemon,
+  assistantModel,
+  busy,
+  actionPending,
+  drafterInput,
+  setDrafterInput,
+  showDrafterInput,
+  setShowDrafterInput,
+  onAttach,
+}: DrafterBoxProps) {
+  const t = useTranslation();
+
+  return (
+    <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-zinc-500">
+          {t("voice.daemon.assistantDrafter")}
+        </span>
+        {assistantModel ? (
+          <Button size="xs" variant="ghost" onClick={daemon.detachAssistant} disabled={busy}>
+            {actionPending === "detach" ? t("voice.daemon.busy") : t("voice.daemon.detachDrafter")}
+          </Button>
+        ) : (
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => setShowDrafterInput(!showDrafterInput)}
+            disabled={busy}
+          >
+            {t("voice.daemon.attachDrafter")}
+          </Button>
+        )}
+      </div>
+
+      {assistantModel ? (
+        <p className="mt-1 text-xs text-white truncate">{assistantModel}</p>
+      ) : (
+        <p className="mt-1 text-[10px] text-zinc-600">{t("voice.daemon.noDrafter")}</p>
+      )}
+
+      {showDrafterInput && !assistantModel && (
+        <div className="mt-2 flex gap-2">
+          <input
+            type="text"
+            value={drafterInput}
+            onChange={(e) => setDrafterInput(e.target.value)}
+            placeholder={t("voice.daemon.drafterModelPlaceholder")}
+            disabled={busy}
+            className="flex-1 min-w-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          />
+          <Button
+            size="xs"
+            variant="primary"
+            onClick={onAttach}
+            disabled={busy || !drafterInput.trim()}
+          >
+            {actionPending === "attach" ? t("voice.daemon.busy") : t("voice.daemon.ok")}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 

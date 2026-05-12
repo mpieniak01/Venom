@@ -57,7 +57,8 @@ async function daemonFetch<T>(
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
-    throw new Error(`Daemon ${path} → ${resp.status}${text ? `: ${text}` : ""}`);
+    const detail = text ? `: ${text}` : "";
+    throw new Error(`Daemon ${path} → ${resp.status}${detail}`);
   }
   if (resp.status === 204) return undefined as T;
   return resp.json() as Promise<T>;

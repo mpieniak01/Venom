@@ -48,6 +48,7 @@ export const voice = {
     noRuntimeSnapshot: "Noch kein Runtime-Snapshot. Status nach Backend-Start aktualisieren.",
     unknownModel: "Unbekanntes Modell",
     provider: "Provider",
+    endpoint: "Endpoint",
     profile: "Profil",
     pipeline: "Pipeline",
     probes: "Probes",

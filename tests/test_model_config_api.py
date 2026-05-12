@@ -183,8 +183,7 @@ class TestModelConfigAPI:
         _set_registry(registry)
 
         response = client.get("/api/v1/models/gemma4:latest/runtime-capabilities")
-
         assert response.status_code == 200
         data = response.json()
         assert data["runtime_capabilities"]["probes"]["show"]["status"] == "verified"
-        assert data["runtime_capabilities"]["probe_status"] == "failed"
+        assert data["runtime_capabilities"]["probe_status"] == "verified"

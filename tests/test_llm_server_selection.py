@@ -10,6 +10,33 @@ from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
 
 
+class _FakeResponse:
+    def __init__(self, status_code: int, payload=None):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        if isinstance(self._payload, Exception):
+            raise self._payload
+        return self._payload
+
+
+class _FakeAsyncClient:
+    def __init__(self, responses):
+        self._responses = list(responses)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, _url):
+        if self._responses:
+            return self._responses.pop(0)
+        return _FakeResponse(503, {"status": "error"})
+
+
 class DummyController:
     def __init__(self, servers):
         self._servers = servers
@@ -60,6 +87,51 @@ def _restore_settings(snapshot):
     SETTINGS.ONNX_LLM_ENABLED = snapshot["onnx_enabled"]
     if snapshot["config_hash"] is not None:
         SETTINGS.LLM_CONFIG_HASH = snapshot["config_hash"]
+
+
+@pytest.mark.asyncio
+async def test_await_server_health_gemma4_audio_waits_for_ready(monkeypatch):
+    responses = [
+        _FakeResponse(200, {"status": "warming"}),
+        _FakeResponse(200, {"status": "ok"}),
+    ]
+
+    async def _fast_sleep(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        system_routes.httpx,
+        "AsyncClient",
+        lambda timeout=2.0: _FakeAsyncClient(responses),
+    )
+    monkeypatch.setattr(system_routes.asyncio, "sleep", _fast_sleep)
+
+    assert (
+        await system_routes._await_server_health(
+            "gemma4_audio", "http://localhost:8014/health"
+        )
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_await_server_health_non_gemma_accepts_http_200(monkeypatch):
+    responses = [_FakeResponse(200, {"status": "error"})]
+    monkeypatch.setattr(
+        system_routes.httpx,
+        "AsyncClient",
+        lambda timeout=2.0: _FakeAsyncClient(responses),
+    )
+
+    assert (
+        await system_routes._await_server_health("ollama", "http://localhost:11434")
+        is True
+    )
+
+
+def test_extract_health_status_handles_non_json_response():
+    response = _FakeResponse(200, ValueError("invalid json"))
+    assert system_routes._extract_health_status(response) is None
 
 
 @pytest.mark.asyncio

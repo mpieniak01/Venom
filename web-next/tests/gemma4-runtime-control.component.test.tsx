@@ -55,8 +55,26 @@ function makeState(overrides: Partial<Gemma4DaemonState> = {}): Gemma4DaemonStat
 function renderControl(
   state: Gemma4DaemonState,
   variant: "cockpit" | "voice" = "voice",
+  runtimeSnapshot?: {
+    provider?: string | null;
+    model_name?: string | null;
+    runtime_capabilities?: {
+      compatibility_profile?: string | null;
+      probe_status?: string | null;
+    } | null;
+    voice_pipeline?: {
+      profile?: string | null;
+      tts?: string | null;
+    } | null;
+  } | null,
 ) {
-  return render(<Gemma4RuntimeControlInner daemon={state} variant={variant} />);
+  return render(
+    <Gemma4RuntimeControlInner
+      daemon={state}
+      variant={variant}
+      runtimeSnapshot={runtimeSnapshot ?? null}
+    />,
+  );
 }
 
 describe("Gemma4RuntimeControl — loading state", () => {
@@ -73,6 +91,33 @@ describe("Gemma4RuntimeControl — error state", () => {
       document.body.textContent?.toLowerCase().includes("niedostępny") ||
       document.body.textContent?.toLowerCase().includes("unavailable"),
     );
+  });
+
+  it("shows runtime snapshot details when daemon is unavailable", () => {
+    renderControl(
+      makeState({
+        status: null,
+        loading: false,
+        error: "Failed to fetch",
+      }),
+      "voice",
+      {
+        provider: "ollama",
+        model_name: "gemma2:2b",
+        runtime_capabilities: {
+          compatibility_profile: "gemma4_audio_native",
+          probe_status: "verified",
+        },
+        voice_pipeline: {
+          profile: "gemma4_audio_native",
+          tts: "piper",
+        },
+      },
+    );
+    assert.ok(
+      document.body.textContent?.toLowerCase().includes("failed to fetch"),
+    );
+    assert.ok(document.body.textContent?.includes("ollama / gemma2:2b"));
   });
 });
 

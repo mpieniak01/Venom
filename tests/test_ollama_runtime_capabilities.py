@@ -82,3 +82,40 @@ def test_normalize_ollama_show_payload_handles_invalid_context_and_to_dict():
     assert payload["model_name"] == "fallback-model"
     assert payload["probe_status"] == "verified"
     assert payload["capabilities"]["text_completion"] is True
+
+
+def test_aggregate_probe_status_prefers_verified_for_optional_probe_failures():
+    from venom_core.core.ollama_runtime_probe import _aggregate_probe_status
+
+    assert _aggregate_probe_status({"show": {"status": "verified"}}) == "verified"
+    assert (
+        _aggregate_probe_status(
+            {
+                "show": {"status": "verified"},
+                "audio": {"status": "metadata_only"},
+            }
+        )
+        == "metadata_only"
+    )
+    assert (
+        _aggregate_probe_status(
+            {
+                "show": {"status": "verified"},
+                "thinking": {"status": "failed"},
+            }
+        )
+        == "verified"
+    )
+    assert (
+        _aggregate_probe_status(
+            {
+                "show": {"status": "metadata_only"},
+                "vision": {"status": "metadata_only"},
+            }
+        )
+        == "metadata_only"
+    )
+    assert (
+        _aggregate_probe_status({"show": {"status": "metadata_only"}})
+        == "metadata_only"
+    )

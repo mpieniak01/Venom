@@ -25,22 +25,56 @@ const CACHE_OPTIONS = [
 
 type Variant = "cockpit" | "voice";
 
+type RuntimeSnapshotLike = Readonly<{
+  runtime_id?: string | null;
+  provider?: string | null;
+  model_name?: string | null;
+  endpoint?: string | null;
+  config_hash?: string | null;
+  runtime_capabilities?: {
+    compatibility_profile?: string | null;
+    probe_status?: string | null;
+    capabilities?: Record<string, boolean | string | null | undefined>;
+    probes?: Record<string, { status?: string | null; reason?: string | null }>;
+    fallbacks?: Record<string, string | null | undefined>;
+  } | null;
+  voice_pipeline?: {
+    profile?: string | null;
+    stt?: string | null;
+    reasoning?: string | null;
+    tools?: string | null;
+    vision?: string | null;
+    tts?: string | null;
+    notes?: string[] | null;
+  } | null;
+  error?: string | null;
+}> | null;
+
 type Props = Readonly<{
   variant?: Variant;
   pollingIntervalMs?: number;
+  runtimeSnapshot?: RuntimeSnapshotLike;
 }>;
 
 export function Gemma4RuntimeControl({
   variant = "voice",
   pollingIntervalMs,
+  runtimeSnapshot = null,
 }: Props) {
   const daemon = useGemma4Daemon(pollingIntervalMs);
-  return <Gemma4RuntimeControlInner daemon={daemon} variant={variant} />;
+  return (
+    <Gemma4RuntimeControlInner
+      daemon={daemon}
+      variant={variant}
+      runtimeSnapshot={runtimeSnapshot}
+    />
+  );
 }
 
 type InnerProps = Readonly<{
   daemon: Gemma4DaemonState;
   variant: Variant;
+  runtimeSnapshot?: RuntimeSnapshotLike;
 }>;
 
 function vramBarColor(pct: number): string {
@@ -54,7 +88,11 @@ function parseTokenInput(raw: string): number | undefined {
   return Number.isNaN(n) || n <= 0 ? undefined : n;
 }
 
-export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
+export function Gemma4RuntimeControlInner({
+  daemon,
+  variant,
+  runtimeSnapshot = null,
+}: InnerProps) {
   const t = useTranslation();
   const { status, loading, error, actionPending } = daemon;
 
@@ -115,10 +153,14 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
   }
 
   if (error && !status) {
+    const hasRuntimeSnapshot = Boolean(runtimeSnapshot?.provider || runtimeSnapshot?.model_name);
     return (
       <DaemonCard variant={variant}>
         <p className="text-xs text-rose-400 py-1">{t("voice.daemon.daemonUnavailable")}</p>
         <p className="text-[10px] text-zinc-500 truncate">{error}</p>
+        {hasRuntimeSnapshot && (
+          <RuntimeSnapshotSummary snapshot={runtimeSnapshot} />
+        )}
       </DaemonCard>
     );
   }
@@ -156,6 +198,10 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
           <span className="font-semibold">{t("voice.daemon.reloadRequired")}: </span>
           {status.reload_reason}
         </div>
+      )}
+
+      {runtimeSnapshot && (
+        <RuntimeSnapshotSummary snapshot={runtimeSnapshot} compact />
       )}
 
       {/* Params */}
@@ -242,48 +288,23 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
             : t("voice.daemon.applyConfig")}
         </Button>
 
-        <ConfirmDialog>
-          <ConfirmDialogTrigger asChild>
-            <Button size="xs" variant="secondary" disabled={busy} data-testid="reload-button">
-              {actionPending === "reload"
-                ? t("voice.daemon.reloading")
-                : t("voice.daemon.reload")}
-            </Button>
-          </ConfirmDialogTrigger>
-          <ConfirmDialogContent>
-            <ConfirmDialogTitle>{t("voice.daemon.confirmReloadTitle")}</ConfirmDialogTitle>
-            <ConfirmDialogDescription>
-              {t("voice.daemon.confirmReloadDesc")}
-            </ConfirmDialogDescription>
-            <ConfirmDialogActions
-              onConfirm={daemon.reload}
-              onCancel={() => {}}
-              confirmLabel={t("voice.daemon.reload")}
-            />
-          </ConfirmDialogContent>
-        </ConfirmDialog>
-
-        <ConfirmDialog>
-          <ConfirmDialogTrigger asChild>
-            <Button size="xs" variant="ghost" disabled={busy} data-testid="restart-button">
-              {actionPending === "restart"
-                ? t("voice.daemon.restarting")
-                : t("voice.daemon.restart")}
-            </Button>
-          </ConfirmDialogTrigger>
-          <ConfirmDialogContent>
-            <ConfirmDialogTitle>{t("voice.daemon.confirmRestartTitle")}</ConfirmDialogTitle>
-            <ConfirmDialogDescription>
-              {t("voice.daemon.confirmRestartDesc")}
-            </ConfirmDialogDescription>
-            <ConfirmDialogActions
-              onConfirm={daemon.restart}
-              onCancel={() => {}}
-              confirmLabel={t("voice.daemon.restart")}
-              confirmVariant="danger"
-            />
-          </ConfirmDialogContent>
-        </ConfirmDialog>
+        {buildDaemonConfirmActions({ t, daemon }).map((action) => (
+          <DaemonConfirmActionButton
+            key={action.key}
+            buttonVariant={action.buttonVariant}
+            busy={busy}
+            actionPending={actionPending}
+            actionName={action.actionName}
+            pendingLabel={action.pendingLabel}
+            buttonLabel={action.buttonLabel}
+            title={action.title}
+            description={action.description}
+            confirmLabel={action.confirmLabel}
+            confirmVariant={action.confirmVariant}
+            onConfirm={action.onConfirm}
+            testId={action.testId}
+          />
+        ))}
 
         <Button
           size="xs"
@@ -358,6 +379,53 @@ function VramSection({
             style={{ width: `${vramPercent}%` }}
           />
         </div>
+      )}
+    </div>
+  );
+}
+
+type RuntimeSnapshotSummaryProps = Readonly<{
+  snapshot: RuntimeSnapshotLike;
+  compact?: boolean;
+}>;
+
+function RuntimeSnapshotSummary({
+  snapshot,
+  compact = false,
+}: RuntimeSnapshotSummaryProps) {
+  const t = useTranslation();
+  if (!snapshot) return null;
+
+  const provider = snapshot.provider ?? "—";
+  const model = snapshot.model_name ?? "—";
+  const profile = snapshot.runtime_capabilities?.compatibility_profile ?? snapshot.voice_pipeline?.profile ?? null;
+  const title = t("voice.daemon.runtimeSnapshot");
+
+  return (
+    <div className={`mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 ${compact ? "" : "mt-2"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-zinc-500">{title}</span>
+        {snapshot.runtime_capabilities?.probe_status && (
+          <span className="text-[10px] text-zinc-400">
+            {snapshot.runtime_capabilities.probe_status}
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-white truncate">
+        {provider} / {model}
+      </p>
+      {profile && (
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
+          {t("voice.controls.profile")}: {profile}
+        </p>
+      )}
+      {snapshot.voice_pipeline?.tts && (
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
+          {t("voice.controls.tts")}: {snapshot.voice_pipeline.tts}
+        </p>
+      )}
+      {snapshot.error && (
+        <p className="mt-0.5 text-[10px] text-rose-400 truncate">{snapshot.error}</p>
       )}
     </div>
   );
@@ -445,20 +513,121 @@ function DaemonCard({
   children,
 }: Readonly<{ variant: Variant; children: React.ReactNode }>) {
   const t = useTranslation();
-  if (variant === "voice") {
-    return (
-      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3 text-xs text-zinc-300">
-        <p className="eyebrow mb-2">{t("voice.daemon.title")}</p>
-        {children}
-      </div>
-    );
-  }
+  const cardClass =
+    variant === "voice"
+      ? "rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3 text-xs text-zinc-300"
+      : "mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-400";
+  const titleClass =
+    variant === "voice"
+      ? "eyebrow mb-2"
+      : "mb-2 text-[10px] uppercase tracking-widest text-zinc-500";
+
   return (
-    <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-400">
-      <p className="mb-2 text-[10px] uppercase tracking-widest text-zinc-500">
-        {t("voice.daemon.title")}
-      </p>
+    <div className={cardClass}>
+      <p className={titleClass}>{t("voice.daemon.title")}</p>
       {children}
     </div>
+  );
+}
+
+type ConfirmActionDefinition = Readonly<{
+  key: "reload" | "restart";
+  buttonVariant: "ghost" | "secondary";
+  confirmVariant?: "default" | "danger";
+  onConfirm: () => void | Promise<void>;
+}>;
+
+function buildDaemonConfirmActions({
+  t,
+  daemon,
+}: Readonly<{
+  t: (key: string) => string;
+  daemon: Gemma4DaemonState;
+}>): Array<DaemonConfirmActionButtonProps & { key: string }> {
+  const defs: ConfirmActionDefinition[] = [
+    {
+      key: "reload",
+      buttonVariant: "secondary",
+      onConfirm: daemon.reload,
+    },
+    {
+      key: "restart",
+      buttonVariant: "ghost",
+      confirmVariant: "danger",
+      onConfirm: daemon.restart,
+    },
+  ];
+
+  return defs.map((def) => {
+    const isReload = def.key === "reload";
+    return {
+      key: def.key,
+      buttonVariant: def.buttonVariant,
+      busy: false, // overridden at render call site
+      actionPending: null, // overridden at render call site
+      actionName: def.key,
+      pendingLabel: isReload ? t("voice.daemon.reloading") : t("voice.daemon.restarting"),
+      buttonLabel: isReload ? t("voice.daemon.reload") : t("voice.daemon.restart"),
+      title: isReload
+        ? t("voice.daemon.confirmReloadTitle")
+        : t("voice.daemon.confirmRestartTitle"),
+      description: isReload
+        ? t("voice.daemon.confirmReloadDesc")
+        : t("voice.daemon.confirmRestartDesc"),
+      confirmLabel: isReload ? t("voice.daemon.reload") : t("voice.daemon.restart"),
+      onConfirm: def.onConfirm,
+      confirmVariant: def.confirmVariant,
+      testId: isReload ? "reload-button" : "restart-button",
+    };
+  });
+}
+
+type DaemonConfirmActionButtonProps = Readonly<{
+  busy: boolean;
+  actionPending: string | null;
+  actionName: string;
+  pendingLabel: string;
+  buttonLabel: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => void | Promise<void>;
+  buttonVariant: "ghost" | "secondary";
+  confirmVariant?: "default" | "danger";
+  testId: string;
+}>;
+
+function DaemonConfirmActionButton({
+  busy,
+  actionPending,
+  actionName,
+  pendingLabel,
+  buttonLabel,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  buttonVariant,
+  confirmVariant,
+  testId,
+}: DaemonConfirmActionButtonProps) {
+  return (
+    <ConfirmDialog>
+      <ConfirmDialogTrigger asChild>
+        <Button size="xs" variant={buttonVariant} disabled={busy} data-testid={testId}>
+          {actionPending === actionName ? pendingLabel : buttonLabel}
+        </Button>
+      </ConfirmDialogTrigger>
+      <ConfirmDialogContent>
+        <ConfirmDialogTitle>{title}</ConfirmDialogTitle>
+        <ConfirmDialogDescription>{description}</ConfirmDialogDescription>
+        <ConfirmDialogActions
+          onConfirm={onConfirm}
+          onCancel={() => {}}
+          confirmLabel={confirmLabel}
+          confirmVariant={confirmVariant}
+        />
+      </ConfirmDialogContent>
+    </ConfirmDialog>
   );
 }

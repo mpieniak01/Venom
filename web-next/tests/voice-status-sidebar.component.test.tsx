@@ -2,6 +2,7 @@ import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { cleanup, render, screen } from "@testing-library/react";
+import { ToastProvider } from "../components/ui/toast";
 import { VoiceStatusSidebar } from "../components/voice/voice-status-sidebar";
 
 afterEach(() => cleanup());
@@ -37,7 +38,11 @@ const voiceStatus = {
 
 describe("VoiceStatusSidebar", () => {
   it("shows active runtime details and does not surface Gemma 4 controls for ollama", () => {
-    render(<VoiceStatusSidebar status={voiceStatus as never} />);
+    render(
+      <ToastProvider>
+        <VoiceStatusSidebar status={voiceStatus as never} />
+      </ToastProvider>,
+    );
 
     assert.ok(screen.getByText(/ollama \/ gemma2:2b/i));
     assert.ok(screen.getAllByText("piper").length >= 2);

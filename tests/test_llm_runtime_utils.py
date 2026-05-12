@@ -111,6 +111,36 @@ def test_get_active_llm_runtime_variants():
     assert runtime.endpoint == "http://localhost:8014/v1"
 
     runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(
+            service_type="local",
+            endpoint="localhost:8001/v1",
+            active_server=" vLlM ",
+        )
+    )
+    assert runtime.provider == "vllm"
+    assert runtime.endpoint == "http://localhost:8001/v1"
+
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(
+            service_type="local",
+            endpoint="http://localhost:8014/v1",
+            active_server="ollama",
+        )
+    )
+    assert runtime.provider == "ollama"
+    assert runtime.endpoint == "http://localhost:11434/v1"
+
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(
+            service_type="local",
+            endpoint="http://localhost:11434/v1",
+            active_server="onnx",
+        )
+    )
+    assert runtime.provider == "onnx"
+    assert runtime.endpoint is None
+
+    runtime = llm_runtime.get_active_llm_runtime(
         DummySettings(service_type="onnx", endpoint=None)
     )
     assert runtime.provider == "onnx"

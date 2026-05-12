@@ -1,8 +1,13 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { SelectMenu } from "@/components/ui/select-menu";
+import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control";
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
 import { useTranslation } from "@/lib/i18n";
+import { useRuntime } from "@/components/models/hooks/use-runtime";
 
 type VoiceStatusSidebarProps = Readonly<{
   status: VoiceStatusUpdate | null;
@@ -35,15 +40,20 @@ function Row({ label, value }: Readonly<{ label: string; value: React.ReactNode 
 export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
+  const isGemma4AudioRuntime =
+    (runtime?.provider ?? "").toLowerCase() === "gemma4_audio" ||
+    (runtime?.runtime_id ?? "").toLowerCase() === "gemma4_audio";
 
   if (!status) {
     return (
       <div className="space-y-3">
+        <RuntimeSwitchCard />
         <RuntimeOverviewCard
           runtime={null}
           title={t("voice.controls.runtime")}
           loadingLabel={t("voice.status.channelConnecting")}
         />
+        <Gemma4RuntimeControl variant="voice" runtimeSnapshot={null} />
         <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
           <p className="text-hint text-xs py-2">{t("voice.status.channelConnecting")}</p>
         </StatusCard>
@@ -56,10 +66,14 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
 
   return (
     <div className="space-y-3">
+      <RuntimeSwitchCard />
       <RuntimeOverviewCard
         runtime={runtime}
         title={t("voice.controls.runtime")}
       />
+      {isGemma4AudioRuntime && (
+        <Gemma4RuntimeControl variant="voice" runtimeSnapshot={runtime} />
+      )}
 
       {/* STT / TTS box */}
       <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
@@ -107,6 +121,104 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
       </StatusCard>
 
     </div>
+  );
+}
+
+function RuntimeSwitchCard() {
+  const t = useTranslation();
+  const runtime = useRuntime();
+  const [pending, setPending] = useState(false);
+  const selectedRuntime = runtime.selectedServer ?? "";
+  const selectedModel = runtime.selectedModel ?? "";
+  const applyDisabled = pending || !selectedRuntime || !selectedModel;
+  const runtimeError = runtime.activeServer.error ?? runtime.llmServers.error;
+
+  const serverOptions = useMemo(
+    () => runtime.serverOptions.map((item) => ({ value: item.value, label: item.label })),
+    [runtime.serverOptions],
+  );
+  const modelOptions = useMemo(
+    () => runtime.modelOptions.map((item) => ({ value: item.value, label: item.label })),
+    [runtime.modelOptions],
+  );
+
+  const handleApply = async () => {
+    if (applyDisabled) return;
+    setPending(true);
+    try {
+      await runtime.activateRuntimeSelection(selectedRuntime, selectedModel);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <StatusCard title={t("voice.controls.runtime")}>
+      <div className="space-y-2.5">
+        <div>
+          <p className="text-caption mb-1">{t("voice.controls.provider")}</p>
+          <SelectMenu
+            value={selectedRuntime}
+            options={serverOptions}
+            onChange={(value) => runtime.setSelectedServer(value || null)}
+            placeholder={t("voice.controls.runtime")}
+            className="w-full"
+            disabled={pending || serverOptions.length === 0}
+            buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)] overflow-hidden"
+            renderButton={(opt) => (
+              <span className="flex-1 truncate text-left text-[color:var(--text-primary)]">
+                {opt?.label ?? t("voice.controls.runtime")}
+              </span>
+            )}
+            renderOption={(opt) => (
+              <span className="w-full text-left text-sm normal-case tracking-normal text-[color:var(--text-primary)]">
+                {opt.label}
+              </span>
+            )}
+          />
+        </div>
+
+        <div>
+          <p className="text-caption mb-1">Model</p>
+          <SelectMenu
+            value={selectedModel}
+            options={modelOptions}
+            onChange={(value) => runtime.setSelectedModel(value || null)}
+            placeholder={t("voice.controls.runtime")}
+            className="w-full"
+            disabled={pending || modelOptions.length === 0}
+            buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)] overflow-hidden"
+            renderButton={(opt) => (
+              <span className="flex-1 truncate text-left text-[color:var(--text-primary)]">
+                {opt?.label ?? t("voice.controls.runtime")}
+              </span>
+            )}
+            renderOption={(opt) => (
+              <span className="w-full text-left text-sm normal-case tracking-normal text-[color:var(--text-primary)]">
+                {opt.label}
+              </span>
+            )}
+          />
+        </div>
+
+        <Button
+          type="button"
+          size="xs"
+          variant="primary"
+          onClick={handleApply}
+          disabled={applyDisabled}
+          className="w-full"
+        >
+          {pending ? t("voice.controls.refreshing") : t("voice.controls.refresh")}
+        </Button>
+
+        {runtimeError && (
+          <p className="text-[11px] text-rose-300 truncate">
+            {runtimeError.message}
+          </p>
+        )}
+      </div>
+    </StatusCard>
   );
 }
 

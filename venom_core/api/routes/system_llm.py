@@ -282,6 +282,17 @@ async def _await_server_health(_server_name: str, health_url: str) -> bool:
             try:
                 resp = await client.get(health_url)
                 if 200 <= resp.status_code < 300:
+                    if _server_name == "gemma4_audio":
+                        status = _extract_health_status(resp)
+                        if status in {"ok", "ready", "running"}:
+                            logger.info("Serwer LLM gotowy po %.1fs", attempt * 0.5)
+                            return True
+                        if status in {"warming", "initializing", "loading"}:
+                            await asyncio.sleep(0.5)
+                            continue
+                        # Unknown or error-like status in payload - keep waiting.
+                        await asyncio.sleep(0.5)
+                        continue
                     logger.info("Serwer LLM gotowy po %.1fs", attempt * 0.5)
                     return True
             except Exception:
@@ -289,6 +300,20 @@ async def _await_server_health(_server_name: str, health_url: str) -> bool:
             await asyncio.sleep(0.5)
     logger.error("Serwer LLM nie odpowiedział prawidłowo po 30s")
     return False
+
+
+def _extract_health_status(response: httpx.Response) -> str | None:
+    try:
+        payload = response.json()
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get("status")
+    if raw is None:
+        return None
+    normalized = str(raw).strip().lower()
+    return normalized or None
 
 
 def _resolve_local_endpoint(server_name: str, target: dict) -> str | None:

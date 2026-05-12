@@ -288,48 +288,34 @@ export function Gemma4RuntimeControlInner({
             : t("voice.daemon.applyConfig")}
         </Button>
 
-        <ConfirmDialog>
-          <ConfirmDialogTrigger asChild>
-            <Button size="xs" variant="secondary" disabled={busy} data-testid="reload-button">
-              {actionPending === "reload"
-                ? t("voice.daemon.reloading")
-                : t("voice.daemon.reload")}
-            </Button>
-          </ConfirmDialogTrigger>
-          <ConfirmDialogContent>
-            <ConfirmDialogTitle>{t("voice.daemon.confirmReloadTitle")}</ConfirmDialogTitle>
-            <ConfirmDialogDescription>
-              {t("voice.daemon.confirmReloadDesc")}
-            </ConfirmDialogDescription>
-            <ConfirmDialogActions
-              onConfirm={daemon.reload}
-              onCancel={() => {}}
-              confirmLabel={t("voice.daemon.reload")}
-            />
-          </ConfirmDialogContent>
-        </ConfirmDialog>
+        <DaemonConfirmActionButton
+          buttonVariant="secondary"
+          busy={busy}
+          actionPending={actionPending}
+          actionName="reload"
+          pendingLabel={t("voice.daemon.reloading")}
+          buttonLabel={t("voice.daemon.reload")}
+          title={t("voice.daemon.confirmReloadTitle")}
+          description={t("voice.daemon.confirmReloadDesc")}
+          confirmLabel={t("voice.daemon.reload")}
+          onConfirm={daemon.reload}
+          testId="reload-button"
+        />
 
-        <ConfirmDialog>
-          <ConfirmDialogTrigger asChild>
-            <Button size="xs" variant="ghost" disabled={busy} data-testid="restart-button">
-              {actionPending === "restart"
-                ? t("voice.daemon.restarting")
-                : t("voice.daemon.restart")}
-            </Button>
-          </ConfirmDialogTrigger>
-          <ConfirmDialogContent>
-            <ConfirmDialogTitle>{t("voice.daemon.confirmRestartTitle")}</ConfirmDialogTitle>
-            <ConfirmDialogDescription>
-              {t("voice.daemon.confirmRestartDesc")}
-            </ConfirmDialogDescription>
-            <ConfirmDialogActions
-              onConfirm={daemon.restart}
-              onCancel={() => {}}
-              confirmLabel={t("voice.daemon.restart")}
-              confirmVariant="danger"
-            />
-          </ConfirmDialogContent>
-        </ConfirmDialog>
+        <DaemonConfirmActionButton
+          buttonVariant="ghost"
+          busy={busy}
+          actionPending={actionPending}
+          actionName="restart"
+          pendingLabel={t("voice.daemon.restarting")}
+          buttonLabel={t("voice.daemon.restart")}
+          title={t("voice.daemon.confirmRestartTitle")}
+          description={t("voice.daemon.confirmRestartDesc")}
+          confirmLabel={t("voice.daemon.restart")}
+          confirmVariant="danger"
+          onConfirm={daemon.restart}
+          testId="restart-button"
+        />
 
         <Button
           size="xs"
@@ -553,5 +539,55 @@ function DaemonCard({
       </p>
       {children}
     </div>
+  );
+}
+
+type DaemonConfirmActionButtonProps = Readonly<{
+  busy: boolean;
+  actionPending: string | null;
+  actionName: string;
+  pendingLabel: string;
+  buttonLabel: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => void | Promise<void>;
+  buttonVariant: "ghost" | "secondary";
+  confirmVariant?: "default" | "danger";
+  testId: string;
+}>;
+
+function DaemonConfirmActionButton({
+  busy,
+  actionPending,
+  actionName,
+  pendingLabel,
+  buttonLabel,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  buttonVariant,
+  confirmVariant,
+  testId,
+}: DaemonConfirmActionButtonProps) {
+  return (
+    <ConfirmDialog>
+      <ConfirmDialogTrigger asChild>
+        <Button size="xs" variant={buttonVariant} disabled={busy} data-testid={testId}>
+          {actionPending === actionName ? pendingLabel : buttonLabel}
+        </Button>
+      </ConfirmDialogTrigger>
+      <ConfirmDialogContent>
+        <ConfirmDialogTitle>{title}</ConfirmDialogTitle>
+        <ConfirmDialogDescription>{description}</ConfirmDialogDescription>
+        <ConfirmDialogActions
+          onConfirm={onConfirm}
+          onCancel={() => {}}
+          confirmLabel={confirmLabel}
+          confirmVariant={confirmVariant}
+        />
+      </ConfirmDialogContent>
+    </ConfirmDialog>
   );
 }

@@ -288,34 +288,49 @@ export function Gemma4RuntimeControlInner({
             : t("voice.daemon.applyConfig")}
         </Button>
 
-        <DaemonConfirmActionButton
-          buttonVariant="secondary"
-          busy={busy}
-          actionPending={actionPending}
-          actionName="reload"
-          pendingLabel={t("voice.daemon.reloading")}
-          buttonLabel={t("voice.daemon.reload")}
-          title={t("voice.daemon.confirmReloadTitle")}
-          description={t("voice.daemon.confirmReloadDesc")}
-          confirmLabel={t("voice.daemon.reload")}
-          onConfirm={daemon.reload}
-          testId="reload-button"
-        />
-
-        <DaemonConfirmActionButton
-          buttonVariant="ghost"
-          busy={busy}
-          actionPending={actionPending}
-          actionName="restart"
-          pendingLabel={t("voice.daemon.restarting")}
-          buttonLabel={t("voice.daemon.restart")}
-          title={t("voice.daemon.confirmRestartTitle")}
-          description={t("voice.daemon.confirmRestartDesc")}
-          confirmLabel={t("voice.daemon.restart")}
-          confirmVariant="danger"
-          onConfirm={daemon.restart}
-          testId="restart-button"
-        />
+        {[
+          {
+            key: "reload",
+            buttonVariant: "secondary" as const,
+            actionName: "reload",
+            pendingLabel: t("voice.daemon.reloading"),
+            buttonLabel: t("voice.daemon.reload"),
+            title: t("voice.daemon.confirmReloadTitle"),
+            description: t("voice.daemon.confirmReloadDesc"),
+            confirmLabel: t("voice.daemon.reload"),
+            onConfirm: daemon.reload,
+            testId: "reload-button",
+          },
+          {
+            key: "restart",
+            buttonVariant: "ghost" as const,
+            actionName: "restart",
+            pendingLabel: t("voice.daemon.restarting"),
+            buttonLabel: t("voice.daemon.restart"),
+            title: t("voice.daemon.confirmRestartTitle"),
+            description: t("voice.daemon.confirmRestartDesc"),
+            confirmLabel: t("voice.daemon.restart"),
+            confirmVariant: "danger" as const,
+            onConfirm: daemon.restart,
+            testId: "restart-button",
+          },
+        ].map((action) => (
+          <DaemonConfirmActionButton
+            key={action.key}
+            buttonVariant={action.buttonVariant}
+            busy={busy}
+            actionPending={actionPending}
+            actionName={action.actionName}
+            pendingLabel={action.pendingLabel}
+            buttonLabel={action.buttonLabel}
+            title={action.title}
+            description={action.description}
+            confirmLabel={action.confirmLabel}
+            confirmVariant={action.confirmVariant}
+            onConfirm={action.onConfirm}
+            testId={action.testId}
+          />
+        ))}
 
         <Button
           size="xs"

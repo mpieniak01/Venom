@@ -288,33 +288,7 @@ export function Gemma4RuntimeControlInner({
             : t("voice.daemon.applyConfig")}
         </Button>
 
-        {[
-          {
-            key: "reload",
-            buttonVariant: "secondary" as const,
-            actionName: "reload",
-            pendingLabel: t("voice.daemon.reloading"),
-            buttonLabel: t("voice.daemon.reload"),
-            title: t("voice.daemon.confirmReloadTitle"),
-            description: t("voice.daemon.confirmReloadDesc"),
-            confirmLabel: t("voice.daemon.reload"),
-            onConfirm: daemon.reload,
-            testId: "reload-button",
-          },
-          {
-            key: "restart",
-            buttonVariant: "ghost" as const,
-            actionName: "restart",
-            pendingLabel: t("voice.daemon.restarting"),
-            buttonLabel: t("voice.daemon.restart"),
-            title: t("voice.daemon.confirmRestartTitle"),
-            description: t("voice.daemon.confirmRestartDesc"),
-            confirmLabel: t("voice.daemon.restart"),
-            confirmVariant: "danger" as const,
-            onConfirm: daemon.restart,
-            testId: "restart-button",
-          },
-        ].map((action) => (
+        {buildDaemonConfirmActions({ t, daemon }).map((action) => (
           <DaemonConfirmActionButton
             key={action.key}
             buttonVariant={action.buttonVariant}
@@ -539,22 +513,73 @@ function DaemonCard({
   children,
 }: Readonly<{ variant: Variant; children: React.ReactNode }>) {
   const t = useTranslation();
-  if (variant === "voice") {
-    return (
-      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3 text-xs text-zinc-300">
-        <p className="eyebrow mb-2">{t("voice.daemon.title")}</p>
-        {children}
-      </div>
-    );
-  }
+  const cardClass =
+    variant === "voice"
+      ? "rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3 text-xs text-zinc-300"
+      : "mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-400";
+  const titleClass =
+    variant === "voice"
+      ? "eyebrow mb-2"
+      : "mb-2 text-[10px] uppercase tracking-widest text-zinc-500";
+
   return (
-    <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-400">
-      <p className="mb-2 text-[10px] uppercase tracking-widest text-zinc-500">
-        {t("voice.daemon.title")}
-      </p>
+    <div className={cardClass}>
+      <p className={titleClass}>{t("voice.daemon.title")}</p>
       {children}
     </div>
   );
+}
+
+type ConfirmActionDefinition = Readonly<{
+  key: "reload" | "restart";
+  buttonVariant: "ghost" | "secondary";
+  confirmVariant?: "default" | "danger";
+  onConfirm: () => void | Promise<void>;
+}>;
+
+function buildDaemonConfirmActions({
+  t,
+  daemon,
+}: Readonly<{
+  t: (key: string) => string;
+  daemon: Gemma4DaemonState;
+}>): Array<DaemonConfirmActionButtonProps & { key: string }> {
+  const defs: ConfirmActionDefinition[] = [
+    {
+      key: "reload",
+      buttonVariant: "secondary",
+      onConfirm: daemon.reload,
+    },
+    {
+      key: "restart",
+      buttonVariant: "ghost",
+      confirmVariant: "danger",
+      onConfirm: daemon.restart,
+    },
+  ];
+
+  return defs.map((def) => {
+    const isReload = def.key === "reload";
+    return {
+      key: def.key,
+      buttonVariant: def.buttonVariant,
+      busy: false, // overridden at render call site
+      actionPending: null, // overridden at render call site
+      actionName: def.key,
+      pendingLabel: isReload ? t("voice.daemon.reloading") : t("voice.daemon.restarting"),
+      buttonLabel: isReload ? t("voice.daemon.reload") : t("voice.daemon.restart"),
+      title: isReload
+        ? t("voice.daemon.confirmReloadTitle")
+        : t("voice.daemon.confirmRestartTitle"),
+      description: isReload
+        ? t("voice.daemon.confirmReloadDesc")
+        : t("voice.daemon.confirmRestartDesc"),
+      confirmLabel: isReload ? t("voice.daemon.reload") : t("voice.daemon.restart"),
+      onConfirm: def.onConfirm,
+      confirmVariant: def.confirmVariant,
+      testId: isReload ? "reload-button" : "restart-button",
+    };
+  });
 }
 
 type DaemonConfirmActionButtonProps = Readonly<{

@@ -89,42 +89,17 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
     active_server = (getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
 
     if service_type == "local":
-        if active_server == "gemma4_audio":
-            endpoint = apply_http_policy_to_url(
-                getattr(settings, "GEMMA4_AUDIO_ENDPOINT", endpoint)
-            )
-            provider = "gemma4_audio"
-        elif active_server == "vllm":
-            endpoint = apply_http_policy_to_url(
-                getattr(settings, "VLLM_ENDPOINT", endpoint)
-            )
-            provider = "vllm"
-        elif active_server == "ollama":
-            candidate = apply_http_policy_to_url(endpoint)
-            if infer_local_provider(candidate) != "ollama":
-                candidate = apply_http_policy_to_url("http://localhost:11434/v1")
-            endpoint = candidate
-            provider = "ollama"
-        elif active_server == "onnx":
-            provider = "onnx"
-            endpoint = None
-        else:
-            endpoint = apply_http_policy_to_url(endpoint)
-            provider = infer_local_provider(endpoint)
-    elif service_type == "onnx":
-        provider = "onnx"
-        endpoint = None
-    elif service_type == "openai":
-        provider = "openai"
-        endpoint = endpoint or "https://api.openai.com/v1"
-    elif service_type == "google":
-        provider = "google-gemini"
-        endpoint = endpoint or "https://generativelanguage.googleapis.com"
-    elif service_type == "azure":
-        provider = "azure-openai"
-        endpoint = endpoint or getattr(settings, "AZURE_OPENAI_ENDPOINT", None)
+        provider, endpoint = _resolve_local_runtime(
+            active_server=active_server,
+            endpoint=endpoint,
+            settings=settings,
+        )
     else:
-        provider = service_type
+        provider, endpoint = _resolve_non_local_runtime(
+            service_type=service_type,
+            endpoint=endpoint,
+            settings=settings,
+        )
 
     config_hash = compute_llm_config_hash(provider, endpoint, model_name)
     runtime_id = compute_runtime_id(provider, endpoint)
@@ -138,6 +113,48 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
         config_hash=config_hash,
         runtime_id=runtime_id,
     )
+
+
+def _resolve_local_runtime(
+    *, active_server: str, endpoint: Optional[str], settings
+) -> Tuple[str, Optional[str]]:
+    if active_server == "gemma4_audio":
+        return (
+            "gemma4_audio",
+            apply_http_policy_to_url(
+                getattr(settings, "GEMMA4_AUDIO_ENDPOINT", endpoint)
+            ),
+        )
+    if active_server == "vllm":
+        return (
+            "vllm",
+            apply_http_policy_to_url(getattr(settings, "VLLM_ENDPOINT", endpoint)),
+        )
+    if active_server == "ollama":
+        candidate = apply_http_policy_to_url(endpoint)
+        if infer_local_provider(candidate) != "ollama":
+            candidate = apply_http_policy_to_url("http://localhost:11434/v1")
+        return "ollama", candidate
+    if active_server == "onnx":
+        return "onnx", None
+    normalized_endpoint = apply_http_policy_to_url(endpoint)
+    return infer_local_provider(normalized_endpoint), normalized_endpoint
+
+
+def _resolve_non_local_runtime(
+    *, service_type: str, endpoint: Optional[str], settings
+) -> Tuple[str, Optional[str]]:
+    if service_type == "onnx":
+        return "onnx", None
+    if service_type == "openai":
+        return "openai", endpoint or "https://api.openai.com/v1"
+    if service_type == "google":
+        return "google-gemini", endpoint or "https://generativelanguage.googleapis.com"
+    if service_type == "azure":
+        return "azure-openai", endpoint or getattr(
+            settings, "AZURE_OPENAI_ENDPOINT", None
+        )
+    return service_type, endpoint
 
 
 def format_runtime_label(runtime: LLMRuntimeInfo) -> str:

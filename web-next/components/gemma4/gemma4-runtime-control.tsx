@@ -440,10 +440,14 @@ function RuntimeSnapshotSummary({
         {provider} / {model}
       </p>
       {profile && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">profile: {profile}</p>
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
+          {t("voice.controls.profile")}: {profile}
+        </p>
       )}
       {snapshot.voice_pipeline?.tts && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">tts: {snapshot.voice_pipeline.tts}</p>
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
+          {t("voice.controls.tts")}: {snapshot.voice_pipeline.tts}
+        </p>
       )}
       {snapshot.error && (
         <p className="mt-0.5 text-[10px] text-rose-400 truncate">{snapshot.error}</p>

@@ -47,9 +47,6 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
         <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
           <p className="text-hint text-xs py-2">{t("voice.status.channelConnecting")}</p>
         </StatusCard>
-        <StatusCard title={t("voice.controls.tts")}>
-          <p className="text-hint text-xs py-2">{t("voice.status.noData")}</p>
-        </StatusCard>
       </div>
     );
   }
@@ -135,7 +132,7 @@ function RuntimeOverviewCard({
         <>
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-sm font-semibold text-white truncate">
-              {provider ?? t("voice.controls.unknownModel")} / {model ?? "—"}
+              {provider ?? "—"} / {model ?? t("voice.controls.unknownModel")}
             </span>
             {probeStatus && (
               <Badge tone={getProbeTone(probeStatus)} className="shrink-0 text-[10px]">
@@ -144,7 +141,7 @@ function RuntimeOverviewCard({
             )}
           </div>
           {provider && <Row label={t("voice.controls.provider")} value={provider} />}
-          {endpoint && <Row label="endpoint" value={endpoint} />}
+          {endpoint && <Row label={t("voice.controls.endpoint")} value={endpoint} />}
           {profile && <Row label={t("voice.controls.profile")} value={profile} />}
           {runtime.voice_pipeline?.stt && (
             <Row label={t("voice.controls.stt")} value={runtime.voice_pipeline.stt} />

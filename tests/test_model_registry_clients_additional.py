@@ -609,7 +609,7 @@ async def test_voice_runtime_helpers_cover_branches(monkeypatch):
         endpoint="http://localhost:11434",
     )
     decision = resolve_voice_pipeline(caps)
-    assert caps.probe_status == "verified"
+    assert caps.probe_status == "metadata_only"
     assert decision.reasoning == "think_api"
     assert decision.tools == "policy_gated_tools"
     assert decision.vision == "images_api"

@@ -92,6 +92,15 @@ def test_aggregate_probe_status_prefers_verified_for_optional_probe_failures():
         _aggregate_probe_status(
             {
                 "show": {"status": "verified"},
+                "audio": {"status": "metadata_only"},
+            }
+        )
+        == "metadata_only"
+    )
+    assert (
+        _aggregate_probe_status(
+            {
+                "show": {"status": "verified"},
                 "thinking": {"status": "failed"},
             }
         )

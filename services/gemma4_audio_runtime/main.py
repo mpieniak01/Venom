@@ -14,6 +14,7 @@ from typing import Optional
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
@@ -49,6 +50,14 @@ _start_time: float = 0
 _warming: bool = False
 _startup_error: Optional[str] = None
 _lifecycle_lock: asyncio.Lock = asyncio.Lock()
+
+# Daemon management state (214A)
+_daemon_max_new_tokens: int = int(os.getenv("GEMMA4_AUDIO_MAX_NEW_TOKENS", "128"))
+_daemon_enable_thinking: bool = False
+_daemon_cache_implementation: Optional[str] = None
+_pending_reload: bool = False
+_reload_reason: Optional[str] = None
+_assistant_model_id: Optional[str] = None
 
 
 def get_daemon() -> Gemma4Daemon:
@@ -134,6 +143,13 @@ app = FastAPI(
     description="Local native audio inference daemon for Gemma 4 models",
     version="0.2.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("GEMMA4_CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

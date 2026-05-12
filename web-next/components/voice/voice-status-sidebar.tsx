@@ -1,7 +1,6 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control";
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
 import { useTranslation } from "@/lib/i18n";
 
@@ -35,32 +34,35 @@ function Row({ label, value }: Readonly<{ label: string; value: React.ReactNode 
 
 export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
   const t = useTranslation();
+  const runtime = status?.runtime_snapshot ?? null;
 
   if (!status) {
     return (
       <div className="space-y-3">
-        <Gemma4RuntimeControl variant="voice" />
+        <RuntimeOverviewCard
+          runtime={null}
+          title={t("voice.controls.runtime")}
+          loadingLabel={t("voice.status.channelConnecting")}
+        />
         <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
           <p className="text-hint text-xs py-2">{t("voice.status.channelConnecting")}</p>
         </StatusCard>
-        <StatusCard title={t("voice.controls.runtime")}>
+        <StatusCard title={t("voice.controls.tts")}>
           <p className="text-hint text-xs py-2">{t("voice.status.noData")}</p>
         </StatusCard>
       </div>
     );
   }
 
-  const runtime = status.runtime_snapshot;
-  const pipeline = runtime?.voice_pipeline;
-  const caps = runtime?.runtime_capabilities;
-  const probeStatus = caps?.probe_status;
   const deps = status.dependencies ?? {};
   const depKeys = Object.keys(deps);
 
   return (
     <div className="space-y-3">
-      {/* Gemma 4 daemon controls */}
-      <Gemma4RuntimeControl variant="voice" />
+      <RuntimeOverviewCard
+        runtime={runtime}
+        title={t("voice.controls.runtime")}
+      />
 
       {/* STT / TTS box */}
       <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
@@ -107,38 +109,58 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
         )}
       </StatusCard>
 
-      {/* Runtime box */}
-      <StatusCard title={t("voice.controls.runtime")}>
-        {runtime ? (
-          <>
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-sm font-semibold text-white truncate">
-                {runtime.model_name ?? t("voice.controls.unknownModel")}
-              </span>
-              {probeStatus && (
-                <Badge tone={getProbeTone(probeStatus)} className="shrink-0 text-[10px]">
-                  {probeStatus}
-                </Badge>
-              )}
-            </div>
-            {runtime.provider && (
-              <Row label={t("voice.controls.provider")} value={runtime.provider} />
-            )}
-            {caps?.compatibility_profile && (
-              <Row label={t("voice.controls.profile")} value={caps.compatibility_profile} />
-            )}
-            {pipeline?.stt && <Row label={t("voice.controls.stt")} value={pipeline.stt} />}
-            {pipeline?.reasoning && <Row label={t("voice.controls.pipeline")} value={pipeline.reasoning} />}
-            {pipeline?.tts && <Row label={t("voice.controls.tts")} value={pipeline.tts} />}
-            {runtime.error && (
-              <p className="mt-1 text-[11px] text-rose-300">{runtime.error}</p>
-            )}
-          </>
-        ) : (
-          <p className="text-hint text-xs py-2">{t("voice.controls.noRuntimeSnapshot")}</p>
-        )}
-      </StatusCard>
     </div>
+  );
+}
+
+function RuntimeOverviewCard({
+  runtime,
+  title,
+  loadingLabel,
+}: Readonly<{
+  runtime: VoiceStatusUpdate["runtime_snapshot"];
+  title: string;
+  loadingLabel?: string;
+}>) {
+  const profile = runtime?.runtime_capabilities?.compatibility_profile ?? runtime?.voice_pipeline?.profile ?? null;
+  const provider = runtime?.provider ?? null;
+  const model = runtime?.model_name ?? null;
+  const endpoint = runtime?.endpoint ?? null;
+  const probeStatus = runtime?.runtime_capabilities?.probe_status ?? null;
+  const t = useTranslation();
+
+  return (
+    <StatusCard title={title}>
+      {runtime ? (
+        <>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-sm font-semibold text-white truncate">
+              {provider ?? t("voice.controls.unknownModel")} / {model ?? "—"}
+            </span>
+            {probeStatus && (
+              <Badge tone={getProbeTone(probeStatus)} className="shrink-0 text-[10px]">
+                {probeStatus}
+              </Badge>
+            )}
+          </div>
+          {provider && <Row label={t("voice.controls.provider")} value={provider} />}
+          {endpoint && <Row label="endpoint" value={endpoint} />}
+          {profile && <Row label={t("voice.controls.profile")} value={profile} />}
+          {runtime.voice_pipeline?.stt && (
+            <Row label={t("voice.controls.stt")} value={runtime.voice_pipeline.stt} />
+          )}
+          {runtime.voice_pipeline?.reasoning && (
+            <Row label={t("voice.controls.pipeline")} value={runtime.voice_pipeline.reasoning} />
+          )}
+          {runtime.voice_pipeline?.tts && (
+            <Row label={t("voice.controls.tts")} value={runtime.voice_pipeline.tts} />
+          )}
+          {runtime.error && <p className="mt-1 text-[11px] text-rose-300">{runtime.error}</p>}
+        </>
+      ) : (
+        <p className="text-hint text-xs py-2">{loadingLabel ?? t("voice.status.noData")}</p>
+      )}
+    </StatusCard>
   );
 }
 

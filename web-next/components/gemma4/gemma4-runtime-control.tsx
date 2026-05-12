@@ -25,22 +25,56 @@ const CACHE_OPTIONS = [
 
 type Variant = "cockpit" | "voice";
 
+type RuntimeSnapshotLike = Readonly<{
+  runtime_id?: string | null;
+  provider?: string | null;
+  model_name?: string | null;
+  endpoint?: string | null;
+  config_hash?: string | null;
+  runtime_capabilities?: {
+    compatibility_profile?: string | null;
+    probe_status?: string | null;
+    capabilities?: Record<string, boolean | string | null | undefined>;
+    probes?: Record<string, { status?: string | null; reason?: string | null }>;
+    fallbacks?: Record<string, string | null | undefined>;
+  } | null;
+  voice_pipeline?: {
+    profile?: string | null;
+    stt?: string | null;
+    reasoning?: string | null;
+    tools?: string | null;
+    vision?: string | null;
+    tts?: string | null;
+    notes?: string[] | null;
+  } | null;
+  error?: string | null;
+}> | null;
+
 type Props = Readonly<{
   variant?: Variant;
   pollingIntervalMs?: number;
+  runtimeSnapshot?: RuntimeSnapshotLike;
 }>;
 
 export function Gemma4RuntimeControl({
   variant = "voice",
   pollingIntervalMs,
+  runtimeSnapshot = null,
 }: Props) {
   const daemon = useGemma4Daemon(pollingIntervalMs);
-  return <Gemma4RuntimeControlInner daemon={daemon} variant={variant} />;
+  return (
+    <Gemma4RuntimeControlInner
+      daemon={daemon}
+      variant={variant}
+      runtimeSnapshot={runtimeSnapshot}
+    />
+  );
 }
 
 type InnerProps = Readonly<{
   daemon: Gemma4DaemonState;
   variant: Variant;
+  runtimeSnapshot?: RuntimeSnapshotLike;
 }>;
 
 function vramBarColor(pct: number): string {
@@ -54,7 +88,11 @@ function parseTokenInput(raw: string): number | undefined {
   return Number.isNaN(n) || n <= 0 ? undefined : n;
 }
 
-export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
+export function Gemma4RuntimeControlInner({
+  daemon,
+  variant,
+  runtimeSnapshot = null,
+}: InnerProps) {
   const t = useTranslation();
   const { status, loading, error, actionPending } = daemon;
 
@@ -115,10 +153,14 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
   }
 
   if (error && !status) {
+    const hasRuntimeSnapshot = Boolean(runtimeSnapshot?.provider || runtimeSnapshot?.model_name);
     return (
       <DaemonCard variant={variant}>
         <p className="text-xs text-rose-400 py-1">{t("voice.daemon.daemonUnavailable")}</p>
         <p className="text-[10px] text-zinc-500 truncate">{error}</p>
+        {hasRuntimeSnapshot && (
+          <RuntimeSnapshotSummary snapshot={runtimeSnapshot} />
+        )}
       </DaemonCard>
     );
   }
@@ -156,6 +198,10 @@ export function Gemma4RuntimeControlInner({ daemon, variant }: InnerProps) {
           <span className="font-semibold">{t("voice.daemon.reloadRequired")}: </span>
           {status.reload_reason}
         </div>
+      )}
+
+      {runtimeSnapshot && (
+        <RuntimeSnapshotSummary snapshot={runtimeSnapshot} compact />
       )}
 
       {/* Params */}
@@ -358,6 +404,49 @@ function VramSection({
             style={{ width: `${vramPercent}%` }}
           />
         </div>
+      )}
+    </div>
+  );
+}
+
+type RuntimeSnapshotSummaryProps = Readonly<{
+  snapshot: RuntimeSnapshotLike;
+  compact?: boolean;
+}>;
+
+function RuntimeSnapshotSummary({
+  snapshot,
+  compact = false,
+}: RuntimeSnapshotSummaryProps) {
+  const t = useTranslation();
+  if (!snapshot) return null;
+
+  const provider = snapshot.provider ?? "—";
+  const model = snapshot.model_name ?? "—";
+  const profile = snapshot.runtime_capabilities?.compatibility_profile ?? snapshot.voice_pipeline?.profile ?? null;
+  const title = t("voice.daemon.runtimeSnapshot");
+
+  return (
+    <div className={`mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 ${compact ? "" : "mt-2"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-zinc-500">{title}</span>
+        {snapshot.runtime_capabilities?.probe_status && (
+          <span className="text-[10px] text-zinc-400">
+            {snapshot.runtime_capabilities.probe_status}
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-white truncate">
+        {provider} / {model}
+      </p>
+      {profile && (
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">profile: {profile}</p>
+      )}
+      {snapshot.voice_pipeline?.tts && (
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">tts: {snapshot.voice_pipeline.tts}</p>
+      )}
+      {snapshot.error && (
+        <p className="mt-0.5 text-[10px] text-rose-400 truncate">{snapshot.error}</p>
       )}
     </div>
   );

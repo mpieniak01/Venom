@@ -86,10 +86,24 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
     mode = (settings.AI_MODE or "LOCAL").upper()
     model_name = settings.LLM_MODEL_NAME
     endpoint = settings.LLM_LOCAL_ENDPOINT
+    active_server = (getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
 
     if service_type == "local":
-        endpoint = apply_http_policy_to_url(endpoint)
-        provider = infer_local_provider(endpoint)
+        if active_server == "gemma4_audio":
+            endpoint = getattr(settings, "GEMMA4_AUDIO_ENDPOINT", endpoint)
+            provider = "gemma4_audio"
+        elif active_server == "vllm":
+            endpoint = getattr(settings, "VLLM_ENDPOINT", endpoint)
+            provider = "vllm"
+        elif active_server == "ollama":
+            endpoint = apply_http_policy_to_url("http://localhost:11434/v1")
+            provider = "ollama"
+        elif active_server == "onnx":
+            provider = "onnx"
+            endpoint = None
+        else:
+            endpoint = apply_http_policy_to_url(endpoint)
+            provider = infer_local_provider(endpoint)
     elif service_type == "onnx":
         provider = "onnx"
         endpoint = None

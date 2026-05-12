@@ -26,3 +26,14 @@ def test_gemma4_keys_present_in_env_dev():
 
     missing = [k for k in gemma_keys if k not in dev]
     assert not missing, f"Missing GEMMA4_AUDIO keys in .env.dev: {missing}"
+
+
+def test_active_local_runtime_matches_endpoint_contract():
+    dev = _read_env_keys(".env.dev")
+    active = dev.get("ACTIVE_LLM_SERVER", "").strip().lower()
+    endpoint = dev.get("LLM_LOCAL_ENDPOINT", "").strip()
+
+    if active == "ollama":
+        assert endpoint.startswith("http://localhost:11434"), endpoint
+    elif active == "gemma4_audio":
+        assert endpoint.startswith("http://localhost:8014"), endpoint

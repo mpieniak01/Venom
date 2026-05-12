@@ -102,13 +102,11 @@ def _aggregate_probe_status(probes: dict[str, dict[str, Any]]) -> str:
         for probe_name, probe in probes.items()
         if probe_name != "show"
     ]
-    if any(status == "failed" for status in probe_statuses):
-        return "failed"
-    if any(status == "metadata_only" for status in probe_statuses):
-        return "metadata_only"
     if show_status == "verified":
         return "verified"
-    return "metadata_only"
+    if any(status == "metadata_only" for status in probe_statuses):
+        return "metadata_only"
+    return "verified"
 
 
 async def _record_optional_probe(

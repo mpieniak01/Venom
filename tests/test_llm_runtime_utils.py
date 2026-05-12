@@ -20,12 +20,18 @@ class DummySettings:
         model_name="model-x",
         endpoint=LOCALHOST_8000,
         azure_endpoint=None,
+        active_server="",
+        gemma4_endpoint="http://localhost:8014/v1",
+        vllm_endpoint=LOCALHOST_8001_V1,
     ):
         self.LLM_SERVICE_TYPE = service_type
         self.AI_MODE = mode
         self.LLM_MODEL_NAME = model_name
         self.LLM_LOCAL_ENDPOINT = endpoint
         self.AZURE_OPENAI_ENDPOINT = azure_endpoint
+        self.ACTIVE_LLM_SERVER = active_server
+        self.GEMMA4_AUDIO_ENDPOINT = gemma4_endpoint
+        self.VLLM_ENDPOINT = vllm_endpoint
 
 
 def test_infer_local_provider_variants():
@@ -83,6 +89,26 @@ def test_get_active_llm_runtime_variants():
         DummySettings(service_type="local", endpoint=LOCALHOST_11434)
     )
     assert runtime.provider == "ollama"
+
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(
+            service_type="local",
+            endpoint="http://localhost:8014/v1",
+            active_server="ollama",
+        )
+    )
+    assert runtime.provider == "ollama"
+    assert runtime.endpoint.endswith("/v1")
+
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(
+            service_type="local",
+            endpoint=LOCALHOST_11434,
+            active_server="gemma4_audio",
+        )
+    )
+    assert runtime.provider == "gemma4_audio"
+    assert runtime.endpoint == "http://localhost:8014/v1"
 
     runtime = llm_runtime.get_active_llm_runtime(
         DummySettings(service_type="onnx", endpoint=None)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import type { GenerationSchema, GenerationParameterSchema } from "@/lib/types";
 export type { GenerationSchema } from "@/lib/types";
@@ -174,19 +174,6 @@ export function DynamicParameterForm({
   );
   const values = isControlled ? initialValues : localValues;
 
-  // Wywołaj onChange gdy wartości się zmienią
-  // Używamy ref aby uniknąć problemów z zależnościami i potencjalnych pętli
-  const onChangeRef = useRef(onChange);
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
-  useEffect(() => {
-    if (onChangeRef.current) {
-      onChangeRef.current(values);
-    }
-  }, [values]);
-
   const handleValueChange = (
     name: string,
     value: ParameterValue,
@@ -198,8 +185,8 @@ export function DynamicParameterForm({
     if (!isControlled) {
       setLocalValues(nextValues);
     }
-    if (onChangeRef.current) {
-      onChangeRef.current(nextValues);
+    if (onChange) {
+      onChange(nextValues);
     }
   };
 
@@ -207,8 +194,8 @@ export function DynamicParameterForm({
     if (!isControlled) {
       setLocalValues(defaultValues);
     }
-    if (onChangeRef.current) {
-      onChangeRef.current(defaultValues);
+    if (onChange) {
+      onChange(defaultValues);
     }
     if (onReset) {
       onReset();

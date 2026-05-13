@@ -1266,10 +1266,16 @@ export function VoiceCommandCenter({
   const [ttsModelChanging, setTtsModelChanging] = useState(false);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [ttsMuted, setTtsMuted] = useState(false);
+  const [hasReplayAudio, setHasReplayAudio] = useState(false);
   const [audioChunkCount, setAudioChunkCount] = useState(0);
   const [lastAudioSignal, setLastAudioSignal] = useState("idle");
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() => {
+    if (globalThis.window === undefined || globalThis.matchMedia === undefined) {
+      return false;
+    }
+    return globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
   const [devDrawerOpen, setDevDrawerOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -1288,14 +1294,6 @@ export function VoiceCommandCenter({
   const lastAudioResponseRef = useRef<{ audio: string; sampleRate: number } | null>(null);
   const lastVoiceModeSentRef = useRef<string | null>(null);
 
-  useVoiceCommandCenterDebugBootstrap({
-    debugDryRunRequested,
-    debugRecording: debugMode.recording,
-    onStatusUpdate,
-    refreshAudioStatus,
-    refreshTtsModelOptions,
-  });
-
   useVoiceCommandCenterCompleteReset({
     debugDryRunRequested,
     lastAudioSignal,
@@ -1307,7 +1305,6 @@ export function VoiceCommandCenter({
 
   useEffect(() => {
     const mq = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(mq.matches);
     const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -1437,6 +1434,7 @@ export function VoiceCommandCenter({
   const playAudioResponse = useCallback(
     async (base64Audio: string, sampleRate: number) => {
       lastAudioResponseRef.current = { audio: base64Audio, sampleRate };
+      setHasReplayAudio(true);
       if (ttsMuted) {
         setPlaybackState("muted");
         setStatusMessage(t("voice.status.playbackMuted"));
@@ -1614,7 +1612,6 @@ export function VoiceCommandCenter({
   useEffect(
     () => {
       if (debugDryRunRequested) {
-        setConnected(false);
         return undefined;
       }
       return bindVoiceConnectionLifecycle(
@@ -1932,7 +1929,7 @@ export function VoiceCommandCenter({
             size="xs"
             variant="outline"
             onClick={() => replayLastResponse().catch(() => undefined)}
-            disabled={debugDryRunActive || !effectiveAudioEnabled || !lastAudioResponseRef.current}
+            disabled={debugDryRunActive || !effectiveAudioEnabled || !hasReplayAudio}
           >
             {t("voice.controls.replay")}
           </Button>

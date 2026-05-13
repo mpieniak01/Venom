@@ -294,6 +294,19 @@ async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
                 "vision_input": False,
                 "tool_calling": False,
                 "thinking": False,
+                "reasoning_summary": bool(
+                    getattr(SETTINGS, "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+                ),
+                "emotion_detection": bool(
+                    getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+                ),
+                "emotion_response_style": bool(
+                    getattr(
+                        SETTINGS,
+                        "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                        False,
+                    )
+                ),
             },
             "probes": {
                 "health": {
@@ -316,6 +329,20 @@ async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
             if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
             else "faster_whisper",
             "reasoning": "native_audio_model",
+            "reasoning_summary": (
+                "enabled"
+                if bool(
+                    getattr(SETTINGS, "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+                )
+                else "disabled"
+            ),
+            "emotion": (
+                "enabled"
+                if bool(
+                    getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+                )
+                else "disabled"
+            ),
             "tools": "disabled",
             "vision": "disabled",
             "tts": "piper",

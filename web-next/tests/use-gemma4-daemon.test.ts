@@ -21,8 +21,21 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     mode: "target_only",
     target_loaded: true,
     assistant_loaded: false,
-    params: { max_new_tokens: 128, enable_thinking: false, cache_implementation: null },
+    params: {
+      max_new_tokens: 128,
+      enable_thinking: false,
+      reasoning_summary_enabled: false,
+      emotion_detection_enabled: false,
+      emotion_response_style_enabled: false,
+      cache_implementation: null,
+    },
     vram: { backend: "cpu", allocated_mb: 0, reserved_mb: 0, total_mb: 0, free_mb: 0 },
+    raw_thinking_available: false,
+    reasoning_summary_status: "disabled",
+    reasoning_summary: null,
+    emotion_label: null,
+    emotion_confidence: null,
+    emotion_source: null,
     pending_reload: false,
     reload_reason: null,
     ...overrides,
@@ -105,7 +118,14 @@ describe("postDaemonConfig", () => {
       capturedInit = init;
       return makeJsonResponse({
         reload_signal: "none",
-        applied: { max_new_tokens: 256, enable_thinking: true, cache_implementation: null },
+        applied: {
+          max_new_tokens: 256,
+          enable_thinking: true,
+          reasoning_summary_enabled: false,
+          emotion_detection_enabled: false,
+          emotion_response_style_enabled: false,
+          cache_implementation: null,
+        },
         message: "ok",
       });
     };
@@ -120,7 +140,14 @@ describe("postDaemonConfig", () => {
     globalThis.fetch = async () =>
       makeJsonResponse({
         reload_signal: "soft_reload",
-        applied: { max_new_tokens: 128, enable_thinking: false, cache_implementation: "static" },
+        applied: {
+          max_new_tokens: 128,
+          enable_thinking: false,
+          reasoning_summary_enabled: false,
+          emotion_detection_enabled: false,
+          emotion_response_style_enabled: false,
+          cache_implementation: "static",
+        },
         message: "reload required",
       });
     const result = await postDaemonConfig(BASE, { cache_implementation: "static" });

@@ -21,6 +21,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.utils.logger import get_logger
+from venom_core.utils.voice_metadata import build_voice_session_insights
 
 logger = get_logger(__name__)
 
@@ -97,6 +98,17 @@ def _build_voice_session_record(
         "fallback_reason": metadata.get("fallback_reason"),
         "native_audio_ms": metadata.get("native_audio_ms"),
         "runtime_log_path": metadata.get("runtime_log_path"),
+        "reasoning_summary_enabled": metadata.get("reasoning_summary_enabled"),
+        "reasoning_summary_status": metadata.get("reasoning_summary_status"),
+        "reasoning_summary": metadata.get("reasoning_summary"),
+        "raw_thinking_available": metadata.get("raw_thinking_available"),
+        "emotion_detection_enabled": metadata.get("emotion_detection_enabled"),
+        "emotion_response_style_enabled": metadata.get(
+            "emotion_response_style_enabled"
+        ),
+        "emotion_source": metadata.get("emotion_source"),
+        "emotion_label": metadata.get("emotion_label"),
+        "emotion_confidence": metadata.get("emotion_confidence"),
         "transcription": metadata.get("transcription") or "",
         "response_text": metadata.get("response_text") or "",
     }
@@ -114,6 +126,53 @@ def _coerce_str(value: Any, default: str) -> str:
         return default
     text = value.strip()
     return text or default
+
+
+def _build_voice_session_insights_payload(
+    *,
+    transcript: str = "",
+    response: str = "",
+    voice_mode: str = "standard",
+    pipeline_id: str | None = None,
+    reasoning_summary_enabled: bool = False,
+    emotion_detection_enabled: bool = False,
+    emotion_response_style_enabled: bool = False,
+    raw_thinking_available: bool = False,
+) -> dict[str, Any]:
+    return build_voice_session_insights(
+        transcript=transcript,
+        response=response,
+        voice_mode=voice_mode,
+        pipeline_id=pipeline_id,
+        reasoning_summary_enabled=reasoning_summary_enabled,
+        emotion_detection_enabled=emotion_detection_enabled,
+        emotion_response_style_enabled=emotion_response_style_enabled,
+        raw_thinking_available=raw_thinking_available,
+    )
+
+
+async def _invoke_operator_agent(
+    operator_agent: object,
+    text: str,
+    *,
+    mode: str,
+    voice_context: dict[str, Any] | None = None,
+) -> str:
+    """Call the operator agent while keeping backward compatibility."""
+
+    process = getattr(operator_agent, "process", None)
+    if not callable(process):
+        raise RuntimeError("Operator agent does not expose process()")
+
+    if voice_context is not None:
+        try:
+            return await process(text, mode=mode, voice_context=voice_context)
+        except TypeError:
+            pass
+    try:
+        return await process(text, mode=mode)
+    except TypeError:
+        return await process(text)
 
 
 def collect_latest_voice_session_record(
@@ -698,6 +757,12 @@ class AudioStreamHandler:
             ),
             "duration_ms": data.get("duration_ms"),
             "connection_id": connection_id,
+            "reasoning_summary": data.get("reasoning_summary"),
+            "reasoning_summary_status": data.get("reasoning_summary_status"),
+            "raw_thinking_available": data.get("raw_thinking_available"),
+            "emotion_label": data.get("emotion_label"),
+            "emotion_confidence": data.get("emotion_confidence"),
+            "emotion_source": data.get("emotion_source"),
         }
 
     async def _process_native_gemma4_audio_pipeline(
@@ -724,6 +789,34 @@ class AudioStreamHandler:
                     "audio_input_status": "fallback",
                     "decoder_source": "faster_whisper",
                     "fallback_reason": "gemma4_audio health check failed",
+                    **_build_voice_session_insights_payload(
+                        transcript="",
+                        response="",
+                        voice_mode=self._connection_voice_mode(connection_id),
+                        pipeline_id="whisper_llm_piper",
+                        reasoning_summary_enabled=bool(
+                            getattr(
+                                SETTINGS,
+                                "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
+                                False,
+                            )
+                        ),
+                        emotion_detection_enabled=bool(
+                            getattr(
+                                SETTINGS,
+                                "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
+                                False,
+                            )
+                        ),
+                        emotion_response_style_enabled=bool(
+                            getattr(
+                                SETTINGS,
+                                "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                                False,
+                            )
+                        ),
+                        raw_thinking_available=False,
+                    ),
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_mode": self._connection_voice_mode(connection_id),
@@ -751,6 +844,34 @@ class AudioStreamHandler:
                     "decoder_source": "faster_whisper",
                     "fallback_reason": str(exc),
                     "native_audio_ms": timings_ms["native_audio_ms"],
+                    **_build_voice_session_insights_payload(
+                        transcript="",
+                        response="",
+                        voice_mode=self._connection_voice_mode(connection_id),
+                        pipeline_id="whisper_llm_piper",
+                        reasoning_summary_enabled=bool(
+                            getattr(
+                                SETTINGS,
+                                "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
+                                False,
+                            )
+                        ),
+                        emotion_detection_enabled=bool(
+                            getattr(
+                                SETTINGS,
+                                "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
+                                False,
+                            )
+                        ),
+                        emotion_response_style_enabled=bool(
+                            getattr(
+                                SETTINGS,
+                                "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                                False,
+                            )
+                        ),
+                        raw_thinking_available=False,
+                    ),
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_mode": self._connection_voice_mode(connection_id),
@@ -766,6 +887,24 @@ class AudioStreamHandler:
         timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
         transcription = runtime_result["text"]
         response_text = runtime_result.get("response_text") or transcription
+        insights = _build_voice_session_insights_payload(
+            transcript=transcription,
+            response=response_text,
+            voice_mode=self._connection_voice_mode(connection_id),
+            pipeline_id="gemma4_audio_piper",
+            reasoning_summary_enabled=bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+            ),
+            emotion_detection_enabled=bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+            ),
+            emotion_response_style_enabled=bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED", False)
+            ),
+            raw_thinking_available=bool(
+                runtime_result.get("raw_thinking_available", False)
+            ),
+        )
 
         self._update_voice_session_metadata(
             session_dir,
@@ -780,6 +919,7 @@ class AudioStreamHandler:
                 "transcription_length": len(transcription or ""),
                 "response_text": response_text,
                 "response_length": len(response_text or ""),
+                **insights,
                 "timings_ms": timings_ms,
                 "runtime": self._build_runtime_metadata(operator_agent),
                 "voice_mode": self._connection_voice_mode(connection_id),
@@ -918,9 +1058,39 @@ class AudioStreamHandler:
                 )
 
                 agent_started_at = time.perf_counter()
-                response_text = await operator_agent.process(
+                voice_context = _build_voice_session_insights_payload(
+                    transcript=transcription,
+                    response="",
+                    voice_mode=self._connection_voice_mode(connection_id),
+                    pipeline_id="whisper_llm_piper",
+                    reasoning_summary_enabled=bool(
+                        getattr(
+                            SETTINGS,
+                            "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
+                            False,
+                        )
+                    ),
+                    emotion_detection_enabled=bool(
+                        getattr(
+                            SETTINGS,
+                            "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
+                            False,
+                        )
+                    ),
+                    emotion_response_style_enabled=bool(
+                        getattr(
+                            SETTINGS,
+                            "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                            False,
+                        )
+                    ),
+                    raw_thinking_available=False,
+                )
+                response_text = await _invoke_operator_agent(
+                    operator_agent,
                     transcription,
                     mode=self._connection_voice_mode(connection_id),
+                    voice_context=voice_context,
                 )
                 timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
                 self._update_voice_session_metadata(
@@ -929,6 +1099,34 @@ class AudioStreamHandler:
                         "pipeline_id": "whisper_llm_piper",
                         "response_text": response_text,
                         "response_length": len(response_text or ""),
+                        **_build_voice_session_insights_payload(
+                            transcript=transcription,
+                            response=response_text,
+                            voice_mode=self._connection_voice_mode(connection_id),
+                            pipeline_id="whisper_llm_piper",
+                            reasoning_summary_enabled=bool(
+                                getattr(
+                                    SETTINGS,
+                                    "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
+                                    False,
+                                )
+                            ),
+                            emotion_detection_enabled=bool(
+                                getattr(
+                                    SETTINGS,
+                                    "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
+                                    False,
+                                )
+                            ),
+                            emotion_response_style_enabled=bool(
+                                getattr(
+                                    SETTINGS,
+                                    "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                                    False,
+                                )
+                            ),
+                            raw_thinking_available=False,
+                        ),
                         "timings_ms": timings_ms,
                     },
                 )
@@ -1085,9 +1283,39 @@ class AudioStreamHandler:
                     connection_id, {"type": "processing", "status": "thinking"}
                 )
                 agent_started_at = time.perf_counter()
-                response_text = await operator_agent.process(
+                voice_context = _build_voice_session_insights_payload(
+                    transcript=transcription,
+                    response="",
+                    voice_mode=self._connection_voice_mode(connection_id),
+                    pipeline_id="whisper_llm_piper",
+                    reasoning_summary_enabled=bool(
+                        getattr(
+                            SETTINGS,
+                            "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
+                            False,
+                        )
+                    ),
+                    emotion_detection_enabled=bool(
+                        getattr(
+                            SETTINGS,
+                            "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
+                            False,
+                        )
+                    ),
+                    emotion_response_style_enabled=bool(
+                        getattr(
+                            SETTINGS,
+                            "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                            False,
+                        )
+                    ),
+                    raw_thinking_available=False,
+                )
+                response_text = await _invoke_operator_agent(
+                    operator_agent,
                     transcription,
                     mode=self._connection_voice_mode(connection_id),
+                    voice_context=voice_context,
                 )
                 timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
                 self._update_voice_session_metadata(
@@ -1096,6 +1324,34 @@ class AudioStreamHandler:
                         "pipeline_id": "whisper_llm_piper",
                         "response_text": response_text,
                         "response_length": len(response_text or ""),
+                        **_build_voice_session_insights_payload(
+                            transcript=transcription,
+                            response=response_text,
+                            voice_mode=self._connection_voice_mode(connection_id),
+                            pipeline_id="whisper_llm_piper",
+                            reasoning_summary_enabled=bool(
+                                getattr(
+                                    SETTINGS,
+                                    "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
+                                    False,
+                                )
+                            ),
+                            emotion_detection_enabled=bool(
+                                getattr(
+                                    SETTINGS,
+                                    "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
+                                    False,
+                                )
+                            ),
+                            emotion_response_style_enabled=bool(
+                                getattr(
+                                    SETTINGS,
+                                    "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                                    False,
+                                )
+                            ),
+                            raw_thinking_available=False,
+                        ),
                         "timings_ms": timings_ms,
                     },
                 )

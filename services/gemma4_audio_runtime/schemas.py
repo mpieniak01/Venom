@@ -97,6 +97,24 @@ class RespondResponse(BaseModel):
     generation_config: GenerationConfig = Field(
         ..., description="Configuration used for generation"
     )
+    raw_thinking_available: bool = Field(
+        False, description="Whether raw thinking output is available"
+    )
+    reasoning_summary_status: Literal["disabled", "summary", "raw_available"] = Field(
+        "disabled", description="Reasoning summary visibility state"
+    )
+    reasoning_summary: Optional[str] = Field(
+        None, description="Short reasoning summary for diagnostics"
+    )
+    emotion_label: Optional[str] = Field(
+        None, description="Heuristic emotion label inferred from the voice input"
+    )
+    emotion_confidence: Optional[float] = Field(
+        None, description="Confidence score for the inferred emotion label"
+    )
+    emotion_source: Optional[str] = Field(
+        None, description="Emotion source used for inference"
+    )
     warnings: list[str] = Field(default_factory=list, description="Any warnings")
     trace_id: Optional[str] = Field(None, description="Request trace ID")
 
@@ -164,6 +182,9 @@ class VRAMStatus(BaseModel):
 class DaemonParamsInfo(BaseModel):
     max_new_tokens: int
     enable_thinking: bool
+    reasoning_summary_enabled: bool = False
+    emotion_detection_enabled: bool = False
+    emotion_response_style_enabled: bool = False
     cache_implementation: Optional[str] = None
 
 
@@ -177,6 +198,25 @@ class DaemonStatusResponse(BaseModel):
     assistant_loaded: bool
     params: DaemonParamsInfo
     vram: VRAMStatus
+    raw_thinking_available: bool = Field(
+        False, description="Whether the current target can emit raw thinking"
+    )
+    reasoning_summary_status: Literal["disabled", "summary", "raw_available"] = Field(
+        "disabled", description="Reasoning summary visibility state"
+    )
+    reasoning_summary: Optional[str] = Field(
+        None, description="Short reasoning summary for diagnostics"
+    )
+    emotion_label: Optional[str] = Field(
+        None,
+        description="Heuristic emotion label inferred from the current voice session",
+    )
+    emotion_confidence: Optional[float] = Field(
+        None, description="Confidence score for the inferred emotion label"
+    )
+    emotion_source: Optional[str] = Field(
+        None, description="Emotion source used for inference"
+    )
     pending_reload: bool
     reload_reason: Optional[str] = None
 
@@ -186,6 +226,9 @@ class DaemonConfigRequest(BaseModel):
 
     max_new_tokens: Optional[int] = Field(None, ge=1, le=32768)
     enable_thinking: Optional[bool] = None
+    reasoning_summary_enabled: Optional[bool] = None
+    emotion_detection_enabled: Optional[bool] = None
+    emotion_response_style_enabled: Optional[bool] = None
     cache_implementation: Optional[str] = None
 
 

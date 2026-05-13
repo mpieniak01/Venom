@@ -15,6 +15,9 @@ export type VRAMStatus = {
 export type DaemonParamsInfo = {
   max_new_tokens: number;
   enable_thinking: boolean;
+  reasoning_summary_enabled: boolean;
+  emotion_detection_enabled: boolean;
+  emotion_response_style_enabled: boolean;
   cache_implementation: string | null;
 };
 
@@ -26,6 +29,12 @@ export type DaemonStatus = {
   assistant_loaded: boolean;
   params: DaemonParamsInfo;
   vram: VRAMStatus;
+  raw_thinking_available: boolean;
+  reasoning_summary_status: "disabled" | "summary" | "raw_available";
+  reasoning_summary: string | null;
+  emotion_label: string | null;
+  emotion_confidence: number | null;
+  emotion_source: string | null;
   pending_reload: boolean;
   reload_reason: string | null;
 };
@@ -35,6 +44,9 @@ export type ReloadSignal = "none" | "soft_reload" | "hard_restart";
 export type DaemonConfigRequest = {
   max_new_tokens?: number | null;
   enable_thinking?: boolean | null;
+  reasoning_summary_enabled?: boolean | null;
+  emotion_detection_enabled?: boolean | null;
+  emotion_response_style_enabled?: boolean | null;
   cache_implementation?: string | null;
 };
 

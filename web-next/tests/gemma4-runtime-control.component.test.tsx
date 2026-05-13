@@ -19,6 +19,9 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     params: {
       max_new_tokens: 128,
       enable_thinking: false,
+      reasoning_summary_enabled: false,
+      emotion_detection_enabled: false,
+      emotion_response_style_enabled: false,
       cache_implementation: null,
     },
     vram: {
@@ -28,6 +31,12 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
       total_mb: 0,
       free_mb: 0,
     },
+    raw_thinking_available: false,
+    reasoning_summary_status: "disabled",
+    reasoning_summary: null,
+    emotion_label: null,
+    emotion_confidence: null,
+    emotion_source: null,
     pending_reload: false,
     reload_reason: null,
     ...overrides,

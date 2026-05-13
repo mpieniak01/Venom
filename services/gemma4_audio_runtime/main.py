@@ -17,6 +17,9 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
+from venom_core.config import SETTINGS
+from venom_core.utils.voice_metadata import build_voice_session_insights
+
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
 from .engine import Gemma4Daemon, InferenceError, ModelLoadError, ReloadSignal
 from .schemas import (
@@ -86,6 +89,21 @@ async def initialize_daemon(
             device=device,
             model_id=model_id,
             max_new_tokens=max_new_tokens,
+        )
+        daemon.update_params(
+            reasoning_summary_enabled=bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+            ),
+            emotion_detection_enabled=bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+            ),
+            emotion_response_style_enabled=bool(
+                getattr(
+                    SETTINGS,
+                    "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                    False,
+                )
+            ),
         )
         # Expose daemon immediately so control endpoints work during warmup.
         _daemon = daemon
@@ -280,6 +298,12 @@ async def daemon_status() -> DaemonStatusResponse:
         assistant_loaded=raw["assistant_loaded"],
         params=DaemonParamsInfo(**raw["params"]),
         vram=VRAMStatus(**raw["vram"]),
+        raw_thinking_available=bool(raw.get("raw_thinking_available", False)),
+        reasoning_summary_status=str(raw.get("reasoning_summary_status", "disabled")),
+        reasoning_summary=raw.get("reasoning_summary"),
+        emotion_label=raw.get("emotion_label"),
+        emotion_confidence=raw.get("emotion_confidence"),
+        emotion_source=raw.get("emotion_source"),
         pending_reload=raw["pending_reload"],
         reload_reason=raw["reload_reason"],
     )
@@ -301,6 +325,9 @@ async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
     signal = daemon.update_params(
         max_new_tokens=body.max_new_tokens,
         enable_thinking=body.enable_thinking,
+        reasoning_summary_enabled=body.reasoning_summary_enabled,
+        emotion_detection_enabled=body.emotion_detection_enabled,
+        emotion_response_style_enabled=body.emotion_response_style_enabled,
         cache_implementation=body.cache_implementation,
     )
 
@@ -515,6 +542,24 @@ async def respond(request: Request) -> RespondResponse:
         raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
 
     total_duration_ms = int((time.time() - start_time) * 1000)
+    voice_insights = build_voice_session_insights(
+        transcript=text_content or "",
+        response=generated_text,
+        voice_mode="gemma4_audio",
+        pipeline_id="gemma4_audio_native",
+        reasoning_summary_enabled=bool(
+            getattr(daemon._params, "reasoning_summary_enabled", False)  # noqa: SLF001
+        ),
+        emotion_detection_enabled=bool(
+            getattr(daemon._params, "emotion_detection_enabled", False)  # noqa: SLF001
+        ),
+        emotion_response_style_enabled=bool(
+            getattr(daemon._params, "emotion_response_style_enabled", False)  # noqa: SLF001
+        ),
+        raw_thinking_available=bool(
+            getattr(daemon._params, "enable_thinking", False)  # noqa: SLF001
+        ),
+    )
 
     return RespondResponse(
         model=engine.model_id,
@@ -536,6 +581,12 @@ async def respond(request: Request) -> RespondResponse:
             top_p=request_payload.top_p,
             do_sample=request_payload.do_sample,
         ),
+        raw_thinking_available=bool(voice_insights["raw_thinking_available"]),
+        reasoning_summary_status=str(voice_insights["reasoning_summary_status"]),
+        reasoning_summary=voice_insights.get("reasoning_summary"),
+        emotion_label=voice_insights.get("emotion_label"),
+        emotion_confidence=voice_insights.get("emotion_confidence"),
+        emotion_source=voice_insights.get("emotion_source"),
     )
 
 

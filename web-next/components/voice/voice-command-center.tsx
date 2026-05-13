@@ -74,6 +74,15 @@ export type AudioStatus = {
       tts_fallback?: boolean | null;
       tts_sample_rate?: number | null;
     };
+    reasoning_summary_enabled?: boolean | null;
+    reasoning_summary_status?: "disabled" | "summary" | "raw_available" | null;
+    reasoning_summary?: string | null;
+    raw_thinking_available?: boolean | null;
+    emotion_detection_enabled?: boolean | null;
+    emotion_response_style_enabled?: boolean | null;
+    emotion_source?: string | null;
+    emotion_label?: string | null;
+    emotion_confidence?: number | null;
     transcription?: string;
     response_text?: string;
     download_url?: string | null;
@@ -104,10 +113,57 @@ export type AudioStatus = {
       profile?: string | null;
       stt?: string | null;
       reasoning?: string | null;
+      reasoning_summary?: string | null;
+      emotion?: string | null;
       tools?: string | null;
       vision?: string | null;
       tts?: string | null;
       notes?: string[] | null;
+    } | null;
+    latest_voice_session?: {
+      session_id: string;
+      created_at?: string | null;
+      duration_sec?: number | null;
+      sample_rate?: number | null;
+      input_format?: string | null;
+      mime_type?: string | null;
+      voice_mode?: string | null;
+      gain_applied?: number | null;
+      peak_before_normalization?: number | null;
+      peak_after_normalization?: number | null;
+      rms_before_normalization?: number | null;
+      rms_after_normalization?: number | null;
+      timings_ms?: Record<string, number | null | undefined>;
+      runtime?: {
+        stt_model?: string | null;
+        stt_device?: string | null;
+        stt_compute_type?: string | null;
+        llm_service_id?: string | null;
+        llm_model?: string | null;
+        tts_model_path?: string | null;
+        tts_fallback?: boolean | null;
+        tts_sample_rate?: number | null;
+      };
+      reasoning_summary_enabled?: boolean | null;
+      reasoning_summary_status?: "disabled" | "summary" | "raw_available" | null;
+      reasoning_summary?: string | null;
+      raw_thinking_available?: boolean | null;
+      emotion_detection_enabled?: boolean | null;
+      emotion_response_style_enabled?: boolean | null;
+      emotion_source?: string | null;
+      emotion_label?: string | null;
+      emotion_confidence?: number | null;
+      transcription?: string;
+      response_text?: string;
+      download_url?: string | null;
+      pipeline_id?: string | null;
+      audio_runtime_provider?: string | null;
+      audio_runtime_model?: string | null;
+      audio_input_status?: string | null;
+      decoder_source?: string | null;
+      fallback_reason?: string | null;
+      native_audio_ms?: number | null;
+      runtime_log_path?: string | null;
     } | null;
     error?: string | null;
   } | null;
@@ -190,6 +246,7 @@ const buildDebugAudioStatus = (recording: boolean): AudioStatus => ({
   tts_fallback: false,
   dependencies: { debug: true },
   message: "Debug dry run",
+  latest_voice_session: null,
   runtime_snapshot: {
     runtime_id: "debug://voice-dry-run",
     provider: "debug",
@@ -209,6 +266,8 @@ const buildDebugAudioStatus = (recording: boolean): AudioStatus => ({
       profile: "debug_dry_run",
       stt: "debug",
       reasoning: "debug",
+      reasoning_summary: "disabled",
+      emotion: "disabled",
       tts: "debug",
       notes: ["No backend services", "No models", "Visual dry run only"],
     },
@@ -1016,6 +1075,7 @@ export type VoiceStatusUpdate = Pick<AudioStatus,
   | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
   | "whisper_model_size" | "stt_backend" | "tts_backend"
   | "vad_threshold" | "dependencies" | "runtime_snapshot"
+  | "latest_voice_session"
 >;
 
 const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
@@ -2155,6 +2215,15 @@ export function VoiceCommandCenter({
       })(),
     [debugDryRunRequested],
   );
+
+  useEffect(() => {
+    if (!onStatusUpdate) return;
+    if (debugDryRunRequested) {
+      onStatusUpdate(buildDebugAudioStatus(debugMode.recording));
+      return;
+    }
+    onStatusUpdate(audioStatus);
+  }, [audioStatus, debugDryRunRequested, debugMode.recording, onStatusUpdate]);
 
   useVoiceCommandCenterDebugBootstrap({
     debugDryRunRequested,

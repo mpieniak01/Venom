@@ -43,6 +43,38 @@ VOICE_MODE_PROMPTS = {
 }
 
 
+def _build_voice_context_message(voice_context: dict[str, Any] | None) -> str | None:
+    if not voice_context:
+        return None
+
+    parts: list[str] = []
+    reasoning_summary = str(voice_context.get("reasoning_summary") or "").strip()
+    if reasoning_summary and voice_context.get("reasoning_summary_enabled", False):
+        parts.append(f"Kontekst reasoning: {reasoning_summary}")
+
+    emotion_label = str(voice_context.get("emotion_label") or "").strip()
+    emotion_confidence = voice_context.get("emotion_confidence")
+    if emotion_label and voice_context.get("emotion_detection_enabled", False):
+        confidence_text = ""
+        if isinstance(emotion_confidence, (int, float)):
+            confidence_text = f" (pewność {round(float(emotion_confidence) * 100)}%)"
+        parts.append(f"Emocja użytkownika: {emotion_label}{confidence_text}")
+
+    if voice_context.get("emotion_response_style_enabled", False) and emotion_label:
+        parts.append(
+            "Dopasuj ton odpowiedzi do emocji użytkownika, ale zachowaj zwięzłość."
+        )
+
+    if voice_context.get("raw_thinking_available", False):
+        parts.append(
+            "Model może emitować blok reasoning; pokazuj tylko skrót, nie surowy tok myślenia."
+        )
+
+    if not parts:
+        return None
+    return "\n".join(parts)
+
+
 def _coerce_int(value: Any, default: int) -> int:
     try:
         return int(value)
@@ -173,7 +205,12 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         self.chat_history.add_system_message(self.SYSTEM_PROMPT)
         logger.info("OperatorAgent zainicjalizowany")
 
-    async def process(self, input_text: str, mode: str = "standard") -> str:
+    async def process(
+        self,
+        input_text: str,
+        mode: str = "standard",
+        voice_context: Optional[dict[str, Any]] = None,
+    ) -> str:
         """
         Przetwarza komendę głosową i zwraca odpowiedź zoptymalizowaną dla TTS.
 
@@ -191,7 +228,9 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             return await self._handle_hardware_command(input_text)
 
         # W przeciwnym wypadku, deleguj do LLM z kontekstem głosowym
-        return await self._generate_voice_response(input_text, mode=normalized_mode)
+        return await self._generate_voice_response(
+            input_text, mode=normalized_mode, voice_context=voice_context
+        )
 
     def _is_hardware_command(self, text: str) -> bool:
         """
@@ -316,7 +355,10 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         return VOICE_MODE_PROMPTS.get(mode, VOICE_MODE_PROMPTS["standard"])
 
     async def _generate_voice_response(
-        self, input_text: str, mode: str = "standard"
+        self,
+        input_text: str,
+        mode: str = "standard",
+        voice_context: Optional[dict[str, Any]] = None,
     ) -> str:
         """
         Generuje odpowiedź głosową przy użyciu LLM.
@@ -331,6 +373,9 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             mode_prompt = self._get_voice_mode_prompt(mode)
             temp_history = ChatHistory()
             temp_history.add_system_message(self.SYSTEM_PROMPT)
+            voice_context_message = _build_voice_context_message(voice_context)
+            if voice_context_message:
+                temp_history.add_system_message(voice_context_message)
             if mode != "standard":
                 temp_history.add_system_message(str(mode_prompt["instruction"]))
             for message in self.chat_history.messages:

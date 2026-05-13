@@ -38,10 +38,18 @@ function Row({ label, value }: Readonly<{ label: string; value: React.ReactNode 
   );
 }
 
+function formatConfidence(value?: number | null): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
 export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSidebarProps) {
   const t = useTranslation();
   const devModeEnabled = isDevMode;
   const runtime = status?.runtime_snapshot ?? null;
+  const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;
   const isGemma4AudioRuntime =
     (runtime?.provider ?? "").toLowerCase() === "gemma4_audio" ||
     (runtime?.runtime_id ?? "").toLowerCase() === "gemma4_audio";
@@ -81,6 +89,9 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
         runtime={runtime}
         title={t("voice.controls.runtime")}
       />
+      {latestVoiceSession && (
+        <VoiceSessionCard session={latestVoiceSession} />
+      )}
       {isGemma4AudioRuntime && devModeEnabled && (
         <Gemma4RuntimeControl variant="voice" runtimeSnapshot={runtime} />
       )}
@@ -271,6 +282,15 @@ function RuntimeOverviewCard({
           {runtime.voice_pipeline?.reasoning && (
             <Row label={t("voice.controls.pipeline")} value={runtime.voice_pipeline.reasoning} />
           )}
+          {runtime.voice_pipeline?.reasoning_summary && (
+            <Row
+              label={t("voice.controls.reasoningSummary")}
+              value={runtime.voice_pipeline.reasoning_summary}
+            />
+          )}
+          {runtime.voice_pipeline?.emotion && (
+            <Row label={t("voice.controls.emotion")} value={runtime.voice_pipeline.emotion} />
+          )}
           {runtime.voice_pipeline?.tts && (
             <Row label={t("voice.controls.tts")} value={runtime.voice_pipeline.tts} />
           )}
@@ -278,6 +298,55 @@ function RuntimeOverviewCard({
         </>
       ) : (
         <p className="text-hint text-xs py-2">{loadingLabel ?? t("voice.status.noData")}</p>
+      )}
+    </StatusCard>
+  );
+}
+
+function VoiceSessionCard({
+  session,
+}: Readonly<{
+  session: NonNullable<VoiceStatusUpdate["latest_voice_session"]>;
+}>) {
+  const t = useTranslation();
+  const confidence = formatConfidence(session.emotion_confidence);
+
+  return (
+    <StatusCard title={t("voice.controls.latestSession")}>
+      <div className="mb-2">
+        <p className="text-sm font-semibold text-white truncate">
+          {session.pipeline_id ?? t("voice.controls.noRecordingYet")}
+        </p>
+        {session.session_id && (
+          <p className="text-[10px] text-zinc-500 truncate">{session.session_id}</p>
+        )}
+      </div>
+      {session.voice_mode && <Row label={t("voice.controls.voiceMode")} value={session.voice_mode} />}
+      {session.reasoning_summary_status && (
+        <Row
+          label={t("voice.controls.reasoningSummary")}
+          value={session.reasoning_summary_status}
+        />
+      )}
+      {session.reasoning_summary && (
+        <Row label={t("voice.controls.reasoningSummary")} value={session.reasoning_summary} />
+      )}
+      {session.emotion_label && (
+        <Row
+          label={t("voice.controls.emotion")}
+          value={
+            <span className="inline-flex items-center gap-1.5">
+              <span>{session.emotion_label}</span>
+              {confidence && <span className="text-zinc-500">{confidence}</span>}
+            </span>
+          }
+        />
+      )}
+      {session.transcription && (
+        <Row label={t("voice.controls.transcription")} value={session.transcription} />
+      )}
+      {session.response_text && (
+        <Row label={t("voice.controls.response")} value={session.response_text} />
       )}
     </StatusCard>
   );

@@ -894,8 +894,9 @@ html[data-theme="venom-light"] body::after {
 /* live here as plain CSS classes.                                         */
 
 @keyframes orb-particle-rise {
-  0%   { transform: translateY(0)     scale(1);   opacity: 0.65; }
-  100% { transform: translateY(-56px) scale(0.2); opacity: 0; }
+  0%   { transform: translateY(0)      scale(1);   opacity: 0.72; }
+  55%  { opacity: 0.8; }
+  100% { transform: translateY(-72px)  scale(0.18); opacity: 0; }
 }
 
 @keyframes orb-plasma-slow {
@@ -908,7 +909,7 @@ html[data-theme="venom-light"] body::after {
   to   { transform: rotate(-360deg); }
 }
 
-.animate-orb-particle-rise { animation: orb-particle-rise  2.1s ease-out forwards; }
+.animate-orb-particle-rise { animation: orb-particle-rise  3.8s ease-out infinite; }
 .animate-orb-plasma-slow   { animation: orb-plasma-slow    9s   linear infinite; }
 .animate-orb-plasma-fast   { animation: orb-plasma-fast    5.5s linear infinite; }
 

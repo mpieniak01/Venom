@@ -200,9 +200,10 @@ function usePolling<T>(
   key: string,
   fetcher: () => Promise<T>,
   intervalMs = 5000,
+  enabled = true,
 ): PollingState<T> {
   const isBrowser = globalThis.window !== undefined;
-  const pollingDisabled = process.env.NEXT_PUBLIC_DISABLE_API_POLLING === "true";
+  const pollingDisabled = process.env.NEXT_PUBLIC_DISABLE_API_POLLING === "true" || !enabled;
   const disabledState = useMemo(
     () => ({
       data: null,
@@ -432,7 +433,7 @@ export function useTokenMetrics(intervalMs = 5000) {
 
 type ModelsUsagePayload = ModelsUsageResponse | ModelsUsage;
 
-export function useModelsUsage(intervalMs = 10000) {
+export function useModelsUsage(intervalMs = 10000, enabled = true) {
   return usePolling<ModelsUsageResponse>(
     "models-usage",
     async () => {
@@ -443,6 +444,7 @@ export function useModelsUsage(intervalMs = 10000) {
       return { usage: result as ModelsUsage };
     },
     intervalMs,
+    enabled,
   );
 }
 

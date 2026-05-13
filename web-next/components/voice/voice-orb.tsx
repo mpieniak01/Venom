@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { OrbFrequencyRing } from "@/components/voice/orb-frequency-ring";
+import { shouldRenderOrbMetricsBars } from "@/components/voice/orb-visibility";
 import { useAudioLevel } from "@/components/voice/use-audio-level";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import type { OrbMetrics } from "@/components/voice/use-orb-metrics";
@@ -26,12 +27,12 @@ type OrbVisual = {
 
 const ORB_VISUALS: Record<VoiceOrbState, OrbVisual> = {
   offline: { coreColor: "bg-zinc-700", glowColor: "bg-zinc-600/20", ringAnimation: "", coreAnimation: "" },
-  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/20", ringAnimation: "animate-pulse-signal", coreAnimation: "" },
+  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/12", ringAnimation: "", coreAnimation: "" },
   recording: { coreColor: "bg-emerald-500", glowColor: "bg-emerald-400/30", ringAnimation: "", coreAnimation: "" },
   stt: { coreColor: "bg-amber-500", glowColor: "bg-amber-400/25", ringAnimation: "animate-spin", coreAnimation: "animate-pulse" },
   thinking: { coreColor: "bg-violet-600", glowColor: "bg-violet-500/25", ringAnimation: "animate-orb-thinking", coreAnimation: "" },
   tts: { coreColor: "bg-cyan-500", glowColor: "bg-cyan-400/30", ringAnimation: "", coreAnimation: "" },
-  complete: { coreColor: "bg-teal-500", glowColor: "bg-teal-400/20", ringAnimation: "animate-pulse", coreAnimation: "" },
+  complete: { coreColor: "bg-teal-500", glowColor: "bg-teal-400/12", ringAnimation: "animate-pulse", coreAnimation: "" },
   error: { coreColor: "bg-rose-600", glowColor: "bg-rose-500/20", ringAnimation: "", coreAnimation: "" },
 };
 
@@ -62,22 +63,10 @@ const PARTICLE_COLORS: Partial<Record<VoiceOrbState, string>> = {
   tts: "rgba(34,211,238,0.72)",
 };
 
-const ORB_PARTICLE_COUNT = 9;
-const ORB_PARTICLE_RANDOMS_PER_PARTICLE = 5;
-const ORB_PARTICLE_RANDOM_FALLBACK = 0x80000000;
-const ORB_PARTICLE_RANDOM_DENOMINATOR = 0x100000000;
+const ORB_PARTICLE_COUNT = 6;
 
-const ORB_SIZE = 120;
-const CORE_SIZE = 72;
-
-type Particle = {
-  id: number;
-  angle: number;
-  duration: number;
-  delay: number;
-  offset: number;
-  size: number;
-};
+const ORB_SIZE = 160;
+const CORE_SIZE = 96;
 
 function getFlashClass(state: VoiceOrbState): string {
   return state === "recording" || state === "complete" ? "animate-orb-flash" : "";
@@ -85,6 +74,10 @@ function getFlashClass(state: VoiceOrbState): string {
 
 function isOrbActive(state: VoiceOrbState): boolean {
   return state === "recording" || state === "tts";
+}
+
+function isOrbThinking(state: VoiceOrbState): boolean {
+  return state === "thinking";
 }
 
 function getOrbAudioLevel(state: VoiceOrbState, inputLevel: number, outputLevel: number): number {
@@ -113,9 +106,19 @@ function getOrbGlowShadow(
 
   const [c1, c2, c3] = ORB_GLOW[state];
   const level = Math.min(1, audioLevel);
-  const r1 = (16 + level * 18).toFixed(0);
-  const r2 = (30 + level * 32).toFixed(0);
-  const r3 = (52 + level * 62).toFixed(0);
+  const calm = state === "ready" || state === "complete";
+  const base1 = calm ? 8 : 16;
+  const base2 = calm ? 16 : 30;
+  const base3 = calm ? 0 : 52;
+  const scale1 = calm ? 8 : 18;
+  const scale2 = calm ? 16 : 32;
+  const scale3 = calm ? 0 : 62;
+  const r1 = (base1 + level * scale1).toFixed(0);
+  const r2 = (base2 + level * scale2).toFixed(0);
+  if (calm) {
+    return `0 0 ${r1}px ${c1}, 0 0 ${r2}px ${c2}`;
+  }
+  const r3 = (base3 + level * scale3).toFixed(0);
   return `0 0 ${r1}px ${c1}, 0 0 ${r2}px ${c2}, 0 0 ${r3}px ${c3}`;
 }
 
@@ -129,41 +132,6 @@ function getMotionClass(noAnim: boolean, className: string): string {
 
 function formatCoreScale(scale: number): string {
   return scale === 1 ? "1" : scale.toFixed(4);
-}
-
-function randomUnitValues(count: number): number[] {
-  const values = new Uint32Array(count);
-  const crypto = globalThis.crypto;
-
-  if (crypto) {
-    crypto.getRandomValues(values);
-  } else {
-    values.fill(ORB_PARTICLE_RANDOM_FALLBACK);
-  }
-
-  return Array.from(values, (value) => value / ORB_PARTICLE_RANDOM_DENOMINATOR);
-}
-
-function createOrbParticles(): Particle[] {
-  const randomValues = randomUnitValues(ORB_PARTICLE_COUNT * ORB_PARTICLE_RANDOMS_PER_PARTICLE);
-
-  return Array.from({ length: ORB_PARTICLE_COUNT }, (_, index) => {
-    const base = index * ORB_PARTICLE_RANDOMS_PER_PARTICLE;
-    const angleJitter = randomValues[base] ?? 0.5;
-    const durationJitter = randomValues[base + 1] ?? 0.5;
-    const delayJitter = randomValues[base + 2] ?? 0.5;
-    const offsetJitter = randomValues[base + 3] ?? 0.5;
-    const sizeJitter = randomValues[base + 4] ?? 0.5;
-
-    return {
-      id: index,
-      angle: (360 / ORB_PARTICLE_COUNT) * index + angleJitter * 20 - 10,
-      duration: 1.6 + durationJitter * 0.9,
-      delay: delayJitter * 1.1,
-      offset: 30 + offsetJitter * 8,
-      size: 2 + sizeJitter * 2,
-    };
-  });
 }
 
 function useOrbTransitionEffects(state: VoiceOrbState, enabled: boolean, noAnim: boolean) {
@@ -214,18 +182,44 @@ function useOrbTransitionEffects(state: VoiceOrbState, enabled: boolean, noAnim:
   return { flashClass, showBurst, burstKey };
 }
 
-function useOrbParticles() {
-  const [particles, setParticles] = useState<Particle[]>([]);
+function mixSeed(value: string): number {
+  let seed = 0x9e3779b9;
+  for (let i = 0; i < value.length; i++) {
+    const codePoint = value.codePointAt(i) ?? 0;
+    seed = Math.imul(seed ^ codePoint, 0x85ebca6b);
+    seed ^= seed >>> 13;
+  }
+  return seed >>> 0;
+}
 
-  useEffect(() => {
-    const id = setTimeout(() => {
-      setParticles(createOrbParticles());
-    }, 0);
+function seededUnit(seed: number, index: number): number {
+  let x = Math.imul(seed ^ (index + 1), 0x27d4eb2d) >>> 0;
+  x ^= x >>> 15;
+  x = Math.imul(x, 0x85ebca6b) >>> 0;
+  x ^= x >>> 13;
+  return (x >>> 0) / 0x100000000;
+}
 
-    return () => clearTimeout(id);
-  }, []);
+function useOrbParticles(state: VoiceOrbState) {
+  return useMemo(() => {
+    const seed = mixSeed(state);
+    return Array.from({ length: ORB_PARTICLE_COUNT }, (_, index) => {
+      const angleBase = (360 / ORB_PARTICLE_COUNT) * index;
+      const angleJitter = seededUnit(seed, index * 4);
+      const durationJitter = seededUnit(seed, index * 4 + 1);
+      const delayJitter = seededUnit(seed, index * 4 + 2);
+      const sizeJitter = seededUnit(seed, index * 4 + 3);
 
-  return particles;
+      return {
+        id: index,
+        angle: angleBase + angleJitter * 16 - 8,
+        duration: 3.2 + durationJitter * 1.1,
+        delay: delayJitter * 1.2,
+        offset: 28 + (index % 3) * 4 + Math.floor(angleJitter * 3),
+        size: 2 + sizeJitter * 1.4,
+      };
+    });
+  }, [state]);
 }
 
 // ─── Metrics arcs — 4 quarter-circle arcs floating outward from the orb ──────
@@ -292,6 +286,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
   const currents   = useRef([0, 0, 0, 0]);
   const prevRadii  = useRef<number[]>([]);
   const rippleSt   = useRef([0, 0, 0, 0]);
+  const lastTickRef = useRef(0);
 
   useEffect(() => {
     const cx     = orbSize / 2;
@@ -301,13 +296,21 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
     const MIN_R  = ORB_R * 1.08; // just outside the orb edge
     const MAX_R  = ORB_R * 1.95; // fully loaded: arcs nearly double the orb radius
     const PHASES = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]; // 90° stagger per arc
+    const TICK_MS = 40;
 
     currents.current  = [MIN_R, MIN_R, MIN_R, MIN_R];
     prevRadii.current = [MIN_R, MIN_R, MIN_R, MIN_R];
+    lastTickRef.current = 0;
 
-    let raf: number;
+    let rafId = 0;
 
     const tick = (now: number) => {
+      if (now - lastTickRef.current < TICK_MS) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      lastTickRef.current = now;
+
       const t    = now / 1000;
       const m    = metricsRef.current;
       const vals = [m.cpu, m.gpu, m.vram, m.ram];
@@ -315,7 +318,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
       currents.current = currents.current.map((c, i) => {
         const pct = Number.isFinite(vals[i] ?? Number.NaN) ? (vals[i] as number) : 0;
         const tgt = MIN_R + (pct / 100) * (MAX_R - MIN_R);
-        return c + (tgt - c) * 0.06;
+        return c + (tgt - c) * 0.12;
       });
 
       currents.current.forEach((r, i) => {
@@ -369,18 +372,20 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
             ripple.setAttribute("d",            arcPath(cx, cy, Math.max(MIN_R, rOuter), def.startDeg, def.endDeg));
             ripple.setAttribute("stroke-width", "2");
             ripple.setAttribute("opacity",      String((rp * 0.65).toFixed(3)));
-            rippleSt.current[i] = Math.max(0, rp - 0.018);
+            rippleSt.current[i] = Math.max(0, rp - 0.05);
           } else {
             ripple.setAttribute("opacity", "0");
           }
         }
       });
 
-      raf = requestAnimationFrame(tick);
+      rafId = requestAnimationFrame(tick);
     };
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      globalThis.cancelAnimationFrame(rafId);
+    };
   }, [colorMode, metricsRef, orbSize]);
 
   return (
@@ -399,7 +404,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
     >
       <defs>
         <filter id="orb-arc-glow" x="-200%" y="-200%" width="500%" height="500%">
-          <feGaussianBlur stdDeviation="4.5" in="SourceGraphic" />
+          <feGaussianBlur stdDeviation="3.0" in="SourceGraphic" />
         </filter>
       </defs>
 
@@ -502,22 +507,25 @@ export function VoiceOrb({
 
   const audioLevel = getOrbAudioLevel(effectiveState, inputLevel, outputLevel);
   const activeAnalyser = getOrbAnalyser(effectiveState, micAnalyserRef, ttsAnalyserRef);
-  const showParticles = shouldShowOrbEffect(cfg.particles, noAnim, isOrbActive(effectiveState));
+  const showParticles = shouldShowOrbEffect(cfg.particles, noAnim, effectiveState === "thinking");
   const showRipple = shouldShowOrbEffect(cfg.ripple, noAnim, isOrbActive(effectiveState));
-  const showBlob = shouldShowOrbEffect(cfg.blob, noAnim, isOrbActive(effectiveState));
+  const showBlob = shouldShowOrbEffect(cfg.blob, noAnim, isOrbThinking(effectiveState));
   const showFreqRing = shouldShowOrbEffect(cfg.frequencyRing, noAnim, activeAnalyser !== undefined);
-  const particles = useOrbParticles();
+  const particles = useOrbParticles(effectiveState);
   const { flashClass, showBurst, burstKey } = useOrbTransitionEffects(effectiveState, cfg.transitions, noAnim);
+  const showMetricsBars = shouldRenderOrbMetricsBars(Boolean(cfg.orbMetricsBars && metricsRef), effectiveState, noAnim);
+  const showAmbientMotion = !noAnim && effectiveState !== "ready" && effectiveState !== "offline";
 
   const coreScale = noAnim ? 1 : 1 + Math.min(1, audioLevel) * 0.35;
   const hasMotion = coreScale !== 1;
   const glowShadow = getOrbGlowShadow(cfg.glow, noAnim, effectiveState, audioLevel);
-  const ringAnimation = getMotionClass(noAnim, visual.ringAnimation);
+  const ringAnimation = showAmbientMotion ? getMotionClass(noAnim, visual.ringAnimation) : "";
   const coreAnimation = getMotionClass(noAnim, visual.coreAnimation);
   const blobClass = showBlob ? "animate-orb-blob" : "";
   const rippleColors = RIPPLE_COLORS[effectiveState];
   const particleColor = PARTICLE_COLORS[effectiveState] ?? "rgba(255,255,255,0.5)";
   const fftColor = FFT_RING_COLOR[effectiveState] ?? "transparent";
+  const glowClassName = effectiveState === "ready" || effectiveState === "complete" ? "blur-lg" : "blur-2xl";
 
   return (
     <div
@@ -525,7 +533,7 @@ export function VoiceOrb({
       aria-label={label ?? effectiveState}
       data-orb-state={effectiveState}
       className="flex flex-col items-center gap-3 py-2"
-      style={{ minHeight: "160px" }}
+      style={{ minHeight: "220px" }}
     >
       <div
         className="relative flex items-center justify-center"
@@ -540,12 +548,13 @@ export function VoiceOrb({
         {showRipple && rippleColors && (
           <>
             <div className={`absolute inset-0 rounded-full ${rippleColors[0]} animate-orb-ripple`} style={{ animationDelay: "0s" }} />
-            <div className={`absolute inset-0 rounded-full ${rippleColors[1]} animate-orb-ripple`} style={{ animationDelay: "0.48s" }} />
-            <div className={`absolute inset-0 rounded-full ${rippleColors[2]} animate-orb-ripple`} style={{ animationDelay: "0.96s" }} />
+            <div className={`absolute inset-1 rounded-full ${rippleColors[1]} animate-orb-ripple`} style={{ animationDelay: "0.44s" }} />
           </>
         )}
 
-        <div className={`absolute inset-0 rounded-full blur-2xl transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
+        {cfg.glow && (
+          <div className={`absolute inset-0 rounded-full ${glowClassName} transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
+        )}
 
         {showFreqRing && activeAnalyser && (
           <OrbFrequencyRing analyserRef={activeAnalyser} active={showFreqRing} color={fftColor} size={ORB_SIZE} />
@@ -585,7 +594,7 @@ export function VoiceOrb({
             />
           )}
 
-          {cfg.coreTexture && !noAnim && (
+          {cfg.coreTexture && showAmbientMotion && (
             <>
               <div
                 className="animate-orb-plasma-slow pointer-events-none absolute rounded-full opacity-[0.18]"
@@ -633,7 +642,7 @@ export function VoiceOrb({
             );
           })}
 
-        {cfg.orbMetricsBars && metricsRef && !reducedMotion && (
+        {showMetricsBars && (
           <OrbMetricsBars2D metricsRef={metricsRef} orbSize={ORB_SIZE} colorMode />
         )}
       </div>

@@ -1,5 +1,5 @@
 # =============================================================================
-# Kontrola LLM Runtime (vLLM, Ollama)
+# Kontrola LLM Runtime (vLLM, Ollama, Gemma4 Audio)
 # =============================================================================
 
 vllm-start:
@@ -25,3 +25,19 @@ ollama-stop:
 ollama-restart:
 	@echo "🔄 Restartuję Ollama..."
 	@bash scripts/llm/ollama_service.sh restart
+
+gemma4-audio-start:
+	@echo "🚀 Uruchamiam Gemma4 Audio..."
+	@bash scripts/llm/gemma4_audio_service.sh start
+
+gemma4-audio-stop:
+	@echo "⏹️  Zatrzymuję Gemma4 Audio..."
+	@bash scripts/llm/gemma4_audio_service.sh stop
+
+gemma4-audio-restart:
+	@echo "🔄 Restartuję Gemma4 Audio..."
+	@bash scripts/llm/gemma4_audio_service.sh restart
+
+gemma4-audio-hygiene:
+	@echo "🧹 Higiena Gemma4 Audio (stop + cleanup daemon state)..."
+	@bash scripts/llm/gemma4_audio_service.sh stop

@@ -36,7 +36,8 @@ export const useAudioLevel = (
       return;
     }
 
-    let frameId: number | null = null;
+    const SAMPLE_MS = 48;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const tick = () => {
       const analyser = analyserRef.current;
@@ -47,12 +48,12 @@ export const useAudioLevel = (
         decayRef.current *= 0.85;
       }
       setLevel(Math.min(1, decayRef.current * 4));
-      frameId = requestAnimationFrame(tick);
     };
 
-    frameId = requestAnimationFrame(tick);
+    tick();
+    intervalId = globalThis.setInterval(tick, SAMPLE_MS);
     return () => {
-      if (frameId !== null) cancelAnimationFrame(frameId);
+      if (intervalId !== null) globalThis.clearInterval(intervalId);
     };
     // analyserRef is a stable RefObject — intentionally excluded from deps
     // eslint-disable-next-line react-hooks/exhaustive-deps

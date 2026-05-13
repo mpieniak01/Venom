@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { OrbFrequencyRing } from "@/components/voice/orb-frequency-ring";
 import { shouldRenderOrbMetricsBars } from "@/components/voice/orb-visibility";
@@ -63,22 +63,10 @@ const PARTICLE_COLORS: Partial<Record<VoiceOrbState, string>> = {
   tts: "rgba(34,211,238,0.72)",
 };
 
-const ORB_PARTICLE_COUNT = 9;
-const ORB_PARTICLE_RANDOMS_PER_PARTICLE = 5;
-const ORB_PARTICLE_RANDOM_FALLBACK = 0x80000000;
-const ORB_PARTICLE_RANDOM_DENOMINATOR = 0x100000000;
+const ORB_PARTICLE_COUNT = 6;
 
 const ORB_SIZE = 120;
 const CORE_SIZE = 72;
-
-type Particle = {
-  id: number;
-  angle: number;
-  duration: number;
-  delay: number;
-  offset: number;
-  size: number;
-};
 
 function getFlashClass(state: VoiceOrbState): string {
   return state === "recording" || state === "complete" ? "animate-orb-flash" : "";
@@ -142,41 +130,6 @@ function formatCoreScale(scale: number): string {
   return scale === 1 ? "1" : scale.toFixed(4);
 }
 
-function randomUnitValues(count: number): number[] {
-  const values = new Uint32Array(count);
-  const crypto = globalThis.crypto;
-
-  if (crypto) {
-    crypto.getRandomValues(values);
-  } else {
-    values.fill(ORB_PARTICLE_RANDOM_FALLBACK);
-  }
-
-  return Array.from(values, (value) => value / ORB_PARTICLE_RANDOM_DENOMINATOR);
-}
-
-function createOrbParticles(): Particle[] {
-  const randomValues = randomUnitValues(ORB_PARTICLE_COUNT * ORB_PARTICLE_RANDOMS_PER_PARTICLE);
-
-  return Array.from({ length: ORB_PARTICLE_COUNT }, (_, index) => {
-    const base = index * ORB_PARTICLE_RANDOMS_PER_PARTICLE;
-    const angleJitter = randomValues[base] ?? 0.5;
-    const durationJitter = randomValues[base + 1] ?? 0.5;
-    const delayJitter = randomValues[base + 2] ?? 0.5;
-    const offsetJitter = randomValues[base + 3] ?? 0.5;
-    const sizeJitter = randomValues[base + 4] ?? 0.5;
-
-    return {
-      id: index,
-      angle: (360 / ORB_PARTICLE_COUNT) * index + angleJitter * 20 - 10,
-      duration: 1.6 + durationJitter * 0.9,
-      delay: delayJitter * 1.1,
-      offset: 30 + offsetJitter * 8,
-      size: 2 + sizeJitter * 2,
-    };
-  });
-}
-
 function useOrbTransitionEffects(state: VoiceOrbState, enabled: boolean, noAnim: boolean) {
   const [flashClass, setFlashClass] = useState("");
   const [showBurst, setShowBurst] = useState(false);
@@ -225,18 +178,43 @@ function useOrbTransitionEffects(state: VoiceOrbState, enabled: boolean, noAnim:
   return { flashClass, showBurst, burstKey };
 }
 
-function useOrbParticles() {
-  const [particles, setParticles] = useState<Particle[]>([]);
+function mixSeed(value: string): number {
+  let seed = 0x9e3779b9;
+  for (let i = 0; i < value.length; i++) {
+    seed = Math.imul(seed ^ value.charCodeAt(i), 0x85ebca6b);
+    seed ^= seed >>> 13;
+  }
+  return seed >>> 0;
+}
 
-  useEffect(() => {
-    const id = setTimeout(() => {
-      setParticles(createOrbParticles());
-    }, 0);
+function seededUnit(seed: number, index: number): number {
+  let x = Math.imul(seed ^ (index + 1), 0x27d4eb2d) >>> 0;
+  x ^= x >>> 15;
+  x = Math.imul(x, 0x85ebca6b) >>> 0;
+  x ^= x >>> 13;
+  return (x >>> 0) / 0x100000000;
+}
 
-    return () => clearTimeout(id);
-  }, []);
+function useOrbParticles(state: VoiceOrbState) {
+  return useMemo(() => {
+    const seed = mixSeed(state);
+    return Array.from({ length: ORB_PARTICLE_COUNT }, (_, index) => {
+      const angleBase = (360 / ORB_PARTICLE_COUNT) * index;
+      const angleJitter = seededUnit(seed, index * 4);
+      const durationJitter = seededUnit(seed, index * 4 + 1);
+      const delayJitter = seededUnit(seed, index * 4 + 2);
+      const sizeJitter = seededUnit(seed, index * 4 + 3);
 
-  return particles;
+      return {
+        id: index,
+        angle: angleBase + angleJitter * 16 - 8,
+        duration: 1.7 + durationJitter * 0.7,
+        delay: delayJitter * 0.65,
+        offset: 28 + (index % 3) * 4 + Math.floor(angleJitter * 3),
+        size: 2 + sizeJitter * 1.4,
+      };
+    });
+  }, [state]);
 }
 
 // ─── Metrics arcs — 4 quarter-circle arcs floating outward from the orb ──────
@@ -528,7 +506,7 @@ export function VoiceOrb({
   const showRipple = shouldShowOrbEffect(cfg.ripple, noAnim, isOrbActive(effectiveState));
   const showBlob = shouldShowOrbEffect(cfg.blob, noAnim, isOrbActive(effectiveState));
   const showFreqRing = shouldShowOrbEffect(cfg.frequencyRing, noAnim, activeAnalyser !== undefined);
-  const particles = useOrbParticles();
+  const particles = useOrbParticles(effectiveState);
   const { flashClass, showBurst, burstKey } = useOrbTransitionEffects(effectiveState, cfg.transitions, noAnim);
   const showMetricsBars = shouldRenderOrbMetricsBars(Boolean(cfg.orbMetricsBars && metricsRef), effectiveState, noAnim);
   const showAmbientMotion = !noAnim && effectiveState !== "ready" && effectiveState !== "offline";

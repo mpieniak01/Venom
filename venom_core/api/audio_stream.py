@@ -766,8 +766,9 @@ class AudioStreamHandler:
 
         timeout = httpx.Timeout(GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC, connect=5.0)
         async with await anyio.open_file(wav_path, "rb") as audio_file:
+            audio_bytes = await audio_file.read()
             files = {
-                "audio": (wav_path.name, audio_file, "audio/wav"),
+                "audio": (wav_path.name, audio_bytes, "audio/wav"),
             }
             data = {
                 "request": json.dumps(payload, ensure_ascii=False),

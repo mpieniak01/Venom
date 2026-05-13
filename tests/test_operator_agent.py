@@ -9,6 +9,7 @@ from semantic_kernel.contents.chat_history import ChatHistory
 import venom_core.agents.operator as op_module
 from venom_core.agents.operator import (
     OperatorAgent,
+    _build_voice_context_message,
     _coerce_float,
     _coerce_int,
     _ollama_extra_body,
@@ -74,6 +75,39 @@ class TestOperatorAgent:
         assert _coerce_int(object(), 7) == 7
         assert _coerce_float("0.5", 0.1) == pytest.approx(0.5)
         assert _coerce_float(object(), 0.1) == pytest.approx(0.1)
+
+    def test_build_voice_context_message_handles_empty_and_disabled_fields(self):
+        assert _build_voice_context_message(None) is None
+        assert (
+            _build_voice_context_message(
+                {
+                    "reasoning_summary": "x",
+                    "reasoning_summary_enabled": False,
+                    "emotion_label": "curious",
+                    "emotion_detection_enabled": False,
+                }
+            )
+            is None
+        )
+
+    def test_build_voice_context_message_includes_all_enabled_sections(self):
+        message = _build_voice_context_message(
+            {
+                "reasoning_summary": "pipeline=gemma | mode=summary",
+                "reasoning_summary_enabled": True,
+                "emotion_label": "frustrated",
+                "emotion_confidence": 0.74,
+                "emotion_detection_enabled": True,
+                "emotion_response_style_enabled": True,
+                "raw_thinking_available": True,
+            }
+        )
+
+        assert message is not None
+        assert "Kontekst reasoning: pipeline=gemma | mode=summary" in message
+        assert "Emocja użytkownika: frustrated (pewność 74%)" in message
+        assert "Dopasuj ton odpowiedzi do emocji użytkownika" in message
+        assert "Model może emitować blok reasoning" in message
 
     def test_is_hardware_command_true(self, mock_kernel):
         """Test rozpoznawania komend sprzętowych."""
@@ -319,6 +353,28 @@ class TestOperatorAgent:
         assert captured["tokens"] == 100
         assert captured["temperature"] == pytest.approx(0.5)
         assert captured["messages"].count("system") == 2
+
+    @pytest.mark.asyncio
+    async def test_generate_voice_response_truncates_history_to_10_messages(
+        self, mock_kernel
+    ):
+        agent = OperatorAgent(kernel=mock_kernel)
+        mock_kernel.services = {"chat": MagicMock()}
+        mock_kernel.get_service.return_value = MagicMock()
+        agent._invoke_chat_with_fallbacks = AsyncMock(return_value="ok")
+
+        for idx in range(5):
+            agent.chat_history.add_user_message(f"u{idx}")
+            agent.chat_history.add_assistant_message(f"a{idx}")
+        assert len(agent.chat_history.messages) == 11
+
+        response = await agent._generate_voice_response("nowa wiadomość")
+
+        assert response == "ok"
+        assert len(agent.chat_history.messages) == 10
+        assert (
+            "system" in str(getattr(agent.chat_history.messages[0], "role", "")).lower()
+        )
 
 
 class TestOllamaExtraBody:

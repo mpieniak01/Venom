@@ -354,6 +354,47 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
     def _get_voice_mode_prompt(self, mode: str) -> dict[str, object]:
         return VOICE_MODE_PROMPTS.get(mode, VOICE_MODE_PROMPTS["standard"])
 
+    def _build_voice_chat_history(
+        self,
+        *,
+        input_text: str,
+        mode: str,
+        mode_prompt: dict[str, object],
+        voice_context: Optional[dict[str, Any]],
+    ) -> ChatHistory:
+        """Build per-request chat history with optional voice-context hints."""
+        temp_history = ChatHistory()
+        temp_history.add_system_message(self.SYSTEM_PROMPT)
+        voice_context_message = _build_voice_context_message(voice_context)
+        if voice_context_message:
+            temp_history.add_system_message(voice_context_message)
+        if mode != "standard":
+            temp_history.add_system_message(str(mode_prompt["instruction"]))
+        for message in self.chat_history.messages:
+            if getattr(message, "role", None) != "system":
+                temp_history.add_message(message)
+        temp_history.add_user_message(input_text)
+        return temp_history
+
+    def _extract_assistant_message(self, response: Any) -> str:
+        """Normalize SK response to a plain assistant message string."""
+        if not response or (isinstance(response, list) and not response):
+            return ""
+        item = response[0] if isinstance(response, list) else response
+        return str(item).strip()
+
+    def _append_to_history(self, input_text: str, assistant_message: str) -> None:
+        self.chat_history.add_user_message(input_text)
+        self.chat_history.add_assistant_message(assistant_message)
+        self._truncate_history()
+
+    def _truncate_history(self) -> None:
+        """Keep only system prompt + last 9 conversation messages."""
+        if len(self.chat_history.messages) <= 10:
+            return
+        system_msg = self.chat_history.messages[0]
+        self.chat_history.messages = [system_msg] + self.chat_history.messages[-9:]
+
     async def _generate_voice_response(
         self,
         input_text: str,
@@ -371,18 +412,12 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         """
         try:
             mode_prompt = self._get_voice_mode_prompt(mode)
-            temp_history = ChatHistory()
-            temp_history.add_system_message(self.SYSTEM_PROMPT)
-            voice_context_message = _build_voice_context_message(voice_context)
-            if voice_context_message:
-                temp_history.add_system_message(voice_context_message)
-            if mode != "standard":
-                temp_history.add_system_message(str(mode_prompt["instruction"]))
-            for message in self.chat_history.messages:
-                if getattr(message, "role", None) == "system":
-                    continue
-                temp_history.add_message(message)
-            temp_history.add_user_message(input_text)
+            temp_history = self._build_voice_chat_history(
+                input_text=input_text,
+                mode=mode,
+                mode_prompt=mode_prompt,
+                voice_context=voice_context,
+            )
             service_id = self._resolve_chat_service_id()
 
             # Ustawienia wykonania
@@ -404,13 +439,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 enable_functions=False,
             )
 
-            # Guard against None or empty list before str() — str(None) → 'None'
-            # and str([]) → '[]' are both truthy and would bypass the empty check.
-            if not response or (isinstance(response, list) and not response):
-                assistant_message = ""
-            else:
-                item = response[0] if isinstance(response, list) else response
-                assistant_message = str(item).strip()
+            assistant_message = self._extract_assistant_message(response)
             if not assistant_message and SETTINGS.LLM_SERVICE_TYPE == "local":
                 # Ollama's OpenAI-compat endpoint ignores think:false for some
                 # thinking models (gemma4, qwen3, deepseek-r1). Fall back to the
@@ -432,17 +461,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 )
                 return "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
 
-            # Dodaj do historii
-            self.chat_history.add_user_message(input_text)
-            self.chat_history.add_assistant_message(assistant_message)
-
-            # Ogranicz historię (tylko ostatnie 10 wiadomości)
-            if len(self.chat_history.messages) > 10:
-                # Zachowaj system prompt
-                system_msg = self.chat_history.messages[0]
-                self.chat_history.messages = [system_msg] + self.chat_history.messages[
-                    -9:
-                ]
+            self._append_to_history(input_text, assistant_message)
 
             logger.info(f"OperatorAgent odpowiedź: {assistant_message}")
             return assistant_message

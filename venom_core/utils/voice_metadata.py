@@ -17,6 +17,67 @@ EmotionLabel = Literal[
 EmotionSource = Literal["none", "transcript", "response", "hybrid"]
 ReasoningStatus = Literal["disabled", "summary", "raw_available"]
 
+EMOTION_BASELINE_SCORES: dict[EmotionLabel, float] = {
+    "neutral": 0.1,
+    "curious": 0.0,
+    "frustrated": 0.0,
+    "confused": 0.0,
+    "positive": 0.0,
+    "urgent": 0.0,
+    "calm": 0.0,
+}
+
+EMOTION_KEYWORD_SETS: dict[EmotionLabel, tuple[str, ...]] = {
+    "frustrated": (
+        "nie działa",
+        "problem",
+        "błąd",
+        "blad",
+        "masakra",
+        "zawiesza",
+        "wolniej",
+        "wolny",
+        "zły",
+        "zla",
+    ),
+    "confused": (
+        "nie rozumiem",
+        "nie wiem",
+        "co to",
+        "dlaczego",
+        "jak to",
+        "o co chodzi",
+    ),
+    "curious": (
+        "?",
+        "jak",
+        "dlaczego",
+        "czy",
+        "możesz",
+        "mozesz",
+        "sprawdź",
+        "sprawdz",
+    ),
+    "positive": (
+        "dzięki",
+        "super",
+        "świetnie",
+        "swietnie",
+        "ok",
+        "dobrze",
+        "fajnie",
+    ),
+    "urgent": ("pilne", "natychmiast", "szybko", "teraz", "już", "juz"),
+    "calm": (
+        "spokojnie",
+        "dobrze",
+        "w porządku",
+        "w porzadku",
+        "wystarczy",
+        "cicho",
+    ),
+}
+
 
 def _normalize_text(value: str | None) -> str:
     return str(value or "").strip().lower()
@@ -29,6 +90,23 @@ def _contains_keyword(text: str, keyword: str) -> bool:
         return "?" in text
     pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
     return re.search(pattern, text, flags=re.IGNORECASE) is not None
+
+
+def _resolve_emotion_source(transcript_text: str, response_text: str) -> EmotionSource:
+    if transcript_text and response_text:
+        return "hybrid"
+    if transcript_text:
+        return "transcript"
+    return "response"
+
+
+def _apply_keyword_scores(combined: str, scores: dict[EmotionLabel, float]) -> None:
+    for label, keywords in EMOTION_KEYWORD_SETS.items():
+        for keyword in keywords:
+            if keyword == "?":
+                scores["curious"] += combined.count("?") * 0.25
+            elif _contains_keyword(combined, keyword):
+                scores[label] += 0.6 if len(keyword) > 3 else 0.2
 
 
 def infer_voice_emotion(
@@ -48,84 +126,13 @@ def infer_voice_emotion(
     if not combined:
         return "neutral", 0.0, "none"
 
-    scores: dict[EmotionLabel, float] = {
-        "neutral": 0.1,
-        "curious": 0.0,
-        "frustrated": 0.0,
-        "confused": 0.0,
-        "positive": 0.0,
-        "urgent": 0.0,
-        "calm": 0.0,
-    }
-
-    keyword_sets: dict[EmotionLabel, tuple[str, ...]] = {
-        "frustrated": (
-            "nie działa",
-            "problem",
-            "błąd",
-            "blad",
-            "masakra",
-            "zawiesza",
-            "wolniej",
-            "wolny",
-            "zły",
-            "zla",
-        ),
-        "confused": (
-            "nie rozumiem",
-            "nie wiem",
-            "co to",
-            "dlaczego",
-            "jak to",
-            "o co chodzi",
-        ),
-        "curious": (
-            "?",
-            "jak",
-            "dlaczego",
-            "czy",
-            "możesz",
-            "mozesz",
-            "sprawdź",
-            "sprawdz",
-        ),
-        "positive": (
-            "dzięki",
-            "super",
-            "świetnie",
-            "swietnie",
-            "ok",
-            "dobrze",
-            "fajnie",
-        ),
-        "urgent": ("pilne", "natychmiast", "szybko", "teraz", "już", "juz"),
-        "calm": (
-            "spokojnie",
-            "dobrze",
-            "w porządku",
-            "w porzadku",
-            "wystarczy",
-            "cicho",
-        ),
-    }
-
-    for label, keywords in keyword_sets.items():
-        for keyword in keywords:
-            if keyword == "?":
-                scores["curious"] += combined.count("?") * 0.25
-                continue
-            if _contains_keyword(combined, keyword):
-                scores[label] += 0.6 if len(keyword) > 3 else 0.2
+    scores: dict[EmotionLabel, float] = dict(EMOTION_BASELINE_SCORES)
+    _apply_keyword_scores(combined, scores)
 
     if "!" in combined:
         scores["urgent"] += min(0.5, combined.count("!") * 0.15)
 
-    if transcript_text and response_text:
-        source: EmotionSource = "hybrid"
-    elif transcript_text:
-        source = "transcript"
-    else:
-        source = "response"
+    source = _resolve_emotion_source(transcript_text, response_text)
 
     label = max(scores, key=scores.get)
     confidence = max(scores.values())

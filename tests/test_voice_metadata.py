@@ -48,6 +48,28 @@ def test_infer_voice_emotion_detects_frustration_from_keywords():
     assert source == "transcript"
 
 
+def test_infer_voice_emotion_uses_response_source_when_no_transcript():
+    label, confidence, source = infer_voice_emotion(
+        transcript="",
+        response="Super, dzięki!",
+    )
+
+    assert label == "positive"
+    assert confidence > 0.15
+    assert source == "response"
+
+
+def test_infer_voice_emotion_marks_urgency_from_exclamation_marks():
+    label, confidence, source = infer_voice_emotion(
+        transcript="To jest pilne!!!",
+        response="",
+    )
+
+    assert label == "urgent"
+    assert confidence > 0.5
+    assert source == "transcript"
+
+
 def test_build_voice_reasoning_summary_returns_none_when_disabled():
     assert build_voice_reasoning_summary() is None
 

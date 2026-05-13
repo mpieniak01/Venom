@@ -396,6 +396,7 @@ tests/test_ux_analyst.py
 tests/test_validate_sonar_architecture.py
 tests/test_verify_acceptance_criteria.py
 tests/test_vision_grounding.py
+tests/test_voice_metadata.py
 tests/test_watcher.py
 tests/test_web_skill.py
 tests/test_web_skill_tavily.py

@@ -49,7 +49,11 @@ const VOICE_MODES: VoiceModeCard[] = [
   },
 ];
 
-export function VoiceChatScreen() {
+type VoiceChatScreenProps = Readonly<{
+  isDevMode?: boolean;
+}>;
+
+export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
   const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("standard");
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatusUpdate | null>(null);
   const t = useTranslation();
@@ -81,6 +85,7 @@ export function VoiceChatScreen() {
         <VoiceCommandCenter
           voiceModePreset={voiceModePreset}
           onStatusUpdate={handleStatusUpdate}
+          isDevMode={isDevMode}
         />
         <div className="space-y-4">
           {/* Mode selector */}
@@ -114,7 +119,7 @@ export function VoiceChatScreen() {
           </div>
 
           {/* STT/TTS + Runtime status — compact info boxes for tuning */}
-          <VoiceStatusSidebar status={voiceStatus} />
+          <VoiceStatusSidebar status={voiceStatus} isDevMode={isDevMode} />
         </div>
       </div>
     </div>

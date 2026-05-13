@@ -275,63 +275,90 @@ class AudioTtsModelUpdateRequest(BaseModel):
     model: str
 
 
+def _gemma4_audio_enabled() -> bool:
+    return bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+
+
+def _build_gemma4_runtime_capabilities() -> dict[str, object]:
+    enabled = _gemma4_audio_enabled()
+    probe_status = "verified" if enabled else "metadata_only"
+    return {
+        "compatibility_profile": "gemma4_audio_native",
+        "probe_status": probe_status,
+        "capabilities": {
+            "audio_input": bool(getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_AUDIO", True)),
+            "text_input": bool(getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_TEXT", True)),
+            "text_output": True,
+            "vision_input": False,
+            "tool_calling": False,
+            "thinking": False,
+            "reasoning_summary": bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+            ),
+            "emotion_detection": bool(
+                getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+            ),
+            "emotion_response_style": bool(
+                getattr(
+                    SETTINGS,
+                    "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                    False,
+                )
+            ),
+        },
+        "probes": {
+            "health": {
+                "status": probe_status,
+                "reason": None if enabled else "runtime_not_enabled",
+            }
+        },
+        "fallbacks": {
+            "voice_fallback_pipeline": "whisper_llm_piper",
+            "tts": "piper",
+        },
+    }
+
+
+def _build_gemma4_voice_pipeline() -> dict[str, object]:
+    return {
+        "profile": "gemma4_audio_native",
+        "stt": "native_audio" if _gemma4_audio_enabled() else "faster_whisper",
+        "reasoning": "native_audio_model",
+        "reasoning_summary": (
+            "enabled"
+            if bool(getattr(SETTINGS, "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False))
+            else "disabled"
+        ),
+        "emotion": (
+            "enabled"
+            if bool(getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False))
+            else "disabled"
+        ),
+        "tools": "disabled",
+        "vision": "disabled",
+        "tts": "piper",
+        "notes": [],
+    }
+
+
+def _build_gemma4_voice_runtime_snapshot(runtime: Any) -> dict[str, object]:
+    return {
+        "runtime_id": runtime.runtime_id,
+        "provider": runtime.provider,
+        "model_name": runtime.model_name
+        or str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "") or "").strip(),
+        "endpoint": runtime.endpoint
+        or str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", "") or "").strip(),
+        "config_hash": runtime.config_hash,
+        "runtime_capabilities": _build_gemma4_runtime_capabilities(),
+        "voice_pipeline": _build_gemma4_voice_pipeline(),
+    }
+
+
 async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
     runtime = get_active_llm_runtime()
     if runtime.provider == "gemma4_audio":
-        runtime_capabilities = {
-            "compatibility_profile": "gemma4_audio_native",
-            "probe_status": "verified"
-            if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
-            else "metadata_only",
-            "capabilities": {
-                "audio_input": bool(
-                    getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
-                ),
-                "text_input": bool(
-                    getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_TEXT", True)
-                ),
-                "text_output": True,
-                "vision_input": False,
-                "tool_calling": False,
-                "thinking": False,
-            },
-            "probes": {
-                "health": {
-                    "status": "verified"
-                    if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
-                    else "metadata_only",
-                    "reason": None
-                    if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
-                    else "runtime_not_enabled",
-                }
-            },
-            "fallbacks": {
-                "voice_fallback_pipeline": "whisper_llm_piper",
-                "tts": "piper",
-            },
-        }
-        voice_pipeline = {
-            "profile": "gemma4_audio_native",
-            "stt": "native_audio"
-            if bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
-            else "faster_whisper",
-            "reasoning": "native_audio_model",
-            "tools": "disabled",
-            "vision": "disabled",
-            "tts": "piper",
-            "notes": [],
-        }
-        return {
-            "runtime_id": runtime.runtime_id,
-            "provider": runtime.provider,
-            "model_name": runtime.model_name
-            or str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "") or "").strip(),
-            "endpoint": runtime.endpoint
-            or str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", "") or "").strip(),
-            "config_hash": runtime.config_hash,
-            "runtime_capabilities": runtime_capabilities,
-            "voice_pipeline": voice_pipeline,
-        }
+        return _build_gemma4_voice_runtime_snapshot(runtime)
 
     if runtime.provider != "ollama" or not runtime.model_name or not runtime.endpoint:
         return None

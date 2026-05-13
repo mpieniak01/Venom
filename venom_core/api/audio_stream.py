@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import importlib.util
+import inspect
 import json
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.utils.logger import get_logger
+from venom_core.utils.voice_metadata import build_voice_session_insights
 
 logger = get_logger(__name__)
 
@@ -97,6 +99,17 @@ def _build_voice_session_record(
         "fallback_reason": metadata.get("fallback_reason"),
         "native_audio_ms": metadata.get("native_audio_ms"),
         "runtime_log_path": metadata.get("runtime_log_path"),
+        "reasoning_summary_enabled": metadata.get("reasoning_summary_enabled"),
+        "reasoning_summary_status": metadata.get("reasoning_summary_status"),
+        "reasoning_summary": metadata.get("reasoning_summary"),
+        "raw_thinking_available": metadata.get("raw_thinking_available"),
+        "emotion_detection_enabled": metadata.get("emotion_detection_enabled"),
+        "emotion_response_style_enabled": metadata.get(
+            "emotion_response_style_enabled"
+        ),
+        "emotion_source": metadata.get("emotion_source"),
+        "emotion_label": metadata.get("emotion_label"),
+        "emotion_confidence": metadata.get("emotion_confidence"),
         "transcription": metadata.get("transcription") or "",
         "response_text": metadata.get("response_text") or "",
     }
@@ -114,6 +127,89 @@ def _coerce_str(value: Any, default: str) -> str:
         return default
     text = value.strip()
     return text or default
+
+
+def _gemma4_audio_setting(name: str, default: Any) -> Any:
+    return getattr(SETTINGS, name, default)
+
+
+def _gemma4_audio_voice_flags() -> dict[str, bool]:
+    return {
+        "reasoning_summary_enabled": bool(
+            _gemma4_audio_setting("GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+        ),
+        "emotion_detection_enabled": bool(
+            _gemma4_audio_setting("GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+        ),
+        "emotion_response_style_enabled": bool(
+            _gemma4_audio_setting(
+                "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                False,
+            )
+        ),
+    }
+
+
+def _build_voice_session_insights_payload(
+    *,
+    transcript: str = "",
+    response: str = "",
+    voice_mode: str = "standard",
+    pipeline_id: str | None = None,
+    reasoning_summary_enabled: bool = False,
+    emotion_detection_enabled: bool = False,
+    emotion_response_style_enabled: bool = False,
+    raw_thinking_available: bool = False,
+) -> dict[str, Any]:
+    return build_voice_session_insights(
+        transcript=transcript,
+        response=response,
+        voice_mode=voice_mode,
+        pipeline_id=pipeline_id,
+        reasoning_summary_enabled=reasoning_summary_enabled,
+        emotion_detection_enabled=emotion_detection_enabled,
+        emotion_response_style_enabled=emotion_response_style_enabled,
+        raw_thinking_available=raw_thinking_available,
+    )
+
+
+async def _invoke_operator_agent(
+    operator_agent: object,
+    text: str,
+    *,
+    mode: str,
+    voice_context: dict[str, Any] | None = None,
+) -> str:
+    """Call the operator agent while keeping backward compatibility."""
+
+    process = getattr(operator_agent, "process", None)
+    if not callable(process):
+        raise RuntimeError("Operator agent does not expose process()")
+
+    kwargs: dict[str, Any] = {}
+    try:
+        signature = inspect.signature(process)
+    except (TypeError, ValueError):
+        signature = None
+
+    if signature is not None:
+        parameters = signature.parameters
+        accepts_kwargs = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+        if accepts_kwargs or "mode" in parameters:
+            kwargs["mode"] = mode
+        if voice_context is not None and (
+            accepts_kwargs or "voice_context" in parameters
+        ):
+            kwargs["voice_context"] = voice_context
+    else:
+        kwargs["mode"] = mode
+        if voice_context is not None:
+            kwargs["voice_context"] = voice_context
+
+    return await process(text, **kwargs)
 
 
 def collect_latest_voice_session_record(
@@ -568,24 +664,24 @@ class AudioStreamHandler:
         return str(voice_mode).strip() or "standard"
 
     def _gemma4_audio_runtime_snapshot(self) -> dict[str, Any]:
-        endpoint = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""), "")
-        log_path = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), "")
-        pid_path = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_PID_PATH", ""), "")
+        endpoint = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
+        log_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), "")
+        pid_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_PID_PATH", ""), "")
         return {
             "audio_runtime_provider": "gemma4_audio",
             "audio_runtime_model": _coerce_str(
-                getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", ""), ""
+                _gemma4_audio_setting("GEMMA4_AUDIO_MODEL_ID", ""), ""
             ),
             "audio_runtime_endpoint": endpoint,
             "audio_runtime_enabled": bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False)
+                _gemma4_audio_setting("GEMMA4_AUDIO_ENABLED", False)
             ),
             "audio_runtime_selected": self._gemma4_audio_runtime_selected(),
             "audio_runtime_supports_audio": bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
+                _gemma4_audio_setting("GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
             ),
             "audio_runtime_supports_text": bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_TEXT", True)
+                _gemma4_audio_setting("GEMMA4_AUDIO_SUPPORTS_TEXT", True)
             ),
             "audio_runtime_supports_unified_multimodal_respond": True,
             "audio_runtime_runtime_mode": "processor_model",
@@ -594,7 +690,7 @@ class AudioStreamHandler:
         }
 
     def _gemma4_audio_service_origin(self) -> str:
-        endpoint = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""), "")
+        endpoint = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
         if not endpoint:
             return ""
         endpoint = endpoint.rstrip("/")
@@ -611,12 +707,12 @@ class AudioStreamHandler:
         return f"{origin}/health" if origin else ""
 
     def _gemma4_audio_runtime_enabled(self) -> bool:
-        return bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+        return bool(_gemma4_audio_setting("GEMMA4_AUDIO_ENABLED", False))
 
     def _gemma4_audio_runtime_selected(self) -> bool:
         if not self._gemma4_audio_runtime_enabled():
             return False
-        active_server = _coerce_str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", ""), "")
+        active_server = _coerce_str(_gemma4_audio_setting("ACTIVE_LLM_SERVER", ""), "")
         return active_server == "gemma4_audio"
 
     async def _gemma4_audio_health_ok(self) -> bool:
@@ -661,17 +757,18 @@ class AudioStreamHandler:
             "task": "question",
             "question": prompt,
             "system_prompt": _coerce_str(
-                getattr(SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
+                _gemma4_audio_setting("SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
             ),
             "max_new_tokens": _coerce_int(
-                getattr(SETTINGS, "GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
+                _gemma4_audio_setting("GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
             ),
         }
 
         timeout = httpx.Timeout(GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC, connect=5.0)
         async with await anyio.open_file(wav_path, "rb") as audio_file:
+            audio_bytes = await audio_file.read()
             files = {
-                "audio": (wav_path.name, audio_file, "audio/wav"),
+                "audio": (wav_path.name, audio_bytes, "audio/wav"),
             }
             data = {
                 "request": json.dumps(payload, ensure_ascii=False),
@@ -693,11 +790,17 @@ class AudioStreamHandler:
             "text": text,
             "response_text": text,
             "model": _coerce_str(
-                data.get("model") or getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", ""),
+                data.get("model") or _gemma4_audio_setting("GEMMA4_AUDIO_MODEL_ID", ""),
                 "",
             ),
             "duration_ms": data.get("duration_ms"),
             "connection_id": connection_id,
+            "reasoning_summary": data.get("reasoning_summary"),
+            "reasoning_summary_status": data.get("reasoning_summary_status"),
+            "raw_thinking_available": data.get("raw_thinking_available"),
+            "emotion_label": data.get("emotion_label"),
+            "emotion_confidence": data.get("emotion_confidence"),
+            "emotion_source": data.get("emotion_source"),
         }
 
     async def _process_native_gemma4_audio_pipeline(
@@ -724,6 +827,14 @@ class AudioStreamHandler:
                     "audio_input_status": "fallback",
                     "decoder_source": "faster_whisper",
                     "fallback_reason": "gemma4_audio health check failed",
+                    **_build_voice_session_insights_payload(
+                        transcript="",
+                        response="",
+                        voice_mode=self._connection_voice_mode(connection_id),
+                        pipeline_id="whisper_llm_piper",
+                        **_gemma4_audio_voice_flags(),
+                        raw_thinking_available=False,
+                    ),
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_mode": self._connection_voice_mode(connection_id),
@@ -751,6 +862,14 @@ class AudioStreamHandler:
                     "decoder_source": "faster_whisper",
                     "fallback_reason": str(exc),
                     "native_audio_ms": timings_ms["native_audio_ms"],
+                    **_build_voice_session_insights_payload(
+                        transcript="",
+                        response="",
+                        voice_mode=self._connection_voice_mode(connection_id),
+                        pipeline_id="whisper_llm_piper",
+                        **_gemma4_audio_voice_flags(),
+                        raw_thinking_available=False,
+                    ),
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_mode": self._connection_voice_mode(connection_id),
@@ -766,6 +885,16 @@ class AudioStreamHandler:
         timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
         transcription = runtime_result["text"]
         response_text = runtime_result.get("response_text") or transcription
+        insights = _build_voice_session_insights_payload(
+            transcript=transcription,
+            response=response_text,
+            voice_mode=self._connection_voice_mode(connection_id),
+            pipeline_id="gemma4_audio_piper",
+            **_gemma4_audio_voice_flags(),
+            raw_thinking_available=bool(
+                runtime_result.get("raw_thinking_available", False)
+            ),
+        )
 
         self._update_voice_session_metadata(
             session_dir,
@@ -780,6 +909,7 @@ class AudioStreamHandler:
                 "transcription_length": len(transcription or ""),
                 "response_text": response_text,
                 "response_length": len(response_text or ""),
+                **insights,
                 "timings_ms": timings_ms,
                 "runtime": self._build_runtime_metadata(operator_agent),
                 "voice_mode": self._connection_voice_mode(connection_id),
@@ -893,88 +1023,20 @@ class AudioStreamHandler:
                     "decoder_source": "faster_whisper",
                     "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
-                        getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""
+                        _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
                 },
             )
 
-            if not transcription:
-                await self._send_json(
-                    connection_id,
-                    {"type": "transcription", "text": "", "confidence": 0.0},
-                )
-                return
-
-            # Wyślij transkrypcję do klienta
-            await self._send_json(
-                connection_id,
-                {"type": "transcription", "text": transcription, "confidence": 1.0},
+            await self._run_whisper_llm_pipeline(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                transcription=transcription,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                empty_agent_response_log_suffix="",
             )
-
-            # Przetwórz komendę przez agenta
-            if operator_agent:
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "thinking"}
-                )
-
-                agent_started_at = time.perf_counter()
-                response_text = await operator_agent.process(
-                    transcription,
-                    mode=self._connection_voice_mode(connection_id),
-                )
-                timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "response_text": response_text,
-                        "response_length": len(response_text or ""),
-                        "timings_ms": timings_ms,
-                    },
-                )
-
-                if not response_text:
-                    logger.warning(
-                        "Agent zwrócił pustą odpowiedź dla connection_id=%s",
-                        connection_id,
-                    )
-                    await self._send_json(
-                        connection_id,
-                        {
-                            "type": "error",
-                            "message": "Agent returned empty response. Check runtime status.",
-                        },
-                    )
-                    return
-
-                # Wyślij tekst odpowiedzi
-                await self._send_json(
-                    connection_id, {"type": "response_text", "text": response_text}
-                )
-
-                # TTS
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "tts"}
-                )
-
-                tts_started_at = time.perf_counter()
-                audio_response = await self.audio_engine.speak(response_text)
-                timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
-                timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "timings_ms": timings_ms,
-                        "runtime": self._build_runtime_metadata(operator_agent),
-                    },
-                )
-
-                if audio_response is not None:
-                    # Wyślij audio do odtworzenia
-                    await self._send_audio(connection_id, audio_response)
-
-            # Gotowe
-            await self._send_json(connection_id, {"type": "complete"})
 
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania bufora audio: {e}")
@@ -1063,80 +1125,121 @@ class AudioStreamHandler:
                     "decoder_source": "faster_whisper",
                     "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
-                        getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""
+                        _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
                 },
             )
 
-            if not transcription:
-                await self._send_json(
-                    connection_id,
-                    {"type": "transcription", "text": "", "confidence": 0.0},
-                )
-                return
-
-            await self._send_json(
-                connection_id,
-                {"type": "transcription", "text": transcription, "confidence": 1.0},
+            await self._run_whisper_llm_pipeline(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                transcription=transcription,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                empty_agent_response_log_suffix=" (encoded)",
             )
-
-            if operator_agent:
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "thinking"}
-                )
-                agent_started_at = time.perf_counter()
-                response_text = await operator_agent.process(
-                    transcription,
-                    mode=self._connection_voice_mode(connection_id),
-                )
-                timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "response_text": response_text,
-                        "response_length": len(response_text or ""),
-                        "timings_ms": timings_ms,
-                    },
-                )
-                if not response_text:
-                    logger.warning(
-                        "Agent zwrócił pustą odpowiedź dla connection_id=%s (encoded)",
-                        connection_id,
-                    )
-                    await self._send_json(
-                        connection_id,
-                        {
-                            "type": "error",
-                            "message": "Agent returned empty response. Check runtime status.",
-                        },
-                    )
-                    return
-
-                await self._send_json(
-                    connection_id, {"type": "response_text", "text": response_text}
-                )
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "tts"}
-                )
-                tts_started_at = time.perf_counter()
-                audio_response = await self.audio_engine.speak(response_text)
-                timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
-                timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "timings_ms": timings_ms,
-                        "runtime": self._build_runtime_metadata(operator_agent),
-                    },
-                )
-                if audio_response is not None:
-                    await self._send_audio(connection_id, audio_response)
-
-            await self._send_json(connection_id, {"type": "complete"})
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania encoded audio: {e}")
             await self._send_json(connection_id, {"type": "error", "message": str(e)})
+
+    async def _run_whisper_llm_pipeline(
+        self,
+        *,
+        connection_id: int,
+        session_dir: Path,
+        transcription: str,
+        timings_ms: dict[str, float],
+        total_started_at: float,
+        operator_agent: object | None,
+        empty_agent_response_log_suffix: str = "",
+    ) -> None:
+        """Run shared whisper->agent->tts pipeline for PCM and encoded audio."""
+        if not transcription:
+            await self._send_json(
+                connection_id,
+                {"type": "transcription", "text": "", "confidence": 0.0},
+            )
+            return
+
+        await self._send_json(
+            connection_id,
+            {"type": "transcription", "text": transcription, "confidence": 1.0},
+        )
+        if not operator_agent:
+            await self._send_json(connection_id, {"type": "complete"})
+            return
+
+        await self._send_json(
+            connection_id, {"type": "processing", "status": "thinking"}
+        )
+        agent_started_at = time.perf_counter()
+        voice_context = _build_voice_session_insights_payload(
+            transcript=transcription,
+            response="",
+            voice_mode=self._connection_voice_mode(connection_id),
+            pipeline_id="whisper_llm_piper",
+            **_gemma4_audio_voice_flags(),
+            raw_thinking_available=False,
+        )
+        response_text = await _invoke_operator_agent(
+            operator_agent,
+            transcription,
+            mode=self._connection_voice_mode(connection_id),
+            voice_context=voice_context,
+        )
+        timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                "pipeline_id": "whisper_llm_piper",
+                "response_text": response_text,
+                "response_length": len(response_text or ""),
+                **_build_voice_session_insights_payload(
+                    transcript=transcription,
+                    response=response_text,
+                    voice_mode=self._connection_voice_mode(connection_id),
+                    pipeline_id="whisper_llm_piper",
+                    **_gemma4_audio_voice_flags(),
+                    raw_thinking_available=False,
+                ),
+                "timings_ms": timings_ms,
+            },
+        )
+        if not response_text:
+            logger.warning(
+                "Agent zwrócił pustą odpowiedź dla connection_id=%s%s",
+                connection_id,
+                empty_agent_response_log_suffix,
+            )
+            await self._send_json(
+                connection_id,
+                {
+                    "type": "error",
+                    "message": "Agent returned empty response. Check runtime status.",
+                },
+            )
+            return
+
+        await self._send_json(
+            connection_id, {"type": "response_text", "text": response_text}
+        )
+        await self._send_json(connection_id, {"type": "processing", "status": "tts"})
+        tts_started_at = time.perf_counter()
+        audio_response = await self.audio_engine.speak(response_text)
+        timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
+        timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                "timings_ms": timings_ms,
+                "runtime": self._build_runtime_metadata(operator_agent),
+            },
+        )
+        if audio_response is not None:
+            await self._send_audio(connection_id, audio_response)
+
+        await self._send_json(connection_id, {"type": "complete"})
 
     def _persist_encoded_voice_session(
         self,

@@ -15,6 +15,17 @@ Object.assign(globalThis, {
   Node: window.Node,
   DocumentFragment: window.DocumentFragment,
   MutationObserver: window.MutationObserver,
+  Event: window.Event,
+  CustomEvent: window.CustomEvent,
+  KeyboardEvent: window.KeyboardEvent,
+  MouseEvent: window.MouseEvent,
+  FocusEvent: window.FocusEvent,
+  NodeFilter: window.NodeFilter,
+  HTMLInputElement: window.HTMLInputElement,
+  HTMLButtonElement: window.HTMLButtonElement,
+  HTMLTextAreaElement: window.HTMLTextAreaElement,
+  HTMLSelectElement: window.HTMLSelectElement,
+  HTMLAnchorElement: window.HTMLAnchorElement,
   getComputedStyle: window.getComputedStyle.bind(window),
 });
 

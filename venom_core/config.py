@@ -207,6 +207,15 @@ class Settings(BaseSettings):
     GEMMA4_AUDIO_RESTART_COMMAND: str = ""  # Komenda restart (z env file)
     GEMMA4_AUDIO_SUPPORTS_AUDIO: bool = True  # Potrafi przetwarzać audio
     GEMMA4_AUDIO_SUPPORTS_TEXT: bool = True  # Potrafi przetwarzać text
+    GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED: bool = (
+        False  # Zapisuj i pokazuj skrót reasoning
+    )
+    GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED: bool = (
+        False  # Włącz heurystyczne wykrywanie emocji
+    )
+    GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED: bool = (
+        False  # Dopasuj ton odpowiedzi do emocji
+    )
     GEMMA4_AUDIO_LOG_PATH: str = "logs/gemma4_audio_service.log"  # Plik logu
     GEMMA4_AUDIO_PID_PATH: str = ".venom_runtime/gemma4_audio.pid"  # Plik PID
     LAST_MODEL_GEMMA4_AUDIO: str = ""  # Ostatnio wybrany model

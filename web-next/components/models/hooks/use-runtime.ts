@@ -17,6 +17,9 @@ import { getRuntimeForProvider, normalizeProvider } from "../models-helpers";
 const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
     runtime === "openai" || runtime === "google";
 
+const isServerWithInlineModelActivation = (runtime: string): boolean =>
+    runtime === "gemma4_audio";
+
 export function buildInstalledBuckets(
     data: ModelsResponse | null,
 ): Record<string, ModelInfo[]> {
@@ -178,6 +181,8 @@ export function useRuntime() {
             if (!server) return;
             if (isCloudRuntime(server)) {
                 await setActiveLlmRuntime(server, model ?? undefined);
+            } else if (isServerWithInlineModelActivation(server)) {
+                await setActiveLlmServer(server, model ?? undefined);
             } else {
                 if (server !== activeServer.data?.active_server) {
                     await setActiveLlmServer(server);

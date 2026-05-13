@@ -25,6 +25,9 @@ def _make_params_dict(**kw):
     return {
         "max_new_tokens": 64,
         "enable_thinking": False,
+        "reasoning_summary_enabled": False,
+        "emotion_detection_enabled": False,
+        "emotion_response_style_enabled": False,
         "cache_implementation": None,
         **kw,
     }
@@ -85,6 +88,9 @@ def test_daemon_status_returns_params():
     data = client.get("/v1/daemon/status").json()
     assert data["params"]["max_new_tokens"] == 64
     assert data["params"]["enable_thinking"] is False
+    assert data["params"]["reasoning_summary_enabled"] is False
+    assert data["params"]["emotion_detection_enabled"] is False
+    assert data["params"]["emotion_response_style_enabled"] is False
     assert data["params"]["cache_implementation"] is None
 
 
@@ -172,7 +178,12 @@ def test_daemon_config_cache_change_triggers_soft_reload():
     assert data["reload_signal"] == "soft_reload"
     assert data["applied"]["cache_implementation"] == "static"
     stub.update_params.assert_called_once_with(
-        max_new_tokens=None, enable_thinking=None, cache_implementation="static"
+        max_new_tokens=None,
+        enable_thinking=None,
+        reasoning_summary_enabled=None,
+        emotion_detection_enabled=None,
+        emotion_response_style_enabled=None,
+        cache_implementation="static",
     )
 
 

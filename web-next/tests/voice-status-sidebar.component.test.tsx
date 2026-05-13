@@ -36,11 +36,51 @@ const voiceStatus = {
   },
 } as const;
 
+const gemma4VoiceStatus = {
+  ...voiceStatus,
+  latest_voice_session: {
+    session_id: "session-123",
+    pipeline_id: "gemma4_audio_piper",
+    voice_mode: "standard",
+    reasoning_summary_enabled: true,
+    reasoning_summary_status: "summary",
+    reasoning_summary: "pipeline=gemma4_audio_piper | mode=standard",
+    raw_thinking_available: true,
+    emotion_detection_enabled: true,
+    emotion_response_style_enabled: true,
+    emotion_source: "transcript",
+    emotion_label: "curious",
+    emotion_confidence: 0.82,
+    transcription: "Co to jest kwadrat?",
+    response_text: "Kwadrat ma cztery boki.",
+  },
+  runtime_snapshot: {
+    ...voiceStatus.runtime_snapshot,
+    runtime_id: "gemma4_audio@http://localhost:8014/v1",
+    provider: "gemma4_audio",
+    model_name: "google/gemma-4-E2B-it",
+    endpoint: "http://localhost:8014/v1",
+    runtime_capabilities: {
+      compatibility_profile: "gemma4_audio_native",
+      probe_status: "verified",
+    },
+    voice_pipeline: {
+      profile: "gemma4_audio_native",
+      stt: "native_audio",
+      reasoning: "native_audio_model",
+      reasoning_summary: "summary",
+      emotion: "enabled",
+      tts: "piper",
+    },
+  },
+} as const;
+
 describe("VoiceStatusSidebar", () => {
   it("shows active runtime details and does not surface Gemma 4 controls for ollama", () => {
+    window.history.pushState({}, "", "/voice");
     render(
       <ToastProvider>
-        <VoiceStatusSidebar status={voiceStatus as never} />
+        <VoiceStatusSidebar status={voiceStatus as never} isDevMode={false} />
       </ToastProvider>,
     );
 
@@ -48,5 +88,18 @@ describe("VoiceStatusSidebar", () => {
     assert.ok(screen.getAllByText("piper").length >= 2);
     assert.ok(screen.getAllByText("faster_whisper").length >= 2);
     assert.equal(screen.queryByText(/Gemma 4 Runtime/i), null);
+  });
+
+  it("surfaces Gemma 4 runtime controls for gemma4_audio without dev gate", async () => {
+    window.history.pushState({}, "", "/voice");
+    render(
+      <ToastProvider>
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
+      </ToastProvider>,
+    );
+
+    assert.ok(await screen.findByText("Gemma 4 Runtime"));
+    assert.ok(await screen.findByText(/session-123/i));
+    assert.ok(screen.getByText(/curious/i));
   });
 });

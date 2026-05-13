@@ -125,6 +125,124 @@ def test_get_status_reports_loaded_backends_and_dependencies(monkeypatch):
     }
 
 
+def test_coerce_str_returns_default_for_non_string_or_blank():
+    assert audio_stream_mod._coerce_str(None, "fallback") == "fallback"
+    assert audio_stream_mod._coerce_str("   ", "fallback") == "fallback"
+    assert audio_stream_mod._coerce_str(" value ", "fallback") == "value"
+
+
+def test_gemma4_audio_voice_flags_reflect_settings(monkeypatch):
+    monkeypatch.setattr(
+        audio_stream_mod.SETTINGS,
+        "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        audio_stream_mod.SETTINGS,
+        "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        audio_stream_mod.SETTINGS,
+        "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+        True,
+        raising=False,
+    )
+
+    flags = audio_stream_mod._gemma4_audio_voice_flags()
+
+    assert flags == {
+        "reasoning_summary_enabled": True,
+        "emotion_detection_enabled": False,
+        "emotion_response_style_enabled": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_invoke_operator_agent_passes_mode_and_voice_context():
+    class DummyAgent:
+        def __init__(self):
+            self.calls = []
+
+        async def process(self, text, mode="standard", voice_context=None):
+            self.calls.append((text, mode, voice_context))
+            return "ok"
+
+    agent = DummyAgent()
+    result = await audio_stream_mod._invoke_operator_agent(
+        agent,
+        "hello",
+        mode="summary",
+        voice_context={"emotion_label": "curious"},
+    )
+
+    assert result == "ok"
+    assert agent.calls == [("hello", "summary", {"emotion_label": "curious"})]
+
+
+@pytest.mark.asyncio
+async def test_invoke_operator_agent_omits_unsupported_voice_context():
+    class DummyAgent:
+        def __init__(self):
+            self.calls = []
+
+        async def process(self, text, mode="standard"):
+            self.calls.append((text, mode))
+            return "ok"
+
+    agent = DummyAgent()
+    result = await audio_stream_mod._invoke_operator_agent(
+        agent,
+        "hello",
+        mode="action_items",
+        voice_context={"emotion_label": "curious"},
+    )
+
+    assert result == "ok"
+    assert agent.calls == [("hello", "action_items")]
+
+
+@pytest.mark.asyncio
+async def test_invoke_operator_agent_falls_back_when_signature_unavailable(monkeypatch):
+    class DummyAgent:
+        def __init__(self):
+            self.kwargs = {}
+
+        async def process(self, text, **kwargs):
+            self.kwargs = kwargs
+            return text
+
+    monkeypatch.setattr(
+        audio_stream_mod.inspect,
+        "signature",
+        lambda _fn: (_ for _ in ()).throw(ValueError("no signature")),
+    )
+
+    agent = DummyAgent()
+    result = await audio_stream_mod._invoke_operator_agent(
+        agent,
+        "payload",
+        mode="deep_analysis",
+        voice_context={"reasoning_summary": "x"},
+    )
+
+    assert result == "payload"
+    assert agent.kwargs["mode"] == "deep_analysis"
+    assert agent.kwargs["voice_context"] == {"reasoning_summary": "x"}
+
+
+@pytest.mark.asyncio
+async def test_invoke_operator_agent_rejects_missing_process():
+    with pytest.raises(RuntimeError, match="process"):
+        await audio_stream_mod._invoke_operator_agent(
+            object(),
+            "hello",
+            mode="standard",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Singleton helper
 # ---------------------------------------------------------------------------
@@ -758,7 +876,43 @@ def test_build_voice_session_record_includes_runtime_fields(tmp_path):
     assert record["audio_input_status"] == "verified"
     assert record["runtime_log_path"] == "logs/gemma4_audio_service.log"
     assert record["transcription"] == "piec razy piec"
-    assert record["response_text"] == "25"
+
+
+def test_build_voice_session_insights_payload_delegates_to_voice_metadata(monkeypatch):
+    captured = {}
+
+    def fake_build_voice_session_insights(**kwargs):
+        captured.update(kwargs)
+        return {"summary": "ok", "emotion_label": "curious"}
+
+    monkeypatch.setattr(
+        audio_stream_mod,
+        "build_voice_session_insights",
+        fake_build_voice_session_insights,
+    )
+
+    payload = audio_stream_mod._build_voice_session_insights_payload(
+        transcript="ile to jest dwa razy dwa",
+        response="dwa razy dwa to cztery",
+        voice_mode="summary",
+        pipeline_id="gemma4_audio_piper",
+        reasoning_summary_enabled=True,
+        emotion_detection_enabled=True,
+        emotion_response_style_enabled=False,
+        raw_thinking_available=True,
+    )
+
+    assert payload == {"summary": "ok", "emotion_label": "curious"}
+    assert captured == {
+        "transcript": "ile to jest dwa razy dwa",
+        "response": "dwa razy dwa to cztery",
+        "voice_mode": "summary",
+        "pipeline_id": "gemma4_audio_piper",
+        "reasoning_summary_enabled": True,
+        "emotion_detection_enabled": True,
+        "emotion_response_style_enabled": False,
+        "raw_thinking_available": True,
+    }
 
 
 def test_create_voice_session_dir_uses_unique_names(monkeypatch, tmp_path):
@@ -955,6 +1109,10 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
     class _AsyncBinaryFile:
         def __init__(self, path: str):
             self.path = path
+            self._payload = b"fake-wave-content"
+
+        async def read(self):
+            return self._payload
 
     class _AsyncOpenContext:
         def __init__(self, path, mode):
@@ -1014,6 +1172,7 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
         "path": "recording.wav",
     }
     assert calls["files"]["audio"][0] == "recording.wav"
+    assert calls["files"]["audio"][1] == b"fake-wave-content"
 
 
 @pytest.mark.asyncio

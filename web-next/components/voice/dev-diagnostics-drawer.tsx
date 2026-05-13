@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+} from "@/components/ui/sheet";
 
 type AudioStatus = {
   enabled: boolean;
@@ -113,44 +117,106 @@ export function DevDiagnosticsDrawer({
 
   if (!isOpen) return null;
 
+  return (
+    <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent
+        className="max-h-[90vh] overflow-y-auto border-l border-r-0 border-white/10 pr-2 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+      >
+        <DevDiagnosticsDrawerContent
+          audioStatus={audioStatus}
+          lastAudioSignal={lastAudioSignal}
+          audioChunkCount={audioChunkCount}
+          statusMessage={statusMessage}
+          renderDiagnosticMode={renderDiagnosticMode}
+          onClose={onClose}
+        />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+type DevDiagnosticsDrawerContentProps = Readonly<{
+  audioStatus: AudioStatus | null;
+  lastAudioSignal: string;
+  audioChunkCount: number;
+  statusMessage: string | null;
+  renderDiagnosticMode?: string;
+  onClose: () => void;
+}>;
+
+export function DevDiagnosticsDrawerContent({
+  audioStatus,
+  lastAudioSignal,
+  audioChunkCount,
+  statusMessage,
+  renderDiagnosticMode,
+  onClose,
+}: DevDiagnosticsDrawerContentProps) {
   const latestVoiceSession = audioStatus?.latest_voice_session ?? null;
   const runtimeSnapshot = audioStatus?.runtime_snapshot ?? null;
+  const wsState = audioStatus?.enabled ? "online" : "offline";
+
+  const copyJson = async (value: unknown) => {
+    if (!navigator?.clipboard) return;
+    await navigator.clipboard.writeText(JSON.stringify(value, null, 2));
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
-      <button
-        type="button"
-        aria-label="Zamknij diagnostics drawer"
-        className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div
-        className="relative z-10 max-h-[80vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
-        style={{ animation: "slideUpDrawer 220ms ease-out" }}
-      >
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-zinc-200">⚙ Diagnostics</p>
-            <p className="text-xs text-zinc-500">
-              {lastAudioSignal || "no signal"} · chunks {audioChunkCount}
-            </p>
-            {renderDiagnosticMode && renderDiagnosticMode !== "off" && (
-              <p className="text-xs text-zinc-500">render diag · {renderDiagnosticMode}</p>
-            )}
-            {statusMessage && <p className="text-xs text-zinc-400">{statusMessage}</p>}
-          </div>
-          <Button size="xs" variant="outline" onClick={onClose}>
-            Zamknij
-          </Button>
-        </div>
-
-        <div className="space-y-3">
-          <AudioStatusSection audioStatus={audioStatus} />
-          <LatestRecordingSection latestVoiceSession={latestVoiceSession} />
-          <RuntimeSnapshotSection runtimeSnapshot={runtimeSnapshot} />
-        </div>
+    <>
+      <div className="mb-4 space-y-2 text-left">
+        <h3 className="heading-h3">⚙ Diagnostics</h3>
+        <p className="text-sm text-muted">Diagnostyka voice runtime i request path.</p>
       </div>
-    </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Badge tone={wsState === "online" ? "success" : "warning"}>WS: {wsState}</Badge>
+        <Badge tone="neutral">signal: {lastAudioSignal || "none"}</Badge>
+        <Badge tone="neutral">chunks: {audioChunkCount}</Badge>
+        {renderDiagnosticMode && renderDiagnosticMode !== "off" && (
+          <Badge tone="neutral">render: {renderDiagnosticMode}</Badge>
+        )}
+        {runtimeSnapshot?.provider && (
+          <Badge tone="neutral">provider: {runtimeSnapshot.provider}</Badge>
+        )}
+        {latestVoiceSession?.session_id && (
+          <Badge tone="neutral">session: {latestVoiceSession.session_id}</Badge>
+        )}
+      </div>
+
+      {statusMessage && (
+        <div className="mb-4 rounded-2xl box-muted px-3 py-2 text-xs text-zinc-300">
+          {statusMessage}
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() => copyJson(runtimeSnapshot).catch(() => undefined)}
+          disabled={!runtimeSnapshot}
+        >
+          Kopiuj runtime JSON
+        </Button>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() => copyJson(latestVoiceSession).catch(() => undefined)}
+          disabled={!latestVoiceSession}
+        >
+          Kopiuj sesję JSON
+        </Button>
+        <Button size="xs" variant="outline" onClick={onClose}>
+          Zamknij
+        </Button>
+      </div>
+
+      <div className="space-y-4">
+        <AudioStatusSection audioStatus={audioStatus} />
+        <RuntimeSnapshotSection runtimeSnapshot={runtimeSnapshot} />
+        <LatestRecordingSection latestVoiceSession={latestVoiceSession} />
+      </div>
+    </>
   );
 }
 

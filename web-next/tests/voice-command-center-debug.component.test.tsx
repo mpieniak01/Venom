@@ -38,11 +38,12 @@ describe("VoiceCommandCenter debug mode", () => {
     });
     globalThis.fetch = fetchMock as typeof fetch;
 
-    render(<VoiceCommandCenter />);
+    render(<VoiceCommandCenter isDevMode />);
 
     await waitFor(() => {
       assert.ok(screen.getAllByText(/DEBUG DRY RUN/i).length >= 1);
     });
+    assert.ok(screen.getByLabelText(/diagnostyka dev/i));
     assert.equal(fetchMock.mock.callCount(), 0);
   });
 });

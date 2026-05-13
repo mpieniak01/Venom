@@ -39,12 +39,14 @@ type RuntimeSnapshotLike = Readonly<{
     fallbacks?: Record<string, string | null | undefined>;
   } | null;
   voice_pipeline?: {
-    profile?: string | null;
-    stt?: string | null;
-    reasoning?: string | null;
-    tools?: string | null;
-    vision?: string | null;
-    tts?: string | null;
+      profile?: string | null;
+      stt?: string | null;
+      reasoning?: string | null;
+      reasoning_summary?: string | null;
+      emotion?: string | null;
+      tools?: string | null;
+      vision?: string | null;
+      tts?: string | null;
     notes?: string[] | null;
   } | null;
   error?: string | null;
@@ -98,6 +100,9 @@ export function Gemma4RuntimeControlInner({
 
   const [localTokens, setLocalTokens] = useState<string>("");
   const [localThinking, setLocalThinking] = useState<boolean | null>(null);
+  const [localReasoningSummary, setLocalReasoningSummary] = useState<boolean | null>(null);
+  const [localEmotionDetection, setLocalEmotionDetection] = useState<boolean | null>(null);
+  const [localEmotionResponseStyle, setLocalEmotionResponseStyle] = useState<boolean | null>(null);
   const [localCache, setLocalCache] = useState<string | null>(null);
   const [drafterInput, setDrafterInput] = useState("");
   const [showDrafterInput, setShowDrafterInput] = useState(false);
@@ -105,16 +110,57 @@ export function Gemma4RuntimeControlInner({
   const busy = actionPending !== null;
 
   const effectiveThinking = localThinking ?? status?.params.enable_thinking ?? false;
+  const effectiveReasoningSummary =
+    localReasoningSummary ?? status?.params.reasoning_summary_enabled ?? false;
+  const effectiveEmotionDetection =
+    localEmotionDetection ?? status?.params.emotion_detection_enabled ?? false;
+  const effectiveEmotionResponseStyle =
+    localEmotionResponseStyle ?? status?.params.emotion_response_style_enabled ?? false;
   const effectiveTokens =
     localTokens === "" ? String(status?.params.max_new_tokens ?? 128) : localTokens;
   const effectiveCache =
     localCache === null ? (status?.params.cache_implementation ?? "") : localCache;
+  const responseShapingToggles = [
+    {
+      label: t("voice.daemon.reasoningSummary"),
+      checked: effectiveReasoningSummary,
+      set: setLocalReasoningSummary,
+      ariaLabel: t("voice.daemon.reasoningSummary"),
+    },
+    {
+      label: t("voice.daemon.emotionDetection"),
+      checked: effectiveEmotionDetection,
+      set: setLocalEmotionDetection,
+      ariaLabel: t("voice.daemon.emotionDetection"),
+    },
+    {
+      label: t("voice.daemon.emotionResponseStyle"),
+      checked: effectiveEmotionResponseStyle,
+      set: setLocalEmotionResponseStyle,
+      ariaLabel: t("voice.daemon.emotionResponseStyle"),
+    },
+  ] as const;
 
-  const hasLocalChanges = localThinking !== null || localTokens !== "" || localCache !== null;
+  const hasLocalChanges =
+    localThinking !== null ||
+    localReasoningSummary !== null ||
+    localEmotionDetection !== null ||
+    localEmotionResponseStyle !== null ||
+    localTokens !== "" ||
+    localCache !== null;
 
   async function handleApply() {
     const params: DaemonConfigRequest = {};
     if (localThinking !== null) params.enable_thinking = localThinking;
+    if (localReasoningSummary !== null) {
+      params.reasoning_summary_enabled = localReasoningSummary;
+    }
+    if (localEmotionDetection !== null) {
+      params.emotion_detection_enabled = localEmotionDetection;
+    }
+    if (localEmotionResponseStyle !== null) {
+      params.emotion_response_style_enabled = localEmotionResponseStyle;
+    }
     if (localTokens !== "") {
       const n = parseTokenInput(localTokens);
       if (n !== undefined) params.max_new_tokens = n;
@@ -220,6 +266,24 @@ export function Gemma4RuntimeControlInner({
               <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
             )}
           </div>
+        </div>
+
+        {/* Reasoning / emotion shaping */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+          {responseShapingToggles.map((toggle) => (
+            <div key={toggle.ariaLabel} className="flex items-center justify-between gap-2">
+              <label className="text-xs text-zinc-400">{toggle.label}</label>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={toggle.checked}
+                  onCheckedChange={(value) => toggle.set(value)}
+                  disabled={busy}
+                  aria-label={toggle.ariaLabel}
+                />
+                <ToggleStateLabel enabled={toggle.checked} />
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Max tokens */}
@@ -347,6 +411,11 @@ function ThinkingStatusLabel({
   return <span className="text-[10px] text-zinc-500">{label}</span>;
 }
 
+function ToggleStateLabel({ enabled }: Readonly<{ enabled: boolean }>) {
+  const t = useTranslation();
+  return <span className="text-[10px] text-zinc-500">{enabled ? t("common.yes") : t("common.no")}</span>;
+}
+
 type VramInfo = Readonly<{
   backend: string;
   allocated_mb: number;
@@ -422,6 +491,16 @@ function RuntimeSnapshotSummary({
       {snapshot.voice_pipeline?.tts && (
         <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
           {t("voice.controls.tts")}: {snapshot.voice_pipeline.tts}
+        </p>
+      )}
+      {snapshot.voice_pipeline?.reasoning_summary && (
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
+          {t("voice.controls.reasoningSummary")}: {snapshot.voice_pipeline.reasoning_summary}
+        </p>
+      )}
+      {snapshot.voice_pipeline?.emotion && (
+        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
+          {t("voice.controls.emotion")}: {snapshot.voice_pipeline.emotion}
         </p>
       )}
       {snapshot.error && (

@@ -88,7 +88,7 @@ beforeEach(() => {
       },
     },
   });
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/v1/daemon/status")) {
       return new Response(JSON.stringify(makeAudioStatus().runtime_snapshot), { status: 200 });

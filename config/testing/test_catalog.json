@@ -910,6 +910,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_voice_metadata.py",
+      "domain": "api",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_audit_lite_deps.py",
       "domain": "audit",
       "test_type": "gate",

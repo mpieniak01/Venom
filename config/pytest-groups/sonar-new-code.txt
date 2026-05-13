@@ -255,6 +255,7 @@ tests/test_training_metrics_parser.py
 tests/test_translation_service.py
 tests/test_update_sonar_scope_group.py
 tests/test_ux_analyst.py
+tests/test_voice_metadata.py
 tests/test_workflow_control_api.py
 tests/test_workflow_control_contract.py
 tests/test_workflow_operations.py

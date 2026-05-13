@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
+import { cleanup, render, waitFor } from "@testing-library/react";
+import React from "react";
+import "./component-test-setup";
 import {
   applyOrbDiagnosticProfile,
   parseVoiceEffectOverrides,
@@ -8,6 +11,39 @@ import {
   resolveVoiceRenderDiagnostics,
 } from "../components/voice/voice-render-diagnostics";
 import type { OrbEffectsConfig } from "../components/voice/use-orb-effects-config";
+import { useVoiceRenderDiagnostics } from "../components/voice/voice-render-diagnostics";
+
+function DiagnosticsProbe() {
+  const diagnostics = useVoiceRenderDiagnostics();
+  return React.createElement("div", { "data-testid": "diagnostic-mode" }, diagnostics.mode);
+}
+
+describe("useVoiceRenderDiagnostics hook", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("reacts to history pushState URL updates", async () => {
+    cleanup();
+    const originalUrl = window.location.href;
+    render(React.createElement(DiagnosticsProbe));
+
+    await waitFor(() => {
+      assert.equal(window.location.search, "");
+    });
+
+    window.history.pushState({}, "", `${window.location.pathname}?voiceDiag=shell_only`);
+
+    await waitFor(() => {
+      assert.equal(
+        document.querySelector('[data-testid="diagnostic-mode"]')?.textContent,
+        "shell_only",
+      );
+    });
+
+    window.history.replaceState({}, "", originalUrl);
+  });
+});
 
 const BASE_CONFIG: OrbEffectsConfig = {
   ripple: true,

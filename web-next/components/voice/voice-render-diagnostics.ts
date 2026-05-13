@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
 
@@ -22,6 +22,9 @@ const VALID_MODES = new Set<VoiceRenderDiagnosticMode>([
   "orb_dialogs_only",
   "full_ready",
 ]);
+
+const SUBSCRIBERS = new Set<() => void>();
+let locationTrackingInstalled = false;
 
 export type VoiceRenderDiagnostics = Readonly<{
   mode: VoiceRenderDiagnosticMode;
@@ -50,6 +53,55 @@ function normalizeMode(value: string | null | undefined): VoiceRenderDiagnosticM
   if (!value) return "off";
   const normalized = value.trim().toLowerCase() as VoiceRenderDiagnosticMode;
   return VALID_MODES.has(normalized) ? normalized : "off";
+}
+
+function readLocationSearch(): string {
+  return globalThis.window === undefined ? "" : globalThis.window.location.search;
+}
+
+function notifyLocationSubscribers(): void {
+  for (const subscriber of SUBSCRIBERS) {
+    subscriber();
+  }
+}
+
+function ensureLocationTracking(): void {
+  if (globalThis.window === undefined || locationTrackingInstalled) {
+    return;
+  }
+
+  locationTrackingInstalled = true;
+
+  const { history } = globalThis.window;
+  const historyWithPatches = history as History & {
+    pushState: History["pushState"];
+    replaceState: History["replaceState"];
+  };
+
+  const patchHistoryMethod = (name: "pushState" | "replaceState") => {
+    const original = historyWithPatches[name].bind(historyWithPatches);
+    const patched = function patchedHistoryState(
+      ...args: Parameters<History["pushState"]>
+    ) {
+      const result = original(...args);
+      notifyLocationSubscribers();
+      return result;
+    } as History["pushState"];
+
+    Object.defineProperty(historyWithPatches, name, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: patched,
+    });
+  };
+
+  patchHistoryMethod("pushState");
+  patchHistoryMethod("replaceState");
+
+  const sync = () => notifyLocationSubscribers();
+  globalThis.window.addEventListener("popstate", sync);
+  globalThis.window.addEventListener("hashchange", sync);
 }
 
 export function parseVoiceRenderDiagnosticMode(urlSearch?: string | null): VoiceRenderDiagnosticMode {
@@ -178,34 +230,25 @@ export function applyOrbDiagnosticProfile(
   diagnostics: Pick<VoiceRenderDiagnostics, "mode" | "effectOverrides">,
 ): OrbEffectsConfig {
   const { mode, effectOverrides } = diagnostics;
+  const buildDisabledProfile = (glow: boolean): OrbEffectsConfig => ({
+    ...config,
+    ripple: false,
+    blob: false,
+    glow,
+    transitions: false,
+    frequencyRing: false,
+    coreTexture: false,
+    particles: false,
+    orbMetricsBars: false,
+    ...effectOverrides,
+  });
+
   if (mode === "orb_static_core") {
-    return {
-      ...config,
-      ripple: false,
-      blob: false,
-      glow: false,
-      transitions: false,
-      frequencyRing: false,
-      coreTexture: false,
-      particles: false,
-      orbMetricsBars: false,
-      ...effectOverrides,
-    };
+    return buildDisabledProfile(false);
   }
 
   if (mode === "orb_ready_glow") {
-    return {
-      ...config,
-      ripple: false,
-      blob: false,
-      glow: true,
-      transitions: false,
-      frequencyRing: false,
-      coreTexture: false,
-      particles: false,
-      orbMetricsBars: false,
-      ...effectOverrides,
-    };
+    return buildDisabledProfile(true);
   }
 
   if (mode === "full_ready") {
@@ -234,14 +277,17 @@ export function resolveDiagnosticOrbState(
 }
 
 export function useVoiceRenderDiagnostics(): VoiceRenderDiagnostics {
-  const readLocationSearch = () =>
-    typeof globalThis.location === "undefined" ? "" : globalThis.location.search;
+  const [urlSearch, setUrlSearch] = useState("");
 
-  const urlSearch = useSyncExternalStore(
-    () => () => undefined,
-    readLocationSearch,
-    readLocationSearch,
-  );
+  useEffect(() => {
+    const sync = () => setUrlSearch(readLocationSearch());
+    SUBSCRIBERS.add(sync);
+    ensureLocationTracking();
+    sync();
+    return () => {
+      SUBSCRIBERS.delete(sync);
+    };
+  }, []);
 
   return useMemo(() => {
     const mode = parseVoiceRenderDiagnosticMode(urlSearch);

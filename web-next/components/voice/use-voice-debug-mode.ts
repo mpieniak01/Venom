@@ -242,9 +242,9 @@ const buildVoiceDebugSteps = (
 export function useVoiceDebugMode(t: Translator): VoiceDebugSnapshot {
   const [hydrated, setHydrated] = useState(false);
   const readLocationSearch = () =>
-    typeof globalThis.location === "undefined" ? "" : globalThis.location.search;
+    globalThis.location === undefined ? "" : globalThis.location.search;
   const [urlSearch, setUrlSearch] = useState("");
-  const requested = typeof globalThis.location !== "undefined" && parseVoiceDebugEnabled(readLocationSearch());
+  const requested = globalThis.location !== undefined && parseVoiceDebugEnabled(readLocationSearch());
 
   useEffect(() => {
     const syncLocation = () => setUrlSearch(readLocationSearch());

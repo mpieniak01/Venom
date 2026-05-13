@@ -90,6 +90,7 @@ export const voice = {
     complete: "Odpowiedź gotowa.",
     ttsVoiceUpdated: "Zmieniono głos TTS.",
     ttsVoiceUpdateFailed: "Nie udało się zmienić głosu TTS.",
+    debugDryRunNoRuntimeSwitch: "Tryb debug dry run nie przełącza prawdziwych runtime'ów TTS",
   },
   orb: {
     stateLabel: {

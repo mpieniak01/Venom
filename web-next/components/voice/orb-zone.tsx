@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { VoiceOrb, type VoiceOrbState } from "@/components/voice/voice-orb";
 import { OrbDialogWindow } from "@/components/voice/orb-dialog-window";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
@@ -46,12 +46,16 @@ export function OrbZone({
   const orbWrapperClass = plainOrbWrapper
     ? "flex w-[360px] max-w-full aspect-square items-center justify-center rounded-2xl border border-dashed border-white/10 bg-transparent py-8 px-10 overflow-visible"
     : "flex w-[360px] max-w-full aspect-square items-center justify-center rounded-2xl box-muted py-8 px-10 overflow-visible";
-  const diagnosticLabel =
-    diagnosticMode !== "off" ? (
+  let diagnosticLabel: ReactNode = null;
+  if (diagnosticMode === "off") {
+    diagnosticLabel = null;
+  } else {
+    diagnosticLabel = (
       <div className="mt-3 text-center text-[10px] uppercase tracking-[0.28em] text-zinc-500">
         {diagnosticMode}
       </div>
-    ) : null;
+    );
+  }
 
   return (
     <div className="relative flex w-full flex-col overflow-visible" style={{ minHeight: "620px" }}>

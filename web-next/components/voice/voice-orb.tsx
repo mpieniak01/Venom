@@ -185,7 +185,8 @@ function useOrbTransitionEffects(state: VoiceOrbState, enabled: boolean, noAnim:
 function mixSeed(value: string): number {
   let seed = 0x9e3779b9;
   for (let i = 0; i < value.length; i++) {
-    seed = Math.imul(seed ^ value.charCodeAt(i), 0x85ebca6b);
+    const codePoint = value.codePointAt(i) ?? 0;
+    seed = Math.imul(seed ^ codePoint, 0x85ebca6b);
     seed ^= seed >>> 13;
   }
   return seed >>> 0;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { Dispatch, RefObject, SetStateAction } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1024,6 +1024,220 @@ const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
   action_items: "voice.modes.actionItems.title",
 };
 
+function getTtsModelStatusText(
+  t: Translator,
+  debugDryRunActive: boolean,
+  ttsModelChanging: boolean,
+): string {
+  if (debugDryRunActive) {
+    return "Debug dry run";
+  }
+  if (ttsModelChanging) {
+    return t("voice.controls.ttsVoiceChanging");
+  }
+  return t("voice.controls.ttsVoiceAuto");
+}
+
+function useVoiceCommandCenterDebugBootstrap(params: {
+  debugDryRunRequested: boolean;
+  debugRecording: boolean;
+  onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
+  refreshAudioStatus: () => Promise<void>;
+  refreshTtsModelOptions: () => Promise<void>;
+}) {
+  const {
+    debugDryRunRequested,
+    debugRecording,
+    onStatusUpdate,
+    refreshAudioStatus,
+    refreshTtsModelOptions,
+  } = params;
+
+  useEffect(() => {
+    if (!debugDryRunRequested) return;
+    onStatusUpdate?.(buildDebugAudioStatus(debugRecording));
+    refreshAudioStatus().catch(() => undefined);
+    refreshTtsModelOptions().catch(() => undefined);
+  }, [debugDryRunRequested, debugRecording, onStatusUpdate, refreshAudioStatus, refreshTtsModelOptions]);
+}
+
+function useVoiceCommandCenterCompleteReset(params: {
+  debugDryRunRequested: boolean;
+  lastAudioSignal: string;
+  recording: boolean;
+  processingStatus: string | null;
+  playbackState: PlaybackState;
+  setLastAudioSignal: Dispatch<SetStateAction<string>>;
+}) {
+  const {
+    debugDryRunRequested,
+    lastAudioSignal,
+    recording,
+    processingStatus,
+    playbackState,
+    setLastAudioSignal,
+  } = params;
+
+  useEffect(() => {
+    if (debugDryRunRequested) {
+      return;
+    }
+    if (
+      lastAudioSignal !== "complete" ||
+      recording ||
+      processingStatus !== null ||
+      playbackState !== "idle"
+    ) {
+      return;
+    }
+
+    const timeoutId = globalThis.setTimeout(() => {
+      setLastAudioSignal((current) => (current === "complete" ? "idle" : current));
+    }, COMPLETE_SETTLE_MS);
+
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [debugDryRunRequested, lastAudioSignal, playbackState, processingStatus, recording, setLastAudioSignal]);
+}
+
+function useVoiceCommandCenterTtsModelRefresh(params: {
+  debugDryRunRequested: boolean;
+  refreshAudioStatus: () => Promise<void>;
+  refreshTtsModelOptions: () => Promise<void>;
+}) {
+  const { debugDryRunRequested, refreshAudioStatus, refreshTtsModelOptions } = params;
+
+  useEffect(() => {
+    if (debugDryRunRequested) {
+      refreshAudioStatus().catch(() => undefined);
+      refreshTtsModelOptions().catch(() => undefined);
+      return;
+    }
+    refreshTtsModelOptions().catch(() => undefined);
+  }, [debugDryRunRequested, refreshAudioStatus, refreshTtsModelOptions]);
+}
+
+function buildTtsModelUpdateStatus(
+  t: Translator,
+  debugDryRunRequested: boolean,
+  modelPath: string,
+  setSelectedTtsModelPath: Dispatch<SetStateAction<string>>,
+  setStatusMessage: Dispatch<SetStateAction<string | null>>,
+  setTtsModelChanging: Dispatch<SetStateAction<boolean>>,
+  refreshAudioStatus: () => Promise<void>,
+  refreshTtsModelOptions: () => Promise<void>,
+  releasePlaybackResources: () => void,
+  closeCurrentWs: () => void,
+) {
+  return async () => {
+    if (!modelPath) return;
+    if (debugDryRunRequested) {
+      setSelectedTtsModelPath(modelPath);
+      setStatusMessage(t("voice.status.debugDryRunNoRuntimeSwitch"));
+      return;
+    }
+    setTtsModelChanging(true);
+    try {
+      const response = await fetch("/api/v1/audio/tts/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelPath }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = (await response.json()) as {
+        effective_tts_model_path?: string;
+      };
+      const effectiveModelPath =
+        typeof data.effective_tts_model_path === "string"
+          ? data.effective_tts_model_path
+          : modelPath;
+      setSelectedTtsModelPath(effectiveModelPath);
+      setStatusMessage(
+        effectiveModelPath === modelPath
+          ? t("voice.status.ttsVoiceUpdated")
+          : t("voice.status.ttsVoiceUpdateFailed"),
+      );
+      if (effectiveModelPath === modelPath) {
+        releasePlaybackResources();
+        closeCurrentWs();
+      }
+      await refreshAudioStatus();
+      await refreshTtsModelOptions();
+    } catch {
+      setStatusMessage(t("voice.status.ttsVoiceUpdateFailed"));
+    } finally {
+      setTtsModelChanging(false);
+    }
+  };
+}
+
+function createRefreshAudioStatusHandler(params: {
+  t: Translator;
+  debugDryRunRequested: boolean;
+  debugRecording: boolean;
+  setAudioStatus: Dispatch<SetStateAction<AudioStatus | null>>;
+}) {
+  const { t, debugDryRunRequested, debugRecording, setAudioStatus } = params;
+  return async () => {
+    if (debugDryRunRequested) {
+      setAudioStatus(buildDebugAudioStatus(debugRecording));
+      return;
+    }
+    try {
+      const res = await fetch("/api/v1/audio/status");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as AudioStatus;
+      setAudioStatus(data);
+    } catch {
+      setAudioStatus({
+        enabled: false,
+        connected_clients: 0,
+        active_recordings: 0,
+        message: t("voice.status.noData"),
+      });
+    }
+  };
+}
+
+function createRefreshTtsModelOptionsHandler(params: {
+  debugDryRunRequested: boolean;
+  setTtsModelOptions: Dispatch<SetStateAction<TtsModelOption[]>>;
+  setSelectedTtsModelPath: Dispatch<SetStateAction<string>>;
+}) {
+  const { debugDryRunRequested, setTtsModelOptions, setSelectedTtsModelPath } = params;
+  return async () => {
+    if (debugDryRunRequested) {
+      const option: TtsModelOption = {
+        id: "debug-dry-run",
+        label: "Debug Dry Run",
+        path: "debug://dry-run",
+      };
+      setTtsModelOptions([option]);
+      setSelectedTtsModelPath(option.path);
+      return;
+    }
+    try {
+      const response = await fetch("/api/v1/audio/tts/models");
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = (await response.json()) as {
+        models?: TtsModelOption[];
+        current_model_path?: string;
+      };
+      setTtsModelOptions(Array.isArray(data.models) ? data.models : []);
+      if (typeof data.current_model_path === "string") {
+        setSelectedTtsModelPath(data.current_model_path);
+      }
+    } catch {
+      setTtsModelOptions([]);
+    }
+  };
+}
+
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -1074,6 +1288,23 @@ export function VoiceCommandCenter({
   const lastAudioResponseRef = useRef<{ audio: string; sampleRate: number } | null>(null);
   const lastVoiceModeSentRef = useRef<string | null>(null);
 
+  useVoiceCommandCenterDebugBootstrap({
+    debugDryRunRequested,
+    debugRecording: debugMode.recording,
+    onStatusUpdate,
+    refreshAudioStatus,
+    refreshTtsModelOptions,
+  });
+
+  useVoiceCommandCenterCompleteReset({
+    debugDryRunRequested,
+    lastAudioSignal,
+    recording,
+    processingStatus,
+    playbackState,
+    setLastAudioSignal,
+  });
+
   useEffect(() => {
     const mq = globalThis.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(mq.matches);
@@ -1081,39 +1312,6 @@ export function VoiceCommandCenter({
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  useEffect(() => {
-    if (debugDryRunRequested) {
-      const debugStatus = buildDebugAudioStatus(debugMode.recording);
-      onStatusUpdate?.({
-        enabled: debugStatus.enabled,
-        stt_ready: debugStatus.stt_ready,
-        tts_ready: debugStatus.tts_ready,
-        tts_fallback: debugStatus.tts_fallback,
-        whisper_model_size: debugStatus.whisper_model_size,
-        stt_backend: debugStatus.stt_backend,
-        tts_backend: debugStatus.tts_backend,
-        vad_threshold: 0.5,
-        dependencies: debugStatus.dependencies,
-        runtime_snapshot: debugStatus.runtime_snapshot,
-      });
-      return;
-    }
-    if (!onStatusUpdate) return;
-    if (!audioStatus) { onStatusUpdate(null); return; }
-    onStatusUpdate({
-      enabled:           audioStatus.enabled,
-      stt_ready:         audioStatus.stt_ready,
-      tts_ready:         audioStatus.tts_ready,
-      tts_fallback:      audioStatus.tts_fallback,
-      whisper_model_size:audioStatus.whisper_model_size,
-      stt_backend:       audioStatus.stt_backend,
-      tts_backend:       audioStatus.tts_backend,
-      vad_threshold:     audioStatus.vad_threshold,
-      dependencies:      audioStatus.dependencies,
-      runtime_snapshot:  audioStatus.runtime_snapshot,
-    });
-  }, [audioStatus, debugDryRunRequested, debugMode.enabled, debugMode.recording, onStatusUpdate]);
 
   useEffect(() => {
     syncVoiceModeSelection({
@@ -1127,56 +1325,40 @@ export function VoiceCommandCenter({
     });
   }, [audioEnabled, connected, t, voiceModePreset]);
 
-  const refreshAudioStatus = useCallback(async () => {
-    if (debugDryRunRequested) {
-      setAudioStatus(buildDebugAudioStatus(debugMode.recording));
-      return;
-    }
-    try {
-      const res = await fetch("/api/v1/audio/status");
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = (await res.json()) as AudioStatus;
-      setAudioStatus(data);
-    } catch {
-      setAudioStatus({
-        enabled: false,
-        connected_clients: 0,
-        active_recordings: 0,
-        message: t("voice.status.noData"),
-      });
-    }
-  }, [debugDryRunRequested, debugMode.recording, t]);
+  const refreshAudioStatus = useCallback(
+    () =>
+      createRefreshAudioStatusHandler({
+        t,
+        debugDryRunRequested,
+        debugRecording: debugMode.recording,
+        setAudioStatus,
+      })(),
+    [debugDryRunRequested, debugMode.recording, t],
+  );
 
-  const refreshTtsModelOptions = useCallback(async () => {
-    if (debugDryRunRequested) {
-      const option = {
-        id: "debug-dry-run",
-        label: "Debug Dry Run",
-        path: "debug://dry-run",
-      };
-      setTtsModelOptions([option]);
-      setSelectedTtsModelPath(option.path);
-      return;
-    }
-    try {
-      const response = await fetch("/api/v1/audio/tts/models");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as {
-        models?: TtsModelOption[];
-        current_model_path?: string;
-      };
-      setTtsModelOptions(Array.isArray(data.models) ? data.models : []);
-      if (typeof data.current_model_path === "string") {
-        setSelectedTtsModelPath(data.current_model_path);
-      }
-    } catch {
-      setTtsModelOptions([]);
-    }
-  }, [debugDryRunRequested]);
+  const refreshTtsModelOptions = useCallback(
+    () =>
+      createRefreshTtsModelOptionsHandler({
+        debugDryRunRequested,
+        setTtsModelOptions,
+        setSelectedTtsModelPath,
+      })(),
+    [debugDryRunRequested],
+  );
+
+  useVoiceCommandCenterDebugBootstrap({
+    debugDryRunRequested,
+    debugRecording: debugMode.recording,
+    onStatusUpdate,
+    refreshAudioStatus,
+    refreshTtsModelOptions,
+  });
+
+  useVoiceCommandCenterTtsModelRefresh({
+    debugDryRunRequested,
+    refreshAudioStatus,
+    refreshTtsModelOptions,
+  });
 
   const releasePlaybackResources = useCallback(() => {
     const src = ttsSourceRef.current;
@@ -1189,49 +1371,26 @@ export function VoiceCommandCenter({
   }, []);
 
   const applyTtsModel = useCallback(
-    async (modelPath: string) => {
-      if (!modelPath) return;
-      if (debugDryRunRequested) {
-        setSelectedTtsModelPath(modelPath);
-        setStatusMessage("Debug dry run does not switch real TTS runtimes");
-        return;
-      }
-      setTtsModelChanging(true);
-      try {
-        const response = await fetch("/api/v1/audio/tts/models", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: modelPath }),
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = (await response.json()) as {
-          effective_tts_model_path?: string;
-        };
-        const effectiveModelPath =
-          typeof data.effective_tts_model_path === "string"
-            ? data.effective_tts_model_path
-            : modelPath;
-        setSelectedTtsModelPath(effectiveModelPath);
-        setStatusMessage(
-          effectiveModelPath === modelPath
-            ? t("voice.status.ttsVoiceUpdated")
-            : t("voice.status.ttsVoiceUpdateFailed"),
-        );
-        if (effectiveModelPath === modelPath) {
-          releasePlaybackResources();
-          wsRef.current?.close();
-        }
-        await refreshAudioStatus();
-        await refreshTtsModelOptions();
-      } catch {
-        setStatusMessage(t("voice.status.ttsVoiceUpdateFailed"));
-      } finally {
-        setTtsModelChanging(false);
-      }
-    },
-    [debugDryRunRequested, refreshAudioStatus, refreshTtsModelOptions, releasePlaybackResources, t],
+    (modelPath: string) =>
+      buildTtsModelUpdateStatus(
+        t,
+        debugDryRunRequested,
+        modelPath,
+        setSelectedTtsModelPath,
+        setStatusMessage,
+        setTtsModelChanging,
+        refreshAudioStatus,
+        refreshTtsModelOptions,
+        releasePlaybackResources,
+        () => wsRef.current?.close(),
+      )(),
+    [
+      debugDryRunRequested,
+      refreshAudioStatus,
+      refreshTtsModelOptions,
+      releasePlaybackResources,
+      t,
+    ],
   );
 
   const getMediaRecorderMimeType = useCallback(() => {
@@ -1421,7 +1580,7 @@ export function VoiceCommandCenter({
     }
 
     let cancelled = false;
-    void createVoiceCaptureEnvironment({
+    createVoiceCaptureEnvironment({
       activeWindow: getBrowserWindow(),
       audioContextRef,
       getMediaRecorderMimeType,
@@ -1493,15 +1652,6 @@ export function VoiceCommandCenter({
       t,
     ],
   );
-
-  useEffect(() => {
-    if (debugDryRunRequested) {
-      void refreshAudioStatus();
-      void refreshTtsModelOptions();
-      return;
-    }
-    refreshTtsModelOptions().catch(() => undefined);
-  }, [debugDryRunRequested, refreshAudioStatus, refreshTtsModelOptions]);
 
   const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
     const ws = wsRef.current;
@@ -1825,11 +1975,7 @@ export function VoiceCommandCenter({
               </Select>
             </div>
             <span className="text-[11px] text-zinc-400">
-              {debugDryRunActive
-                ? "Debug dry run"
-                : ttsModelChanging
-                  ? t("voice.controls.ttsVoiceChanging")
-                  : t("voice.controls.ttsVoiceAuto")}
+              {getTtsModelStatusText(t, debugDryRunActive, ttsModelChanging)}
             </span>
           </div>
         </div>

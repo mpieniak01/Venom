@@ -62,7 +62,7 @@ describe("VoiceStatusSidebar", () => {
     window.history.pushState({}, "", "/voice");
     render(
       <ToastProvider>
-        <VoiceStatusSidebar status={voiceStatus as never} />
+        <VoiceStatusSidebar status={voiceStatus as never} isDevMode={false} />
       </ToastProvider>,
     );
 
@@ -76,7 +76,7 @@ describe("VoiceStatusSidebar", () => {
     window.history.pushState({}, "", "/voice?dev=1");
     render(
       <ToastProvider>
-        <VoiceStatusSidebar status={gemma4VoiceStatus as never} />
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode />
       </ToastProvider>,
     );
 

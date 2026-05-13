@@ -11,6 +11,7 @@ import { useRuntime } from "@/components/models/hooks/use-runtime";
 
 type VoiceStatusSidebarProps = Readonly<{
   status: VoiceStatusUpdate | null;
+  isDevMode?: boolean;
 }>;
 
 function getProbeTone(status?: string | null): "success" | "warning" | "danger" | "neutral" {
@@ -37,11 +38,9 @@ function Row({ label, value }: Readonly<{ label: string; value: React.ReactNode 
   );
 }
 
-export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
+export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSidebarProps) {
   const t = useTranslation();
-  const devModeEnabled =
-    globalThis.window !== undefined &&
-    new URLSearchParams(globalThis.window.location.search).get("dev") === "1";
+  const devModeEnabled = isDevMode;
   const runtime = status?.runtime_snapshot ?? null;
   const isGemma4AudioRuntime =
     (runtime?.provider ?? "").toLowerCase() === "gemma4_audio" ||

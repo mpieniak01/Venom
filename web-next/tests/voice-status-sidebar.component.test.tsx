@@ -36,8 +36,30 @@ const voiceStatus = {
   },
 } as const;
 
+const gemma4VoiceStatus = {
+  ...voiceStatus,
+  runtime_snapshot: {
+    ...voiceStatus.runtime_snapshot,
+    runtime_id: "gemma4_audio@http://localhost:8014/v1",
+    provider: "gemma4_audio",
+    model_name: "google/gemma-4-E2B-it",
+    endpoint: "http://localhost:8014/v1",
+    runtime_capabilities: {
+      compatibility_profile: "gemma4_audio_native",
+      probe_status: "verified",
+    },
+    voice_pipeline: {
+      profile: "gemma4_audio_native",
+      stt: "native_audio",
+      reasoning: "native_audio_model",
+      tts: "piper",
+    },
+  },
+} as const;
+
 describe("VoiceStatusSidebar", () => {
   it("shows active runtime details and does not surface Gemma 4 controls for ollama", () => {
+    window.history.pushState({}, "", "/voice");
     render(
       <ToastProvider>
         <VoiceStatusSidebar status={voiceStatus as never} />
@@ -48,5 +70,17 @@ describe("VoiceStatusSidebar", () => {
     assert.ok(screen.getAllByText("piper").length >= 2);
     assert.ok(screen.getAllByText("faster_whisper").length >= 2);
     assert.equal(screen.queryByText(/Gemma 4 Runtime/i), null);
+  });
+
+  it("surfaces Gemma 4 runtime controls only behind the dev gate", async () => {
+    window.history.pushState({}, "", "/voice?dev=1");
+    render(
+      <ToastProvider>
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} />
+      </ToastProvider>,
+    );
+
+    assert.ok(await screen.findByText(/^Thinking$/i));
+    assert.ok(screen.getByTestId("apply-button"));
   });
 });

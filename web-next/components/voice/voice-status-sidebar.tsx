@@ -39,6 +39,9 @@ function Row({ label, value }: Readonly<{ label: string; value: React.ReactNode 
 
 export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
   const t = useTranslation();
+  const devModeEnabled =
+    globalThis.window !== undefined &&
+    new URLSearchParams(globalThis.window.location.search).get("dev") === "1";
   const runtime = status?.runtime_snapshot ?? null;
   const isGemma4AudioRuntime =
     (runtime?.provider ?? "").toLowerCase() === "gemma4_audio" ||
@@ -53,7 +56,15 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
           title={t("voice.controls.runtime")}
           loadingLabel={t("voice.status.channelConnecting")}
         />
-        <Gemma4RuntimeControl variant="voice" runtimeSnapshot={null} />
+        {devModeEnabled ? (
+          <Gemma4RuntimeControl variant="voice" runtimeSnapshot={null} />
+        ) : (
+          <StatusCard title={t("voice.controls.runtime")}>
+            <p className="text-[11px] text-zinc-400">
+              Use `?dev=1` to show Gemma 4 runtime controls.
+            </p>
+          </StatusCard>
+        )}
         <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
           <p className="text-hint text-xs py-2">{t("voice.status.channelConnecting")}</p>
         </StatusCard>
@@ -71,7 +82,7 @@ export function VoiceStatusSidebar({ status }: VoiceStatusSidebarProps) {
         runtime={runtime}
         title={t("voice.controls.runtime")}
       />
-      {isGemma4AudioRuntime && (
+      {isGemma4AudioRuntime && devModeEnabled && (
         <Gemma4RuntimeControl variant="voice" runtimeSnapshot={runtime} />
       )}
 

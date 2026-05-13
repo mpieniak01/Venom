@@ -89,11 +89,11 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
         runtime={runtime}
         title={t("voice.controls.runtime")}
       />
+      {isGemma4AudioRuntime && (
+        <Gemma4RuntimeControl variant="voice" runtimeSnapshot={runtime} />
+      )}
       {latestVoiceSession && (
         <VoiceSessionCard session={latestVoiceSession} />
-      )}
-      {isGemma4AudioRuntime && devModeEnabled && (
-        <Gemma4RuntimeControl variant="voice" runtimeSnapshot={runtime} />
       )}
 
       {/* STT / TTS box */}

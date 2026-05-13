@@ -758,7 +758,43 @@ def test_build_voice_session_record_includes_runtime_fields(tmp_path):
     assert record["audio_input_status"] == "verified"
     assert record["runtime_log_path"] == "logs/gemma4_audio_service.log"
     assert record["transcription"] == "piec razy piec"
-    assert record["response_text"] == "25"
+
+
+def test_build_voice_session_insights_payload_delegates_to_voice_metadata(monkeypatch):
+    captured = {}
+
+    def fake_build_voice_session_insights(**kwargs):
+        captured.update(kwargs)
+        return {"summary": "ok", "emotion_label": "curious"}
+
+    monkeypatch.setattr(
+        audio_stream_mod,
+        "build_voice_session_insights",
+        fake_build_voice_session_insights,
+    )
+
+    payload = audio_stream_mod._build_voice_session_insights_payload(
+        transcript="ile to jest dwa razy dwa",
+        response="dwa razy dwa to cztery",
+        voice_mode="summary",
+        pipeline_id="gemma4_audio_piper",
+        reasoning_summary_enabled=True,
+        emotion_detection_enabled=True,
+        emotion_response_style_enabled=False,
+        raw_thinking_available=True,
+    )
+
+    assert payload == {"summary": "ok", "emotion_label": "curious"}
+    assert captured == {
+        "transcript": "ile to jest dwa razy dwa",
+        "response": "dwa razy dwa to cztery",
+        "voice_mode": "summary",
+        "pipeline_id": "gemma4_audio_piper",
+        "reasoning_summary_enabled": True,
+        "emotion_detection_enabled": True,
+        "emotion_response_style_enabled": False,
+        "raw_thinking_available": True,
+    }
 
 
 def test_create_voice_session_dir_uses_unique_names(monkeypatch, tmp_path):

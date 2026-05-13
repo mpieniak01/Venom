@@ -90,16 +90,15 @@ describe("VoiceStatusSidebar", () => {
     assert.equal(screen.queryByText(/Gemma 4 Runtime/i), null);
   });
 
-  it("surfaces Gemma 4 runtime controls only behind the dev gate", async () => {
-    window.history.pushState({}, "", "/voice?dev=1");
+  it("surfaces Gemma 4 runtime controls for gemma4_audio without dev gate", async () => {
+    window.history.pushState({}, "", "/voice");
     render(
       <ToastProvider>
-        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode />
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
       </ToastProvider>,
     );
 
-    assert.ok(await screen.findByText(/^Thinking$/i));
-    assert.ok(screen.getByTestId("apply-button"));
+    assert.ok(await screen.findByText("Gemma 4 Runtime"));
     assert.ok(await screen.findByText(/session-123/i));
     assert.ok(screen.getByText(/curious/i));
   });

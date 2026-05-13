@@ -27,12 +27,12 @@ type OrbVisual = {
 
 const ORB_VISUALS: Record<VoiceOrbState, OrbVisual> = {
   offline: { coreColor: "bg-zinc-700", glowColor: "bg-zinc-600/20", ringAnimation: "", coreAnimation: "" },
-  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/20", ringAnimation: "", coreAnimation: "" },
+  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/12", ringAnimation: "", coreAnimation: "" },
   recording: { coreColor: "bg-emerald-500", glowColor: "bg-emerald-400/30", ringAnimation: "", coreAnimation: "" },
   stt: { coreColor: "bg-amber-500", glowColor: "bg-amber-400/25", ringAnimation: "animate-spin", coreAnimation: "animate-pulse" },
   thinking: { coreColor: "bg-violet-600", glowColor: "bg-violet-500/25", ringAnimation: "animate-orb-thinking", coreAnimation: "" },
   tts: { coreColor: "bg-cyan-500", glowColor: "bg-cyan-400/30", ringAnimation: "", coreAnimation: "" },
-  complete: { coreColor: "bg-teal-500", glowColor: "bg-teal-400/20", ringAnimation: "animate-pulse", coreAnimation: "" },
+  complete: { coreColor: "bg-teal-500", glowColor: "bg-teal-400/12", ringAnimation: "animate-pulse", coreAnimation: "" },
   error: { coreColor: "bg-rose-600", glowColor: "bg-rose-500/20", ringAnimation: "", coreAnimation: "" },
 };
 
@@ -115,14 +115,17 @@ function getOrbGlowShadow(
   const [c1, c2, c3] = ORB_GLOW[state];
   const level = Math.min(1, audioLevel);
   const calm = state === "ready" || state === "complete";
-  const base1 = calm ? 10 : 16;
-  const base2 = calm ? 20 : 30;
-  const base3 = calm ? 34 : 52;
-  const scale1 = calm ? 12 : 18;
-  const scale2 = calm ? 22 : 32;
-  const scale3 = calm ? 40 : 62;
+  const base1 = calm ? 8 : 16;
+  const base2 = calm ? 16 : 30;
+  const base3 = calm ? 0 : 52;
+  const scale1 = calm ? 8 : 18;
+  const scale2 = calm ? 16 : 32;
+  const scale3 = calm ? 0 : 62;
   const r1 = (base1 + level * scale1).toFixed(0);
   const r2 = (base2 + level * scale2).toFixed(0);
+  if (calm) {
+    return `0 0 ${r1}px ${c1}, 0 0 ${r2}px ${c2}`;
+  }
   const r3 = (base3 + level * scale3).toFixed(0);
   return `0 0 ${r1}px ${c1}, 0 0 ${r2}px ${c2}, 0 0 ${r3}px ${c3}`;
 }
@@ -300,6 +303,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
   const currents   = useRef([0, 0, 0, 0]);
   const prevRadii  = useRef<number[]>([]);
   const rippleSt   = useRef([0, 0, 0, 0]);
+  const lastTickRef = useRef(0);
 
   useEffect(() => {
     const cx     = orbSize / 2;
@@ -309,15 +313,22 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
     const MIN_R  = ORB_R * 1.08; // just outside the orb edge
     const MAX_R  = ORB_R * 1.95; // fully loaded: arcs nearly double the orb radius
     const PHASES = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]; // 90° stagger per arc
-    const TICK_MS = 120;
+    const TICK_MS = 40;
 
     currents.current  = [MIN_R, MIN_R, MIN_R, MIN_R];
     prevRadii.current = [MIN_R, MIN_R, MIN_R, MIN_R];
+    lastTickRef.current = 0;
 
-    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let rafId = 0;
 
-    const tick = () => {
-      const t    = Date.now() / 1000;
+    const tick = (now: number) => {
+      if (now - lastTickRef.current < TICK_MS) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      lastTickRef.current = now;
+
+      const t    = now / 1000;
       const m    = metricsRef.current;
       const vals = [m.cpu, m.gpu, m.vram, m.ram];
 
@@ -384,14 +395,13 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
           }
         }
       });
+
+      rafId = requestAnimationFrame(tick);
     };
 
-    tick();
-    intervalId = globalThis.setInterval(tick, TICK_MS);
+    rafId = requestAnimationFrame(tick);
     return () => {
-      if (intervalId !== null) {
-        globalThis.clearInterval(intervalId);
-      }
+      globalThis.cancelAnimationFrame(rafId);
     };
   }, [colorMode, metricsRef, orbSize]);
 
@@ -532,7 +542,7 @@ export function VoiceOrb({
   const rippleColors = RIPPLE_COLORS[effectiveState];
   const particleColor = PARTICLE_COLORS[effectiveState] ?? "rgba(255,255,255,0.5)";
   const fftColor = FFT_RING_COLOR[effectiveState] ?? "transparent";
-  const glowClassName = effectiveState === "ready" || effectiveState === "complete" ? "blur-xl" : "blur-2xl";
+  const glowClassName = effectiveState === "ready" || effectiveState === "complete" ? "blur-lg" : "blur-2xl";
 
   return (
     <div

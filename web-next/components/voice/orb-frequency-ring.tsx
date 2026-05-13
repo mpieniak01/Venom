@@ -16,7 +16,7 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
   useEffect(() => {
     if (!active) return;
 
-    const N = 24;
+    const N = 20;
     const cx = size / 2;
     const cy = size / 2;
     const baseR = size * 0.415;
@@ -49,7 +49,7 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
       }
       d += " Z";
 
-      setPathData(d);
+      setPathData((current) => (current === d ? current : d));
     };
 
     draw();

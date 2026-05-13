@@ -1411,6 +1411,245 @@ function createRefreshTtsModelOptionsHandler(params: {
   };
 }
 
+function createReleasePlaybackResourcesHandler(params: {
+  ttsSourceRef: MutableRefObject<AudioBufferSourceNode | null>;
+  ttsAnalyserRef: MutableRefObject<AnalyserNode | null>;
+}) {
+  const { ttsSourceRef, ttsAnalyserRef } = params;
+  return () => {
+    const src = ttsSourceRef.current;
+    const analyser = ttsAnalyserRef.current;
+    ttsSourceRef.current = null;
+    ttsAnalyserRef.current = null;
+    try { src?.stop(); } catch { /* ignore races with natural end */ }
+    try { src?.disconnect(); } catch { /* ignore */ }
+    try { analyser?.disconnect(); } catch { /* ignore */ }
+  };
+}
+
+function createGetMediaRecorderMimeTypeHandler() {
+  return () => {
+    if (typeof MediaRecorder === "undefined") return "";
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+    ];
+    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+  };
+}
+
+function createEnsurePlaybackContextHandler(params: {
+  ttsAudioContextRef: MutableRefObject<AudioContext | null>;
+  ttsSourceRef: MutableRefObject<AudioBufferSourceNode | null>;
+}) {
+  const { ttsAudioContextRef, ttsSourceRef } = params;
+  return async () => {
+    const browserWindow = getBrowserWindow();
+    if (!browserWindow) return null;
+    const AudioContextCtor = getAudioContextCtor(browserWindow);
+    if (!AudioContextCtor) return null;
+
+    let ctx = ttsAudioContextRef.current;
+
+    if (!ctx || ctx.state === "closed") {
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) ttsAudioContextRef.current = ctx;
+      return ctx;
+    }
+
+    if (ctx.state === "suspended" && !(await tryResumeAudioContext(ctx))) {
+      closeAudioContext(ctx);
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) ttsAudioContextRef.current = ctx;
+      return ctx;
+    }
+
+    if (ctx.state !== "running") {
+      closeAudioContext(ctx);
+      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
+      if (ctx) ttsAudioContextRef.current = ctx;
+    }
+
+    return ctx;
+  };
+}
+
+function createPlayAudioResponseHandler(params: {
+  ensurePlaybackContext: () => Promise<AudioContext | null>;
+  releasePlaybackResources: () => void;
+  t: Translator;
+  ttsMuted: boolean;
+  setPlaybackState: Dispatch<SetStateAction<PlaybackState>>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  setLastAudioSignal: Dispatch<SetStateAction<string>>;
+  setHasReplayAudio: Dispatch<SetStateAction<boolean>>;
+  lastAudioResponseRef: MutableRefObject<{ audio: string; sampleRate: number } | null>;
+  ttsAudioContextRef: MutableRefObject<AudioContext | null>;
+  ttsSourceRef: MutableRefObject<AudioBufferSourceNode | null>;
+  ttsAnalyserRef: MutableRefObject<AnalyserNode | null>;
+}) {
+  const {
+    ensurePlaybackContext,
+    releasePlaybackResources,
+    t,
+    ttsMuted,
+    setPlaybackState,
+    setStatusMessage,
+    setLastAudioSignal,
+    setHasReplayAudio,
+    lastAudioResponseRef,
+    ttsAudioContextRef,
+    ttsSourceRef,
+    ttsAnalyserRef,
+  } = params;
+  return async (base64Audio: string, sampleRate: number) => {
+    lastAudioResponseRef.current = { audio: base64Audio, sampleRate };
+    setHasReplayAudio(true);
+    if (ttsMuted) {
+      setPlaybackState("muted");
+      setStatusMessage(t("voice.status.playbackMuted"));
+      return;
+    }
+    const browserWindow = getBrowserWindow();
+    if (browserWindow) {
+      const ctx = await ensurePlaybackContext();
+      if (!ctx) {
+        setPlaybackState("error");
+        setStatusMessage(t("voice.status.playbackNoAudioContext"));
+        return;
+      }
+      const pcm16 = decodeBase64Pcm16(base64Audio);
+      if (pcm16.length === 0) {
+        setPlaybackState("error");
+        setStatusMessage(t("voice.status.playbackEmptyBuffer"));
+        return;
+      }
+      releasePlaybackResources();
+      const audioBuffer = ctx.createBuffer(1, pcm16.length, sampleRate || 22050);
+      const channelData = audioBuffer.getChannelData(0);
+      for (let index = 0; index < pcm16.length; index += 1) {
+        channelData[index] = (pcm16[index] ?? 0) / 32768;
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      const ttsAnalyser = ctx.createAnalyser();
+      ttsAnalyser.fftSize = 512;
+      source.connect(ttsAnalyser);
+      ttsAnalyser.connect(ctx.destination);
+      ttsAnalyserRef.current = ttsAnalyser;
+      source.onended = () => {
+        try { source.disconnect(); } catch { /* ignore */ }
+        try { ttsAnalyser.disconnect(); } catch { /* ignore */ }
+        if (ttsSourceRef.current === source) {
+          setPlaybackState("idle");
+          ttsSourceRef.current = null;
+          ttsAnalyserRef.current = null;
+        }
+      };
+      ttsSourceRef.current = source;
+      setPlaybackState("playing");
+      setStatusMessage(t("voice.status.playbackPlaying"));
+      source.start();
+      return;
+    }
+    setPlaybackState("error");
+    setStatusMessage(t("voice.status.playbackNoAudioContext"));
+    setLastAudioSignal("error");
+    if (ttsAudioContextRef.current?.state === "closed") {
+      ttsAudioContextRef.current = null;
+    }
+  };
+}
+
+function createHandleAudioMessageHandler(params: {
+  t: Translator;
+  onTranscriptReady?: (text: string) => void;
+  playAudioResponse: (base64Audio: string, sampleRate: number) => Promise<void>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  setLastAudioSignal: Dispatch<SetStateAction<string>>;
+  setProcessingStatus: Dispatch<SetStateAction<string | null>>;
+  setTranscription: Dispatch<SetStateAction<string>>;
+  setResponse: Dispatch<SetStateAction<string>>;
+  setPlaybackState: Dispatch<SetStateAction<PlaybackState>>;
+}) {
+  const {
+    t,
+    onTranscriptReady,
+    playAudioResponse,
+    setStatusMessage,
+    setLastAudioSignal,
+    setProcessingStatus,
+    setTranscription,
+    setResponse,
+    setPlaybackState,
+  } = params;
+  return (data: Record<string, unknown>) => {
+    const messageType = toPrimitiveString(data.type) ?? "";
+    if (messageType === "recording_started") {
+      handleVoiceRecordingStarted(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      return;
+    }
+    if (messageType === "processing") {
+      handleVoiceProcessing(t, data, setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      return;
+    }
+    if (messageType === "transcription") {
+      handleVoiceTranscript(t, data, onTranscriptReady, setTranscription, setStatusMessage, setLastAudioSignal);
+      return;
+    }
+    if (messageType === "response_text") {
+      handleVoiceResponseText(data, setResponse, setLastAudioSignal);
+      return;
+    }
+    if (messageType === "audio_response") {
+      handleVoiceAudioResponse(data, playAudioResponse, setLastAudioSignal);
+      return;
+    }
+    if (messageType === "complete") {
+      handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      return;
+    }
+    if (messageType === "error") {
+      handleVoiceError(t, data, setPlaybackState, setStatusMessage, setLastAudioSignal);
+    }
+  };
+}
+
+function createReleaseAudioResourcesHandler(params: {
+  mediaRecorderRef: MutableRefObject<MediaRecorder | null>;
+  sourceNodeRef: MutableRefObject<MediaStreamAudioSourceNode | null>;
+  analyserRef: MutableRefObject<AnalyserNode | null>;
+  audioContextRef: MutableRefObject<AudioContext | null>;
+  mediaStreamRef: MutableRefObject<MediaStream | null>;
+}) {
+  const { mediaRecorderRef, sourceNodeRef, analyserRef, audioContextRef, mediaStreamRef } = params;
+  return () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore recorder shutdown races
+      }
+    }
+    mediaRecorderRef.current = null;
+    sourceNodeRef.current?.disconnect();
+    sourceNodeRef.current = null;
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    const audioContext = audioContextRef.current;
+    if (audioContext) {
+      audioContext.close().catch(() => {
+        // Ignore close errors when context is already shutting down.
+      });
+    }
+    audioContextRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  };
+}
+
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -1530,15 +1769,14 @@ export function VoiceCommandCenter({
     refreshTtsModelOptions,
   });
 
-  const releasePlaybackResources = useCallback(() => {
-    const src = ttsSourceRef.current;
-    const analyser = ttsAnalyserRef.current;
-    ttsSourceRef.current = null;
-    ttsAnalyserRef.current = null;
-    try { src?.stop(); } catch { /* ignore races with natural end */ }
-    try { src?.disconnect(); } catch { /* ignore */ }
-    try { analyser?.disconnect(); } catch { /* ignore */ }
-  }, []);
+  const releasePlaybackResources = useCallback(
+    () =>
+      createReleasePlaybackResourcesHandler({
+        ttsSourceRef,
+        ttsAnalyserRef,
+      })(),
+    [],
+  );
 
   const applyTtsModel = useCallback(
     (modelPath: string) =>
@@ -1563,102 +1801,33 @@ export function VoiceCommandCenter({
     ],
   );
 
-  const getMediaRecorderMimeType = useCallback(() => {
-    if (typeof MediaRecorder === "undefined") return "";
-    const candidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/ogg;codecs=opus",
-      "audio/ogg",
-    ];
-    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
-  }, []);
+  const getMediaRecorderMimeType = useCallback(() => createGetMediaRecorderMimeTypeHandler()(), []);
 
-  const ensurePlaybackContext = useCallback(async () => {
-    const browserWindow = getBrowserWindow();
-    if (!browserWindow) return null;
-    const AudioContextCtor = getAudioContextCtor(browserWindow);
-    if (!AudioContextCtor) return null;
-
-    let ctx = ttsAudioContextRef.current;
-
-    if (!ctx || ctx.state === "closed") {
-      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
-      if (ctx) ttsAudioContextRef.current = ctx;
-      return ctx;
-    }
-
-    if (ctx.state === "suspended" && !(await tryResumeAudioContext(ctx))) {
-      closeAudioContext(ctx);
-      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
-      if (ctx) ttsAudioContextRef.current = ctx;
-      return ctx;
-    }
-
-    if (ctx.state !== "running") {
-      closeAudioContext(ctx);
-      ctx = createPlaybackContext(AudioContextCtor, ttsSourceRef);
-      if (ctx) ttsAudioContextRef.current = ctx;
-    }
-
-    return ctx;
-  }, []);
+  const ensurePlaybackContext = useCallback(
+    () =>
+      createEnsurePlaybackContextHandler({
+        ttsAudioContextRef,
+        ttsSourceRef,
+      })(),
+    [],
+  );
 
   const playAudioResponse = useCallback(
-    async (base64Audio: string, sampleRate: number) => {
-      lastAudioResponseRef.current = { audio: base64Audio, sampleRate };
-      setHasReplayAudio(true);
-      if (ttsMuted) {
-        setPlaybackState("muted");
-        setStatusMessage(t("voice.status.playbackMuted"));
-        return;
-      }
-      const browserWindow = getBrowserWindow();
-      if (browserWindow) {
-        const ctx = await ensurePlaybackContext();
-        if (!ctx) {
-          setPlaybackState("error");
-          setStatusMessage(t("voice.status.playbackNoAudioContext"));
-          return;
-        }
-        const pcm16 = decodeBase64Pcm16(base64Audio);
-        if (pcm16.length === 0) {
-          setPlaybackState("error");
-          setStatusMessage(t("voice.status.playbackEmptyBuffer"));
-          return;
-        }
-        releasePlaybackResources();
-        const audioBuffer = ctx.createBuffer(1, pcm16.length, sampleRate || 22050);
-        const channelData = audioBuffer.getChannelData(0);
-        for (let index = 0; index < pcm16.length; index += 1) {
-          channelData[index] = (pcm16[index] ?? 0) / 32768;
-        }
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        const ttsAnalyser = ctx.createAnalyser();
-        ttsAnalyser.fftSize = 512;
-        source.connect(ttsAnalyser);
-        ttsAnalyser.connect(ctx.destination);
-        ttsAnalyserRef.current = ttsAnalyser;
-        source.onended = () => {
-          // Always clean up the graph nodes for this play
-          try { source.disconnect(); } catch { /* ignore */ }
-          try { ttsAnalyser.disconnect(); } catch { /* ignore */ }
-          if (ttsSourceRef.current === source) {
-            setPlaybackState("idle");
-            ttsSourceRef.current = null;
-            ttsAnalyserRef.current = null;
-          }
-        };
-        ttsSourceRef.current = source;
-        setPlaybackState("playing");
-        setStatusMessage(t("voice.status.playbackPlaying"));
-        source.start();
-        return;
-      }
-      setPlaybackState("error");
-      setStatusMessage(t("voice.status.playbackNoAudioContext"));
-    },
+    (base64Audio: string, sampleRate: number) =>
+      createPlayAudioResponseHandler({
+        ensurePlaybackContext,
+        releasePlaybackResources,
+        t,
+        ttsMuted,
+        setPlaybackState,
+        setStatusMessage,
+        setLastAudioSignal,
+        setHasReplayAudio,
+        lastAudioResponseRef,
+        ttsAudioContextRef,
+        ttsSourceRef,
+        ttsAnalyserRef,
+      })(base64Audio, sampleRate),
     [ensurePlaybackContext, releasePlaybackResources, t, ttsMuted],
   );
 
@@ -1672,36 +1841,18 @@ export function VoiceCommandCenter({
   }, [playAudioResponse, t]);
 
   const handleAudioMessage = useCallback(
-    (data: Record<string, unknown>) => {
-      const messageType = toPrimitiveString(data.type) ?? "";
-      if (messageType === "recording_started") {
-        handleVoiceRecordingStarted(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
-        return;
-      }
-      if (messageType === "processing") {
-        handleVoiceProcessing(t, data, setStatusMessage, setLastAudioSignal, setProcessingStatus);
-        return;
-      }
-      if (messageType === "transcription") {
-        handleVoiceTranscript(t, data, onTranscriptReady, setTranscription, setStatusMessage, setLastAudioSignal);
-        return;
-      }
-      if (messageType === "response_text") {
-        handleVoiceResponseText(data, setResponse, setLastAudioSignal);
-        return;
-      }
-      if (messageType === "audio_response") {
-        handleVoiceAudioResponse(data, playAudioResponse, setLastAudioSignal);
-        return;
-      }
-      if (messageType === "complete") {
-        handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
-        return;
-      }
-      if (messageType === "error") {
-        handleVoiceError(t, data, setPlaybackState, setStatusMessage, setLastAudioSignal);
-      }
-    },
+    (data: Record<string, unknown>) =>
+      createHandleAudioMessageHandler({
+        t,
+        onTranscriptReady,
+        playAudioResponse,
+        setStatusMessage,
+        setLastAudioSignal,
+        setProcessingStatus,
+        setTranscription,
+        setResponse,
+        setPlaybackState,
+      })(data),
     [onTranscriptReady, playAudioResponse, t],
   );
 
@@ -1709,29 +1860,17 @@ export function VoiceCommandCenter({
     mediaRecorderRef.current = null;
   }, []);
 
-  const releaseAudioResources = useCallback(() => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {
-        // ignore recorder shutdown races
-      }
-    }
-    mediaRecorderRef.current = null;
-    sourceNodeRef.current?.disconnect();
-    sourceNodeRef.current = null;
-    analyserRef.current?.disconnect();
-    analyserRef.current = null;
-    const audioContext = audioContextRef.current;
-    if (audioContext) {
-      audioContext.close().catch(() => {
-        // Ignore close errors when context is already shutting down.
-      });
-    }
-    audioContextRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaStreamRef.current = null;
-  }, []);
+  const releaseAudioResources = useCallback(
+    () =>
+      createReleaseAudioResourcesHandler({
+        mediaRecorderRef,
+        sourceNodeRef,
+        analyserRef,
+        audioContextRef,
+        mediaStreamRef,
+      })(),
+    [],
+  );
 
   useEffect(() => {
     if (debugDryRunRequested) {

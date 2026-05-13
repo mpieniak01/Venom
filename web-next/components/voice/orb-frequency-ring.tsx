@@ -1,6 +1,6 @@
 "use client";
 
-import { RefObject, useEffect, useRef } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
 
 type OrbFrequencyRingProps = Readonly<{
   analyserRef: RefObject<AnalyserNode | null>;
@@ -10,29 +10,23 @@ type OrbFrequencyRingProps = Readonly<{
 }>;
 
 export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFrequencyRingProps) {
-  const pathRef = useRef<SVGPathElement | null>(null);
-  const rafRef = useRef<number | null>(null);
   const bufferRef = useRef<Uint8Array | null>(null);
+  const [pathData, setPathData] = useState("");
 
   useEffect(() => {
-    if (!active) {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-      if (pathRef.current) pathRef.current.setAttribute("d", "");
-      return;
-    }
+    if (!active) return;
 
-    const N = 48;
+    const N = 24;
     const cx = size / 2;
     const cy = size / 2;
     const baseR = size * 0.415;
     const maxDisp = size * 0.095;
+    const SAMPLE_MS = 80;
 
     const draw = () => {
       const analyser = analyserRef.current;
 
       if (!analyser) {
-        rafRef.current = requestAnimationFrame(draw);
         return;
       }
 
@@ -55,16 +49,13 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
       }
       d += " Z";
 
-      if (pathRef.current) pathRef.current.setAttribute("d", d);
-      rafRef.current = requestAnimationFrame(draw);
+      setPathData(d);
     };
 
-    rafRef.current = requestAnimationFrame(draw);
+    draw();
+    const intervalId = globalThis.setInterval(draw, SAMPLE_MS);
     return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      globalThis.clearInterval(intervalId);
     };
   }, [active, analyserRef, size]);
 
@@ -78,7 +69,7 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
       aria-hidden="true"
     >
       <path
-        ref={pathRef}
+        d={pathData}
         fill="none"
         stroke={color}
         strokeWidth="1.5"

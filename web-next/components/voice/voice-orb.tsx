@@ -114,9 +114,16 @@ function getOrbGlowShadow(
 
   const [c1, c2, c3] = ORB_GLOW[state];
   const level = Math.min(1, audioLevel);
-  const r1 = (16 + level * 18).toFixed(0);
-  const r2 = (30 + level * 32).toFixed(0);
-  const r3 = (52 + level * 62).toFixed(0);
+  const calm = state === "ready" || state === "complete";
+  const base1 = calm ? 10 : 16;
+  const base2 = calm ? 20 : 30;
+  const base3 = calm ? 34 : 52;
+  const scale1 = calm ? 12 : 18;
+  const scale2 = calm ? 22 : 32;
+  const scale3 = calm ? 40 : 62;
+  const r1 = (base1 + level * scale1).toFixed(0);
+  const r2 = (base2 + level * scale2).toFixed(0);
+  const r3 = (base3 + level * scale3).toFixed(0);
   return `0 0 ${r1}px ${c1}, 0 0 ${r2}px ${c2}, 0 0 ${r3}px ${c3}`;
 }
 
@@ -302,21 +309,22 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
     const MIN_R  = ORB_R * 1.08; // just outside the orb edge
     const MAX_R  = ORB_R * 1.95; // fully loaded: arcs nearly double the orb radius
     const PHASES = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]; // 90° stagger per arc
+    const TICK_MS = 120;
 
     currents.current  = [MIN_R, MIN_R, MIN_R, MIN_R];
     prevRadii.current = [MIN_R, MIN_R, MIN_R, MIN_R];
 
-    let raf: number;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    const tick = (now: number) => {
-      const t    = now / 1000;
+    const tick = () => {
+      const t    = Date.now() / 1000;
       const m    = metricsRef.current;
       const vals = [m.cpu, m.gpu, m.vram, m.ram];
 
       currents.current = currents.current.map((c, i) => {
         const pct = Number.isFinite(vals[i] ?? Number.NaN) ? (vals[i] as number) : 0;
         const tgt = MIN_R + (pct / 100) * (MAX_R - MIN_R);
-        return c + (tgt - c) * 0.06;
+        return c + (tgt - c) * 0.12;
       });
 
       currents.current.forEach((r, i) => {
@@ -370,18 +378,21 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
             ripple.setAttribute("d",            arcPath(cx, cy, Math.max(MIN_R, rOuter), def.startDeg, def.endDeg));
             ripple.setAttribute("stroke-width", "2");
             ripple.setAttribute("opacity",      String((rp * 0.65).toFixed(3)));
-            rippleSt.current[i] = Math.max(0, rp - 0.018);
+            rippleSt.current[i] = Math.max(0, rp - 0.05);
           } else {
             ripple.setAttribute("opacity", "0");
           }
         }
       });
-
-      raf = requestAnimationFrame(tick);
     };
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    tick();
+    intervalId = globalThis.setInterval(tick, TICK_MS);
+    return () => {
+      if (intervalId !== null) {
+        globalThis.clearInterval(intervalId);
+      }
+    };
   }, [colorMode, metricsRef, orbSize]);
 
   return (
@@ -400,7 +411,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
     >
       <defs>
         <filter id="orb-arc-glow" x="-200%" y="-200%" width="500%" height="500%">
-          <feGaussianBlur stdDeviation="4.5" in="SourceGraphic" />
+          <feGaussianBlur stdDeviation="3.0" in="SourceGraphic" />
         </filter>
       </defs>
 
@@ -521,6 +532,7 @@ export function VoiceOrb({
   const rippleColors = RIPPLE_COLORS[effectiveState];
   const particleColor = PARTICLE_COLORS[effectiveState] ?? "rgba(255,255,255,0.5)";
   const fftColor = FFT_RING_COLOR[effectiveState] ?? "transparent";
+  const glowClassName = effectiveState === "ready" || effectiveState === "complete" ? "blur-xl" : "blur-2xl";
 
   return (
     <div
@@ -549,7 +561,7 @@ export function VoiceOrb({
         )}
 
         {cfg.glow && (
-          <div className={`absolute inset-0 rounded-full blur-2xl transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
+          <div className={`absolute inset-0 rounded-full ${glowClassName} transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
         )}
 
         {showFreqRing && activeAnalyser && (

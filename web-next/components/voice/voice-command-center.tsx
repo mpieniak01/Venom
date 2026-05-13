@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,7 @@ import {
 import { usePageVisibility } from "@/components/voice/use-page-visibility";
 import { useOrbActivityWindow } from "@/components/voice/use-orb-activity-window";
 import { useVoiceDebugMode } from "@/components/voice/use-voice-debug-mode";
+import type { VoiceDebugSnapshot } from "@/components/voice/use-voice-debug-mode";
 
 export type AudioStatus = {
   enabled: boolean;
@@ -1116,18 +1117,30 @@ function useVoiceCommandCenterTtsModelRefresh(params: {
   }, [debugDryRunRequested, refreshAudioStatus, refreshTtsModelOptions]);
 }
 
-function buildTtsModelUpdateStatus(
-  t: Translator,
-  debugDryRunRequested: boolean,
-  modelPath: string,
-  setSelectedTtsModelPath: Dispatch<SetStateAction<string>>,
-  setStatusMessage: Dispatch<SetStateAction<string | null>>,
-  setTtsModelChanging: Dispatch<SetStateAction<boolean>>,
-  refreshAudioStatus: () => Promise<void>,
-  refreshTtsModelOptions: () => Promise<void>,
-  releasePlaybackResources: () => void,
-  closeCurrentWs: () => void,
-) {
+function buildTtsModelUpdateStatus(params: {
+  t: Translator;
+  debugDryRunRequested: boolean;
+  modelPath: string;
+  setSelectedTtsModelPath: Dispatch<SetStateAction<string>>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  setTtsModelChanging: Dispatch<SetStateAction<boolean>>;
+  refreshAudioStatus: () => Promise<void>;
+  refreshTtsModelOptions: () => Promise<void>;
+  releasePlaybackResources: () => void;
+  closeCurrentWs: () => void;
+}) {
+  const {
+    t,
+    debugDryRunRequested,
+    modelPath,
+    setSelectedTtsModelPath,
+    setStatusMessage,
+    setTtsModelChanging,
+    refreshAudioStatus,
+    refreshTtsModelOptions,
+    releasePlaybackResources,
+    closeCurrentWs,
+  } = params;
   return async () => {
     if (!modelPath) return;
     if (debugDryRunRequested) {
@@ -1169,6 +1182,166 @@ function buildTtsModelUpdateStatus(
     } finally {
       setTtsModelChanging(false);
     }
+  };
+}
+
+function createSendControlMessage(params: {
+  wsRef: RefObject<WebSocket | null>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  t: Translator;
+}) {
+  const { wsRef, setStatusMessage, t } = params;
+  return (payload: Record<string, unknown>): boolean => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+      return true;
+    }
+    setStatusMessage(t("voice.status.channelOffline"));
+    return false;
+  };
+}
+
+function createStopRecordingHandler(params: {
+  debugDryRunRequested: boolean;
+  debugMode: VoiceDebugSnapshot;
+  recordingStartPendingRef: MutableRefObject<boolean>;
+  stopRequestedRef: MutableRefObject<boolean>;
+  recordingRef: MutableRefObject<boolean>;
+  mediaRecorderRef: RefObject<MediaRecorder | null>;
+  setRecording: Dispatch<SetStateAction<boolean>>;
+  setLastAudioSignal: Dispatch<SetStateAction<string>>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  sendControlMessage: (payload: Record<string, unknown>) => boolean;
+  releaseAudioResources: () => void;
+  t: Translator;
+}) {
+  const {
+    debugDryRunRequested,
+    debugMode,
+    recordingStartPendingRef,
+    stopRequestedRef,
+    recordingRef,
+    mediaRecorderRef,
+    setRecording,
+    setLastAudioSignal,
+    setStatusMessage,
+    sendControlMessage,
+    releaseAudioResources,
+    t,
+  } = params;
+  return () => {
+    if (debugDryRunRequested) {
+      debugMode.restart();
+      return;
+    }
+    if (recordingStartPendingRef.current) {
+      stopRequestedRef.current = true;
+      setStatusMessage(t("voice.controls.recording"));
+      return;
+    }
+    if (!recordingRef.current) {
+      return;
+    }
+    recordingRef.current = false;
+    stopRequestedRef.current = false;
+    setRecording(false);
+    setLastAudioSignal("recording:stop");
+    setStatusMessage(t("voice.status.recordingEnded"));
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") {
+      recorder.stop();
+    } else {
+      sendControlMessage({ command: "stop_recording" });
+      releaseAudioResources();
+    }
+  };
+}
+
+function createStartRecordingHandler(params: {
+  debugDryRunRequested: boolean;
+  debugMode: VoiceDebugSnapshot;
+  t: Translator;
+  audioEnabled: boolean;
+  isVoiceModeEnabled: boolean;
+  wsRef: RefObject<WebSocket | null>;
+  audioContextRef: RefObject<AudioContext | null>;
+  sourceNodeRef: RefObject<MediaStreamAudioSourceNode | null>;
+  analyserRef: RefObject<AnalyserNode | null>;
+  mediaRecorderRef: RefObject<MediaRecorder | null>;
+  mediaStreamRef: RefObject<MediaStream | null>;
+  recordingRef: MutableRefObject<boolean>;
+  recordingStartPendingRef: MutableRefObject<boolean>;
+  stopRequestedRef: MutableRefObject<boolean>;
+  setRecording: Dispatch<SetStateAction<boolean>>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  setAudioChunkCount: Dispatch<SetStateAction<number>>;
+  setLastAudioSignal: Dispatch<SetStateAction<string>>;
+  releaseRecordingResources: () => void;
+  releaseAudioResources: () => void;
+  sendControlMessage: (payload: Record<string, unknown>) => boolean;
+  getMediaRecorderMimeType: () => string;
+  ensurePlaybackContext: () => Promise<AudioContext | null>;
+  stopRecording: () => void;
+  activeWindow: Window | null;
+}) {
+  const {
+    debugDryRunRequested,
+    debugMode,
+    t,
+    audioEnabled,
+    isVoiceModeEnabled,
+    wsRef,
+    audioContextRef,
+    sourceNodeRef,
+    analyserRef,
+    mediaRecorderRef,
+    mediaStreamRef,
+    recordingRef,
+    recordingStartPendingRef,
+    stopRequestedRef,
+    setRecording,
+    setStatusMessage,
+    setAudioChunkCount,
+    setLastAudioSignal,
+    releaseRecordingResources,
+    releaseAudioResources,
+    sendControlMessage,
+    getMediaRecorderMimeType,
+    ensurePlaybackContext,
+    stopRecording,
+    activeWindow,
+  } = params;
+  return async () => {
+    if (debugDryRunRequested) {
+      debugMode.restart();
+      return;
+    }
+    return startVoiceCapture({
+      t,
+      audioEnabled,
+      isVoiceModeEnabled,
+      wsRef,
+      audioContextRef,
+      sourceNodeRef,
+      analyserRef,
+      mediaRecorderRef,
+      mediaStreamRef,
+      recordingRef,
+      recordingStartPendingRef,
+      stopRequestedRef,
+      setRecording,
+      setStatusMessage,
+      setAudioChunkCount,
+      setLastAudioSignal,
+      releaseRecordingResources,
+      releaseAudioResources,
+      sendControlMessage,
+      getMediaRecorderMimeType,
+      ensurePlaybackContext,
+      stopRecording,
+      activeWindow,
+    });
   };
 }
 
@@ -1369,7 +1542,7 @@ export function VoiceCommandCenter({
 
   const applyTtsModel = useCallback(
     (modelPath: string) =>
-      buildTtsModelUpdateStatus(
+      buildTtsModelUpdateStatus({
         t,
         debugDryRunRequested,
         modelPath,
@@ -1379,8 +1552,8 @@ export function VoiceCommandCenter({
         refreshAudioStatus,
         refreshTtsModelOptions,
         releasePlaybackResources,
-        () => wsRef.current?.close(),
-      )(),
+        closeCurrentWs: () => wsRef.current?.close(),
+      })(),
     [
       debugDryRunRequested,
       refreshAudioStatus,
@@ -1650,51 +1823,40 @@ export function VoiceCommandCenter({
     ],
   );
 
-  const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(payload));
-      return true;
-    } else {
-      setStatusMessage(t("voice.status.channelOffline"));
-    }
-    return false;
-  }, [t]);
+  const sendControlMessage = useCallback(
+    (payload: Record<string, unknown>) =>
+      createSendControlMessage({
+        wsRef,
+        setStatusMessage,
+        t,
+      })(payload),
+    [t],
+  );
 
-  const stopRecording = useCallback(() => {
-    if (debugDryRunRequested) {
-      debugMode.restart();
-      return;
-    }
-    if (recordingStartPendingRef.current) {
-      stopRequestedRef.current = true;
-      setStatusMessage(t("voice.controls.recording"));
-      return;
-    }
-    if (!recordingRef.current) {
-      return;
-    }
-    recordingRef.current = false;
-    stopRequestedRef.current = false;
-    setRecording(false);
-    setLastAudioSignal("recording:stop");
-    setStatusMessage(t("voice.status.recordingEnded"));
-    const recorder = mediaRecorderRef.current;
-    if (recorder?.state === "recording") {
-      recorder.stop();
-    } else {
-      sendControlMessage({ command: "stop_recording" });
-      releaseAudioResources();
-    }
-  }, [debugDryRunRequested, debugMode, releaseAudioResources, sendControlMessage, t]);
+  const stopRecording = useCallback(
+    () =>
+      createStopRecordingHandler({
+        debugDryRunRequested,
+        debugMode,
+        recordingStartPendingRef,
+        stopRequestedRef,
+        recordingRef,
+        mediaRecorderRef,
+        setRecording,
+        setLastAudioSignal,
+        setStatusMessage,
+        sendControlMessage,
+        releaseAudioResources,
+        t,
+      })(),
+    [debugDryRunRequested, debugMode, releaseAudioResources, sendControlMessage, t],
+  );
 
   const startRecording = useCallback(
-    async () => {
-      if (debugDryRunRequested) {
-        debugMode.restart();
-        return;
-      }
-      return startVoiceCapture({
+    () =>
+      createStartRecordingHandler({
+        debugDryRunRequested,
+        debugMode,
         t,
         audioEnabled,
         isVoiceModeEnabled,
@@ -1718,8 +1880,7 @@ export function VoiceCommandCenter({
         ensurePlaybackContext,
         stopRecording,
         activeWindow: getBrowserWindow(),
-      });
-    },
+      })(),
     [
       debugDryRunRequested,
       debugMode,

@@ -46,16 +46,11 @@ export function OrbZone({
   const orbWrapperClass = plainOrbWrapper
     ? "flex w-[360px] max-w-full aspect-square items-center justify-center rounded-2xl border border-dashed border-white/10 bg-transparent py-8 px-10 overflow-visible"
     : "flex w-[360px] max-w-full aspect-square items-center justify-center rounded-2xl box-muted py-8 px-10 overflow-visible";
-  let diagnosticLabel: ReactNode = null;
-  if (diagnosticMode === "off") {
-    diagnosticLabel = null;
-  } else {
-    diagnosticLabel = (
-      <div className="mt-3 text-center text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-        {diagnosticMode}
-      </div>
-    );
-  }
+  const diagnosticLabel: ReactNode = diagnosticMode === "off" ? null : (
+    <div className="mt-3 text-center text-[10px] uppercase tracking-[0.28em] text-zinc-500">
+      {diagnosticMode}
+    </div>
+  );
 
   return (
     <div className="relative flex w-full flex-col overflow-visible" style={{ minHeight: "620px" }}>

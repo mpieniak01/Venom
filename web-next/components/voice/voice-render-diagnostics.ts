@@ -144,16 +144,6 @@ export function resolveVoiceRenderDiagnostics(
         effectOverrides: {},
       };
     case "orb_static_core":
-      return {
-        mode,
-        showOrbZone: true,
-        showOrb: true,
-        showDialogs: false,
-        forceReadyState: true,
-        plainOrbWrapper: true,
-        metricsEnabled: false,
-        effectOverrides: {},
-      };
     case "orb_ready_glow":
       return {
         mode,

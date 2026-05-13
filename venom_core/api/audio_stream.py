@@ -1028,101 +1028,15 @@ class AudioStreamHandler:
                 },
             )
 
-            if not transcription:
-                await self._send_json(
-                    connection_id,
-                    {"type": "transcription", "text": "", "confidence": 0.0},
-                )
-                return
-
-            # Wyślij transkrypcję do klienta
-            await self._send_json(
-                connection_id,
-                {"type": "transcription", "text": transcription, "confidence": 1.0},
+            await self._run_whisper_llm_pipeline(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                transcription=transcription,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                empty_agent_response_log_suffix="",
             )
-
-            # Przetwórz komendę przez agenta
-            if operator_agent:
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "thinking"}
-                )
-
-                agent_started_at = time.perf_counter()
-                voice_context = _build_voice_session_insights_payload(
-                    transcript=transcription,
-                    response="",
-                    voice_mode=self._connection_voice_mode(connection_id),
-                    pipeline_id="whisper_llm_piper",
-                    **_gemma4_audio_voice_flags(),
-                    raw_thinking_available=False,
-                )
-                response_text = await _invoke_operator_agent(
-                    operator_agent,
-                    transcription,
-                    mode=self._connection_voice_mode(connection_id),
-                    voice_context=voice_context,
-                )
-                timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "response_text": response_text,
-                        "response_length": len(response_text or ""),
-                        **_build_voice_session_insights_payload(
-                            transcript=transcription,
-                            response=response_text,
-                            voice_mode=self._connection_voice_mode(connection_id),
-                            pipeline_id="whisper_llm_piper",
-                            **_gemma4_audio_voice_flags(),
-                            raw_thinking_available=False,
-                        ),
-                        "timings_ms": timings_ms,
-                    },
-                )
-
-                if not response_text:
-                    logger.warning(
-                        "Agent zwrócił pustą odpowiedź dla connection_id=%s",
-                        connection_id,
-                    )
-                    await self._send_json(
-                        connection_id,
-                        {
-                            "type": "error",
-                            "message": "Agent returned empty response. Check runtime status.",
-                        },
-                    )
-                    return
-
-                # Wyślij tekst odpowiedzi
-                await self._send_json(
-                    connection_id, {"type": "response_text", "text": response_text}
-                )
-
-                # TTS
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "tts"}
-                )
-
-                tts_started_at = time.perf_counter()
-                audio_response = await self.audio_engine.speak(response_text)
-                timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
-                timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "timings_ms": timings_ms,
-                        "runtime": self._build_runtime_metadata(operator_agent),
-                    },
-                )
-
-                if audio_response is not None:
-                    # Wyślij audio do odtworzenia
-                    await self._send_audio(connection_id, audio_response)
-
-            # Gotowe
-            await self._send_json(connection_id, {"type": "complete"})
 
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania bufora audio: {e}")
@@ -1216,93 +1130,116 @@ class AudioStreamHandler:
                 },
             )
 
-            if not transcription:
-                await self._send_json(
-                    connection_id,
-                    {"type": "transcription", "text": "", "confidence": 0.0},
-                )
-                return
+            await self._run_whisper_llm_pipeline(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                transcription=transcription,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                empty_agent_response_log_suffix=" (encoded)",
+            )
+        except Exception as e:
+            logger.error(f"Błąd podczas przetwarzania encoded audio: {e}")
+            await self._send_json(connection_id, {"type": "error", "message": str(e)})
 
+    async def _run_whisper_llm_pipeline(
+        self,
+        *,
+        connection_id: int,
+        session_dir: Path,
+        transcription: str,
+        timings_ms: dict[str, float],
+        total_started_at: float,
+        operator_agent: object | None,
+        empty_agent_response_log_suffix: str = "",
+    ) -> None:
+        """Run shared whisper->agent->tts pipeline for PCM and encoded audio."""
+        if not transcription:
             await self._send_json(
                 connection_id,
-                {"type": "transcription", "text": transcription, "confidence": 1.0},
+                {"type": "transcription", "text": "", "confidence": 0.0},
             )
+            return
 
-            if operator_agent:
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "thinking"}
-                )
-                agent_started_at = time.perf_counter()
-                voice_context = _build_voice_session_insights_payload(
+        await self._send_json(
+            connection_id,
+            {"type": "transcription", "text": transcription, "confidence": 1.0},
+        )
+        if not operator_agent:
+            await self._send_json(connection_id, {"type": "complete"})
+            return
+
+        await self._send_json(
+            connection_id, {"type": "processing", "status": "thinking"}
+        )
+        agent_started_at = time.perf_counter()
+        voice_context = _build_voice_session_insights_payload(
+            transcript=transcription,
+            response="",
+            voice_mode=self._connection_voice_mode(connection_id),
+            pipeline_id="whisper_llm_piper",
+            **_gemma4_audio_voice_flags(),
+            raw_thinking_available=False,
+        )
+        response_text = await _invoke_operator_agent(
+            operator_agent,
+            transcription,
+            mode=self._connection_voice_mode(connection_id),
+            voice_context=voice_context,
+        )
+        timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                "pipeline_id": "whisper_llm_piper",
+                "response_text": response_text,
+                "response_length": len(response_text or ""),
+                **_build_voice_session_insights_payload(
                     transcript=transcription,
-                    response="",
+                    response=response_text,
                     voice_mode=self._connection_voice_mode(connection_id),
                     pipeline_id="whisper_llm_piper",
                     **_gemma4_audio_voice_flags(),
                     raw_thinking_available=False,
-                )
-                response_text = await _invoke_operator_agent(
-                    operator_agent,
-                    transcription,
-                    mode=self._connection_voice_mode(connection_id),
-                    voice_context=voice_context,
-                )
-                timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "response_text": response_text,
-                        "response_length": len(response_text or ""),
-                        **_build_voice_session_insights_payload(
-                            transcript=transcription,
-                            response=response_text,
-                            voice_mode=self._connection_voice_mode(connection_id),
-                            pipeline_id="whisper_llm_piper",
-                            **_gemma4_audio_voice_flags(),
-                            raw_thinking_available=False,
-                        ),
-                        "timings_ms": timings_ms,
-                    },
-                )
-                if not response_text:
-                    logger.warning(
-                        "Agent zwrócił pustą odpowiedź dla connection_id=%s (encoded)",
-                        connection_id,
-                    )
-                    await self._send_json(
-                        connection_id,
-                        {
-                            "type": "error",
-                            "message": "Agent returned empty response. Check runtime status.",
-                        },
-                    )
-                    return
+                ),
+                "timings_ms": timings_ms,
+            },
+        )
+        if not response_text:
+            logger.warning(
+                "Agent zwrócił pustą odpowiedź dla connection_id=%s%s",
+                connection_id,
+                empty_agent_response_log_suffix,
+            )
+            await self._send_json(
+                connection_id,
+                {
+                    "type": "error",
+                    "message": "Agent returned empty response. Check runtime status.",
+                },
+            )
+            return
 
-                await self._send_json(
-                    connection_id, {"type": "response_text", "text": response_text}
-                )
-                await self._send_json(
-                    connection_id, {"type": "processing", "status": "tts"}
-                )
-                tts_started_at = time.perf_counter()
-                audio_response = await self.audio_engine.speak(response_text)
-                timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
-                timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "timings_ms": timings_ms,
-                        "runtime": self._build_runtime_metadata(operator_agent),
-                    },
-                )
-                if audio_response is not None:
-                    await self._send_audio(connection_id, audio_response)
+        await self._send_json(
+            connection_id, {"type": "response_text", "text": response_text}
+        )
+        await self._send_json(connection_id, {"type": "processing", "status": "tts"})
+        tts_started_at = time.perf_counter()
+        audio_response = await self.audio_engine.speak(response_text)
+        timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
+        timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                "timings_ms": timings_ms,
+                "runtime": self._build_runtime_metadata(operator_agent),
+            },
+        )
+        if audio_response is not None:
+            await self._send_audio(connection_id, audio_response)
 
-            await self._send_json(connection_id, {"type": "complete"})
-        except Exception as e:
-            logger.error(f"Błąd podczas przetwarzania encoded audio: {e}")
-            await self._send_json(connection_id, {"type": "error", "message": str(e)})
+        await self._send_json(connection_id, {"type": "complete"})
 
     def _persist_encoded_voice_session(
         self,

@@ -120,6 +120,26 @@ export function Gemma4RuntimeControlInner({
     localTokens === "" ? String(status?.params.max_new_tokens ?? 128) : localTokens;
   const effectiveCache =
     localCache === null ? (status?.params.cache_implementation ?? "") : localCache;
+  const responseShapingToggles = [
+    {
+      label: t("voice.daemon.reasoningSummary"),
+      checked: effectiveReasoningSummary,
+      set: setLocalReasoningSummary,
+      ariaLabel: t("voice.daemon.reasoningSummary"),
+    },
+    {
+      label: t("voice.daemon.emotionDetection"),
+      checked: effectiveEmotionDetection,
+      set: setLocalEmotionDetection,
+      ariaLabel: t("voice.daemon.emotionDetection"),
+    },
+    {
+      label: t("voice.daemon.emotionResponseStyle"),
+      checked: effectiveEmotionResponseStyle,
+      set: setLocalEmotionResponseStyle,
+      ariaLabel: t("voice.daemon.emotionResponseStyle"),
+    },
+  ] as const;
 
   const hasLocalChanges =
     localThinking !== null ||
@@ -250,42 +270,20 @@ export function Gemma4RuntimeControlInner({
 
         {/* Reasoning / emotion shaping */}
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <label className="text-xs text-zinc-400">{t("voice.daemon.reasoningSummary")}</label>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={effectiveReasoningSummary}
-                onCheckedChange={(v) => setLocalReasoningSummary(v)}
-                disabled={busy}
-                aria-label={t("voice.daemon.reasoningSummary")}
-              />
-              <ToggleStateLabel enabled={effectiveReasoningSummary} />
+          {responseShapingToggles.map((toggle) => (
+            <div key={toggle.ariaLabel} className="flex items-center justify-between gap-2">
+              <label className="text-xs text-zinc-400">{toggle.label}</label>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={toggle.checked}
+                  onCheckedChange={(value) => toggle.set(value)}
+                  disabled={busy}
+                  aria-label={toggle.ariaLabel}
+                />
+                <ToggleStateLabel enabled={toggle.checked} />
+              </div>
             </div>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <label className="text-xs text-zinc-400">{t("voice.daemon.emotionDetection")}</label>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={effectiveEmotionDetection}
-                onCheckedChange={(v) => setLocalEmotionDetection(v)}
-                disabled={busy}
-                aria-label={t("voice.daemon.emotionDetection")}
-              />
-              <ToggleStateLabel enabled={effectiveEmotionDetection} />
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <label className="text-xs text-zinc-400">{t("voice.daemon.emotionResponseStyle")}</label>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={effectiveEmotionResponseStyle}
-                onCheckedChange={(v) => setLocalEmotionResponseStyle(v)}
-                disabled={busy}
-                aria-label={t("voice.daemon.emotionResponseStyle")}
-              />
-              <ToggleStateLabel enabled={effectiveEmotionResponseStyle} />
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* Max tokens */}

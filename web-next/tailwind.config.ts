@@ -45,7 +45,7 @@ const config: Config = {
         },
         "orb-ripple": {
           "0%": { transform: "scale(1)", opacity: "0.55" },
-          "100%": { transform: "scale(2.6)", opacity: "0" },
+          "100%": { transform: "scale(2.15)", opacity: "0" },
         },
         "orb-blob": {
           "0%, 100%": { borderRadius: "60% 40% 70% 30% / 50% 60% 40% 70%" },
@@ -74,7 +74,7 @@ const config: Config = {
       animation: {
         "pulse-signal": "pulse-signal 1.6s ease-in-out infinite",
         "orb-thinking": "orb-thinking 2.4s ease-in-out infinite",
-        "orb-ripple": "orb-ripple 1.9s ease-out infinite",
+        "orb-ripple": "orb-ripple 1.55s ease-out infinite",
         "orb-blob": "orb-blob 3.2s ease-in-out infinite",
         "orb-flash": "orb-flash 0.32s ease-out forwards",
         "orb-burst": "orb-burst 0.58s ease-out forwards",

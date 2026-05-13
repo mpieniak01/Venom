@@ -18,11 +18,6 @@ const BASE_CONFIG: OrbEffectsConfig = {
   coreTexture: true,
   particles: true,
   stateLabel: true,
-  orb3D: true,
-  bloom: true,
-  chromaticAberration: true,
-  iridescence: true,
-  volumetricLights: true,
   orbMetricsBars: true,
 };
 
@@ -65,7 +60,6 @@ describe("voice render diagnostics", () => {
     assert.equal(config.glow, false);
     assert.equal(config.coreTexture, false);
     assert.equal(config.particles, false);
-    assert.equal(config.orb3D, false);
     assert.equal(config.orbMetricsBars, false);
     assert.equal(config.stateLabel, true);
   });
@@ -78,7 +72,6 @@ describe("voice render diagnostics", () => {
     assert.equal(config.glow, true);
     assert.equal(config.frequencyRing, false);
     assert.equal(config.particles, false);
-    assert.equal(config.orb3D, false);
     assert.equal(config.orbMetricsBars, false);
   });
 

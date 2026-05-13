@@ -43,11 +43,6 @@ const EFFECT_QUERY_KEYS: Record<keyof OrbEffectsConfig, string> = {
   coreTexture: "voiceFxCoreTexture",
   particles: "voiceFxParticles",
   stateLabel: "voiceFxStateLabel",
-  orb3D: "voiceFx3D",
-  bloom: "voiceFxBloom",
-  chromaticAberration: "voiceFxChromaticAberration",
-  iridescence: "voiceFxIridescence",
-  volumetricLights: "voiceFxVolumetricLights",
   orbMetricsBars: "voiceFxMetrics",
 };
 
@@ -193,11 +188,6 @@ export function applyOrbDiagnosticProfile(
       frequencyRing: false,
       coreTexture: false,
       particles: false,
-      orb3D: false,
-      bloom: false,
-      chromaticAberration: false,
-      iridescence: false,
-      volumetricLights: false,
       orbMetricsBars: false,
       ...effectOverrides,
     };
@@ -213,11 +203,6 @@ export function applyOrbDiagnosticProfile(
       frequencyRing: false,
       coreTexture: false,
       particles: false,
-      orb3D: false,
-      bloom: false,
-      chromaticAberration: false,
-      iridescence: false,
-      volumetricLights: false,
       orbMetricsBars: false,
       ...effectOverrides,
     };
@@ -226,7 +211,6 @@ export function applyOrbDiagnosticProfile(
   if (mode === "full_ready") {
     return {
       ...config,
-      orb3D: false,
       orbMetricsBars: false,
       ...effectOverrides,
     };

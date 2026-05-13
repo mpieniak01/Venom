@@ -12,12 +12,6 @@ export type OrbEffectsConfig = {
   coreTexture: boolean;
   particles: boolean;
   stateLabel: boolean;
-  // 3D mode (PR 207) — replaces CSS equivalents when true
-  orb3D: boolean;
-  bloom: boolean;
-  chromaticAberration: boolean;
-  iridescence: boolean;
-  volumetricLights: boolean;
   // PR 208B — live system metrics bars radiating from orb center
   orbMetricsBars: boolean;
 };
@@ -31,11 +25,6 @@ const ALL_OFF: OrbEffectsConfig = {
   coreTexture: false,
   particles: false,
   stateLabel: false,
-  orb3D: false,
-  bloom: false,
-  chromaticAberration: false,
-  iridescence: false,
-  volumetricLights: false,
   orbMetricsBars: false,
 };
 
@@ -48,11 +37,6 @@ const MINIMAL_PROFILE: OrbEffectsConfig = {
   coreTexture: false,
   particles: false,
   stateLabel: true,
-  orb3D: false,
-  bloom: false,
-  chromaticAberration: false,
-  iridescence: false,
-  volumetricLights: false,
   orbMetricsBars: false,
 };
 
@@ -75,12 +59,6 @@ export function useOrbEffectsConfig(): OrbEffectsConfig {
       coreTexture:         !isOff(process.env.NEXT_PUBLIC_ORB_CORE_TEXTURE),
       particles:           !isOff(process.env.NEXT_PUBLIC_ORB_PARTICLES),
       stateLabel:          !isOff(process.env.NEXT_PUBLIC_ORB_STATE_LABEL),
-      // 3D effects — orb3D defaults to false (opt-in)
-      orb3D:               process.env.NEXT_PUBLIC_ORB_3D === "true",
-      bloom:               !isOff(process.env.NEXT_PUBLIC_ORB_BLOOM),
-      chromaticAberration: !isOff(process.env.NEXT_PUBLIC_ORB_CHROMATIC_ABERRATION),
-      iridescence:         !isOff(process.env.NEXT_PUBLIC_ORB_IRIDESCENCE),
-      volumetricLights:    !isOff(process.env.NEXT_PUBLIC_ORB_VOLUMETRIC_LIGHTS),
       // PR 208B — metrics bars default to false (opt-in)
       orbMetricsBars:      process.env.NEXT_PUBLIC_ORB_METRICS_BARS === "true",
     };
@@ -89,7 +67,6 @@ export function useOrbEffectsConfig(): OrbEffectsConfig {
       return {
         ...baseConfig,
         ...MINIMAL_PROFILE,
-        orb3D: baseConfig.orb3D,
       };
     }
     if (profile === "full") {

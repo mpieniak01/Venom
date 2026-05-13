@@ -65,8 +65,8 @@ const PARTICLE_COLORS: Partial<Record<VoiceOrbState, string>> = {
 
 const ORB_PARTICLE_COUNT = 6;
 
-const ORB_SIZE = 120;
-const CORE_SIZE = 72;
+const ORB_SIZE = 160;
+const CORE_SIZE = 96;
 
 function getFlashClass(state: VoiceOrbState): string {
   return state === "recording" || state === "complete" ? "animate-orb-flash" : "";
@@ -74,6 +74,10 @@ function getFlashClass(state: VoiceOrbState): string {
 
 function isOrbActive(state: VoiceOrbState): boolean {
   return state === "recording" || state === "tts";
+}
+
+function isOrbThinking(state: VoiceOrbState): boolean {
+  return state === "thinking";
 }
 
 function getOrbAudioLevel(state: VoiceOrbState, inputLevel: number, outputLevel: number): number {
@@ -208,8 +212,8 @@ function useOrbParticles(state: VoiceOrbState) {
       return {
         id: index,
         angle: angleBase + angleJitter * 16 - 8,
-        duration: 1.7 + durationJitter * 0.7,
-        delay: delayJitter * 0.65,
+        duration: 3.2 + durationJitter * 1.1,
+        delay: delayJitter * 1.2,
         offset: 28 + (index % 3) * 4 + Math.floor(angleJitter * 3),
         size: 2 + sizeJitter * 1.4,
       };
@@ -502,9 +506,9 @@ export function VoiceOrb({
 
   const audioLevel = getOrbAudioLevel(effectiveState, inputLevel, outputLevel);
   const activeAnalyser = getOrbAnalyser(effectiveState, micAnalyserRef, ttsAnalyserRef);
-  const showParticles = shouldShowOrbEffect(cfg.particles, noAnim, isOrbActive(effectiveState));
+  const showParticles = shouldShowOrbEffect(cfg.particles, noAnim, effectiveState === "thinking");
   const showRipple = shouldShowOrbEffect(cfg.ripple, noAnim, isOrbActive(effectiveState));
-  const showBlob = shouldShowOrbEffect(cfg.blob, noAnim, isOrbActive(effectiveState));
+  const showBlob = shouldShowOrbEffect(cfg.blob, noAnim, isOrbThinking(effectiveState));
   const showFreqRing = shouldShowOrbEffect(cfg.frequencyRing, noAnim, activeAnalyser !== undefined);
   const particles = useOrbParticles(effectiveState);
   const { flashClass, showBurst, burstKey } = useOrbTransitionEffects(effectiveState, cfg.transitions, noAnim);
@@ -528,7 +532,7 @@ export function VoiceOrb({
       aria-label={label ?? effectiveState}
       data-orb-state={effectiveState}
       className="flex flex-col items-center gap-3 py-2"
-      style={{ minHeight: "160px" }}
+      style={{ minHeight: "220px" }}
     >
       <div
         className="relative flex items-center justify-center"
@@ -543,8 +547,7 @@ export function VoiceOrb({
         {showRipple && rippleColors && (
           <>
             <div className={`absolute inset-0 rounded-full ${rippleColors[0]} animate-orb-ripple`} style={{ animationDelay: "0s" }} />
-            <div className={`absolute inset-0 rounded-full ${rippleColors[1]} animate-orb-ripple`} style={{ animationDelay: "0.48s" }} />
-            <div className={`absolute inset-0 rounded-full ${rippleColors[2]} animate-orb-ripple`} style={{ animationDelay: "0.96s" }} />
+            <div className={`absolute inset-1 rounded-full ${rippleColors[1]} animate-orb-ripple`} style={{ animationDelay: "0.44s" }} />
           </>
         )}
 

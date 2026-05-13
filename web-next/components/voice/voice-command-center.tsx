@@ -22,6 +22,7 @@ import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer"
 import {
   shouldTrackOrbMetrics,
   shouldUseOrbCalmIdle,
+  resolveVisualVoiceOrbState,
 } from "@/components/voice/orb-visibility";
 import {
   applyOrbDiagnosticProfile,
@@ -1613,6 +1614,7 @@ export function VoiceCommandCenter({
   const renderDiagnostics = useVoiceRenderDiagnostics();
   const pageVisible = usePageVisibility();
   const effectiveOrbState = resolveDiagnosticOrbState(orbState, renderDiagnostics);
+  const visualOrbState = resolveVisualVoiceOrbState(effectiveOrbState, effectiveTranscription);
   const effectiveEffectsConfig = applyOrbDiagnosticProfile(effectsConfig, renderDiagnostics);
   const orbActivityWindow = useOrbActivityWindow(effectiveOrbState, pageVisible);
   const calmIdle = shouldUseOrbCalmIdle(effectiveOrbState, pageVisible, orbActivityWindow);
@@ -1695,11 +1697,9 @@ export function VoiceCommandCenter({
           <OrbZone
             transcription={effectiveTranscription}
             response={effectiveResponse}
-            orbState={effectiveOrbState}
+            orbState={visualOrbState}
             effectsConfig={effectiveEffectsConfig}
             reducedMotion={orbReducedMotion}
-            calmIdle={calmIdle}
-            pageVisible={pageVisible}
             audioEnabled={effectiveAudioEnabled}
             micAnalyserRef={analyserRef}
             ttsAnalyserRef={ttsAnalyserRef}

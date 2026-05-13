@@ -26,11 +26,6 @@ const METRICS_ENABLED_CONFIG: OrbEffectsConfig = {
   coreTexture: false,
   particles: false,
   stateLabel: false,
-  orb3D: false,
-  bloom: false,
-  chromaticAberration: false,
-  iridescence: false,
-  volumetricLights: false,
   orbMetricsBars: true,
 };
 
@@ -43,11 +38,30 @@ const NO_GLOW_CONFIG: OrbEffectsConfig = {
   coreTexture: false,
   particles: false,
   stateLabel: true,
-  orb3D: false,
-  bloom: false,
-  chromaticAberration: false,
-  iridescence: false,
-  volumetricLights: false,
+  orbMetricsBars: false,
+};
+
+const BLOB_ENABLED_CONFIG: OrbEffectsConfig = {
+  ripple: false,
+  blob: true,
+  glow: false,
+  transitions: false,
+  frequencyRing: false,
+  coreTexture: false,
+  particles: false,
+  stateLabel: false,
+  orbMetricsBars: false,
+};
+
+const PARTICLES_ENABLED_CONFIG: OrbEffectsConfig = {
+  ripple: false,
+  blob: false,
+  glow: false,
+  transitions: false,
+  frequencyRing: false,
+  coreTexture: false,
+  particles: true,
+  stateLabel: false,
   orbMetricsBars: false,
 };
 
@@ -121,6 +135,63 @@ describe("VoiceOrb", () => {
     );
 
     assert.ok(!container.innerHTML.includes("blur-2xl"));
+  });
+
+  it("renders blob only in thinking state", () => {
+    const recording = render(
+      <VoiceOrb
+        state="recording"
+        inputLevel={0}
+        outputLevel={0}
+        effectsConfig={BLOB_ENABLED_CONFIG}
+      />,
+    );
+    assert.ok(!recording.container.innerHTML.includes("animate-orb-blob"));
+    recording.unmount();
+
+    const thinking = render(
+      <VoiceOrb
+        state="thinking"
+        inputLevel={0}
+        outputLevel={0}
+        effectsConfig={BLOB_ENABLED_CONFIG}
+      />,
+    );
+    assert.ok(thinking.container.innerHTML.includes("animate-orb-blob"));
+  });
+
+  it("renders particles only in thinking state", () => {
+    const recording = render(
+      <VoiceOrb
+        state="recording"
+        inputLevel={0}
+        outputLevel={0}
+        effectsConfig={PARTICLES_ENABLED_CONFIG}
+      />,
+    );
+    assert.ok(!recording.container.innerHTML.includes("animate-orb-particle-rise"));
+    recording.unmount();
+
+    const tts = render(
+      <VoiceOrb
+        state="tts"
+        inputLevel={0}
+        outputLevel={0}
+        effectsConfig={PARTICLES_ENABLED_CONFIG}
+      />,
+    );
+    assert.ok(!tts.container.innerHTML.includes("animate-orb-particle-rise"));
+    tts.unmount();
+
+    const thinking = render(
+      <VoiceOrb
+        state="thinking"
+        inputLevel={0}
+        outputLevel={0}
+        effectsConfig={PARTICLES_ENABLED_CONFIG}
+      />,
+    );
+    assert.ok(thinking.container.innerHTML.includes("animate-orb-particle-rise"));
   });
 
   it("falls back to state name when no label provided", () => {

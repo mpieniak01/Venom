@@ -36,3 +36,8 @@ export function shouldUseOrbCalmIdle(
 ): boolean {
   return !pageVisible || (!activeWindow && isIdleVoiceOrbState(state));
 }
+
+export function resolveVisualVoiceOrbState(state: VoiceOrbState, transcription: string): VoiceOrbState {
+  if (state !== "thinking") return state;
+  return transcription.trim() ? "thinking" : "stt";
+}

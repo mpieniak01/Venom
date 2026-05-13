@@ -48,8 +48,9 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
     const N = 40;
     const cx = size / 2;
     const cy = size / 2;
-    const baseR = size * 0.415;
-    const maxDisp = size * 0.135;
+    const baseR = size * 0.410;
+    const safeMaxR = size * 0.460;
+    const maxDisp = Math.min(size * 0.085, safeMaxR - baseR);
     const SAMPLE_MS = 44;
 
     currentRadiiRef.current = Array.from({ length: N }, () => baseR);
@@ -74,11 +75,11 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
         targetRadiiRef.current = targetRadiiRef.current.map((radius, index) => {
           const raw = data[Math.min(index * step, binCount - 1)] / 255;
           const val = Math.pow(raw, 0.72);
-          const target = baseR + val * maxDisp;
+          const target = Math.min(safeMaxR, baseR + val * maxDisp);
           return target > radius ? radius + (target - radius) * 0.55 : radius * 0.88;
         });
       } else if (!analyser) {
-        targetRadiiRef.current = targetRadiiRef.current.map((radius) => Math.max(baseR, radius * 0.86));
+        targetRadiiRef.current = targetRadiiRef.current.map((radius) => Math.max(baseR, Math.min(safeMaxR, radius * 0.86)));
       }
 
       const frameDelta = lastFrameRef.current === 0 ? 16 : Math.max(8, now - lastFrameRef.current);
@@ -88,7 +89,7 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
       const points = currentRadiiRef.current.map((currentRadius, index) => {
         const targetRadius = targetRadiiRef.current[index] ?? baseR;
         const nextRadius = currentRadius + (targetRadius - currentRadius) * smoothing;
-        currentRadiiRef.current[index] = Math.max(baseR, nextRadius);
+        currentRadiiRef.current[index] = Math.min(safeMaxR, Math.max(baseR, nextRadius));
         const angle = (2 * Math.PI * index) / N - Math.PI / 2;
         return {
           x: cx + currentRadiiRef.current[index] * Math.cos(angle),
@@ -124,7 +125,7 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
         d={pathData}
         fill="none"
         stroke={color}
-        strokeWidth="1.65"
+        strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
         opacity="0.86"

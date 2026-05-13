@@ -928,6 +928,13 @@ class TestDaemonExtended:
         daemon.update_params(max_new_tokens=256)
         assert daemon._assistant_engine.default_max_new_tokens == 256  # noqa: SLF001
 
+    def test_status_reports_raw_thinking_from_engine_state(self):
+        daemon = _make_daemon()
+        daemon._target_engine.last_raw_thinking_available = True  # noqa: SLF001
+        st = daemon.status()
+        assert st["raw_thinking_available"] is True
+        assert st["reasoning_summary_status"] == "raw_available"
+
     def test_is_ready_false_when_no_target_engine(self):
         daemon = Gemma4Daemon(cache_dir="/tmp")
         assert daemon.is_ready() is False

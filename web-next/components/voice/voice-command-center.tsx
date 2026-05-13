@@ -1758,6 +1758,7 @@ function buildVoiceCommandCenterViewState(params: {
   audioEnabled: boolean;
   debugDryRunActive: boolean;
   debugMode: VoiceDebugSnapshot;
+  isDevMode: boolean;
   connected: boolean;
   isVoiceModeEnabled: boolean;
   recording: boolean;
@@ -1782,6 +1783,7 @@ function buildVoiceCommandCenterViewState(params: {
     audioEnabled,
     debugDryRunActive,
     debugMode,
+    isDevMode,
     connected,
     isVoiceModeEnabled,
     recording,
@@ -1905,7 +1907,7 @@ function buildVoiceCommandCenterViewState(params: {
     voiceChatModeLabel,
     playbackStateLabel,
     audioWsStateLabel,
-    showDevButton: true,
+    showDevButton: isDevMode,
     showOrbZone: renderDiagnostics.showOrbZone,
     showOrbDiagnosticFallback: !renderDiagnostics.showOrbZone,
   };
@@ -2126,12 +2128,14 @@ type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
   onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
+  isDevMode?: boolean;
 }>;
 
 export function VoiceCommandCenter({
   onTranscriptReady,
   voiceModePreset = "standard",
   onStatusUpdate,
+  isDevMode = false,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -2562,6 +2566,7 @@ export function VoiceCommandCenter({
     audioEnabled,
     debugDryRunActive,
     debugMode,
+    isDevMode,
     connected,
     isVoiceModeEnabled,
     recording,

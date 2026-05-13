@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import importlib.util
+import inspect
 import json
 import shutil
 import subprocess
@@ -128,6 +129,27 @@ def _coerce_str(value: Any, default: str) -> str:
     return text or default
 
 
+def _gemma4_audio_setting(name: str, default: Any) -> Any:
+    return getattr(SETTINGS, name, default)
+
+
+def _gemma4_audio_voice_flags() -> dict[str, bool]:
+    return {
+        "reasoning_summary_enabled": bool(
+            _gemma4_audio_setting("GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+        ),
+        "emotion_detection_enabled": bool(
+            _gemma4_audio_setting("GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+        ),
+        "emotion_response_style_enabled": bool(
+            _gemma4_audio_setting(
+                "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
+                False,
+            )
+        ),
+    }
+
+
 def _build_voice_session_insights_payload(
     *,
     transcript: str = "",
@@ -164,15 +186,30 @@ async def _invoke_operator_agent(
     if not callable(process):
         raise RuntimeError("Operator agent does not expose process()")
 
-    if voice_context is not None:
-        try:
-            return await process(text, mode=mode, voice_context=voice_context)
-        except TypeError:
-            pass
+    kwargs: dict[str, Any] = {}
     try:
-        return await process(text, mode=mode)
-    except TypeError:
-        return await process(text)
+        signature = inspect.signature(process)
+    except (TypeError, ValueError):
+        signature = None
+
+    if signature is not None:
+        parameters = signature.parameters
+        accepts_kwargs = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+        if accepts_kwargs or "mode" in parameters:
+            kwargs["mode"] = mode
+        if voice_context is not None and (
+            accepts_kwargs or "voice_context" in parameters
+        ):
+            kwargs["voice_context"] = voice_context
+    else:
+        kwargs["mode"] = mode
+        if voice_context is not None:
+            kwargs["voice_context"] = voice_context
+
+    return await process(text, **kwargs)
 
 
 def collect_latest_voice_session_record(
@@ -627,24 +664,24 @@ class AudioStreamHandler:
         return str(voice_mode).strip() or "standard"
 
     def _gemma4_audio_runtime_snapshot(self) -> dict[str, Any]:
-        endpoint = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""), "")
-        log_path = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), "")
-        pid_path = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_PID_PATH", ""), "")
+        endpoint = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
+        log_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), "")
+        pid_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_PID_PATH", ""), "")
         return {
             "audio_runtime_provider": "gemma4_audio",
             "audio_runtime_model": _coerce_str(
-                getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", ""), ""
+                _gemma4_audio_setting("GEMMA4_AUDIO_MODEL_ID", ""), ""
             ),
             "audio_runtime_endpoint": endpoint,
             "audio_runtime_enabled": bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False)
+                _gemma4_audio_setting("GEMMA4_AUDIO_ENABLED", False)
             ),
             "audio_runtime_selected": self._gemma4_audio_runtime_selected(),
             "audio_runtime_supports_audio": bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
+                _gemma4_audio_setting("GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
             ),
             "audio_runtime_supports_text": bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_TEXT", True)
+                _gemma4_audio_setting("GEMMA4_AUDIO_SUPPORTS_TEXT", True)
             ),
             "audio_runtime_supports_unified_multimodal_respond": True,
             "audio_runtime_runtime_mode": "processor_model",
@@ -653,7 +690,7 @@ class AudioStreamHandler:
         }
 
     def _gemma4_audio_service_origin(self) -> str:
-        endpoint = _coerce_str(getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""), "")
+        endpoint = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
         if not endpoint:
             return ""
         endpoint = endpoint.rstrip("/")
@@ -670,12 +707,12 @@ class AudioStreamHandler:
         return f"{origin}/health" if origin else ""
 
     def _gemma4_audio_runtime_enabled(self) -> bool:
-        return bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+        return bool(_gemma4_audio_setting("GEMMA4_AUDIO_ENABLED", False))
 
     def _gemma4_audio_runtime_selected(self) -> bool:
         if not self._gemma4_audio_runtime_enabled():
             return False
-        active_server = _coerce_str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", ""), "")
+        active_server = _coerce_str(_gemma4_audio_setting("ACTIVE_LLM_SERVER", ""), "")
         return active_server == "gemma4_audio"
 
     async def _gemma4_audio_health_ok(self) -> bool:
@@ -720,10 +757,10 @@ class AudioStreamHandler:
             "task": "question",
             "question": prompt,
             "system_prompt": _coerce_str(
-                getattr(SETTINGS, "SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
+                _gemma4_audio_setting("SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
             ),
             "max_new_tokens": _coerce_int(
-                getattr(SETTINGS, "GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
+                _gemma4_audio_setting("GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
             ),
         }
 
@@ -752,7 +789,7 @@ class AudioStreamHandler:
             "text": text,
             "response_text": text,
             "model": _coerce_str(
-                data.get("model") or getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", ""),
+                data.get("model") or _gemma4_audio_setting("GEMMA4_AUDIO_MODEL_ID", ""),
                 "",
             ),
             "duration_ms": data.get("duration_ms"),
@@ -794,27 +831,7 @@ class AudioStreamHandler:
                         response="",
                         voice_mode=self._connection_voice_mode(connection_id),
                         pipeline_id="whisper_llm_piper",
-                        reasoning_summary_enabled=bool(
-                            getattr(
-                                SETTINGS,
-                                "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
-                                False,
-                            )
-                        ),
-                        emotion_detection_enabled=bool(
-                            getattr(
-                                SETTINGS,
-                                "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
-                                False,
-                            )
-                        ),
-                        emotion_response_style_enabled=bool(
-                            getattr(
-                                SETTINGS,
-                                "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
-                                False,
-                            )
-                        ),
+                        **_gemma4_audio_voice_flags(),
                         raw_thinking_available=False,
                     ),
                     "timings_ms": timings_ms,
@@ -849,27 +866,7 @@ class AudioStreamHandler:
                         response="",
                         voice_mode=self._connection_voice_mode(connection_id),
                         pipeline_id="whisper_llm_piper",
-                        reasoning_summary_enabled=bool(
-                            getattr(
-                                SETTINGS,
-                                "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
-                                False,
-                            )
-                        ),
-                        emotion_detection_enabled=bool(
-                            getattr(
-                                SETTINGS,
-                                "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
-                                False,
-                            )
-                        ),
-                        emotion_response_style_enabled=bool(
-                            getattr(
-                                SETTINGS,
-                                "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
-                                False,
-                            )
-                        ),
+                        **_gemma4_audio_voice_flags(),
                         raw_thinking_available=False,
                     ),
                     "timings_ms": timings_ms,
@@ -892,15 +889,7 @@ class AudioStreamHandler:
             response=response_text,
             voice_mode=self._connection_voice_mode(connection_id),
             pipeline_id="gemma4_audio_piper",
-            reasoning_summary_enabled=bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
-            ),
-            emotion_detection_enabled=bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
-            ),
-            emotion_response_style_enabled=bool(
-                getattr(SETTINGS, "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED", False)
-            ),
+            **_gemma4_audio_voice_flags(),
             raw_thinking_available=bool(
                 runtime_result.get("raw_thinking_available", False)
             ),
@@ -1033,7 +1022,7 @@ class AudioStreamHandler:
                     "decoder_source": "faster_whisper",
                     "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
-                        getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""
+                        _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
                 },
             )
@@ -1063,27 +1052,7 @@ class AudioStreamHandler:
                     response="",
                     voice_mode=self._connection_voice_mode(connection_id),
                     pipeline_id="whisper_llm_piper",
-                    reasoning_summary_enabled=bool(
-                        getattr(
-                            SETTINGS,
-                            "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
-                            False,
-                        )
-                    ),
-                    emotion_detection_enabled=bool(
-                        getattr(
-                            SETTINGS,
-                            "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
-                            False,
-                        )
-                    ),
-                    emotion_response_style_enabled=bool(
-                        getattr(
-                            SETTINGS,
-                            "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
-                            False,
-                        )
-                    ),
+                    **_gemma4_audio_voice_flags(),
                     raw_thinking_available=False,
                 )
                 response_text = await _invoke_operator_agent(
@@ -1104,27 +1073,7 @@ class AudioStreamHandler:
                             response=response_text,
                             voice_mode=self._connection_voice_mode(connection_id),
                             pipeline_id="whisper_llm_piper",
-                            reasoning_summary_enabled=bool(
-                                getattr(
-                                    SETTINGS,
-                                    "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
-                                    False,
-                                )
-                            ),
-                            emotion_detection_enabled=bool(
-                                getattr(
-                                    SETTINGS,
-                                    "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
-                                    False,
-                                )
-                            ),
-                            emotion_response_style_enabled=bool(
-                                getattr(
-                                    SETTINGS,
-                                    "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
-                                    False,
-                                )
-                            ),
+                            **_gemma4_audio_voice_flags(),
                             raw_thinking_available=False,
                         ),
                         "timings_ms": timings_ms,
@@ -1261,7 +1210,7 @@ class AudioStreamHandler:
                     "decoder_source": "faster_whisper",
                     "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
-                        getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", ""), ""
+                        _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
                 },
             )
@@ -1288,27 +1237,7 @@ class AudioStreamHandler:
                     response="",
                     voice_mode=self._connection_voice_mode(connection_id),
                     pipeline_id="whisper_llm_piper",
-                    reasoning_summary_enabled=bool(
-                        getattr(
-                            SETTINGS,
-                            "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
-                            False,
-                        )
-                    ),
-                    emotion_detection_enabled=bool(
-                        getattr(
-                            SETTINGS,
-                            "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
-                            False,
-                        )
-                    ),
-                    emotion_response_style_enabled=bool(
-                        getattr(
-                            SETTINGS,
-                            "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
-                            False,
-                        )
-                    ),
+                    **_gemma4_audio_voice_flags(),
                     raw_thinking_available=False,
                 )
                 response_text = await _invoke_operator_agent(
@@ -1329,27 +1258,7 @@ class AudioStreamHandler:
                             response=response_text,
                             voice_mode=self._connection_voice_mode(connection_id),
                             pipeline_id="whisper_llm_piper",
-                            reasoning_summary_enabled=bool(
-                                getattr(
-                                    SETTINGS,
-                                    "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
-                                    False,
-                                )
-                            ),
-                            emotion_detection_enabled=bool(
-                                getattr(
-                                    SETTINGS,
-                                    "GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED",
-                                    False,
-                                )
-                            ),
-                            emotion_response_style_enabled=bool(
-                                getattr(
-                                    SETTINGS,
-                                    "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
-                                    False,
-                                )
-                            ),
+                            **_gemma4_audio_voice_flags(),
                             raw_thinking_available=False,
                         ),
                         "timings_ms": timings_ms,

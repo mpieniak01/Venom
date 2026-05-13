@@ -521,6 +521,9 @@ async def respond(request: Request) -> RespondResponse:
 
     prompt = text_content or request_payload.system_prompt or "Respond to the audio"
 
+    daemon_status = daemon.status()
+    daemon_params = daemon_status["params"]
+
     try:
         generated_text, duration = engine.respond(
             audio_array
@@ -535,8 +538,8 @@ async def respond(request: Request) -> RespondResponse:
             temperature=request_payload.temperature,
             top_p=request_payload.top_p,
             do_sample=request_payload.do_sample,
-            enable_thinking=daemon._params.enable_thinking,  # noqa: SLF001
-            cache_implementation=daemon._params.cache_implementation,  # noqa: SLF001
+            enable_thinking=bool(daemon_params["enable_thinking"]),
+            cache_implementation=daemon_params["cache_implementation"],
         )
     except InferenceError as e:
         raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
@@ -547,18 +550,12 @@ async def respond(request: Request) -> RespondResponse:
         response=generated_text,
         voice_mode="gemma4_audio",
         pipeline_id="gemma4_audio_native",
-        reasoning_summary_enabled=bool(
-            getattr(daemon._params, "reasoning_summary_enabled", False)  # noqa: SLF001
-        ),
-        emotion_detection_enabled=bool(
-            getattr(daemon._params, "emotion_detection_enabled", False)  # noqa: SLF001
-        ),
+        reasoning_summary_enabled=bool(daemon_params["reasoning_summary_enabled"]),
+        emotion_detection_enabled=bool(daemon_params["emotion_detection_enabled"]),
         emotion_response_style_enabled=bool(
-            getattr(daemon._params, "emotion_response_style_enabled", False)  # noqa: SLF001
+            daemon_params["emotion_response_style_enabled"]
         ),
-        raw_thinking_available=bool(
-            getattr(daemon._params, "enable_thinking", False)  # noqa: SLF001
-        ),
+        raw_thinking_available=bool(daemon_status["raw_thinking_available"]),
     )
 
     return RespondResponse(
@@ -657,6 +654,8 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
         )
 
     dummy_audio = np.zeros(16000, dtype=np.float32)
+    daemon_status = daemon.status()
+    daemon_params = daemon_status["params"]
     text, _ = engine.respond(
         dummy_audio,
         sample_rate=16000,
@@ -665,8 +664,8 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
         temperature=float(temperature_raw) if temperature_raw is not None else None,
         top_p=float(top_p_raw) if top_p_raw is not None else None,
         do_sample=bool(temperature_raw is not None or top_p_raw is not None),
-        enable_thinking=daemon._params.enable_thinking,  # noqa: SLF001
-        cache_implementation=daemon._params.cache_implementation,  # noqa: SLF001
+        enable_thinking=bool(daemon_params["enable_thinking"]),
+        cache_implementation=daemon_params["cache_implementation"],
     )
 
     now = int(time.time())

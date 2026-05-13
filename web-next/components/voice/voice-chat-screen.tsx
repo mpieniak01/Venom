@@ -85,6 +85,7 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
         <VoiceCommandCenter
           voiceModePreset={voiceModePreset}
           onStatusUpdate={handleStatusUpdate}
+          isDevMode={isDevMode}
         />
         <div className="space-y-4">
           {/* Mode selector */}

@@ -47,7 +47,6 @@ function formatConfidence(value?: number | null): string | null {
 
 export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSidebarProps) {
   const t = useTranslation();
-  const devModeEnabled = isDevMode;
   const runtime = status?.runtime_snapshot ?? null;
   const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;
   const isGemma4AudioRuntime =
@@ -63,13 +62,11 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
           title={t("voice.controls.runtime")}
           loadingLabel={t("voice.status.channelConnecting")}
         />
-        {devModeEnabled ? (
+        {isDevMode ? (
           <Gemma4RuntimeControl variant="voice" runtimeSnapshot={null} />
         ) : (
           <StatusCard title={t("voice.controls.runtime")}>
-            <p className="text-[11px] text-zinc-400">
-              Use `?dev=1` to show Gemma 4 runtime controls.
-            </p>
+            <p className="text-[11px] text-zinc-400">{t("voice.controls.devRuntimeHint")}</p>
           </StatusCard>
         )}
         <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
@@ -284,7 +281,7 @@ function RuntimeOverviewCard({
           )}
           {runtime.voice_pipeline?.reasoning_summary && (
             <Row
-              label={t("voice.controls.reasoningSummary")}
+              label={t("voice.controls.reasoningStatus")}
               value={runtime.voice_pipeline.reasoning_summary}
             />
           )}
@@ -324,7 +321,7 @@ function VoiceSessionCard({
       {session.voice_mode && <Row label={t("voice.controls.voiceMode")} value={session.voice_mode} />}
       {session.reasoning_summary_status && (
         <Row
-          label={t("voice.controls.reasoningSummary")}
+          label={t("voice.controls.reasoningStatus")}
           value={session.reasoning_summary_status}
         />
       )}

@@ -15,7 +15,7 @@ def test_infer_voice_emotion_returns_neutral_for_empty_text():
     assert source == "none"
 
 
-def test_infer_voice_emotion_detects_question_as_curiosity():
+def test_infer_voice_emotion_detects_question_as_confusion():
     label, confidence, source = infer_voice_emotion(
         transcript="Co to jest kwadrat?",
         response="To figura geometryczna.",
@@ -23,6 +23,17 @@ def test_infer_voice_emotion_detects_question_as_curiosity():
 
     assert label == "confused"
     assert confidence > 0.15
+    assert source == "hybrid"
+
+
+def test_infer_voice_emotion_avoids_false_positive_on_short_substrings():
+    label, confidence, source = infer_voice_emotion(
+        transcript="To jest okno, a nie zagadka.",
+        response="Terazyk to tylko przykład.",
+    )
+
+    assert label == "neutral"
+    assert confidence == 0.15
     assert source == "hybrid"
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 EmotionLabel = Literal[
@@ -19,6 +20,15 @@ ReasoningStatus = Literal["disabled", "summary", "raw_available"]
 
 def _normalize_text(value: str | None) -> str:
     return str(value or "").strip().lower()
+
+
+def _contains_keyword(text: str, keyword: str) -> bool:
+    if not keyword:
+        return False
+    if keyword == "?":
+        return "?" in text
+    pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
+    return re.search(pattern, text, flags=re.IGNORECASE) is not None
 
 
 def infer_voice_emotion(
@@ -101,12 +111,10 @@ def infer_voice_emotion(
 
     for label, keywords in keyword_sets.items():
         for keyword in keywords:
-            if not keyword:
-                continue
             if keyword == "?":
                 scores["curious"] += combined.count("?") * 0.25
                 continue
-            if keyword in combined:
+            if _contains_keyword(combined, keyword):
                 scores[label] += 0.6 if len(keyword) > 3 else 0.2
 
     if "!" in combined:

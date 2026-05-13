@@ -105,6 +105,7 @@ class Gemma4AudioEngine:
         self.model: Optional[Any] = None
         self.processor: Optional[Any] = None
         self.model_class_name: Optional[str] = None
+        self._last_raw_thinking_available: bool = False
 
     # Model classes tried in order — multimodal first, causal-LM last (for
     # assistant/drafter models like Gemma4AssistantConfig used in spec. decoding).
@@ -157,9 +158,14 @@ class Gemma4AudioEngine:
         """Unload model and free references."""
         self.model = None
         self.processor = None
+        self._last_raw_thinking_available = False
 
     def is_loaded(self) -> bool:
         return self.model is not None and self.processor is not None
+
+    @property
+    def last_raw_thinking_available(self) -> bool:
+        return self._last_raw_thinking_available
 
     def _build_prompt_for_task(
         self, task: Optional[str], question: Optional[str], default_prompt: str
@@ -294,6 +300,9 @@ class Gemma4AudioEngine:
                 clean_up_tokenization_spaces=False,
             )
 
+            self._last_raw_thinking_available = self._detect_raw_thinking_emission(
+                generated_text
+            )
             generated_text = self._clean_generated_text(generated_text)
             duration_sec = get_audio_duration(audio_normalized, sr)
 
@@ -309,6 +318,14 @@ class Gemma4AudioEngine:
         )
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
+
+    @staticmethod
+    def _detect_raw_thinking_emission(text: str) -> bool:
+        lowered = text.lower()
+        return any(
+            marker in lowered
+            for marker in ("<think>", "</think>", "<analysis>", "<reasoning>")
+        )
 
     def transcribe(
         self,
@@ -523,6 +540,11 @@ class Gemma4Daemon:
         return self._target_engine
 
     def status(self) -> dict[str, Any]:
+        raw_thinking_available = bool(
+            self._target_engine is not None
+            and getattr(self._target_engine, "last_raw_thinking_available", False)
+            is True
+        )
         return {
             "target_model": self._target_id,
             "assistant_model": self._assistant_id,
@@ -541,10 +563,10 @@ class Gemma4Daemon:
                 "cache_implementation": self._params.cache_implementation,
             },
             "vram": _get_vram_info().__dict__,
-            "raw_thinking_available": self._params.enable_thinking,
+            "raw_thinking_available": raw_thinking_available,
             "reasoning_summary_status": (
                 "raw_available"
-                if self._params.enable_thinking
+                if raw_thinking_available
                 else (
                     "summary"
                     if self._params.reasoning_summary_enabled

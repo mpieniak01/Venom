@@ -1717,7 +1717,6 @@ function buildVoiceCommandCenterViewState(params: {
   effectsConfig: ReturnType<typeof useOrbEffectsConfig>;
   orbActivityWindow: boolean;
   metricsRef: ReturnType<typeof useOrbMetrics>;
-  isDevMode: boolean;
 }): VoiceCommandCenterViewState {
   const {
     audioEnabled,
@@ -1742,7 +1741,6 @@ function buildVoiceCommandCenterViewState(params: {
     effectsConfig,
     orbActivityWindow,
     metricsRef,
-    isDevMode,
   } = params;
 
   const effectiveAudioEnabled = selectVoiceState(debugDryRunActive, true, audioEnabled);
@@ -1847,7 +1845,7 @@ function buildVoiceCommandCenterViewState(params: {
     voiceChatModeLabel,
     playbackStateLabel,
     audioWsStateLabel,
-    showDevButton: isDevMode,
+    showDevButton: true,
     showOrbZone: renderDiagnostics.showOrbZone,
     showOrbDiagnosticFallback: !renderDiagnostics.showOrbZone,
   };
@@ -2068,14 +2066,12 @@ type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
   onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
-  isDevMode?: boolean;
 }>;
 
 export function VoiceCommandCenter({
   onTranscriptReady,
   voiceModePreset = "standard",
   onStatusUpdate,
-  isDevMode = false,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -2516,7 +2512,6 @@ export function VoiceCommandCenter({
     effectsConfig,
     orbActivityWindow,
     metricsRef,
-    isDevMode,
   });
 
   useEffect(() => bindRecordingReleaseListeners(viewState.effectiveRecording, stopRecording), [

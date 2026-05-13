@@ -43,6 +43,7 @@ describe("VoiceCommandCenter debug mode", () => {
     await waitFor(() => {
       assert.ok(screen.getAllByText(/DEBUG DRY RUN/i).length >= 1);
     });
+    assert.ok(screen.getByLabelText(/diagnostyka dev/i));
     assert.equal(fetchMock.mock.callCount(), 0);
   });
 });

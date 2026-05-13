@@ -83,7 +83,6 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,0.85fr)]">
         <VoiceCommandCenter
-          isDevMode={isDevMode}
           voiceModePreset={voiceModePreset}
           onStatusUpdate={handleStatusUpdate}
         />

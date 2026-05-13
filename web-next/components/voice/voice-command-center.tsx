@@ -19,6 +19,18 @@ import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import { useOrbMetrics } from "@/components/voice/use-orb-metrics";
 import { OrbZone } from "@/components/voice/orb-zone";
 import { DevDiagnosticsDrawer } from "@/components/voice/dev-diagnostics-drawer";
+import {
+  shouldTrackOrbMetrics,
+  shouldUseOrbCalmIdle,
+} from "@/components/voice/orb-visibility";
+import {
+  applyOrbDiagnosticProfile,
+  resolveDiagnosticOrbState,
+  useVoiceRenderDiagnostics,
+} from "@/components/voice/voice-render-diagnostics";
+import { usePageVisibility } from "@/components/voice/use-page-visibility";
+import { useOrbActivityWindow } from "@/components/voice/use-orb-activity-window";
+import { useVoiceDebugMode } from "@/components/voice/use-voice-debug-mode";
 
 export type AudioStatus = {
   enabled: boolean;
@@ -161,6 +173,45 @@ const formatTimingSeconds = (milliseconds?: number | null): string | null => {
   if (typeof milliseconds !== "number" || !Number.isFinite(milliseconds)) return null;
   return `${(milliseconds / 1000).toFixed(2)}s`;
 };
+
+const buildDebugAudioStatus = (recording: boolean): AudioStatus => ({
+  enabled: true,
+  connected_clients: 1,
+  active_recordings: recording ? 1 : 0,
+  operator_ready: true,
+  stt_ready: true,
+  whisper_model_size: "debug",
+  whisper_device: "dry-run",
+  stt_backend: "debug",
+  tts_backend: "debug",
+  tts_ready: true,
+  tts_fallback: false,
+  dependencies: { debug: true },
+  message: "Debug dry run",
+  runtime_snapshot: {
+    runtime_id: "debug://voice-dry-run",
+    provider: "debug",
+    model_name: "debug-dry-run",
+    endpoint: "debug://offline",
+    config_hash: "debug-dry-run",
+    runtime_capabilities: {
+      compatibility_profile: "debug_dry_run",
+      probe_status: "verified",
+      capabilities: { audio: true, text: true },
+      probes: {
+        dry_run: { status: "verified", reason: "Visual dry run active" },
+      },
+      fallbacks: {},
+    },
+    voice_pipeline: {
+      profile: "debug_dry_run",
+      stt: "debug",
+      reasoning: "debug",
+      tts: "debug",
+      notes: ["No backend services", "No models", "Visual dry run only"],
+    },
+  },
+});
 
 const getBrowserWindow = (): BrowserWindowLike | undefined =>
   globalThis as unknown as BrowserWindowLike;
@@ -562,6 +613,8 @@ const deriveOrbState = (
   if (lastAudioSignal === "complete") return "complete";
   return "ready";
 };
+
+const COMPLETE_SETTLE_MS = 1200;
 
 const handleVoiceRecordingStarted = (
   t: Translator,
@@ -983,6 +1036,9 @@ export function VoiceCommandCenter({
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
+  const debugMode = useVoiceDebugMode(t);
+  const debugDryRunRequested = debugMode.requested;
+  const debugDryRunActive = debugMode.hydrated && debugMode.enabled;
   const [connected, setConnected] = useState(false);
   const [isVoiceModeEnabled, setIsVoiceModeEnabled] = useState<boolean>(audioEnabled);
   const [recording, setRecording] = useState(false);
@@ -1026,6 +1082,22 @@ export function VoiceCommandCenter({
   }, []);
 
   useEffect(() => {
+    if (debugDryRunRequested) {
+      const debugStatus = buildDebugAudioStatus(debugMode.recording);
+      onStatusUpdate?.({
+        enabled: debugStatus.enabled,
+        stt_ready: debugStatus.stt_ready,
+        tts_ready: debugStatus.tts_ready,
+        tts_fallback: debugStatus.tts_fallback,
+        whisper_model_size: debugStatus.whisper_model_size,
+        stt_backend: debugStatus.stt_backend,
+        tts_backend: debugStatus.tts_backend,
+        vad_threshold: 0.5,
+        dependencies: debugStatus.dependencies,
+        runtime_snapshot: debugStatus.runtime_snapshot,
+      });
+      return;
+    }
     if (!onStatusUpdate) return;
     if (!audioStatus) { onStatusUpdate(null); return; }
     onStatusUpdate({
@@ -1040,7 +1112,7 @@ export function VoiceCommandCenter({
       dependencies:      audioStatus.dependencies,
       runtime_snapshot:  audioStatus.runtime_snapshot,
     });
-  }, [audioStatus, onStatusUpdate]);
+  }, [audioStatus, debugDryRunRequested, debugMode.enabled, debugMode.recording, onStatusUpdate]);
 
   useEffect(() => {
     syncVoiceModeSelection({
@@ -1055,6 +1127,10 @@ export function VoiceCommandCenter({
   }, [audioEnabled, connected, t, voiceModePreset]);
 
   const refreshAudioStatus = useCallback(async () => {
+    if (debugDryRunRequested) {
+      setAudioStatus(buildDebugAudioStatus(debugMode.recording));
+      return;
+    }
     try {
       const res = await fetch("/api/v1/audio/status");
       if (!res.ok) {
@@ -1070,9 +1146,19 @@ export function VoiceCommandCenter({
         message: t("voice.status.noData"),
       });
     }
-  }, [t]);
+  }, [debugDryRunRequested, debugMode.recording, t]);
 
   const refreshTtsModelOptions = useCallback(async () => {
+    if (debugDryRunRequested) {
+      const option = {
+        id: "debug-dry-run",
+        label: "Debug Dry Run",
+        path: "debug://dry-run",
+      };
+      setTtsModelOptions([option]);
+      setSelectedTtsModelPath(option.path);
+      return;
+    }
     try {
       const response = await fetch("/api/v1/audio/tts/models");
       if (!response.ok) {
@@ -1089,7 +1175,7 @@ export function VoiceCommandCenter({
     } catch {
       setTtsModelOptions([]);
     }
-  }, []);
+  }, [debugDryRunRequested]);
 
   const releasePlaybackResources = useCallback(() => {
     const src = ttsSourceRef.current;
@@ -1104,6 +1190,11 @@ export function VoiceCommandCenter({
   const applyTtsModel = useCallback(
     async (modelPath: string) => {
       if (!modelPath) return;
+      if (debugDryRunRequested) {
+        setSelectedTtsModelPath(modelPath);
+        setStatusMessage("Debug dry run does not switch real TTS runtimes");
+        return;
+      }
       setTtsModelChanging(true);
       try {
         const response = await fetch("/api/v1/audio/tts/models", {
@@ -1139,7 +1230,7 @@ export function VoiceCommandCenter({
         setTtsModelChanging(false);
       }
     },
-    [refreshAudioStatus, refreshTtsModelOptions, releasePlaybackResources, t],
+    [debugDryRunRequested, refreshAudioStatus, refreshTtsModelOptions, releasePlaybackResources, t],
   );
 
   const getMediaRecorderMimeType = useCallback(() => {
@@ -1312,6 +1403,9 @@ export function VoiceCommandCenter({
   }, []);
 
   useEffect(() => {
+    if (debugDryRunRequested) {
+      return;
+    }
     if (!audioEnabled || !isVoiceModeEnabled) {
       return;
     }
@@ -1347,6 +1441,7 @@ export function VoiceCommandCenter({
   }, [
     audioEnabled,
     analyserRef,
+    debugDryRunRequested,
     ensurePlaybackContext,
     getMediaRecorderMimeType,
     isVoiceModeEnabled,
@@ -1357,8 +1452,12 @@ export function VoiceCommandCenter({
   ]);
 
   useEffect(
-    () =>
-      bindVoiceConnectionLifecycle(
+    () => {
+      if (debugDryRunRequested) {
+        setConnected(false);
+        return undefined;
+      }
+      return bindVoiceConnectionLifecycle(
         audioEnabled,
         t,
         setConnected,
@@ -1380,9 +1479,11 @@ export function VoiceCommandCenter({
             handleAudioMessage,
             ttsAudioContextRef,
           }),
-      ),
+      );
+    },
     [
       audioEnabled,
+      debugDryRunRequested,
       handleAudioMessage,
       isVoiceModeEnabled,
       refreshAudioStatus,
@@ -1393,8 +1494,13 @@ export function VoiceCommandCenter({
   );
 
   useEffect(() => {
+    if (debugDryRunRequested) {
+      void refreshAudioStatus();
+      void refreshTtsModelOptions();
+      return;
+    }
     refreshTtsModelOptions().catch(() => undefined);
-  }, [refreshTtsModelOptions]);
+  }, [debugDryRunRequested, refreshAudioStatus, refreshTtsModelOptions]);
 
   const sendControlMessage = useCallback((payload: Record<string, unknown>): boolean => {
     const ws = wsRef.current;
@@ -1408,6 +1514,10 @@ export function VoiceCommandCenter({
   }, [t]);
 
   const stopRecording = useCallback(() => {
+    if (debugDryRunRequested) {
+      debugMode.restart();
+      return;
+    }
     if (recordingStartPendingRef.current) {
       stopRequestedRef.current = true;
       setStatusMessage(t("voice.controls.recording"));
@@ -1428,11 +1538,15 @@ export function VoiceCommandCenter({
       sendControlMessage({ command: "stop_recording" });
       releaseAudioResources();
     }
-  }, [releaseAudioResources, sendControlMessage, t]);
+  }, [debugDryRunRequested, debugMode, releaseAudioResources, sendControlMessage, t]);
 
   const startRecording = useCallback(
-    async () =>
-      startVoiceCapture({
+    async () => {
+      if (debugDryRunRequested) {
+        debugMode.restart();
+        return;
+      }
+      return startVoiceCapture({
         t,
         audioEnabled,
         isVoiceModeEnabled,
@@ -1456,8 +1570,11 @@ export function VoiceCommandCenter({
         ensurePlaybackContext,
         stopRecording,
         activeWindow: getBrowserWindow(),
-      }),
+      });
+    },
     [
+      debugDryRunRequested,
+      debugMode,
       ensurePlaybackContext,
       getMediaRecorderMimeType,
       audioEnabled,
@@ -1470,22 +1587,76 @@ export function VoiceCommandCenter({
     ],
   );
 
-  const orbState = deriveOrbState(connected, recording, processingStatus, playbackState, lastAudioSignal);
+  const effectiveAudioEnabled = debugDryRunActive ? true : audioEnabled;
+  const effectiveConnected = debugDryRunActive ? debugMode.connected : connected;
+  const effectiveIsVoiceModeEnabled = debugDryRunActive ? debugMode.isVoiceModeEnabled : isVoiceModeEnabled;
+  const effectiveRecording = debugDryRunActive ? debugMode.recording : recording;
+  const effectiveTranscription = debugDryRunActive ? debugMode.transcription : transcription;
+  const effectiveResponse = debugDryRunActive ? debugMode.response : response;
+  const effectiveStatusMessage = debugDryRunActive ? debugMode.statusMessage : statusMessage;
+  const effectiveAudioChunkCount = debugDryRunActive ? debugMode.audioChunkCount : audioChunkCount;
+  const effectiveLastAudioSignal = debugDryRunActive ? debugMode.lastAudioSignal : lastAudioSignal;
+  const effectiveProcessingStatus = debugDryRunActive ? debugMode.processingStatus : processingStatus;
+  const effectivePlaybackState = debugDryRunActive ? debugMode.playbackState : playbackState;
+  const effectiveAudioStatus = debugDryRunActive
+    ? buildDebugAudioStatus(effectiveRecording)
+    : audioStatus;
+
+  const orbState = deriveOrbState(
+    effectiveConnected,
+    effectiveRecording,
+    effectiveProcessingStatus,
+    effectivePlaybackState,
+    effectiveLastAudioSignal,
+  );
   const effectsConfig = useOrbEffectsConfig();
-  const metricsRef = useOrbMetrics();
+  const renderDiagnostics = useVoiceRenderDiagnostics();
+  const pageVisible = usePageVisibility();
+  const effectiveOrbState = resolveDiagnosticOrbState(orbState, renderDiagnostics);
+  const effectiveEffectsConfig = applyOrbDiagnosticProfile(effectsConfig, renderDiagnostics);
+  const orbActivityWindow = useOrbActivityWindow(effectiveOrbState, pageVisible);
+  const calmIdle = shouldUseOrbCalmIdle(effectiveOrbState, pageVisible, orbActivityWindow);
+  const orbReducedMotion = reducedMotion || !pageVisible || calmIdle;
+  const metricsEnabled =
+    renderDiagnostics.metricsEnabled &&
+    pageVisible &&
+    shouldTrackOrbMetrics(effectiveEffectsConfig.orbMetricsBars, effectiveOrbState);
+  const metricsRef = useOrbMetrics(metricsEnabled);
 
   const recordingButtonClass = getRecordingButtonClass(
-    audioEnabled,
-    isVoiceModeEnabled,
-    recording,
-    connected,
+    effectiveAudioEnabled,
+    effectiveIsVoiceModeEnabled,
+    effectiveRecording,
+    effectiveConnected,
   );
-  const recordingButtonLabel = getRecordingButtonLabel(t, recording, isVoiceModeEnabled);
-  const voiceChatModeLabel = isVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat");
-  const playbackStateLabel = getPlaybackStateLabel(t, playbackState, ttsMuted);
-  const audioWsStateLabel = audioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline");
+  const recordingButtonLabel = debugDryRunActive
+    ? "Debug Run"
+    : getRecordingButtonLabel(t, effectiveRecording, effectiveIsVoiceModeEnabled);
+  const voiceChatModeLabel = effectiveIsVoiceModeEnabled ? t("voice.controls.voiceChat") : t("voice.controls.textChat");
+  const playbackStateLabel = getPlaybackStateLabel(t, effectivePlaybackState, ttsMuted);
+  const audioWsStateLabel = effectiveAudioStatus?.enabled ? t("voice.controls.ready") : t("voice.controls.offline");
 
-  useEffect(() => bindRecordingReleaseListeners(recording, stopRecording), [recording, stopRecording]);
+  useEffect(() => bindRecordingReleaseListeners(effectiveRecording, stopRecording), [effectiveRecording, stopRecording]);
+
+  useEffect(() => {
+    if (debugDryRunRequested) {
+      return;
+    }
+    if (
+      lastAudioSignal !== "complete" ||
+      recording ||
+      processingStatus !== null ||
+      playbackState !== "idle"
+    ) {
+      return;
+    }
+
+    const timeoutId = globalThis.setTimeout(() => {
+      setLastAudioSignal((current) => (current === "complete" ? "idle" : current));
+    }, COMPLETE_SETTLE_MS);
+
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [debugDryRunRequested, lastAudioSignal, playbackState, processingStatus, recording]);
 
   const showDevButton =
     process.env.NEXT_PUBLIC_SHOW_DEV_PANEL === "true" ||
@@ -1499,9 +1670,10 @@ export function VoiceCommandCenter({
       description={t("voice.page.description")}
       action={
         <div className="flex items-center gap-2">
-          <Badge tone={connected ? "success" : "warning"}>
-            {connected ? t("voice.status.connected") : t("voice.status.offline")}
+          <Badge tone={effectiveConnected ? "success" : "warning"}>
+            {effectiveConnected ? t("voice.status.connected") : t("voice.status.offline")}
           </Badge>
+          {debugDryRunActive && <Badge tone="warning">{debugMode.badgeLabel}</Badge>}
           {showDevButton && (
             <Button
               type="button"
@@ -1519,18 +1691,30 @@ export function VoiceCommandCenter({
     >
       <div className="space-y-4">
         {/* Orb zone — orb + dialog bubbles */}
-        {isVoiceModeEnabled && (
+        {effectiveIsVoiceModeEnabled && renderDiagnostics.showOrbZone && (
           <OrbZone
-            transcription={transcription}
-            response={response}
-            orbState={orbState}
-            effectsConfig={effectsConfig}
-            reducedMotion={reducedMotion}
-            audioEnabled={audioEnabled}
+            transcription={effectiveTranscription}
+            response={effectiveResponse}
+            orbState={effectiveOrbState}
+            effectsConfig={effectiveEffectsConfig}
+            reducedMotion={orbReducedMotion}
+            calmIdle={calmIdle}
+            pageVisible={pageVisible}
+            audioEnabled={effectiveAudioEnabled}
             micAnalyserRef={analyserRef}
             ttsAnalyserRef={ttsAnalyserRef}
             metricsRef={metricsRef}
+            showOrb={renderDiagnostics.showOrb}
+            showDialogs={renderDiagnostics.showDialogs}
+            plainOrbWrapper={renderDiagnostics.plainOrbWrapper}
+            diagnosticMode={renderDiagnostics.mode}
           />
+        )}
+
+        {effectiveIsVoiceModeEnabled && !renderDiagnostics.showOrbZone && (
+          <div className="rounded-2xl border border-dashed border-white/10 bg-transparent p-6 text-center text-xs uppercase tracking-[0.28em] text-zinc-500">
+            voice diagnostic: {renderDiagnostics.mode}
+          </div>
         )}
 
         {/* Push-to-talk */}
@@ -1561,7 +1745,7 @@ export function VoiceCommandCenter({
           variant="outline"
           size="md"
           className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
-          disabled={!connected || !isVoiceModeEnabled}
+          disabled={!effectiveConnected || !effectiveIsVoiceModeEnabled}
         >
           🎙 {recordingButtonLabel}
         </Button>
@@ -1571,24 +1755,25 @@ export function VoiceCommandCenter({
           <Button
             type="button"
             size="xs"
-            variant={isVoiceModeEnabled ? "primary" : "outline"}
-            onClick={() =>
+            variant={effectiveIsVoiceModeEnabled ? "primary" : "outline"}
+            onClick={() => {
+              if (debugDryRunActive) return;
               setIsVoiceModeEnabled((current) => {
                 const next = !current;
                 setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
                 return next;
-              })
-            }
-            disabled={!audioEnabled}
+              });
+            }}
+            disabled={!effectiveAudioEnabled || debugDryRunActive}
           >
-            {isVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
+            {effectiveIsVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
           </Button>
           <Button
             type="button"
             size="xs"
             variant="outline"
             onClick={() => setTtsMuted((current) => !current)}
-            disabled={!audioEnabled}
+            disabled={!effectiveAudioEnabled}
           >
             {ttsMuted ? t("voice.controls.ttsMuted") : t("voice.controls.ttsOn")}
           </Button>
@@ -1597,7 +1782,7 @@ export function VoiceCommandCenter({
             size="xs"
             variant="outline"
             onClick={() => replayLastResponse().catch(() => undefined)}
-            disabled={!audioEnabled || !lastAudioResponseRef.current}
+            disabled={debugDryRunActive || !effectiveAudioEnabled || !lastAudioResponseRef.current}
           >
             {t("voice.controls.replay")}
           </Button>
@@ -1622,10 +1807,10 @@ export function VoiceCommandCenter({
               <Select
                 value={selectedTtsModelPath}
                 onValueChange={(value) => {
-                  setSelectedTtsModelPath(value);
-                  applyTtsModel(value).catch(() => undefined);
-                }}
-                disabled={!audioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
+                setSelectedTtsModelPath(value);
+                applyTtsModel(value).catch(() => undefined);
+              }}
+                disabled={!effectiveAudioEnabled || ttsModelChanging || ttsModelOptions.length === 0}
               >
                 <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-zinc-100">
                   <SelectValue placeholder={t("voice.controls.ttsVoiceSelect")} />
@@ -1640,7 +1825,11 @@ export function VoiceCommandCenter({
               </Select>
             </div>
             <span className="text-[11px] text-zinc-400">
-              {ttsModelChanging ? t("voice.controls.ttsVoiceChanging") : t("voice.controls.ttsVoiceAuto")}
+              {debugDryRunActive
+                ? "Debug dry run"
+                : ttsModelChanging
+                  ? t("voice.controls.ttsVoiceChanging")
+                  : t("voice.controls.ttsVoiceAuto")}
             </span>
           </div>
         </div>
@@ -1662,18 +1851,19 @@ export function VoiceCommandCenter({
         </div>
 
         {/* Timing strip — last session stage durations */}
-        <TimingStrip timings={audioStatus?.latest_voice_session?.timings_ms} />
+        <TimingStrip timings={effectiveAudioStatus?.latest_voice_session?.timings_ms} />
 
-        <p className="text-hint text-xs">{statusMessage ?? t("voice.status.channelReady")}</p>
+        <p className="text-hint text-xs">{effectiveStatusMessage ?? t("voice.status.channelReady")}</p>
       </div>
     </Panel>
     <DevDiagnosticsDrawer
       isOpen={devDrawerOpen}
       onClose={() => setDevDrawerOpen(false)}
-      audioStatus={audioStatus}
-      lastAudioSignal={lastAudioSignal}
-      audioChunkCount={audioChunkCount}
-      statusMessage={statusMessage}
+      audioStatus={effectiveAudioStatus}
+      lastAudioSignal={effectiveLastAudioSignal}
+      audioChunkCount={effectiveAudioChunkCount}
+      statusMessage={effectiveStatusMessage}
+      renderDiagnosticMode={renderDiagnostics.mode}
     />
     </>
   );

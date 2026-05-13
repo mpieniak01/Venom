@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { cleanup, render } from "@testing-library/react";
+import type { OrbEffectsConfig } from "../components/voice/use-orb-effects-config";
 import { VoiceOrb, type VoiceOrbState } from "../components/voice/voice-orb";
 
 afterEach(() => cleanup());
@@ -15,6 +16,40 @@ const ALL_STATES: VoiceOrbState[] = [
   "complete",
   "error",
 ];
+
+const METRICS_ENABLED_CONFIG: OrbEffectsConfig = {
+  ripple: false,
+  blob: false,
+  glow: false,
+  transitions: false,
+  frequencyRing: false,
+  coreTexture: false,
+  particles: false,
+  stateLabel: false,
+  orb3D: false,
+  bloom: false,
+  chromaticAberration: false,
+  iridescence: false,
+  volumetricLights: false,
+  orbMetricsBars: true,
+};
+
+const NO_GLOW_CONFIG: OrbEffectsConfig = {
+  ripple: false,
+  blob: false,
+  glow: false,
+  transitions: false,
+  frequencyRing: false,
+  coreTexture: false,
+  particles: false,
+  stateLabel: true,
+  orb3D: false,
+  bloom: false,
+  chromaticAberration: false,
+  iridescence: false,
+  volumetricLights: false,
+  orbMetricsBars: false,
+};
 
 describe("VoiceOrb", () => {
   for (const state of ALL_STATES) {
@@ -46,6 +81,46 @@ describe("VoiceOrb", () => {
       <VoiceOrb state="ready" inputLevel={0} outputLevel={0} label="Gotowy" />,
     );
     assert.equal(getByRole("img").getAttribute("aria-label"), "Gotowy");
+  });
+
+  it("does not render metrics bars on idle ready state even when enabled", () => {
+    const metricsRef = {
+      current: { cpu: 12, gpu: 4, vram: 8, ram: 16 },
+    } as const;
+    const { container } = render(
+      <VoiceOrb
+        state="ready"
+        inputLevel={0}
+        outputLevel={0}
+        effectsConfig={METRICS_ENABLED_CONFIG}
+        metricsRef={metricsRef as never}
+      />,
+    );
+
+    assert.equal(container.querySelectorAll("svg").length, 0);
+  });
+
+  it("keeps the ready state visually calm without ambient motion classes", () => {
+    const { container } = render(
+      <VoiceOrb state="ready" inputLevel={0} outputLevel={0} />,
+    );
+
+    assert.ok(!container.innerHTML.includes("animate-pulse-signal"));
+    assert.ok(!container.innerHTML.includes("animate-orb-plasma-slow"));
+    assert.ok(!container.innerHTML.includes("animate-orb-plasma-fast"));
+  });
+
+  it("does not render the blur glow layer when glow=false", () => {
+    const { container } = render(
+      <VoiceOrb
+        state="complete"
+        inputLevel={0}
+        outputLevel={0}
+        effectsConfig={NO_GLOW_CONFIG}
+      />,
+    );
+
+    assert.ok(!container.innerHTML.includes("blur-2xl"));
   });
 
   it("falls back to state name when no label provided", () => {

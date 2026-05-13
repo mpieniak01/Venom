@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject, RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Environment } from "@react-three/drei";
-import { EffectComposer, Bloom, ChromaticAberration } from "@react-three/postprocessing";
-import { BlendFunction } from "postprocessing";
 import * as THREE from "three";
+import { shouldRenderOrbMetricsBars } from "@/components/voice/orb-visibility";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import { useAudioLevel } from "@/components/voice/use-audio-level";
@@ -315,28 +313,6 @@ function createParticleState(): ParticleState {
   return { positions, velocities, lifetimes, resetCounts };
 }
 
-const GLOBAL_PARTICLE_STATE = createParticleState();
-const GLOBAL_FFT_DATA_ARRAY = new Uint8Array(128 * 4);
-const GLOBAL_FFT_TEXTURE = new THREE.DataTexture(GLOBAL_FFT_DATA_ARRAY, 128, 1, THREE.RGBAFormat);
-GLOBAL_FFT_TEXTURE.needsUpdate = true;
-const GLOBAL_BLOOM_TARGET = { current: 0.3 };
-const GLOBAL_CHROMATIC_OFFSET = new THREE.Vector2(0, 0);
-const GLOBAL_ORB_SHADER_MATERIAL = new THREE.ShaderMaterial({
-  uniforms: {
-    fftTexture: { value: GLOBAL_FFT_TEXTURE },
-    audioLevel: { value: 0 },
-    time: { value: 0 },
-    blobEnabled: { value: 1 },
-    fftEnabled: { value: 1 },
-    iridescenceEnabled: { value: 0 },
-    baseColor: { value: STATE_COLORS.ready.base.clone() },
-    emissionColor: { value: STATE_COLORS.ready.emission.clone() },
-    emissionIntensity: { value: 0.2 },
-  },
-  vertexShader,
-  fragmentShader,
-});
-
 function getActiveAnalyser(
   state: VoiceOrbState,
   micAnalyserRef?: RefObject<AnalyserNode | null>,
@@ -353,15 +329,6 @@ function getEmissionTarget(state: VoiceOrbState, audioLevel: number, elapsed: nu
   if (state === "thinking") return 0.3 + Math.sin(elapsed * 2.2) * 0.15;
   if (state === "complete") return Math.max(0, burst);
   if (state === "ready") return 0.15 + Math.sin(elapsed * 1.5) * 0.05;
-  return 0.1;
-}
-
-function getBloomTarget(state: VoiceOrbState, audioLevel: number, elapsed: number, burst: number): number {
-  if (state === "recording") return 0.4 + audioLevel * 0.8;
-  if (state === "tts") return 0.5 + audioLevel * 1.2;
-  if (state === "thinking") return 0.4 + Math.sin(elapsed * 2) * 0.15;
-  if (state === "complete") return 1.2 * burst;
-  if (state === "ready") return 0.25;
   return 0.1;
 }
 
@@ -435,15 +402,17 @@ function updateShaderMaterial({
     activeAnalyser.getByteFrequencyData(rawFFT.current);
     for (let i = 0; i < 128; i++) {
       const val = rawFFT.current[i] ?? 0;
-      GLOBAL_FFT_DATA_ARRAY[i * 4] = val;
-      GLOBAL_FFT_DATA_ARRAY[i * 4 + 1] = val;
-      GLOBAL_FFT_DATA_ARRAY[i * 4 + 2] = val;
-      GLOBAL_FFT_DATA_ARRAY[i * 4 + 3] = 255;
+      const fftData = uniforms.__fftData?.value as Uint8Array | undefined;
+      if (fftData) {
+        fftData[i * 4] = val;
+        fftData[i * 4 + 1] = val;
+        fftData[i * 4 + 2] = val;
+        fftData[i * 4 + 3] = 255;
+      }
     }
-    GLOBAL_FFT_TEXTURE.needsUpdate = true;
   }
 
-  setUniform("fftTexture", GLOBAL_FFT_TEXTURE);
+  setUniform("fftTexture", uniforms.__fftTexture?.value);
   setUniform("audioLevel", audioLevel);
   setUniform("time", elapsed);
   setUniform("blobEnabled", effectsConfig.blob && (state === "recording" || state === "tts") ? 1 : 0);
@@ -467,26 +436,30 @@ function updateShaderMaterial({
     currentEmissionIntensity +
       (getEmissionTarget(state, audioLevel, elapsed, burstProgress.current) - currentEmissionIntensity) * delta * 5,
   );
-
-  GLOBAL_BLOOM_TARGET.current = getBloomTarget(state, audioLevel, elapsed, burstProgress.current);
 }
 
 type OrbParticles3DProps = Readonly<{
   active: boolean;
   color: THREE.Color;
   audioLevel: number;
+  particleState: ParticleState;
 }>;
 
-function OrbParticles3D({ active, color, audioLevel }: OrbParticles3DProps) {
+function OrbParticles3D({ active, color, audioLevel, particleState }: OrbParticles3DProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const geometryRef = useRef<THREE.BufferGeometry | null>(null);
   const materialRef = useRef<THREE.PointsMaterial | null>(null);
+  const particleStateRef = useRef(particleState);
+
+  useEffect(() => {
+    particleStateRef.current = particleState;
+  }, [particleState]);
 
   useEffect(() => {
     if (geometryRef.current) {
       geometryRef.current.setAttribute(
         "position",
-        new THREE.BufferAttribute(GLOBAL_PARTICLE_STATE.positions, 3),
+        new THREE.BufferAttribute(particleStateRef.current.positions, 3),
       );
     }
     if (materialRef.current) {
@@ -497,14 +470,15 @@ function OrbParticles3D({ active, color, audioLevel }: OrbParticles3DProps) {
       materialRef.current.depthWrite = false;
       materialRef.current.sizeAttenuation = true;
     }
-  }, [color]);
+  }, [color, particleState]);
 
   useFrame((_, delta) => {
     if (!active || !pointsRef.current) return;
     const pos = pointsRef.current.geometry.attributes.position?.array as Float32Array | undefined;
     if (!pos) return;
-    const v = GLOBAL_PARTICLE_STATE.velocities;
-    const l = GLOBAL_PARTICLE_STATE.lifetimes;
+    const state = particleStateRef.current;
+    const v = state.velocities;
+    const l = state.lifetimes;
     const speed = 0.4 + audioLevel * 0.6;
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       pos[i * 3]     += v[i * 3] * delta;
@@ -513,8 +487,8 @@ function OrbParticles3D({ active, color, audioLevel }: OrbParticles3DProps) {
       l[i] -= delta * 0.35;
       if (l[i] <= 0) {
         // Reset particle on sphere surface (upper hemisphere)
-        const resetIndex = (GLOBAL_PARTICLE_STATE.resetCounts[i] ?? 0) + 1;
-        GLOBAL_PARTICLE_STATE.resetCounts[i] = resetIndex;
+        const resetIndex = (state.resetCounts[i] ?? 0) + 1;
+        state.resetCounts[i] = resetIndex;
         const sample = sampleParticle(i + resetIndex * 17);
         pos[i * 3] = sample.r * Math.sin(sample.phi) * Math.cos(sample.theta);
         pos[i * 3 + 1] = sample.r * Math.cos(sample.phi);
@@ -580,23 +554,40 @@ function OrbScene({
   const colors = STATE_COLORS[state];
   const activeAnalyser = getActiveAnalyser(state, micAnalyserRef, ttsAnalyserRef);
   const orbGeometry = useMemo(() => new THREE.SphereGeometry(0.62, 64, 64), []);
-  const shaderMaterial = GLOBAL_ORB_SHADER_MATERIAL;
+  const fftData = useMemo(() => new Uint8Array(128 * 4), []);
+  const fftTexture = useMemo(() => {
+    const texture = new THREE.DataTexture(fftData, 128, 1, THREE.RGBAFormat);
+    texture.needsUpdate = true;
+    return texture;
+  }, [fftData]);
+  const particleState = useMemo(() => createParticleState(), []);
+  const shaderMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          fftTexture: { value: fftTexture },
+          __fftTexture: { value: fftTexture },
+          __fftData: { value: fftData },
+          audioLevel: { value: 0 },
+          time: { value: 0 },
+          blobEnabled: { value: 1 },
+          fftEnabled: { value: 1 },
+          iridescenceEnabled: { value: effectsConfig.iridescence ? 1 : 0 },
+          baseColor: { value: STATE_COLORS.ready.base.clone() },
+          emissionColor: { value: STATE_COLORS.ready.emission.clone() },
+          emissionIntensity: { value: 0.2 },
+        },
+        vertexShader,
+        fragmentShader,
+      }),
+    [effectsConfig.iridescence, fftData, fftTexture],
+  );
+  const showMetricsBars = shouldRenderOrbMetricsBars(Boolean(effectsConfig.orbMetricsBars && metricsRef), state, reducedMotion);
 
-  // Chromatic aberration spike on state change
   useEffect(() => {
-    if (!effectsConfig.transitions || !effectsConfig.chromaticAberration || reducedMotion) return;
     if (prevState.current === state) return;
     prevState.current = state;
-
-    const start = performance.now();
-    const tick = () => {
-      const t = Math.min((performance.now() - start) / 280, 1);
-      const ease = Math.sin(t * Math.PI);
-      GLOBAL_CHROMATIC_OFFSET.set(ease * 0.007, ease * 0.007);
-      if (t < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [state, effectsConfig.transitions, effectsConfig.chromaticAberration, reducedMotion]);
+  }, [state]);
 
   // Complete state burst
   useEffect(() => {
@@ -619,10 +610,7 @@ function OrbScene({
     const uniforms = shaderMaterial.uniforms as Record<string, { value: unknown }>;
     (uniforms.baseColor.value as THREE.Color).copy(colors.base);
     (uniforms.emissionColor.value as THREE.Color).copy(colors.emission);
-    if (uniforms.iridescenceEnabled) {
-      uniforms.iridescenceEnabled.value = effectsConfig.iridescence ? 1 : 0;
-    }
-  }, [colors, effectsConfig.iridescence, shaderMaterial]);
+  }, [colors, shaderMaterial]);
 
   useEffect(() => {
     if (ambientLightRef.current) {
@@ -671,43 +659,17 @@ function OrbScene({
     <>
       <ambientLight ref={ambientLightRef} />
 
-      {effectsConfig.volumetricLights && (
-        <>
-          <pointLight ref={light1Ref} />
-          <pointLight ref={light2Ref} />
-        </>
-      )}
+      <pointLight ref={light1Ref} />
+      <pointLight ref={light2Ref} />
 
       <mesh ref={meshRef} />
 
       {effectsConfig.particles ? (
-        <OrbParticles3D active={isActive} color={colors.emission} audioLevel={audioLevel} />
+        <OrbParticles3D active={isActive} color={colors.emission} audioLevel={audioLevel} particleState={particleState} />
       ) : null}
 
-      {effectsConfig.coreTexture ? (
-        <Environment preset="city" background={false} />
-      ) : null}
-
-      {effectsConfig.orbMetricsBars && metricsRef && !reducedMotion ? (
+      {showMetricsBars ? (
         <OrbMetricsBars3D metricsRef={metricsRef} />
-      ) : null}
-
-      {effectsConfig.bloom && !reducedMotion ? (
-        <EffectComposer>
-          <Bloom
-            intensity={GLOBAL_BLOOM_TARGET.current}
-            luminanceThreshold={0.22}
-            luminanceSmoothing={0.9}
-            blendFunction={BlendFunction.ADD}
-          />
-          <ChromaticAberration
-            offset={effectsConfig.chromaticAberration && !reducedMotion
-              ? GLOBAL_CHROMATIC_OFFSET
-              : new THREE.Vector2(0, 0)}
-            radialModulation={false}
-            modulationOffset={0}
-          />
-        </EffectComposer>
       ) : null}
     </>
   );

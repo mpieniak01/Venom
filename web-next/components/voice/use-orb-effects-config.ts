@@ -39,6 +39,23 @@ const ALL_OFF: OrbEffectsConfig = {
   orbMetricsBars: false,
 };
 
+const MINIMAL_PROFILE: OrbEffectsConfig = {
+  ripple: false,
+  blob: false,
+  glow: true,
+  transitions: false,
+  frequencyRing: false,
+  coreTexture: false,
+  particles: false,
+  stateLabel: true,
+  orb3D: false,
+  bloom: false,
+  chromaticAberration: false,
+  iridescence: false,
+  volumetricLights: false,
+  orbMetricsBars: false,
+};
+
 // Next.js replaces NEXT_PUBLIC_* vars at build time only when referenced by
 // their full literal name — dynamic process.env[key] is not replaced in the
 // browser bundle. Each flag is therefore read with a static reference.
@@ -49,7 +66,7 @@ function isOff(v: string | undefined): boolean {
 export function useOrbEffectsConfig(): OrbEffectsConfig {
   return useMemo(() => {
     if (process.env.NEXT_PUBLIC_ORB_EFFECTS === "off") return ALL_OFF;
-    return {
+    const baseConfig: OrbEffectsConfig = {
       ripple:              !isOff(process.env.NEXT_PUBLIC_ORB_RIPPLE),
       blob:                !isOff(process.env.NEXT_PUBLIC_ORB_BLOB),
       glow:                !isOff(process.env.NEXT_PUBLIC_ORB_GLOW),
@@ -67,5 +84,18 @@ export function useOrbEffectsConfig(): OrbEffectsConfig {
       // PR 208B — metrics bars default to false (opt-in)
       orbMetricsBars:      process.env.NEXT_PUBLIC_ORB_METRICS_BARS === "true",
     };
+    const profile = (process.env.NEXT_PUBLIC_ORB_EFFECT_PROFILE ?? "balanced").toLowerCase();
+    if (profile === "minimal") {
+      return {
+        ...baseConfig,
+        ...MINIMAL_PROFILE,
+        orb3D: baseConfig.orb3D,
+      };
+    }
+    if (profile === "full") {
+      return baseConfig;
+    }
+    // balanced (default) keeps current per-flag behavior.
+    return baseConfig;
   }, []);
 }

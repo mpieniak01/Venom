@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { OrbFrequencyRing } from "@/components/voice/orb-frequency-ring";
+import { shouldRenderOrbMetricsBars } from "@/components/voice/orb-visibility";
 import { useAudioLevel } from "@/components/voice/use-audio-level";
 import type { OrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
 import type { OrbMetrics } from "@/components/voice/use-orb-metrics";
@@ -26,7 +27,7 @@ type OrbVisual = {
 
 const ORB_VISUALS: Record<VoiceOrbState, OrbVisual> = {
   offline: { coreColor: "bg-zinc-700", glowColor: "bg-zinc-600/20", ringAnimation: "", coreAnimation: "" },
-  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/20", ringAnimation: "animate-pulse-signal", coreAnimation: "" },
+  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/20", ringAnimation: "", coreAnimation: "" },
   recording: { coreColor: "bg-emerald-500", glowColor: "bg-emerald-400/30", ringAnimation: "", coreAnimation: "" },
   stt: { coreColor: "bg-amber-500", glowColor: "bg-amber-400/25", ringAnimation: "animate-spin", coreAnimation: "animate-pulse" },
   thinking: { coreColor: "bg-violet-600", glowColor: "bg-violet-500/25", ringAnimation: "animate-orb-thinking", coreAnimation: "" },
@@ -508,11 +509,13 @@ export function VoiceOrb({
   const showFreqRing = shouldShowOrbEffect(cfg.frequencyRing, noAnim, activeAnalyser !== undefined);
   const particles = useOrbParticles();
   const { flashClass, showBurst, burstKey } = useOrbTransitionEffects(effectiveState, cfg.transitions, noAnim);
+  const showMetricsBars = shouldRenderOrbMetricsBars(Boolean(cfg.orbMetricsBars && metricsRef), effectiveState, noAnim);
+  const showAmbientMotion = !noAnim && effectiveState !== "ready" && effectiveState !== "offline";
 
   const coreScale = noAnim ? 1 : 1 + Math.min(1, audioLevel) * 0.35;
   const hasMotion = coreScale !== 1;
   const glowShadow = getOrbGlowShadow(cfg.glow, noAnim, effectiveState, audioLevel);
-  const ringAnimation = getMotionClass(noAnim, visual.ringAnimation);
+  const ringAnimation = showAmbientMotion ? getMotionClass(noAnim, visual.ringAnimation) : "";
   const coreAnimation = getMotionClass(noAnim, visual.coreAnimation);
   const blobClass = showBlob ? "animate-orb-blob" : "";
   const rippleColors = RIPPLE_COLORS[effectiveState];
@@ -545,7 +548,9 @@ export function VoiceOrb({
           </>
         )}
 
-        <div className={`absolute inset-0 rounded-full blur-2xl transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
+        {cfg.glow && (
+          <div className={`absolute inset-0 rounded-full blur-2xl transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
+        )}
 
         {showFreqRing && activeAnalyser && (
           <OrbFrequencyRing analyserRef={activeAnalyser} active={showFreqRing} color={fftColor} size={ORB_SIZE} />
@@ -585,7 +590,7 @@ export function VoiceOrb({
             />
           )}
 
-          {cfg.coreTexture && !noAnim && (
+          {cfg.coreTexture && showAmbientMotion && (
             <>
               <div
                 className="animate-orb-plasma-slow pointer-events-none absolute rounded-full opacity-[0.18]"
@@ -633,7 +638,7 @@ export function VoiceOrb({
             );
           })}
 
-        {cfg.orbMetricsBars && metricsRef && !reducedMotion && (
+        {showMetricsBars && (
           <OrbMetricsBars2D metricsRef={metricsRef} orbSize={ORB_SIZE} colorMode />
         )}
       </div>

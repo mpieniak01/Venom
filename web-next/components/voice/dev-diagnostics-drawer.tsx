@@ -74,6 +74,7 @@ type DevDiagnosticsDrawerProps = Readonly<{
   lastAudioSignal: string;
   audioChunkCount: number;
   statusMessage: string | null;
+  renderDiagnosticMode?: string;
 }>;
 
 function getProbeTone(status?: string | null): "success" | "warning" | "danger" | "neutral" {
@@ -99,6 +100,7 @@ export function DevDiagnosticsDrawer({
   lastAudioSignal,
   audioChunkCount,
   statusMessage,
+  renderDiagnosticMode,
 }: DevDiagnosticsDrawerProps) {
   useEffect(() => {
     if (!isOpen) return;
@@ -132,6 +134,9 @@ export function DevDiagnosticsDrawer({
             <p className="text-xs text-zinc-500">
               {lastAudioSignal || "no signal"} · chunks {audioChunkCount}
             </p>
+            {renderDiagnosticMode && renderDiagnosticMode !== "off" && (
+              <p className="text-xs text-zinc-500">render diag · {renderDiagnosticMode}</p>
+            )}
             {statusMessage && <p className="text-xs text-zinc-400">{statusMessage}</p>}
           </div>
           <Button size="xs" variant="outline" onClick={onClose}>

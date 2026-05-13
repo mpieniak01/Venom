@@ -13,11 +13,12 @@ export type OrbMetrics = {
 
 const ZERO_METRICS: OrbMetrics = { cpu: 0, gpu: 0, vram: 0, ram: 0 };
 
-export function useOrbMetrics(): RefObject<OrbMetrics> {
+export function useOrbMetrics(enabled = true): RefObject<OrbMetrics> {
   const metricsRef = useRef<OrbMetrics>({ ...ZERO_METRICS });
-  const { data } = useModelsUsage(5000);
+  const { data } = useModelsUsage(5000, enabled);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!data?.usage) return;
     const u = data.usage as Record<string, number | undefined>;
     metricsRef.current = {
@@ -26,7 +27,7 @@ export function useOrbMetrics(): RefObject<OrbMetrics> {
       vram: u.vram_usage_percent ?? 0,
       ram: u.memory_usage_percent ?? 0,
     };
-  }, [data]);
+  }, [data, enabled]);
 
   return metricsRef;
 }

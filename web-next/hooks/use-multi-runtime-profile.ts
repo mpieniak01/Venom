@@ -66,6 +66,7 @@ export function useMultiRuntimeProfile(
   }, []);
 
   const scheduleNext = useCallback(() => {
+    if (!mountedRef.current) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
       await doFetch();

@@ -70,14 +70,6 @@ _warming: bool = False
 _startup_error: Optional[str] = None
 _lifecycle_lock: asyncio.Lock = asyncio.Lock()
 
-# Daemon management state (214A)
-_daemon_max_new_tokens: int = int(os.getenv("GEMMA4_AUDIO_MAX_NEW_TOKENS", "128"))
-_daemon_enable_thinking: bool = False
-_daemon_cache_implementation: Optional[str] = None
-_pending_reload: bool = False
-_reload_reason: Optional[str] = None
-_assistant_model_id: Optional[str] = None
-
 
 def get_daemon() -> MultiRuntimeDaemon:
     global _daemon
@@ -693,7 +685,9 @@ async def respond(request: Request) -> RespondResponse:
 
     if audio_bytes is not None:
         try:
-            audio_array, sample_rate = audio_from_bytes(audio_bytes)
+            audio_array, sample_rate = await asyncio.to_thread(
+                audio_from_bytes, audio_bytes
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=400, detail=f"Failed to process uploaded audio: {e}"
@@ -704,7 +698,9 @@ async def respond(request: Request) -> RespondResponse:
                 if content.type == "audio" and content.path:
                     audio_path = Path(content.path)
                     try:
-                        audio_array, sample_rate = audio_from_file(audio_path)
+                        audio_array, sample_rate = await asyncio.to_thread(
+                            audio_from_file, audio_path
+                        )
                     except Exception as e:
                         raise HTTPException(
                             status_code=400,
@@ -746,7 +742,8 @@ async def respond(request: Request) -> RespondResponse:
     daemon_params = daemon_status["params"]
 
     try:
-        generated_text, duration = engine.respond(
+        generated_text, duration = await asyncio.to_thread(
+            engine.respond,
             audio_array,
             sample_rate=sample_rate,
             prompt=prompt,
@@ -923,7 +920,8 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
 
     daemon_status = daemon.status()
     daemon_params = daemon_status["params"]
-    text, _ = engine.respond(
+    text, _ = await asyncio.to_thread(
+        engine.respond,
         None,
         sample_rate=16000,
         prompt=prompt,
@@ -974,14 +972,14 @@ async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
 
     try:
         file_bytes = await audio.read()
-        audio_array, sample_rate = audio_from_bytes(file_bytes)
+        audio_array, sample_rate = await asyncio.to_thread(audio_from_bytes, file_bytes)
     except Exception as e:
         raise HTTPException(
             status_code=400, detail=f"Failed to process audio file: {e}"
         )
 
     try:
-        text = engine.transcribe(audio_array, sample_rate)
+        text = await asyncio.to_thread(engine.transcribe, audio_array, sample_rate)
     except InferenceError as e:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
 
@@ -1008,8 +1006,12 @@ async def warmup():
 
     dummy_audio = np.zeros(16000, dtype=np.float32)
     try:
-        text, _ = engine.respond(
-            dummy_audio, sample_rate=16000, prompt="Say hello", max_new_tokens=10
+        text, _ = await asyncio.to_thread(
+            engine.respond,
+            dummy_audio,
+            sample_rate=16000,
+            prompt="Say hello",
+            max_new_tokens=10,
         )
         return {"status": "warmed", "sample_output": text}
     except InferenceError as e:

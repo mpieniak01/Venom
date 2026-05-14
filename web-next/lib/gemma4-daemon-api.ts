@@ -143,3 +143,128 @@ export const postDaemonRespond = (
     method: "POST",
     body: JSON.stringify(payload),
   });
+
+// ---------------------------------------------------------------------------
+// multi_runtime_profile — system API (goes to /api/v1/runtime/multi-runtime/profile)
+// ---------------------------------------------------------------------------
+
+export type MultiRuntimeApplyMode =
+  | "live"
+  | "soft_reload"
+  | "hard_restart"
+  | "unsupported";
+
+export type MultiRuntimeProfile = {
+  profile_id: string;
+  display_name: string;
+  runtime_id: string;
+  compatibility: string;
+  model_id: string;
+  assistant_model_id: string | null;
+  cache_implementation: string | null;
+  max_new_tokens: number;
+  image_token_budget: number;
+  enable_thinking: boolean;
+  reasoning_summary_enabled: boolean;
+  emotion_detection_enabled: boolean;
+  emotion_response_style_enabled: boolean;
+  precision: string;
+  quantization_backend: string | null;
+  device_target: string;
+};
+
+export type MultiRuntimeApplyMatrix = {
+  model_id: MultiRuntimeApplyMode;
+  assistant_model_id: MultiRuntimeApplyMode;
+  cache_implementation: MultiRuntimeApplyMode;
+  max_new_tokens: MultiRuntimeApplyMode;
+  image_token_budget: MultiRuntimeApplyMode;
+  enable_thinking: MultiRuntimeApplyMode;
+  reasoning_summary_enabled: MultiRuntimeApplyMode;
+  emotion_detection_enabled: MultiRuntimeApplyMode;
+  emotion_response_style_enabled: MultiRuntimeApplyMode;
+  precision: MultiRuntimeApplyMode;
+  quantization_backend: MultiRuntimeApplyMode;
+  device_target: MultiRuntimeApplyMode;
+};
+
+export type MultiRuntimeSupportedOptions = {
+  cache_implementation: (string | null)[];
+  precision: string[];
+  device_target: string[];
+  quantization_backend: (string | null)[];
+};
+
+export type MultiRuntimeProfileResponse = {
+  runtime_id: string;
+  profile: MultiRuntimeProfile;
+  apply_matrix: MultiRuntimeApplyMatrix;
+  supported_options: MultiRuntimeSupportedOptions;
+  daemon_reachable: boolean;
+};
+
+export type MultiRuntimeProfileUpdateRequest = {
+  model_id?: string | null;
+  assistant_model_id?: string | null;
+  cache_implementation?: string | null;
+  max_new_tokens?: number | null;
+  image_token_budget?: number | null;
+  enable_thinking?: boolean | null;
+  reasoning_summary_enabled?: boolean | null;
+  emotion_detection_enabled?: boolean | null;
+  emotion_response_style_enabled?: boolean | null;
+  precision?: string | null;
+  quantization_backend?: string | null;
+  device_target?: string | null;
+};
+
+export type MultiRuntimeFieldRejection = {
+  field: string;
+  value: unknown;
+  reason: string;
+  detail: string;
+};
+
+export type MultiRuntimeProfileUpdateResponse = {
+  accepted: Record<string, unknown>;
+  rejected: MultiRuntimeFieldRejection[];
+  required_apply_mode: MultiRuntimeApplyMode;
+  applied: boolean;
+  message: string;
+};
+
+async function systemApiFetch<T>(
+  apiBaseUrl: string,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const url = `${apiBaseUrl}${path}`;
+  const resp = await fetch(url, {
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`System API ${path} → ${resp.status}${text ? `: ${text}` : ""}`);
+  }
+  return resp.json() as Promise<T>;
+}
+
+export const getMultiRuntimeProfile = (
+  apiBaseUrl: string,
+): Promise<MultiRuntimeProfileResponse> =>
+  systemApiFetch<MultiRuntimeProfileResponse>(
+    apiBaseUrl,
+    "/api/v1/runtime/multi-runtime/profile",
+  );
+
+export const updateMultiRuntimeProfile = (
+  apiBaseUrl: string,
+  update: MultiRuntimeProfileUpdateRequest,
+): Promise<MultiRuntimeProfileUpdateResponse> =>
+  systemApiFetch<MultiRuntimeProfileUpdateResponse>(
+    apiBaseUrl,
+    "/api/v1/runtime/multi-runtime/profile",
+    { method: "POST", body: JSON.stringify(update) },
+  );

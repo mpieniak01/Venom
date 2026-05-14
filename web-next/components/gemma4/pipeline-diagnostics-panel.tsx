@@ -7,7 +7,7 @@ import type { DaemonRespondResponse, RuntimeComponentSnapshotItem } from "@/lib/
 // Types
 // ---------------------------------------------------------------------------
 
-type StageHealth = "ok" | "degraded" | "skipped" | "fallback" | "empty" | "stub" | string;
+type StageHealth = "ok" | "degraded" | "skipped" | "fallback" | "empty" | "stub";
 
 type ParsedTrace = {
   name: string;
@@ -49,9 +49,9 @@ function parseTrace(trace: string[]): ParsedTrace[] {
   return trace.map((entry) => {
     const colonIdx = entry.lastIndexOf(":");
     if (colonIdx > 0) {
-      return { name: entry.slice(0, colonIdx), outcome: entry.slice(colonIdx + 1) };
+      return { name: entry.slice(0, colonIdx), outcome: entry.slice(colonIdx + 1) as StageHealth };
     }
-    return { name: entry, outcome: "ok" };
+    return { name: entry, outcome: "ok" as StageHealth };
   });
 }
 
@@ -118,8 +118,8 @@ function StagesSection({ traces, title }: Readonly<{ traces: ParsedTrace[]; titl
     <div>
       <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">{title}</p>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-        {traces.map(({ name, outcome }, i) => (
-          <span key={i} className="text-[10px]">
+        {traces.map(({ name, outcome }) => (
+          <span key={name} className="text-[10px]">
             <span className={stageColor(outcome)}>{stageIcon(outcome)}</span>{" "}
             <span className="text-zinc-400">{name}</span>
           </span>
@@ -162,7 +162,7 @@ function DegradationsSection({ reasons, title }: Readonly<{ reasons: string[]; t
       <p className="mb-1 text-[9px] uppercase tracking-widest text-amber-600">{title}</p>
       <ul className="space-y-0.5">
         {reasons.map((r, i) => (
-          <li key={i} className="text-[10px] text-amber-400">
+          <li key={`${i}:${r}`} className="text-[10px] text-amber-400">
             ⚠ {r}
           </li>
         ))}

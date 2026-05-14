@@ -66,7 +66,7 @@ is_warming() {
 }
 
 start() {
-  echo "🧭 Gemma4 Audio config: model=${MODEL_ID}, host=${HOST}, port=${PORT}, device=${DEVICE}, env_file=${ENV_FILE}"
+  echo "🧭 Multi-Runtime config: model=${MODEL_ID}, host=${HOST}, port=${PORT}, device=${DEVICE}, env_file=${ENV_FILE}"
 
   if [[ "$USE_SYSTEMD" == "true" ]]; then
     echo "Starting systemd unit ${SYSTEMD_UNIT}"
@@ -85,7 +85,7 @@ start() {
     local existing_pid
     existing_pid="$(cat "$PID_FILE")"
     if kill -0 "$existing_pid" 2>/dev/null; then
-      echo "Gemma4 Audio already running (PID $existing_pid)"
+      echo "Multi-Runtime already running (PID $existing_pid)"
       if is_ready; then
         echo "Service is healthy at http://${HOST}:${PORT}/health"
       fi
@@ -102,7 +102,7 @@ start() {
     mkdir -p "$ROOT_DIR/$CACHE_DIR"
   fi
 
-  echo "Starting Gemma4 Audio Runtime daemon (port ${PORT}, log: $LOG_FILE)"
+  echo "Starting Multi-Runtime daemon (port ${PORT}, log: $LOG_FILE)"
 
   # Export environment for the daemon
   export GEMMA4_AUDIO_MODEL_ID="$MODEL_ID"
@@ -124,7 +124,7 @@ start() {
   # Quick liveness check to fail fast on immediate startup errors
   sleep 2
   if ! kill -0 "$pid" 2>/dev/null; then
-    echo "Gemma4 Audio crashed immediately after startup (PID $pid)." >&2
+    echo "Multi-Runtime crashed immediately after startup (PID $pid)." >&2
     echo "Last logs:" >&2
     tail -n 40 "$LOG_FILE" >&2 || true
     rm -f "$PID_FILE"
@@ -139,7 +139,7 @@ start() {
     local status
     status="$(health_status)"
     if [[ "$status" == "ok" ]]; then
-      echo "Gemma4 Audio is healthy!"
+      echo "Multi-Runtime is healthy!"
       echo "Service started successfully at http://${HOST}:${PORT}"
       echo "Log file: $LOG_FILE"
       echo "PID file: $PID_FILE"
@@ -186,7 +186,7 @@ stop() {
     local pid
     pid="$(cat "$PID_FILE")"
     if kill -0 "$pid" 2>/dev/null; then
-      echo "Stopping Gemma4 Audio (PID $pid)"
+      echo "Stopping Multi-Runtime (PID $pid)"
       kill "$pid" 2>/dev/null || true
 
       # Wait for graceful shutdown (up to 10 seconds)
@@ -198,7 +198,7 @@ stop() {
 
       # Force kill if still running
       if kill -0 "$pid" 2>/dev/null; then
-        echo "Forcing kill of Gemma4 Audio (PID $pid)"
+        echo "Forcing kill of Multi-Runtime (PID $pid)"
         kill -9 "$pid" 2>/dev/null || true
       fi
     fi
@@ -208,7 +208,7 @@ stop() {
   # Cleanup stray processes
   pkill -f "services.gemma4_audio_runtime" 2>/dev/null || true
 
-  echo "Gemma4 Audio stopped"
+  echo "Multi-Runtime stopped"
   return 0
 }
 
@@ -224,7 +224,7 @@ status() {
     local pid
     pid="$(cat "$PID_FILE")"
     if kill -0 "$pid" 2>/dev/null; then
-      echo "Gemma4 Audio is running (PID $pid)"
+      echo "Multi-Runtime is running (PID $pid)"
       local status
       status="$(health_status)"
       if [[ "$status" == "ok" ]]; then
@@ -239,7 +239,7 @@ status() {
       return 0
     fi
   fi
-  echo "Gemma4 Audio is not running"
+  echo "Multi-Runtime is not running"
   return 1
 }
 
@@ -247,20 +247,20 @@ health() {
   local status
   status="$(health_status)"
   if [[ "$status" == "ok" ]]; then
-    echo "Gemma4 Audio is healthy (http://${HOST}:${PORT}/health)"
+    echo "Multi-Runtime is healthy (http://${HOST}:${PORT}/health)"
     return 0
   elif [[ "$status" == "warming" ]]; then
-    echo "Gemma4 Audio is warming up (http://${HOST}:${PORT}/health)"
+    echo "Multi-Runtime is warming up (http://${HOST}:${PORT}/health)"
     return 2
   else
-    echo "Gemma4 Audio health check failed (http://${HOST}:${PORT}/health)"
+    echo "Multi-Runtime health check failed (http://${HOST}:${PORT}/health)"
     return 1
   fi
 }
 
 show_logs() {
   if [[ -f "$LOG_FILE" ]]; then
-    echo "=== Gemma4 Audio Service Logs ==="
+    echo "=== Multi-Runtime Service Logs ==="
     tail -n "${1:-50}" "$LOG_FILE"
   else
     echo "No log file found: $LOG_FILE"
@@ -271,7 +271,7 @@ usage() {
   echo "Usage: $0 {start|stop|restart|status|health|logs}" >&2
   echo "" >&2
   echo "Commands:" >&2
-  echo "  start     - Start the Gemma4 Audio daemon" >&2
+  echo "  start     - Start the Multi-Runtime daemon" >&2
   echo "  stop      - Stop the daemon" >&2
   echo "  restart   - Restart the daemon" >&2
   echo "  status    - Show daemon status" >&2

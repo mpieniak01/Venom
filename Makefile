@@ -376,7 +376,7 @@ help:
 	@echo "Runtime LLM:"
 	@echo "  make vllm-start|stop|restart  - kontrola usługi vLLM"
 	@echo "  make ollama-start|stop|restart - kontrola usługi Ollama"
-	@echo "  make gemma4-audio-start|stop|restart|hygiene - kontrola usługi Gemma4 Audio"
+	@echo "  make gemma4-audio-start|stop|restart|hygiene - kontrola usługi Multi-Runtime"
 	@echo ""
 	@echo "Jakość:"
 	@echo "  make pr-fast                  - hard gate (wymagane przed zakończeniem)"

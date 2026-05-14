@@ -156,6 +156,88 @@ async function attachAssistantModel(params: {
   params.setShowDrafterInput(false);
 }
 
+async function applyRuntimeControlDraft(params: {
+  daemon: Gemma4DaemonState;
+  localThinking: boolean | null;
+  localReasoningSummary: boolean | null;
+  localEmotionDetection: boolean | null;
+  localEmotionResponseStyle: boolean | null;
+  localTokens: string;
+  localImageBudget: string;
+  localCache: string | null;
+  resetDraft: () => void;
+}) {
+  const request = buildDaemonConfigRequestFromLocalDraft(params);
+  const result = await params.daemon.applyConfig(request);
+  if (result) {
+    params.resetDraft();
+  }
+}
+
+async function handleRuntimeImageProbe(params: {
+  imageUrlInput: string;
+  imageDataInput: string | null;
+  imagePromptInput: string;
+  imageProbePending: boolean;
+  maxNewTokens: number;
+  setImageProbeResult: (value: string | null) => void;
+  setImageProbeDiagnostics: (
+    value: {
+      executionTrace: string[];
+      selectedPolicy: string | null;
+      selectedImageStrategy: string | null;
+      retrievalUsed: boolean;
+      retrievalContextItems: number;
+      retrievalRoute: string | null;
+      assistantUsed: boolean;
+      economyModeActivated: boolean;
+      degradationReasons: string[];
+    } | null,
+  ) => void;
+  setImageProbeError: (value: string | null) => void;
+  setImageProbePending: (value: boolean) => void;
+}) {
+  const url = params.imageUrlInput.trim();
+  if ((!url && !params.imageDataInput) || params.imageProbePending) return;
+  params.setImageProbePending(true);
+  params.setImageProbeError(null);
+  params.setImageProbeResult(null);
+  params.setImageProbeDiagnostics(null);
+  try {
+    const result = await runImageProbe({
+      imageUrlInput: params.imageUrlInput,
+      imageDataInput: params.imageDataInput,
+      imagePromptInput: params.imagePromptInput,
+      imageProbePending: params.imageProbePending,
+      maxNewTokens: params.maxNewTokens,
+    });
+    params.setImageProbeResult(result.text);
+    params.setImageProbeDiagnostics(result.diagnostics);
+  } catch (e) {
+    params.setImageProbeError(e instanceof Error ? e.message : "Image request failed");
+  } finally {
+    params.setImageProbePending(false);
+  }
+}
+
+async function handleRuntimeImageFileSelection(params: {
+  fileList: FileList | null;
+  setImageProbeError: (value: string | null) => void;
+  setImageDataInput: (value: string | null) => void;
+  setImageFileName: (value: string | null) => void;
+}) {
+  const file = params.fileList?.item(0);
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    params.setImageProbeError("Only image files are supported");
+    return;
+  }
+  params.setImageProbeError(null);
+  const loaded = await readImageFileAsDataUrl(file);
+  params.setImageDataInput(loaded);
+  params.setImageFileName(file.name);
+}
+
 async function readImageFileAsDataUrl(file: File): Promise<string> {
   const reader = new FileReader();
   return new Promise<string>((resolve, reject) => {
@@ -317,8 +399,9 @@ export function Gemma4RuntimeControlInner({
     localImageBudget !== "" ||
     localCache !== null;
 
-  async function handleApply() {
-    const params = buildDaemonConfigRequestFromLocalDraft({
+  const handleApply = () =>
+    applyRuntimeControlDraft({
+      daemon,
       localThinking,
       localReasoningSummary,
       localEmotionDetection,
@@ -326,67 +409,47 @@ export function Gemma4RuntimeControlInner({
       localTokens,
       localImageBudget,
       localCache,
+      resetDraft: () =>
+        resetLocalRuntimeDraft({
+          setLocalThinking,
+          setLocalTokens,
+          setLocalImageBudget,
+          setLocalCache,
+        }),
     });
-    const result = await daemon.applyConfig(params);
-    if (result) {
-      resetLocalRuntimeDraft({
-        setLocalThinking,
-        setLocalTokens,
-        setLocalImageBudget,
-        setLocalCache,
-      });
-    }
-  }
 
-  async function handleAttach() {
-    await attachAssistantModel({
+  const handleAttach = () =>
+    attachAssistantModel({
       daemon,
       drafterInput,
       setDrafterInput,
       setShowDrafterInput,
     });
-  }
 
-  async function handleImageProbe() {
-    if ((!imageUrlInput.trim() && !imageDataInput) || imageProbePending) return;
-    setImageProbePending(true);
-    setImageProbeError(null);
-    setImageProbeResult(null);
-    setImageProbeDiagnostics(null);
-    try {
-      const result = await runImageProbe({
-        imageUrlInput,
-        imageDataInput,
-        imagePromptInput,
-        imageProbePending,
-        maxNewTokens: status?.params.max_new_tokens ?? 128,
-      });
-      setImageProbeResult(result.text);
-      setImageProbeDiagnostics(result.diagnostics);
-    } catch (e) {
-      setImageProbeError(e instanceof Error ? e.message : "Image request failed");
-    } finally {
-      setImageProbePending(false);
-    }
-  }
+  const handleImageProbe = () =>
+    handleRuntimeImageProbe({
+      imageUrlInput,
+      imageDataInput,
+      imagePromptInput,
+      imageProbePending,
+      maxNewTokens: status?.params.max_new_tokens ?? 128,
+      setImageProbeResult,
+      setImageProbeDiagnostics,
+      setImageProbeError,
+      setImageProbePending,
+    });
 
-  async function readImageFile(file: File) {
-    if (!file.type.startsWith("image/")) {
-      setImageProbeError("Only image files are supported");
-      return;
-    }
-    setImageProbeError(null);
-    const loaded = await readImageFileAsDataUrl(file);
-    setImageDataInput(loaded);
-    setImageFileName(file.name);
-    setImageUrlInput("");
-  }
-
-  async function handleImageFileChange(fileList: FileList | null) {
-    const file = fileList?.item(0);
-    if (!file) return;
-    await readImageFile(file);
-  }
+  const handleImageFileChange = (fileList: FileList | null) =>
+    handleRuntimeImageFileSelection({
+      fileList,
+      setImageProbeError,
+      setImageDataInput,
+      setImageFileName,
+    }).then(() => {
+      if (fileList?.item(0)) {
+        setImageUrlInput("");
+      }
+    });
 
   const vram = status?.vram;
   const vramPercent =

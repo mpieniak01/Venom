@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
+import type {
+  Dispatch,
+  MutableRefObject,
+  PointerEvent as ReactPointerEvent,
+  RefObject,
+  SetStateAction,
+} from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2662,6 +2668,43 @@ export function VoiceCommandCenter({
     setLastAudioSignal,
   });
 
+  const onRecordingPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      if (!recording) {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // ignore pointer capture failures
+        }
+        startRecording().catch(() => undefined);
+      }
+    },
+    [recording, startRecording],
+  );
+
+  const onRecordingPointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      stopRecording();
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // ignore pointer capture failures
+      }
+    },
+    [stopRecording],
+  );
+
+  const onVoiceModeToggle = useCallback(() => {
+    if (debugDryRunActive) return;
+    setIsVoiceModeEnabled((current) => {
+      const next = !current;
+      setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
+      return next;
+    });
+  }, [debugDryRunActive, setIsVoiceModeEnabled, setStatusMessage, t]);
+
   return (
     <>
       <Panel
@@ -2715,28 +2758,10 @@ export function VoiceCommandCenter({
 
           <Button
             type="button"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              if (!recordingRef.current) {
-                try {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                } catch {
-                  // ignore pointer capture failures
-                }
-                startRecording().catch(() => undefined);
-              }
-            }}
-            onPointerUp={(event) => {
-              event.preventDefault();
-              stopRecording();
-              try {
-                event.currentTarget.releasePointerCapture(event.pointerId);
-              } catch {
-                // ignore pointer capture failures
-              }
-            }}
-            onPointerCancel={() => stopRecording()}
-            onLostPointerCapture={() => stopRecording()}
+            onPointerDown={onRecordingPointerDown}
+            onPointerUp={onRecordingPointerUp}
+            onPointerCancel={stopRecording}
+            onLostPointerCapture={stopRecording}
             variant="outline"
             size="md"
             className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${viewState.recordingButtonClass}`}
@@ -2750,14 +2775,7 @@ export function VoiceCommandCenter({
               type="button"
               size="xs"
               variant={viewState.effectiveIsVoiceModeEnabled ? "primary" : "outline"}
-              onClick={() => {
-                if (debugDryRunActive) return;
-                setIsVoiceModeEnabled((current) => {
-                  const next = !current;
-                  setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
-                  return next;
-                });
-              }}
+              onClick={onVoiceModeToggle}
               disabled={!viewState.effectiveAudioEnabled || debugDryRunActive}
             >
               {viewState.effectiveIsVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}

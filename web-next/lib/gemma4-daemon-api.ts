@@ -20,6 +20,24 @@ export type DaemonParamsInfo = {
   emotion_detection_enabled: boolean;
   emotion_response_style_enabled: boolean;
   cache_implementation: string | null;
+  execution_mode: "balanced" | "vision_priority" | "voice_priority";
+  image_strategy: "vlm_only" | "ocr_first" | "hybrid";
+  retrieval_mode: "off" | "auto" | "always";
+  audio_output_mode: "off" | "text_first" | "voice_first";
+  assistant_mode: "off" | "attached" | "conditional";
+  economy_mode: "off" | "auto";
+};
+
+export type RuntimeComponentSnapshotItem = {
+  component_id: string;
+  component_type: string;
+  enabled: boolean;
+  available: boolean;
+  backend: string;
+  model_id: string | null;
+  device_target: string;
+  health: string;
+  last_error: string | null;
 };
 
 export type DaemonStatus = {
@@ -39,6 +57,7 @@ export type DaemonStatus = {
   pending_reload: boolean;
   reload_reason: string | null;
   supports_image_input: boolean;
+  component_snapshot: RuntimeComponentSnapshotItem[];
 };
 
 export type ReloadSignal = "none" | "soft_reload" | "hard_restart";
@@ -51,6 +70,12 @@ export type DaemonConfigRequest = {
   emotion_detection_enabled?: boolean | null;
   emotion_response_style_enabled?: boolean | null;
   cache_implementation?: string | null;
+  execution_mode?: "balanced" | "vision_priority" | "voice_priority" | null;
+  image_strategy?: "vlm_only" | "ocr_first" | "hybrid" | null;
+  retrieval_mode?: "off" | "auto" | "always" | null;
+  audio_output_mode?: "off" | "text_first" | "voice_first" | null;
+  assistant_mode?: "off" | "attached" | "conditional" | null;
+  economy_mode?: "off" | "auto" | null;
 };
 
 export type DaemonConfigResponse = {
@@ -78,6 +103,13 @@ export type DaemonRespondResponse = {
   model: string;
   input_modalities: string[];
   output_modalities: string[];
+  execution_trace: string[];
+  selected_policy: string | null;
+  selected_image_strategy: string | null;
+  retrieval_used: boolean;
+  assistant_used: boolean;
+  economy_mode_activated: boolean;
+  component_snapshot: RuntimeComponentSnapshotItem[];
 };
 
 async function daemonFetch<T>(
@@ -168,6 +200,12 @@ export type MultiRuntimeProfile = {
   reasoning_summary_enabled: boolean;
   emotion_detection_enabled: boolean;
   emotion_response_style_enabled: boolean;
+  execution_mode: "balanced" | "vision_priority" | "voice_priority";
+  image_strategy: "vlm_only" | "ocr_first" | "hybrid";
+  retrieval_mode: "off" | "auto" | "always";
+  audio_output_mode: "off" | "text_first" | "voice_first";
+  assistant_mode: "off" | "attached" | "conditional";
+  economy_mode: "off" | "auto";
   precision: string;
   quantization_backend: string | null;
   device_target: string;
@@ -183,6 +221,12 @@ export type MultiRuntimeApplyMatrix = {
   reasoning_summary_enabled: MultiRuntimeApplyMode;
   emotion_detection_enabled: MultiRuntimeApplyMode;
   emotion_response_style_enabled: MultiRuntimeApplyMode;
+  execution_mode: MultiRuntimeApplyMode;
+  image_strategy: MultiRuntimeApplyMode;
+  retrieval_mode: MultiRuntimeApplyMode;
+  audio_output_mode: MultiRuntimeApplyMode;
+  assistant_mode: MultiRuntimeApplyMode;
+  economy_mode: MultiRuntimeApplyMode;
   precision: MultiRuntimeApplyMode;
   quantization_backend: MultiRuntimeApplyMode;
   device_target: MultiRuntimeApplyMode;
@@ -193,6 +237,12 @@ export type MultiRuntimeSupportedOptions = {
   precision: string[];
   device_target: string[];
   quantization_backend: (string | null)[];
+  execution_mode: string[];
+  image_strategy: string[];
+  retrieval_mode: string[];
+  audio_output_mode: string[];
+  assistant_mode: string[];
+  economy_mode: string[];
 };
 
 export type MultiRuntimeProfileResponse = {
@@ -213,6 +263,12 @@ export type MultiRuntimeProfileUpdateRequest = {
   reasoning_summary_enabled?: boolean | null;
   emotion_detection_enabled?: boolean | null;
   emotion_response_style_enabled?: boolean | null;
+  execution_mode?: "balanced" | "vision_priority" | "voice_priority" | null;
+  image_strategy?: "vlm_only" | "ocr_first" | "hybrid" | null;
+  retrieval_mode?: "off" | "auto" | "always" | null;
+  audio_output_mode?: "off" | "text_first" | "voice_first" | null;
+  assistant_mode?: "off" | "attached" | "conditional" | null;
+  economy_mode?: "off" | "auto" | null;
   precision?: string | null;
   quantization_backend?: string | null;
   device_target?: string | null;

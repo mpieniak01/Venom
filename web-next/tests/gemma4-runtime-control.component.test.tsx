@@ -24,6 +24,12 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
       emotion_detection_enabled: false,
       emotion_response_style_enabled: false,
       cache_implementation: null,
+      execution_mode: "balanced",
+      image_strategy: "vlm_only",
+      retrieval_mode: "off",
+      audio_output_mode: "off",
+      assistant_mode: "off",
+      economy_mode: "off",
     },
     vram: {
       backend: "cpu",
@@ -41,6 +47,19 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     pending_reload: false,
     reload_reason: null,
     supports_image_input: true,
+    component_snapshot: [
+      {
+        component_id: "main_model",
+        component_type: "model",
+        enabled: true,
+        available: true,
+        backend: "cpu",
+        model_id: "google/gemma-4-E2B-it",
+        device_target: "cpu",
+        health: "ok",
+        last_error: null,
+      },
+    ],
     ...overrides,
   };
 }
@@ -283,6 +302,12 @@ describe("Gemma4RuntimeControl — thinking toggle", () => {
           emotion_detection_enabled: false,
           emotion_response_style_enabled: false,
           cache_implementation: null,
+          execution_mode: "balanced",
+          image_strategy: "vlm_only",
+          retrieval_mode: "off",
+          audio_output_mode: "off",
+          assistant_mode: "off",
+          economy_mode: "off",
         },
       }),
     }));

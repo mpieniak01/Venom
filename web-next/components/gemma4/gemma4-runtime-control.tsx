@@ -121,6 +121,14 @@ export function Gemma4RuntimeControlInner({
   const [imagePromptInput, setImagePromptInput] = useState("");
   const [imageProbePending, setImageProbePending] = useState(false);
   const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
+  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<{
+    executionTrace: string[];
+    selectedPolicy: string | null;
+    selectedImageStrategy: string | null;
+    retrievalUsed: boolean;
+    assistantUsed: boolean;
+    economyModeActivated: boolean;
+  } | null>(null);
   const [imageProbeError, setImageProbeError] = useState<string | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -217,6 +225,7 @@ export function Gemma4RuntimeControlInner({
     setImageProbePending(true);
     setImageProbeError(null);
     setImageProbeResult(null);
+    setImageProbeDiagnostics(null);
     try {
       const imageContent = imageDataInput
         ? ({ type: "image", data: imageDataInput } as const)
@@ -238,6 +247,14 @@ export function Gemma4RuntimeControlInner({
         max_new_tokens: status?.params.max_new_tokens ?? 128,
       });
       setImageProbeResult(result.text);
+      setImageProbeDiagnostics({
+        executionTrace: result.execution_trace ?? [],
+        selectedPolicy: result.selected_policy ?? null,
+        selectedImageStrategy: result.selected_image_strategy ?? null,
+        retrievalUsed: Boolean(result.retrieval_used),
+        assistantUsed: Boolean(result.assistant_used),
+        economyModeActivated: Boolean(result.economy_mode_activated),
+      });
     } catch (e) {
       setImageProbeError(e instanceof Error ? e.message : "Image request failed");
     } finally {
@@ -535,6 +552,32 @@ export function Gemma4RuntimeControlInner({
             {imageProbeResult && (
               <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
             )}
+            {imageProbeDiagnostics && (
+              <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 text-[10px] text-zinc-400 space-y-1">
+                <p>
+                  <span className="text-zinc-500">selected_policy:</span>{" "}
+                  {imageProbeDiagnostics.selectedPolicy ?? "—"}
+                </p>
+                <p>
+                  <span className="text-zinc-500">image_strategy:</span>{" "}
+                  {imageProbeDiagnostics.selectedImageStrategy ?? "—"}
+                </p>
+                <p>
+                  <span className="text-zinc-500">trace:</span>{" "}
+                  {imageProbeDiagnostics.executionTrace.join(" -> ") || "—"}
+                </p>
+                <p>
+                  <span className="text-zinc-500">retrieval_used:</span>{" "}
+                  {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}
+                  {" · "}
+                  <span className="text-zinc-500">assistant_used:</span>{" "}
+                  {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}
+                  {" · "}
+                  <span className="text-zinc-500">economy_mode:</span>{" "}
+                  {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
+                </p>
+              </div>
+            )}
             {imageProbeError && (
               <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
             )}
@@ -596,6 +639,25 @@ export function Gemma4RuntimeControlInner({
 
       {error && (
         <p className="mt-2 text-[10px] text-rose-400 truncate">{error}</p>
+      )}
+
+      {status?.component_snapshot && status.component_snapshot.length > 0 && (
+        <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+            component snapshot
+          </p>
+          <div className="space-y-1.5">
+            {status.component_snapshot.slice(0, 7).map((component) => (
+              <div
+                key={component.component_id}
+                className="flex items-center justify-between gap-2 text-[10px]"
+              >
+                <span className="text-zinc-300 truncate">{component.component_id}</span>
+                <span className="text-zinc-500 truncate">{component.health}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </DaemonCard>
   );

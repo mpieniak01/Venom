@@ -113,6 +113,8 @@ export type DaemonRespondResponse = {
   economy_mode_activated: boolean;
   degradation_reasons: string[];
   component_snapshot: RuntimeComponentSnapshotItem[];
+  audio_output_bytes?: string | null;
+  audio_output_sample_rate?: number | null;
 };
 
 async function daemonFetch<T>(

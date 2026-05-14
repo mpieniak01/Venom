@@ -15,8 +15,9 @@ import {
 } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "@/lib/i18n";
-import type { DaemonConfigRequest } from "@/lib/gemma4-daemon-api";
+import type { DaemonConfigRequest, DaemonRespondResponse } from "@/lib/gemma4-daemon-api";
 import { postDaemonRespond } from "@/lib/gemma4-daemon-api";
+import { PipelineDiagnosticsPanel } from "@/components/gemma4/pipeline-diagnostics-panel";
 import { getGemma4ApiBaseUrl } from "@/lib/env";
 import { type Gemma4DaemonState, useGemma4Daemon } from "@/hooks/use-gemma4-daemon";
 
@@ -362,6 +363,7 @@ async function handleRuntimeImageProbe(params: {
   ) => void;
   setImageProbeError: (value: string | null) => void;
   setImageProbePending: (value: boolean) => void;
+  setLastPipelineResponse: (value: DaemonRespondResponse | null) => void;
 }) {
   const url = params.imageUrlInput.trim();
   if ((!url && !params.imageDataInput) || params.imageProbePending) return;
@@ -379,6 +381,7 @@ async function handleRuntimeImageProbe(params: {
     });
     params.setImageProbeResult(result.text);
     params.setImageProbeDiagnostics(result.diagnostics);
+    params.setLastPipelineResponse(result.rawResponse);
   } catch (e) {
     params.setImageProbeError(e instanceof Error ? e.message : "Image request failed");
   } finally {
@@ -464,6 +467,7 @@ async function runImageProbe(params: {
   });
   return {
     text: result.text,
+    rawResponse: result,
     diagnostics: {
       executionTrace: result.execution_trace ?? [],
       selectedPolicy: result.selected_policy ?? null,
@@ -506,6 +510,7 @@ function Gemma4RuntimeControlPanel({
   const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
   const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<ImageProbeDiagnostics | null>(null);
   const [imageProbeError, setImageProbeError] = useState<string | null>(null);
+  const [lastPipelineResponse, setLastPipelineResponse] = useState<DaemonRespondResponse | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const busy = actionPending !== null;
@@ -593,6 +598,7 @@ function Gemma4RuntimeControlPanel({
       setImageProbeDiagnostics,
       setImageProbeError,
       setImageProbePending,
+      setLastPipelineResponse,
     });
 
   const handleImageFileChange = (fileList: FileList | null) =>
@@ -794,6 +800,10 @@ function Gemma4RuntimeControlPanel({
           onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
           onProbe={handleImageProbe}
         />
+      )}
+
+      {lastPipelineResponse && (
+        <PipelineDiagnosticsPanel response={lastPipelineResponse} />
       )}
 
       {/* Actions */}

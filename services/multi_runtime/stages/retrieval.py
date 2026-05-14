@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from time import perf_counter
+from typing import Any
 
 from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.memory.vector_store import VectorStore
@@ -22,19 +23,33 @@ class RetrievalStage:
         vector_store: VectorStore | None = None,
     ):
         self._resolver = resolver or RetrievalPolicyResolver()
-        self._graph_service = graph_service or GraphRAGService()
-        self._vector_store = vector_store or VectorStore()
+        self._graph_service = graph_service
+        self._vector_store = vector_store
+        self._graph_init_error: str | None = None
+        self._vector_init_error: str | None = None
+
+        if self._graph_service is None:
+            try:
+                self._graph_service = GraphRAGService()
+            except Exception as exc:
+                self._graph_init_error = f"{type(exc).__name__}: {exc}"
+
+        if self._vector_store is None:
+            try:
+                self._vector_store = VectorStore()
+            except Exception as exc:
+                self._vector_init_error = f"{type(exc).__name__}: {exc}"
 
     @staticmethod
-    def _run_async(coro: object) -> object:
+    def _run_in_new_loop(coro: Any) -> Any:
+        """Run an async coroutine in a fresh event loop (safe in thread context)."""
         if not asyncio.iscoroutine(coro):
             return coro
+        loop = asyncio.new_event_loop()
         try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        coro.close()  # type: ignore[union-attr]
-        raise RuntimeError("active_event_loop")
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
     def run(self, context: StageContext) -> None:
         started = perf_counter()
@@ -74,9 +89,12 @@ class RetrievalStage:
         retrieval_context = ""
         try:
             if route_name == "graph":
-                graph_result = self._run_async(
-                    self._graph_service.local_search(text, max_hops=2, limit=4)
-                )
+                if self._graph_service is None or self._graph_init_error:
+                    route_name = "vector_fallback"
+                else:
+                    graph_result = self._run_in_new_loop(
+                        self._graph_service.local_search(text, max_hops=2, limit=4)
+                    )
                 graph_result = str(graph_result or "").strip()
                 if graph_result and "Nie znaleziono" not in graph_result:
                     retrieval_context = graph_result[:2400]
@@ -84,6 +102,10 @@ class RetrievalStage:
                 else:
                     route_name = "vector_fallback"
             if not retrieval_context:
+                if self._vector_store is None or self._vector_init_error:
+                    raise RuntimeError(
+                        self._vector_init_error or "vector store unavailable"
+                    )
                 results = self._vector_store.search(text, limit=3)
                 snippets = [
                     str(item.get("text", "")).strip()

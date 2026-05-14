@@ -37,6 +37,8 @@ class PipelineResult:
     total_duration_ms: int
     input_modalities: list[str]
     diagnostics: ExecutionDiagnostics
+    audio_bytes: str | None = None
+    audio_sample_rate: int | None = None
 
 
 class MultiRuntimePipeline:
@@ -56,10 +58,19 @@ class MultiRuntimePipeline:
         started = perf_counter()
         diagnostics = ExecutionDiagnostics()
 
+        vram_info = daemon_status.get("vram", {})
+        raw_free = vram_info.get("free_mb")
+        free_vram_mb = (
+            int(raw_free)
+            if isinstance(raw_free, (int, float)) and raw_free >= 0
+            else None
+        )
+
         policy = self._policy_resolver.resolve(
             daemon_status=daemon_status,
             has_images=bool(request.images),
             has_audio=request.audio_array is not None,
+            free_vram_mb=free_vram_mb,
         )
         diagnostics.component_snapshot = build_component_snapshot(
             daemon_status,
@@ -107,10 +118,15 @@ class MultiRuntimePipeline:
         else:
             modalities = ["text"]
 
+        raw_audio_bytes = context.state.get("audio_bytes")
+        raw_audio_sr = context.state.get("audio_sample_rate")
+
         return PipelineResult(
             generated_text=str(context.state.get("generated_text", "")),
             audio_duration_sec=float(context.state.get("audio_duration_sec", 0.0)),
             total_duration_ms=int((perf_counter() - started) * 1000),
             input_modalities=modalities,
             diagnostics=diagnostics,
+            audio_bytes=str(raw_audio_bytes) if raw_audio_bytes else None,
+            audio_sample_rate=int(raw_audio_sr) if raw_audio_sr else None,
         )

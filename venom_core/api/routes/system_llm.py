@@ -37,6 +37,7 @@ from venom_core.services.feedback_loop_policy import (
     is_feedback_loop_ready,
     resolve_feedback_loop_model,
 )
+from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
 from venom_core.utils.llm_runtime import (
     compute_llm_config_hash,
     get_active_llm_runtime,
@@ -81,10 +82,6 @@ _runtime_options_catalog_cache: dict[str, dict[str, Any]] = {}
 _runtime_options_probe_cache_lock = remote_models_service.Lock()
 _runtime_options_probe_cache: dict[str, dict[str, Any]] = {}
 
-_GEMMA4_AUDIO_COMPATIBLE_MODELS: list[str] = [
-    "google/gemma-4-E2B-it",
-    "google/gemma-4-E4B-it",
-]
 _MODEL_ALIAS_TO_CANONICAL: dict[str, str] = {
     "gemma3:latest": "gemma-3-4b-it",
     "gemma3:4b": "gemma-3-4b-it",
@@ -1252,6 +1249,7 @@ def _gemma4_audio_static_models(
     active_provider: str,
     active_model: str,
 ) -> list[dict[str, Any]]:
+    target_models = gemma4_audio_available_models(role="target")
     return [
         _runtime_model_payload(
             runtime_id="gemma4_audio",
@@ -1263,7 +1261,7 @@ def _gemma4_audio_static_models(
             capabilities=["text", "audio", "voice"],
             chat_compatible=True,
         )
-        for model_id in _GEMMA4_AUDIO_COMPATIBLE_MODELS
+        for model_id in target_models
     ]
 
 
@@ -1409,12 +1407,16 @@ def _runtime_target_payload(
 def _gemma4_audio_runtime_input_capabilities(runtime_id: str) -> dict[str, Any]:
     if runtime_id.strip().lower() != "gemma4_audio":
         return {}
+    target_models = gemma4_audio_available_models(role="target")
+    assistant_models = gemma4_audio_available_models(role="assistant")
     return {
         "supports_text_input": True,
         "supports_audio_input": True,
         "supports_text_output": True,
-        "supports_image_input": False,
-        "supported_models": _GEMMA4_AUDIO_COMPATIBLE_MODELS,
+        "supports_image_input": True,
+        "supported_models": target_models,
+        "assistant_models": assistant_models,
+        "image_token_budget_options": [70, 140, 280, 560, 1120],
         "log_path": str(getattr(SETTINGS, "GEMMA4_AUDIO_LOG_PATH", "")),
         "pid_path": str(getattr(SETTINGS, "GEMMA4_AUDIO_PID_PATH", "")),
     }
@@ -2180,27 +2182,31 @@ def _resolve_gemma4_audio_selected_model_for_switch(
 def _validate_gemma4_audio_requested_model(
     *, requested_model: str, server_name: str
 ) -> None:
-    if requested_model in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+    available_models = gemma4_audio_available_models(role="target")
+    if requested_model in available_models:
         return
     raise HTTPException(
         status_code=400,
         detail=(
             f"Model '{requested_model}' nie jest dostępny na serwerze "
-            f"'{server_name}'. Dozwolone: {', '.join(_GEMMA4_AUDIO_COMPATIBLE_MODELS)}."
+            f"'{server_name}'. Dozwolone: {', '.join(available_models) or 'brak'}."
         ),
     )
 
 
 def _resolve_gemma4_audio_fallback_model(*, config: dict[str, Any]) -> str:
+    available_models = gemma4_audio_available_models(role="target")
     previous_choice = str(config.get("LAST_MODEL_GEMMA4_AUDIO") or "").strip()
-    if previous_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+    if previous_choice in available_models:
         return previous_choice
 
     default_choice = str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "")).strip()
-    if default_choice in _GEMMA4_AUDIO_COMPATIBLE_MODELS:
+    if default_choice in available_models:
         return default_choice
 
-    return _GEMMA4_AUDIO_COMPATIBLE_MODELS[0]
+    if available_models:
+        return available_models[0]
+    return "google/gemma-4-E2B-it"
 
 
 def _last_model_key_for_server(server_name: str) -> str:

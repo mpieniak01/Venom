@@ -157,7 +157,9 @@ export interface LlmRuntimeTargetOption {
   supports_audio_input?: boolean;
   supports_text_output?: boolean;
   supports_image_input?: boolean;
+  image_token_budget_options?: number[];
   supported_models?: string[];
+  assistant_models?: string[];
   log_path?: string;
   pid_path?: string;
 }

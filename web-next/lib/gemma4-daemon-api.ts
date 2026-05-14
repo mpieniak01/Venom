@@ -15,6 +15,7 @@ export type VRAMStatus = {
 export type DaemonParamsInfo = {
   max_new_tokens: number;
   enable_thinking: boolean;
+  image_token_budget: number;
   reasoning_summary_enabled: boolean;
   emotion_detection_enabled: boolean;
   emotion_response_style_enabled: boolean;
@@ -37,6 +38,7 @@ export type DaemonStatus = {
   emotion_source: string | null;
   pending_reload: boolean;
   reload_reason: string | null;
+  supports_image_input: boolean;
 };
 
 export type ReloadSignal = "none" | "soft_reload" | "hard_restart";
@@ -44,6 +46,7 @@ export type ReloadSignal = "none" | "soft_reload" | "hard_restart";
 export type DaemonConfigRequest = {
   max_new_tokens?: number | null;
   enable_thinking?: boolean | null;
+  image_token_budget?: number | null;
   reasoning_summary_enabled?: boolean | null;
   emotion_detection_enabled?: boolean | null;
   emotion_response_style_enabled?: boolean | null;
@@ -54,6 +57,27 @@ export type DaemonConfigResponse = {
   reload_signal: ReloadSignal;
   applied: DaemonParamsInfo;
   message: string;
+};
+
+export type DaemonRespondRequest = {
+  model?: string | null;
+  messages: Array<{
+    role: "system" | "user" | "assistant";
+    content: Array<
+      | { type: "text"; text: string }
+      | { type: "audio"; path: string }
+      | { type: "image"; url?: string; path?: string; data?: string }
+    >;
+  }>;
+  task?: string | null;
+  max_new_tokens?: number;
+};
+
+export type DaemonRespondResponse = {
+  text: string;
+  model: string;
+  input_modalities: string[];
+  output_modalities: string[];
 };
 
 async function daemonFetch<T>(
@@ -110,3 +134,12 @@ export const postAttachAssistant = (
 
 export const postDetachAssistant = (baseUrl: string): Promise<unknown> =>
   daemonFetch(baseUrl, "/v1/daemon/assistant/detach", { method: "POST" });
+
+export const postDaemonRespond = (
+  baseUrl: string,
+  payload: DaemonRespondRequest,
+): Promise<DaemonRespondResponse> =>
+  daemonFetch<DaemonRespondResponse>(baseUrl, "/v1/respond", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

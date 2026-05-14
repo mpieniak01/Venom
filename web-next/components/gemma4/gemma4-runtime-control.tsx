@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import {
   ConfirmDialog,
   ConfirmDialogActions,
@@ -14,6 +15,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "@/lib/i18n";
 import type { DaemonConfigRequest } from "@/lib/gemma4-daemon-api";
+import { postDaemonRespond } from "@/lib/gemma4-daemon-api";
+import { getGemma4ApiBaseUrl } from "@/lib/env";
 import { type Gemma4DaemonState, useGemma4Daemon } from "@/hooks/use-gemma4-daemon";
 
 const CACHE_OPTIONS = [
@@ -56,12 +59,14 @@ type Props = Readonly<{
   variant?: Variant;
   pollingIntervalMs?: number;
   runtimeSnapshot?: RuntimeSnapshotLike;
+  assistantModels?: string[];
 }>;
 
 export function Gemma4RuntimeControl({
   variant = "voice",
   pollingIntervalMs,
   runtimeSnapshot = null,
+  assistantModels = [],
 }: Props) {
   const daemon = useGemma4Daemon(pollingIntervalMs);
   return (
@@ -69,6 +74,7 @@ export function Gemma4RuntimeControl({
       daemon={daemon}
       variant={variant}
       runtimeSnapshot={runtimeSnapshot}
+      assistantModels={assistantModels}
     />
   );
 }
@@ -77,6 +83,7 @@ type InnerProps = Readonly<{
   daemon: Gemma4DaemonState;
   variant: Variant;
   runtimeSnapshot?: RuntimeSnapshotLike;
+  assistantModels?: string[];
 }>;
 
 function vramBarColor(pct: number): string {
@@ -94,11 +101,13 @@ export function Gemma4RuntimeControlInner({
   daemon,
   variant,
   runtimeSnapshot = null,
+  assistantModels = [],
 }: InnerProps) {
   const t = useTranslation();
   const { status, loading, error, actionPending } = daemon;
 
   const [localTokens, setLocalTokens] = useState<string>("");
+  const [localImageBudget, setLocalImageBudget] = useState<string>("");
   const [localThinking, setLocalThinking] = useState<boolean | null>(null);
   const [localReasoningSummary, setLocalReasoningSummary] = useState<boolean | null>(null);
   const [localEmotionDetection, setLocalEmotionDetection] = useState<boolean | null>(null);
@@ -106,6 +115,14 @@ export function Gemma4RuntimeControlInner({
   const [localCache, setLocalCache] = useState<string | null>(null);
   const [drafterInput, setDrafterInput] = useState("");
   const [showDrafterInput, setShowDrafterInput] = useState(false);
+  const [imageUrlInput, setImageUrlInput] = useState("");
+  const [imageDataInput, setImageDataInput] = useState<string | null>(null);
+  const [imageFileName, setImageFileName] = useState<string | null>(null);
+  const [imagePromptInput, setImagePromptInput] = useState("");
+  const [imageProbePending, setImageProbePending] = useState(false);
+  const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
+  const [imageProbeError, setImageProbeError] = useState<string | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const busy = actionPending !== null;
 
@@ -118,6 +135,10 @@ export function Gemma4RuntimeControlInner({
     localEmotionResponseStyle ?? status?.params.emotion_response_style_enabled ?? false;
   const effectiveTokens =
     localTokens === "" ? String(status?.params.max_new_tokens ?? 128) : localTokens;
+  const effectiveImageBudget =
+    localImageBudget === ""
+      ? String(status?.params.image_token_budget ?? 280)
+      : localImageBudget;
   const effectiveCache =
     localCache === null ? (status?.params.cache_implementation ?? "") : localCache;
   const responseShapingToggles = [
@@ -147,6 +168,7 @@ export function Gemma4RuntimeControlInner({
     localEmotionDetection !== null ||
     localEmotionResponseStyle !== null ||
     localTokens !== "" ||
+    localImageBudget !== "" ||
     localCache !== null;
 
   async function handleApply() {
@@ -165,6 +187,10 @@ export function Gemma4RuntimeControlInner({
       const n = parseTokenInput(localTokens);
       if (n !== undefined) params.max_new_tokens = n;
     }
+    if (localImageBudget !== "") {
+      const n = parseTokenInput(localImageBudget);
+      if (n !== undefined) params.image_token_budget = n;
+    }
     if (localCache !== null) {
       params.cache_implementation = localCache === "" ? null : localCache;
     }
@@ -172,6 +198,7 @@ export function Gemma4RuntimeControlInner({
     if (result) {
       setLocalThinking(null);
       setLocalTokens("");
+      setLocalImageBudget("");
       setLocalCache(null);
     }
   }
@@ -182,6 +209,69 @@ export function Gemma4RuntimeControlInner({
     await daemon.attachAssistant(id);
     setDrafterInput("");
     setShowDrafterInput(false);
+  }
+
+  async function handleImageProbe() {
+    const url = imageUrlInput.trim();
+    if ((!url && !imageDataInput) || imageProbePending) return;
+    setImageProbePending(true);
+    setImageProbeError(null);
+    setImageProbeResult(null);
+    try {
+      const imageContent = imageDataInput
+        ? ({ type: "image", data: imageDataInput } as const)
+        : ({ type: "image", url } as const);
+      const result = await postDaemonRespond(getGemma4ApiBaseUrl(), {
+        messages: [
+          {
+            role: "user",
+            content: [
+              imageContent,
+              {
+                type: "text",
+                text: imagePromptInput.trim() || "Describe the image and extract visible text.",
+              },
+            ],
+          },
+        ],
+        task: "question",
+        max_new_tokens: status?.params.max_new_tokens ?? 128,
+      });
+      setImageProbeResult(result.text);
+    } catch (e) {
+      setImageProbeError(e instanceof Error ? e.message : "Image request failed");
+    } finally {
+      setImageProbePending(false);
+    }
+  }
+
+  async function readImageFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setImageProbeError("Only image files are supported");
+      return;
+    }
+    setImageProbeError(null);
+    const reader = new FileReader();
+    const loaded = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error("Unexpected file reader result type"));
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+    setImageDataInput(loaded);
+    setImageFileName(file.name);
+    setImageUrlInput("");
+  }
+
+  async function handleImageFileChange(fileList: FileList | null) {
+    const file = fileList?.item(0);
+    if (!file) return;
+    await readImageFile(file);
   }
 
   const vram = status?.vram;
@@ -231,6 +321,9 @@ export function Gemma4RuntimeControlInner({
             <Badge tone="success" className="text-[10px]">
               {t("voice.daemon.assistantActive")}
             </Badge>
+          )}
+          {status?.supports_image_input && (
+            <Badge tone="neutral" className="text-[10px]">image</Badge>
           )}
         </div>
       </div>
@@ -301,6 +394,21 @@ export function Gemma4RuntimeControlInner({
           />
         </div>
 
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs text-zinc-400">{t("voice.daemon.imageTokenBudget")}</label>
+          <input
+            type="number"
+            min={70}
+            max={1120}
+            step={70}
+            value={effectiveImageBudget}
+            onChange={(e) => setLocalImageBudget(e.target.value)}
+            disabled={busy}
+            className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-right text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+            aria-label={t("voice.daemon.imageTokenBudget")}
+          />
+        </div>
+
         {/* Cache strategy */}
         <div className="flex items-center justify-between gap-2">
           <label className="text-xs text-zinc-400">{t("voice.daemon.cacheStrategy")}</label>
@@ -329,6 +437,7 @@ export function Gemma4RuntimeControlInner({
       <DrafterBox
         daemon={daemon}
         assistantModel={status?.assistant_model ?? null}
+        assistantModels={assistantModels}
         busy={busy}
         actionPending={actionPending}
         drafterInput={drafterInput}
@@ -337,6 +446,101 @@ export function Gemma4RuntimeControlInner({
         setShowDrafterInput={setShowDrafterInput}
         onAttach={handleAttach}
       />
+
+      {status?.supports_image_input && (
+        <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
+          <div className="mt-2 space-y-2">
+            <button
+              type="button"
+              onDragOver={(event) => {
+                event.preventDefault();
+              }}
+              onDrop={async (event) => {
+                event.preventDefault();
+                await handleImageFileChange(event.dataTransfer.files);
+              }}
+              onClick={() => imageFileInputRef.current?.click()}
+              className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
+              aria-label={t("voice.daemon.dragDropImage")}
+            >
+              {t("voice.daemon.dragDropImage")}
+            </button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => imageFileInputRef.current?.click()}
+                disabled={busy || imageProbePending}
+              >
+                {t("voice.daemon.chooseImageFromDisk")}
+              </Button>
+              {imageFileName && (
+                <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
+              )}
+              {imageDataInput && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => {
+                    setImageDataInput(null);
+                    setImageFileName(null);
+                  }}
+                  disabled={busy || imageProbePending}
+                >
+                  {t("voice.daemon.clearImageFile")}
+                </Button>
+              )}
+              <input
+                ref={imageFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  await handleImageFileChange(e.currentTarget.files);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </div>
+            <input
+              type="url"
+              value={imageUrlInput}
+              onChange={(e) => setImageUrlInput(e.target.value)}
+              placeholder={
+                imageDataInput
+                  ? t("voice.daemon.fileSelectedUrlDisabled")
+                  : t("voice.daemon.imageUrlPlaceholder")
+              }
+              disabled={busy || imageProbePending}
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+              aria-label={t("voice.daemon.imageUrl")}
+            />
+            <input
+              type="text"
+              value={imagePromptInput}
+              onChange={(e) => setImagePromptInput(e.target.value)}
+              placeholder={t("voice.daemon.imagePromptPlaceholder")}
+              disabled={busy || imageProbePending}
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+              aria-label={t("voice.daemon.imagePrompt")}
+            />
+            <Button
+              size="xs"
+              variant="secondary"
+              onClick={handleImageProbe}
+              disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
+            >
+              {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
+            </Button>
+            {imageProbeResult && (
+              <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
+            )}
+            {imageProbeError && (
+              <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
@@ -513,6 +717,7 @@ function RuntimeSnapshotSummary({
 type DrafterBoxProps = Readonly<{
   daemon: Gemma4DaemonState;
   assistantModel: string | null;
+  assistantModels: string[];
   busy: boolean;
   actionPending: string | null;
   drafterInput: string;
@@ -525,6 +730,7 @@ type DrafterBoxProps = Readonly<{
 function DrafterBox({
   daemon,
   assistantModel,
+  assistantModels,
   busy,
   actionPending,
   drafterInput,
@@ -534,6 +740,21 @@ function DrafterBox({
   onAttach,
 }: DrafterBoxProps) {
   const t = useTranslation();
+  const assistantModelOptions = useMemo<SelectMenuOption[]>(() => {
+    const seen = new Set<string>();
+    return assistantModels
+      .map((modelId) => modelId.trim())
+      .filter((modelId) => {
+        if (!modelId || seen.has(modelId)) return false;
+        seen.add(modelId);
+        return true;
+      })
+      .map((modelId) => ({
+        value: modelId,
+        label: modelId,
+      }));
+  }, [assistantModels]);
+  const hasAssistantOptions = assistantModelOptions.length > 0;
 
   return (
     <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
@@ -549,7 +770,12 @@ function DrafterBox({
           <Button
             size="xs"
             variant="ghost"
-            onClick={() => setShowDrafterInput(!showDrafterInput)}
+            onClick={() => {
+              setShowDrafterInput(!showDrafterInput);
+              if (!showDrafterInput && !drafterInput.trim() && assistantModelOptions[0]) {
+                setDrafterInput(assistantModelOptions[0].value);
+              }
+            }}
             disabled={busy}
           >
             {t("voice.daemon.attachDrafter")}
@@ -565,14 +791,27 @@ function DrafterBox({
 
       {showDrafterInput && !assistantModel && (
         <div className="mt-2 flex gap-2">
-          <input
-            type="text"
-            value={drafterInput}
-            onChange={(e) => setDrafterInput(e.target.value)}
-            placeholder={t("voice.daemon.drafterModelPlaceholder")}
-            disabled={busy}
-            className="flex-1 min-w-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-          />
+          {hasAssistantOptions ? (
+            <SelectMenu
+              value={drafterInput.trim()}
+              options={assistantModelOptions}
+              onChange={(value) => setDrafterInput(value)}
+              placeholder={t("voice.daemon.drafterModelPlaceholder")}
+              ariaLabel={t("voice.daemon.drafterModelPlaceholder")}
+              buttonClassName="flex-1 justify-between rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white normal-case tracking-normal"
+              menuClassName="w-full"
+              menuWidth="content"
+            />
+          ) : (
+            <input
+              type="text"
+              value={drafterInput}
+              onChange={(e) => setDrafterInput(e.target.value)}
+              placeholder={t("voice.daemon.drafterModelPlaceholder")}
+              disabled={busy}
+              className="flex-1 min-w-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+            />
+          )}
           <Button
             size="xs"
             variant="primary"

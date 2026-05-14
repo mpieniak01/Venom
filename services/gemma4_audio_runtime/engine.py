@@ -7,9 +7,11 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
+from io import BytesIO
 from typing import Any, Optional
 
 import numpy as np
+from PIL import Image
 
 from .audio import get_audio_duration, normalize_audio
 
@@ -39,6 +41,7 @@ class ReloadSignal(str, Enum):
 class DaemonParams:
     max_new_tokens: int = 128
     enable_thinking: bool = False
+    image_token_budget: int = 280
     reasoning_summary_enabled: bool = False
     emotion_detection_enabled: bool = False
     emotion_response_style_enabled: bool = False
@@ -191,9 +194,10 @@ class Gemma4AudioEngine:
 
     def respond(
         self,
-        audio_array: np.ndarray,
-        sample_rate: int,
+        audio_array: Optional[np.ndarray],
+        sample_rate: int = 16000,
         prompt: str = "Transcribe the speech in the audio.",
+        images: Optional[list[Image.Image]] = None,
         task: Optional[str] = None,
         question: Optional[str] = None,
         system_prompt: Optional[str] = None,
@@ -212,20 +216,30 @@ class Gemma4AudioEngine:
         if not self.is_loaded():
             raise InferenceError("Model is not loaded. Call load() first.")
 
-        try:
-            audio_normalized, sr = normalize_audio(audio_array, sample_rate)
-        except Exception as e:
-            raise InferenceError(f"Failed to normalize audio: {e}") from e
+        audio_normalized: Optional[np.ndarray] = None
+        sr = sample_rate
+        if audio_array is not None:
+            try:
+                audio_normalized, sr = normalize_audio(audio_array, sample_rate)
+            except Exception as e:
+                raise InferenceError(f"Failed to normalize audio: {e}") from e
 
         effective_prompt = self._build_prompt_for_task(task, question, prompt)
+
+        user_content: list[dict[str, Any]] = []
+        if audio_normalized is not None:
+            user_content.append(
+                {"type": "audio", "array": audio_normalized, "sample_rate": sr}
+            )
+        if images:
+            for image in images:
+                user_content.append({"type": "image", "image": image})
+        user_content.append({"type": "text", "text": effective_prompt})
 
         messages = [
             {
                 "role": "user",
-                "content": [
-                    {"type": "audio", "array": audio_normalized, "sample_rate": sr},
-                    {"type": "text", "text": effective_prompt},
-                ],
+                "content": user_content,
             }
         ]
 
@@ -304,12 +318,22 @@ class Gemma4AudioEngine:
                 generated_text
             )
             generated_text = self._clean_generated_text(generated_text)
-            duration_sec = get_audio_duration(audio_normalized, sr)
+            duration_sec = (
+                get_audio_duration(audio_normalized, sr)
+                if audio_normalized is not None
+                else 0.0
+            )
 
             return generated_text, duration_sec
 
         except Exception as e:
             raise InferenceError(f"Inference failed: {e}") from e
+
+    @staticmethod
+    def load_image_from_bytes(payload: bytes) -> Image.Image:
+        """Decode raw image bytes into RGB PIL image for processor input."""
+        with Image.open(BytesIO(payload)) as image:
+            return image.convert("RGB")
 
     @staticmethod
     def _clean_generated_text(text: str) -> str:
@@ -463,6 +487,7 @@ class Gemma4Daemon:
         self,
         max_new_tokens: Optional[int] = None,
         enable_thinking: Optional[bool] = None,
+        image_token_budget: Optional[int] = None,
         reasoning_summary_enabled: Optional[bool] = None,
         emotion_detection_enabled: Optional[bool] = None,
         emotion_response_style_enabled: Optional[bool] = None,
@@ -480,6 +505,9 @@ class Gemma4Daemon:
 
         if enable_thinking is not None:
             self._params.enable_thinking = enable_thinking
+
+        if image_token_budget is not None:
+            self._params.image_token_budget = image_token_budget
 
         if reasoning_summary_enabled is not None:
             self._params.reasoning_summary_enabled = reasoning_summary_enabled
@@ -557,6 +585,7 @@ class Gemma4Daemon:
             "params": {
                 "max_new_tokens": self._params.max_new_tokens,
                 "enable_thinking": self._params.enable_thinking,
+                "image_token_budget": self._params.image_token_budget,
                 "reasoning_summary_enabled": self._params.reasoning_summary_enabled,
                 "emotion_detection_enabled": self._params.emotion_detection_enabled,
                 "emotion_response_style_enabled": self._params.emotion_response_style_enabled,
@@ -585,6 +614,7 @@ class Gemma4Daemon:
             "emotion_source": None,
             "pending_reload": self._reload_reason is not None,
             "reload_reason": self._reload_reason,
+            "supports_image_input": True,
         }
 
     # ------------------------------------------------------------------

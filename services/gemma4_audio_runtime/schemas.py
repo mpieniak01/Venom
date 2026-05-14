@@ -17,10 +17,15 @@ class AudioMetadata(BaseModel):
 class ContentItem(BaseModel):
     """Individual content item in a message (text or audio reference)."""
 
-    type: Literal["text", "audio"] = Field(..., description="Content type")
+    type: Literal["text", "audio", "image"] = Field(..., description="Content type")
     text: Optional[str] = Field(None, description="Text content (for type='text')")
     path: Optional[str] = Field(
-        None, description="Audio file path (for type='audio', sent via multipart)"
+        None,
+        description="Local path for audio/image content (for multipart or local files)",
+    )
+    url: Optional[str] = Field(None, description="Remote image URL (for type='image')")
+    data: Optional[str] = Field(
+        None, description="Image as data URL or raw base64 string (for type='image')"
     )
 
 
@@ -64,6 +69,12 @@ class Capabilities(BaseModel):
     audio_transcription: Literal["verified", "failed", "unknown"] = Field(
         ..., description="Audio transcription capability status"
     )
+    image_input: Literal["verified", "failed", "unknown"] = Field(
+        "unknown", description="Image input capability status"
+    )
+    image_ocr: Literal["verified", "failed", "unknown"] = Field(
+        "unknown", description="Image OCR capability status"
+    )
 
 
 class GenerationConfig(BaseModel):
@@ -82,7 +93,9 @@ class RespondResponse(BaseModel):
     task: Optional[str] = Field(None, description="Task executed")
     text: str = Field(..., description="Generated text response")
     duration_ms: int = Field(..., description="Total request duration in milliseconds")
-    audio: AudioMetadata = Field(..., description="Input audio metadata")
+    audio: Optional[AudioMetadata] = Field(
+        None, description="Input audio metadata (present when audio was provided)"
+    )
     input_modalities: list[str] = Field(
         default_factory=lambda: ["text", "audio"],
         description="Input modalities used",
@@ -182,6 +195,7 @@ class VRAMStatus(BaseModel):
 class DaemonParamsInfo(BaseModel):
     max_new_tokens: int
     enable_thinking: bool
+    image_token_budget: int = 280
     reasoning_summary_enabled: bool = False
     emotion_detection_enabled: bool = False
     emotion_response_style_enabled: bool = False
@@ -219,6 +233,7 @@ class DaemonStatusResponse(BaseModel):
     )
     pending_reload: bool
     reload_reason: Optional[str] = None
+    supports_image_input: bool = True
 
 
 class DaemonConfigRequest(BaseModel):
@@ -226,6 +241,7 @@ class DaemonConfigRequest(BaseModel):
 
     max_new_tokens: Optional[int] = Field(None, ge=1, le=32768)
     enable_thinking: Optional[bool] = None
+    image_token_budget: Optional[int] = Field(None, ge=70, le=1120)
     reasoning_summary_enabled: Optional[bool] = None
     emotion_detection_enabled: Optional[bool] = None
     emotion_response_style_enabled: Optional[bool] = None

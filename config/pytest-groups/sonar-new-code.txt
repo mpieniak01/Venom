@@ -91,6 +91,7 @@ tests/test_feedback_loop_policy.py
 tests/test_file_skill.py
 tests/test_flow_coordinator.py
 tests/test_forge_flow.py
+tests/test_gemma4_audio_models.py
 tests/test_gemma4_audio_runtime_main.py
 tests/test_generation_params_adapter.py
 tests/test_ghost_agent.py

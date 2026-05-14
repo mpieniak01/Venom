@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 import services.gemma4_audio_runtime.main as runtime_main
@@ -21,6 +23,26 @@ def test_extract_text_prompt_from_openai_messages_prefers_latest_user_text() -> 
     ]
 
     assert runtime_main._extract_text_prompt_from_openai_messages(messages) == "drugi"  # noqa: SLF001
+
+
+def test_extract_image_urls_from_openai_messages() -> None:
+    messages = [
+        {"role": "user", "content": [{"type": "text", "text": "opisz"}]},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "https://example.test/a.png"},
+                },
+                {"type": "image_url", "image_url": "https://example.test/b.png"},
+            ],
+        },
+    ]
+    assert runtime_main._extract_image_urls_from_openai_messages(messages) == [  # noqa: SLF001
+        "https://example.test/a.png",
+        "https://example.test/b.png",
+    ]
 
 
 def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> None:
@@ -62,6 +84,150 @@ def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> Non
     assert captured["top_p"] == 0.9
     assert body["usage"]["prompt_tokens"] >= 1
     assert body["usage"]["completion_tokens"] == max(1, len("to jest odpowiedz") // 4)
+
+
+def test_chat_completions_accepts_image_urls(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class EngineStub:
+        model_id = "google/gemma-4-E2B-it"
+
+        def is_loaded(self) -> bool:
+            return True
+
+        def respond(self, _audio, **kwargs):
+            captured.update(kwargs)
+            return "ok", 0.05
+
+    daemon = _make_test_daemon(EngineStub())
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+
+    async def _fake_image_from_url(_url: str):
+        return object()
+
+    monkeypatch.setattr(runtime_main, "_image_from_url", _fake_image_from_url)
+
+    client = TestClient(runtime_main.app)
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "co jest na obrazku"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.test/image.png"},
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert isinstance(captured.get("images"), list)
+    assert len(captured["images"]) == 1
+
+
+def test_chat_completions_accepts_data_image_urls(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class EngineStub:
+        model_id = "google/gemma-4-E2B-it"
+
+        def is_loaded(self) -> bool:
+            return True
+
+        def respond(self, _audio, **kwargs):
+            captured.update(kwargs)
+            return "ok", 0.05
+
+    daemon = _make_test_daemon(EngineStub())
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+
+    def _fake_image_from_data_field(_data: str):
+        return object()
+
+    monkeypatch.setattr(
+        runtime_main, "_image_from_data_field", _fake_image_from_data_field
+    )
+
+    client = TestClient(runtime_main.app)
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,Zm9v"},
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert isinstance(captured.get("images"), list)
+    assert len(captured["images"]) == 1
+
+
+def test_validate_image_url_rejects_private_hosts() -> None:
+    runtime_main._validate_image_url("https://example.com/a.png")  # noqa: SLF001
+    try:
+        runtime_main._validate_image_url("http://127.0.0.1/a.png")  # noqa: SLF001
+    except ValueError as exc:
+        assert "Local/private hosts" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for private host")
+
+
+def test_validate_image_url_honors_allowlist(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "GEMMA4_AUDIO_IMAGE_ALLOWED_HOSTS", "example.com,cdn.example.com"
+    )
+    runtime_main._validate_image_url("https://example.com/a.png")  # noqa: SLF001
+    try:
+        runtime_main._validate_image_url("https://evil.example/a.png")  # noqa: SLF001
+    except ValueError as exc:
+        assert "not allowed by policy" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for disallowed host")
+
+
+def test_image_from_path_blocks_when_policy_disabled(
+    tmp_path: Path, monkeypatch
+) -> None:
+    sample = tmp_path / "a.png"
+    sample.write_bytes(b"not-an-image")
+    monkeypatch.delenv("GEMMA4_AUDIO_IMAGE_INPUT_DIR", raising=False)
+    try:
+        runtime_main._image_from_path(str(sample))  # noqa: SLF001
+    except ValueError as exc:
+        assert "disabled by policy" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError when local file loading disabled")
+
+
+def test_image_from_path_rejects_outside_allowed_dir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside.png"
+    allowed.mkdir(parents=True, exist_ok=True)
+    outside.write_bytes(b"not-an-image")
+    monkeypatch.setenv("GEMMA4_AUDIO_IMAGE_INPUT_DIR", str(allowed))
+    try:
+        runtime_main._image_from_path(str(outside))  # noqa: SLF001
+    except ValueError as exc:
+        assert "outside allowed input directory" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for path traversal/outside path")
 
 
 def test_chat_completions_rejects_streaming(monkeypatch) -> None:

@@ -2324,6 +2324,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_gemma4_audio_models.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Unit coverage for local Gemma 4 audio cache snapshot discovery helpers used by runtime model availability contracts."
+    },
+    {
       "path": "tests/test_214a_daemon_management.py",
       "domain": "runtime",
       "test_type": "service_contract",

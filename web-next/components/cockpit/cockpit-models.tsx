@@ -17,6 +17,7 @@ type Gemma4AudioRuntimeInfo = Pick<
   | "supports_audio_input"
   | "supports_text_output"
   | "supports_image_input"
+  | "assistant_models"
   | "log_path"
   | "pid_path"
 >;
@@ -228,7 +229,10 @@ export function CockpitModels({
             <Gemma4AudioCapabilityInfo info={gemma4AudioRuntimeInfo} />
           )}
           {selectedLlmServer === "gemma4_audio" && (
-            <Gemma4RuntimeControl variant="cockpit" />
+            <Gemma4RuntimeControl
+              variant="cockpit"
+              assistantModels={gemma4AudioRuntimeInfo?.assistant_models ?? []}
+            />
           )}
         </div>
       </div>

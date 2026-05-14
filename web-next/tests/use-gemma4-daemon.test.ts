@@ -24,6 +24,7 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     params: {
       max_new_tokens: 128,
       enable_thinking: false,
+      image_token_budget: 280,
       reasoning_summary_enabled: false,
       emotion_detection_enabled: false,
       emotion_response_style_enabled: false,
@@ -38,6 +39,7 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     emotion_source: null,
     pending_reload: false,
     reload_reason: null,
+    supports_image_input: true,
     ...overrides,
   };
 }
@@ -121,6 +123,7 @@ describe("postDaemonConfig", () => {
         applied: {
           max_new_tokens: 256,
           enable_thinking: true,
+          image_token_budget: 280,
           reasoning_summary_enabled: false,
           emotion_detection_enabled: false,
           emotion_response_style_enabled: false,
@@ -143,6 +146,7 @@ describe("postDaemonConfig", () => {
         applied: {
           max_new_tokens: 128,
           enable_thinking: false,
+          image_token_budget: 280,
           reasoning_summary_enabled: false,
           emotion_detection_enabled: false,
           emotion_response_style_enabled: false,

@@ -1,6 +1,6 @@
-"""Gemma 4 Audio Native Runtime Service.
+"""Compatibility shim — Gemma 4 Audio Runtime.
 
-Provides multimodal audio/text input to Gemma 4 models via local HTTP daemon.
+Implementation moved to services.multi_runtime.
+This package is kept for backward compatibility during 217B transition.
+Will be removed in Phase 7 (Faza 7 cleanup).
 """
-
-__version__ = "0.1.0"

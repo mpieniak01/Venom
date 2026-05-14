@@ -4,13 +4,13 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-import services.gemma4_audio_runtime.main as runtime_main
-from services.gemma4_audio_runtime.engine import Gemma4Daemon
+import services.multi_runtime.main as runtime_main
+from services.multi_runtime.engine import MultiRuntimeDaemon
 
 
-def _make_test_daemon(engine_stub) -> Gemma4Daemon:
+def _make_test_daemon(engine_stub) -> MultiRuntimeDaemon:
     """Construct a daemon wired to a pre-built engine stub."""
-    daemon = Gemma4Daemon(cache_dir="models_cache/hf")
+    daemon = MultiRuntimeDaemon(cache_dir="models_cache/hf")
     daemon._target_engine = engine_stub  # noqa: SLF001
     return daemon
 

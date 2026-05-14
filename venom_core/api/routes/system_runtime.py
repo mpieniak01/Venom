@@ -3,9 +3,20 @@
 import asyncio
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.routes import system_deps
+from venom_core.api.schemas.multi_runtime_profile import (
+    MultiRuntimeProfileResponse,
+    MultiRuntimeProfileUpdateRequest,
+    MultiRuntimeProfileUpdateResponse,
+)
+from venom_core.config import SETTINGS
+from venom_core.services.multi_runtime_profile_service import (
+    build_default_profile,
+    build_profile_response,
+)
 from venom_core.services.runtime_controller import ServiceType, runtime_controller
 from venom_core.utils.logger import get_logger
 
@@ -129,6 +140,73 @@ def apply_runtime_profile(profile_name: str):
     except Exception as e:
         logger.exception(f"Błąd podczas aplikowania profilu {profile_name}")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+def _daemon_profile_url() -> str:
+    base = str(
+        getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", "http://localhost:8014/v1")
+    ).rstrip("/")
+    return f"{base}/daemon/profile"
+
+
+MULTI_RUNTIME_PROFILE_RESPONSES: dict[int | str, dict[str, Any]] = {
+    503: {"description": "Daemon multi_runtime niedostępny"},
+    500: {"description": "Błąd wewnętrzny podczas obsługi profilu multi_runtime"},
+}
+
+
+@router.get(
+    "/runtime/multi-runtime/profile",
+    responses=MULTI_RUNTIME_PROFILE_RESPONSES,
+)
+async def get_multi_runtime_profile() -> MultiRuntimeProfileResponse:
+    """Zwraca aktywny profil wykonawczy multi_runtime.
+
+    Proxy do GET /v1/daemon/profile na daemonie. Gdy daemon jest niedostępny,
+    zwraca profil domyślny z daemon_reachable=False.
+    """
+    url = _daemon_profile_url()
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            return MultiRuntimeProfileResponse.model_validate(resp.json())
+        logger.warning("Daemon profile GET returned %d", resp.status_code)
+    except httpx.HTTPError as exc:
+        logger.warning("Daemon unreachable for profile GET: %s", exc)
+
+    model_id = str(getattr(SETTINGS, "GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it"))
+    return build_profile_response(
+        build_default_profile(model_id), daemon_reachable=False
+    )
+
+
+@router.post(
+    "/runtime/multi-runtime/profile",
+    responses=MULTI_RUNTIME_PROFILE_RESPONSES,
+)
+async def update_multi_runtime_profile(
+    body: MultiRuntimeProfileUpdateRequest,
+) -> MultiRuntimeProfileUpdateResponse:
+    """Aktualizuje profil wykonawczy multi_runtime.
+
+    Proxy do POST /v1/daemon/profile na daemonie.
+    Zwraca jawne apply_mode i listę odrzuconych pól.
+    """
+    url = _daemon_profile_url()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(url, json=body.model_dump(exclude_none=True))
+        if resp.status_code == 200:
+            return MultiRuntimeProfileUpdateResponse.model_validate(resp.json())
+        detail = resp.text[:200]
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+    except HTTPException:
+        raise
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Daemon multi_runtime niedostępny: {exc}"
+        ) from exc
 
 
 @router.post("/runtime/{service}/{action}", responses=RUNTIME_ACTION_RESPONSES)

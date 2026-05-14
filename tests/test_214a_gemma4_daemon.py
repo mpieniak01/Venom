@@ -19,12 +19,12 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import services.gemma4_audio_runtime.main as runtime_main
-from services.gemma4_audio_runtime.engine import (
-    Gemma4AudioEngine,
-    Gemma4Daemon,
+import services.multi_runtime.main as runtime_main
+from services.multi_runtime.engine import (
     InferenceError,
     ModelLoadError,
+    MultiRuntimeDaemon,
+    MultiRuntimeEngine,
     ReloadSignal,
     RuntimeMode,
     _free_vram,
@@ -39,7 +39,7 @@ from services.gemma4_audio_runtime.engine import (
 def _make_engine_stub(
     loaded: bool = True, model_id: str = "google/gemma-4-E2B-it"
 ) -> MagicMock:
-    stub = MagicMock(spec=Gemma4AudioEngine)
+    stub = MagicMock(spec=MultiRuntimeEngine)
     stub.is_loaded.return_value = loaded
     stub.model_id = model_id
     stub.default_max_new_tokens = 128
@@ -50,9 +50,9 @@ def _make_daemon(
     target_loaded: bool = True,
     assistant_loaded: bool = False,
     assistant_id: str | None = None,
-) -> Gemma4Daemon:
-    """Return a Gemma4Daemon with stubbed engines (no real model loading)."""
-    daemon = Gemma4Daemon(cache_dir="models_cache/hf")
+) -> MultiRuntimeDaemon:
+    """Return a MultiRuntimeDaemon with stubbed engines (no real model loading)."""
+    daemon = MultiRuntimeDaemon(cache_dir="models_cache/hf")
     target_stub = _make_engine_stub(loaded=target_loaded)
     daemon._target_engine = target_stub  # noqa: SLF001
     if assistant_id:
@@ -72,11 +72,11 @@ def _make_daemon(
 
 class TestTargetModelSelection:
     def test_default_target_is_gemma4_e2b(self):
-        daemon = Gemma4Daemon(cache_dir="models_cache/hf")
+        daemon = MultiRuntimeDaemon(cache_dir="models_cache/hf")
         assert daemon._target_id == "google/gemma-4-E2B-it"  # noqa: SLF001
 
     def test_load_target_calls_engine_load(self, monkeypatch):
-        daemon = Gemma4Daemon(cache_dir="models_cache/hf")
+        daemon = MultiRuntimeDaemon(cache_dir="models_cache/hf")
         load_calls = []
 
         class FakeEngine:
@@ -94,7 +94,7 @@ class TestTargetModelSelection:
                 pass
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **_: FakeEngine(),
         )
         daemon.load_target()
@@ -134,7 +134,7 @@ class TestAssistantAttach:
                 pass
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **kw: FakeAssistantEngine(),
         )
 
@@ -175,12 +175,10 @@ class TestAssistantAttach:
         old_stub.unload = lambda: unloaded.append("model-A")
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **kw: FakeNewEngine(),
         )
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
 
         daemon.attach_assistant("model-B")
 
@@ -257,11 +255,11 @@ class TestSoftReload:
                 pass
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **_: FreshEngine(),
         )
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram",
+            "services.multi_runtime.engine._free_vram",
             lambda: freed.append("vram_freed"),
         )
 
@@ -291,12 +289,10 @@ class TestSoftReload:
                 pass
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **_: FreshEngine(),
         )
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
 
         reason = daemon.soft_reload()
 
@@ -327,12 +323,10 @@ class TestSoftReload:
                 pass
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **_: FreshEngine(),
         )
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
 
         daemon.soft_reload()
 
@@ -376,7 +370,7 @@ class TestHardRestart:
         daemon._target_engine.unload = lambda: freed.append("target")  # noqa: SLF001
         daemon._assistant_engine.unload = lambda: freed.append("asst")  # noqa: SLF001
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram",
+            "services.multi_runtime.engine._free_vram",
             lambda: freed.append("vram"),
         )
 
@@ -400,7 +394,7 @@ class TestVRAMHygiene:
         freed = []
         daemon._assistant_engine.unload = lambda: freed.append("unloaded")  # noqa: SLF001
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram",
+            "services.multi_runtime.engine._free_vram",
             lambda: freed.append("cache_cleared"),
         )
 
@@ -429,11 +423,11 @@ class TestVRAMHygiene:
                 pass
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **_: BrokenEngine(),
         )
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram",
+            "services.multi_runtime.engine._free_vram",
             lambda: freed.append("cleared"),
         )
 
@@ -450,9 +444,7 @@ class TestVRAMHygiene:
         unloaded = []
         daemon._target_engine.unload = lambda: unloaded.append("target")  # noqa: SLF001
         daemon._assistant_engine.unload = lambda: unloaded.append("asst")  # noqa: SLF001
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
 
         daemon._ensure_vram_clean()  # noqa: SLF001
 
@@ -485,12 +477,10 @@ class TestAssistantFallback:
                 pass
 
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.Gemma4AudioEngine",
+            "services.multi_runtime.engine.MultiRuntimeEngine",
             lambda **_: FailingEngine(),
         )
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
 
         with pytest.raises(ModelLoadError):
             daemon.attach_assistant("bad-assistant")
@@ -523,9 +513,7 @@ class TestAssistantFallback:
         daemon._params.max_new_tokens = 1024  # noqa: SLF001
         daemon._params.enable_thinking = True  # noqa: SLF001
         daemon._assistant_engine.unload = lambda: None  # noqa: SLF001
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
 
         signal = daemon.fallback()
 
@@ -609,46 +597,46 @@ def test_chat_completions_rejects_streaming(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Gemma4AudioEngine — unit coverage
+# MultiRuntimeEngine — unit coverage
 # ---------------------------------------------------------------------------
 
 
 class TestAudioEngineUnit:
     def test_clean_generated_text_removes_special_tokens(self):
-        result = Gemma4AudioEngine._clean_generated_text(
+        result = MultiRuntimeEngine._clean_generated_text(
             "<bos>hello<turn|> world<|turn>"
         )
         assert result == "hello world"
 
     def test_clean_generated_text_collapses_whitespace(self):
-        result = Gemma4AudioEngine._clean_generated_text("  foo   bar  ")
+        result = MultiRuntimeEngine._clean_generated_text("  foo   bar  ")
         assert result == "foo bar"
 
     def test_build_prompt_math_task(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         prompt = engine._build_prompt_for_task("math-5x5", None, "default")
         assert "5 razy 5" in prompt
 
     def test_build_prompt_transcribe_task(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         prompt = engine._build_prompt_for_task("transcribe", None, "default")
         assert "Transcribe" in prompt
 
     def test_build_prompt_with_question(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         prompt = engine._build_prompt_for_task(None, "Jak masz na imię?", "default")
         assert "Jak masz na imię?" in prompt
 
     def test_build_prompt_default(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         assert engine._build_prompt_for_task(None, None, "fallback") == "fallback"
 
     def test_build_prompt_blank_question_falls_through_to_default(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         assert engine._build_prompt_for_task(None, "   ", "default") == "default"
 
     def test_unload_clears_model_and_processor(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         engine.model = MagicMock()
         engine.processor = MagicMock()
         engine.unload()
@@ -656,31 +644,31 @@ class TestAudioEngineUnit:
         assert engine.processor is None
 
     def test_is_loaded_false_when_both_none(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         assert engine.is_loaded() is False
 
     def test_is_loaded_false_when_model_only(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         engine.model = MagicMock()
         assert engine.is_loaded() is False
 
     def test_is_loaded_true_when_both_set(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         engine.model = MagicMock()
         engine.processor = MagicMock()
         assert engine.is_loaded() is True
 
     def test_respond_raises_when_not_loaded(self):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         with pytest.raises(InferenceError, match="not loaded"):
             engine.respond(np.zeros(16000, dtype=np.float32), 16000)
 
     def test_respond_raises_on_normalize_failure(self, monkeypatch):
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         engine.model = MagicMock()
         engine.processor = MagicMock()
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.normalize_audio",
+            "services.multi_runtime.engine.normalize_audio",
             lambda *a, **kw: (_ for _ in ()).throw(ValueError("bad audio")),
         )
         with pytest.raises(InferenceError, match="normalize"):
@@ -688,15 +676,15 @@ class TestAudioEngineUnit:
 
     def _setup_respond(self, monkeypatch):
         """Shared setup: engine with mocked normalize_audio and get_audio_duration."""
-        engine = Gemma4AudioEngine(model_id="m", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="m", cache_dir="/tmp")
         engine.model = MagicMock()
         engine.processor = MagicMock()
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.normalize_audio",
+            "services.multi_runtime.engine.normalize_audio",
             lambda arr, sr, **kw: (arr, sr),
         )
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine.get_audio_duration",
+            "services.multi_runtime.engine.get_audio_duration",
             lambda arr, sr: 1.0,
         )
         # apply_chat_template returns a dict so **inputs works in generate()
@@ -788,7 +776,7 @@ class TestAudioEngineUnit:
 
         monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
 
-        engine = Gemma4AudioEngine(model_id="model/x", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="model/x", cache_dir="/tmp")
         engine.load()
 
         assert engine.processor is fake_processor
@@ -810,7 +798,7 @@ class TestAudioEngineUnit:
 
         monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
 
-        engine = Gemma4AudioEngine(model_id="model/x", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="model/x", cache_dir="/tmp")
         engine.load()
 
         assert engine.model is fake_model
@@ -821,7 +809,7 @@ class TestAudioEngineUnit:
         fake_transformers.AutoProcessor.from_pretrained.side_effect = OSError("no file")
         monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
 
-        engine = Gemma4AudioEngine(model_id="model/x", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="model/x", cache_dir="/tmp")
         with pytest.raises(ModelLoadError, match="processor"):
             engine.load()
 
@@ -838,7 +826,7 @@ class TestAudioEngineUnit:
 
         monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
 
-        engine = Gemma4AudioEngine(model_id="model/x", cache_dir="/tmp")
+        engine = MultiRuntimeEngine(model_id="model/x", cache_dir="/tmp")
         with pytest.raises(ModelLoadError, match="any candidate class"):
             engine.load()
 
@@ -879,43 +867,39 @@ class TestVRAMHelpers:
 
 class TestDaemonExtended:
     def test_constructor_with_model_id(self):
-        daemon = Gemma4Daemon(cache_dir="/tmp", model_id="custom/model")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp", model_id="custom/model")
         assert daemon._target_id == "custom/model"  # noqa: SLF001
 
     def test_constructor_with_max_new_tokens(self):
-        daemon = Gemma4Daemon(cache_dir="/tmp", max_new_tokens=512)
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp", max_new_tokens=512)
         assert daemon._params.max_new_tokens == 512  # noqa: SLF001
 
     def test_constructor_defaults(self):
-        daemon = Gemma4Daemon(cache_dir="/tmp")
-        assert daemon._target_id == Gemma4Daemon.DEFAULT_TARGET  # noqa: SLF001
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
+        assert daemon._target_id == MultiRuntimeDaemon.DEFAULT_TARGET  # noqa: SLF001
         assert daemon._params.max_new_tokens == 128  # noqa: SLF001
 
     def test_active_engine_raises_when_not_ready(self):
-        daemon = Gemma4Daemon(cache_dir="/tmp")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
         with pytest.raises(RuntimeError, match="not loaded"):
             daemon.active_engine()
 
     def test_fallback_hard_restart_on_non_default_target(self, monkeypatch):
         daemon = _make_daemon()
         daemon._target_id = "custom/model"  # noqa: SLF001
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
         daemon._target_engine.unload = lambda: None  # noqa: SLF001
 
         signal = daemon.fallback()
 
         assert signal == ReloadSignal.HARD_RESTART
-        assert daemon._target_id == Gemma4Daemon.DEFAULT_TARGET  # noqa: SLF001
+        assert daemon._target_id == MultiRuntimeDaemon.DEFAULT_TARGET  # noqa: SLF001
         assert "fallback" in daemon._reload_reason  # noqa: SLF001
 
     def test_fallback_soft_reload_when_cache_was_set(self, monkeypatch):
         daemon = _make_daemon()
         daemon._params.cache_implementation = "static"  # noqa: SLF001
-        monkeypatch.setattr(
-            "services.gemma4_audio_runtime.engine._free_vram", lambda: None
-        )
+        monkeypatch.setattr("services.multi_runtime.engine._free_vram", lambda: None)
         daemon._target_engine.unload = lambda: None  # noqa: SLF001
 
         signal = daemon.fallback()
@@ -936,7 +920,7 @@ class TestDaemonExtended:
         assert st["reasoning_summary_status"] == "raw_available"
 
     def test_is_ready_false_when_no_target_engine(self):
-        daemon = Gemma4Daemon(cache_dir="/tmp")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
         assert daemon.is_ready() is False
 
 
@@ -945,7 +929,7 @@ class TestDaemonExtended:
 # ---------------------------------------------------------------------------
 
 
-def _ready_daemon() -> Gemma4Daemon:
+def _ready_daemon() -> MultiRuntimeDaemon:
     """Return daemon with a loaded target engine stub."""
 
     class _ReadyEngine:
@@ -961,7 +945,7 @@ def _ready_daemon() -> Gemma4Daemon:
         def unload(self):
             pass
 
-    daemon = Gemma4Daemon(cache_dir="/tmp")
+    daemon = MultiRuntimeDaemon(cache_dir="/tmp")
     daemon._target_engine = _ReadyEngine()  # noqa: SLF001
     return daemon
 
@@ -983,7 +967,7 @@ class TestMainHealthStatus:
         assert r.json()["status"] == "warming"
 
     def test_health_model_not_loaded(self, monkeypatch):
-        daemon = Gemma4Daemon(cache_dir="/tmp")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
         monkeypatch.setattr(runtime_main, "_daemon", daemon)
         monkeypatch.setattr(runtime_main, "_warming", False)
         client = TestClient(runtime_main.app)
@@ -1118,7 +1102,7 @@ class TestMainDaemonControlEndpoints:
         assert "warm" in r.json()["detail"].lower()
 
     def test_daemon_reload_503_not_ready(self, monkeypatch):
-        daemon = Gemma4Daemon(cache_dir="/tmp")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
         monkeypatch.setattr(runtime_main, "_daemon", daemon)
         monkeypatch.setattr(runtime_main, "_warming", False)
         client = TestClient(runtime_main.app)
@@ -1161,7 +1145,7 @@ class TestMainDaemonControlEndpoints:
         assert attach_calls == ["asst/model"]
 
     def test_daemon_assistant_attach_target_not_ready(self, monkeypatch):
-        daemon = Gemma4Daemon(cache_dir="/tmp")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
         monkeypatch.setattr(runtime_main, "_daemon", daemon)
         client = TestClient(runtime_main.app)
         r = client.post("/v1/daemon/assistant/attach", json={"model_id": "asst/model"})
@@ -1262,7 +1246,7 @@ class TestMainRespondEndpoint:
             def unload(self):
                 pass
 
-        daemon = Gemma4Daemon(cache_dir="/tmp")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
         daemon._target_engine = _Engine()  # noqa: SLF001
         return daemon
 
@@ -1335,7 +1319,7 @@ class TestMainRespondEndpoint:
     def test_transcribe_endpoint_bad_audio(self, monkeypatch):
         monkeypatch.setattr(runtime_main, "_daemon", self._make_respond_daemon())
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.main.audio_from_bytes",
+            "services.multi_runtime.main.audio_from_bytes",
             lambda b: (_ for _ in ()).throw(ValueError("bad")),
         )
         client = TestClient(runtime_main.app)
@@ -1348,11 +1332,11 @@ class TestMainRespondEndpoint:
     def test_transcribe_endpoint_success(self, monkeypatch):
         monkeypatch.setattr(runtime_main, "_daemon", self._make_respond_daemon())
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.main.audio_from_bytes",
+            "services.multi_runtime.main.audio_from_bytes",
             lambda b: (np.zeros(16000, dtype=np.float32), 16000),
         )
         monkeypatch.setattr(
-            "services.gemma4_audio_runtime.main.get_audio_duration",
+            "services.multi_runtime.main.get_audio_duration",
             lambda arr, sr: 1.0,
         )
 
@@ -1368,7 +1352,7 @@ class TestMainRespondEndpoint:
             def unload(self):
                 pass
 
-        daemon = Gemma4Daemon(cache_dir="/tmp")
+        daemon = MultiRuntimeDaemon(cache_dir="/tmp")
         daemon._target_engine = _EngineWithTranscribe()  # noqa: SLF001
         monkeypatch.setattr(runtime_main, "_daemon", daemon)
 

@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-import services.gemma4_audio_runtime.main as runtime_main
-from services.gemma4_audio_runtime.engine import ReloadSignal
+import services.multi_runtime.main as runtime_main
+from services.multi_runtime.engine import ReloadSignal
 
 
 def _make_vram_dict(**kw):
@@ -50,7 +50,7 @@ def _make_status_dict(**kw):
 
 
 def _daemon_stub(status_dict=None, update_signal=ReloadSignal.NONE):
-    """Build a MagicMock that looks like Gemma4Daemon."""
+    """Build a MagicMock that looks like MultiRuntimeDaemon."""
     stub = MagicMock()
     stub.status.return_value = status_dict or _make_status_dict()
     stub.update_params.return_value = update_signal
@@ -230,7 +230,7 @@ def test_daemon_restart_returns_200():
     stub = _daemon_stub()
     client = _client_with(stub)
     # Patch os.execv so the process doesn't actually replace itself in CI.
-    with patch("services.gemma4_audio_runtime.main.os.execv"):
+    with patch("services.multi_runtime.main.os.execv"):
         resp = client.post("/v1/daemon/restart")
     assert resp.status_code == 200
     data = resp.json()
@@ -268,9 +268,7 @@ def test_daemon_assistant_attach_returns_200():
         assistant_loaded=True,
     )
     client = _client_with(stub)
-    with patch(
-        "services.gemma4_audio_runtime.main.asyncio.to_thread"
-    ) as mock_to_thread:
+    with patch("services.multi_runtime.main.asyncio.to_thread") as mock_to_thread:
         mock_to_thread.return_value = None
         resp = client.post(
             "/v1/daemon/assistant/attach",

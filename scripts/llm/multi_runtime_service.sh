@@ -116,7 +116,7 @@ start() {
   export PYTHONUNBUFFERED=1
 
   # Start daemon
-  nohup "$PYTHON_BIN" -m services.gemma4_audio_runtime.main >>"$LOG_FILE" 2>&1 &
+  nohup "$PYTHON_BIN" -m services.multi_runtime.main >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
   local pid
   pid="$(cat "$PID_FILE")"
@@ -206,7 +206,7 @@ stop() {
   fi
 
   # Cleanup stray processes
-  pkill -f "services.gemma4_audio_runtime" 2>/dev/null || true
+  pkill -f "services.multi_runtime" 2>/dev/null || true
 
   echo "Multi-Runtime stopped"
   return 0

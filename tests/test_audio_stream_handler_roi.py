@@ -1261,7 +1261,7 @@ async def test_process_native_gemma4_audio_pipeline_handles_selection_and_fallba
         is False
     )
     assert update_calls[-1]["pipeline_id"] == "whisper_llm_piper"
-    assert update_calls[-1]["fallback_reason"] == "gemma4_audio health check failed"
+    assert update_calls[-1]["fallback_reason"] == "multi_runtime health check failed"
 
 
 @pytest.mark.asyncio
@@ -1325,9 +1325,9 @@ async def test_process_native_gemma4_audio_pipeline_success(monkeypatch, tmp_pat
     assert sent_json[2] == {"type": "response_text", "text": "25"}
     assert sent_json[-1] == {"type": "complete"}
     assert len(sent_audio) == 1
-    assert update_calls[0]["pipeline_id"] == "gemma4_audio_piper"
+    assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"
     assert update_calls[0]["transcription"] == "piec razy piec"
-    assert update_calls[1]["pipeline_id"] == "gemma4_audio_piper"
+    assert update_calls[1]["pipeline_id"] == "multi_runtime_piper"
 
 
 # ---------------------------------------------------------------------------

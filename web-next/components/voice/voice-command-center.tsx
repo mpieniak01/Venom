@@ -2241,6 +2241,22 @@ export function VoiceCommandCenter(props: VoiceCommandCenterProps) {
   return <VoiceCommandCenterPanel {...props} />;
 }
 
+function tryCapturePointer(element: HTMLButtonElement, pointerId: number): void {
+  try {
+    element.setPointerCapture(pointerId);
+  } catch {
+    // pointer capture not supported in this environment
+  }
+}
+
+function tryReleasePointer(element: HTMLButtonElement, pointerId: number): void {
+  try {
+    element.releasePointerCapture(pointerId);
+  } catch {
+    // pointer capture not supported in this environment
+  }
+}
+
 function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
@@ -2676,11 +2692,7 @@ function VoiceCommandCenterPanel({
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
       if (!recording) {
-        try {
-          event.currentTarget.setPointerCapture(event.pointerId);
-        } catch {
-          // ignore pointer capture failures
-        }
+        tryCapturePointer(event.currentTarget, event.pointerId);
         startRecording().catch(() => undefined);
       }
     },
@@ -2691,11 +2703,7 @@ function VoiceCommandCenterPanel({
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
       stopRecording();
-      try {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      } catch {
-        // ignore pointer capture failures
-      }
+      tryReleasePointer(event.currentTarget, event.pointerId);
     },
     [stopRecording],
   );

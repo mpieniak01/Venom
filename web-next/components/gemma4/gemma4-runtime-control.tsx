@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
@@ -88,6 +89,167 @@ type InnerProps = Readonly<{
 
 export function Gemma4RuntimeControlInner(props: InnerProps) {
   return <Gemma4RuntimeControlPanel {...props} />;
+}
+
+// ---------------------------------------------------------------------------
+// Image probe diagnostics sub-component (extracted to reduce parent complexity)
+// ---------------------------------------------------------------------------
+
+type ImageProbeDiagnostics = {
+  executionTrace: string[];
+  selectedPolicy: string | null;
+  selectedImageStrategy: string | null;
+  retrievalUsed: boolean;
+  retrievalContextItems: number;
+  retrievalRoute: string | null;
+  assistantUsed: boolean;
+  economyModeActivated: boolean;
+  degradationReasons: string[];
+};
+
+type ImageProbeSectionProps = Readonly<{
+  busy: boolean;
+  imageProbePending: boolean;
+  imageUrlInput: string;
+  imageDataInput: string | null;
+  imageFileName: string | null;
+  imagePromptInput: string;
+  imageProbeResult: string | null;
+  imageProbeDiagnostics: ImageProbeDiagnostics | null;
+  imageProbeError: string | null;
+  imageFileInputRef: RefObject<HTMLInputElement | null>;
+  onFileChange: (files: FileList | null) => Promise<void>;
+  onImageUrlChange: (url: string) => void;
+  onImagePromptChange: (prompt: string) => void;
+  onClearImageData: () => void;
+  onProbe: () => void;
+}>;
+
+function ImageProbeSection({
+  busy,
+  imageProbePending,
+  imageUrlInput,
+  imageDataInput,
+  imageFileName,
+  imagePromptInput,
+  imageProbeResult,
+  imageProbeDiagnostics,
+  imageProbeError,
+  imageFileInputRef,
+  onFileChange,
+  onImageUrlChange,
+  onImagePromptChange,
+  onClearImageData,
+  onProbe,
+}: ImageProbeSectionProps) {
+  const t = useTranslation();
+  return (
+    <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+      <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
+      <div className="mt-2 space-y-2">
+        <button
+          type="button"
+          onDragOver={(event) => { event.preventDefault(); }}
+          onDrop={async (event) => {
+            event.preventDefault();
+            await onFileChange(event.dataTransfer.files);
+            if (event.dataTransfer.files.item(0)) onImageUrlChange("");
+          }}
+          onClick={() => imageFileInputRef.current?.click()}
+          className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
+          aria-label={t("voice.daemon.dragDropImage")}
+        >
+          {t("voice.daemon.dragDropImage")}
+        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => imageFileInputRef.current?.click()}
+            disabled={busy || imageProbePending}
+          >
+            {t("voice.daemon.chooseImageFromDisk")}
+          </Button>
+          {imageFileName && (
+            <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
+          )}
+          {imageDataInput && (
+            <Button size="xs" variant="ghost" onClick={onClearImageData} disabled={busy || imageProbePending}>
+              {t("voice.daemon.clearImageFile")}
+            </Button>
+          )}
+          <input
+            ref={imageFileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              await onFileChange(e.currentTarget.files);
+              if (e.currentTarget.files?.item(0)) onImageUrlChange("");
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
+        <input
+          type="url"
+          value={imageUrlInput}
+          onChange={(e) => onImageUrlChange(e.target.value)}
+          placeholder={imageDataInput ? t("voice.daemon.fileSelectedUrlDisabled") : t("voice.daemon.imageUrlPlaceholder")}
+          disabled={busy || imageProbePending}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          aria-label={t("voice.daemon.imageUrl")}
+        />
+        <input
+          type="text"
+          value={imagePromptInput}
+          onChange={(e) => onImagePromptChange(e.target.value)}
+          placeholder={t("voice.daemon.imagePromptPlaceholder")}
+          disabled={busy || imageProbePending}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          aria-label={t("voice.daemon.imagePrompt")}
+        />
+        <Button
+          size="xs"
+          variant="secondary"
+          onClick={onProbe}
+          disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
+        >
+          {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
+        </Button>
+        {imageProbeResult && (
+          <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
+        )}
+        {imageProbeDiagnostics && (
+          <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 text-[10px] text-zinc-400 space-y-1">
+            <p><span className="text-zinc-500">selected_policy:</span> {imageProbeDiagnostics.selectedPolicy ?? "—"}</p>
+            <p><span className="text-zinc-500">image_strategy:</span> {imageProbeDiagnostics.selectedImageStrategy ?? "—"}</p>
+            <p><span className="text-zinc-500">trace:</span> {imageProbeDiagnostics.executionTrace.join(" -> ") || "—"}</p>
+            <p>
+              <span className="text-zinc-500">retrieval_used:</span>{" "}
+              {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}{" · "}
+              <span className="text-zinc-500">retrieval_route:</span>{" "}
+              {imageProbeDiagnostics.retrievalRoute ?? "—"}{" · "}
+              <span className="text-zinc-500">retrieval_items:</span>{" "}
+              {imageProbeDiagnostics.retrievalContextItems}{" · "}
+              <span className="text-zinc-500">assistant_used:</span>{" "}
+              {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}{" · "}
+              <span className="text-zinc-500">economy_mode:</span>{" "}
+              {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
+            </p>
+            {imageProbeDiagnostics.degradationReasons.length > 0 && (
+              <p>
+                <span className="text-zinc-500">degradations:</span>{" "}
+                {imageProbeDiagnostics.degradationReasons.join(" | ")}
+              </p>
+            )}
+          </div>
+        )}
+        {imageProbeError && (
+          <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function vramBarColor(pct: number): string {
@@ -342,17 +504,7 @@ function Gemma4RuntimeControlPanel({
   const [imagePromptInput, setImagePromptInput] = useState("");
   const [imageProbePending, setImageProbePending] = useState(false);
   const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
-  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<{
-    executionTrace: string[];
-    selectedPolicy: string | null;
-    selectedImageStrategy: string | null;
-    retrievalUsed: boolean;
-    retrievalContextItems: number;
-    retrievalRoute: string | null;
-    assistantUsed: boolean;
-    economyModeActivated: boolean;
-    degradationReasons: string[];
-  } | null>(null);
+  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<ImageProbeDiagnostics | null>(null);
   const [imageProbeError, setImageProbeError] = useState<string | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -449,10 +601,6 @@ function Gemma4RuntimeControlPanel({
       setImageProbeError,
       setImageDataInput,
       setImageFileName,
-    }).then(() => {
-      if (fileList?.item(0)) {
-        setImageUrlInput("");
-      }
     });
 
   const vram = status?.vram;
@@ -629,136 +777,23 @@ function Gemma4RuntimeControlPanel({
       />
 
       {status?.supports_image_input && (
-        <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
-          <div className="mt-2 space-y-2">
-            <button
-              type="button"
-              onDragOver={(event) => {
-                event.preventDefault();
-              }}
-              onDrop={async (event) => {
-                event.preventDefault();
-                await handleImageFileChange(event.dataTransfer.files);
-              }}
-              onClick={() => imageFileInputRef.current?.click()}
-              className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
-              aria-label={t("voice.daemon.dragDropImage")}
-            >
-              {t("voice.daemon.dragDropImage")}
-            </button>
-            <div className="flex items-center gap-2">
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() => imageFileInputRef.current?.click()}
-                disabled={busy || imageProbePending}
-              >
-                {t("voice.daemon.chooseImageFromDisk")}
-              </Button>
-              {imageFileName && (
-                <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
-              )}
-              {imageDataInput && (
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => {
-                    setImageDataInput(null);
-                    setImageFileName(null);
-                  }}
-                  disabled={busy || imageProbePending}
-                >
-                  {t("voice.daemon.clearImageFile")}
-                </Button>
-              )}
-              <input
-                ref={imageFileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={async (e) => {
-                  await handleImageFileChange(e.currentTarget.files);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </div>
-            <input
-              type="url"
-              value={imageUrlInput}
-              onChange={(e) => setImageUrlInput(e.target.value)}
-              placeholder={
-                imageDataInput
-                  ? t("voice.daemon.fileSelectedUrlDisabled")
-                  : t("voice.daemon.imageUrlPlaceholder")
-              }
-              disabled={busy || imageProbePending}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-              aria-label={t("voice.daemon.imageUrl")}
-            />
-            <input
-              type="text"
-              value={imagePromptInput}
-              onChange={(e) => setImagePromptInput(e.target.value)}
-              placeholder={t("voice.daemon.imagePromptPlaceholder")}
-              disabled={busy || imageProbePending}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-              aria-label={t("voice.daemon.imagePrompt")}
-            />
-            <Button
-              size="xs"
-              variant="secondary"
-              onClick={handleImageProbe}
-              disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
-            >
-              {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
-            </Button>
-            {imageProbeResult && (
-              <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
-            )}
-            {imageProbeDiagnostics && (
-              <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 text-[10px] text-zinc-400 space-y-1">
-                <p>
-                  <span className="text-zinc-500">selected_policy:</span>{" "}
-                  {imageProbeDiagnostics.selectedPolicy ?? "—"}
-                </p>
-                <p>
-                  <span className="text-zinc-500">image_strategy:</span>{" "}
-                  {imageProbeDiagnostics.selectedImageStrategy ?? "—"}
-                </p>
-                <p>
-                  <span className="text-zinc-500">trace:</span>{" "}
-                  {imageProbeDiagnostics.executionTrace.join(" -> ") || "—"}
-                </p>
-                <p>
-                  <span className="text-zinc-500">retrieval_used:</span>{" "}
-                  {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}
-                  {" · "}
-                  <span className="text-zinc-500">retrieval_route:</span>{" "}
-                  {imageProbeDiagnostics.retrievalRoute ?? "—"}
-                  {" · "}
-                  <span className="text-zinc-500">retrieval_items:</span>{" "}
-                  {imageProbeDiagnostics.retrievalContextItems}
-                  {" · "}
-                  <span className="text-zinc-500">assistant_used:</span>{" "}
-                  {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}
-                  {" · "}
-                  <span className="text-zinc-500">economy_mode:</span>{" "}
-                  {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
-                </p>
-                {imageProbeDiagnostics.degradationReasons.length > 0 && (
-                  <p>
-                    <span className="text-zinc-500">degradations:</span>{" "}
-                    {imageProbeDiagnostics.degradationReasons.join(" | ")}
-                  </p>
-                )}
-              </div>
-            )}
-            {imageProbeError && (
-              <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
-            )}
-          </div>
-        </div>
+        <ImageProbeSection
+          busy={busy}
+          imageProbePending={imageProbePending}
+          imageUrlInput={imageUrlInput}
+          imageDataInput={imageDataInput}
+          imageFileName={imageFileName}
+          imagePromptInput={imagePromptInput}
+          imageProbeResult={imageProbeResult}
+          imageProbeDiagnostics={imageProbeDiagnostics}
+          imageProbeError={imageProbeError}
+          imageFileInputRef={imageFileInputRef}
+          onFileChange={handleImageFileChange}
+          onImageUrlChange={setImageUrlInput}
+          onImagePromptChange={setImagePromptInput}
+          onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
+          onProbe={handleImageProbe}
+        />
       )}
 
       {/* Actions */}

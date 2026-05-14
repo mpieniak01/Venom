@@ -108,8 +108,8 @@ class MultiRuntimePipeline:
             modalities = ["text"]
 
         return PipelineResult(
-            generated_text=str(context.state["generated_text"]),
-            audio_duration_sec=float(context.state["audio_duration_sec"]),
+            generated_text=str(context.state.get("generated_text", "")),
+            audio_duration_sec=float(context.state.get("audio_duration_sec", 0.0)),
             total_duration_ms=int((perf_counter() - started) * 1000),
             input_modalities=modalities,
             diagnostics=diagnostics,

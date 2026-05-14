@@ -78,6 +78,14 @@ class OcrOrVisionStage:
                 return None
             return conf if conf >= 0 else None
 
+        def _safe_int(values: object, index: int) -> int:
+            if not isinstance(values, list) or index >= len(values):
+                return 0
+            try:
+                return int(values[index] or 0)
+            except (TypeError, ValueError):
+                return 0
+
         for image in images:
             text = str(pytesseract.image_to_string(image) or "").strip()
             if text:
@@ -112,10 +120,10 @@ class OcrOrVisionStage:
                 if not token_text:
                     continue
                 group_key = (
-                    int(page_numbers[index] or 0),
-                    int(block_numbers[index] or 0),
-                    int(par_numbers[index] or 0),
-                    int(line_numbers[index] or 0),
+                    _safe_int(page_numbers, index),
+                    _safe_int(block_numbers, index),
+                    _safe_int(par_numbers, index),
+                    _safe_int(line_numbers, index),
                 )
                 token = OCRToken(
                     text=token_text,
@@ -125,16 +133,16 @@ class OcrOrVisionStage:
                         else None
                     ),
                     bbox=(
-                        int(left_values[index] or 0),
-                        int(top_values[index] or 0),
-                        int(width_values[index] or 0),
-                        int(height_values[index] or 0),
+                        _safe_int(left_values, index),
+                        _safe_int(top_values, index),
+                        _safe_int(width_values, index),
+                        _safe_int(height_values, index),
                     ),
-                    page=int(page_numbers[index] or 0),
-                    block=int(block_numbers[index] or 0),
-                    par=int(par_numbers[index] or 0),
-                    line=int(line_numbers[index] or 0),
-                    word=int(word_numbers[index] or 0),
+                    page=_safe_int(page_numbers, index),
+                    block=_safe_int(block_numbers, index),
+                    par=_safe_int(par_numbers, index),
+                    line=_safe_int(line_numbers, index),
+                    word=_safe_int(word_numbers, index),
                 )
                 tokens.append(token)
                 if group_key not in group_tokens:

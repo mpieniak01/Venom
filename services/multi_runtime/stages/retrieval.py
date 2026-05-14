@@ -15,8 +15,26 @@ from .base import StageContext
 class RetrievalStage:
     name = "retrieval"
 
-    def __init__(self, resolver: RetrievalPolicyResolver | None = None):
+    def __init__(
+        self,
+        resolver: RetrievalPolicyResolver | None = None,
+        graph_service: GraphRAGService | None = None,
+        vector_store: VectorStore | None = None,
+    ):
         self._resolver = resolver or RetrievalPolicyResolver()
+        self._graph_service = graph_service or GraphRAGService()
+        self._vector_store = vector_store or VectorStore()
+
+    @staticmethod
+    def _run_async(coro: object) -> object:
+        if not asyncio.iscoroutine(coro):
+            return coro
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        coro.close()  # type: ignore[union-attr]
+        raise RuntimeError("active_event_loop")
 
     def run(self, context: StageContext) -> None:
         started = perf_counter()
@@ -56,8 +74,8 @@ class RetrievalStage:
         retrieval_context = ""
         try:
             if route_name == "graph":
-                graph_result = asyncio.run(
-                    GraphRAGService().local_search(text, max_hops=2, limit=4)
+                graph_result = self._run_async(
+                    self._graph_service.local_search(text, max_hops=2, limit=4)
                 )
                 graph_result = str(graph_result or "").strip()
                 if graph_result and "Nie znaleziono" not in graph_result:
@@ -66,7 +84,7 @@ class RetrievalStage:
                 else:
                     route_name = "vector_fallback"
             if not retrieval_context:
-                results = VectorStore().search(text, limit=3)
+                results = self._vector_store.search(text, limit=3)
                 snippets = [
                     str(item.get("text", "")).strip()
                     for item in results

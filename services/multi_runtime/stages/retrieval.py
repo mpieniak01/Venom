@@ -12,6 +12,39 @@ from venom_core.memory.vector_store import VectorStore
 from ..retrieval_policy_resolver import RetrievalPolicyResolver
 from .base import StageContext
 
+# ---------------------------------------------------------------------------
+# Module-level service singletons — initialized once per process on first use.
+# RetrievalStage is instantiated on every pipeline.execute(); keeping heavy
+# service objects here avoids re-initialization overhead on each request.
+# ---------------------------------------------------------------------------
+_svc_graph: GraphRAGService | None = None
+_svc_vector: VectorStore | None = None
+_svc_graph_error: str | None = None
+_svc_vector_error: str | None = None
+_svc_initialized = False
+
+
+def _ensure_services() -> tuple[
+    GraphRAGService | None, VectorStore | None, str | None, str | None
+]:
+    global \
+        _svc_graph, \
+        _svc_vector, \
+        _svc_graph_error, \
+        _svc_vector_error, \
+        _svc_initialized
+    if not _svc_initialized:
+        _svc_initialized = True
+        try:
+            _svc_graph = GraphRAGService()
+        except Exception as exc:
+            _svc_graph_error = f"{type(exc).__name__}: {exc}"
+        try:
+            _svc_vector = VectorStore()
+        except Exception as exc:
+            _svc_vector_error = f"{type(exc).__name__}: {exc}"
+    return _svc_graph, _svc_vector, _svc_graph_error, _svc_vector_error
+
 
 class RetrievalStage:
     name = "retrieval"
@@ -23,22 +56,22 @@ class RetrievalStage:
         vector_store: VectorStore | None = None,
     ):
         self._resolver = resolver or RetrievalPolicyResolver()
-        self._graph_service = graph_service
-        self._vector_store = vector_store
-        self._graph_init_error: str | None = None
-        self._vector_init_error: str | None = None
 
-        if self._graph_service is None:
-            try:
-                self._graph_service = GraphRAGService()
-            except Exception as exc:
-                self._graph_init_error = f"{type(exc).__name__}: {exc}"
+        if graph_service is not None:
+            self._graph_service: GraphRAGService | None = graph_service
+            self._graph_init_error: str | None = None
+        else:
+            gs, _, ge, _ = _ensure_services()
+            self._graph_service = gs
+            self._graph_init_error = ge
 
-        if self._vector_store is None:
-            try:
-                self._vector_store = VectorStore()
-            except Exception as exc:
-                self._vector_init_error = f"{type(exc).__name__}: {exc}"
+        if vector_store is not None:
+            self._vector_store: VectorStore | None = vector_store
+            self._vector_init_error: str | None = None
+        else:
+            _, vs, _, ve = _ensure_services()
+            self._vector_store = vs
+            self._vector_init_error = ve
 
     @staticmethod
     def _run_in_new_loop(coro: Any) -> Any:

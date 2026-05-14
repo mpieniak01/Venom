@@ -222,8 +222,10 @@ class MultiRuntimeEngine:
             if BitsAndBytesConfig is None:
                 return None
             if prec == "int4":
+                import torch
+
                 return BitsAndBytesConfig(
-                    load_in_4bit=True, bnb_4bit_compute_dtype="float16"
+                    load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
                 )
             return BitsAndBytesConfig(load_in_8bit=True)
         except ImportError:

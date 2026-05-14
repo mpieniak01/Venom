@@ -430,6 +430,7 @@ async function runImageProbe(params: {
   maxNewTokens: number;
 }): Promise<{
   text: string;
+  rawResponse: DaemonRespondResponse;
   diagnostics: {
     executionTrace: string[];
     selectedPolicy: string | null;

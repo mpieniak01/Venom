@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n";
 import type { DaemonRespondResponse, RuntimeComponentSnapshotItem } from "@/lib/gemma4-daemon-api";
 
 // ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ function componentHealthLabel(health: string): string {
 // Sub-sections
 // ---------------------------------------------------------------------------
 
-function PolicySection({ policy }: Readonly<{ policy: PolicyFields }>) {
+function PolicySection({ policy, title }: Readonly<{ policy: PolicyFields; title: string }>) {
   const rows: [string, string | null | undefined][] = [
     ["mode", policy.execution_mode],
     ["image", policy.image_strategy],
@@ -97,7 +98,7 @@ function PolicySection({ policy }: Readonly<{ policy: PolicyFields }>) {
 
   return (
     <div>
-      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">Policy</p>
+      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">{title}</p>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5">
         {rows.map(([label, value]) =>
           value ? (
@@ -111,11 +112,11 @@ function PolicySection({ policy }: Readonly<{ policy: PolicyFields }>) {
   );
 }
 
-function StagesSection({ traces }: Readonly<{ traces: ParsedTrace[] }>) {
+function StagesSection({ traces, title }: Readonly<{ traces: ParsedTrace[]; title: string }>) {
   if (!traces.length) return null;
   return (
     <div>
-      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">Stages</p>
+      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">{title}</p>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5">
         {traces.map(({ name, outcome }, i) => (
           <span key={i} className="text-[10px]">
@@ -130,12 +131,13 @@ function StagesSection({ traces }: Readonly<{ traces: ParsedTrace[] }>) {
 
 function ComponentsSection({
   snapshot,
-}: Readonly<{ snapshot: RuntimeComponentSnapshotItem[] }>) {
+  title,
+}: Readonly<{ snapshot: RuntimeComponentSnapshotItem[]; title: string }>) {
   const active = snapshot.filter((c) => c.health !== "disabled" || c.enabled);
   if (!active.length) return null;
   return (
     <div>
-      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">Components</p>
+      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">{title}</p>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5">
         {active.map((c) => (
           <span key={c.component_id} className="text-[10px]">
@@ -153,11 +155,11 @@ function ComponentsSection({
   );
 }
 
-function DegradationsSection({ reasons }: Readonly<{ reasons: string[] }>) {
+function DegradationsSection({ reasons, title }: Readonly<{ reasons: string[]; title: string }>) {
   if (!reasons.length) return null;
   return (
     <div>
-      <p className="mb-1 text-[9px] uppercase tracking-widest text-amber-600">Degradations</p>
+      <p className="mb-1 text-[9px] uppercase tracking-widest text-amber-600">{title}</p>
       <ul className="space-y-0.5">
         {reasons.map((r, i) => (
           <li key={i} className="text-[10px] text-amber-400">
@@ -172,12 +174,17 @@ function DegradationsSection({ reasons }: Readonly<{ reasons: string[] }>) {
 function AudioOutputSection({
   audioBytes,
   sampleRate,
-}: Readonly<{ audioBytes: string | null | undefined; sampleRate: number | null | undefined }>) {
+  title,
+}: Readonly<{
+  audioBytes: string | null | undefined;
+  sampleRate: number | null | undefined;
+  title: string;
+}>) {
   if (!audioBytes) return null;
   const kbSize = Math.round((audioBytes.length * 3) / 4 / 1024);
   return (
     <div>
-      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">Audio Output</p>
+      <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">{title}</p>
       <p className="text-[10px] text-emerald-400">
         ✓ {kbSize} KB WAV{sampleRate ? ` @ ${sampleRate} Hz` : ""}
       </p>
@@ -190,10 +197,13 @@ function AudioOutputSection({
 // ---------------------------------------------------------------------------
 
 export function PipelineDiagnosticsPanel({ response }: PipelineDiagnosticsPanelProps) {
+  const t = useTranslation();
+  const pd = (key: string) => t(`voice.daemon.pipelineDiagnostics.${key}`);
+
   if (!response) {
     return (
       <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-        <p className="text-[10px] text-zinc-600">No pipeline data — run a query first.</p>
+        <p className="text-[10px] text-zinc-600">{pd("noData")}</p>
       </div>
     );
   }
@@ -203,32 +213,33 @@ export function PipelineDiagnosticsPanel({ response }: PipelineDiagnosticsPanelP
 
   return (
     <div className="space-y-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-      <PolicySection policy={policy} />
-      <StagesSection traces={traces} />
-      <ComponentsSection snapshot={response.component_snapshot ?? []} />
-      <DegradationsSection reasons={response.degradation_reasons ?? []} />
+      <PolicySection policy={policy} title={pd("policy")} />
+      <StagesSection traces={traces} title={pd("stages")} />
+      <ComponentsSection snapshot={response.component_snapshot ?? []} title={pd("components")} />
+      <DegradationsSection reasons={response.degradation_reasons ?? []} title={pd("degradations")} />
       <AudioOutputSection
         audioBytes={response.audio_output_bytes}
         sampleRate={response.audio_output_sample_rate}
+        title={pd("audioOutput")}
       />
       <div className="flex flex-wrap gap-x-4 gap-y-0.5 border-t border-white/[0.04] pt-2">
         {response.retrieval_used && (
           <span className="text-[10px] text-zinc-400">
-            retrieval: <span className="text-emerald-400">{response.retrieval_route ?? "on"}</span>
+            {pd("retrieval")}: <span className="text-emerald-400">{response.retrieval_route ?? "on"}</span>
             {response.retrieval_context_items ? ` (${response.retrieval_context_items} items)` : ""}
           </span>
         )}
         {response.assistant_used && (
           <span className="text-[10px] text-zinc-400">
-            assistant: <span className="text-emerald-400">used</span>
+            {pd("assistant")}: <span className="text-emerald-400">{pd("used")}</span>
           </span>
         )}
         {response.economy_mode_activated && (
-          <span className="text-[10px] text-amber-400">economy mode active</span>
+          <span className="text-[10px] text-amber-400">{pd("economyModeActive")}</span>
         )}
         {response.selected_image_strategy && response.selected_image_strategy !== "none" && (
           <span className="text-[10px] text-zinc-400">
-            image: <span className="text-zinc-300">{response.selected_image_strategy}</span>
+            {pd("image")}: <span className="text-zinc-300">{response.selected_image_strategy}</span>
           </span>
         )}
       </div>

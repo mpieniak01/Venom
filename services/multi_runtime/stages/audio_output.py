@@ -15,6 +15,7 @@ from .base import StageContext
 
 _DEFAULT_SAMPLE_RATE = 22050
 _TTS_MAX_CHARS = 2000
+_PIPER_VOICE_CACHE: dict[str, Any] = {}
 
 
 def _find_tts_model_path() -> Path | None:
@@ -55,7 +56,10 @@ def _synthesize(text: str, model_path: Path) -> tuple[bytes, int]:
     import numpy as np
 
     piper = __import__("piper")
-    voice = piper.PiperVoice.load(str(model_path))
+    path_key = str(model_path)
+    if path_key not in _PIPER_VOICE_CACHE:
+        _PIPER_VOICE_CACHE[path_key] = piper.PiperVoice.load(path_key)
+    voice = _PIPER_VOICE_CACHE[path_key]
     sample_rate = _DEFAULT_SAMPLE_RATE
 
     try:

@@ -451,9 +451,8 @@ export function Gemma4RuntimeControlInner({
         <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
           <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
           <div className="mt-2 space-y-2">
-            <div
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               onDragOver={(event) => {
                 event.preventDefault();
               }}
@@ -462,17 +461,11 @@ export function Gemma4RuntimeControlInner({
                 await handleImageFileChange(event.dataTransfer.files);
               }}
               onClick={() => imageFileInputRef.current?.click()}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  imageFileInputRef.current?.click();
-                }
-              }}
-              className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-[11px] text-zinc-400"
+              className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
               aria-label={t("voice.daemon.dragDropImage")}
             >
               {t("voice.daemon.dragDropImage")}
-            </div>
+            </button>
             <div className="flex items-center gap-2">
               <Button
                 size="xs"

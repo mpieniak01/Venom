@@ -191,6 +191,8 @@ def test_daemon_config_cache_change_triggers_soft_reload():
         audio_output_mode=None,
         assistant_mode=None,
         economy_mode=None,
+        precision=None,
+        quantization_backend=None,
     )
 
 

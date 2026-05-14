@@ -178,8 +178,6 @@ class MultiRuntimeEngine:
 
     def _build_load_kwargs(self, transformers: Any) -> dict[str, Any]:
         """Build from_pretrained kwargs based on precision and quantization settings."""
-        import torch
-
         prec = str(self.precision or "auto").lower().strip()
         qbackend = str(self.quantization_backend or "").lower().strip()
 
@@ -196,18 +194,26 @@ class MultiRuntimeEngine:
                 "bitsandbytes quantization requested (%s) but unavailable; falling back to float16",
                 prec,
             )
+            import torch
+
             return {"torch_dtype": torch.float16, "device_map": self.device}
 
-        dtype_map = {
-            "float16": torch.float16,
-            "fp16": torch.float16,
-            "bfloat16": torch.bfloat16,
-            "bf16": torch.bfloat16,
-            "float32": torch.float32,
-            "fp32": torch.float32,
+        # torch dtype aliases — only import torch when a specific dtype is requested
+        dtype_aliases = {
+            "float16": "float16",
+            "fp16": "float16",
+            "bfloat16": "bfloat16",
+            "bf16": "bfloat16",
+            "float32": "float32",
+            "fp32": "float32",
         }
-        if prec in dtype_map:
-            return {"torch_dtype": dtype_map[prec], "device_map": self.device}
+        if prec in dtype_aliases:
+            import torch
+
+            return {
+                "torch_dtype": getattr(torch, dtype_aliases[prec]),
+                "device_map": self.device,
+            }
 
         # "auto" and anything unrecognised → let transformers decide
         return {"dtype": "auto", "device_map": self.device}

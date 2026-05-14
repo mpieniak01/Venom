@@ -329,22 +329,24 @@ def test_engine_build_load_kwargs_auto_precision() -> None:
 
 
 def test_engine_build_load_kwargs_float16() -> None:
+    import pytest
+
+    torch = pytest.importorskip("torch")
     from services.multi_runtime.engine import MultiRuntimeEngine
 
     engine = MultiRuntimeEngine("fake/model", "/tmp/cache", precision="float16")
-    import torch
-
     transformers_mock = MagicMock()
     kwargs = engine._build_load_kwargs(transformers_mock)
     assert kwargs.get("torch_dtype") == torch.float16
 
 
 def test_engine_build_load_kwargs_bfloat16() -> None:
+    import pytest
+
+    torch = pytest.importorskip("torch")
     from services.multi_runtime.engine import MultiRuntimeEngine
 
     engine = MultiRuntimeEngine("fake/model", "/tmp/cache", precision="bfloat16")
-    import torch
-
     transformers_mock = MagicMock()
     kwargs = engine._build_load_kwargs(transformers_mock)
     assert kwargs.get("torch_dtype") == torch.bfloat16
@@ -359,8 +361,9 @@ def test_engine_build_bnb_config_returns_none_when_unavailable() -> None:
 
 
 def test_engine_build_load_kwargs_bnb_fallback_to_float16_when_unavailable() -> None:
-    import torch
+    import pytest
 
+    torch = pytest.importorskip("torch")
     from services.multi_runtime.engine import MultiRuntimeEngine
 
     engine = MultiRuntimeEngine(

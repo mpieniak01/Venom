@@ -13,37 +13,32 @@ from ..retrieval_policy_resolver import RetrievalPolicyResolver
 from .base import StageContext
 
 # ---------------------------------------------------------------------------
-# Module-level service singletons — initialized once per process on first use.
-# RetrievalStage is instantiated on every pipeline.execute(); keeping heavy
-# service objects here avoids re-initialization overhead on each request.
+# Module-level service cache — initialized once per (class, class) pair.
+# Keying by current class references means monkeypatched test doubles get
+# their own cache entry, so tests remain independent of each other.
 # ---------------------------------------------------------------------------
-_svc_graph: GraphRAGService | None = None
-_svc_vector: VectorStore | None = None
-_svc_graph_error: str | None = None
-_svc_vector_error: str | None = None
-_svc_initialized = False
+_service_cache: dict[
+    tuple[Any, Any],
+    tuple[Any | None, Any | None, str | None, str | None],
+] = {}
 
 
 def _ensure_services() -> tuple[
     GraphRAGService | None, VectorStore | None, str | None, str | None
 ]:
-    global \
-        _svc_graph, \
-        _svc_vector, \
-        _svc_graph_error, \
-        _svc_vector_error, \
-        _svc_initialized
-    if not _svc_initialized:
-        _svc_initialized = True
+    key = (GraphRAGService, VectorStore)
+    if key not in _service_cache:
+        gs, ge, vs, ve = None, None, None, None
         try:
-            _svc_graph = GraphRAGService()
+            gs = GraphRAGService()
         except Exception as exc:
-            _svc_graph_error = f"{type(exc).__name__}: {exc}"
+            ge = f"{type(exc).__name__}: {exc}"
         try:
-            _svc_vector = VectorStore()
+            vs = VectorStore()
         except Exception as exc:
-            _svc_vector_error = f"{type(exc).__name__}: {exc}"
-    return _svc_graph, _svc_vector, _svc_graph_error, _svc_vector_error
+            ve = f"{type(exc).__name__}: {exc}"
+        _service_cache[key] = (gs, vs, ge, ve)
+    return _service_cache[key]
 
 
 class RetrievalStage:

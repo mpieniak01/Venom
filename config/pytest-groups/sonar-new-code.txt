@@ -242,6 +242,7 @@ tests/test_strategist_agent.py
 tests/test_strategy_and_routes_regression.py
 tests/test_swarm_wrapper.py
 tests/test_system_governance_runtime_contracts.py
+tests/test_gemma4_audio_models.py
 tests/test_system_llm_service.py
 tests/test_system_routes_roi.py
 tests/test_task_pipeline_contracts.py

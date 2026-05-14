@@ -389,7 +389,7 @@ export function Gemma4RuntimeControlInner({
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <label className="text-xs text-zinc-400">Image token budget</label>
+          <label className="text-xs text-zinc-400">{t("voice.daemon.imageTokenBudget")}</label>
           <input
             type="number"
             min={70}
@@ -399,7 +399,7 @@ export function Gemma4RuntimeControlInner({
             onChange={(e) => setLocalImageBudget(e.target.value)}
             disabled={busy}
             className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-right text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-            aria-label="Image token budget"
+            aria-label={t("voice.daemon.imageTokenBudget")}
           />
         </div>
 
@@ -443,7 +443,7 @@ export function Gemma4RuntimeControlInner({
 
       {status?.supports_image_input && (
         <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Image input</p>
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
           <div className="mt-2 space-y-2">
             <div
               onDragOver={(event) => {
@@ -455,7 +455,7 @@ export function Gemma4RuntimeControlInner({
               }}
               className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-[11px] text-zinc-400"
             >
-              Drag and drop image here
+              {t("voice.daemon.dragDropImage")}
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -464,7 +464,7 @@ export function Gemma4RuntimeControlInner({
                 onClick={() => imageFileInputRef.current?.click()}
                 disabled={busy || imageProbePending}
               >
-                Choose from disk
+                {t("voice.daemon.chooseImageFromDisk")}
               </Button>
               {imageFileName && (
                 <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
@@ -479,7 +479,7 @@ export function Gemma4RuntimeControlInner({
                   }}
                   disabled={busy || imageProbePending}
                 >
-                  Clear file
+                  {t("voice.daemon.clearImageFile")}
                 </Button>
               )}
               <input
@@ -497,19 +497,23 @@ export function Gemma4RuntimeControlInner({
               type="url"
               value={imageUrlInput}
               onChange={(e) => setImageUrlInput(e.target.value)}
-              placeholder={imageDataInput ? "File selected (URL disabled)" : "https://..."}
+              placeholder={
+                imageDataInput
+                  ? t("voice.daemon.fileSelectedUrlDisabled")
+                  : t("voice.daemon.imageUrlPlaceholder")
+              }
               disabled={busy || imageProbePending}
               className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-              aria-label="Image URL"
+              aria-label={t("voice.daemon.imageUrl")}
             />
             <input
               type="text"
               value={imagePromptInput}
               onChange={(e) => setImagePromptInput(e.target.value)}
-              placeholder="Optional prompt (OCR / describe)"
+              placeholder={t("voice.daemon.imagePromptPlaceholder")}
               disabled={busy || imageProbePending}
               className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-              aria-label="Image prompt"
+              aria-label={t("voice.daemon.imagePrompt")}
             />
             <Button
               size="xs"
@@ -517,7 +521,7 @@ export function Gemma4RuntimeControlInner({
               onClick={handleImageProbe}
               disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
             >
-              {imageProbePending ? "Running..." : "Run image probe"}
+              {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
             </Button>
             {imageProbeResult && (
               <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>

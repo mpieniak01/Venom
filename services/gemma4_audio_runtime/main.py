@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import ipaddress
 import logging
 import os
 import sys
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 import numpy as np
@@ -180,7 +182,44 @@ def _image_from_data_field(data: str) -> Image.Image:
         return image.convert("RGB")
 
 
+def _is_private_or_local_host(hostname: str) -> bool:
+    host = (hostname or "").strip().lower()
+    if not host:
+        return False
+    if host in {"localhost", "0.0.0.0", "::1"}:
+        return True
+    if host.endswith(".localhost") or host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or ip.is_link_local
+
+
+def _validate_image_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("Only http/https image URLs are supported")
+    if not parsed.hostname:
+        raise ValueError("Image URL hostname is required")
+    if _is_private_or_local_host(parsed.hostname):
+        raise ValueError("Local/private hosts are not allowed for image URLs")
+
+    raw_allowed_hosts = os.getenv("GEMMA4_AUDIO_IMAGE_ALLOWED_HOSTS", "").strip()
+    if not raw_allowed_hosts:
+        return
+
+    allowed_hosts = {
+        item.strip().lower() for item in raw_allowed_hosts.split(",") if item.strip()
+    }
+    host = parsed.hostname.lower()
+    if host not in allowed_hosts:
+        raise ValueError("Image URL host is not allowed by policy")
+
+
 async def _image_from_url(url: str) -> Image.Image:
+    _validate_image_url(url)
     timeout = httpx.Timeout(20.0, connect=5.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         resp = await client.get(url)
@@ -191,9 +230,19 @@ async def _image_from_url(url: str) -> Image.Image:
 
 
 def _image_from_path(path: str) -> Image.Image:
+    raw_allowed_dir = os.getenv("GEMMA4_AUDIO_IMAGE_INPUT_DIR", "").strip()
+    if not raw_allowed_dir:
+        raise ValueError("Local image path loading is disabled by policy")
+    allowed_root = Path(raw_allowed_dir).resolve()
+
     file_path = Path(path)
     if not file_path.exists():
         raise ValueError(f"Image path not found: {path}")
+    resolved = file_path.resolve()
+    try:
+        resolved.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError("Image path is outside allowed input directory") from exc
     payload = file_path.read_bytes()
     with Image.open(BytesIO(payload)) as image:
         return image.convert("RGB")
@@ -756,7 +805,10 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
     images: list[Image.Image] = []
     for image_url in image_urls:
         try:
-            images.append(await _image_from_url(image_url))
+            if image_url.startswith("data:"):
+                images.append(_image_from_data_field(image_url))
+            else:
+                images.append(await _image_from_url(image_url))
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid image_url: {e}")
     max_tokens = int(payload.max_tokens or payload.max_completion_tokens or 128)

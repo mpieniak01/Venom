@@ -2710,12 +2710,10 @@ function VoiceCommandCenterPanel({
 
   const onVoiceModeToggle = useCallback(() => {
     if (debugDryRunActive) return;
-    setIsVoiceModeEnabled((current) => {
-      const next = !current;
-      setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
-      return next;
-    });
-  }, [debugDryRunActive, setIsVoiceModeEnabled, setStatusMessage, t]);
+    const next = !isVoiceModeEnabled;
+    setIsVoiceModeEnabled(next);
+    setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
+  }, [debugDryRunActive, isVoiceModeEnabled, setIsVoiceModeEnabled, setStatusMessage, t]);
 
   return (
     <>

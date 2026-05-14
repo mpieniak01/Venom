@@ -245,8 +245,16 @@ def test_post_profile_daemon_500_forwarded():
 
 
 def test_service_action_endpoint_still_reachable():
-    with patch.object(
-        runtime_routes.runtime_controller, "get_all_services_status", return_value=[]
+    with (
+        patch.object(
+            runtime_routes.runtime_controller,
+            "get_all_services_status",
+            return_value=[],
+        ),
+        patch(
+            "venom_core.api.routes.system_runtime.system_deps.get_service_monitor",
+            return_value=None,
+        ),
     ):
         resp = _client().get("/api/v1/runtime/status")
     assert resp.status_code == 200

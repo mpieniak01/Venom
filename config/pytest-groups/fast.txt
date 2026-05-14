@@ -14,6 +14,7 @@ tests/security/test_autonomy_enforcement.py
 tests/test_204a_canonical_control_state.py
 tests/test_214a_daemon_management.py
 tests/test_214a_gemma4_daemon.py
+tests/test_217a_multi_runtime_migration_contracts.py
 tests/test_academy_202c_signing_coverage.py
 tests/test_academy_202d_lora_onnx_deploy.py
 tests/test_academy_adapter_runtime_service.py

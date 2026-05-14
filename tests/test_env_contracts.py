@@ -35,5 +35,5 @@ def test_active_local_runtime_matches_endpoint_contract():
 
     if active == "ollama":
         assert endpoint.startswith("http://localhost:11434"), endpoint
-    elif active == "gemma4_audio":
+    elif active in {"gemma4_audio", "multi_runtime"}:
         assert endpoint.startswith("http://localhost:8014"), endpoint

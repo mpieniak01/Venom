@@ -40,7 +40,7 @@ def test_infer_local_provider_variants():
     assert llm_runtime.infer_local_provider(http_url("vllm.local")) == "vllm"
     assert (
         llm_runtime.infer_local_provider("http://gemma4.local:8014/v1")
-        == "gemma4_audio"
+        == "multi_runtime"
     )
     assert llm_runtime.infer_local_provider(http_url("onnx.local")) == "onnx"
     assert llm_runtime.infer_local_provider(http_url("lmstudio.local")) == "lmstudio"
@@ -107,7 +107,7 @@ def test_get_active_llm_runtime_variants():
             active_server="gemma4_audio",
         )
     )
-    assert runtime.provider == "gemma4_audio"
+    assert runtime.provider == "multi_runtime"
     assert runtime.endpoint == "http://localhost:8014/v1"
 
     runtime = llm_runtime.get_active_llm_runtime(
@@ -208,7 +208,7 @@ def test_format_runtime_label_and_health_url():
     assert (
         llm_runtime._build_health_url(
             llm_runtime.LLMRuntimeInfo(
-                provider="gemma4_audio",
+                provider="multi_runtime",
                 model_name="x",
                 endpoint="http://localhost:8014/v1",
                 service_type="local",

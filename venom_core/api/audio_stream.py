@@ -23,6 +23,7 @@ from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
 from venom_core.utils.logger import get_logger
+from venom_core.utils.runtime_names import is_multi_runtime
 from venom_core.utils.voice_metadata import build_voice_session_insights
 
 logger = get_logger(__name__)
@@ -669,7 +670,7 @@ class AudioStreamHandler:
         log_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), "")
         pid_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_PID_PATH", ""), "")
         return {
-            "audio_runtime_provider": "gemma4_audio",
+            "audio_runtime_provider": "multi_runtime",
             "audio_runtime_model": _coerce_str(
                 _gemma4_audio_setting("GEMMA4_AUDIO_MODEL_ID", ""), ""
             ),
@@ -719,7 +720,7 @@ class AudioStreamHandler:
         if not self._gemma4_audio_runtime_enabled():
             return False
         active_server = _coerce_str(_gemma4_audio_setting("ACTIVE_LLM_SERVER", ""), "")
-        return active_server == "gemma4_audio"
+        return is_multi_runtime(active_server)
 
     async def _gemma4_audio_health_ok(self) -> bool:
         health_url = self._gemma4_audio_health_url()
@@ -832,7 +833,7 @@ class AudioStreamHandler:
                     "pipeline_id": "whisper_llm_piper",
                     "audio_input_status": "fallback",
                     "decoder_source": "faster_whisper",
-                    "fallback_reason": "gemma4_audio health check failed",
+                    "fallback_reason": "multi_runtime health check failed",
                     **_build_voice_session_insights_payload(
                         transcript="",
                         response="",
@@ -895,7 +896,7 @@ class AudioStreamHandler:
             transcript=transcription,
             response=response_text,
             voice_mode=self._connection_voice_mode(connection_id),
-            pipeline_id="gemma4_audio_piper",
+            pipeline_id="multi_runtime_piper",
             **_gemma4_audio_voice_flags(),
             raw_thinking_available=bool(
                 runtime_result.get("raw_thinking_available", False)
@@ -906,9 +907,9 @@ class AudioStreamHandler:
             session_dir,
             {
                 **snapshot,
-                "pipeline_id": "gemma4_audio_piper",
+                "pipeline_id": "multi_runtime_piper",
                 "audio_input_status": "verified",
-                "decoder_source": "gemma4_audio",
+                "decoder_source": "multi_runtime",
                 "fallback_reason": "",
                 "native_audio_ms": timings_ms["native_audio_ms"],
                 "transcription": transcription,
@@ -940,7 +941,7 @@ class AudioStreamHandler:
             {
                 "timings_ms": timings_ms,
                 "runtime": self._build_runtime_metadata(operator_agent),
-                "pipeline_id": "gemma4_audio_piper",
+                "pipeline_id": "multi_runtime_piper",
             },
         )
 

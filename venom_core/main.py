@@ -137,6 +137,7 @@ from venom_core.utils.llm_runtime import (
     warmup_local_runtime,
 )
 from venom_core.utils.logger import get_logger, set_event_broadcaster
+from venom_core.utils.runtime_names import is_multi_runtime
 
 logger = get_logger(__name__)
 TESTING_MODE = bool(os.getenv("PYTEST_CURRENT_TEST"))
@@ -283,7 +284,7 @@ def _build_gemma4_runtime_capabilities() -> dict[str, object]:
     enabled = _gemma4_audio_enabled()
     probe_status = "verified" if enabled else "metadata_only"
     return {
-        "compatibility_profile": "gemma4_audio_native",
+        "compatibility_profile": "multi_runtime_native",
         "probe_status": probe_status,
         "capabilities": {
             "audio_input": bool(getattr(SETTINGS, "GEMMA4_AUDIO_SUPPORTS_AUDIO", True)),
@@ -321,7 +322,7 @@ def _build_gemma4_runtime_capabilities() -> dict[str, object]:
 
 def _build_gemma4_voice_pipeline() -> dict[str, object]:
     return {
-        "profile": "gemma4_audio_native",
+        "profile": "multi_runtime_native",
         "stt": "native_audio" if _gemma4_audio_enabled() else "faster_whisper",
         "reasoning": "native_audio_model",
         "reasoning_summary": (
@@ -357,7 +358,7 @@ def _build_gemma4_voice_runtime_snapshot(runtime: Any) -> dict[str, object]:
 
 async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
     runtime = get_active_llm_runtime()
-    if runtime.provider == "gemma4_audio":
+    if is_multi_runtime(runtime.provider):
         return _build_gemma4_voice_runtime_snapshot(runtime)
 
     if runtime.provider != "ollama" or not runtime.model_name or not runtime.endpoint:

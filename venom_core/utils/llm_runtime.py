@@ -10,6 +10,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from venom_core.config import SETTINGS
+from venom_core.utils.runtime_names import MULTI_RUNTIME_ID, is_multi_runtime
 from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
 
 
@@ -55,7 +56,7 @@ def infer_local_provider(endpoint: Optional[str]) -> str:
     if "vllm" in endpoint_lower or ":8001" in endpoint_lower:
         return "vllm"
     if "gemma4" in endpoint_lower or "8014" in endpoint_lower:
-        return "gemma4_audio"
+        return MULTI_RUNTIME_ID
     if "onnx" in endpoint_lower:
         return "onnx"
     if "lmstudio" in endpoint_lower:
@@ -118,9 +119,9 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
 def _resolve_local_runtime(
     *, active_server: str, endpoint: Optional[str], settings
 ) -> Tuple[str, Optional[str]]:
-    if active_server == "gemma4_audio":
+    if is_multi_runtime(active_server):
         return (
-            "gemma4_audio",
+            MULTI_RUNTIME_ID,
             apply_http_policy_to_url(
                 getattr(settings, "GEMMA4_AUDIO_ENDPOINT", endpoint)
             ),
@@ -192,7 +193,7 @@ def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
             else build_http_url("localhost", 11434, "/api/tags")
         )
 
-    if runtime.provider == "gemma4_audio":
+    if is_multi_runtime(runtime.provider):
         base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
         return (
             f"{base}/health" if base else build_http_url("localhost", 8014, "/health")

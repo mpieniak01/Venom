@@ -225,10 +225,10 @@ export function CockpitModels({
           >
             {activateServerLabel}
           </Button>
-          {selectedLlmServer === "gemma4_audio" && gemma4AudioRuntimeInfo && (
+          {selectedLlmServer === "multi_runtime" && gemma4AudioRuntimeInfo && (
             <Gemma4AudioCapabilityInfo info={gemma4AudioRuntimeInfo} />
           )}
-          {selectedLlmServer === "gemma4_audio" && (
+          {selectedLlmServer === "multi_runtime" && (
             <Gemma4RuntimeControl
               variant="cockpit"
               assistantModels={gemma4AudioRuntimeInfo?.assistant_models ?? []}

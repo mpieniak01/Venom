@@ -44,6 +44,7 @@ from venom_core.utils.llm_runtime import (
     infer_local_provider,
 )
 from venom_core.utils.logger import get_logger
+from venom_core.utils.runtime_names import MULTI_RUNTIME_ID, is_multi_runtime
 from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
@@ -309,7 +310,7 @@ def _extract_health_status(response: httpx.Response) -> str | None:
 def _is_health_response_ready(*, server_name: str, response: httpx.Response) -> bool:
     if not (200 <= response.status_code < 300):
         return False
-    if server_name != "gemma4_audio":
+    if not is_multi_runtime(server_name):
         return True
     status = _extract_health_status(response)
     return status in {"ok", "ready", "running"}
@@ -321,7 +322,7 @@ def _resolve_local_endpoint(server_name: str, target: dict) -> str | None:
         return build_http_url("localhost", 11434, "/v1")
     if server_name == "vllm":
         return SETTINGS.VLLM_ENDPOINT
-    if server_name == "gemma4_audio":
+    if is_multi_runtime(server_name):
         return SETTINGS.GEMMA4_AUDIO_ENDPOINT
     if server_name == "onnx":
         return None
@@ -570,7 +571,7 @@ def _build_model_updates(
         "HYBRID_LOCAL_MODEL": selected_model,
         last_model_key: selected_model,
     }
-    if server_name == "gemma4_audio":
+    if is_multi_runtime(server_name):
         updates["LAST_MODEL_GEMMA4_AUDIO"] = selected_model
         updates["GEMMA4_AUDIO_MODEL_ID"] = selected_model
         updates["GEMMA4_AUDIO_ENABLED"] = "true"
@@ -602,9 +603,9 @@ def _persist_selected_model_settings(
     try:
         SETTINGS.LLM_MODEL_NAME = selected_model
         SETTINGS.HYBRID_LOCAL_MODEL = selected_model
-        if server_name in {"ollama", "vllm", "gemma4_audio"}:
+        if server_name in {"ollama", "vllm"} or is_multi_runtime(server_name):
             SETTINGS.LLM_SERVICE_TYPE = "local"
-        if server_name == "gemma4_audio":
+        if is_multi_runtime(server_name):
             SETTINGS.GEMMA4_AUDIO_ENABLED = True
             SETTINGS.GEMMA4_AUDIO_MODEL_ID = selected_model
             SETTINGS.LLM_LOCAL_ENDPOINT = endpoint or SETTINGS.GEMMA4_AUDIO_ENDPOINT
@@ -618,11 +619,11 @@ def _persist_selected_model_settings(
         "LLM_CONFIG_HASH": config_hash,
         "ACTIVE_LLM_SERVER": server_name,
     }
-    if server_name in {"ollama", "vllm", "gemma4_audio"}:
+    if server_name in {"ollama", "vllm"} or is_multi_runtime(server_name):
         config_updates["LLM_SERVICE_TYPE"] = "local"
     if endpoint:
         config_updates["LLM_LOCAL_ENDPOINT"] = endpoint
-    if server_name == "gemma4_audio":
+    if is_multi_runtime(server_name):
         config_updates["GEMMA4_AUDIO_ENABLED"] = "true"
         config_updates["GEMMA4_AUDIO_MODEL_ID"] = selected_model
     else:
@@ -1211,7 +1212,7 @@ async def _local_models_by_runtime(
         "ollama": [],
         "vllm": [],
         "onnx": [],
-        "gemma4_audio": [],
+        MULTI_RUNTIME_ID: [],
     }
     audit_issues: list[dict[str, Any]] = []
     if local_models is None:
@@ -1237,7 +1238,7 @@ async def _local_models_by_runtime(
             runtime_id = str(payload.get("runtime_id") or "").strip().lower()
             if runtime_id in grouped:
                 grouped[runtime_id].append(payload)
-    grouped["gemma4_audio"] = _gemma4_audio_static_models(
+    grouped[MULTI_RUNTIME_ID] = _gemma4_audio_static_models(
         active_provider=active_provider,
         active_model=active_model,
     )
@@ -1252,12 +1253,12 @@ def _gemma4_audio_static_models(
     target_models = gemma4_audio_available_models(role="target")
     return [
         _runtime_model_payload(
-            runtime_id="gemma4_audio",
+            runtime_id=MULTI_RUNTIME_ID,
             model_id=model_id,
             name=model_id,
-            provider="gemma4_audio",
+            provider=MULTI_RUNTIME_ID,
             source_type="local-runtime",
-            active=(active_provider == "gemma4_audio" and active_model == model_id),
+            active=(is_multi_runtime(active_provider) and active_model == model_id),
             capabilities=["text", "audio", "voice"],
             chat_compatible=True,
         )
@@ -1405,7 +1406,7 @@ def _runtime_target_payload(
 
 
 def _gemma4_audio_runtime_input_capabilities(runtime_id: str) -> dict[str, Any]:
-    if runtime_id.strip().lower() != "gemma4_audio":
+    if not is_multi_runtime(runtime_id):
         return {}
     target_models = gemma4_audio_available_models(role="target")
     assistant_models = gemma4_audio_available_models(role="assistant")
@@ -1446,7 +1447,7 @@ def _runtime_capabilities(*, runtime_id: str, source_type: str) -> dict[str, boo
             "supports_adapter_import_gguf": False,
             "supports_adapter_runtime_apply": True,
         }
-    if runtime == "gemma4_audio":
+    if is_multi_runtime(runtime):
         return {
             "supports_native_training": False,
             "supports_adapter_import_safetensors": False,
@@ -1653,7 +1654,7 @@ def _local_runtime_targets(
     targets: list[dict[str, Any]] = []
     allowed = _allowed_local_servers()
     installed = _installed_local_servers()
-    for runtime_id in ("ollama", "vllm", "gemma4_audio", "onnx"):
+    for runtime_id in ("ollama", "vllm", MULTI_RUNTIME_ID, "onnx"):
         info = server_status.get(runtime_id, {})
         status = str(info.get("status") or "unknown")
         reason = None
@@ -2121,7 +2122,7 @@ def _resolve_selected_model_for_switch(
     config: dict[str, Any],
     models: list[dict[str, Any]],
 ) -> tuple[str, str]:
-    if server_name == "gemma4_audio":
+    if is_multi_runtime(server_name):
         return _resolve_gemma4_audio_selected_model_for_switch(
             request=request,
             server_name=server_name,
@@ -2214,7 +2215,7 @@ def _last_model_key_for_server(server_name: str) -> str:
         return "LAST_MODEL_OLLAMA"
     if server_name == "onnx":
         return "LAST_MODEL_ONNX"
-    if server_name == "gemma4_audio":
+    if is_multi_runtime(server_name):
         return "LAST_MODEL_GEMMA4_AUDIO"
     return "LAST_MODEL_VLLM"
 

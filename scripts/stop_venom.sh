@@ -79,7 +79,7 @@ pkill -f "uvicorn.*venom_core.main:app" 2>/dev/null || true
 echo "🧠 Zwalniam zasoby LLM..."
 bash scripts/llm/vllm_service.sh stop >/dev/null 2>&1 || true
 bash scripts/llm/ollama_service.sh stop >/dev/null 2>&1 || true
-bash scripts/llm/gemma4_audio_service.sh stop >/dev/null 2>&1 || true
+bash scripts/llm/multi_runtime_service.sh stop >/dev/null 2>&1 || true
 
 # 4. Academy training jobs (local runtime)
 echo "🧪 Zatrzymuję lokalne joby treningowe Academy..."

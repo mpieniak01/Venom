@@ -18,7 +18,7 @@ const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
     runtime === "openai" || runtime === "google";
 
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
-    runtime === "gemma4_audio";
+    runtime === "multi_runtime";
 
 export function buildInstalledBuckets(
     data: ModelsResponse | null,

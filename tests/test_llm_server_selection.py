@@ -108,7 +108,7 @@ async def test_await_server_health_gemma4_audio_waits_for_ready(monkeypatch):
 
     assert (
         await system_routes._await_server_health(
-            "gemma4_audio", "http://localhost:8014/health"
+            "multi_runtime", "http://localhost:8014/health"
         )
         is True
     )

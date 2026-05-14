@@ -134,8 +134,8 @@ async def test_build_voice_runtime_snapshot_returns_gemma4_audio_snapshot_enable
         main_module,
         "get_active_llm_runtime",
         lambda: SimpleNamespace(
-            runtime_id="gemma4_audio@localhost",
-            provider="gemma4_audio",
+            runtime_id="multi_runtime@localhost",
+            provider="multi_runtime",
             model_name="google/gemma-4-E2B-it",
             endpoint="http://127.0.0.1:8014",
             config_hash="cfg123",
@@ -155,10 +155,10 @@ async def test_build_voice_runtime_snapshot_returns_gemma4_audio_snapshot_enable
 
     snapshot = await main_module._build_voice_runtime_snapshot()
 
-    assert snapshot["runtime_id"] == "gemma4_audio@localhost"
-    assert snapshot["provider"] == "gemma4_audio"
+    assert snapshot["runtime_id"] == "multi_runtime@localhost"
+    assert snapshot["provider"] == "multi_runtime"
     assert snapshot["runtime_capabilities"]["compatibility_profile"] == (
-        "gemma4_audio_native"
+        "multi_runtime_native"
     )
     assert snapshot["runtime_capabilities"]["probe_status"] == "verified"
     assert snapshot["voice_pipeline"]["stt"] == "native_audio"
@@ -172,8 +172,8 @@ async def test_build_voice_runtime_snapshot_returns_gemma4_audio_snapshot_metada
         main_module,
         "get_active_llm_runtime",
         lambda: SimpleNamespace(
-            runtime_id="gemma4_audio@localhost",
-            provider="gemma4_audio",
+            runtime_id="multi_runtime@localhost",
+            provider="multi_runtime",
             model_name="",
             endpoint="",
             config_hash="cfg999",

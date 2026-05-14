@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for Gemma 4 Audio Runtime Service.
+"""Smoke test for Multi-Runtime service.
 
 Tests basic functionality:
 - Health check
@@ -27,8 +27,8 @@ TIMEOUT = 120.0  # 2 minutes for model loading
 HEALTH_CHECK_TIMEOUT = 5.0
 
 
-class Gemma4AudioSmokeTester:
-    """Smoke tester for Gemma4 Audio Runtime."""
+class MultiRuntimeSmokeTester:
+    """Smoke tester for Multi-Runtime."""
 
     def __init__(self, base_url: str = BASE_URL, timeout: float = TIMEOUT):
         self.base_url = base_url.rstrip("/")
@@ -43,7 +43,7 @@ class Gemma4AudioSmokeTester:
             0 if all tests pass, 1 otherwise
         """
         print("=" * 60)
-        print("Gemma 4 Audio Runtime Service - Smoke Tests")
+        print("Multi-Runtime Service - Smoke Tests")
         print("=" * 60)
         print(f"Target: {self.base_url}\n")
 
@@ -207,7 +207,7 @@ class Gemma4AudioSmokeTester:
 
 async def main():
     """Main entry point."""
-    tester = Gemma4AudioSmokeTester()
+    tester = MultiRuntimeSmokeTester()
     return await tester.run()
 
 

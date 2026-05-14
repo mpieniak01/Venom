@@ -5,6 +5,7 @@ from typing import Any
 
 from venom_core.core.model_registry_types import ModelMetadata, ModelProvider
 from venom_core.utils.logger import get_logger
+from venom_core.utils.runtime_names import MULTI_RUNTIME_ID, is_multi_runtime
 
 logger = get_logger(__name__)
 
@@ -49,7 +50,7 @@ async def ensure_model_metadata_for_activation(
 ) -> bool:
     if model_name in registry.manifest:
         return True
-    if runtime == "gemma4_audio" and model_name in _GEMMA4_AUDIO_KNOWN_MODELS:
+    if is_multi_runtime(runtime) and model_name in _GEMMA4_AUDIO_KNOWN_MODELS:
         return True
     if runtime != "ollama":
         logger.error(f"Model {model_name} nie znaleziony w manifeście")
@@ -77,25 +78,26 @@ def apply_model_activation_config(model_name: str, runtime: str, meta: ModelMeta
     from venom_core.config import SETTINGS
     from venom_core.services.config_manager import config_manager
 
+    canonical_runtime = MULTI_RUNTIME_ID if is_multi_runtime(runtime) else runtime
     updates = {
         "LLM_MODEL_NAME": model_name,
-        "ACTIVE_LLM_SERVER": runtime,
+        "ACTIVE_LLM_SERVER": canonical_runtime,
         "LLM_SERVICE_TYPE": "local",
         "LLM_LOCAL_ENDPOINT": SETTINGS.GEMMA4_AUDIO_ENDPOINT
-        if runtime == "gemma4_audio"
+        if is_multi_runtime(runtime)
         else SETTINGS.LLM_LOCAL_ENDPOINT,
     }
     if runtime == "vllm":
         apply_vllm_activation_updates(model_name, meta, updates, SETTINGS)
     if runtime == "ollama":
         updates["LAST_MODEL_OLLAMA"] = model_name
-    if runtime == "gemma4_audio":
+    if is_multi_runtime(runtime):
         updates["LAST_MODEL_GEMMA4_AUDIO"] = model_name
         updates["LLM_LOCAL_ENDPOINT"] = SETTINGS.GEMMA4_AUDIO_ENDPOINT
 
     config_manager.update_config(updates)
     SETTINGS.LLM_MODEL_NAME = model_name
-    SETTINGS.ACTIVE_LLM_SERVER = runtime
+    SETTINGS.ACTIVE_LLM_SERVER = canonical_runtime
     SETTINGS.LLM_SERVICE_TYPE = "local"
     SETTINGS.LLM_LOCAL_ENDPOINT = updates.get(
         "LLM_LOCAL_ENDPOINT", SETTINGS.LLM_LOCAL_ENDPOINT
@@ -104,7 +106,7 @@ def apply_model_activation_config(model_name: str, runtime: str, meta: ModelMeta
         safe_setattr(SETTINGS, "LAST_MODEL_OLLAMA", model_name)
     if runtime == "vllm":
         safe_setattr(SETTINGS, "LAST_MODEL_VLLM", model_name)
-    if runtime == "gemma4_audio":
+    if is_multi_runtime(runtime):
         safe_setattr(SETTINGS, "LAST_MODEL_GEMMA4_AUDIO", model_name)
     return SETTINGS
 

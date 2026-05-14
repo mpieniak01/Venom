@@ -574,7 +574,7 @@ export function useCockpitSectionProps() {
   ]);
 
   const gemma4AudioRuntimeInfo = useMemo(() => {
-    const target = runtimeTargets.find((rt) => rt.runtime_id === "gemma4_audio");
+    const target = runtimeTargets.find((rt) => rt.runtime_id === "multi_runtime");
     if (!target) return null;
     return {
       supports_text_input: target.supports_text_input,

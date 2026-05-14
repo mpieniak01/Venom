@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Experimental direct-audio probe for Gemma 4 via Hugging Face Transformers."""
+"""Experimental direct-audio probe for Multi-Runtime via Transformers."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class NormalizedAudio:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Experimental Gemma 4 direct audio ingest probe"
+        description="Experimental Multi-Runtime direct audio ingest probe"
     )
     parser.add_argument(
         "--audio",
@@ -116,7 +116,7 @@ def _read_audio_fallback(path: Path) -> tuple[np.ndarray, int]:
         audio, sample_rate = sf.read(str(path), always_2d=True, dtype="float32")
         return audio, int(sample_rate)
     except Exception:
-        with tempfile.TemporaryDirectory(prefix="gemma4_audio_ffmpeg_") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="multi_runtime_ffmpeg_") as tmpdir:
             tmp_path = Path(tmpdir) / "decoded.wav"
             cmd = [
                 "ffmpeg",
@@ -153,7 +153,7 @@ def _normalize_audio(source_path: Path, workdir: Path) -> NormalizedAudio:
         sample_rate = TARGET_SAMPLE_RATE
     mono = np.clip(mono, -1.0, 1.0).astype(np.float32, copy=False)
 
-    normalized_path = workdir / f"{source_path.stem}.gemma4_16k_mono.wav"
+    normalized_path = workdir / f"{source_path.stem}.multi_runtime_16k_mono.wav"
     sf.write(str(normalized_path), mono, sample_rate, subtype="FLOAT")
     duration_sec = float(len(mono)) / float(sample_rate) if sample_rate else 0.0
     return NormalizedAudio(
@@ -292,7 +292,7 @@ def main() -> int:
         print(f"Audio file not found: {source_path}", file=sys.stderr)
         return 2
 
-    with tempfile.TemporaryDirectory(prefix="gemma4_audio_probe_") as tmpdir_name:
+    with tempfile.TemporaryDirectory(prefix="multi_runtime_probe_") as tmpdir_name:
         tmpdir = Path(tmpdir_name)
         try:
             normalized = _normalize_audio(source_path, tmpdir)

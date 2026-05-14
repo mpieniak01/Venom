@@ -2122,6 +2122,108 @@ function useVoiceStatusUpdateEmitter(params: {
   }, [audioStatus, debugDryRunRequested, debugRecording, onStatusUpdate]);
 }
 
+function useVoiceModeSyncEffect(params: {
+  audioEnabled: boolean;
+  connected: boolean;
+  t: ReturnType<typeof useTranslation>;
+  voiceModePreset: VoiceModePreset;
+  lastVoiceModeSentRef: MutableRefObject<string | null>;
+  wsRef: MutableRefObject<WebSocket | null>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+}) {
+  const {
+    audioEnabled,
+    connected,
+    t,
+    voiceModePreset,
+    lastVoiceModeSentRef,
+    wsRef,
+    setStatusMessage,
+  } = params;
+  useEffect(() => {
+    syncVoiceModeSelection({
+      audioEnabled,
+      connected,
+      t,
+      voiceModePreset,
+      lastVoiceModeSentRef,
+      wsRef,
+      setStatusMessage,
+    });
+  }, [audioEnabled, connected, t, voiceModePreset, lastVoiceModeSentRef, wsRef, setStatusMessage]);
+}
+
+function useVoiceCaptureWarmupEffect(params: {
+  debugDryRunRequested: boolean;
+  audioEnabled: boolean;
+  isVoiceModeEnabled: boolean;
+  mediaStreamRef: MutableRefObject<MediaStream | null>;
+  audioContextRef: MutableRefObject<AudioContext | null>;
+  sourceNodeRef: MutableRefObject<MediaStreamAudioSourceNode | null>;
+  analyserRef: MutableRefObject<AnalyserNode | null>;
+  mediaRecorderRef: MutableRefObject<MediaRecorder | null>;
+  ensurePlaybackContext: () => Promise<AudioContext>;
+  getMediaRecorderMimeType: () => string;
+}) {
+  const {
+    debugDryRunRequested,
+    audioEnabled,
+    isVoiceModeEnabled,
+    mediaStreamRef,
+    audioContextRef,
+    sourceNodeRef,
+    analyserRef,
+    mediaRecorderRef,
+    ensurePlaybackContext,
+    getMediaRecorderMimeType,
+  } = params;
+  useEffect(() => {
+    if (debugDryRunRequested || !audioEnabled || !isVoiceModeEnabled) {
+      return;
+    }
+    if (
+      mediaStreamRef.current &&
+      audioContextRef.current &&
+      sourceNodeRef.current &&
+      analyserRef.current &&
+      mediaRecorderRef.current
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    createVoiceCaptureEnvironment({
+      activeWindow: getBrowserWindow(),
+      audioContextRef,
+      getMediaRecorderMimeType,
+      mediaStreamRef,
+      sourceNodeRef,
+      analyserRef,
+      mediaRecorderRef,
+      ensurePlaybackContext,
+    }).catch((error) => {
+      if (!cancelled) {
+        console.warn("Voice capture warmup failed", error);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    audioEnabled,
+    analyserRef,
+    audioContextRef,
+    debugDryRunRequested,
+    ensurePlaybackContext,
+    getMediaRecorderMimeType,
+    isVoiceModeEnabled,
+    mediaRecorderRef,
+    mediaStreamRef,
+    sourceNodeRef,
+  ]);
+}
+
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -2185,17 +2287,15 @@ export function VoiceCommandCenter({
 
   const reducedMotion = useVoiceCommandCenterReducedMotion();
 
-  useEffect(() => {
-    syncVoiceModeSelection({
-      audioEnabled,
-      connected,
-      t,
-      voiceModePreset,
-      lastVoiceModeSentRef,
-      wsRef,
-      setStatusMessage,
-    });
-  }, [audioEnabled, connected, t, voiceModePreset]);
+  useVoiceModeSyncEffect({
+    audioEnabled,
+    connected,
+    t,
+    voiceModePreset,
+    lastVoiceModeSentRef,
+    wsRef,
+    setStatusMessage,
+  });
 
   const refreshAudioStatus = useCallback(
     () =>
@@ -2342,54 +2442,18 @@ export function VoiceCommandCenter({
     [],
   );
 
-  useEffect(() => {
-    if (debugDryRunRequested) {
-      return;
-    }
-    if (!audioEnabled || !isVoiceModeEnabled) {
-      return;
-    }
-    if (
-      mediaStreamRef.current &&
-      audioContextRef.current &&
-      sourceNodeRef.current &&
-      analyserRef.current &&
-      mediaRecorderRef.current
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    createVoiceCaptureEnvironment({
-      activeWindow: getBrowserWindow(),
-      audioContextRef,
-      getMediaRecorderMimeType,
-      mediaStreamRef,
-      sourceNodeRef,
-      analyserRef,
-      mediaRecorderRef,
-      ensurePlaybackContext,
-    }).catch((error) => {
-      if (!cancelled) {
-        console.warn("Voice capture warmup failed", error);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    audioEnabled,
-    analyserRef,
+  useVoiceCaptureWarmupEffect({
     debugDryRunRequested,
+    audioEnabled,
+    isVoiceModeEnabled,
+    mediaStreamRef,
+    audioContextRef,
+    sourceNodeRef,
+    analyserRef,
+    mediaRecorderRef,
     ensurePlaybackContext,
     getMediaRecorderMimeType,
-    isVoiceModeEnabled,
-    mediaRecorderRef,
-    mediaStreamRef,
-    sourceNodeRef,
-    audioContextRef,
-  ]);
+  });
 
   useEffect(
     () => {

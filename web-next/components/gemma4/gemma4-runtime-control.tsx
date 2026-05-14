@@ -143,6 +143,95 @@ function buildDaemonConfigRequestFromLocalDraft(draft: {
   return params;
 }
 
+async function attachAssistantModel(params: {
+  daemon: Gemma4DaemonState;
+  drafterInput: string;
+  setDrafterInput: (value: string) => void;
+  setShowDrafterInput: (value: boolean) => void;
+}) {
+  const id = params.drafterInput.trim();
+  if (!id) return;
+  await params.daemon.attachAssistant(id);
+  params.setDrafterInput("");
+  params.setShowDrafterInput(false);
+}
+
+async function readImageFileAsDataUrl(file: File): Promise<string> {
+  const reader = new FileReader();
+  return new Promise<string>((resolve, reject) => {
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Unexpected file reader result type"));
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function runImageProbe(params: {
+  imageUrlInput: string;
+  imageDataInput: string | null;
+  imagePromptInput: string;
+  imageProbePending: boolean;
+  maxNewTokens: number;
+}): Promise<{
+  text: string;
+  diagnostics: {
+    executionTrace: string[];
+    selectedPolicy: string | null;
+    selectedImageStrategy: string | null;
+    retrievalUsed: boolean;
+    retrievalContextItems: number;
+    retrievalRoute: string | null;
+    assistantUsed: boolean;
+    economyModeActivated: boolean;
+    degradationReasons: string[];
+  };
+}> {
+  const url = params.imageUrlInput.trim();
+  if ((!url && !params.imageDataInput) || params.imageProbePending) {
+    throw new Error("Image input is missing");
+  }
+  const imageContent = params.imageDataInput
+    ? ({ type: "image", data: params.imageDataInput } as const)
+    : ({ type: "image", url } as const);
+  const result = await postDaemonRespond(getGemma4ApiBaseUrl(), {
+    messages: [
+      {
+        role: "user",
+        content: [
+          imageContent,
+          {
+            type: "text",
+            text: params.imagePromptInput.trim() || "Describe the image and extract visible text.",
+          },
+        ],
+      },
+    ],
+    task: "question",
+    max_new_tokens: params.maxNewTokens,
+  });
+  return {
+    text: result.text,
+    diagnostics: {
+      executionTrace: result.execution_trace ?? [],
+      selectedPolicy: result.selected_policy ?? null,
+      selectedImageStrategy: result.selected_image_strategy ?? null,
+      retrievalUsed: Boolean(result.retrieval_used),
+      retrievalContextItems: Number(result.retrieval_context_items ?? 0),
+      retrievalRoute: result.retrieval_route ?? null,
+      assistantUsed: Boolean(result.assistant_used),
+      economyModeActivated: Boolean(result.economy_mode_activated),
+      degradationReasons: Array.isArray(result.degradation_reasons)
+        ? result.degradation_reasons
+        : [],
+    },
+  };
+}
+
 export function Gemma4RuntimeControlInner({
   daemon,
   variant,
@@ -250,54 +339,30 @@ export function Gemma4RuntimeControlInner({
   }
 
   async function handleAttach() {
-    const id = drafterInput.trim();
-    if (!id) return;
-    await daemon.attachAssistant(id);
-    setDrafterInput("");
-    setShowDrafterInput(false);
+    await attachAssistantModel({
+      daemon,
+      drafterInput,
+      setDrafterInput,
+      setShowDrafterInput,
+    });
   }
 
   async function handleImageProbe() {
-    const url = imageUrlInput.trim();
-    if ((!url && !imageDataInput) || imageProbePending) return;
+    if ((!imageUrlInput.trim() && !imageDataInput) || imageProbePending) return;
     setImageProbePending(true);
     setImageProbeError(null);
     setImageProbeResult(null);
     setImageProbeDiagnostics(null);
     try {
-      const imageContent = imageDataInput
-        ? ({ type: "image", data: imageDataInput } as const)
-        : ({ type: "image", url } as const);
-      const result = await postDaemonRespond(getGemma4ApiBaseUrl(), {
-        messages: [
-          {
-            role: "user",
-            content: [
-              imageContent,
-              {
-                type: "text",
-                text: imagePromptInput.trim() || "Describe the image and extract visible text.",
-              },
-            ],
-          },
-        ],
-        task: "question",
-        max_new_tokens: status?.params.max_new_tokens ?? 128,
+      const result = await runImageProbe({
+        imageUrlInput,
+        imageDataInput,
+        imagePromptInput,
+        imageProbePending,
+        maxNewTokens: status?.params.max_new_tokens ?? 128,
       });
       setImageProbeResult(result.text);
-      setImageProbeDiagnostics({
-        executionTrace: result.execution_trace ?? [],
-        selectedPolicy: result.selected_policy ?? null,
-        selectedImageStrategy: result.selected_image_strategy ?? null,
-        retrievalUsed: Boolean(result.retrieval_used),
-        retrievalContextItems: Number(result.retrieval_context_items ?? 0),
-        retrievalRoute: result.retrieval_route ?? null,
-        assistantUsed: Boolean(result.assistant_used),
-        economyModeActivated: Boolean(result.economy_mode_activated),
-        degradationReasons: Array.isArray(result.degradation_reasons)
-          ? result.degradation_reasons
-          : [],
-      });
+      setImageProbeDiagnostics(result.diagnostics);
     } catch (e) {
       setImageProbeError(e instanceof Error ? e.message : "Image request failed");
     } finally {
@@ -311,18 +376,7 @@ export function Gemma4RuntimeControlInner({
       return;
     }
     setImageProbeError(null);
-    const reader = new FileReader();
-    const loaded = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => {
-        if (typeof reader.result === "string") {
-          resolve(reader.result);
-          return;
-        }
-        reject(new Error("Unexpected file reader result type"));
-      };
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
+    const loaded = await readImageFileAsDataUrl(file);
     setImageDataInput(loaded);
     setImageFileName(file.name);
     setImageUrlInput("");

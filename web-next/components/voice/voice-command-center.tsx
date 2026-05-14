@@ -2284,6 +2284,44 @@ function toggleVoiceMode(params: {
   params.setStatusMessage(next ? params.t("voice.controls.voiceChat") : params.t("voice.controls.textChat"));
 }
 
+function isDebugDryRunActive(debugMode: VoiceDebugSnapshot): boolean {
+  return debugMode.hydrated && debugMode.enabled;
+}
+
+function buildVoiceCommandCenterOrbState(params: {
+  debugDryRunActive: boolean;
+  debugMode: VoiceDebugSnapshot;
+  connected: boolean;
+  recording: boolean;
+  processingStatus: string | null;
+  playbackState: PlaybackState;
+  lastAudioSignal: string;
+}): VoiceOrbState {
+  return deriveOrbState(
+    params.debugDryRunActive ? params.debugMode.connected : params.connected,
+    params.debugDryRunActive ? params.debugMode.recording : params.recording,
+    params.debugDryRunActive ? params.debugMode.processingStatus : params.processingStatus,
+    params.debugDryRunActive ? params.debugMode.playbackState : params.playbackState,
+    params.debugDryRunActive ? params.debugMode.lastAudioSignal : params.lastAudioSignal,
+  );
+}
+
+function useVoiceCommandCenterMetricsRef(params: {
+  renderDiagnostics: ReturnType<typeof useVoiceRenderDiagnostics>;
+  pageVisible: boolean;
+  effectsConfig: ReturnType<typeof useOrbEffectsConfig>;
+  effectiveOrbState: VoiceOrbState;
+}): ReturnType<typeof useOrbMetrics> {
+  return useOrbMetrics(
+    params.renderDiagnostics.metricsEnabled &&
+      params.pageVisible &&
+      shouldTrackOrbMetrics(
+        applyOrbDiagnosticProfile(params.effectsConfig, params.renderDiagnostics).orbMetricsBars,
+        params.effectiveOrbState,
+      ),
+  );
+}
+
 function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
@@ -2294,7 +2332,7 @@ function VoiceCommandCenterPanel({
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
   const debugMode = useVoiceDebugMode(t);
   const debugDryRunRequested = debugMode.requested;
-  const debugDryRunActive = debugMode.hydrated && debugMode.enabled;
+  const debugDryRunActive = isDebugDryRunActive(debugMode);
   const [connected, setConnected] = useState(false);
   const [isVoiceModeEnabled, setIsVoiceModeEnabled] = useState<boolean>(audioEnabled);
   const [recording, setRecording] = useState(false);
@@ -2368,7 +2406,7 @@ function VoiceCommandCenterPanel({
         setTtsModelOptions,
         setSelectedTtsModelPath,
       })(),
-    [debugDryRunRequested],
+    [debugDryRunRequested, setTtsModelOptions, setSelectedTtsModelPath],
   );
 
   useVoiceStatusUpdateEmitter({
@@ -2421,6 +2459,9 @@ function VoiceCommandCenterPanel({
       refreshTtsModelOptions,
       releasePlaybackResources,
       t,
+      setSelectedTtsModelPath,
+      setStatusMessage,
+      setTtsModelChanging,
     ],
   );
 
@@ -2451,7 +2492,15 @@ function VoiceCommandCenterPanel({
         ttsSourceRef,
         ttsAnalyserRef,
       })(base64Audio, sampleRate),
-    [ensurePlaybackContext, releasePlaybackResources, t, ttsMuted],
+    [
+      ensurePlaybackContext,
+      releasePlaybackResources,
+      t,
+      ttsMuted,
+      setStatusMessage,
+      setLastAudioSignal,
+      setHasReplayAudio,
+    ],
   );
 
   const replayLastResponse = useCallback(async () => {
@@ -2461,7 +2510,7 @@ function VoiceCommandCenterPanel({
       setStatusMessage,
       t,
     });
-  }, [playAudioResponse, t]);
+  }, [playAudioResponse, t, setStatusMessage]);
 
   const handleAudioMessage = useCallback(
     (data: Record<string, unknown>) =>
@@ -2476,7 +2525,17 @@ function VoiceCommandCenterPanel({
         setResponse,
         setPlaybackState,
       })(data),
-    [onTranscriptReady, playAudioResponse, t],
+    [
+      onTranscriptReady,
+      playAudioResponse,
+      t,
+      setStatusMessage,
+      setLastAudioSignal,
+      setProcessingStatus,
+      setTranscription,
+      setResponse,
+      setPlaybackState,
+    ],
   );
 
   const releaseRecordingResources = useCallback(() => {
@@ -2556,7 +2615,7 @@ function VoiceCommandCenterPanel({
         setStatusMessage,
         t,
       })(payload),
-    [t],
+    [t, setStatusMessage],
   );
 
   const stopRecording = useCallback(
@@ -2575,7 +2634,20 @@ function VoiceCommandCenterPanel({
         releaseAudioResources,
         t,
       })(),
-    [debugDryRunRequested, debugMode, releaseAudioResources, sendControlMessage, t],
+    [
+      debugDryRunRequested,
+      debugMode,
+      releaseAudioResources,
+      sendControlMessage,
+      t,
+      setRecording,
+      setLastAudioSignal,
+      setStatusMessage,
+      recordingStartPendingRef,
+      stopRequestedRef,
+      recordingRef,
+      mediaRecorderRef,
+    ],
   );
 
   const startRecording = useCallback(
@@ -2619,6 +2691,18 @@ function VoiceCommandCenterPanel({
       sendControlMessage,
       stopRecording,
       t,
+      setRecording,
+      setStatusMessage,
+      setAudioChunkCount,
+      setLastAudioSignal,
+      recordingStartPendingRef,
+      stopRequestedRef,
+      recordingRef,
+      mediaRecorderRef,
+      mediaStreamRef,
+      audioContextRef,
+      sourceNodeRef,
+      analyserRef,
     ],
   );
 
@@ -2657,23 +2741,23 @@ function VoiceCommandCenterPanel({
     ttsAudioContextRef,
   });
 
-  const derivedOrbState = deriveOrbState(
-    debugDryRunActive ? debugMode.connected : connected,
-    debugDryRunActive ? debugMode.recording : recording,
-    debugDryRunActive ? debugMode.processingStatus : processingStatus,
-    debugDryRunActive ? debugMode.playbackState : playbackState,
-    debugDryRunActive ? debugMode.lastAudioSignal : lastAudioSignal,
-  );
+  const derivedOrbState = buildVoiceCommandCenterOrbState({
+    debugDryRunActive,
+    debugMode,
+    connected,
+    recording,
+    processingStatus,
+    playbackState,
+    lastAudioSignal,
+  });
   const effectiveOrbState = resolveDiagnosticOrbState(derivedOrbState, renderDiagnostics);
   const orbActivityWindow = useOrbActivityWindow(effectiveOrbState, pageVisible);
-  const metricsRef = useOrbMetrics(
-    renderDiagnostics.metricsEnabled &&
-      pageVisible &&
-      shouldTrackOrbMetrics(
-        applyOrbDiagnosticProfile(effectsConfig, renderDiagnostics).orbMetricsBars,
-        effectiveOrbState,
-      ),
-  );
+  const metricsRef = useVoiceCommandCenterMetricsRef({
+    renderDiagnostics,
+    pageVisible,
+    effectsConfig,
+    effectiveOrbState,
+  });
 
   const viewState = buildVoiceCommandCenterViewState({
     audioEnabled,

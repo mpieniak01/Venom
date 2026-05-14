@@ -5,3 +5,7 @@
 # vLLM runtime package (provides .venv/bin/vllm)
 # Keep compatibility with repo stack pinned to pydantic 2.11.x.
 vllm==0.11.0
+
+# Optional quantization backend for multi_runtime profile tuning (217B).
+# Linux-only wheels are currently the supported path in this stack.
+bitsandbytes>=0.49.0; platform_system == "Linux"

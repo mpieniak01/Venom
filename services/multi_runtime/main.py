@@ -23,7 +23,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
+from venom_core.api.schemas.multi_runtime_profile import (
+    MultiRuntimeProfileResponse,
+    MultiRuntimeProfileUpdateRequest,
+    MultiRuntimeProfileUpdateResponse,
+)
 from venom_core.config import SETTINGS
+from venom_core.services.multi_runtime_profile_service import (
+    build_profile_from_daemon_params,
+    build_profile_response,
+    validate_profile_update,
+)
 from venom_core.utils.voice_metadata import build_voice_session_insights
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
@@ -402,9 +412,99 @@ async def daemon_status() -> DaemonStatusResponse:
     )
 
 
+@app.get("/v1/daemon/profile", response_model=MultiRuntimeProfileResponse)
+async def daemon_get_profile() -> MultiRuntimeProfileResponse:
+    """Return the active multi_runtime execution profile."""
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+
+    raw = daemon.status()
+    p = raw["params"]
+    profile = build_profile_from_daemon_params(
+        target_model=raw["target_model"],
+        assistant_model=raw["assistant_model"],
+        max_new_tokens=p["max_new_tokens"],
+        enable_thinking=p["enable_thinking"],
+        image_token_budget=p["image_token_budget"],
+        reasoning_summary_enabled=p["reasoning_summary_enabled"],
+        emotion_detection_enabled=p["emotion_detection_enabled"],
+        emotion_response_style_enabled=p["emotion_response_style_enabled"],
+        cache_implementation=p["cache_implementation"],
+    )
+    return build_profile_response(profile, daemon_reachable=True)
+
+
+# Fields accepted by daemon.update_params() (excludes hard-restart-only model fields)
+_UPDATE_PARAMS_FIELDS = frozenset(
+    {
+        "max_new_tokens",
+        "enable_thinking",
+        "image_token_budget",
+        "reasoning_summary_enabled",
+        "emotion_detection_enabled",
+        "emotion_response_style_enabled",
+        "cache_implementation",
+    }
+)
+
+_RELOAD_TO_APPLY_MODE = {
+    ReloadSignal.NONE: "live",
+    ReloadSignal.SOFT_RELOAD: "soft_reload",
+    ReloadSignal.HARD_RESTART: "hard_restart",
+}
+
+
+@app.post("/v1/daemon/profile", response_model=MultiRuntimeProfileUpdateResponse)
+async def daemon_update_profile(
+    body: MultiRuntimeProfileUpdateRequest,
+) -> MultiRuntimeProfileUpdateResponse:
+    """Partial update of the multi_runtime execution profile.
+
+    Each accepted field is applied according to its apply_mode:
+    - live: applied immediately, no reload needed.
+    - soft_reload: staged — call POST /v1/daemon/reload to apply.
+    - hard_restart: acknowledged but not applied — process restart required.
+    - unsupported: rejected with an explicit reason.
+    """
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+
+    result = validate_profile_update(body)
+
+    updatable = {k: v for k, v in result.accepted.items() if k in _UPDATE_PARAMS_FIELDS}
+    signal = ReloadSignal.NONE
+    if updatable:
+        signal = daemon.update_params(**updatable)
+
+    has_hard_restart = any(
+        k in result.accepted for k in ("model_id", "assistant_model_id")
+    )
+    applied = (
+        signal == ReloadSignal.NONE and not has_hard_restart and bool(result.accepted)
+    )
+
+    required_mode = result.required_apply_mode
+    if has_hard_restart and required_mode != "hard_restart":
+        required_mode = "hard_restart"
+
+    return MultiRuntimeProfileUpdateResponse(
+        accepted=result.accepted,
+        rejected=result.rejected,
+        required_apply_mode=required_mode,
+        applied=applied,
+        message=result.message,
+    )
+
+
 @app.post("/v1/daemon/config", response_model=DaemonConfigResponse)
 async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
     """Update daemon parameters. Returns the minimum reload action required.
+
+    Transitional endpoint — prefer POST /v1/daemon/profile for new integrations.
 
     - `none` — change applied live, no reload needed.
     - `soft_reload` — call POST /v1/daemon/reload to apply.

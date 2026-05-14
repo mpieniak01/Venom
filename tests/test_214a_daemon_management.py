@@ -180,6 +180,7 @@ def test_daemon_config_cache_change_triggers_soft_reload():
     stub.update_params.assert_called_once_with(
         max_new_tokens=None,
         enable_thinking=None,
+        image_token_budget=None,
         reasoning_summary_enabled=None,
         emotion_detection_enabled=None,
         emotion_response_style_enabled=None,

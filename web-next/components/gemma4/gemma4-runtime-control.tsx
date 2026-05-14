@@ -86,6 +86,10 @@ type InnerProps = Readonly<{
   assistantModels?: string[];
 }>;
 
+export function Gemma4RuntimeControlInner(props: InnerProps) {
+  return <Gemma4RuntimeControlPanel {...props} />;
+}
+
 function vramBarColor(pct: number): string {
   if (pct > 90) return "bg-rose-500";
   if (pct > 70) return "bg-amber-400";
@@ -314,7 +318,7 @@ async function runImageProbe(params: {
   };
 }
 
-export function Gemma4RuntimeControlInner({
+function Gemma4RuntimeControlPanel({
   daemon,
   variant,
   runtimeSnapshot = null,

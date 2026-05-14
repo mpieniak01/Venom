@@ -2237,7 +2237,11 @@ type VoiceCommandCenterProps = Readonly<{
   isDevMode?: boolean;
 }>;
 
-export function VoiceCommandCenter({
+export function VoiceCommandCenter(props: VoiceCommandCenterProps) {
+  return <VoiceCommandCenterPanel {...props} />;
+}
+
+function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
   onStatusUpdate,

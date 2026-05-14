@@ -53,9 +53,13 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
   const runtimeId = (runtime?.runtime_id ?? "").trim().toLowerCase();
   const isGemma4AudioRuntime =
     runtimeProvider === "multi_runtime" ||
+    runtimeProvider === "gemma4_audio" ||
     runtimeProvider.startsWith("multi_runtime@") ||
+    runtimeProvider.startsWith("gemma4_audio@") ||
     runtimeId === "multi_runtime" ||
-    runtimeId.startsWith("multi_runtime@");
+    runtimeId === "gemma4_audio" ||
+    runtimeId.startsWith("multi_runtime@") ||
+    runtimeId.startsWith("gemma4_audio@");
 
   if (!status) {
     return (

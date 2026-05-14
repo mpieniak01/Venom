@@ -150,6 +150,10 @@ class RespondResponse(BaseModel):
         0,
         description="How many retrieval snippets were attached to generation context",
     )
+    retrieval_route: Optional[str] = Field(
+        None,
+        description="Retrieval route used by runtime (e.g. vector, graph, vector_fallback)",
+    )
     assistant_used: bool = Field(
         False,
         description="Whether assistant model participated in execution",

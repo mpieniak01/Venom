@@ -127,6 +127,7 @@ export function Gemma4RuntimeControlInner({
     selectedImageStrategy: string | null;
     retrievalUsed: boolean;
     retrievalContextItems: number;
+    retrievalRoute: string | null;
     assistantUsed: boolean;
     economyModeActivated: boolean;
     degradationReasons: string[];
@@ -255,6 +256,7 @@ export function Gemma4RuntimeControlInner({
         selectedImageStrategy: result.selected_image_strategy ?? null,
         retrievalUsed: Boolean(result.retrieval_used),
         retrievalContextItems: Number(result.retrieval_context_items ?? 0),
+        retrievalRoute: result.retrieval_route ?? null,
         assistantUsed: Boolean(result.assistant_used),
         economyModeActivated: Boolean(result.economy_mode_activated),
         degradationReasons: Array.isArray(result.degradation_reasons)
@@ -575,6 +577,9 @@ export function Gemma4RuntimeControlInner({
                 <p>
                   <span className="text-zinc-500">retrieval_used:</span>{" "}
                   {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}
+                  {" · "}
+                  <span className="text-zinc-500">retrieval_route:</span>{" "}
+                  {imageProbeDiagnostics.retrievalRoute ?? "—"}
                   {" · "}
                   <span className="text-zinc-500">retrieval_items:</span>{" "}
                   {imageProbeDiagnostics.retrievalContextItems}

@@ -847,6 +847,7 @@ async def respond(request: Request) -> RespondResponse:
         selected_image_strategy=pipeline_result.diagnostics.selected_image_strategy,
         retrieval_used=pipeline_result.diagnostics.retrieval_used,
         retrieval_context_items=pipeline_result.diagnostics.retrieval_context_items,
+        retrieval_route=pipeline_result.diagnostics.retrieval_route,
         assistant_used=pipeline_result.diagnostics.assistant_used,
         economy_mode_activated=pipeline_result.diagnostics.economy_mode_activated,
         degradation_reasons=pipeline_result.diagnostics.degradation_reasons,

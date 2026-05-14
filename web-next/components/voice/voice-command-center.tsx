@@ -121,6 +121,21 @@ type VoiceSessionDiagnostics = {
   response_text?: string;
   download_url?: string | null;
   pipeline_id?: string | null;
+  execution_trace?: string[] | null;
+  selected_policy?: string | null;
+  selected_image_strategy?: string | null;
+  retrieval_used?: boolean | null;
+  retrieval_context_items?: number | null;
+  retrieval_route?: string | null;
+  assistant_used?: boolean | null;
+  economy_mode_activated?: boolean | null;
+  degradation_reasons?: string[] | null;
+  component_snapshot?: Array<{
+    component_id?: string | null;
+    health?: string | null;
+    backend?: string | null;
+    available?: boolean | null;
+  }> | null;
   audio_runtime_provider?: string | null;
   audio_runtime_model?: string | null;
   audio_input_status?: string | null;
@@ -2740,6 +2755,49 @@ export function VoiceCommandCenter({
           </div>
 
           <TimingStrip timings={viewState.effectiveAudioStatus?.latest_voice_session?.timings_ms} />
+
+          {viewState.effectiveAudioStatus?.latest_voice_session && (
+            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+              <div className="rounded-2xl box-muted p-3 text-zinc-300">
+                <p className="text-caption">Runtime execution</p>
+                <p className="text-white">
+                  {viewState.effectiveAudioStatus.latest_voice_session.selected_policy ?? "—"}
+                </p>
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  image:{" "}
+                  {viewState.effectiveAudioStatus.latest_voice_session.selected_image_strategy ?? "—"}
+                  {" · "}retrieval:{" "}
+                  {viewState.effectiveAudioStatus.latest_voice_session.retrieval_used ? "on" : "off"}
+                  {" · "}assistant:{" "}
+                  {viewState.effectiveAudioStatus.latest_voice_session.assistant_used ? "on" : "off"}
+                </p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  route:{" "}
+                  {viewState.effectiveAudioStatus.latest_voice_session.retrieval_route ?? "—"}
+                  {" · "}economy:{" "}
+                  {viewState.effectiveAudioStatus.latest_voice_session.economy_mode_activated ? "on" : "off"}
+                </p>
+              </div>
+              <div className="rounded-2xl box-muted p-3 text-zinc-300">
+                <p className="text-caption">Pipeline health</p>
+                <p className="text-[11px] text-zinc-400">
+                  trace:{" "}
+                  {(viewState.effectiveAudioStatus.latest_voice_session.execution_trace ?? []).join(" -> ") || "—"}
+                </p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  retrieval items:{" "}
+                  {viewState.effectiveAudioStatus.latest_voice_session.retrieval_context_items ?? 0}
+                </p>
+                {Array.isArray(viewState.effectiveAudioStatus.latest_voice_session.degradation_reasons) &&
+                  viewState.effectiveAudioStatus.latest_voice_session.degradation_reasons.length > 0 && (
+                    <p className="mt-1 text-[11px] text-amber-300">
+                      degradations:{" "}
+                      {viewState.effectiveAudioStatus.latest_voice_session.degradation_reasons.join(" | ")}
+                    </p>
+                  )}
+              </div>
+            </div>
+          )}
 
           <p className="text-hint text-xs">{viewState.effectiveStatusMessage ?? t("voice.status.channelReady")}</p>
         </div>

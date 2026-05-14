@@ -20,6 +20,7 @@ class ExecutionDiagnostics:
     selected_image_strategy: str | None = None
     retrieval_used: bool = False
     retrieval_context_items: int = 0
+    retrieval_route: str | None = None
     assistant_used: bool = False
     economy_mode_activated: bool = False
     degradation_reasons: list[str] = field(default_factory=list)

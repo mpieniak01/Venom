@@ -114,6 +114,16 @@ def _build_voice_session_record(
         "emotion_confidence": metadata.get("emotion_confidence"),
         "transcription": metadata.get("transcription") or "",
         "response_text": metadata.get("response_text") or "",
+        "execution_trace": metadata.get("execution_trace") or [],
+        "selected_policy": metadata.get("selected_policy"),
+        "selected_image_strategy": metadata.get("selected_image_strategy"),
+        "retrieval_used": metadata.get("retrieval_used"),
+        "retrieval_context_items": metadata.get("retrieval_context_items"),
+        "retrieval_route": metadata.get("retrieval_route"),
+        "assistant_used": metadata.get("assistant_used"),
+        "economy_mode_activated": metadata.get("economy_mode_activated"),
+        "degradation_reasons": metadata.get("degradation_reasons") or [],
+        "component_snapshot": metadata.get("component_snapshot") or [],
     }
 
 
@@ -808,6 +818,16 @@ class AudioStreamHandler:
             "emotion_label": data.get("emotion_label"),
             "emotion_confidence": data.get("emotion_confidence"),
             "emotion_source": data.get("emotion_source"),
+            "execution_trace": data.get("execution_trace") or [],
+            "selected_policy": data.get("selected_policy"),
+            "selected_image_strategy": data.get("selected_image_strategy"),
+            "retrieval_used": bool(data.get("retrieval_used", False)),
+            "retrieval_context_items": data.get("retrieval_context_items"),
+            "retrieval_route": data.get("retrieval_route"),
+            "assistant_used": bool(data.get("assistant_used", False)),
+            "economy_mode_activated": bool(data.get("economy_mode_activated", False)),
+            "degradation_reasons": data.get("degradation_reasons") or [],
+            "component_snapshot": data.get("component_snapshot") or [],
         }
 
     async def _process_native_gemma4_audio_pipeline(
@@ -916,6 +936,20 @@ class AudioStreamHandler:
                 "transcription_length": len(transcription or ""),
                 "response_text": response_text,
                 "response_length": len(response_text or ""),
+                "execution_trace": runtime_result.get("execution_trace") or [],
+                "selected_policy": runtime_result.get("selected_policy"),
+                "selected_image_strategy": runtime_result.get(
+                    "selected_image_strategy"
+                ),
+                "retrieval_used": runtime_result.get("retrieval_used"),
+                "retrieval_context_items": runtime_result.get(
+                    "retrieval_context_items"
+                ),
+                "retrieval_route": runtime_result.get("retrieval_route"),
+                "assistant_used": runtime_result.get("assistant_used"),
+                "economy_mode_activated": runtime_result.get("economy_mode_activated"),
+                "degradation_reasons": runtime_result.get("degradation_reasons") or [],
+                "component_snapshot": runtime_result.get("component_snapshot") or [],
                 **insights,
                 "timings_ms": timings_ms,
                 "runtime": self._build_runtime_metadata(operator_agent),

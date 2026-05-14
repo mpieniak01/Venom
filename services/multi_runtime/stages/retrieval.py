@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
+from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.memory.vector_store import VectorStore
 
 from .base import StageContext
@@ -11,6 +13,25 @@ from .base import StageContext
 
 class RetrievalStage:
     name = "retrieval"
+
+    @staticmethod
+    def _should_use_graph(query: str) -> bool:
+        normalized = query.lower()
+        return any(
+            token in normalized
+            for token in (
+                "związek",
+                "zwiazek",
+                "powiaz",
+                "relac",
+                "między",
+                "miedzy",
+                "between",
+                "relationship",
+                "compare",
+                "porown",
+            )
+        )
 
     def _should_use_auto(self, text: str, context: StageContext) -> bool:
         normalized = text.lower()
@@ -66,8 +87,30 @@ class RetrievalStage:
             context.diagnostics.push_trace(self.name, started, outcome="degraded")
             return
 
+        route = "vector"
+        retrieval_context = ""
         try:
-            results = VectorStore().search(text, limit=3)
+            if self._should_use_graph(text):
+                route = "graph"
+                graph_result = asyncio.run(
+                    GraphRAGService().local_search(text, max_hops=2, limit=4)
+                )
+                graph_result = str(graph_result or "").strip()
+                if graph_result and "Nie znaleziono" not in graph_result:
+                    retrieval_context = graph_result[:2400]
+                    context.diagnostics.retrieval_context_items = 1
+                else:
+                    route = "vector_fallback"
+            if not retrieval_context:
+                results = VectorStore().search(text, limit=3)
+                snippets = [
+                    str(item.get("text", "")).strip()
+                    for item in results
+                    if str(item.get("text", "")).strip()
+                ]
+                limited = snippets[:2]
+                retrieval_context = "\n\n".join(limited)
+                context.diagnostics.retrieval_context_items = len(limited)
         except Exception as exc:
             context.state["retrieval_context"] = ""
             context.diagnostics.retrieval_used = False
@@ -77,19 +120,13 @@ class RetrievalStage:
             context.diagnostics.push_trace(self.name, started, outcome="fallback")
             return
 
-        snippets = [
-            str(item.get("text", "")).strip()
-            for item in results
-            if str(item.get("text", "")).strip()
-        ]
-        if not snippets:
+        if not retrieval_context:
             context.state["retrieval_context"] = ""
             context.diagnostics.retrieval_used = False
             context.diagnostics.push_trace(self.name, started, outcome="empty")
             return
 
-        limited = snippets[:2]
-        context.state["retrieval_context"] = "\n\n".join(limited)
+        context.state["retrieval_context"] = retrieval_context
         context.diagnostics.retrieval_used = True
-        context.diagnostics.retrieval_context_items = len(limited)
+        context.diagnostics.retrieval_route = route
         context.diagnostics.push_trace(self.name, started, outcome="ok")

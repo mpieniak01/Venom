@@ -69,6 +69,12 @@ def _resolve_retrieval_status() -> tuple[bool, str, str | None]:
     return True, "lancedb", None
 
 
+def _resolve_ocr_status() -> tuple[bool, str, str | None]:
+    if _module_available("pytesseract"):
+        return True, "pytesseract", None
+    return False, "pytesseract", "pytesseract package unavailable"
+
+
 def build_component_snapshot(
     daemon_status: dict[str, Any],
     *,
@@ -100,12 +106,13 @@ def build_component_snapshot(
     retrieval_available, retrieval_backend, retrieval_error = (
         _resolve_retrieval_status()
     )
+    ocr_available, ocr_backend, ocr_error = _resolve_ocr_status()
     assistant_enabled = assistant_mode != "off" and bool(
         daemon_status.get("assistant_model")
     )
     image_last_error = (
-        "OCR-first strategy requested but OCR backend not configured"
-        if image_strategy in {"ocr_first", "hybrid"}
+        "OCR-first strategy requested but OCR backend unavailable"
+        if image_strategy in {"ocr_first", "hybrid"} and not ocr_available
         else None
     )
 
@@ -145,6 +152,19 @@ def build_component_snapshot(
             device_target="cpu",
             health=_component_health(True, supports_image_input),
             last_error=image_last_error,
+        ),
+        RuntimeComponent(
+            component_id="ocr_component",
+            component_type="vision",
+            enabled=image_strategy in {"ocr_first", "hybrid"},
+            available=ocr_available,
+            backend=ocr_backend,
+            model_id=None,
+            device_target="cpu",
+            health=_component_health(
+                image_strategy in {"ocr_first", "hybrid"}, ocr_available
+            ),
+            last_error=ocr_error if image_strategy in {"ocr_first", "hybrid"} else None,
         ),
         RuntimeComponent(
             component_id="stt_component",

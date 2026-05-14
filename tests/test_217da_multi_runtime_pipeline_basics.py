@@ -127,6 +127,7 @@ def test_component_snapshot_reflects_policy_modes(monkeypatch) -> None:
     assert by_id["embedding_component"]["enabled"] is True
     assert by_id["tts_component"]["enabled"] is True
     assert by_id["assistant_model"]["enabled"] is True
+    assert "ocr_component" in by_id
     assert by_id["image_input"]["last_error"] is not None
 
 
@@ -188,6 +189,33 @@ def test_ocr_stage_degrades_when_backend_unavailable(monkeypatch) -> None:
     assert context.diagnostics.degradation_reasons
 
 
+def test_ocr_stage_extracts_text_when_backend_available(monkeypatch) -> None:
+    monkeypatch.setattr(OcrOrVisionStage, "_ocr_available", staticmethod(lambda: True))
+    monkeypatch.setattr(
+        OcrOrVisionStage,
+        "_extract_ocr_text",
+        staticmethod(lambda images: "Wykryty tekst z OCR"),
+    )
+    policy = RuntimePolicyResolver().resolve(
+        daemon_status=_daemon_status(params={"image_strategy": "ocr_first"}),
+        has_images=True,
+        has_audio=False,
+    )
+    context = StageContext(
+        request_payload=_Payload(),
+        daemon_status=_daemon_status(params={"image_strategy": "ocr_first"}),
+        text_content="odczytaj tekst",
+        audio_array=None,
+        sample_rate=16000,
+        images=["fake-image"],
+        diagnostics=ExecutionDiagnostics(),
+        state={"policy": policy, "preprocessed_images": ["fake-image"]},
+    )
+    OcrOrVisionStage().run(context)
+    assert context.state["image_execution_path"] == "ocr_first"
+    assert context.state["ocr_text"] == "Wykryty tekst z OCR"
+
+
 def test_assistant_stage_uses_daemon_when_available() -> None:
     policy = RuntimePolicyResolver().resolve(
         daemon_status=_daemon_status(
@@ -240,3 +268,39 @@ def test_retrieval_stage_marks_economy_mode_degradation() -> None:
     RetrievalStage().run(context)
     assert context.diagnostics.economy_mode_activated is True
     assert context.diagnostics.degradation_reasons
+
+
+def test_retrieval_stage_uses_graph_route_for_relational_queries(monkeypatch) -> None:
+    class _FakeGraphRAGService:
+        def local_search(self, query, max_hops=2, llm_service=None, limit=4):
+            async def _run():
+                assert "związek" in query
+                assert max_hops == 2
+                assert limit == 4
+                return "Graph context answer"
+
+            return _run()
+
+    monkeypatch.setattr(
+        "services.multi_runtime.stages.retrieval.GraphRAGService", _FakeGraphRAGService
+    )
+    context = StageContext(
+        request_payload=_Payload(),
+        daemon_status=_daemon_status(params={"retrieval_mode": "always"}),
+        text_content="Jaki jest związek między A i B?",
+        audio_array=None,
+        sample_rate=16000,
+        images=[],
+        diagnostics=ExecutionDiagnostics(),
+        state={
+            "policy": RuntimePolicyResolver().resolve(
+                daemon_status=_daemon_status(params={"retrieval_mode": "always"}),
+                has_images=False,
+                has_audio=False,
+            )
+        },
+    )
+    RetrievalStage().run(context)
+    assert context.diagnostics.retrieval_used is True
+    assert context.diagnostics.retrieval_route == "graph"
+    assert context.state["retrieval_context"] == "Graph context answer"

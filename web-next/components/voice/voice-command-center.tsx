@@ -2257,6 +2257,33 @@ function tryReleasePointer(element: HTMLButtonElement, pointerId: number): void 
   }
 }
 
+function replayLastVoiceResponse(params: {
+  lastAudioResponseRef: MutableRefObject<{ audio: string; sampleRate: number } | null>;
+  playAudioResponse: (base64Audio: string, sampleRate: number) => Promise<void>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  t: ReturnType<typeof useTranslation>;
+}) {
+  const last = params.lastAudioResponseRef.current;
+  if (!last) {
+    params.setStatusMessage(params.t("voice.status.replayUnavailable"));
+    return Promise.resolve();
+  }
+  return params.playAudioResponse(last.audio, last.sampleRate);
+}
+
+function toggleVoiceMode(params: {
+  debugDryRunActive: boolean;
+  isVoiceModeEnabled: boolean;
+  setIsVoiceModeEnabled: Dispatch<SetStateAction<boolean>>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+  t: ReturnType<typeof useTranslation>;
+}) {
+  if (params.debugDryRunActive) return;
+  const next = !params.isVoiceModeEnabled;
+  params.setIsVoiceModeEnabled(next);
+  params.setStatusMessage(next ? params.t("voice.controls.voiceChat") : params.t("voice.controls.textChat"));
+}
+
 function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
@@ -2428,12 +2455,12 @@ function VoiceCommandCenterPanel({
   );
 
   const replayLastResponse = useCallback(async () => {
-    const last = lastAudioResponseRef.current;
-    if (!last) {
-      setStatusMessage(t("voice.status.replayUnavailable"));
-      return;
-    }
-    await playAudioResponse(last.audio, last.sampleRate);
+    await replayLastVoiceResponse({
+      lastAudioResponseRef,
+      playAudioResponse,
+      setStatusMessage,
+      t,
+    });
   }, [playAudioResponse, t]);
 
   const handleAudioMessage = useCallback(
@@ -2709,10 +2736,13 @@ function VoiceCommandCenterPanel({
   );
 
   const onVoiceModeToggle = useCallback(() => {
-    if (debugDryRunActive) return;
-    const next = !isVoiceModeEnabled;
-    setIsVoiceModeEnabled(next);
-    setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
+    toggleVoiceMode({
+      debugDryRunActive,
+      isVoiceModeEnabled,
+      setIsVoiceModeEnabled,
+      setStatusMessage,
+      t,
+    });
   }, [debugDryRunActive, isVoiceModeEnabled, setIsVoiceModeEnabled, setStatusMessage, t]);
 
   return (

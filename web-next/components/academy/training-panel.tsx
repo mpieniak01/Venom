@@ -544,8 +544,8 @@ export function TrainingPanel() {
                 menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
                 optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
                 renderButton={(option) => {
-                  const selectedOption = option && isModelPickerOption(option) ? option : null;
-                  if (!selectedOption || selectedOption.kind !== "model" || !selectedOption.model) {
+                  const selectedOption = isModelPickerOption(option) ? option : null;
+                  if (selectedOption?.kind !== "model" || !selectedOption.model) {
                     return (
                       <span className="min-w-0 flex-1 truncate text-left text-hint">
                         {baseModelPlaceholder}

@@ -339,8 +339,8 @@ function LatestRecordingSection({
         {latestVoiceSession.audio_runtime_provider && (
           <p>
             STT backend:{" "}
-            {latestVoiceSession.audio_runtime_provider === "gemma4_audio"
-              ? "gemma4_audio"
+            {latestVoiceSession.audio_runtime_provider === "multi_runtime"
+              ? "multi_runtime"
               : "faster-whisper"}
             {latestVoiceSession.audio_runtime_model
               ? ` (${latestVoiceSession.audio_runtime_model})`

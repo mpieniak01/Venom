@@ -58,7 +58,7 @@ def test_onnx_helpers_and_model_runtime_branch(monkeypatch, tmp_path):
     configured = model_registry_runtime.apply_model_activation_config(
         "model-gemma4", "gemma4_audio", SimpleNamespace(local_path="")
     )
-    assert configured.ACTIVE_LLM_SERVER == "gemma4_audio"
+    assert configured.ACTIVE_LLM_SERVER == "multi_runtime"
     assert configured.LLM_LOCAL_ENDPOINT == "http://localhost:8014/v1"
     assert configured.LAST_MODEL_GEMMA4_AUDIO == "model-gemma4"
 

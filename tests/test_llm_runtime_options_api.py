@@ -494,7 +494,7 @@ async def test_local_models_by_runtime_reports_unknown_provider_issue(
     assert grouped["ollama"] == []
     assert grouped["vllm"] == []
     assert grouped["onnx"] == []
-    gemma_ids = [m["id"] for m in grouped["gemma4_audio"]]
+    gemma_ids = [m["id"] for m in grouped["multi_runtime"]]
     assert "google/gemma-4-E2B-it" in gemma_ids
     assert "google/gemma-4-E4B-it" not in gemma_ids
     assert audit == [
@@ -581,7 +581,7 @@ def test_gemma4_audio_static_models_capabilities() -> None:
         assert "audio" in caps
         assert "voice" in caps
         assert model["chat_compatible"] is True
-        assert model["runtime_id"] == "gemma4_audio"
+        assert model["runtime_id"] == "multi_runtime"
 
 
 @pytest.mark.asyncio
@@ -608,7 +608,7 @@ async def test_local_models_by_runtime_injects_gemma4_audio_static_models() -> N
             local_models=[],
         )
 
-    gemma_models = grouped["gemma4_audio"]
+    gemma_models = grouped["multi_runtime"]
     ids = [m["id"] for m in gemma_models]
     assert "google/gemma-4-E2B-it" in ids
     assert "google/gemma-4-E4B-it" not in ids

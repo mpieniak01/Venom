@@ -39,7 +39,7 @@ def test_list_servers_contains_known_entries():
     assert "vllm" in names
     assert "ollama" in names
     assert "onnx" in names
-    assert "gemma4_audio" in names
+    assert "multi_runtime" in names
 
 
 def test_gemma4_audio_health_url_is_derived_from_stack_config():
@@ -47,8 +47,8 @@ def test_gemma4_audio_health_url_is_derived_from_stack_config():
         _dummy_settings(GEMMA4_AUDIO_HOST="gemma-host", GEMMA4_AUDIO_PORT=8123)
     )
     servers = {srv["name"]: srv for srv in controller.list_servers()}
-    assert servers["gemma4_audio"]["health_url"].endswith("/health")
-    assert "gemma-host:8123" in servers["gemma4_audio"]["health_url"]
+    assert servers["multi_runtime"]["health_url"].endswith("/health")
+    assert "gemma-host:8123" in servers["multi_runtime"]["health_url"]
 
 
 @pytest.mark.asyncio

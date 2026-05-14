@@ -204,8 +204,8 @@ async def test_build_voice_runtime_snapshot_gemma4_audio_enabled(monkeypatch):
         main_module,
         "get_active_llm_runtime",
         lambda: SimpleNamespace(
-            runtime_id="gemma4_audio@localhost",
-            provider="gemma4_audio",
+            runtime_id="multi_runtime@localhost",
+            provider="multi_runtime",
             model_name="google/gemma-4-E2B-it",
             endpoint="http://127.0.0.1:8014",
             config_hash="cfg-a",
@@ -226,7 +226,7 @@ async def test_build_voice_runtime_snapshot_gemma4_audio_enabled(monkeypatch):
     snapshot = await main_module._build_voice_runtime_snapshot()
 
     assert snapshot["runtime_capabilities"]["compatibility_profile"] == (
-        "gemma4_audio_native"
+        "multi_runtime_native"
     )
     assert snapshot["voice_pipeline"]["stt"] == "native_audio"
 
@@ -237,8 +237,8 @@ async def test_build_voice_runtime_snapshot_gemma4_audio_metadata_only(monkeypat
         main_module,
         "get_active_llm_runtime",
         lambda: SimpleNamespace(
-            runtime_id="gemma4_audio@localhost",
-            provider="gemma4_audio",
+            runtime_id="multi_runtime@localhost",
+            provider="multi_runtime",
             model_name="",
             endpoint="",
             config_hash="cfg-b",

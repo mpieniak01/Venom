@@ -1,13 +1,19 @@
+import sys
+import types
+
+from PIL import Image
+
 from services.multi_runtime.components import build_component_snapshot
 from services.multi_runtime.diagnostics import ExecutionDiagnostics
 from services.multi_runtime.pipeline import MultiRuntimePipeline, PipelineRequestData
 from services.multi_runtime.policies import RuntimePolicyResolver
+from services.multi_runtime.retrieval_policy_resolver import RetrievalPolicyResolver
 from services.multi_runtime.router import route_inputs
 from services.multi_runtime.stages.assistant_postprocess import (
     AssistantPostprocessStage,
 )
 from services.multi_runtime.stages.base import StageContext
-from services.multi_runtime.stages.ocr_or_vision import OcrOrVisionStage
+from services.multi_runtime.stages.ocr_or_vision import OcrOrVisionStage, OCRResult
 from services.multi_runtime.stages.retrieval import RetrievalStage
 
 
@@ -193,8 +199,16 @@ def test_ocr_stage_extracts_text_when_backend_available(monkeypatch) -> None:
     monkeypatch.setattr(OcrOrVisionStage, "_ocr_available", staticmethod(lambda: True))
     monkeypatch.setattr(
         OcrOrVisionStage,
-        "_extract_ocr_text",
-        staticmethod(lambda images: "Wykryty tekst z OCR"),
+        "_extract_ocr_result",
+        staticmethod(
+            lambda images, execution_path: OCRResult(
+                backend="pytesseract",
+                available=True,
+                execution_path=execution_path,
+                text="Wykryty tekst z OCR",
+                lines=["Wykryty tekst z OCR"],
+            )
+        ),
     )
     policy = RuntimePolicyResolver().resolve(
         daemon_status=_daemon_status(params={"image_strategy": "ocr_first"}),
@@ -304,3 +318,61 @@ def test_retrieval_stage_uses_graph_route_for_relational_queries(monkeypatch) ->
     assert context.diagnostics.retrieval_used is True
     assert context.diagnostics.retrieval_route == "graph"
     assert context.state["retrieval_context"] == "Graph context answer"
+
+
+def test_retrieval_policy_resolver_prefers_graph_for_relation_queries() -> None:
+    decision = RetrievalPolicyResolver().resolve(
+        text="Jaki jest związek między A i B?",
+        mode="auto",
+        primary_modality="text",
+        economy_mode="off",
+    )
+    assert decision.should_use is True
+    assert decision.route_hint == "graph"
+    assert "graph" in decision.reason or "relationship" in (decision.reason or "")
+
+
+def test_ocr_stage_records_structured_result(monkeypatch) -> None:
+    fake_pytesseract = types.ModuleType("pytesseract")
+    fake_pytesseract.Output = type("Output", (), {"DICT": object()})
+    fake_pytesseract.image_to_string = lambda image: "Witaj świecie"
+    fake_pytesseract.image_to_data = lambda image, output_type=None: {
+        "page_num": [1],
+        "block_num": [1],
+        "par_num": [1],
+        "line_num": [1],
+        "word_num": [1],
+        "left": [12],
+        "top": [18],
+        "width": [42],
+        "height": [16],
+        "conf": ["91"],
+        "text": ["Witaj"],
+    }
+    monkeypatch.setattr(
+        "services.multi_runtime.stages.ocr_or_vision.importlib.util.find_spec",
+        lambda name: object() if name == "pytesseract" else None,
+    )
+    monkeypatch.setitem(sys.modules, "pytesseract", fake_pytesseract)
+
+    policy = RuntimePolicyResolver().resolve(
+        daemon_status=_daemon_status(params={"image_strategy": "ocr_first"}),
+        has_images=True,
+        has_audio=False,
+    )
+    image = Image.new("RGB", (32, 32), color="white")
+    context = StageContext(
+        request_payload=_Payload(),
+        daemon_status=_daemon_status(params={"image_strategy": "ocr_first"}),
+        text_content="odczytaj tekst",
+        audio_array=None,
+        sample_rate=16000,
+        images=[image],
+        diagnostics=ExecutionDiagnostics(),
+        state={"policy": policy, "preprocessed_images": [image]},
+    )
+    OcrOrVisionStage().run(context)
+    ocr_result = context.state["ocr_result"]
+    assert ocr_result.text == "Witaj świecie"
+    assert ocr_result.lines == ["Witaj"]
+    assert ocr_result.tokens[0].text == "Witaj"

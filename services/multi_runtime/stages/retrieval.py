@@ -8,56 +8,15 @@ from time import perf_counter
 from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.memory.vector_store import VectorStore
 
+from ..retrieval_policy_resolver import RetrievalPolicyResolver
 from .base import StageContext
 
 
 class RetrievalStage:
     name = "retrieval"
 
-    @staticmethod
-    def _should_use_graph(query: str) -> bool:
-        normalized = query.lower()
-        return any(
-            token in normalized
-            for token in (
-                "związek",
-                "zwiazek",
-                "powiaz",
-                "relac",
-                "między",
-                "miedzy",
-                "between",
-                "relationship",
-                "compare",
-                "porown",
-            )
-        )
-
-    def _should_use_auto(self, text: str, context: StageContext) -> bool:
-        normalized = text.lower()
-        route = context.state.get("route")
-        if getattr(route, "primary_modality", None) == "image":
-            return False
-        return (
-            "?" in text
-            or len(text) >= 48
-            or any(
-                token in normalized
-                for token in (
-                    "co to",
-                    "dlaczego",
-                    "jak",
-                    "kiedy",
-                    "gdzie",
-                    "przypomnij",
-                    "znajd",
-                    "sprawdz",
-                    "explain",
-                    "why",
-                    "what",
-                )
-            )
-        )
+    def __init__(self, resolver: RetrievalPolicyResolver | None = None):
+        self._resolver = resolver or RetrievalPolicyResolver()
 
     def run(self, context: StageContext) -> None:
         started = perf_counter()
@@ -66,32 +25,37 @@ class RetrievalStage:
         if mode == "off":
             context.state["retrieval_context"] = ""
             context.diagnostics.retrieval_used = False
+            context.diagnostics.retrieval_context_items = 0
+            context.diagnostics.retrieval_route = "none"
             context.diagnostics.push_trace(self.name, started, outcome="skipped")
             return
 
         text = str(context.text_content or "").strip()
-        should_use = mode == "always" or (
-            mode == "auto" and self._should_use_auto(text, context)
+        route = context.state.get("route")
+        primary_modality = getattr(route, "primary_modality", None)
+        decision = self._resolver.resolve(
+            text=text,
+            mode=mode,
+            primary_modality=primary_modality,
+            economy_mode=context.state["policy"].economy_mode,
         )
-        if not should_use:
+        context.state["retrieval_policy_decision"] = decision
+
+        if not decision.should_use:
             context.state["retrieval_context"] = ""
             context.diagnostics.retrieval_used = False
+            context.diagnostics.retrieval_context_items = 0
+            context.diagnostics.retrieval_route = "none"
+            if "economy" in str(decision.reason or "").lower():
+                context.diagnostics.economy_mode_activated = True
+                context.diagnostics.add_degradation(str(decision.reason or ""))
             context.diagnostics.push_trace(self.name, started, outcome="skipped")
             return
 
-        if context.state["policy"].economy_mode == "auto" and mode == "auto":
-            context.state["retrieval_context"] = ""
-            context.diagnostics.retrieval_used = False
-            context.diagnostics.economy_mode_activated = True
-            context.diagnostics.add_degradation("economy_mode skipped auto retrieval")
-            context.diagnostics.push_trace(self.name, started, outcome="degraded")
-            return
-
-        route = "vector"
+        route_name = decision.route_hint
         retrieval_context = ""
         try:
-            if self._should_use_graph(text):
-                route = "graph"
+            if route_name == "graph":
                 graph_result = asyncio.run(
                     GraphRAGService().local_search(text, max_hops=2, limit=4)
                 )
@@ -100,7 +64,7 @@ class RetrievalStage:
                     retrieval_context = graph_result[:2400]
                     context.diagnostics.retrieval_context_items = 1
                 else:
-                    route = "vector_fallback"
+                    route_name = "vector_fallback"
             if not retrieval_context:
                 results = VectorStore().search(text, limit=3)
                 snippets = [
@@ -114,6 +78,8 @@ class RetrievalStage:
         except Exception as exc:
             context.state["retrieval_context"] = ""
             context.diagnostics.retrieval_used = False
+            context.diagnostics.retrieval_context_items = 0
+            context.diagnostics.retrieval_route = "none"
             context.diagnostics.add_degradation(
                 f"retrieval unavailable: {type(exc).__name__}"
             )
@@ -123,10 +89,12 @@ class RetrievalStage:
         if not retrieval_context:
             context.state["retrieval_context"] = ""
             context.diagnostics.retrieval_used = False
+            context.diagnostics.retrieval_context_items = 0
+            context.diagnostics.retrieval_route = route_name
             context.diagnostics.push_trace(self.name, started, outcome="empty")
             return
 
         context.state["retrieval_context"] = retrieval_context
         context.diagnostics.retrieval_used = True
-        context.diagnostics.retrieval_route = route
+        context.diagnostics.retrieval_route = route_name
         context.diagnostics.push_trace(self.name, started, outcome="ok")

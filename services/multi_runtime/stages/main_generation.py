@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Any
 
 from .base import StageContext
+from .ocr_or_vision import OCRResult
 
 
 class MainGenerationStage:
@@ -24,12 +25,21 @@ class MainGenerationStage:
             or request_payload.system_prompt
             or "Respond to the audio"
         )
-        ocr_text = str(context.state.get("ocr_text", "")).strip()
         image_execution_path = str(
             context.state.get("image_execution_path", "")
         ).strip()
-        if ocr_text:
-            prompt = f"{prompt}\n\n[ocr_context path={image_execution_path or 'ocr'}]\n{ocr_text[:2000]}"
+        ocr_result = context.state.get("ocr_result")
+        if isinstance(ocr_result, OCRResult):
+            ocr_block = ocr_result.prompt_block()
+            if ocr_block:
+                prompt = f"{prompt}\n\n{ocr_block}"
+        else:
+            ocr_text = str(context.state.get("ocr_text", "")).strip()
+            if ocr_text:
+                prompt = (
+                    f"{prompt}\n\n[ocr_context path={image_execution_path or 'ocr'}]\n"
+                    f"{ocr_text[:2000]}"
+                )
         retrieval_context = str(context.state.get("retrieval_context", "")).strip()
         if retrieval_context:
             prompt = f"{prompt}\n\n[retrieval_context]\n{retrieval_context}"

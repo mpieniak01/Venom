@@ -146,6 +146,10 @@ class RespondResponse(BaseModel):
         False,
         description="Whether retrieval stage was used",
     )
+    retrieval_context_items: int = Field(
+        0,
+        description="How many retrieval snippets were attached to generation context",
+    )
     assistant_used: bool = Field(
         False,
         description="Whether assistant model participated in execution",
@@ -153,6 +157,10 @@ class RespondResponse(BaseModel):
     economy_mode_activated: bool = Field(
         False,
         description="Whether economy mode was activated for this request",
+    )
+    degradation_reasons: list[str] = Field(
+        default_factory=list,
+        description="Reasons why runtime degraded or simplified the pipeline",
     )
     component_snapshot: list[dict[str, object]] = Field(
         default_factory=list,

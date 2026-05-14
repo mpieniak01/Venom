@@ -107,8 +107,10 @@ export type DaemonRespondResponse = {
   selected_policy: string | null;
   selected_image_strategy: string | null;
   retrieval_used: boolean;
+  retrieval_context_items: number;
   assistant_used: boolean;
   economy_mode_activated: boolean;
+  degradation_reasons: string[];
   component_snapshot: RuntimeComponentSnapshotItem[];
 };
 

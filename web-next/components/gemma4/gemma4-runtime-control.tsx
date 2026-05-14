@@ -126,8 +126,10 @@ export function Gemma4RuntimeControlInner({
     selectedPolicy: string | null;
     selectedImageStrategy: string | null;
     retrievalUsed: boolean;
+    retrievalContextItems: number;
     assistantUsed: boolean;
     economyModeActivated: boolean;
+    degradationReasons: string[];
   } | null>(null);
   const [imageProbeError, setImageProbeError] = useState<string | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -252,8 +254,12 @@ export function Gemma4RuntimeControlInner({
         selectedPolicy: result.selected_policy ?? null,
         selectedImageStrategy: result.selected_image_strategy ?? null,
         retrievalUsed: Boolean(result.retrieval_used),
+        retrievalContextItems: Number(result.retrieval_context_items ?? 0),
         assistantUsed: Boolean(result.assistant_used),
         economyModeActivated: Boolean(result.economy_mode_activated),
+        degradationReasons: Array.isArray(result.degradation_reasons)
+          ? result.degradation_reasons
+          : [],
       });
     } catch (e) {
       setImageProbeError(e instanceof Error ? e.message : "Image request failed");
@@ -570,12 +576,21 @@ export function Gemma4RuntimeControlInner({
                   <span className="text-zinc-500">retrieval_used:</span>{" "}
                   {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}
                   {" · "}
+                  <span className="text-zinc-500">retrieval_items:</span>{" "}
+                  {imageProbeDiagnostics.retrievalContextItems}
+                  {" · "}
                   <span className="text-zinc-500">assistant_used:</span>{" "}
                   {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}
                   {" · "}
                   <span className="text-zinc-500">economy_mode:</span>{" "}
                   {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
                 </p>
+                {imageProbeDiagnostics.degradationReasons.length > 0 && (
+                  <p>
+                    <span className="text-zinc-500">degradations:</span>{" "}
+                    {imageProbeDiagnostics.degradationReasons.join(" | ")}
+                  </p>
+                )}
               </div>
             )}
             {imageProbeError && (

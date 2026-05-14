@@ -597,6 +597,25 @@ class MultiRuntimeDaemon:
         assert self._target_engine is not None
         return self._target_engine
 
+    def respond_with_assistant(
+        self,
+        *,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_new_tokens: Optional[int] = None,
+    ) -> tuple[str, float]:
+        """Run a lightweight text-only pass on the attached assistant model."""
+        if self._assistant_engine is None or not self._assistant_engine.is_loaded():
+            raise RuntimeError("Assistant model is not available")
+        return self._assistant_engine.respond(
+            None,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            max_new_tokens=max_new_tokens or self._params.max_new_tokens,
+            enable_thinking=False,
+            cache_implementation=self._params.cache_implementation,
+        )
+
     def status(self) -> dict[str, Any]:
         raw_thinking_available = bool(
             self._target_engine is not None

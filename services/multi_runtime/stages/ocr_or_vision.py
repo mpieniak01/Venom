@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from time import perf_counter
 
 from .base import StageContext
@@ -9,6 +10,10 @@ from .base import StageContext
 
 class OcrOrVisionStage:
     name = "ocr_or_vision"
+
+    @staticmethod
+    def _ocr_available() -> bool:
+        return importlib.util.find_spec("pytesseract") is not None
 
     def run(self, context: StageContext) -> None:
         started = perf_counter()
@@ -19,14 +24,27 @@ class OcrOrVisionStage:
             return
 
         strategy = str(context.state["policy"].image_strategy)
-        ocr_available = False
+        ocr_available = self._ocr_available()
         selected = strategy
 
         if strategy == "ocr_first" and not ocr_available:
             selected = "vlm_only"
+            context.diagnostics.add_degradation(
+                "ocr_first requested but OCR backend unavailable; falling back to vlm_only"
+            )
         elif strategy == "hybrid" and not ocr_available:
             selected = "vlm_only"
+            context.diagnostics.add_degradation(
+                "hybrid requested but OCR backend unavailable; falling back to vlm_only"
+            )
+        elif context.state["policy"].economy_mode == "auto" and strategy == "hybrid":
+            selected = "vlm_only"
+            context.diagnostics.economy_mode_activated = True
+            context.diagnostics.add_degradation(
+                "economy_mode simplified hybrid image path to vlm_only"
+            )
 
         context.state["image_execution_path"] = selected
         context.diagnostics.selected_image_strategy = selected
-        context.diagnostics.push_trace(self.name, started)
+        outcome = "ok" if selected == strategy else "degraded"
+        context.diagnostics.push_trace(self.name, started, outcome=outcome)

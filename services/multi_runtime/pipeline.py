@@ -42,8 +42,9 @@ class PipelineResult:
 class MultiRuntimePipeline:
     """Runtime pipeline preserving current behavior while exposing clear stages."""
 
-    def __init__(self, engine: Any):
+    def __init__(self, engine: Any, daemon: Any | None = None):
         self._engine = engine
+        self._daemon = daemon
         self._policy_resolver = RuntimePolicyResolver()
 
     def execute(
@@ -54,18 +55,26 @@ class MultiRuntimePipeline:
     ) -> PipelineResult:
         started = perf_counter()
         diagnostics = ExecutionDiagnostics()
-        diagnostics.component_snapshot = build_component_snapshot(daemon_status)
 
         policy = self._policy_resolver.resolve(
             daemon_status=daemon_status,
             has_images=bool(request.images),
             has_audio=request.audio_array is not None,
         )
+        diagnostics.component_snapshot = build_component_snapshot(
+            daemon_status,
+            request_overrides={
+                "retrieval_mode": policy.retrieval_mode,
+                "audio_output_mode": policy.audio_output_mode,
+                "assistant_mode": policy.assistant_mode,
+                "image_strategy": policy.image_strategy,
+            },
+        )
         diagnostics.selected_policy = policy.policy_name()
         diagnostics.selected_image_strategy = policy.image_strategy
         diagnostics.retrieval_used = False
         diagnostics.assistant_used = False
-        diagnostics.economy_mode_activated = policy.economy_mode == "auto"
+        diagnostics.economy_mode_activated = False
 
         context = StageContext(
             request_payload=request.request_payload,
@@ -83,7 +92,7 @@ class MultiRuntimePipeline:
         OcrOrVisionStage().run(context)
         RetrievalStage().run(context)
         MainGenerationStage(self._engine).run(context)
-        AssistantPostprocessStage().run(context)
+        AssistantPostprocessStage(self._daemon).run(context)
         AudioOutputStage().run(context)
 
         audio_present = request.audio_array is not None

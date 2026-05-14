@@ -19,8 +19,10 @@ class ExecutionDiagnostics:
     selected_policy: str | None = None
     selected_image_strategy: str | None = None
     retrieval_used: bool = False
+    retrieval_context_items: int = 0
     assistant_used: bool = False
     economy_mode_activated: bool = False
+    degradation_reasons: list[str] = field(default_factory=list)
     component_snapshot: list[dict[str, object]] = field(default_factory=list)
 
     def push_trace(
@@ -33,3 +35,8 @@ class ExecutionDiagnostics:
 
     def trace_names(self) -> list[str]:
         return [item.name for item in self.execution_trace]
+
+    def add_degradation(self, reason: str) -> None:
+        normalized = str(reason or "").strip()
+        if normalized and normalized not in self.degradation_reasons:
+            self.degradation_reasons.append(normalized)

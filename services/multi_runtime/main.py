@@ -779,7 +779,7 @@ async def respond(request: Request) -> RespondResponse:
 
     try:
         pipeline_result = await asyncio.to_thread(
-            MultiRuntimePipeline(engine).execute,
+            MultiRuntimePipeline(engine, daemon).execute,
             daemon_status=daemon_status,
             request=PipelineRequestData(
                 request_payload=request_payload,
@@ -846,8 +846,10 @@ async def respond(request: Request) -> RespondResponse:
         selected_policy=pipeline_result.diagnostics.selected_policy,
         selected_image_strategy=pipeline_result.diagnostics.selected_image_strategy,
         retrieval_used=pipeline_result.diagnostics.retrieval_used,
+        retrieval_context_items=pipeline_result.diagnostics.retrieval_context_items,
         assistant_used=pipeline_result.diagnostics.assistant_used,
         economy_mode_activated=pipeline_result.diagnostics.economy_mode_activated,
+        degradation_reasons=pipeline_result.diagnostics.degradation_reasons,
         component_snapshot=pipeline_result.diagnostics.component_snapshot,
     )
 

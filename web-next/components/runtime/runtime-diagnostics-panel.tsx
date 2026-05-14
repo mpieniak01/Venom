@@ -82,12 +82,7 @@ export function RuntimeDiagnosticsPanel({
       description={description}
       className={className}
     >
-      {!hasAny ? (
-        <EmptyState
-          title={emptyStateTitle}
-          description={emptyStateDescription}
-        />
-      ) : (
+      {hasAny ? (
         <div className="space-y-4 text-sm">
           {hasSummary && (
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -185,6 +180,11 @@ export function RuntimeDiagnosticsPanel({
             </div>
           )}
         </div>
+      ) : (
+        <EmptyState
+          title={emptyStateTitle}
+          description={emptyStateDescription}
+        />
       )}
     </Panel>
   );

@@ -439,19 +439,7 @@ async def daemon_get_profile() -> MultiRuntimeProfileResponse:
     profile = build_profile_from_daemon_params(
         target_model=raw["target_model"],
         assistant_model=raw["assistant_model"],
-        max_new_tokens=p["max_new_tokens"],
-        enable_thinking=p["enable_thinking"],
-        image_token_budget=p["image_token_budget"],
-        reasoning_summary_enabled=p["reasoning_summary_enabled"],
-        emotion_detection_enabled=p["emotion_detection_enabled"],
-        emotion_response_style_enabled=p["emotion_response_style_enabled"],
-        cache_implementation=p["cache_implementation"],
-        execution_mode=p.get("execution_mode", "balanced"),
-        image_strategy=p.get("image_strategy", "vlm_only"),
-        retrieval_mode=p.get("retrieval_mode", "off"),
-        audio_output_mode=p.get("audio_output_mode", "off"),
-        assistant_mode=p.get("assistant_mode", "off"),
-        economy_mode=p.get("economy_mode", "off"),
+        daemon_params=p,
     )
     return build_profile_response(profile, daemon_reachable=True)
 

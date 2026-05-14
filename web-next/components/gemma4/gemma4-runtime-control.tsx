@@ -97,6 +97,52 @@ function parseTokenInput(raw: string): number | undefined {
   return Number.isNaN(n) || n <= 0 ? undefined : n;
 }
 
+function resetLocalRuntimeDraft(params: {
+  setLocalThinking: (value: boolean | null) => void;
+  setLocalTokens: (value: string) => void;
+  setLocalImageBudget: (value: string) => void;
+  setLocalCache: (value: string | null) => void;
+}) {
+  params.setLocalThinking(null);
+  params.setLocalTokens("");
+  params.setLocalImageBudget("");
+  params.setLocalCache(null);
+}
+
+function buildDaemonConfigRequestFromLocalDraft(draft: {
+  localThinking: boolean | null;
+  localReasoningSummary: boolean | null;
+  localEmotionDetection: boolean | null;
+  localEmotionResponseStyle: boolean | null;
+  localTokens: string;
+  localImageBudget: string;
+  localCache: string | null;
+}): DaemonConfigRequest {
+  const params: DaemonConfigRequest = {};
+  if (draft.localThinking !== null) params.enable_thinking = draft.localThinking;
+  if (draft.localReasoningSummary !== null) {
+    params.reasoning_summary_enabled = draft.localReasoningSummary;
+  }
+  if (draft.localEmotionDetection !== null) {
+    params.emotion_detection_enabled = draft.localEmotionDetection;
+  }
+  if (draft.localEmotionResponseStyle !== null) {
+    params.emotion_response_style_enabled = draft.localEmotionResponseStyle;
+  }
+  if (draft.localTokens !== "") {
+    const n = parseTokenInput(draft.localTokens);
+    if (n !== undefined) params.max_new_tokens = n;
+  }
+  if (draft.localImageBudget !== "") {
+    const n = parseTokenInput(draft.localImageBudget);
+    if (n !== undefined) params.image_token_budget = n;
+  }
+  if (draft.localCache !== null) {
+    params.cache_implementation = draft.localCache === "" ? null : draft.localCache;
+  }
+  return params;
+}
+
 export function Gemma4RuntimeControlInner({
   daemon,
   variant,
@@ -183,34 +229,23 @@ export function Gemma4RuntimeControlInner({
     localCache !== null;
 
   async function handleApply() {
-    const params: DaemonConfigRequest = {};
-    if (localThinking !== null) params.enable_thinking = localThinking;
-    if (localReasoningSummary !== null) {
-      params.reasoning_summary_enabled = localReasoningSummary;
-    }
-    if (localEmotionDetection !== null) {
-      params.emotion_detection_enabled = localEmotionDetection;
-    }
-    if (localEmotionResponseStyle !== null) {
-      params.emotion_response_style_enabled = localEmotionResponseStyle;
-    }
-    if (localTokens !== "") {
-      const n = parseTokenInput(localTokens);
-      if (n !== undefined) params.max_new_tokens = n;
-    }
-    if (localImageBudget !== "") {
-      const n = parseTokenInput(localImageBudget);
-      if (n !== undefined) params.image_token_budget = n;
-    }
-    if (localCache !== null) {
-      params.cache_implementation = localCache === "" ? null : localCache;
-    }
+    const params = buildDaemonConfigRequestFromLocalDraft({
+      localThinking,
+      localReasoningSummary,
+      localEmotionDetection,
+      localEmotionResponseStyle,
+      localTokens,
+      localImageBudget,
+      localCache,
+    });
     const result = await daemon.applyConfig(params);
     if (result) {
-      setLocalThinking(null);
-      setLocalTokens("");
-      setLocalImageBudget("");
-      setLocalCache(null);
+      resetLocalRuntimeDraft({
+        setLocalThinking,
+        setLocalTokens,
+        setLocalImageBudget,
+        setLocalCache,
+      });
     }
   }
 

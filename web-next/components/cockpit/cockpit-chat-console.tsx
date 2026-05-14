@@ -44,6 +44,12 @@ type CockpitChatConsoleProps = Readonly<{
   onNewChat: () => void;
 }>;
 
+function resolveRuntimeEmptyStateTitle(loading: boolean, error: string | null): string {
+  if (loading) return "Connecting to runtime daemon";
+  if (error) return "Runtime daemon unavailable";
+  return "Runtime diagnostics unavailable";
+}
+
 export function CockpitChatConsole({
   chatFullscreen,
   onToggleFullscreen,
@@ -66,11 +72,7 @@ export function CockpitChatConsole({
   const t = useTranslation();
   const daemon = useGemma4Daemon(12_000);
   const runtimeStatus = daemon.status;
-  const runtimeEmptyStateTitle = daemon.loading
-    ? "Connecting to runtime daemon"
-    : daemon.error
-      ? "Runtime daemon unavailable"
-      : "Runtime diagnostics unavailable";
+  const runtimeEmptyStateTitle = resolveRuntimeEmptyStateTitle(daemon.loading, daemon.error);
   const runtimeEmptyStateDescription = daemon.loading
     ? "Waiting for multi_runtime status."
     : daemon.error || "Daemon status is not available yet.";

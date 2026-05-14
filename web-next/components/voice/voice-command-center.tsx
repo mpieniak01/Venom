@@ -2104,6 +2104,24 @@ function useVoiceCommandCenterStatusExpiry(params: {
   }, [debugDryRunRequested, lastAudioSignal, playbackState, processingStatus, recording, setLastAudioSignal]);
 }
 
+function useVoiceStatusUpdateEmitter(params: {
+  onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
+  debugDryRunRequested: boolean;
+  debugRecording: boolean;
+  audioStatus: AudioStatus | null;
+}) {
+  const { onStatusUpdate, debugDryRunRequested, debugRecording, audioStatus } = params;
+
+  useEffect(() => {
+    if (!onStatusUpdate) return;
+    if (debugDryRunRequested) {
+      onStatusUpdate(buildDebugAudioStatus(debugRecording));
+      return;
+    }
+    onStatusUpdate(audioStatus);
+  }, [audioStatus, debugDryRunRequested, debugRecording, onStatusUpdate]);
+}
+
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -2200,14 +2218,12 @@ export function VoiceCommandCenter({
     [debugDryRunRequested],
   );
 
-  useEffect(() => {
-    if (!onStatusUpdate) return;
-    if (debugDryRunRequested) {
-      onStatusUpdate(buildDebugAudioStatus(debugMode.recording));
-      return;
-    }
-    onStatusUpdate(audioStatus);
-  }, [audioStatus, debugDryRunRequested, debugMode.recording, onStatusUpdate]);
+  useVoiceStatusUpdateEmitter({
+    onStatusUpdate,
+    debugDryRunRequested,
+    debugRecording: debugMode.recording,
+    audioStatus,
+  });
 
   useVoiceCommandCenterDebugBootstrap({
     debugDryRunRequested,

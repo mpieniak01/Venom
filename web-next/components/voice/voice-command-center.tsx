@@ -65,6 +65,7 @@ export type AudioStatus = {
       probes?: Record<string, { status?: string | null; reason?: string | null }>;
       fallbacks?: Record<string, string | null | undefined>;
     } | null;
+    assistant_models?: string[] | null;
     voice_pipeline?: {
       profile?: string | null;
       stt?: string | null;

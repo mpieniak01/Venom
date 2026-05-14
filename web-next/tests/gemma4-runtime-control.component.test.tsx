@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Gemma4DaemonState } from "../hooks/use-gemma4-daemon";
 import type { DaemonStatus } from "../lib/gemma4-daemon-api";
 import { Gemma4RuntimeControlInner } from "../components/gemma4/gemma4-runtime-control";
@@ -19,6 +19,7 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     params: {
       max_new_tokens: 128,
       enable_thinking: false,
+      image_token_budget: 280,
       reasoning_summary_enabled: false,
       emotion_detection_enabled: false,
       emotion_response_style_enabled: false,
@@ -39,6 +40,7 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     emotion_source: null,
     pending_reload: false,
     reload_reason: null,
+    supports_image_input: true,
     ...overrides,
   };
 }
@@ -76,12 +78,14 @@ function renderControl(
       tts?: string | null;
     } | null;
   } | null,
+  assistantModels: string[] = [],
 ) {
   return render(
     <Gemma4RuntimeControlInner
       daemon={state}
       variant={variant}
       runtimeSnapshot={runtimeSnapshot ?? null}
+      assistantModels={assistantModels}
     />,
   );
 }
@@ -227,6 +231,18 @@ describe("Gemma4RuntimeControl — assistant drafter on/off", () => {
       document.body.textContent?.includes("None"),
     );
   });
+
+  it("shows assistant preset selector when assistant models are available", () => {
+    renderControl(
+      makeState({ status: makeStatus({ assistant_model: null }) }),
+      "voice",
+      null,
+      ["google/gemma-4-E2B-it-assistant"],
+    );
+    const attachButton = screen.queryByRole("button", { name: /drafter/i }) ?? screen.getByText(/drafter/i);
+    fireEvent.click(attachButton);
+    assert.ok(screen.getByText("google/gemma-4-E2B-it-assistant"));
+  });
 });
 
 describe("Gemma4RuntimeControl — disabled state while action pending", () => {
@@ -258,7 +274,17 @@ describe("Gemma4RuntimeControl — cockpit variant", () => {
 describe("Gemma4RuntimeControl — thinking toggle", () => {
   it("reflects enable_thinking=true in switch state", () => {
     renderControl(makeState({
-      status: makeStatus({ params: { max_new_tokens: 128, enable_thinking: true, cache_implementation: null } }),
+      status: makeStatus({
+        params: {
+          max_new_tokens: 128,
+          enable_thinking: true,
+          image_token_budget: 280,
+          reasoning_summary_enabled: false,
+          emotion_detection_enabled: false,
+          emotion_response_style_enabled: false,
+          cache_implementation: null,
+        },
+      }),
     }));
     const sw = document.querySelector("[role='switch']") as HTMLButtonElement | null;
     assert.ok(sw);

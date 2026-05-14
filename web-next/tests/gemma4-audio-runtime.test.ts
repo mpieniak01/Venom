@@ -3,7 +3,8 @@ import { describe, it } from "node:test";
 
 import type { LlmRuntimeTargetOption } from "../lib/types";
 
-const GEMMA4_AUDIO_MODELS = ["google/gemma-4-E2B-it", "google/gemma-4-E4B-it"];
+const GEMMA4_AUDIO_TARGET_MODELS = ["google/gemma-4-E2B-it"];
+const GEMMA4_AUDIO_ASSISTANT_MODELS = ["google/gemma-4-E2B-it-assistant"];
 
 function makeGemma4AudioRuntime(
   overrides: Partial<LlmRuntimeTargetOption> = {},
@@ -15,7 +16,7 @@ function makeGemma4AudioRuntime(
     available: true,
     status: "online",
     active: false,
-    models: GEMMA4_AUDIO_MODELS.map((id) => ({
+    models: GEMMA4_AUDIO_TARGET_MODELS.map((id) => ({
       id,
       name: id,
       provider: "gemma4_audio",
@@ -28,8 +29,9 @@ function makeGemma4AudioRuntime(
     supports_text_input: true,
     supports_audio_input: true,
     supports_text_output: true,
-    supports_image_input: false,
-    supported_models: GEMMA4_AUDIO_MODELS,
+    supports_image_input: true,
+    supported_models: GEMMA4_AUDIO_TARGET_MODELS,
+    assistant_models: GEMMA4_AUDIO_ASSISTANT_MODELS,
     log_path: "logs/gemma4_audio_service.log",
     pid_path: ".venom_runtime/gemma4_audio.pid",
     ...overrides,
@@ -43,18 +45,17 @@ describe("gemma4_audio runtime type contract", () => {
     assert.equal(rt.source_type, "local-runtime");
   });
 
-  it("exposes exactly two compatible models", () => {
+  it("exposes the cached target model list", () => {
     const rt = makeGemma4AudioRuntime();
-    assert.equal(rt.models.length, 2);
+    assert.equal(rt.models.length, 1);
     const ids = rt.models.map((m) => m.id);
     assert.ok(ids.includes("google/gemma-4-E2B-it"));
-    assert.ok(ids.includes("google/gemma-4-E4B-it"));
   });
 
   it("model list filters to chat_compatible models only", () => {
     const rt = makeGemma4AudioRuntime();
     const chatModels = rt.models.filter((m) => m.chat_compatible !== false);
-    assert.equal(chatModels.length, 2);
+    assert.equal(chatModels.length, 1);
   });
 
   it("each model carries text+audio+voice capability badges", () => {
@@ -74,9 +75,9 @@ describe("gemma4_audio runtime type contract", () => {
     assert.equal(rt.supports_text_output, true);
   });
 
-  it("supports_image_input is false", () => {
+  it("supports_image_input is true", () => {
     const rt = makeGemma4AudioRuntime();
-    assert.equal(rt.supports_image_input, false);
+    assert.equal(rt.supports_image_input, true);
   });
 
   it("log_path and pid_path are present", () => {
@@ -88,7 +89,7 @@ describe("gemma4_audio runtime type contract", () => {
   it("active model flag is correct when E2B-it is active", () => {
     const rt = makeGemma4AudioRuntime({
       active: true,
-      models: GEMMA4_AUDIO_MODELS.map((id) => ({
+      models: GEMMA4_AUDIO_TARGET_MODELS.map((id) => ({
         id,
         name: id,
         provider: "gemma4_audio",
@@ -111,10 +112,11 @@ describe("gemma4_audio runtime type contract", () => {
     }
   });
 
-  it("supported_models list contains both compatible models", () => {
+  it("supported_models list contains the cached target model and assistant_models exposes drafter presets", () => {
     const rt = makeGemma4AudioRuntime();
     assert.ok(rt.supported_models?.includes("google/gemma-4-E2B-it"));
-    assert.ok(rt.supported_models?.includes("google/gemma-4-E4B-it"));
+    assert.equal(rt.supported_models?.length, 1);
+    assert.ok(rt.assistant_models?.includes("google/gemma-4-E2B-it-assistant"));
   });
 });
 

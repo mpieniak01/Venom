@@ -581,6 +581,7 @@ export function useCockpitSectionProps() {
       supports_audio_input: target.supports_audio_input,
       supports_text_output: target.supports_text_output,
       supports_image_input: target.supports_image_input,
+      assistant_models: target.assistant_models,
       log_path: target.log_path,
       pid_path: target.pid_path,
     };

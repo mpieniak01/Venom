@@ -49,9 +49,13 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
   const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;
+  const runtimeProvider = (runtime?.provider ?? "").trim().toLowerCase();
+  const runtimeId = (runtime?.runtime_id ?? "").trim().toLowerCase();
   const isGemma4AudioRuntime =
-    (runtime?.provider ?? "").toLowerCase() === "gemma4_audio" ||
-    (runtime?.runtime_id ?? "").toLowerCase() === "gemma4_audio";
+    runtimeProvider === "gemma4_audio" ||
+    runtimeProvider.startsWith("gemma4_audio@") ||
+    runtimeId === "gemma4_audio" ||
+    runtimeId.startsWith("gemma4_audio@");
 
   if (!status) {
     return (
@@ -82,13 +86,17 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
   return (
     <div className="space-y-3">
       <RuntimeSwitchCard />
+      {isGemma4AudioRuntime && (
+        <Gemma4RuntimeControl
+          variant="voice"
+          runtimeSnapshot={runtime}
+          assistantModels={runtime?.assistant_models ?? []}
+        />
+      )}
       <RuntimeOverviewCard
         runtime={runtime}
         title={t("voice.controls.runtime")}
       />
-      {isGemma4AudioRuntime && (
-        <Gemma4RuntimeControl variant="voice" runtimeSnapshot={runtime} />
-      )}
       {latestVoiceSession && (
         <VoiceSessionCard session={latestVoiceSession} />
       )}

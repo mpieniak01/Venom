@@ -253,7 +253,13 @@ export function Gemma4RuntimeControlInner({
     setImageProbeError(null);
     const reader = new FileReader();
     const loaded = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error("Unexpected file reader result type"));
+      };
       reader.onerror = () => reject(new Error("Failed to read file"));
       reader.readAsDataURL(file);
     });
@@ -446,6 +452,8 @@ export function Gemma4RuntimeControlInner({
           <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
           <div className="mt-2 space-y-2">
             <div
+              role="button"
+              tabIndex={0}
               onDragOver={(event) => {
                 event.preventDefault();
               }}
@@ -453,7 +461,15 @@ export function Gemma4RuntimeControlInner({
                 event.preventDefault();
                 await handleImageFileChange(event.dataTransfer.files);
               }}
+              onClick={() => imageFileInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  imageFileInputRef.current?.click();
+                }
+              }}
               className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-[11px] text-zinc-400"
+              aria-label={t("voice.daemon.dragDropImage")}
             >
               {t("voice.daemon.dragDropImage")}
             </div>

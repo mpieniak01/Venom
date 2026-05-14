@@ -51,7 +51,7 @@ function parseTrace(trace: string[]): ParsedTrace[] {
     if (colonIdx > 0) {
       return { name: entry.slice(0, colonIdx), outcome: entry.slice(colonIdx + 1) as StageHealth };
     }
-    return { name: entry, outcome: "ok" as StageHealth };
+    return { name: entry, outcome: "ok" };
   });
 }
 

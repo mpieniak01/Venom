@@ -51,7 +51,6 @@ interface PropertyPanelProps {
 type RuntimeService = string | { name?: string; id?: string; [key: string]: unknown };
 type WorkflowNodeType = "decision" | "intent" | "kernel" | "runtime" | "provider" | "embedding" | "config";
 type SourceType = "local" | "cloud";
-type SourceTypeLike = SourceType | "installed_local" | "installed-local";
 
 type NodeVisualMeta = {
   icon: LucideIcon;
@@ -141,6 +140,10 @@ function resolveAvailableOptions(
       DEFAULT_OPTIONS.embeddingProviders,
     ) as ResolvedAvailableOptions["embeddingProviders"],
   };
+}
+
+function readStringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 const NODE_VISUALS: Record<WorkflowNodeType, NodeVisualMeta> = {
@@ -246,7 +249,7 @@ function isWorkflowNodeType(value: string | undefined): value is WorkflowNodeTyp
   return value === "decision" || value === "intent" || value === "kernel" || value === "runtime" || value === "provider" || value === "embedding" || value === "config";
 }
 
-function normalizeSourceType(value: SourceTypeLike | undefined): SourceType {
+function normalizeSourceType(value: string | undefined): SourceType {
   if (!value) return "local";
   const normalized = value.trim().toLowerCase();
   if (normalized === "cloud") return "cloud";
@@ -376,7 +379,7 @@ function DecisionEditor({
 }>) {
   const strategyOptions = withCurrentOption(
     options.strategies,
-    data.strategy as string | undefined
+    readStringField(data.strategy)
   );
   return (
     <SectionCard
@@ -387,7 +390,7 @@ function DecisionEditor({
     >
       <OptionRail
         label={t("workflowControl.labels.stepAlternatives")}
-        value={(data.strategy as string) ?? ""}
+        value={readStringField(data.strategy)}
         options={strategyOptions}
         onChange={(val) => onUpdate("strategy", val)}
         renderOption={(opt) => translateOption(t, `workflowControl.strategies.${opt}`, opt)}
@@ -396,7 +399,7 @@ function DecisionEditor({
       <Label htmlFor="strategy" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
         {t("workflowControl.labels.stepConfiguration")}
       </Label>
-      <Select value={(data.strategy as string) ?? ""} onValueChange={(val) => onUpdate("strategy", val)}>
+      <Select value={readStringField(data.strategy)} onValueChange={(val) => onUpdate("strategy", val)}>
         <SelectTrigger id="strategy" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
@@ -427,9 +430,9 @@ function IntentEditor({
     typeof data.embeddingModel === "string" && data.embeddingModel.trim().length > 0;
   const intentModeOptions = withCurrentOption(
     getCompatibleIntentModes(options, hasEmbedding),
-    data.intentMode as string | undefined
+    readStringField(data.intentMode)
   );
-  const currentIntentMode = data.intentMode as string | undefined;
+  const currentIntentMode = readStringField(data.intentMode);
   const requiresEmbedding = Boolean(
     currentIntentMode && options.intentRequirements[currentIntentMode]?.requires_embedding,
   );
@@ -442,7 +445,7 @@ function IntentEditor({
     >
       <OptionRail
         label={t("workflowControl.labels.stepAlternatives")}
-        value={(data.intentMode as string) ?? ""}
+        value={readStringField(data.intentMode)}
         options={intentModeOptions}
         onChange={(val) => onUpdate("intentMode", val)}
         renderOption={(opt) => translateOption(t, `workflowControl.intentModes.${opt}`, opt)}
@@ -451,7 +454,7 @@ function IntentEditor({
       <Label htmlFor="intentMode" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
         {t("workflowControl.labels.stepConfiguration")}
       </Label>
-      <Select value={(data.intentMode as string) ?? ""} onValueChange={(val) => onUpdate("intentMode", val)}>
+      <Select value={readStringField(data.intentMode)} onValueChange={(val) => onUpdate("intentMode", val)}>
         <SelectTrigger id="intentMode" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
@@ -486,7 +489,7 @@ function KernelEditor({
   const compatibleKernels = getCompatibleKernels(options, workflowRuntime);
   const kernelOptions = withCurrentOption(
     compatibleKernels,
-    data.kernel as string | undefined,
+    readStringField(data.kernel) || undefined,
   );
   const hadCompatibilityFilter =
     Boolean(workflowRuntime) && compatibleKernels.length < options.kernels.length;
@@ -499,7 +502,7 @@ function KernelEditor({
     >
       <OptionRail
         label={t("workflowControl.labels.stepAlternatives")}
-        value={(data.kernel as string) ?? ""}
+        value={readStringField(data.kernel)}
         options={kernelOptions}
         onChange={(val) => onUpdate("kernel", val)}
         renderOption={(opt) => translateOption(t, `workflowControl.kernelTypes.${opt}`, opt)}
@@ -508,7 +511,7 @@ function KernelEditor({
       <Label htmlFor="kernel" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
         {t("workflowControl.labels.stepConfiguration")}
       </Label>
-      <Select value={(data.kernel as string) ?? ""} onValueChange={(val) => onUpdate("kernel", val)}>
+      <Select value={readStringField(data.kernel)} onValueChange={(val) => onUpdate("kernel", val)}>
         <SelectTrigger id="kernel" className={SELECT_TRIGGER_BASE}>
           <SelectValue />
         </SelectTrigger>
@@ -572,12 +575,12 @@ function ProviderEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }>) {
-  const provider = (data.provider as { active?: string; sourceType?: SourceTypeLike } | undefined) ?? {};
+  const provider = (data.provider as { active?: string; sourceType?: string } | undefined) ?? {};
   const activeEmbeddingModel =
     typeof data.embeddingModel === "string" ? data.embeddingModel : "";
   const providerBySource = options.providersBySource ?? DEFAULT_OPTIONS.providersBySource;
-  const nodeSourceType = data.sourceType as SourceTypeLike | undefined;
-  const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
+  const nodeSourceType = readStringField(data.sourceType);
+  const nodeSourceTag = readStringField(data.sourceTag);
   const inferSource = (value: string | undefined): SourceType => {
     if (value && providerBySource.cloud.includes(value)) return "cloud";
     return "local";
@@ -615,7 +618,7 @@ function ProviderEditor({
         value={sourceType}
         options={["local", "cloud"]}
         onChange={(val) => {
-          const nextSource = normalizeSourceType(val as SourceTypeLike);
+          const nextSource = normalizeSourceType(val);
           const nextProviders = providerBySource[nextSource];
           const nextActive = provider.active && nextProviders.includes(provider.active) ? provider.active : "";
           onUpdate("provider", { active: nextActive, sourceType: nextSource });
@@ -633,7 +636,7 @@ function ProviderEditor({
       <Select
         value={sourceType}
         onValueChange={(val) => {
-          const nextSource = normalizeSourceType(val as SourceTypeLike);
+          const nextSource = normalizeSourceType(val);
           const nextProviders = providerBySource[nextSource];
           const nextActive = provider.active && nextProviders.includes(provider.active) ? provider.active : "";
           onUpdate("provider", { active: nextActive, sourceType: nextSource });
@@ -700,19 +703,19 @@ function EmbeddingEditor({
   const modelsBySource = options.modelsBySource ?? DEFAULT_OPTIONS.modelsBySource;
   const activeProvider =
     typeof data.providerActive === "string" ? data.providerActive : "";
-  const nodeSourceTag = data.sourceTag as SourceTypeLike | undefined;
+  const nodeSourceTag = readStringField(data.sourceTag);
   const inferSource = (value: string | undefined): SourceType => {
     if (value && modelsBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
-  const dataSourceType = data.sourceType as SourceTypeLike | undefined;
+  const dataSourceType = readStringField(data.sourceType);
   let sourceType: SourceType;
   if (dataSourceType) {
     sourceType = normalizeSourceType(dataSourceType);
   } else if (nodeSourceTag) {
     sourceType = normalizeSourceType(nodeSourceTag);
   } else {
-    sourceType = inferSource(data.model as string | undefined);
+    sourceType = inferSource(readStringField(data.model));
   }
   const compatibleEmbeddings = getCompatibleEmbeddings(
     options,
@@ -721,9 +724,9 @@ function EmbeddingEditor({
   );
   const sourceModels = withCurrentOption(
     compatibleEmbeddings,
-    data.model as string | undefined,
+    readStringField(data.model),
   );
-  const safeModel = (data.model as string | undefined) ?? "";
+  const safeModel = readStringField(data.model);
   const hadCompatibilityFilter =
     Boolean(activeProvider) &&
     compatibleEmbeddings.length < (modelsBySource[sourceType] ?? []).length;
@@ -740,9 +743,9 @@ function EmbeddingEditor({
         value={sourceType}
         options={["local", "cloud"]}
         onChange={(val) => {
-          const nextSource = normalizeSourceType(val as SourceTypeLike);
+          const nextSource = normalizeSourceType(val);
           const nextModels = modelsBySource[nextSource];
-          const currentModel = data.model as string | undefined;
+          const currentModel = readStringField(data.model);
           let nextModel = "";
           if (currentModel && nextModels.includes(currentModel)) {
             nextModel = currentModel;
@@ -763,9 +766,9 @@ function EmbeddingEditor({
       <Select
         value={sourceType}
         onValueChange={(val) => {
-          const nextSource = normalizeSourceType(val as SourceTypeLike);
+          const nextSource = normalizeSourceType(val);
           const nextModels = modelsBySource[nextSource];
-          const currentModel = data.model as string | undefined;
+          const currentModel = readStringField(data.model);
           let nextModel = "";
           if (currentModel && nextModels.includes(currentModel)) {
             nextModel = currentModel;

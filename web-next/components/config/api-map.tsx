@@ -241,7 +241,12 @@ export function ApiMap() {
 
                 {/* Filters Toolbar */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-                    <Select value={filterType} onValueChange={(v: string) => setFilterType(v as "all" | "internal" | "external")}>
+                    <Select
+                        value={filterType}
+                        onValueChange={(v: string) =>
+                            setFilterType(v === "internal" || v === "external" ? v : "all")
+                        }
+                    >
                         <SelectTrigger className="w-[130px] h-8 text-xs bg-theme-overlay-strong border-theme text-theme-secondary">
                             <SelectValue placeholder={t("config.apiMap.filters.type.label")} />
                         </SelectTrigger>

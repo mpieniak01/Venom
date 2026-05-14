@@ -93,7 +93,6 @@ const OFFLINE_BACKOFF_MS = 15000;
 function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number): PollingEntry<T> {
   const existing = pollingRegistry.get(key);
   if (existing) {
-    // Type assertion safe here because we control the registry
     const typedExisting = existing as PollingEntry<T>;
     typedExisting.fetcher = fetcher;
     if (interval > 0 && interval < typedExisting.interval) {
@@ -360,14 +359,14 @@ export function useServiceStatus(intervalMs = 15000) {
   return usePolling<ServiceStatus[]>(
     "services",
     async () => {
-      const data = await apiFetch<{ services?: ServiceStatus[]; status?: string }>(
+      const data = await apiFetch<ServiceStatus[] | { services?: ServiceStatus[]; status?: string }>(
         "/api/v1/system/services",
       );
       if (Array.isArray(data?.services)) {
         return data.services;
       }
-      if (Array.isArray((data as unknown) as ServiceStatus[])) {
-        return (data as unknown) as ServiceStatus[];
+      if (Array.isArray(data)) {
+        return data;
       }
       return [];
     },

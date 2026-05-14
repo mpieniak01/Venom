@@ -142,12 +142,9 @@ export function ServicesPanel() {
 
     const ws = new VenomWebSocket("/ws/events", (payload: unknown) => {
       const event = payload as ServiceEvent;
-      if (event.type === "SERVICE_STATUS_UPDATE" && event.data && event.data.name) {
+      if (event.type === "SERVICE_STATUS_UPDATE" && event.data?.name) {
         setServices((prevServices) =>
-          applyServiceEventUpdate(
-            prevServices,
-            event.data as Partial<ServiceInfo> & { status: string; name?: string }
-          )
+          applyServiceEventUpdate(prevServices, event.data)
         );
       }
     });

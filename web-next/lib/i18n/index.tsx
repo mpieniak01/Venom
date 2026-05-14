@@ -72,7 +72,7 @@ function resolvePreferredLanguage(): LanguageCode {
   }
   const browser = globalThis.window.navigator.language?.slice(0, 2).toLowerCase();
   if (browser === "en" || browser === "de") {
-    return browser as LanguageCode;
+    return browser;
   }
   return "pl";
 }

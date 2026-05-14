@@ -13,7 +13,7 @@ from venom_core.skills.mcp.proxy_generator import McpToolMetadata
 
 def _map_json_type(type_name: str) -> str:
     lowered = (type_name or "").lower()
-    if lowered.startswith("list") or lowered.startswith("typing.list"):
+    if lowered.startswith(("list", "typing.list")):
         return "array"
     if lowered in {"int", "float", "number"}:
         return "number"

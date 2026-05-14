@@ -22,9 +22,7 @@ import {
     mergeStreamsIntoHistory,
     parseContextPreviewMeta,
     shouldHydrateCompletedTask,
-    StreamLike,
     toHistoryMessages,
-    HistoryEntryLike,
     HistoryTaskLike,
 } from "./cockpit-history-utils";
 import { useCockpitQueueActions } from "./use-cockpit-queue-actions";
@@ -276,7 +274,7 @@ export function useCockpitLogic({
                     sessionId,
                     hydratedRefs.current,
                     localSessionHistory,
-                    taskStreams as Record<string, StreamLike>,
+                    taskStreams,
                 )
             ) {
                 return;
@@ -406,12 +404,12 @@ export function useCockpitLogic({
             sessionEntryKey,
         });
 
-        mergeStreamsIntoHistory(deduped as HistoryEntryLike[], taskStreams as Record<string, StreamLike>);
+        mergeStreamsIntoHistory(deduped, taskStreams);
 
         deduped = filterHistoryAfterReset(deduped, resetAtRef.current);
         const ordered = orderHistoryEntriesByRequestId(deduped);
 
-        return toHistoryMessages(ordered as HistoryEntryLike[]);
+        return toHistoryMessages(ordered);
 
     }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey, data.history, data.tasks, sessionId]);
 

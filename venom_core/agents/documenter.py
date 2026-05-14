@@ -262,11 +262,7 @@ class DocumenterAgent:
         keywords = ["def ", "class ", "async def ", '"""', "'''"]
 
         for line in diff.splitlines():
-            if (
-                (line.startswith("+") or line.startswith("-"))
-                and not line.startswith("+++")
-                and not line.startswith("---")
-            ):
+            if line.startswith(("+", "-")) and not line.startswith(("+++", "---")):
                 for keyword in keywords:
                     if keyword in line:
                         logger.debug(

@@ -349,7 +349,7 @@ export function useCockpitChatUi({
       const schema = config?.generation_schema;
       setModelSchema(schema ?? null);
       if (config?.current_values) {
-        setGenerationParams(config.current_values as GenerationParams);
+        setGenerationParams(config.current_values);
       }
     } catch (err) {
       console.error(t("cockpit.feedback.schemaError"), err);
@@ -369,10 +369,7 @@ export function useCockpitChatUi({
     try {
       await updateModelConfig(activeModelName, {
         runtime: models?.active?.provider,
-        params: (generationParams ?? {}) as Record<
-          string,
-          number | string | boolean | null | undefined
-        >,
+        params: generationParams ?? {},
       });
       pushToast(t("cockpit.feedback.tuningSaved"), "success");
     } catch (err) {

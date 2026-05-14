@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 import psutil
 
@@ -422,7 +422,7 @@ PARAMETER top_k 40
 
     def load_adapter_for_kernel(
         self, version_id: str, kernel_builder
-    ) -> Union[bool, Tuple[Any, Any]]:
+    ) -> bool | tuple[Any, Any]:
         """
         Ładuje adapter LoRA do KernelBuilder (dla integracji z PEFT).
 

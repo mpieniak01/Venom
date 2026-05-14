@@ -103,10 +103,10 @@ function readCache<T>(key: string): T | null {
   try {
     const raw = globalThis.window.sessionStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { ts?: number; data?: T };
+    const parsed: { ts?: number; data?: T } = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || typeof parsed.ts !== "number") return null;
     if (Date.now() - parsed.ts > WORKFLOW_CACHE_TTL_MS) return null;
-    return (parsed.data ?? null) as T | null;
+    return parsed.data ?? null;
   } catch {
     return null;
   }
@@ -138,7 +138,7 @@ export function useWorkflowState() {
       if (!response.ok) {
         throw new Error(await readApiErrorMessage(response, t("workflowControl.error")));
       }
-      const data = (await response.json()) as WorkflowControlOptions;
+      const data: WorkflowControlOptions = await response.json();
       setControlOptions((prev) => {
         if (prev && stableSerialize(prev) === stableSerialize(data)) return prev;
         return data;

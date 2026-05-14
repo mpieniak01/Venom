@@ -1010,7 +1010,7 @@ class SelfLearningService:
             return False
         if any(marker in normalized for marker in _BLOCKED_TRAINING_NAME_MARKERS):
             return False
-        if normalized.endswith(".onnx") or normalized.endswith(".gguf"):
+        if normalized.endswith((".onnx", ".gguf")):
             return False
         return "/" in candidate
 

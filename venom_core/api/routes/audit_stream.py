@@ -110,9 +110,7 @@ def _infer_from_source_prefix(source_n: str, source_head: str, action: str) -> s
         return CHANNEL_GOVERNANCE
     if source_n.startswith("core.technical."):
         return _infer_from_technical_source(source_n, action)
-    if source_n.startswith("module.brand_studio") or source_n.startswith(
-        "brand_studio"
-    ):
+    if source_n.startswith(("module.brand_studio", "brand_studio")):
         channel = _channel_from_action(action)
         return channel or CHANNEL_FRONTEND
     if source_n.startswith("core."):

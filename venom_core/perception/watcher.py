@@ -107,7 +107,7 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
         return src_path
 
     def _is_supported_file(self, src_path: str) -> bool:
-        return src_path.endswith(".py") or src_path.endswith(".md")
+        return src_path.endswith((".py", ".md"))
 
     def _ensure_event_loop(self) -> Optional[asyncio.AbstractEventLoop]:
         if self._loop is not None:

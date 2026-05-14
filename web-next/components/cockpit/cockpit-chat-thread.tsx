@@ -909,7 +909,11 @@ export const ChatComposer = memo(
               <SelectMenu
                 value={chatMode}
                 options={chatModeOptions}
-                onChange={(value) => setChatMode(value as ChatMode)}
+                onChange={(value) => {
+                  if (value === "direct" || value === "normal" || value === "complex") {
+                    setChatMode(value);
+                  }
+                }}
                 ariaLabel={t("cockpit.actions.selectMode")}
                 buttonTestId="chat-mode-select"
                 menuTestId="chat-mode-menu"

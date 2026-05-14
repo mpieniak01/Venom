@@ -40,6 +40,10 @@ export type ModelPickerOption = SelectMenuOption & {
   model?: TrainableModelInfo;
 };
 
+function isModelPickerOption(option: SelectMenuOption): option is ModelPickerOption {
+  return "kind" in option;
+}
+
 type TranslateFn = (key: string) => string;
 
 export const MODEL_SECTION_ORDER: ModelSectionKey[] = [
@@ -540,7 +544,7 @@ export function TrainingPanel() {
                 menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
                 optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
                 renderButton={(option) => {
-                  const selectedOption = option as ModelPickerOption | null;
+                  const selectedOption = option && isModelPickerOption(option) ? option : null;
                   if (!selectedOption || selectedOption.kind !== "model" || !selectedOption.model) {
                     return (
                       <span className="min-w-0 flex-1 truncate text-left text-hint">
@@ -565,7 +569,10 @@ export function TrainingPanel() {
                   );
                 }}
                 renderOption={(option, active) => {
-                  const typedOption = option as ModelPickerOption;
+                  const typedOption = isModelPickerOption(option) ? option : null;
+                  if (!typedOption) {
+                    return null;
+                  }
                   if (typedOption.kind === "section") {
                     return (
                       <div className="w-full cursor-default border-b border-[color:var(--ui-border)] px-1 py-2 text-left">

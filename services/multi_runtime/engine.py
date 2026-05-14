@@ -46,6 +46,12 @@ class DaemonParams:
     emotion_detection_enabled: bool = False
     emotion_response_style_enabled: bool = False
     cache_implementation: Optional[str] = None
+    execution_mode: str = "balanced"
+    image_strategy: str = "vlm_only"
+    retrieval_mode: str = "off"
+    audio_output_mode: str = "off"
+    assistant_mode: str = "off"
+    economy_mode: str = "off"
 
 
 @dataclass
@@ -492,6 +498,12 @@ class MultiRuntimeDaemon:
         emotion_detection_enabled: Optional[bool] = None,
         emotion_response_style_enabled: Optional[bool] = None,
         cache_implementation: Optional[str] = None,
+        execution_mode: Optional[str] = None,
+        image_strategy: Optional[str] = None,
+        retrieval_mode: Optional[str] = None,
+        audio_output_mode: Optional[str] = None,
+        assistant_mode: Optional[str] = None,
+        economy_mode: Optional[str] = None,
     ) -> ReloadSignal:
         """Apply parameter changes. Returns the minimum reload action required."""
         reload_signal = ReloadSignal.NONE
@@ -527,6 +539,24 @@ class MultiRuntimeDaemon:
                 f"cache_implementation changed to '{cache_implementation}'"
             )
             reload_signal = ReloadSignal.SOFT_RELOAD
+
+        if execution_mode is not None:
+            self._params.execution_mode = execution_mode
+
+        if image_strategy is not None:
+            self._params.image_strategy = image_strategy
+
+        if retrieval_mode is not None:
+            self._params.retrieval_mode = retrieval_mode
+
+        if audio_output_mode is not None:
+            self._params.audio_output_mode = audio_output_mode
+
+        if assistant_mode is not None:
+            self._params.assistant_mode = assistant_mode
+
+        if economy_mode is not None:
+            self._params.economy_mode = economy_mode
 
         return reload_signal
 
@@ -590,6 +620,12 @@ class MultiRuntimeDaemon:
                 "emotion_detection_enabled": self._params.emotion_detection_enabled,
                 "emotion_response_style_enabled": self._params.emotion_response_style_enabled,
                 "cache_implementation": self._params.cache_implementation,
+                "execution_mode": self._params.execution_mode,
+                "image_strategy": self._params.image_strategy,
+                "retrieval_mode": self._params.retrieval_mode,
+                "audio_output_mode": self._params.audio_output_mode,
+                "assistant_mode": self._params.assistant_mode,
+                "economy_mode": self._params.economy_mode,
             },
             "vram": _get_vram_info().__dict__,
             "raw_thinking_available": raw_thinking_available,

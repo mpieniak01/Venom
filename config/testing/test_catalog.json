@@ -353,6 +353,46 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_217b_api_multi_runtime_profile.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_217b_daemon_profile_endpoints.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_217da_multi_runtime_pipeline_basics.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_academy_202c_signing_coverage.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -3884,6 +3924,20 @@
       "rationale": "Integration-heavy behavior delegated to release lane."
     },
     {
+      "path": "tests/test_multi_runtime_profile_service.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_new_chat_session_api.py",
       "domain": "api",
       "test_type": "unit",
@@ -6003,48 +6057,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_multi_runtime_profile_service.py",
-      "domain": "runtime",
-      "test_type": "unit",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "217B Faza 1: kontrakt multi_runtime_profile — apply matrix, walidacja, rozdzielenie od systemu."
-    },
-    {
-      "path": "tests/test_217b_daemon_profile_endpoints.py",
-      "domain": "runtime",
-      "test_type": "unit",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "217B Faza 3: endpointy /v1/daemon/profile — GET profilu, POST partial update z apply_mode, backward compat /v1/daemon/config."
-    },
-    {
-      "path": "tests/test_217b_api_multi_runtime_profile.py",
-      "domain": "runtime",
-      "test_type": "unit",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "217B Faza 4: API systemowe GET/POST /api/v1/runtime/multi-runtime/profile — proxy do daemona z graceful fallback."
     }
   ]
 }

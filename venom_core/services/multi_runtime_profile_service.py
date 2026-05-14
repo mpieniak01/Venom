@@ -38,6 +38,12 @@ APPLY_MATRIX: dict[str, ApplyMode] = {
     "reasoning_summary_enabled": "live",
     "emotion_detection_enabled": "live",
     "emotion_response_style_enabled": "live",
+    "execution_mode": "live",
+    "image_strategy": "live",
+    "retrieval_mode": "live",
+    "audio_output_mode": "live",
+    "assistant_mode": "live",
+    "economy_mode": "live",
     "precision": "unsupported",
     "quantization_backend": "unsupported",
     "device_target": "unsupported",
@@ -101,6 +107,12 @@ def build_profile_from_daemon_params(
     emotion_detection_enabled: bool,
     emotion_response_style_enabled: bool,
     cache_implementation: Optional[str],
+    execution_mode: str = "balanced",
+    image_strategy: str = "vlm_only",
+    retrieval_mode: str = "off",
+    audio_output_mode: str = "off",
+    assistant_mode: str = "off",
+    economy_mode: str = "off",
 ) -> MultiRuntimeProfile:
     """Build a MultiRuntimeProfile from flat daemon status fields.
 
@@ -117,6 +129,12 @@ def build_profile_from_daemon_params(
         emotion_detection_enabled=emotion_detection_enabled,
         emotion_response_style_enabled=emotion_response_style_enabled,
         cache_implementation=cache_implementation,
+        execution_mode=execution_mode,
+        image_strategy=image_strategy,
+        retrieval_mode=retrieval_mode,
+        audio_output_mode=audio_output_mode,
+        assistant_mode=assistant_mode,
+        economy_mode=economy_mode,
     )
 
 

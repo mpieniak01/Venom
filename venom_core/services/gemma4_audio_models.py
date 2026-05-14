@@ -7,6 +7,10 @@ Will be removed in Phase 7 (Faza 7 cleanup).
 from __future__ import annotations
 
 from venom_core.services.multi_runtime_models import (
+    _resolve_cache_root,
+    _resolve_repo_snapshot_dir,
+)
+from venom_core.services.multi_runtime_models import (
     multi_runtime_available_models as gemma4_audio_available_models,
 )
 from venom_core.services.multi_runtime_models import (
@@ -14,6 +18,8 @@ from venom_core.services.multi_runtime_models import (
 )
 
 __all__ = [
+    "_resolve_cache_root",
+    "_resolve_repo_snapshot_dir",
     "gemma4_audio_available_models",
     "gemma4_audio_model_has_snapshot",
 ]

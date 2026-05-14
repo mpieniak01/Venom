@@ -16,6 +16,7 @@ ALLOWED_FORBIDDEN_IMPORTS: dict[str, set[str]] = {
     "venom_core/api/routes/system_storage.py": {"subprocess"},
     "venom_core/api/routes/providers.py": {"httpx"},
     "venom_core/api/routes/system_llm.py": {"httpx"},
+    "venom_core/api/routes/system_runtime.py": {"httpx"},
     "venom_core/api/routes/models_remote.py": {"threading"},
     "venom_core/api/routes/llm_simple.py": {"threading"},
 }

@@ -308,20 +308,20 @@ start_vllm() {
   return 1
 }
 
-start_gemma4_audio() {
-  local gemma4_audio_port
-  gemma4_audio_port="$(env_contract_get GEMMA4_AUDIO_PORT "8014" "$ENV_FILE")"
+start_multi_runtime() {
+  local multi_runtime_port
+  multi_runtime_port="$(env_contract_get GEMMA4_AUDIO_PORT "8014" "$ENV_FILE")"
   echo "▶️  Uruchamiam Multi-Runtime..."
   mk vllm-stop >/dev/null || true
   mk ollama-stop >/dev/null || true
-  if ! bash scripts/llm/gemma4_audio_service.sh start; then
+  if ! bash scripts/llm/multi_runtime_service.sh start; then
     echo "❌ Nie udało się uruchomić Multi-Runtime (sprawdź logi wyżej)."
     return 1
   fi
 
   echo "⏳ Czekam na Multi-Runtime (/health)..."
   for _ in {1..90}; do
-    if curl -fsS "http://127.0.0.1:${gemma4_audio_port}/health" >/dev/null 2>&1; then
+    if curl -fsS "http://127.0.0.1:${multi_runtime_port}/health" >/dev/null 2>&1; then
       echo "✅ Multi-Runtime gotowy"
       return 0
     fi
@@ -329,11 +329,11 @@ start_gemma4_audio() {
   done
 
   echo "❌ Multi-Runtime nie wystartował w czasie (brak odpowiedzi z /health)"
-  if [[ -f logs/gemma4_audio_service.log ]]; then
+  if [[ -f logs/multi_runtime_service.log ]]; then
     echo "ℹ️  Ostatnie logi Multi-Runtime:"
-    tail -n 40 logs/gemma4_audio_service.log || true
+    tail -n 40 logs/multi_runtime_service.log || true
   fi
-  bash scripts/llm/gemma4_audio_service.sh stop >/dev/null 2>&1 || true
+  bash scripts/llm/multi_runtime_service.sh stop >/dev/null 2>&1 || true
   return 1
 }
 
@@ -354,13 +354,13 @@ case "$active_server" in
     if start_vllm; then llm_ready="vllm"; fi
     ;;
   gemma4_audio|multi_runtime)
-    if start_gemma4_audio; then llm_ready="multi_runtime"; fi
+    if start_multi_runtime; then llm_ready="multi_runtime"; fi
     ;;
   none)
     echo "▶️  ACTIVE_LLM_SERVER=none (start bez lokalnego serwera LLM)"
     mk vllm-stop >/dev/null || true
     mk ollama-stop >/dev/null || true
-    bash scripts/llm/gemma4_audio_service.sh stop >/dev/null 2>&1 || true
+    bash scripts/llm/multi_runtime_service.sh stop >/dev/null 2>&1 || true
     llm_ready="none"
     ;;
   *)

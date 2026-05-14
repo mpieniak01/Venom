@@ -120,15 +120,15 @@ class LlmServerController:
         # Multi-runtime (Gemma 4 multimodal — audio, image, text)
         multi_runtime_start_cmd = _normalize(
             cfg.GEMMA4_AUDIO_START_COMMAND,
-            f"bash {repo_root / 'scripts/llm/gemma4_audio_service.sh'} start",
+            f"bash {repo_root / 'scripts/llm/multi_runtime_service.sh'} start",
         )
         multi_runtime_stop_cmd = _normalize(
             cfg.GEMMA4_AUDIO_STOP_COMMAND,
-            f"bash {repo_root / 'scripts/llm/gemma4_audio_service.sh'} stop",
+            f"bash {repo_root / 'scripts/llm/multi_runtime_service.sh'} stop",
         )
         multi_runtime_restart_cmd = _normalize(
             cfg.GEMMA4_AUDIO_RESTART_COMMAND,
-            f"bash {repo_root / 'scripts/llm/gemma4_audio_service.sh'} restart",
+            f"bash {repo_root / 'scripts/llm/multi_runtime_service.sh'} restart",
         )
 
         servers["multi_runtime"] = LlmServerConfig(

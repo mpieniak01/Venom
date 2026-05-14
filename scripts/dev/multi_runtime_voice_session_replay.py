@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Replay a recorded voice session against the Gemma 4 Audio runtime.
+"""Replay a recorded voice session against the Multi-Runtime service.
 
 The script reuses the latest saved voice session by default and sends its
-`recording.wav` path to the local Gemma 4 audio daemon.
+`recording.wav` path to the local Multi-Runtime daemon.
 """
 
 from __future__ import annotations

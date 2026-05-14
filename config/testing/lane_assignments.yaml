@@ -25,6 +25,12 @@
       "test": "tests/test_workflow_operations.py",
       "lane": "ci-lite",
       "rationale": "Workflow operations are core backend control-plane regressions."
+    },
+    {
+      "group": "sonar-new-code",
+      "test": "tests/test_env_contracts.py",
+      "lane": "ci-lite",
+      "rationale": "Environment contracts must stay in fast new-code guard when changed."
     }
   ]
 }

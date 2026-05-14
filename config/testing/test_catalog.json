@@ -6003,6 +6003,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_multi_runtime_profile_service.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "217B Faza 1: kontrakt multi_runtime_profile — apply matrix, walidacja, rozdzielenie od systemu."
     }
   ]
 }

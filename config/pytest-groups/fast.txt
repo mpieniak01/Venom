@@ -264,6 +264,7 @@ tests/test_models_utils_security.py
 tests/test_module_data_policy.py
 tests/test_module_example_data_policy_routes.py
 tests/test_module_registry.py
+tests/test_multi_runtime_profile_service.py
 tests/test_new_chat_session_api.py
 tests/test_node_manager.py
 tests/test_node_protocol.py

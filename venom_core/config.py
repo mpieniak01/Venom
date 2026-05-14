@@ -207,6 +207,7 @@ class Settings(BaseSettings):
     GEMMA4_AUDIO_RESTART_COMMAND: str = ""  # Komenda restart (z env file)
     GEMMA4_AUDIO_SUPPORTS_AUDIO: bool = True  # Potrafi przetwarzać audio
     GEMMA4_AUDIO_SUPPORTS_TEXT: bool = True  # Potrafi przetwarzać text
+    GEMMA4_AUDIO_IMAGE_TOKEN_BUDGET: int = 280  # Budzet tokenow obrazu
     GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED: bool = (
         False  # Zapisuj i pokazuj skrót reasoning
     )

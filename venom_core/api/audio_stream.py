@@ -21,6 +21,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
+from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
 from venom_core.utils.logger import get_logger
 from venom_core.utils.voice_metadata import build_voice_session_insights
 
@@ -683,8 +684,13 @@ class AudioStreamHandler:
             "audio_runtime_supports_text": bool(
                 _gemma4_audio_setting("GEMMA4_AUDIO_SUPPORTS_TEXT", True)
             ),
+            "audio_runtime_supports_image": True,
             "audio_runtime_supports_unified_multimodal_respond": True,
             "audio_runtime_runtime_mode": "processor_model",
+            "audio_runtime_image_token_budget": int(
+                _gemma4_audio_setting("GEMMA4_AUDIO_IMAGE_TOKEN_BUDGET", 280)
+            ),
+            "assistant_models": gemma4_audio_available_models(role="assistant"),
             "audio_runtime_log_path": log_path,
             "audio_runtime_pid_path": pid_path,
         }

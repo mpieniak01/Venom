@@ -23,6 +23,26 @@ def test_extract_text_prompt_from_openai_messages_prefers_latest_user_text() -> 
     assert runtime_main._extract_text_prompt_from_openai_messages(messages) == "drugi"  # noqa: SLF001
 
 
+def test_extract_image_urls_from_openai_messages() -> None:
+    messages = [
+        {"role": "user", "content": [{"type": "text", "text": "opisz"}]},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "https://example.test/a.png"},
+                },
+                {"type": "image_url", "image_url": "https://example.test/b.png"},
+            ],
+        },
+    ]
+    assert runtime_main._extract_image_urls_from_openai_messages(messages) == [  # noqa: SLF001
+        "https://example.test/a.png",
+        "https://example.test/b.png",
+    ]
+
+
 def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -62,6 +82,51 @@ def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> Non
     assert captured["top_p"] == 0.9
     assert body["usage"]["prompt_tokens"] >= 1
     assert body["usage"]["completion_tokens"] == max(1, len("to jest odpowiedz") // 4)
+
+
+def test_chat_completions_accepts_image_urls(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class EngineStub:
+        model_id = "google/gemma-4-E2B-it"
+
+        def is_loaded(self) -> bool:
+            return True
+
+        def respond(self, _audio, **kwargs):
+            captured.update(kwargs)
+            return "ok", 0.05
+
+    daemon = _make_test_daemon(EngineStub())
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+
+    async def _fake_image_from_url(_url: str):
+        return object()
+
+    monkeypatch.setattr(runtime_main, "_image_from_url", _fake_image_from_url)
+
+    client = TestClient(runtime_main.app)
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "co jest na obrazku"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.test/image.png"},
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert isinstance(captured.get("images"), list)
+    assert len(captured["images"]) == 1
 
 
 def test_chat_completions_rejects_streaming(monkeypatch) -> None:

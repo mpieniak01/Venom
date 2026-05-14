@@ -433,6 +433,15 @@ async def test_local_models_by_runtime_skips_non_runtime_vllm_entries(
     with (
         patch.object(system_llm, "SETTINGS", settings),
         patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+        patch.object(
+            system_llm,
+            "gemma4_audio_available_models",
+            side_effect=lambda role="target", settings_obj=None: (
+                ["google/gemma-4-E2B-it"]
+                if role == "target"
+                else ["google/gemma-4-E2B-it-assistant"]
+            ),
+        ),
     ):
         grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
             model_manager=object(),
@@ -467,6 +476,15 @@ async def test_local_models_by_runtime_reports_unknown_provider_issue(
     with (
         patch.object(system_llm, "SETTINGS", settings),
         patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+        patch.object(
+            system_llm,
+            "gemma4_audio_available_models",
+            side_effect=lambda role="target", settings_obj=None: (
+                ["google/gemma-4-E2B-it"]
+                if role == "target"
+                else ["google/gemma-4-E2B-it-assistant"]
+            ),
+        ),
     ):
         grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
             model_manager=object(),
@@ -478,7 +496,7 @@ async def test_local_models_by_runtime_reports_unknown_provider_issue(
     assert grouped["onnx"] == []
     gemma_ids = [m["id"] for m in grouped["gemma4_audio"]]
     assert "google/gemma-4-E2B-it" in gemma_ids
-    assert "google/gemma-4-E4B-it" in gemma_ids
+    assert "google/gemma-4-E4B-it" not in gemma_ids
     assert audit == [
         {
             "name": "mystery-model",
@@ -489,40 +507,74 @@ async def test_local_models_by_runtime_reports_unknown_provider_issue(
     ]
 
 
-def test_gemma4_audio_static_models_returns_two_models() -> None:
-    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
-        active_provider="gemma4_audio",
-        active_model="google/gemma-4-E2B-it",
-    )
+def test_gemma4_audio_static_models_returns_target_models() -> None:
+    with patch.object(
+        system_llm,
+        "gemma4_audio_available_models",
+        side_effect=lambda role="target", settings_obj=None: (
+            ["google/gemma-4-E2B-it"]
+            if role == "target"
+            else ["google/gemma-4-E2B-it-assistant"]
+        ),
+    ):
+        models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+            active_provider="gemma4_audio",
+            active_model="google/gemma-4-E2B-it",
+        )
     ids = [m["id"] for m in models]
-    assert "google/gemma-4-E2B-it" in ids
-    assert "google/gemma-4-E4B-it" in ids
-    assert len(models) == 2
+    assert ids == ["google/gemma-4-E2B-it"]
+    assert len(models) == 1
 
 
 def test_gemma4_audio_static_models_active_flag() -> None:
-    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
-        active_provider="gemma4_audio",
-        active_model="google/gemma-4-E4B-it",
-    )
+    with patch.object(
+        system_llm,
+        "gemma4_audio_available_models",
+        side_effect=lambda role="target", settings_obj=None: (
+            ["google/gemma-4-E2B-it"]
+            if role == "target"
+            else ["google/gemma-4-E2B-it-assistant"]
+        ),
+    ):
+        models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+            active_provider="gemma4_audio",
+            active_model="google/gemma-4-E2B-it",
+        )
     by_id = {m["id"]: m for m in models}
-    assert by_id["google/gemma-4-E4B-it"]["active"] is True
-    assert by_id["google/gemma-4-E2B-it"]["active"] is False
+    assert by_id["google/gemma-4-E2B-it"]["active"] is True
 
 
 def test_gemma4_audio_static_models_inactive_when_different_provider() -> None:
-    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
-        active_provider="ollama",
-        active_model="google/gemma-4-E2B-it",
-    )
+    with patch.object(
+        system_llm,
+        "gemma4_audio_available_models",
+        side_effect=lambda role="target", settings_obj=None: (
+            ["google/gemma-4-E2B-it"]
+            if role == "target"
+            else ["google/gemma-4-E2B-it-assistant"]
+        ),
+    ):
+        models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+            active_provider="ollama",
+            active_model="google/gemma-4-E2B-it",
+        )
     assert all(not m["active"] for m in models)
 
 
 def test_gemma4_audio_static_models_capabilities() -> None:
-    models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
-        active_provider="gemma4_audio",
-        active_model="",
-    )
+    with patch.object(
+        system_llm,
+        "gemma4_audio_available_models",
+        side_effect=lambda role="target", settings_obj=None: (
+            ["google/gemma-4-E2B-it"]
+            if role == "target"
+            else ["google/gemma-4-E2B-it-assistant"]
+        ),
+    ):
+        models = system_llm._gemma4_audio_static_models(  # noqa: SLF001
+            active_provider="gemma4_audio",
+            active_model="",
+        )
     for model in models:
         caps = model.get("capabilities") or []
         assert "text" in caps
@@ -539,8 +591,17 @@ async def test_local_models_by_runtime_injects_gemma4_audio_static_models() -> N
     active_runtime = SimpleNamespace(
         provider="gemma4_audio", model_name="google/gemma-4-E2B-it"
     )
-    with patch.object(
-        system_llm, "get_active_llm_runtime", return_value=active_runtime
+    with (
+        patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+        patch.object(
+            system_llm,
+            "gemma4_audio_available_models",
+            side_effect=lambda role="target", settings_obj=None: (
+                ["google/gemma-4-E2B-it"]
+                if role == "target"
+                else ["google/gemma-4-E2B-it-assistant"]
+            ),
+        ),
     ):
         grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
             model_manager=object(),
@@ -550,18 +611,28 @@ async def test_local_models_by_runtime_injects_gemma4_audio_static_models() -> N
     gemma_models = grouped["gemma4_audio"]
     ids = [m["id"] for m in gemma_models]
     assert "google/gemma-4-E2B-it" in ids
-    assert "google/gemma-4-E4B-it" in ids
+    assert "google/gemma-4-E4B-it" not in ids
     assert audit == []
 
 
 def test_gemma4_audio_runtime_input_capabilities_present() -> None:
-    info = system_llm._gemma4_audio_runtime_input_capabilities("gemma4_audio")  # noqa: SLF001
+    with patch.object(
+        system_llm,
+        "gemma4_audio_available_models",
+        side_effect=lambda role="target", settings_obj=None: (
+            ["google/gemma-4-E2B-it"]
+            if role == "target"
+            else ["google/gemma-4-E2B-it-assistant"]
+        ),
+    ):
+        info = system_llm._gemma4_audio_runtime_input_capabilities("gemma4_audio")  # noqa: SLF001
     assert info["supports_text_input"] is True
     assert info["supports_audio_input"] is True
     assert info["supports_text_output"] is True
-    assert info["supports_image_input"] is False
+    assert info["supports_image_input"] is True
     assert "google/gemma-4-E2B-it" in info["supported_models"]
-    assert "google/gemma-4-E4B-it" in info["supported_models"]
+    assert info["supported_models"] == ["google/gemma-4-E2B-it"]
+    assert info["assistant_models"] == ["google/gemma-4-E2B-it-assistant"]
     assert "log_path" in info
     assert "pid_path" in info
 
@@ -578,12 +649,23 @@ def test_runtime_target_payload_includes_gemma4_audio_capabilities() -> None:
     active_runtime = SimpleNamespace(
         provider="gemma4_audio", model_name="google/gemma-4-E2B-it"
     )
-    with patch.object(
-        system_llm,
-        "SETTINGS",
-        SimpleNamespace(
-            GEMMA4_AUDIO_LOG_PATH="logs/gemma4_audio.log",
-            GEMMA4_AUDIO_PID_PATH=".venom_runtime/gemma4_audio.pid",
+    with (
+        patch.object(
+            system_llm,
+            "SETTINGS",
+            SimpleNamespace(
+                GEMMA4_AUDIO_LOG_PATH="logs/gemma4_audio.log",
+                GEMMA4_AUDIO_PID_PATH=".venom_runtime/gemma4_audio.pid",
+            ),
+        ),
+        patch.object(
+            system_llm,
+            "gemma4_audio_available_models",
+            side_effect=lambda role="target", settings_obj=None: (
+                ["google/gemma-4-E2B-it"]
+                if role == "target"
+                else ["google/gemma-4-E2B-it-assistant"]
+            ),
         ),
     ):
         payload = system_llm._runtime_target_payload(  # noqa: SLF001
@@ -600,8 +682,9 @@ def test_runtime_target_payload_includes_gemma4_audio_capabilities() -> None:
     assert payload["supports_text_input"] is True
     assert payload["supports_audio_input"] is True
     assert payload["supports_text_output"] is True
-    assert payload["supports_image_input"] is False
-    assert "google/gemma-4-E2B-it" in payload["supported_models"]
+    assert payload["supports_image_input"] is True
+    assert payload["supported_models"] == ["google/gemma-4-E2B-it"]
+    assert payload["assistant_models"] == ["google/gemma-4-E2B-it-assistant"]
     assert payload["log_path"] == "logs/gemma4_audio.log"
     assert payload["pid_path"] == ".venom_runtime/gemma4_audio.pid"
 
@@ -624,20 +707,40 @@ def test_runtime_target_payload_no_gemma4_fields_for_other_runtimes() -> None:
 
 
 def test_resolve_selected_model_for_switch_gemma4_audio_prefers_request() -> None:
-    request = SimpleNamespace(model="google/gemma-4-E4B-it", model_alias="")
-    selected, key = system_llm._resolve_selected_model_for_switch(  # noqa: SLF001
-        request=request,
-        server_name="gemma4_audio",
-        config={"LAST_MODEL_GEMMA4_AUDIO": "google/gemma-4-E2B-it"},
-        models=[],
-    )
-    assert selected == "google/gemma-4-E4B-it"
+    request = SimpleNamespace(model="google/gemma-4-E2B-it", model_alias="")
+    with patch.object(
+        system_llm,
+        "gemma4_audio_available_models",
+        side_effect=lambda role="target", settings_obj=None: (
+            ["google/gemma-4-E2B-it"]
+            if role == "target"
+            else ["google/gemma-4-E2B-it-assistant"]
+        ),
+    ):
+        selected, key = system_llm._resolve_selected_model_for_switch(  # noqa: SLF001
+            request=request,
+            server_name="gemma4_audio",
+            config={"LAST_MODEL_GEMMA4_AUDIO": "google/gemma-4-E2B-it"},
+            models=[],
+        )
+    assert selected == "google/gemma-4-E2B-it"
     assert key == "LAST_MODEL_GEMMA4_AUDIO"
 
 
 def test_resolve_selected_model_for_switch_gemma4_audio_invalid_request() -> None:
     request = SimpleNamespace(model="google/gemma-4-unknown", model_alias="")
-    with pytest.raises(system_llm.HTTPException):  # noqa: PT011
+    with (
+        patch.object(
+            system_llm,
+            "gemma4_audio_available_models",
+            side_effect=lambda role="target", settings_obj=None: (
+                ["google/gemma-4-E2B-it"]
+                if role == "target"
+                else ["google/gemma-4-E2B-it-assistant"]
+            ),
+        ),
+        pytest.raises(system_llm.HTTPException),
+    ):  # noqa: PT011
         system_llm._resolve_selected_model_for_switch(  # noqa: SLF001
             request=request,
             server_name="gemma4_audio",

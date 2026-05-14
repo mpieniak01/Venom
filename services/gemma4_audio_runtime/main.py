@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import os
 import sys
 import time
 from contextlib import asynccontextmanager
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from venom_core.config import SETTINGS
@@ -138,7 +142,7 @@ async def lifespan(app: FastAPI):
 
 async def _parse_respond_request(
     request: Request,
-) -> tuple[RespondRequest, bytes | None]:
+) -> tuple[RespondRequest, bytes | None, list[bytes]]:
     content_type = request.headers.get("content-type", "").lower()
     if "multipart/form-data" in content_type:
         form = await request.form()
@@ -150,10 +154,49 @@ async def _parse_respond_request(
         audio_bytes = None
         if isinstance(audio_file, UploadFile):
             audio_bytes = await audio_file.read()
-        return request_payload, audio_bytes
+        image_bytes_list: list[bytes] = []
+        image_field = form.get("image")
+        if isinstance(image_field, UploadFile):
+            image_bytes_list.append(await image_field.read())
+        for image_item in form.getlist("images"):
+            if isinstance(image_item, UploadFile):
+                image_bytes_list.append(await image_item.read())
+        return request_payload, audio_bytes, image_bytes_list
 
     payload = await request.json()
-    return RespondRequest.model_validate(payload), None
+    return RespondRequest.model_validate(payload), None, []
+
+
+def _image_from_data_field(data: str) -> Image.Image:
+    raw = data.strip()
+    if not raw:
+        raise ValueError("Empty image data")
+    if raw.startswith("data:"):
+        _, encoded = raw.split(",", 1)
+        decoded = base64.b64decode(encoded)
+    else:
+        decoded = base64.b64decode(raw)
+    with Image.open(BytesIO(decoded)) as image:
+        return image.convert("RGB")
+
+
+async def _image_from_url(url: str) -> Image.Image:
+    timeout = httpx.Timeout(20.0, connect=5.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        resp = await client.get(url)
+    if resp.status_code != 200:
+        raise ValueError(f"Failed to fetch image URL: HTTP {resp.status_code}")
+    with Image.open(BytesIO(resp.content)) as image:
+        return image.convert("RGB")
+
+
+def _image_from_path(path: str) -> Image.Image:
+    file_path = Path(path)
+    if not file_path.exists():
+        raise ValueError(f"Image path not found: {path}")
+    payload = file_path.read_bytes()
+    with Image.open(BytesIO(payload)) as image:
+        return image.convert("RGB")
 
 
 app = FastAPI(
@@ -217,7 +260,7 @@ async def status() -> StatusResponse:
                 instruction_tuned=True,
                 supports_text_input=True,
                 supports_audio_input=True,
-                supports_image_input=False,
+                supports_image_input=True,
                 supports_text_output=True,
                 runtime_mode="processor_model",
                 status="loaded",
@@ -253,7 +296,7 @@ async def list_models():
                 "instruction_tuned": True,
                 "supports_text_input": True,
                 "supports_audio_input": True,
-                "supports_image_input": False,
+                "supports_image_input": True,
                 "supports_text_output": True,
                 "runtime_mode": "processor_model",
                 "status": "loaded" if daemon.is_ready() else "warming",
@@ -306,6 +349,7 @@ async def daemon_status() -> DaemonStatusResponse:
         emotion_source=raw.get("emotion_source"),
         pending_reload=raw["pending_reload"],
         reload_reason=raw["reload_reason"],
+        supports_image_input=bool(raw.get("supports_image_input", True)),
     )
 
 
@@ -325,6 +369,7 @@ async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
     signal = daemon.update_params(
         max_new_tokens=body.max_new_tokens,
         enable_thinking=body.enable_thinking,
+        image_token_budget=body.image_token_budget,
         reasoning_summary_enabled=body.reasoning_summary_enabled,
         emotion_detection_enabled=body.emotion_detection_enabled,
         emotion_response_style_enabled=body.emotion_response_style_enabled,
@@ -487,12 +532,15 @@ async def respond(request: Request) -> RespondResponse:
     if not engine.is_loaded():
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    request_payload, audio_bytes = await _parse_respond_request(request)
+    request_payload, audio_bytes, uploaded_image_bytes = await _parse_respond_request(
+        request
+    )
 
     start_time = time.time()
     audio_array = None
     sample_rate = 16000
     text_content = None
+    images: list[Image.Image] = []
 
     if audio_bytes is not None:
         try:
@@ -515,9 +563,33 @@ async def respond(request: Request) -> RespondResponse:
                         )
                 elif content.type == "text" and content.text:
                     text_content = content.text
+                elif content.type == "image":
+                    try:
+                        if content.data:
+                            images.append(_image_from_data_field(content.data))
+                        elif content.path:
+                            images.append(_image_from_path(content.path))
+                        elif content.url:
+                            images.append(await _image_from_url(content.url))
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to load image input: {e}",
+                        )
 
-    if audio_array is None and not text_content:
-        raise HTTPException(status_code=400, detail="No audio or text content provided")
+    for image_bytes in uploaded_image_bytes:
+        try:
+            with Image.open(BytesIO(image_bytes)) as image:
+                images.append(image.convert("RGB"))
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to process uploaded image: {e}"
+            )
+
+    if audio_array is None and not text_content and not images:
+        raise HTTPException(
+            status_code=400, detail="No audio, text, or image content provided"
+        )
 
     prompt = text_content or request_payload.system_prompt or "Respond to the audio"
 
@@ -526,11 +598,10 @@ async def respond(request: Request) -> RespondResponse:
 
     try:
         generated_text, duration = engine.respond(
-            audio_array
-            if audio_array is not None
-            else np.zeros(16000, dtype=np.float32),
+            audio_array,
             sample_rate=sample_rate,
             prompt=prompt,
+            images=images or None,
             task=request_payload.task,
             question=request_payload.question,
             system_prompt=request_payload.system_prompt,
@@ -563,14 +634,28 @@ async def respond(request: Request) -> RespondResponse:
         task=request_payload.task,
         text=generated_text,
         duration_ms=total_duration_ms,
-        audio=AudioMetadata(sample_rate=sample_rate, duration_sec=duration),
-        input_modalities=["text", "audio"] if audio_array is not None else ["text"],
+        audio=(
+            AudioMetadata(sample_rate=sample_rate, duration_sec=duration)
+            if audio_array is not None
+            else None
+        ),
+        input_modalities=(
+            ["text", "audio", "image"]
+            if audio_array is not None and images
+            else (
+                ["text", "audio"]
+                if audio_array is not None
+                else (["text", "image"] if images else ["text"])
+            )
+        ),
         output_modalities=["text"],
         runtime_mode="processor_model",
         capabilities=Capabilities(
             audio_input="verified" if audio_array is not None else "unknown",
             audio_reasoning="verified" if audio_array is not None else "unknown",
             audio_transcription="verified" if audio_array is not None else "unknown",
+            image_input="verified" if images else "unknown",
+            image_ocr="verified" if images else "unknown",
         ),
         generation_config=GenerationConfig(
             max_new_tokens=request_payload.max_new_tokens,
@@ -605,9 +690,33 @@ def _extract_text_prompt_from_openai_messages(messages: list[dict]) -> str:
     return "Hello"
 
 
+def _extract_image_urls_from_openai_messages(messages: list[dict]) -> list[str]:
+    image_urls: list[str] = []
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            item_type = str(item.get("type", "")).strip().lower()
+            if item_type != "image_url":
+                continue
+            image_url = item.get("image_url")
+            if isinstance(image_url, dict):
+                candidate = str(image_url.get("url", "")).strip()
+            else:
+                candidate = str(image_url or "").strip()
+            if candidate:
+                image_urls.append(candidate)
+    return image_urls
+
+
 class ChatCompletionContentPart(BaseModel):
+    model_config = ConfigDict(extra="allow")
     type: str
     text: str | None = None
+    image_url: str | dict[str, str] | None = None
 
 
 class ChatCompletionMessage(BaseModel):
@@ -643,6 +752,13 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
     messages = [message.model_dump(mode="python") for message in payload.messages]
 
     prompt = _extract_text_prompt_from_openai_messages(messages)
+    image_urls = _extract_image_urls_from_openai_messages(messages)
+    images: list[Image.Image] = []
+    for image_url in image_urls:
+        try:
+            images.append(await _image_from_url(image_url))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid image_url: {e}")
     max_tokens = int(payload.max_tokens or payload.max_completion_tokens or 128)
     temperature_raw = payload.temperature
     top_p_raw = payload.top_p
@@ -653,13 +769,13 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
             detail="Streaming is not supported by gemma4_audio runtime",
         )
 
-    dummy_audio = np.zeros(16000, dtype=np.float32)
     daemon_status = daemon.status()
     daemon_params = daemon_status["params"]
     text, _ = engine.respond(
-        dummy_audio,
+        None,
         sample_rate=16000,
         prompt=prompt,
+        images=images or None,
         max_new_tokens=max_tokens,
         temperature=float(temperature_raw) if temperature_raw is not None else None,
         top_p=float(top_p_raw) if top_p_raw is not None else None,

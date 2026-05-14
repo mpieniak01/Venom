@@ -543,6 +543,8 @@ async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
         audio_output_mode=body.audio_output_mode,
         assistant_mode=body.assistant_mode,
         economy_mode=body.economy_mode,
+        precision=body.precision,
+        quantization_backend=body.quantization_backend,
     )
 
     raw = daemon.status()
@@ -840,6 +842,8 @@ async def respond(request: Request) -> RespondResponse:
         economy_mode_activated=pipeline_result.diagnostics.economy_mode_activated,
         degradation_reasons=pipeline_result.diagnostics.degradation_reasons,
         component_snapshot=pipeline_result.diagnostics.component_snapshot,
+        audio_output_bytes=pipeline_result.audio_bytes,
+        audio_output_sample_rate=pipeline_result.audio_sample_rate,
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -11,6 +12,20 @@ RetrievalMode = Literal["off", "auto", "always"]
 AudioOutputMode = Literal["off", "text_first", "voice_first"]
 AssistantMode = Literal["off", "attached", "conditional"]
 EconomyMode = Literal["off", "auto"]
+
+_ECONOMY_VRAM_THRESHOLD_DEFAULT = 2048
+
+
+def _economy_vram_threshold() -> int:
+    try:
+        return int(
+            os.getenv(
+                "MULTI_RUNTIME_ECONOMY_VRAM_THRESHOLD_MB",
+                _ECONOMY_VRAM_THRESHOLD_DEFAULT,
+            )
+        )
+    except (ValueError, TypeError):
+        return _ECONOMY_VRAM_THRESHOLD_DEFAULT
 
 
 @dataclass(slots=True)
@@ -30,11 +45,7 @@ class ExecutionPolicy:
 
 
 class RuntimePolicyResolver:
-    """Resolve runtime policy from daemon state and request modalities.
-
-    Current implementation preserves existing behavior and defaults to a safe,
-    lightweight policy. It is intentionally minimal for phase 1.
-    """
+    """Resolve runtime policy from daemon state and request modalities."""
 
     def resolve(
         self,
@@ -42,17 +53,21 @@ class RuntimePolicyResolver:
         daemon_status: dict[str, Any],
         has_images: bool,
         has_audio: bool,
+        free_vram_mb: int | None = None,
     ) -> ExecutionPolicy:
         params = daemon_status.get("params", {})
-        vram_backend = str(daemon_status.get("vram", {}).get("backend", "cpu"))
+        vram_info = daemon_status.get("vram", {})
+        vram_backend = str(vram_info.get("backend", "cpu"))
         assistant_attached = bool(daemon_status.get("assistant_model"))
 
+        # Infer free_vram_mb from daemon status when not explicitly passed
+        if free_vram_mb is None:
+            raw_free = vram_info.get("free_mb")
+            if isinstance(raw_free, (int, float)) and raw_free >= 0:
+                free_vram_mb = int(raw_free)
+
         profile_execution_mode = params.get("execution_mode")
-        if profile_execution_mode in {
-            "balanced",
-            "vision_priority",
-            "voice_priority",
-        }:
+        if profile_execution_mode in {"balanced", "vision_priority", "voice_priority"}:
             execution_mode: ExecutionMode = profile_execution_mode
         elif has_images and not has_audio:
             execution_mode: ExecutionMode = "vision_priority"
@@ -88,11 +103,24 @@ class RuntimePolicyResolver:
         else:
             assistant_mode = "attached" if assistant_attached else "off"
 
+        # Economy mode: profile setting first, then VRAM pressure, then backend fallback
         profile_economy_mode = params.get("economy_mode")
-        if profile_economy_mode in {"off", "auto"}:
-            economy_mode: EconomyMode = profile_economy_mode
+        if profile_economy_mode == "auto":
+            economy_mode: EconomyMode = "auto"
+        elif profile_economy_mode == "off":
+            # Profile explicitly disables economy — respect it unless VRAM is critically low
+            if free_vram_mb is not None and free_vram_mb < _economy_vram_threshold():
+                economy_mode = "auto"
+            else:
+                economy_mode = "off"
         else:
-            economy_mode = "auto" if vram_backend != "cuda" else "off"
+            # No profile setting: trigger economy on VRAM pressure or non-CUDA backend
+            if free_vram_mb is not None and free_vram_mb < _economy_vram_threshold():
+                economy_mode = "auto"
+            elif vram_backend != "cuda":
+                economy_mode = "auto"
+            else:
+                economy_mode = "off"
 
         return ExecutionPolicy(
             execution_mode=execution_mode,

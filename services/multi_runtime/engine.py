@@ -52,6 +52,8 @@ class DaemonParams:
     audio_output_mode: str = "off"
     assistant_mode: str = "off"
     economy_mode: str = "off"
+    precision: str = "auto"
+    quantization_backend: Optional[str] = None
 
 
 @dataclass
@@ -105,11 +107,15 @@ class MultiRuntimeEngine:
         cache_dir: str,
         device: str = "auto",
         max_new_tokens: int = 128,
+        precision: str = "auto",
+        quantization_backend: Optional[str] = None,
     ):
         self.model_id = model_id
         self.cache_dir = cache_dir
         self.device = device
         self.default_max_new_tokens = max_new_tokens
+        self.precision = precision
+        self.quantization_backend = quantization_backend
 
         self.model: Optional[Any] = None
         self.processor: Optional[Any] = None
@@ -139,6 +145,8 @@ class MultiRuntimeEngine:
                 f"Failed to load processor for {self.model_id}: {e}"
             ) from e
 
+        load_kwargs = self._build_load_kwargs(transformers)
+
         last_error: Optional[Exception] = None
         for cls_name in self._MODEL_CLASS_CANDIDATES:
             model_cls = getattr(transformers, cls_name, None)
@@ -147,13 +155,18 @@ class MultiRuntimeEngine:
             try:
                 self.model = model_cls.from_pretrained(
                     self.model_id,
-                    dtype="auto",
-                    device_map=self.device,
                     cache_dir=self.cache_dir,
                     local_files_only=True,
+                    **load_kwargs,
                 )
                 self.model_class_name = cls_name
-                logger.debug("Loaded %s with %s", self.model_id, cls_name)
+                logger.debug(
+                    "Loaded %s with %s (precision=%s, quant=%s)",
+                    self.model_id,
+                    cls_name,
+                    self.precision,
+                    self.quantization_backend,
+                )
                 return
             except Exception as e:
                 last_error = e
@@ -162,6 +175,67 @@ class MultiRuntimeEngine:
         raise ModelLoadError(
             f"Failed to load model {self.model_id} with any candidate class: {last_error}"
         ) from last_error
+
+    def _build_load_kwargs(self, transformers: Any) -> dict[str, Any]:
+        """Build from_pretrained kwargs based on precision and quantization settings."""
+        prec = str(self.precision or "auto").lower().strip()
+        qbackend = str(self.quantization_backend or "").lower().strip()
+
+        # bitsandbytes quantization takes precedence over dtype
+        if qbackend == "bitsandbytes" and prec in {"int4", "int8"}:
+            bnb_config = self._build_bnb_config(transformers, prec)
+            if bnb_config is not None:
+                return {
+                    "quantization_config": bnb_config,
+                    "device_map": self.device,
+                }
+            # Fallback: bitsandbytes unavailable — log and use float16
+            logger.warning(
+                "bitsandbytes quantization requested (%s) but unavailable; falling back to float16",
+                prec,
+            )
+            import torch
+
+            return {"torch_dtype": torch.float16, "device_map": self.device}
+
+        # torch dtype aliases — only import torch when a specific dtype is requested
+        dtype_aliases = {
+            "float16": "float16",
+            "fp16": "float16",
+            "bfloat16": "bfloat16",
+            "bf16": "bfloat16",
+            "float32": "float32",
+            "fp32": "float32",
+        }
+        if prec in dtype_aliases:
+            import torch
+
+            return {
+                "torch_dtype": getattr(torch, dtype_aliases[prec]),
+                "device_map": self.device,
+            }
+
+        # "auto" and anything unrecognised → let transformers decide
+        return {"dtype": "auto", "device_map": self.device}
+
+    @staticmethod
+    def _build_bnb_config(transformers: Any, prec: str) -> Optional[Any]:
+        """Return a BitsAndBytesConfig or None when bitsandbytes is unavailable."""
+        try:
+            import bitsandbytes  # noqa: F401 — availability check
+
+            BitsAndBytesConfig = getattr(transformers, "BitsAndBytesConfig", None)
+            if BitsAndBytesConfig is None:
+                return None
+            if prec == "int4":
+                import torch
+
+                return BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+                )
+            return BitsAndBytesConfig(load_in_8bit=True)
+        except ImportError:
+            return None
 
     def unload(self) -> None:
         """Unload model and free references."""
@@ -415,6 +489,8 @@ class MultiRuntimeDaemon:
             cache_dir=self._cache_dir,
             device=self._device,
             max_new_tokens=self._params.max_new_tokens,
+            precision=self._params.precision,
+            quantization_backend=self._params.quantization_backend,
         )
         self._target_engine.load()
         logger.info("Target model loaded: %s", self._target_id)
@@ -504,6 +580,8 @@ class MultiRuntimeDaemon:
         audio_output_mode: Optional[str] = None,
         assistant_mode: Optional[str] = None,
         economy_mode: Optional[str] = None,
+        precision: Optional[str] = None,
+        quantization_backend: Optional[str] = None,
     ) -> ReloadSignal:
         """Apply parameter changes. Returns the minimum reload action required."""
         reload_signal = ReloadSignal.NONE
@@ -557,6 +635,22 @@ class MultiRuntimeDaemon:
 
         if economy_mode is not None:
             self._params.economy_mode = economy_mode
+
+        # precision and quantization_backend require a soft reload to take effect
+        if precision is not None and precision != self._params.precision:
+            self._params.precision = precision
+            self._reload_reason = f"precision changed to '{precision}'"
+            reload_signal = ReloadSignal.SOFT_RELOAD
+
+        if (
+            quantization_backend is not None
+            and quantization_backend != self._params.quantization_backend
+        ):
+            self._params.quantization_backend = quantization_backend
+            self._reload_reason = (
+                f"quantization_backend changed to '{quantization_backend}'"
+            )
+            reload_signal = ReloadSignal.SOFT_RELOAD
 
         return reload_signal
 
@@ -645,6 +739,8 @@ class MultiRuntimeDaemon:
                 "audio_output_mode": self._params.audio_output_mode,
                 "assistant_mode": self._params.assistant_mode,
                 "economy_mode": self._params.economy_mode,
+                "precision": self._params.precision,
+                "quantization_backend": self._params.quantization_backend,
             },
             "vram": _get_vram_info().__dict__,
             "raw_thinking_available": raw_thinking_available,

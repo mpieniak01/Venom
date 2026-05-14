@@ -170,6 +170,14 @@ class RespondResponse(BaseModel):
         default_factory=list,
         description="Runtime component snapshot captured during execution",
     )
+    audio_output_bytes: Optional[str] = Field(
+        None,
+        description="Base64-encoded WAV audio synthesis output (present when TTS succeeded)",
+    )
+    audio_output_sample_rate: Optional[int] = Field(
+        None,
+        description="Sample rate of the synthesized audio output in Hz",
+    )
 
 
 class TranscribeRequest(BaseModel):
@@ -250,6 +258,8 @@ class DaemonParamsInfo(BaseModel):
     audio_output_mode: str = "off"
     assistant_mode: str = "off"
     economy_mode: str = "off"
+    precision: str = "auto"
+    quantization_backend: Optional[str] = None
 
 
 class DaemonStatusResponse(BaseModel):
@@ -312,6 +322,8 @@ class DaemonConfigRequest(BaseModel):
     audio_output_mode: Optional[str] = None
     assistant_mode: Optional[str] = None
     economy_mode: Optional[str] = None
+    precision: Optional[str] = None
+    quantization_backend: Optional[str] = None
 
 
 class DaemonConfigResponse(BaseModel):

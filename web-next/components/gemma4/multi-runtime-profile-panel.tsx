@@ -45,6 +45,41 @@ const CACHE_OPTIONS: SelectMenuOption[] = [
   { value: "offloaded", label: "offloaded" },
 ];
 
+const EXECUTION_MODE_OPTIONS: SelectMenuOption[] = [
+  { value: "balanced", label: "balanced" },
+  { value: "vision_priority", label: "vision_priority" },
+  { value: "voice_priority", label: "voice_priority" },
+];
+
+const IMAGE_STRATEGY_OPTIONS: SelectMenuOption[] = [
+  { value: "vlm_only", label: "vlm_only" },
+  { value: "ocr_first", label: "ocr_first" },
+  { value: "hybrid", label: "hybrid" },
+];
+
+const RETRIEVAL_MODE_OPTIONS: SelectMenuOption[] = [
+  { value: "off", label: "off" },
+  { value: "auto", label: "auto" },
+  { value: "always", label: "always" },
+];
+
+const AUDIO_OUTPUT_MODE_OPTIONS: SelectMenuOption[] = [
+  { value: "off", label: "off" },
+  { value: "text_first", label: "text_first" },
+  { value: "voice_first", label: "voice_first" },
+];
+
+const ASSISTANT_MODE_OPTIONS: SelectMenuOption[] = [
+  { value: "off", label: "off" },
+  { value: "attached", label: "attached" },
+  { value: "conditional", label: "conditional" },
+];
+
+const ECONOMY_MODE_OPTIONS: SelectMenuOption[] = [
+  { value: "off", label: "off" },
+  { value: "auto", label: "auto" },
+];
+
 // ---------------------------------------------------------------------------
 // Main panel (self-contained with hook)
 // ---------------------------------------------------------------------------
@@ -87,6 +122,12 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
     boolean | null
   >(null);
   const [localCache, setLocalCache] = useState<string | null>(null);
+  const [localExecutionMode, setLocalExecutionMode] = useState<string | null>(null);
+  const [localImageStrategy, setLocalImageStrategy] = useState<string | null>(null);
+  const [localRetrievalMode, setLocalRetrievalMode] = useState<string | null>(null);
+  const [localAudioOutputMode, setLocalAudioOutputMode] = useState<string | null>(null);
+  const [localAssistantMode, setLocalAssistantMode] = useState<string | null>(null);
+  const [localEconomyMode, setLocalEconomyMode] = useState<string | null>(null);
 
   if (loading && !data) {
     return (
@@ -123,6 +164,28 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
       : localImageBudget;
   const effectiveCache =
     localCache === null ? (profile?.cache_implementation ?? "") : localCache;
+  const effectiveExecutionMode =
+    localExecutionMode === null
+      ? (profile?.execution_mode ?? "balanced")
+      : localExecutionMode;
+  const effectiveImageStrategy =
+    localImageStrategy === null
+      ? (profile?.image_strategy ?? "vlm_only")
+      : localImageStrategy;
+  const effectiveRetrievalMode =
+    localRetrievalMode === null
+      ? (profile?.retrieval_mode ?? "off")
+      : localRetrievalMode;
+  const effectiveAudioOutputMode =
+    localAudioOutputMode === null
+      ? (profile?.audio_output_mode ?? "off")
+      : localAudioOutputMode;
+  const effectiveAssistantMode =
+    localAssistantMode === null
+      ? (profile?.assistant_mode ?? "off")
+      : localAssistantMode;
+  const effectiveEconomyMode =
+    localEconomyMode === null ? (profile?.economy_mode ?? "off") : localEconomyMode;
 
   const busy = updatePending;
 
@@ -143,6 +206,23 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
   async function handleApplyCacheImpl() {
     await applyUpdate({
       cache_implementation: effectiveCache === "" ? null : effectiveCache,
+    });
+  }
+
+  async function handleApplyPolicy() {
+    await applyUpdate({
+      execution_mode:
+        effectiveExecutionMode as MultiRuntimeProfileUpdateRequest["execution_mode"],
+      image_strategy:
+        effectiveImageStrategy as MultiRuntimeProfileUpdateRequest["image_strategy"],
+      retrieval_mode:
+        effectiveRetrievalMode as MultiRuntimeProfileUpdateRequest["retrieval_mode"],
+      audio_output_mode:
+        effectiveAudioOutputMode as MultiRuntimeProfileUpdateRequest["audio_output_mode"],
+      assistant_mode:
+        effectiveAssistantMode as MultiRuntimeProfileUpdateRequest["assistant_mode"],
+      economy_mode:
+        effectiveEconomyMode as MultiRuntimeProfileUpdateRequest["economy_mode"],
     });
   }
 
@@ -303,6 +383,92 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
           disabled={busy || !data?.daemon_reachable}
         >
           {t("runtime.profile.stageCacheReload")}
+        </Button>
+      </section>
+
+      {/* Execution policy (live) */}
+      <section aria-labelledby="profile-policy-section">
+        <div className="flex items-center gap-2 mb-2" id="profile-policy-section">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Execution Policy
+          </span>
+          {matrix && <ApplyModeBadge mode={matrix.execution_mode} />}
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm">execution_mode</span>
+            <div className="w-48">
+              <SelectMenu
+                value={effectiveExecutionMode}
+                options={EXECUTION_MODE_OPTIONS}
+                onChange={setLocalExecutionMode}
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm">image_strategy</span>
+            <div className="w-48">
+              <SelectMenu
+                value={effectiveImageStrategy}
+                options={IMAGE_STRATEGY_OPTIONS}
+                onChange={setLocalImageStrategy}
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm">retrieval_mode</span>
+            <div className="w-48">
+              <SelectMenu
+                value={effectiveRetrievalMode}
+                options={RETRIEVAL_MODE_OPTIONS}
+                onChange={setLocalRetrievalMode}
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm">audio_output_mode</span>
+            <div className="w-48">
+              <SelectMenu
+                value={effectiveAudioOutputMode}
+                options={AUDIO_OUTPUT_MODE_OPTIONS}
+                onChange={setLocalAudioOutputMode}
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm">assistant_mode</span>
+            <div className="w-48">
+              <SelectMenu
+                value={effectiveAssistantMode}
+                options={ASSISTANT_MODE_OPTIONS}
+                onChange={setLocalAssistantMode}
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm">economy_mode</span>
+            <div className="w-48">
+              <SelectMenu
+                value={effectiveEconomyMode}
+                options={ECONOMY_MODE_OPTIONS}
+                onChange={setLocalEconomyMode}
+                disabled={busy}
+              />
+            </div>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          className="mt-3 w-full"
+          onClick={handleApplyPolicy}
+          disabled={busy || !data?.daemon_reachable}
+        >
+          {busy ? t("runtime.profile.applying") : "Apply policy"}
         </Button>
       </section>
 

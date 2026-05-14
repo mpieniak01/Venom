@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
+import type {
+  Dispatch,
+  MutableRefObject,
+  PointerEvent as ReactPointerEvent,
+  RefObject,
+  SetStateAction,
+} from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +39,10 @@ import { usePageVisibility } from "@/components/voice/use-page-visibility";
 import { useOrbActivityWindow } from "@/components/voice/use-orb-activity-window";
 import { useVoiceDebugMode } from "@/components/voice/use-voice-debug-mode";
 import type { VoiceDebugSnapshot } from "@/components/voice/use-voice-debug-mode";
+import {
+  RuntimeDiagnosticsPanel,
+  type RuntimeSummaryItem,
+} from "@/components/runtime/runtime-diagnostics-panel";
 
 export type AudioStatus = {
   enabled: boolean;
@@ -121,6 +131,21 @@ type VoiceSessionDiagnostics = {
   response_text?: string;
   download_url?: string | null;
   pipeline_id?: string | null;
+  execution_trace?: string[] | null;
+  selected_policy?: string | null;
+  selected_image_strategy?: string | null;
+  retrieval_used?: boolean | null;
+  retrieval_context_items?: number | null;
+  retrieval_route?: string | null;
+  assistant_used?: boolean | null;
+  economy_mode_activated?: boolean | null;
+  degradation_reasons?: string[] | null;
+  component_snapshot?: Array<{
+    component_id?: string | null;
+    health?: string | null;
+    backend?: string | null;
+    available?: boolean | null;
+  }> | null;
   audio_runtime_provider?: string | null;
   audio_runtime_model?: string | null;
   audio_input_status?: string | null;
@@ -2085,6 +2110,126 @@ function useVoiceCommandCenterStatusExpiry(params: {
   }, [debugDryRunRequested, lastAudioSignal, playbackState, processingStatus, recording, setLastAudioSignal]);
 }
 
+function useVoiceStatusUpdateEmitter(params: {
+  onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
+  debugDryRunRequested: boolean;
+  debugRecording: boolean;
+  audioStatus: AudioStatus | null;
+}) {
+  const { onStatusUpdate, debugDryRunRequested, debugRecording, audioStatus } = params;
+
+  useEffect(() => {
+    if (!onStatusUpdate) return;
+    if (debugDryRunRequested) {
+      onStatusUpdate(buildDebugAudioStatus(debugRecording));
+      return;
+    }
+    onStatusUpdate(audioStatus);
+  }, [audioStatus, debugDryRunRequested, debugRecording, onStatusUpdate]);
+}
+
+function useVoiceModeSyncEffect(params: {
+  audioEnabled: boolean;
+  connected: boolean;
+  t: ReturnType<typeof useTranslation>;
+  voiceModePreset: VoiceModePreset;
+  lastVoiceModeSentRef: MutableRefObject<string | null>;
+  wsRef: MutableRefObject<WebSocket | null>;
+  setStatusMessage: Dispatch<SetStateAction<string | null>>;
+}) {
+  const {
+    audioEnabled,
+    connected,
+    t,
+    voiceModePreset,
+    lastVoiceModeSentRef,
+    wsRef,
+    setStatusMessage,
+  } = params;
+  useEffect(() => {
+    syncVoiceModeSelection({
+      audioEnabled,
+      connected,
+      t,
+      voiceModePreset,
+      lastVoiceModeSentRef,
+      wsRef,
+      setStatusMessage,
+    });
+  }, [audioEnabled, connected, t, voiceModePreset, lastVoiceModeSentRef, wsRef, setStatusMessage]);
+}
+
+function useVoiceCaptureWarmupEffect(params: {
+  debugDryRunRequested: boolean;
+  audioEnabled: boolean;
+  isVoiceModeEnabled: boolean;
+  mediaStreamRef: MutableRefObject<MediaStream | null>;
+  audioContextRef: MutableRefObject<AudioContext | null>;
+  sourceNodeRef: MutableRefObject<MediaStreamAudioSourceNode | null>;
+  analyserRef: MutableRefObject<AnalyserNode | null>;
+  mediaRecorderRef: MutableRefObject<MediaRecorder | null>;
+  ensurePlaybackContext: () => Promise<AudioContext>;
+  getMediaRecorderMimeType: () => string;
+}) {
+  const {
+    debugDryRunRequested,
+    audioEnabled,
+    isVoiceModeEnabled,
+    mediaStreamRef,
+    audioContextRef,
+    sourceNodeRef,
+    analyserRef,
+    mediaRecorderRef,
+    ensurePlaybackContext,
+    getMediaRecorderMimeType,
+  } = params;
+  useEffect(() => {
+    if (debugDryRunRequested || !audioEnabled || !isVoiceModeEnabled) {
+      return;
+    }
+    if (
+      mediaStreamRef.current &&
+      audioContextRef.current &&
+      sourceNodeRef.current &&
+      analyserRef.current &&
+      mediaRecorderRef.current
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    createVoiceCaptureEnvironment({
+      activeWindow: getBrowserWindow(),
+      audioContextRef,
+      getMediaRecorderMimeType,
+      mediaStreamRef,
+      sourceNodeRef,
+      analyserRef,
+      mediaRecorderRef,
+      ensurePlaybackContext,
+    }).catch((error) => {
+      if (!cancelled) {
+        console.warn("Voice capture warmup failed", error);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    audioEnabled,
+    analyserRef,
+    audioContextRef,
+    debugDryRunRequested,
+    ensurePlaybackContext,
+    getMediaRecorderMimeType,
+    isVoiceModeEnabled,
+    mediaRecorderRef,
+    mediaStreamRef,
+    sourceNodeRef,
+  ]);
+}
+
 type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
@@ -2092,7 +2237,27 @@ type VoiceCommandCenterProps = Readonly<{
   isDevMode?: boolean;
 }>;
 
-export function VoiceCommandCenter({
+export function VoiceCommandCenter(props: VoiceCommandCenterProps) {
+  return <VoiceCommandCenterPanel {...props} />;
+}
+
+function tryCapturePointer(element: HTMLButtonElement, pointerId: number): void {
+  try {
+    element.setPointerCapture(pointerId);
+  } catch {
+    // pointer capture not supported in this environment
+  }
+}
+
+function tryReleasePointer(element: HTMLButtonElement, pointerId: number): void {
+  try {
+    element.releasePointerCapture(pointerId);
+  } catch {
+    // pointer capture not supported in this environment
+  }
+}
+
+function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
   onStatusUpdate,
@@ -2148,17 +2313,15 @@ export function VoiceCommandCenter({
 
   const reducedMotion = useVoiceCommandCenterReducedMotion();
 
-  useEffect(() => {
-    syncVoiceModeSelection({
-      audioEnabled,
-      connected,
-      t,
-      voiceModePreset,
-      lastVoiceModeSentRef,
-      wsRef,
-      setStatusMessage,
-    });
-  }, [audioEnabled, connected, t, voiceModePreset]);
+  useVoiceModeSyncEffect({
+    audioEnabled,
+    connected,
+    t,
+    voiceModePreset,
+    lastVoiceModeSentRef,
+    wsRef,
+    setStatusMessage,
+  });
 
   const refreshAudioStatus = useCallback(
     () =>
@@ -2181,14 +2344,12 @@ export function VoiceCommandCenter({
     [debugDryRunRequested],
   );
 
-  useEffect(() => {
-    if (!onStatusUpdate) return;
-    if (debugDryRunRequested) {
-      onStatusUpdate(buildDebugAudioStatus(debugMode.recording));
-      return;
-    }
-    onStatusUpdate(audioStatus);
-  }, [audioStatus, debugDryRunRequested, debugMode.recording, onStatusUpdate]);
+  useVoiceStatusUpdateEmitter({
+    onStatusUpdate,
+    debugDryRunRequested,
+    debugRecording: debugMode.recording,
+    audioStatus,
+  });
 
   useVoiceCommandCenterDebugBootstrap({
     debugDryRunRequested,
@@ -2307,54 +2468,18 @@ export function VoiceCommandCenter({
     [],
   );
 
-  useEffect(() => {
-    if (debugDryRunRequested) {
-      return;
-    }
-    if (!audioEnabled || !isVoiceModeEnabled) {
-      return;
-    }
-    if (
-      mediaStreamRef.current &&
-      audioContextRef.current &&
-      sourceNodeRef.current &&
-      analyserRef.current &&
-      mediaRecorderRef.current
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    createVoiceCaptureEnvironment({
-      activeWindow: getBrowserWindow(),
-      audioContextRef,
-      getMediaRecorderMimeType,
-      mediaStreamRef,
-      sourceNodeRef,
-      analyserRef,
-      mediaRecorderRef,
-      ensurePlaybackContext,
-    }).catch((error) => {
-      if (!cancelled) {
-        console.warn("Voice capture warmup failed", error);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    audioEnabled,
-    analyserRef,
+  useVoiceCaptureWarmupEffect({
     debugDryRunRequested,
+    audioEnabled,
+    isVoiceModeEnabled,
+    mediaStreamRef,
+    audioContextRef,
+    sourceNodeRef,
+    analyserRef,
+    mediaRecorderRef,
     ensurePlaybackContext,
     getMediaRecorderMimeType,
-    isVoiceModeEnabled,
-    mediaRecorderRef,
-    mediaStreamRef,
-    sourceNodeRef,
-    audioContextRef,
-  ]);
+  });
 
   useEffect(
     () => {
@@ -2563,6 +2688,33 @@ export function VoiceCommandCenter({
     setLastAudioSignal,
   });
 
+  const onRecordingPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      if (!recording) {
+        tryCapturePointer(event.currentTarget, event.pointerId);
+        startRecording().catch(() => undefined);
+      }
+    },
+    [recording, startRecording],
+  );
+
+  const onRecordingPointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      stopRecording();
+      tryReleasePointer(event.currentTarget, event.pointerId);
+    },
+    [stopRecording],
+  );
+
+  const onVoiceModeToggle = useCallback(() => {
+    if (debugDryRunActive) return;
+    const next = !isVoiceModeEnabled;
+    setIsVoiceModeEnabled(next);
+    setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
+  }, [debugDryRunActive, isVoiceModeEnabled, setIsVoiceModeEnabled, setStatusMessage, t]);
+
   return (
     <>
       <Panel
@@ -2616,28 +2768,10 @@ export function VoiceCommandCenter({
 
           <Button
             type="button"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              if (!recordingRef.current) {
-                try {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                } catch {
-                  // ignore pointer capture failures
-                }
-                startRecording().catch(() => undefined);
-              }
-            }}
-            onPointerUp={(event) => {
-              event.preventDefault();
-              stopRecording();
-              try {
-                event.currentTarget.releasePointerCapture(event.pointerId);
-              } catch {
-                // ignore pointer capture failures
-              }
-            }}
-            onPointerCancel={() => stopRecording()}
-            onLostPointerCapture={() => stopRecording()}
+            onPointerDown={onRecordingPointerDown}
+            onPointerUp={onRecordingPointerUp}
+            onPointerCancel={stopRecording}
+            onLostPointerCapture={stopRecording}
             variant="outline"
             size="md"
             className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${viewState.recordingButtonClass}`}
@@ -2651,14 +2785,7 @@ export function VoiceCommandCenter({
               type="button"
               size="xs"
               variant={viewState.effectiveIsVoiceModeEnabled ? "primary" : "outline"}
-              onClick={() => {
-                if (debugDryRunActive) return;
-                setIsVoiceModeEnabled((current) => {
-                  const next = !current;
-                  setStatusMessage(next ? t("voice.controls.voiceChat") : t("voice.controls.textChat"));
-                  return next;
-                });
-              }}
+              onClick={onVoiceModeToggle}
               disabled={!viewState.effectiveAudioEnabled || debugDryRunActive}
             >
               {viewState.effectiveIsVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
@@ -2740,6 +2867,44 @@ export function VoiceCommandCenter({
           </div>
 
           <TimingStrip timings={viewState.effectiveAudioStatus?.latest_voice_session?.timings_ms} />
+
+          {viewState.effectiveAudioStatus?.latest_voice_session && (
+            <RuntimeDiagnosticsPanel
+              title="Runtime execution"
+              description="Live voice session diagnostics and component health."
+              summaryItems={
+                [
+                  {
+                    label: "Policy",
+                    value: viewState.effectiveAudioStatus.latest_voice_session.selected_policy ?? "—",
+                    tone: "neutral",
+                  },
+                  {
+                    label: "Image",
+                    value: viewState.effectiveAudioStatus.latest_voice_session.selected_image_strategy ?? "—",
+                    tone: "neutral",
+                    hint: `retrieval ${viewState.effectiveAudioStatus.latest_voice_session.retrieval_used ? "on" : "off"}`,
+                  },
+                  {
+                    label: "Route",
+                    value: viewState.effectiveAudioStatus.latest_voice_session.retrieval_route ?? "—",
+                    tone: "neutral",
+                    hint: `assistant ${viewState.effectiveAudioStatus.latest_voice_session.assistant_used ? "on" : "off"}`,
+                  },
+                  {
+                    label: "Economy",
+                    value: viewState.effectiveAudioStatus.latest_voice_session.economy_mode_activated ? "on" : "off",
+                    tone: viewState.effectiveAudioStatus.latest_voice_session.economy_mode_activated ? "warning" : "success",
+                    hint: `retrieval items ${viewState.effectiveAudioStatus.latest_voice_session.retrieval_context_items ?? 0}`,
+                  },
+                ] as RuntimeSummaryItem[]
+              }
+              trace={viewState.effectiveAudioStatus.latest_voice_session.execution_trace ?? []}
+              componentSnapshot={viewState.effectiveAudioStatus.latest_voice_session.component_snapshot ?? []}
+              degradationReasons={viewState.effectiveAudioStatus.latest_voice_session.degradation_reasons ?? []}
+              className="border-white/10 bg-white/[0.02]"
+            />
+          )}
 
           <p className="text-hint text-xs">{viewState.effectiveStatusMessage ?? t("voice.status.channelReady")}</p>
         </div>

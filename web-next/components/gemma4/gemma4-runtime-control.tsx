@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
@@ -86,6 +87,171 @@ type InnerProps = Readonly<{
   assistantModels?: string[];
 }>;
 
+export function Gemma4RuntimeControlInner(props: InnerProps) {
+  return <Gemma4RuntimeControlPanel {...props} />;
+}
+
+// ---------------------------------------------------------------------------
+// Image probe diagnostics sub-component (extracted to reduce parent complexity)
+// ---------------------------------------------------------------------------
+
+type ImageProbeDiagnostics = {
+  executionTrace: string[];
+  selectedPolicy: string | null;
+  selectedImageStrategy: string | null;
+  retrievalUsed: boolean;
+  retrievalContextItems: number;
+  retrievalRoute: string | null;
+  assistantUsed: boolean;
+  economyModeActivated: boolean;
+  degradationReasons: string[];
+};
+
+type ImageProbeSectionProps = Readonly<{
+  busy: boolean;
+  imageProbePending: boolean;
+  imageUrlInput: string;
+  imageDataInput: string | null;
+  imageFileName: string | null;
+  imagePromptInput: string;
+  imageProbeResult: string | null;
+  imageProbeDiagnostics: ImageProbeDiagnostics | null;
+  imageProbeError: string | null;
+  imageFileInputRef: RefObject<HTMLInputElement | null>;
+  onFileChange: (files: FileList | null) => Promise<void>;
+  onImageUrlChange: (url: string) => void;
+  onImagePromptChange: (prompt: string) => void;
+  onClearImageData: () => void;
+  onProbe: () => void;
+}>;
+
+function ImageProbeSection({
+  busy,
+  imageProbePending,
+  imageUrlInput,
+  imageDataInput,
+  imageFileName,
+  imagePromptInput,
+  imageProbeResult,
+  imageProbeDiagnostics,
+  imageProbeError,
+  imageFileInputRef,
+  onFileChange,
+  onImageUrlChange,
+  onImagePromptChange,
+  onClearImageData,
+  onProbe,
+}: ImageProbeSectionProps) {
+  const t = useTranslation();
+  return (
+    <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+      <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
+      <div className="mt-2 space-y-2">
+        <button
+          type="button"
+          onDragOver={(event) => { event.preventDefault(); }}
+          onDrop={async (event) => {
+            event.preventDefault();
+            await onFileChange(event.dataTransfer.files);
+            if (event.dataTransfer.files.item(0)) onImageUrlChange("");
+          }}
+          onClick={() => imageFileInputRef.current?.click()}
+          className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
+          aria-label={t("voice.daemon.dragDropImage")}
+        >
+          {t("voice.daemon.dragDropImage")}
+        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => imageFileInputRef.current?.click()}
+            disabled={busy || imageProbePending}
+          >
+            {t("voice.daemon.chooseImageFromDisk")}
+          </Button>
+          {imageFileName && (
+            <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
+          )}
+          {imageDataInput && (
+            <Button size="xs" variant="ghost" onClick={onClearImageData} disabled={busy || imageProbePending}>
+              {t("voice.daemon.clearImageFile")}
+            </Button>
+          )}
+          <input
+            ref={imageFileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              await onFileChange(e.currentTarget.files);
+              if (e.currentTarget.files?.item(0)) onImageUrlChange("");
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
+        <input
+          type="url"
+          value={imageUrlInput}
+          onChange={(e) => onImageUrlChange(e.target.value)}
+          placeholder={imageDataInput ? t("voice.daemon.fileSelectedUrlDisabled") : t("voice.daemon.imageUrlPlaceholder")}
+          disabled={busy || imageProbePending}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          aria-label={t("voice.daemon.imageUrl")}
+        />
+        <input
+          type="text"
+          value={imagePromptInput}
+          onChange={(e) => onImagePromptChange(e.target.value)}
+          placeholder={t("voice.daemon.imagePromptPlaceholder")}
+          disabled={busy || imageProbePending}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          aria-label={t("voice.daemon.imagePrompt")}
+        />
+        <Button
+          size="xs"
+          variant="secondary"
+          onClick={onProbe}
+          disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
+        >
+          {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
+        </Button>
+        {imageProbeResult && (
+          <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
+        )}
+        {imageProbeDiagnostics && (
+          <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 text-[10px] text-zinc-400 space-y-1">
+            <p><span className="text-zinc-500">selected_policy:</span> {imageProbeDiagnostics.selectedPolicy ?? "—"}</p>
+            <p><span className="text-zinc-500">image_strategy:</span> {imageProbeDiagnostics.selectedImageStrategy ?? "—"}</p>
+            <p><span className="text-zinc-500">trace:</span> {imageProbeDiagnostics.executionTrace.join(" -> ") || "—"}</p>
+            <p>
+              <span className="text-zinc-500">retrieval_used:</span>{" "}
+              {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}{" · "}
+              <span className="text-zinc-500">retrieval_route:</span>{" "}
+              {imageProbeDiagnostics.retrievalRoute ?? "—"}{" · "}
+              <span className="text-zinc-500">retrieval_items:</span>{" "}
+              {imageProbeDiagnostics.retrievalContextItems}{" · "}
+              <span className="text-zinc-500">assistant_used:</span>{" "}
+              {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}{" · "}
+              <span className="text-zinc-500">economy_mode:</span>{" "}
+              {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
+            </p>
+            {imageProbeDiagnostics.degradationReasons.length > 0 && (
+              <p>
+                <span className="text-zinc-500">degradations:</span>{" "}
+                {imageProbeDiagnostics.degradationReasons.join(" | ")}
+              </p>
+            )}
+          </div>
+        )}
+        {imageProbeError && (
+          <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function vramBarColor(pct: number): string {
   if (pct > 90) return "bg-rose-500";
   if (pct > 70) return "bg-amber-400";
@@ -97,7 +263,224 @@ function parseTokenInput(raw: string): number | undefined {
   return Number.isNaN(n) || n <= 0 ? undefined : n;
 }
 
-export function Gemma4RuntimeControlInner({
+function resetLocalRuntimeDraft(params: {
+  setLocalThinking: (value: boolean | null) => void;
+  setLocalTokens: (value: string) => void;
+  setLocalImageBudget: (value: string) => void;
+  setLocalCache: (value: string | null) => void;
+}) {
+  params.setLocalThinking(null);
+  params.setLocalTokens("");
+  params.setLocalImageBudget("");
+  params.setLocalCache(null);
+}
+
+function buildDaemonConfigRequestFromLocalDraft(draft: {
+  localThinking: boolean | null;
+  localReasoningSummary: boolean | null;
+  localEmotionDetection: boolean | null;
+  localEmotionResponseStyle: boolean | null;
+  localTokens: string;
+  localImageBudget: string;
+  localCache: string | null;
+}): DaemonConfigRequest {
+  const params: DaemonConfigRequest = {};
+  if (draft.localThinking !== null) params.enable_thinking = draft.localThinking;
+  if (draft.localReasoningSummary !== null) {
+    params.reasoning_summary_enabled = draft.localReasoningSummary;
+  }
+  if (draft.localEmotionDetection !== null) {
+    params.emotion_detection_enabled = draft.localEmotionDetection;
+  }
+  if (draft.localEmotionResponseStyle !== null) {
+    params.emotion_response_style_enabled = draft.localEmotionResponseStyle;
+  }
+  if (draft.localTokens !== "") {
+    const n = parseTokenInput(draft.localTokens);
+    if (n !== undefined) params.max_new_tokens = n;
+  }
+  if (draft.localImageBudget !== "") {
+    const n = parseTokenInput(draft.localImageBudget);
+    if (n !== undefined) params.image_token_budget = n;
+  }
+  if (draft.localCache !== null) {
+    params.cache_implementation = draft.localCache === "" ? null : draft.localCache;
+  }
+  return params;
+}
+
+async function attachAssistantModel(params: {
+  daemon: Gemma4DaemonState;
+  drafterInput: string;
+  setDrafterInput: (value: string) => void;
+  setShowDrafterInput: (value: boolean) => void;
+}) {
+  const id = params.drafterInput.trim();
+  if (!id) return;
+  await params.daemon.attachAssistant(id);
+  params.setDrafterInput("");
+  params.setShowDrafterInput(false);
+}
+
+async function applyRuntimeControlDraft(params: {
+  daemon: Gemma4DaemonState;
+  localThinking: boolean | null;
+  localReasoningSummary: boolean | null;
+  localEmotionDetection: boolean | null;
+  localEmotionResponseStyle: boolean | null;
+  localTokens: string;
+  localImageBudget: string;
+  localCache: string | null;
+  resetDraft: () => void;
+}) {
+  const request = buildDaemonConfigRequestFromLocalDraft(params);
+  const result = await params.daemon.applyConfig(request);
+  if (result) {
+    params.resetDraft();
+  }
+}
+
+async function handleRuntimeImageProbe(params: {
+  imageUrlInput: string;
+  imageDataInput: string | null;
+  imagePromptInput: string;
+  imageProbePending: boolean;
+  maxNewTokens: number;
+  setImageProbeResult: (value: string | null) => void;
+  setImageProbeDiagnostics: (
+    value: {
+      executionTrace: string[];
+      selectedPolicy: string | null;
+      selectedImageStrategy: string | null;
+      retrievalUsed: boolean;
+      retrievalContextItems: number;
+      retrievalRoute: string | null;
+      assistantUsed: boolean;
+      economyModeActivated: boolean;
+      degradationReasons: string[];
+    } | null,
+  ) => void;
+  setImageProbeError: (value: string | null) => void;
+  setImageProbePending: (value: boolean) => void;
+}) {
+  const url = params.imageUrlInput.trim();
+  if ((!url && !params.imageDataInput) || params.imageProbePending) return;
+  params.setImageProbePending(true);
+  params.setImageProbeError(null);
+  params.setImageProbeResult(null);
+  params.setImageProbeDiagnostics(null);
+  try {
+    const result = await runImageProbe({
+      imageUrlInput: params.imageUrlInput,
+      imageDataInput: params.imageDataInput,
+      imagePromptInput: params.imagePromptInput,
+      imageProbePending: params.imageProbePending,
+      maxNewTokens: params.maxNewTokens,
+    });
+    params.setImageProbeResult(result.text);
+    params.setImageProbeDiagnostics(result.diagnostics);
+  } catch (e) {
+    params.setImageProbeError(e instanceof Error ? e.message : "Image request failed");
+  } finally {
+    params.setImageProbePending(false);
+  }
+}
+
+async function handleRuntimeImageFileSelection(params: {
+  fileList: FileList | null;
+  setImageProbeError: (value: string | null) => void;
+  setImageDataInput: (value: string | null) => void;
+  setImageFileName: (value: string | null) => void;
+}) {
+  const file = params.fileList?.item(0);
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    params.setImageProbeError("Only image files are supported");
+    return;
+  }
+  params.setImageProbeError(null);
+  const loaded = await readImageFileAsDataUrl(file);
+  params.setImageDataInput(loaded);
+  params.setImageFileName(file.name);
+}
+
+async function readImageFileAsDataUrl(file: File): Promise<string> {
+  const reader = new FileReader();
+  return new Promise<string>((resolve, reject) => {
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Unexpected file reader result type"));
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function runImageProbe(params: {
+  imageUrlInput: string;
+  imageDataInput: string | null;
+  imagePromptInput: string;
+  imageProbePending: boolean;
+  maxNewTokens: number;
+}): Promise<{
+  text: string;
+  diagnostics: {
+    executionTrace: string[];
+    selectedPolicy: string | null;
+    selectedImageStrategy: string | null;
+    retrievalUsed: boolean;
+    retrievalContextItems: number;
+    retrievalRoute: string | null;
+    assistantUsed: boolean;
+    economyModeActivated: boolean;
+    degradationReasons: string[];
+  };
+}> {
+  const url = params.imageUrlInput.trim();
+  if ((!url && !params.imageDataInput) || params.imageProbePending) {
+    throw new Error("Image input is missing");
+  }
+  const imageContent = params.imageDataInput
+    ? ({ type: "image", data: params.imageDataInput } as const)
+    : ({ type: "image", url } as const);
+  const result = await postDaemonRespond(getGemma4ApiBaseUrl(), {
+    messages: [
+      {
+        role: "user",
+        content: [
+          imageContent,
+          {
+            type: "text",
+            text: params.imagePromptInput.trim() || "Describe the image and extract visible text.",
+          },
+        ],
+      },
+    ],
+    task: "question",
+    max_new_tokens: params.maxNewTokens,
+  });
+  return {
+    text: result.text,
+    diagnostics: {
+      executionTrace: result.execution_trace ?? [],
+      selectedPolicy: result.selected_policy ?? null,
+      selectedImageStrategy: result.selected_image_strategy ?? null,
+      retrievalUsed: Boolean(result.retrieval_used),
+      retrievalContextItems: Number(result.retrieval_context_items ?? 0),
+      retrievalRoute: result.retrieval_route ?? null,
+      assistantUsed: Boolean(result.assistant_used),
+      economyModeActivated: Boolean(result.economy_mode_activated),
+      degradationReasons: Array.isArray(result.degradation_reasons)
+        ? result.degradation_reasons
+        : [],
+    },
+  };
+}
+
+function Gemma4RuntimeControlPanel({
   daemon,
   variant,
   runtimeSnapshot = null,
@@ -121,6 +504,7 @@ export function Gemma4RuntimeControlInner({
   const [imagePromptInput, setImagePromptInput] = useState("");
   const [imageProbePending, setImageProbePending] = useState(false);
   const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
+  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<ImageProbeDiagnostics | null>(null);
   const [imageProbeError, setImageProbeError] = useState<string | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -171,108 +555,53 @@ export function Gemma4RuntimeControlInner({
     localImageBudget !== "" ||
     localCache !== null;
 
-  async function handleApply() {
-    const params: DaemonConfigRequest = {};
-    if (localThinking !== null) params.enable_thinking = localThinking;
-    if (localReasoningSummary !== null) {
-      params.reasoning_summary_enabled = localReasoningSummary;
-    }
-    if (localEmotionDetection !== null) {
-      params.emotion_detection_enabled = localEmotionDetection;
-    }
-    if (localEmotionResponseStyle !== null) {
-      params.emotion_response_style_enabled = localEmotionResponseStyle;
-    }
-    if (localTokens !== "") {
-      const n = parseTokenInput(localTokens);
-      if (n !== undefined) params.max_new_tokens = n;
-    }
-    if (localImageBudget !== "") {
-      const n = parseTokenInput(localImageBudget);
-      if (n !== undefined) params.image_token_budget = n;
-    }
-    if (localCache !== null) {
-      params.cache_implementation = localCache === "" ? null : localCache;
-    }
-    const result = await daemon.applyConfig(params);
-    if (result) {
-      setLocalThinking(null);
-      setLocalTokens("");
-      setLocalImageBudget("");
-      setLocalCache(null);
-    }
-  }
-
-  async function handleAttach() {
-    const id = drafterInput.trim();
-    if (!id) return;
-    await daemon.attachAssistant(id);
-    setDrafterInput("");
-    setShowDrafterInput(false);
-  }
-
-  async function handleImageProbe() {
-    const url = imageUrlInput.trim();
-    if ((!url && !imageDataInput) || imageProbePending) return;
-    setImageProbePending(true);
-    setImageProbeError(null);
-    setImageProbeResult(null);
-    try {
-      const imageContent = imageDataInput
-        ? ({ type: "image", data: imageDataInput } as const)
-        : ({ type: "image", url } as const);
-      const result = await postDaemonRespond(getGemma4ApiBaseUrl(), {
-        messages: [
-          {
-            role: "user",
-            content: [
-              imageContent,
-              {
-                type: "text",
-                text: imagePromptInput.trim() || "Describe the image and extract visible text.",
-              },
-            ],
-          },
-        ],
-        task: "question",
-        max_new_tokens: status?.params.max_new_tokens ?? 128,
-      });
-      setImageProbeResult(result.text);
-    } catch (e) {
-      setImageProbeError(e instanceof Error ? e.message : "Image request failed");
-    } finally {
-      setImageProbePending(false);
-    }
-  }
-
-  async function readImageFile(file: File) {
-    if (!file.type.startsWith("image/")) {
-      setImageProbeError("Only image files are supported");
-      return;
-    }
-    setImageProbeError(null);
-    const reader = new FileReader();
-    const loaded = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => {
-        if (typeof reader.result === "string") {
-          resolve(reader.result);
-          return;
-        }
-        reject(new Error("Unexpected file reader result type"));
-      };
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsDataURL(file);
+  const handleApply = () =>
+    applyRuntimeControlDraft({
+      daemon,
+      localThinking,
+      localReasoningSummary,
+      localEmotionDetection,
+      localEmotionResponseStyle,
+      localTokens,
+      localImageBudget,
+      localCache,
+      resetDraft: () =>
+        resetLocalRuntimeDraft({
+          setLocalThinking,
+          setLocalTokens,
+          setLocalImageBudget,
+          setLocalCache,
+        }),
     });
-    setImageDataInput(loaded);
-    setImageFileName(file.name);
-    setImageUrlInput("");
-  }
 
-  async function handleImageFileChange(fileList: FileList | null) {
-    const file = fileList?.item(0);
-    if (!file) return;
-    await readImageFile(file);
-  }
+  const handleAttach = () =>
+    attachAssistantModel({
+      daemon,
+      drafterInput,
+      setDrafterInput,
+      setShowDrafterInput,
+    });
+
+  const handleImageProbe = () =>
+    handleRuntimeImageProbe({
+      imageUrlInput,
+      imageDataInput,
+      imagePromptInput,
+      imageProbePending,
+      maxNewTokens: status?.params.max_new_tokens ?? 128,
+      setImageProbeResult,
+      setImageProbeDiagnostics,
+      setImageProbeError,
+      setImageProbePending,
+    });
+
+  const handleImageFileChange = (fileList: FileList | null) =>
+    handleRuntimeImageFileSelection({
+      fileList,
+      setImageProbeError,
+      setImageDataInput,
+      setImageFileName,
+    });
 
   const vram = status?.vram;
   const vramPercent =
@@ -448,98 +777,23 @@ export function Gemma4RuntimeControlInner({
       />
 
       {status?.supports_image_input && (
-        <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
-          <div className="mt-2 space-y-2">
-            <button
-              type="button"
-              onDragOver={(event) => {
-                event.preventDefault();
-              }}
-              onDrop={async (event) => {
-                event.preventDefault();
-                await handleImageFileChange(event.dataTransfer.files);
-              }}
-              onClick={() => imageFileInputRef.current?.click()}
-              className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
-              aria-label={t("voice.daemon.dragDropImage")}
-            >
-              {t("voice.daemon.dragDropImage")}
-            </button>
-            <div className="flex items-center gap-2">
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() => imageFileInputRef.current?.click()}
-                disabled={busy || imageProbePending}
-              >
-                {t("voice.daemon.chooseImageFromDisk")}
-              </Button>
-              {imageFileName && (
-                <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
-              )}
-              {imageDataInput && (
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => {
-                    setImageDataInput(null);
-                    setImageFileName(null);
-                  }}
-                  disabled={busy || imageProbePending}
-                >
-                  {t("voice.daemon.clearImageFile")}
-                </Button>
-              )}
-              <input
-                ref={imageFileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={async (e) => {
-                  await handleImageFileChange(e.currentTarget.files);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </div>
-            <input
-              type="url"
-              value={imageUrlInput}
-              onChange={(e) => setImageUrlInput(e.target.value)}
-              placeholder={
-                imageDataInput
-                  ? t("voice.daemon.fileSelectedUrlDisabled")
-                  : t("voice.daemon.imageUrlPlaceholder")
-              }
-              disabled={busy || imageProbePending}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-              aria-label={t("voice.daemon.imageUrl")}
-            />
-            <input
-              type="text"
-              value={imagePromptInput}
-              onChange={(e) => setImagePromptInput(e.target.value)}
-              placeholder={t("voice.daemon.imagePromptPlaceholder")}
-              disabled={busy || imageProbePending}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-              aria-label={t("voice.daemon.imagePrompt")}
-            />
-            <Button
-              size="xs"
-              variant="secondary"
-              onClick={handleImageProbe}
-              disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
-            >
-              {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
-            </Button>
-            {imageProbeResult && (
-              <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
-            )}
-            {imageProbeError && (
-              <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
-            )}
-          </div>
-        </div>
+        <ImageProbeSection
+          busy={busy}
+          imageProbePending={imageProbePending}
+          imageUrlInput={imageUrlInput}
+          imageDataInput={imageDataInput}
+          imageFileName={imageFileName}
+          imagePromptInput={imagePromptInput}
+          imageProbeResult={imageProbeResult}
+          imageProbeDiagnostics={imageProbeDiagnostics}
+          imageProbeError={imageProbeError}
+          imageFileInputRef={imageFileInputRef}
+          onFileChange={handleImageFileChange}
+          onImageUrlChange={setImageUrlInput}
+          onImagePromptChange={setImagePromptInput}
+          onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
+          onProbe={handleImageProbe}
+        />
       )}
 
       {/* Actions */}
@@ -596,6 +850,25 @@ export function Gemma4RuntimeControlInner({
 
       {error && (
         <p className="mt-2 text-[10px] text-rose-400 truncate">{error}</p>
+      )}
+
+      {status?.component_snapshot && status.component_snapshot.length > 0 && (
+        <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+            component snapshot
+          </p>
+          <div className="space-y-1.5">
+            {status.component_snapshot.slice(0, 7).map((component) => (
+              <div
+                key={component.component_id}
+                className="flex items-center justify-between gap-2 text-[10px]"
+              >
+                <span className="text-zinc-300 truncate">{component.component_id}</span>
+                <span className="text-zinc-500 truncate">{component.health}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </DaemonCard>
   );

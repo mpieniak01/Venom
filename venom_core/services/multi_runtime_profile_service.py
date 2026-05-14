@@ -38,6 +38,12 @@ APPLY_MATRIX: dict[str, ApplyMode] = {
     "reasoning_summary_enabled": "live",
     "emotion_detection_enabled": "live",
     "emotion_response_style_enabled": "live",
+    "execution_mode": "live",
+    "image_strategy": "live",
+    "retrieval_mode": "live",
+    "audio_output_mode": "live",
+    "assistant_mode": "live",
+    "economy_mode": "live",
     "precision": "unsupported",
     "quantization_backend": "unsupported",
     "device_target": "unsupported",
@@ -94,13 +100,7 @@ def build_profile_from_daemon_params(
     *,
     target_model: str,
     assistant_model: Optional[str],
-    max_new_tokens: int,
-    enable_thinking: bool,
-    image_token_budget: int,
-    reasoning_summary_enabled: bool,
-    emotion_detection_enabled: bool,
-    emotion_response_style_enabled: bool,
-    cache_implementation: Optional[str],
+    daemon_params: dict[str, Any],
 ) -> MultiRuntimeProfile:
     """Build a MultiRuntimeProfile from flat daemon status fields.
 
@@ -110,13 +110,25 @@ def build_profile_from_daemon_params(
     return MultiRuntimeProfile(
         model_id=target_model,
         assistant_model_id=assistant_model,
-        max_new_tokens=max_new_tokens,
-        enable_thinking=enable_thinking,
-        image_token_budget=image_token_budget,
-        reasoning_summary_enabled=reasoning_summary_enabled,
-        emotion_detection_enabled=emotion_detection_enabled,
-        emotion_response_style_enabled=emotion_response_style_enabled,
-        cache_implementation=cache_implementation,
+        max_new_tokens=int(daemon_params.get("max_new_tokens", 128)),
+        enable_thinking=bool(daemon_params.get("enable_thinking", False)),
+        image_token_budget=int(daemon_params.get("image_token_budget", 280)),
+        reasoning_summary_enabled=bool(
+            daemon_params.get("reasoning_summary_enabled", False)
+        ),
+        emotion_detection_enabled=bool(
+            daemon_params.get("emotion_detection_enabled", False)
+        ),
+        emotion_response_style_enabled=bool(
+            daemon_params.get("emotion_response_style_enabled", False)
+        ),
+        cache_implementation=daemon_params.get("cache_implementation"),
+        execution_mode=str(daemon_params.get("execution_mode", "balanced")),
+        image_strategy=str(daemon_params.get("image_strategy", "vlm_only")),
+        retrieval_mode=str(daemon_params.get("retrieval_mode", "off")),
+        audio_output_mode=str(daemon_params.get("audio_output_mode", "off")),
+        assistant_mode=str(daemon_params.get("assistant_mode", "off")),
+        economy_mode=str(daemon_params.get("economy_mode", "off")),
     )
 
 

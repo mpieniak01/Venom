@@ -144,13 +144,15 @@ def test_build_profile_from_daemon_params():
     p = build_profile_from_daemon_params(
         target_model="google/gemma-4-E2B-it",
         assistant_model="google/gemma-4-1B-it",
-        max_new_tokens=256,
-        enable_thinking=True,
-        image_token_budget=560,
-        reasoning_summary_enabled=True,
-        emotion_detection_enabled=False,
-        emotion_response_style_enabled=False,
-        cache_implementation="static",
+        daemon_params={
+            "max_new_tokens": 256,
+            "enable_thinking": True,
+            "image_token_budget": 560,
+            "reasoning_summary_enabled": True,
+            "emotion_detection_enabled": False,
+            "emotion_response_style_enabled": False,
+            "cache_implementation": "static",
+        },
     )
     assert p.model_id == "google/gemma-4-E2B-it"
     assert p.assistant_model_id == "google/gemma-4-1B-it"

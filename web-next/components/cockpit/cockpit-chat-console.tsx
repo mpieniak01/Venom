@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { ReactNode, RefObject } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,11 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { CockpitPanel3D } from "@/components/cockpit/cockpit-panel-3d";
 import { Maximize2, Minimize2, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useGemma4Daemon } from "@/hooks/use-gemma4-daemon";
+import {
+  RuntimeDiagnosticsPanel,
+  type RuntimeSummaryItem,
+} from "@/components/runtime/runtime-diagnostics-panel";
 
 type ChatPreset = {
   readonly id: string;
@@ -39,6 +44,12 @@ type CockpitChatConsoleProps = Readonly<{
   onNewChat: () => void;
 }>;
 
+function resolveRuntimeEmptyStateTitle(loading: boolean, error: string | null): string {
+  if (loading) return "Connecting to runtime daemon";
+  if (error) return "Runtime daemon unavailable";
+  return "Runtime diagnostics unavailable";
+}
+
 export function CockpitChatConsole({
   chatFullscreen,
   onToggleFullscreen,
@@ -59,6 +70,12 @@ export function CockpitChatConsole({
   onNewChat,
 }: CockpitChatConsoleProps) {
   const t = useTranslation();
+  const daemon = useGemma4Daemon(12_000);
+  const runtimeStatus = daemon.status;
+  const runtimeEmptyStateTitle = resolveRuntimeEmptyStateTitle(daemon.loading, daemon.error);
+  const runtimeEmptyStateDescription = daemon.loading
+    ? "Waiting for multi_runtime status."
+    : daemon.error || "Daemon status is not available yet.";
   useEffect(() => {
     if (!chatFullscreen) return;
     const previousOverflow = document.body.style.overflow;
@@ -67,6 +84,68 @@ export function CockpitChatConsole({
       document.body.style.overflow = previousOverflow;
     };
   }, [chatFullscreen]);
+
+  const runtimeSummary = useMemo<RuntimeSummaryItem[]>(() => {
+    if (!runtimeStatus) return [];
+    return [
+      {
+        label: "Target",
+        value: runtimeStatus.target_model,
+        tone: runtimeStatus.target_loaded ? "success" : "warning",
+        hint: runtimeStatus.mode,
+      },
+      {
+        label: "Assistant",
+        value: runtimeStatus.assistant_model ?? "—",
+        tone: runtimeStatus.assistant_loaded ? "success" : "neutral",
+        hint: runtimeStatus.params.assistant_mode,
+      },
+      {
+        label: "Policy",
+        value: runtimeStatus.params.execution_mode,
+        tone: "neutral",
+        hint: `image ${runtimeStatus.params.image_strategy}`,
+      },
+      {
+        label: "Retrieval",
+        value: runtimeStatus.params.retrieval_mode,
+        tone: runtimeStatus.params.retrieval_mode === "off" ? "neutral" : "success",
+        hint: `audio ${runtimeStatus.params.audio_output_mode}`,
+      },
+      {
+        label: "Economy",
+        value: runtimeStatus.params.economy_mode,
+        tone: runtimeStatus.params.economy_mode === "auto" ? "warning" : "success",
+        hint: `assistant ${runtimeStatus.params.assistant_mode}`,
+      },
+      {
+        label: "Image budget",
+        value: runtimeStatus.params.image_token_budget,
+        tone: "neutral",
+        hint: `thinking ${runtimeStatus.params.enable_thinking ? "on" : "off"}`,
+      },
+    ];
+  }, [runtimeStatus]);
+
+  const runtimeDegradations = useMemo(() => {
+    if (!runtimeStatus) return [];
+    const reasons = new Set<string>();
+    for (const component of runtimeStatus.component_snapshot ?? []) {
+      if (component.enabled && component.available === false) {
+        reasons.add(`${component.component_id}: unavailable`);
+      }
+      if (component.last_error) {
+        reasons.add(component.last_error);
+      }
+    }
+    if (runtimeStatus.pending_reload && runtimeStatus.reload_reason) {
+      reasons.add(runtimeStatus.reload_reason);
+    }
+    if (!runtimeStatus.target_loaded) {
+      reasons.add("target model not loaded");
+    }
+    return Array.from(reasons);
+  }, [runtimeStatus]);
 
   return (
     <div className="space-y-6">
@@ -140,6 +219,15 @@ export function CockpitChatConsole({
           </div>
         </div>
       </CockpitPanel3D>
+      <RuntimeDiagnosticsPanel
+        title="Runtime diagnostics"
+        description="Active daemon snapshot, component health and degradation reasons."
+        summaryItems={runtimeSummary}
+        componentSnapshot={runtimeStatus?.component_snapshot ?? []}
+        degradationReasons={runtimeDegradations}
+        emptyStateTitle={runtimeEmptyStateTitle}
+        emptyStateDescription={runtimeEmptyStateDescription}
+      />
       {!chatFullscreen && showSharedSections && showArtifacts && (
         <div className="mt-4 space-y-3 rounded-2xl box-base px-4 py-4 text-sm text-[color:var(--text-secondary)]">
           <div className="flex flex-wrap items-center justify-between gap-2">

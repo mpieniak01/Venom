@@ -37,12 +37,15 @@ from venom_core.services.multi_runtime_profile_service import (
 from venom_core.utils.voice_metadata import build_voice_session_insights
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
+from .components import build_component_snapshot
 from .engine import InferenceError, ModelLoadError, MultiRuntimeDaemon, ReloadSignal
+from .pipeline import MultiRuntimePipeline, PipelineRequestData
 from .schemas import (
     AssistantAttachRequest,
     AssistantAttachResponse,
     AudioMetadata,
     Capabilities,
+    ComponentListResponse,
     DaemonConfigRequest,
     DaemonConfigResponse,
     DaemonParamsInfo,
@@ -318,12 +321,14 @@ async def status() -> StatusResponse:
             )
 
         status_val = "warming" if _warming else ("running" if is_loaded else "error")
+        component_snapshot = build_component_snapshot(daemon.status())
         return StatusResponse(
             service="multi_runtime",
             status=status_val,
             model_loaded=is_loaded,
             model_info=model_info,
             timestamp_ms=int(time.time() * 1000),
+            component_snapshot=component_snapshot,
         )
     except RuntimeError:
         return StatusResponse(
@@ -384,6 +389,7 @@ async def daemon_status() -> DaemonStatusResponse:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
 
     raw = daemon.status()
+    component_snapshot = build_component_snapshot(raw)
     return DaemonStatusResponse(
         target_model=raw["target_model"],
         assistant_model=raw["assistant_model"],
@@ -401,6 +407,22 @@ async def daemon_status() -> DaemonStatusResponse:
         pending_reload=raw["pending_reload"],
         reload_reason=raw["reload_reason"],
         supports_image_input=bool(raw.get("supports_image_input", True)),
+        component_snapshot=component_snapshot,
+    )
+
+
+@app.get("/v1/components", response_model=ComponentListResponse)
+async def components() -> ComponentListResponse:
+    try:
+        daemon = get_daemon()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+
+    raw = daemon.status()
+    return ComponentListResponse(
+        runtime_id="multi_runtime",
+        timestamp_ms=int(time.time() * 1000),
+        components=build_component_snapshot(raw),
     )
 
 
@@ -417,13 +439,7 @@ async def daemon_get_profile() -> MultiRuntimeProfileResponse:
     profile = build_profile_from_daemon_params(
         target_model=raw["target_model"],
         assistant_model=raw["assistant_model"],
-        max_new_tokens=p["max_new_tokens"],
-        enable_thinking=p["enable_thinking"],
-        image_token_budget=p["image_token_budget"],
-        reasoning_summary_enabled=p["reasoning_summary_enabled"],
-        emotion_detection_enabled=p["emotion_detection_enabled"],
-        emotion_response_style_enabled=p["emotion_response_style_enabled"],
-        cache_implementation=p["cache_implementation"],
+        daemon_params=p,
     )
     return build_profile_response(profile, daemon_reachable=True)
 
@@ -438,6 +454,12 @@ _UPDATE_PARAMS_FIELDS = frozenset(
         "emotion_detection_enabled",
         "emotion_response_style_enabled",
         "cache_implementation",
+        "execution_mode",
+        "image_strategy",
+        "retrieval_mode",
+        "audio_output_mode",
+        "assistant_mode",
+        "economy_mode",
     }
 )
 
@@ -515,6 +537,12 @@ async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
         emotion_detection_enabled=body.emotion_detection_enabled,
         emotion_response_style_enabled=body.emotion_response_style_enabled,
         cache_implementation=body.cache_implementation,
+        execution_mode=body.execution_mode,
+        image_strategy=body.image_strategy,
+        retrieval_mode=body.retrieval_mode,
+        audio_output_mode=body.audio_output_mode,
+        assistant_mode=body.assistant_mode,
+        economy_mode=body.economy_mode,
     )
 
     raw = daemon.status()
@@ -677,7 +705,6 @@ async def respond(request: Request) -> RespondResponse:
         request
     )
 
-    start_time = time.time()
     audio_array = None
     sample_rate = 16000
     text_content = None
@@ -736,32 +763,28 @@ async def respond(request: Request) -> RespondResponse:
             status_code=400, detail="No audio, text, or image content provided"
         )
 
-    prompt = text_content or request_payload.system_prompt or "Respond to the audio"
-
     daemon_status = daemon.status()
-    daemon_params = daemon_status["params"]
 
     try:
-        generated_text, duration = await asyncio.to_thread(
-            engine.respond,
-            audio_array,
-            sample_rate=sample_rate,
-            prompt=prompt,
-            images=images or None,
-            task=request_payload.task,
-            question=request_payload.question,
-            system_prompt=request_payload.system_prompt,
-            max_new_tokens=request_payload.max_new_tokens,
-            temperature=request_payload.temperature,
-            top_p=request_payload.top_p,
-            do_sample=request_payload.do_sample,
-            enable_thinking=bool(daemon_params["enable_thinking"]),
-            cache_implementation=daemon_params["cache_implementation"],
+        pipeline_result = await asyncio.to_thread(
+            MultiRuntimePipeline(engine, daemon).execute,
+            daemon_status=daemon_status,
+            request=PipelineRequestData(
+                request_payload=request_payload,
+                text_content=text_content,
+                audio_array=audio_array,
+                sample_rate=sample_rate,
+                images=images,
+            ),
         )
     except InferenceError as e:
         raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
 
-    total_duration_ms = int((time.time() - start_time) * 1000)
+    daemon_params = daemon_status["params"]
+    generated_text = pipeline_result.generated_text
+    duration = pipeline_result.audio_duration_sec
+
+    total_duration_ms = pipeline_result.total_duration_ms
     voice_insights = build_voice_session_insights(
         transcript=text_content or "",
         response=generated_text,
@@ -785,15 +808,7 @@ async def respond(request: Request) -> RespondResponse:
             if audio_array is not None
             else None
         ),
-        input_modalities=(
-            ["text", "audio", "image"]
-            if audio_array is not None and images
-            else (
-                ["text", "audio"]
-                if audio_array is not None
-                else (["text", "image"] if images else ["text"])
-            )
-        ),
+        input_modalities=pipeline_result.input_modalities,
         output_modalities=["text"],
         runtime_mode="processor_model",
         capabilities=Capabilities(
@@ -815,6 +830,16 @@ async def respond(request: Request) -> RespondResponse:
         emotion_label=voice_insights.get("emotion_label"),
         emotion_confidence=voice_insights.get("emotion_confidence"),
         emotion_source=voice_insights.get("emotion_source"),
+        execution_trace=pipeline_result.diagnostics.trace_names(),
+        selected_policy=pipeline_result.diagnostics.selected_policy,
+        selected_image_strategy=pipeline_result.diagnostics.selected_image_strategy,
+        retrieval_used=pipeline_result.diagnostics.retrieval_used,
+        retrieval_context_items=pipeline_result.diagnostics.retrieval_context_items,
+        retrieval_route=pipeline_result.diagnostics.retrieval_route,
+        assistant_used=pipeline_result.diagnostics.assistant_used,
+        economy_mode_activated=pipeline_result.diagnostics.economy_mode_activated,
+        degradation_reasons=pipeline_result.diagnostics.degradation_reasons,
+        component_snapshot=pipeline_result.diagnostics.component_snapshot,
     )
 
 

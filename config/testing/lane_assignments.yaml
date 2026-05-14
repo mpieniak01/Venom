@@ -31,6 +31,12 @@
       "test": "tests/test_env_contracts.py",
       "lane": "ci-lite",
       "rationale": "Environment contracts must stay in fast new-code guard when changed."
+    },
+    {
+      "group": "sonar-new-code",
+      "test": "tests/test_217da_multi_runtime_pipeline_basics.py",
+      "lane": "new-code",
+      "rationale": "217DA runtime pipeline baseline must remain eligible for changed-lines quality gate."
     }
   ]
 }

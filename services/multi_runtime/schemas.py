@@ -130,6 +130,46 @@ class RespondResponse(BaseModel):
     )
     warnings: list[str] = Field(default_factory=list, description="Any warnings")
     trace_id: Optional[str] = Field(None, description="Request trace ID")
+    execution_trace: list[str] = Field(
+        default_factory=list,
+        description="Ordered pipeline stages executed for this request",
+    )
+    selected_policy: Optional[str] = Field(
+        None,
+        description="Execution policy selected by runtime",
+    )
+    selected_image_strategy: Optional[str] = Field(
+        None,
+        description="Image processing strategy selected for the request",
+    )
+    retrieval_used: bool = Field(
+        False,
+        description="Whether retrieval stage was used",
+    )
+    retrieval_context_items: int = Field(
+        0,
+        description="How many retrieval snippets were attached to generation context",
+    )
+    retrieval_route: Optional[str] = Field(
+        None,
+        description="Retrieval route used by runtime (e.g. vector, graph, vector_fallback)",
+    )
+    assistant_used: bool = Field(
+        False,
+        description="Whether assistant model participated in execution",
+    )
+    economy_mode_activated: bool = Field(
+        False,
+        description="Whether economy mode was activated for this request",
+    )
+    degradation_reasons: list[str] = Field(
+        default_factory=list,
+        description="Reasons why runtime degraded or simplified the pipeline",
+    )
+    component_snapshot: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="Runtime component snapshot captured during execution",
+    )
 
 
 class TranscribeRequest(BaseModel):
@@ -170,6 +210,10 @@ class StatusResponse(BaseModel):
     model_loaded: bool = Field(..., description="Whether model is currently loaded")
     model_info: Optional[ModelInfo] = Field(None, description="Loaded model info")
     timestamp_ms: int = Field(..., description="Server timestamp in ms")
+    component_snapshot: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="Current runtime component snapshot",
+    )
 
 
 class HealthResponse(BaseModel):
@@ -200,6 +244,12 @@ class DaemonParamsInfo(BaseModel):
     emotion_detection_enabled: bool = False
     emotion_response_style_enabled: bool = False
     cache_implementation: Optional[str] = None
+    execution_mode: str = "balanced"
+    image_strategy: str = "vlm_only"
+    retrieval_mode: str = "off"
+    audio_output_mode: str = "off"
+    assistant_mode: str = "off"
+    economy_mode: str = "off"
 
 
 class DaemonStatusResponse(BaseModel):
@@ -234,6 +284,16 @@ class DaemonStatusResponse(BaseModel):
     pending_reload: bool
     reload_reason: Optional[str] = None
     supports_image_input: bool = True
+    component_snapshot: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="Current runtime component snapshot",
+    )
+
+
+class ComponentListResponse(BaseModel):
+    runtime_id: str = Field("multi_runtime")
+    timestamp_ms: int
+    components: list[dict[str, object]] = Field(default_factory=list)
 
 
 class DaemonConfigRequest(BaseModel):
@@ -246,6 +306,12 @@ class DaemonConfigRequest(BaseModel):
     emotion_detection_enabled: Optional[bool] = None
     emotion_response_style_enabled: Optional[bool] = None
     cache_implementation: Optional[str] = None
+    execution_mode: Optional[str] = None
+    image_strategy: Optional[str] = None
+    retrieval_mode: Optional[str] = None
+    audio_output_mode: Optional[str] = None
+    assistant_mode: Optional[str] = None
+    economy_mode: Optional[str] = None
 
 
 class DaemonConfigResponse(BaseModel):

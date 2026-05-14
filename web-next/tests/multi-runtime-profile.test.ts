@@ -39,6 +39,12 @@ function makeProfile(overrides: Partial<MultiRuntimeProfile> = {}): MultiRuntime
     reasoning_summary_enabled: false,
     emotion_detection_enabled: false,
     emotion_response_style_enabled: false,
+    execution_mode: "balanced",
+    image_strategy: "vlm_only",
+    retrieval_mode: "off",
+    audio_output_mode: "off",
+    assistant_mode: "off",
+    economy_mode: "off",
     precision: "auto",
     quantization_backend: null,
     device_target: "auto",
@@ -57,6 +63,12 @@ function makeMatrix(): MultiRuntimeApplyMatrix {
     reasoning_summary_enabled: "live",
     emotion_detection_enabled: "live",
     emotion_response_style_enabled: "live",
+    execution_mode: "live",
+    image_strategy: "live",
+    retrieval_mode: "live",
+    audio_output_mode: "live",
+    assistant_mode: "live",
+    economy_mode: "live",
     precision: "unsupported",
     quantization_backend: "unsupported",
     device_target: "unsupported",
@@ -75,6 +87,12 @@ function makeProfileResponse(
       precision: ["auto"],
       device_target: ["auto", "cpu", "cuda"],
       quantization_backend: [null],
+      execution_mode: ["balanced", "vision_priority", "voice_priority"],
+      image_strategy: ["vlm_only", "ocr_first", "hybrid"],
+      retrieval_mode: ["off", "auto", "always"],
+      audio_output_mode: ["off", "text_first", "voice_first"],
+      assistant_mode: ["off", "attached", "conditional"],
+      economy_mode: ["off", "auto"],
     },
     daemon_reachable: true,
     ...overrides,
@@ -108,6 +126,12 @@ describe("MultiRuntimeProfile type contract", () => {
       "reasoning_summary_enabled",
       "emotion_detection_enabled",
       "emotion_response_style_enabled",
+      "execution_mode",
+      "image_strategy",
+      "retrieval_mode",
+      "audio_output_mode",
+      "assistant_mode",
+      "economy_mode",
     ];
     for (const field of liveFields) {
       assert.equal(matrix[field], "live", `${field} should be live`);
@@ -162,6 +186,12 @@ describe("MultiRuntimeProfileResponse envelope", () => {
     assert.ok(Array.isArray(opts.precision));
     assert.ok(Array.isArray(opts.device_target));
     assert.ok(Array.isArray(opts.quantization_backend));
+    assert.ok(Array.isArray(opts.execution_mode));
+    assert.ok(Array.isArray(opts.image_strategy));
+    assert.ok(Array.isArray(opts.retrieval_mode));
+    assert.ok(Array.isArray(opts.audio_output_mode));
+    assert.ok(Array.isArray(opts.assistant_mode));
+    assert.ok(Array.isArray(opts.economy_mode));
   });
 });
 

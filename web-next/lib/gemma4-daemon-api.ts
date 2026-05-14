@@ -246,7 +246,8 @@ async function systemApiFetch<T>(
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
-    throw new Error(`System API ${path} → ${resp.status}${text ? `: ${text}` : ""}`);
+    const detail = text ? `: ${text}` : "";
+    throw new Error(`System API ${path} → ${resp.status}${detail}`);
   }
   return resp.json() as Promise<T>;
 }

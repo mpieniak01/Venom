@@ -157,7 +157,6 @@ MULTI_RUNTIME_PROFILE_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 @router.get(
     "/runtime/multi-runtime/profile",
-    response_model=MultiRuntimeProfileResponse,
     responses=MULTI_RUNTIME_PROFILE_RESPONSES,
 )
 async def get_multi_runtime_profile() -> MultiRuntimeProfileResponse:
@@ -184,7 +183,6 @@ async def get_multi_runtime_profile() -> MultiRuntimeProfileResponse:
 
 @router.post(
     "/runtime/multi-runtime/profile",
-    response_model=MultiRuntimeProfileUpdateResponse,
     responses=MULTI_RUNTIME_PROFILE_RESPONSES,
 )
 async def update_multi_runtime_profile(

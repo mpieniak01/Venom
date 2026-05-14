@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiBaseUrl } from "@/lib/env";
 import {
-  type MultiRuntimeApplyMode,
   type MultiRuntimeProfileResponse,
   type MultiRuntimeProfileUpdateRequest,
   type MultiRuntimeProfileUpdateResponse,
@@ -11,8 +10,8 @@ import {
   updateMultiRuntimeProfile,
 } from "@/lib/gemma4-daemon-api";
 
+export type { MultiRuntimeApplyMode } from "@/lib/gemma4-daemon-api";
 export type {
-  MultiRuntimeApplyMode,
   MultiRuntimeProfileResponse,
   MultiRuntimeProfileUpdateRequest,
   MultiRuntimeProfileUpdateResponse,
@@ -76,7 +75,7 @@ export function useMultiRuntimeProfile(
 
   useEffect(() => {
     mountedRef.current = true;
-    void doFetch().then(scheduleNext);
+    doFetch().then(scheduleNext).catch(() => undefined);
     return () => {
       mountedRef.current = false;
       if (timerRef.current) clearTimeout(timerRef.current);

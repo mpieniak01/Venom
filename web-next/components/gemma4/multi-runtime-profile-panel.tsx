@@ -29,7 +29,7 @@ const APPLY_MODE_BADGE: Record<
   unsupported: { label: "unsupported", variant: "outline" },
 };
 
-function ApplyModeBadge({ mode }: { mode: MultiRuntimeApplyMode }) {
+function ApplyModeBadge({ mode }: Readonly<{ mode: MultiRuntimeApplyMode }>) {
   const { label, variant } = APPLY_MODE_BADGE[mode];
   return <Badge variant={variant}>{label}</Badge>;
 }

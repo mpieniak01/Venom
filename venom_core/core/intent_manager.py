@@ -599,7 +599,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         ):
             candidates = {best_top2[0][0], best_top2[1][0]} & self.TOOL_INTENTS
             if candidates:
-                return sorted(candidates)[0]
+                return min(candidates)
         return best_intent
 
     def _classify_from_lexicon(self, normalized: str, language: str) -> str:

@@ -75,7 +75,7 @@ export function LanguageSwitcher({ className }: Readonly<{ className?: string }>
     <SelectMenu
       value={language}
       options={options}
-      onChange={(value) => setLanguage(value as LanguageCode)}
+      onChange={setLanguage}
       ariaLabel={t("common.switchLanguage")}
       className={className}
       renderButton={() => (

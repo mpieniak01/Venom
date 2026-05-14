@@ -587,9 +587,9 @@ function extractErrorMessage(value: unknown): string | null {
 
 function parseErrorBody(text: string): ParsedErrorBody | null {
   try {
-    const parsed = JSON.parse(text) as unknown;
+    const parsed: ParsedErrorBody = JSON.parse(text);
     if (!parsed || typeof parsed !== "object") return null;
-    return parsed as ParsedErrorBody;
+    return parsed;
   } catch {
     return null;
   }
@@ -624,14 +624,20 @@ function resolveApiErrorMessage(error: ApiError): string {
 
 function parseApiErrorPayload(error: ApiError): ParsedErrorBody | null {
   if (!error.data || typeof error.data !== "object") return null;
-  return error.data as ParsedErrorBody;
+  return error.data;
+}
+
+function isStructuredAcademyErrorDetail(
+  detail: unknown,
+): detail is StructuredAcademyErrorDetail {
+  return Boolean(detail && typeof detail === "object" && !Array.isArray(detail));
 }
 
 function resolveStructuredAcademyErrorMessage(body: ParsedErrorBody): string | null {
-  if (!body.detail || typeof body.detail !== "object" || Array.isArray(body.detail)) {
+  if (!isStructuredAcademyErrorDetail(body.detail)) {
     return null;
   }
-  return formatStructuredAcademyErrorDetail(body.detail as StructuredAcademyErrorDetail);
+  return formatStructuredAcademyErrorDetail(body.detail);
 }
 
 /**

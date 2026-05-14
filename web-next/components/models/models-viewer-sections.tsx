@@ -164,7 +164,7 @@ export function SearchSection({
                                         { value: "huggingface", label: "HuggingFace" },
                                         { value: "ollama", label: "Ollama" },
                                     ]}
-                                    onChange={(val) => setSearchProvider(val as "huggingface" | "ollama")}
+                                    onChange={(val) => setSearchProvider(val === "ollama" ? "ollama" : "huggingface")}
                                     className="w-full sm:w-[160px]"
                                     buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-4 py-2 text-xs text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)]"
                                     renderButton={(opt) => <span className="flex-1 truncate text-left text-[color:var(--text-primary)] uppercase tracking-wider text-[10px]">{opt?.label ?? "Provider"}</span>}

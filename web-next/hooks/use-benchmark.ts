@@ -33,8 +33,8 @@ interface UseBenchmarkReturn {
 export function useBenchmark(): UseBenchmarkReturn {
     const t = useTranslation();
     const translatePreflight = useCallback(
-        (path: string, replacements?: Record<string, unknown>) =>
-            t(path, replacements as Record<string, string | number> | undefined),
+        (path: string, replacements?: Record<string, string | number>) =>
+            t(path, replacements),
         [t],
     );
     const [status, setStatus] = useState<BenchmarkStatus>("idle");

@@ -73,7 +73,11 @@ const defaultState: TaskStreamState = {
   contextUsed: null,
 };
 
-const TERMINAL_STATUSES = new Set<TaskStatus>(["COMPLETED", "FAILED", "LOST"]);
+const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "LOST"]);
+
+function isTerminalStatus(status: string): status is TaskStatus {
+  return TERMINAL_STATUSES.has(status);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -123,8 +127,8 @@ function normalizeStatus(status: unknown): TaskStatus | null {
     return null;
   }
   const s = String(status).toUpperCase();
-  if (TERMINAL_STATUSES.has(s as TaskStatus)) return s as TaskStatus;
-  if (s === "PENDING" || s === "PROCESSING") return s as TaskStatus;
+  if (isTerminalStatus(s)) return s;
+  if (s === "PENDING" || s === "PROCESSING") return s;
   return null;
 }
 

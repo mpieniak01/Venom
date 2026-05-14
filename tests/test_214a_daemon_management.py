@@ -185,6 +185,12 @@ def test_daemon_config_cache_change_triggers_soft_reload():
         emotion_detection_enabled=None,
         emotion_response_style_enabled=None,
         cache_implementation="static",
+        execution_mode=None,
+        image_strategy=None,
+        retrieval_mode=None,
+        audio_output_mode=None,
+        assistant_mode=None,
+        economy_mode=None,
     )
 
 

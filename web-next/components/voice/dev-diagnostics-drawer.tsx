@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
 } from "@/components/ui/sheet";
 
 type AudioStatus = {
@@ -163,10 +166,12 @@ export function DevDiagnosticsDrawerContent({
 
   return (
     <>
-      <div className="mb-4 space-y-2 text-left">
-        <h3 className="heading-h3">⚙ Diagnostics</h3>
-        <p className="text-sm text-muted">Diagnostyka voice runtime i request path.</p>
-      </div>
+      <SheetHeader className="mb-4 text-left">
+        <SheetTitle className="heading-h3">⚙ Diagnostics</SheetTitle>
+        <SheetDescription className="text-sm text-muted">
+          Diagnostyka voice runtime i request path.
+        </SheetDescription>
+      </SheetHeader>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Badge tone={wsState === "online" ? "success" : "warning"}>WS: {wsState}</Badge>

@@ -141,7 +141,7 @@ export function useMultiRuntimeProfile(
         if (mountedRef.current) setUpdatePending(false);
       }
     },
-    [doFetch],
+    [doFetch, waitForDaemonReadyAfterAction],
   );
 
   return {

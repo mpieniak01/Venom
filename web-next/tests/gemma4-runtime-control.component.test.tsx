@@ -313,6 +313,30 @@ describe("Gemma4RuntimeControl — normal state (voice variant)", () => {
     assert.equal(screen.queryByText("component snapshot"), null);
   });
 
+  it("prefers daemon target model over stale multi_runtime snapshot model", () => {
+    renderControl(
+      makeState({
+        status: makeStatus({ target_model: "google/gemma-4-E2B-it" }),
+      }),
+      "voice",
+      {
+        runtime_id: "multi_runtime",
+        provider: "multi_runtime",
+        model_name: "gemma2:2b",
+        runtime_capabilities: {
+          compatibility_profile: "multi_runtime_native",
+          probe_status: "verified",
+        },
+        voice_pipeline: {
+          profile: "multi_runtime_native",
+          tts: "piper",
+        },
+      },
+    );
+    assert.ok(screen.getByText("multi_runtime / google/gemma-4-E2B-it"));
+    assert.equal(screen.queryByText("multi_runtime / gemma2:2b"), null);
+  });
+
   it("renders image handling block before runtime profile controls", async () => {
     renderControl(makeState());
     const imageHeading = screen.getByText(/Obsługa obrazu|Image input|Bildeingabe/i);

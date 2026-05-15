@@ -1055,7 +1055,7 @@ function Gemma4RuntimeControlPanel({
         <p className="text-xs text-rose-400 py-1">{t("voice.daemon.daemonUnavailable")}</p>
         <p className="text-[10px] text-zinc-500 truncate">{error}</p>
         {hasRuntimeSnapshot && (
-          <RuntimeSnapshotSummary snapshot={runtimeSnapshot} />
+          <RuntimeSnapshotSummary snapshot={runtimeSnapshot} targetModelOverride={status?.target_model ?? null} />
         )}
       </DaemonCard>
     );
@@ -1100,7 +1100,11 @@ function Gemma4RuntimeControlPanel({
       )}
 
       {runtimeSnapshot && (
-        <RuntimeSnapshotSummary snapshot={runtimeSnapshot} compact />
+        <RuntimeSnapshotSummary
+          snapshot={runtimeSnapshot}
+          compact
+          targetModelOverride={status?.target_model ?? null}
+        />
       )}
 
       {/* Params */}
@@ -1377,17 +1381,19 @@ function VramSection({
 type RuntimeSnapshotSummaryProps = Readonly<{
   snapshot: RuntimeSnapshotLike;
   compact?: boolean;
+  targetModelOverride?: string | null;
 }>;
 
 function RuntimeSnapshotSummary({
   snapshot,
   compact = false,
+  targetModelOverride = null,
 }: RuntimeSnapshotSummaryProps) {
   const t = useTranslation();
   if (!snapshot) return null;
 
   const provider = snapshot.provider ?? "—";
-  const model = snapshot.model_name ?? "—";
+  const model = resolveRuntimeSnapshotModel(snapshot, targetModelOverride);
   const profile = snapshot.runtime_capabilities?.compatibility_profile ?? snapshot.voice_pipeline?.profile ?? null;
   const title = t("voice.daemon.runtimeSnapshot");
 
@@ -1429,6 +1435,27 @@ function RuntimeSnapshotSummary({
       )}
     </div>
   );
+}
+
+function resolveRuntimeSnapshotModel(
+  snapshot: RuntimeSnapshotLike,
+  targetModelOverride: string | null,
+): string {
+  const fallbackModel = snapshot?.model_name ?? "—";
+  if (!targetModelOverride) return fallbackModel;
+
+  const runtimeId = String(snapshot?.runtime_id ?? "").trim().toLowerCase();
+  const provider = String(snapshot?.provider ?? "").trim().toLowerCase();
+  const isMultiRuntimeSnapshot =
+    runtimeId === "multi_runtime" ||
+    runtimeId === "gemma4_audio" ||
+    runtimeId.startsWith("multi_runtime@") ||
+    runtimeId.startsWith("gemma4_audio@") ||
+    provider === "multi_runtime" ||
+    provider === "gemma4_audio" ||
+    provider.startsWith("multi_runtime@") ||
+    provider.startsWith("gemma4_audio@");
+  return isMultiRuntimeSnapshot ? targetModelOverride : fallbackModel;
 }
 
 type DrafterBoxProps = Readonly<{

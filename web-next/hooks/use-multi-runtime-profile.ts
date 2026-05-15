@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getGemma4ApiBaseUrl } from "@/lib/env";
-import { getApiBaseUrl } from "@/lib/env";
+import { getApiBaseUrl, getGemma4ApiBaseUrl } from "@/lib/env";
 import {
   fetchDaemonStatus,
   postDaemonReload,

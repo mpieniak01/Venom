@@ -561,10 +561,8 @@ function RuntimeProfileControls({
   const activeRuntimeLine = activeConfig
     ? `${activeConfig.precision}/${activeConfig.quantization_backend ?? "none"}/${activeConfig.device_target}`
     : "—";
-  const runtimeConfigDrift =
-    stagedRuntimeLine !== "—" &&
-    activeRuntimeLine !== "—" &&
-    stagedRuntimeLine !== activeRuntimeLine;
+  const runtimeConfigDrift = hasRuntimeConfigDrift(stagedRuntimeLine, activeRuntimeLine);
+  const quantizationInactiveReason = getQuantizationInactiveReason(daemonStatus);
 
   const handleApplyPolicy = async () => {
     await applyUpdate({
@@ -761,11 +759,10 @@ function RuntimeProfileControls({
               <Badge variant="secondary">{t("runtime.profile.notAppliedYet")}</Badge>
             </div>
           )}
-          {daemonStatus?.quantization_effective === false &&
-            daemonStatus?.quantization_effective_reason && (
-              <p className="text-[10px] text-amber-300">
-                {t("runtime.profile.quantizationEffectiveNo")}: {daemonStatus.quantization_effective_reason}
-              </p>
+          {quantizationInactiveReason && (
+            <p className="text-[10px] text-amber-300">
+              {t("runtime.profile.quantizationEffectiveNo")}: {quantizationInactiveReason}
+            </p>
           )}
         </div>
         {daemonStatus?.vram_interpretation_hint && (
@@ -811,6 +808,18 @@ function RuntimeProfileControls({
       )}
     </section>
   );
+}
+
+function hasRuntimeConfigDrift(stagedRuntimeLine: string, activeRuntimeLine: string): boolean {
+  if (stagedRuntimeLine === "—" || activeRuntimeLine === "—") return false;
+  return stagedRuntimeLine !== activeRuntimeLine;
+}
+
+function getQuantizationInactiveReason(
+  daemonStatus: DaemonStatus | null,
+): string | null {
+  if (daemonStatus?.quantization_effective !== false) return null;
+  return daemonStatus.quantization_effective_reason ?? null;
 }
 
 function RuntimeProfileRow({

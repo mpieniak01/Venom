@@ -38,7 +38,11 @@ from venom_core.services.feedback_loop_policy import (
     resolve_feedback_loop_model,
 )
 from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
-from venom_core.services.runtime_switch_service import RuntimeSwitchOrchestrator
+from venom_core.services.runtime_switch_service import (
+    RuntimeSwitchOrchestrator,
+    probe_health_ready,
+    probe_until_shutdown,
+)
 from venom_core.utils.llm_runtime import (
     LifecycleStep,
     compute_llm_config_hash,
@@ -274,15 +278,11 @@ def _release_onnx_runtime_caches() -> None:
 
 
 async def _await_server_health(_server_name: str, health_url: str) -> bool:
-    from venom_core.services.runtime_switch_service import probe_health_ready
-
     return await probe_health_ready(_server_name, health_url)
 
 
 async def _await_server_shutdown(server_name: str, health_url: str) -> bool:
     """Wait until a stopped server no longer reports healthy."""
-    from venom_core.services.runtime_switch_service import probe_until_shutdown
-
     return await probe_until_shutdown(server_name, health_url)
 
 
@@ -2481,19 +2481,10 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     llm_controller = _get_llm_controller_or_503()
     servers = llm_controller.list_servers()
 
-    # ONNX: in-process runtime, no daemon start/stop needed — dedicated path.
-    if server_name == "onnx":
-        stop_results = await _stop_other_servers(llm_controller, servers, server_name)
-        _assert_stop_results_clean(stop_results)
-        shutdown_results = await _collect_shutdown_results_for_switch(
-            servers=servers,
-            target_server_name=server_name,
-        )
-        response = _activate_onnx_server_switch(stop_results=stop_results)
-        response["shutdown_results"] = shutdown_results
-        return response
-
-    _, model_manager, request_tracer = _validate_switch_dependencies()
+    request_tracer = system_deps.get_request_tracer()
+    model_manager = None
+    if server_name != "onnx":
+        _, model_manager, request_tracer = _validate_switch_dependencies()
 
     if not llm_controller.has_server(server_name):
         raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
@@ -2524,10 +2515,19 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         onnx_flush_fn=_release_onnx_runtime_caches,
     )
 
+    if server_name == "onnx":
+        switch_state.mark_done(LifecycleStep.ENDPOINT_SWITCHED)
+        switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
+        response = _activate_onnx_server_switch(stop_results=stop_results)
+        response["shutdown_results"] = shutdown_results
+        response["lifecycle_state"] = switch_state.to_payload()
+        return response
+
     # All lifecycle steps confirmed — safe to persist config and model now.
     endpoint = _resolve_local_endpoint(server_name, target)
     _persist_local_runtime_endpoint(server_name, endpoint)
 
+    assert model_manager is not None
     config = config_manager.get_config(mask_secrets=False)
     models = await model_manager.list_local_models()
     (

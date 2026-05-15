@@ -13,6 +13,7 @@ from typing import Any, Optional
 import httpx
 from fastapi import HTTPException
 
+from venom_core.services.onnx_runtime_cleanup import release_onnx_runtime_best_effort
 from venom_core.utils.llm_runtime import LifecycleStep, LifecycleSwitchState
 from venom_core.utils.logger import get_logger
 from venom_core.utils.runtime_names import is_multi_runtime
@@ -69,10 +70,6 @@ async def release_runtime_resources(
 
     if caps.get("is_in_process") and caps.get("supports_cache_flush"):
         try:
-            from venom_core.services.onnx_runtime_cleanup import (  # noqa: PLC0415
-                release_onnx_runtime_best_effort,
-            )
-
             released = release_onnx_runtime_best_effort(wait=False) or released
         except Exception as exc:
             logger.warning("Nie udało się zwolnić runtime ONNX: {}", exc)
@@ -304,10 +301,6 @@ class RuntimeSwitchOrchestrator:
                 logger.warning("Nie udało się zwolnić cache ONNX runtime.")
         else:
             try:
-                from venom_core.services.onnx_runtime_cleanup import (
-                    release_onnx_runtime_best_effort,
-                )
-
                 release_onnx_runtime_best_effort(wait=False)
             except Exception:
                 logger.warning("Nie udało się zwolnić runtime ONNX.")

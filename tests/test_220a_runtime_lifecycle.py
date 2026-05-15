@@ -18,6 +18,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 
 from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
@@ -422,8 +423,6 @@ async def test_health_check_timeout_prevents_config_write(monkeypatch):
     SETTINGS.ACTIVE_LLM_SERVER = "ollama"
     SETTINGS.LLM_MODEL_NAME = "phi3:mini"
     try:
-        from fastapi import HTTPException
-
         with pytest.raises(HTTPException) as exc_info:
             await system_routes.set_active_llm_server(
                 system_routes.ActiveLlmServerRequest(server_name="multi_runtime")

@@ -597,9 +597,9 @@ function RuntimeProfileControls({
 
   const handleApplyQuantization = async () => {
     await applyUpdate({
-      precision: effectivePrecision as MultiRuntimeProfileUpdateRequest["precision"],
+      precision: effectivePrecision,
       quantization_backend: effectiveQuantizationBackend === "" ? null : effectiveQuantizationBackend,
-      device_target: effectiveDeviceTarget as MultiRuntimeProfileUpdateRequest["device_target"],
+      device_target: effectiveDeviceTarget,
     });
   };
 

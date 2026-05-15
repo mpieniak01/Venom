@@ -24,7 +24,7 @@ async def activate_model(registry: Any, model_name: str, runtime: str) -> bool:
 
     meta = registry.manifest.get(model_name)
     if not meta:
-        logger.error("Brak metadanych modelu %s po aktywacji", model_name)
+        logger.error("Brak metadanych modelu {} po aktywacji", model_name)
         return False
 
     try:
@@ -168,4 +168,4 @@ async def restart_runtime_after_activation(runtime: str, settings: Any) -> None:
                     result.stderr,
                 )
     except Exception as exc:
-        logger.warning("Nie udało się wykonać restartu %s: %s", runtime, exc)
+        logger.warning("Nie udało się wykonać restartu {}: {}", runtime, exc)

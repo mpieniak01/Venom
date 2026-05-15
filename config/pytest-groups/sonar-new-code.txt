@@ -10,6 +10,7 @@ tests/test_217b_api_multi_runtime_profile.py
 tests/test_217b_daemon_profile_endpoints.py
 tests/test_217da_multi_runtime_pipeline_basics.py
 tests/test_217dc_pipeline_completion.py
+tests/test_220a_runtime_lifecycle.py
 tests/test_academy_202c_signing_coverage.py
 tests/test_academy_202d_lora_onnx_deploy.py
 tests/test_academy_adapter_runtime_service.py

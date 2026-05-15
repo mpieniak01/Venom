@@ -8,6 +8,7 @@ import pytest
 from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
+from venom_core.services import runtime_switch_service
 
 
 class _FakeResponse:
@@ -95,6 +96,8 @@ def _skip_real_shutdown_wait(monkeypatch):
         return True
 
     monkeypatch.setattr(system_routes, "_await_server_shutdown", _fake_shutdown)
+    # Also patch the orchestrator's probe function to prevent real network calls.
+    monkeypatch.setattr(runtime_switch_service, "probe_until_shutdown", _fake_shutdown)
 
 
 @pytest.mark.asyncio
@@ -316,6 +319,7 @@ async def test_set_active_llm_server_waits_for_previous_runtime_shutdown_before_
         return True
 
     monkeypatch.setattr(system_routes, "_await_server_shutdown", _fake_shutdown)
+    monkeypatch.setattr(runtime_switch_service, "probe_until_shutdown", _fake_shutdown)
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"

@@ -38,8 +38,11 @@ from venom_core.services.feedback_loop_policy import (
     resolve_feedback_loop_model,
 )
 from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
+from venom_core.services.runtime_switch_service import RuntimeSwitchOrchestrator
 from venom_core.utils.llm_runtime import (
+    LifecycleStep,
     compute_llm_config_hash,
+    detect_runtime_drift,
     get_active_llm_runtime,
     infer_local_provider,
 )
@@ -249,7 +252,7 @@ def _assert_stop_results_clean(stop_results: dict[str, dict[str, Any]]) -> None:
     ]
     if failures:
         logger.warning(
-            "Nie udało się zatrzymać poprzednich serwerów LLM: %s",
+            "Nie udało się zatrzymać poprzednich serwerów LLM: {}",
             ", ".join(sorted(failures)),
         )
 
@@ -271,52 +274,16 @@ def _release_onnx_runtime_caches() -> None:
 
 
 async def _await_server_health(_server_name: str, health_url: str) -> bool:
-    logger.info("Oczekiwanie na gotowość serwera LLM.")
-    async with httpx.AsyncClient(timeout=2.0) as client:
-        for attempt in range(60):
-            try:
-                resp = await client.get(health_url)
-                is_ready = _is_health_response_ready(
-                    server_name=_server_name,
-                    response=resp,
-                )
-                if is_ready is True:
-                    logger.info("Serwer LLM gotowy po %.1fs", attempt * 0.5)
-                    return True
-            except Exception:
-                pass
-            await asyncio.sleep(0.5)
-    logger.error("Serwer LLM nie odpowiedział prawidłowo po 30s")
-    return False
+    from venom_core.services.runtime_switch_service import probe_health_ready
+
+    return await probe_health_ready(_server_name, health_url)
 
 
 async def _await_server_shutdown(server_name: str, health_url: str) -> bool:
     """Wait until a stopped server no longer reports healthy."""
-    logger.info("Oczekiwanie na zwolnienie serwera LLM: %s", server_name)
-    async with httpx.AsyncClient(timeout=2.0) as client:
-        for attempt in range(60):
-            try:
-                resp = await client.get(health_url)
-                if not _is_health_response_ready(
-                    server_name=server_name,
-                    response=resp,
-                ):
-                    logger.info(
-                        "Serwer LLM %s zwolnił zasoby po %.1fs",
-                        server_name,
-                        attempt * 0.5,
-                    )
-                    return True
-            except Exception:
-                logger.info(
-                    "Serwer LLM %s jest niedostępny po %.1fs",
-                    server_name,
-                    attempt * 0.5,
-                )
-                return True
-            await asyncio.sleep(0.5)
-    logger.error("Serwer LLM %s nadal odpowiada po 30s", server_name)
-    return False
+    from venom_core.services.runtime_switch_service import probe_until_shutdown
+
+    return await probe_until_shutdown(server_name, health_url)
 
 
 def _extract_health_status(response: httpx.Response) -> str | None:
@@ -1031,7 +998,7 @@ async def _load_trainable_model_catalog(
             local_models=local_models,
         )
     except Exception as exc:
-        logger.warning("Failed to load trainable model catalog: %s", exc)
+        logger.warning("Failed to load trainable model catalog: {}", exc)
         return []
 
     normalized: list[dict[str, Any]] = []
@@ -1127,7 +1094,7 @@ def _build_adapter_catalog(
     try:
         adapters_raw = academy_models.list_adapters(model_manager)
     except Exception as exc:
-        logger.warning("Failed to load adapter catalog for runtime options: %s", exc)
+        logger.warning("Failed to load adapter catalog for runtime options: {}", exc)
         return {
             "all_adapters": [],
             "by_runtime": {},
@@ -2050,7 +2017,12 @@ def get_active_llm_server():
 def get_active_llm_runtime_info():
     """Alias z pełnym payloadem aktywnego runtime LLM."""
     runtime = get_active_llm_runtime()
-    return {"status": "success", "runtime": runtime.to_payload()}
+    drift = detect_runtime_drift()
+    return {
+        "status": "success",
+        "runtime": runtime.to_payload(),
+        "drift": drift,
+    }
 
 
 @router.get(
@@ -2508,15 +2480,15 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     )
     llm_controller = _get_llm_controller_or_503()
     servers = llm_controller.list_servers()
-    stop_results = await _stop_other_servers(llm_controller, servers, server_name)
-    _assert_stop_results_clean(stop_results)
-    shutdown_results = await _collect_shutdown_results_for_switch(
-        servers=servers,
-        target_server_name=server_name,
-    )
-    if server_name != "onnx":
-        _release_onnx_runtime_caches()
+
+    # ONNX: in-process runtime, no daemon start/stop needed — dedicated path.
     if server_name == "onnx":
+        stop_results = await _stop_other_servers(llm_controller, servers, server_name)
+        _assert_stop_results_clean(stop_results)
+        shutdown_results = await _collect_shutdown_results_for_switch(
+            servers=servers,
+            target_server_name=server_name,
+        )
         response = _activate_onnx_server_switch(stop_results=stop_results)
         response["shutdown_results"] = shutdown_results
         return response
@@ -2526,6 +2498,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     if not llm_controller.has_server(server_name):
         raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
 
+    from_server = str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
     _trace_switch(
         request_tracer,
         request.trace_id,
@@ -2533,13 +2506,25 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         f"server={server_name}",
     )
 
-    target = _find_target_server(server_name, servers)
-    start_result = await _start_server_and_check_health(
-        llm_controller=llm_controller,
-        server_name=server_name,
-        target=target,
+    # Delegate full lifecycle (stop → release → flush → start → health) to orchestrator.
+    # Config/endpoint are saved ONLY after orchestrator returns with confirmed health.
+    active_model = str(getattr(SETTINGS, "LLM_MODEL_NAME", "") or "").strip()
+    orchestrator = RuntimeSwitchOrchestrator(llm_controller)
+    (
+        switch_state,
+        stop_results,
+        shutdown_results,
+        start_result,
+        target,
+    ) = await orchestrator.execute_lifecycle_switch(
+        servers=servers,
+        target_server_name=server_name,
+        from_server_name=from_server or "unknown",
+        active_model=active_model,
+        onnx_flush_fn=_release_onnx_runtime_caches,
     )
 
+    # All lifecycle steps confirmed — safe to persist config and model now.
     endpoint = _resolve_local_endpoint(server_name, target)
     _persist_local_runtime_endpoint(server_name, endpoint)
 
@@ -2570,6 +2555,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     config_hash = _persist_selected_model_settings(
         server_name, selected_model, endpoint
     )
+    switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
 
     runtime = get_active_llm_runtime()
     _trace_switch(
@@ -2590,4 +2576,5 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         "start_result": start_result,
         "stop_results": stop_results,
         "shutdown_results": shutdown_results,
+        "lifecycle_state": switch_state.to_payload(),
     }

@@ -3248,6 +3248,19 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_220a_runtime_lifecycle.py",
+      "domain": "runtime",
+      "test_type": "integration",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite"
+      ],
+      "legacy_targeted": false,
+      "rationale": "PR 220A lifecycle regression: switch flow, health-check timeout, drift detection, ONNX cleanup."
+    },
+    {
       "path": "tests/test_llm_server_selection.py",
       "domain": "runtime",
       "test_type": "route_contract",

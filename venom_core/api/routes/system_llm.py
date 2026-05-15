@@ -2419,28 +2419,13 @@ async def _resolve_ollama_selected_model(
     )
 
 
-@router.post(
-    "/system/llm-servers/active",
-    responses=LLM_SERVER_ACTIVATE_RESPONSES,
-)
-async def set_active_llm_server(request: ActiveLlmServerRequest):
-    """
-    Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
-    """
-    _ensure_server_allowed(request.server_name)
-    server_name = request.server_name
-    requested_alias = str(request.model_alias or "").strip()
-    _validate_feedback_alias_request(
-        server_name=server_name, requested_alias=requested_alias
-    )
-    llm_controller = _get_llm_controller_or_503()
-    servers = llm_controller.list_servers()
-    stop_results = await _stop_other_servers(llm_controller, servers, server_name)
-    _assert_stop_results_clean(stop_results)
+async def _collect_shutdown_results_for_switch(
+    *, servers: list[dict[str, Any]], target_server_name: str
+) -> dict[str, dict[str, Any]]:
     shutdown_results: dict[str, dict[str, Any]] = {}
     for server in servers:
         other_server_name = str(server.get("name") or "").strip().lower()
-        if not other_server_name or other_server_name == server_name:
+        if not other_server_name or other_server_name == target_server_name:
             continue
         if not server.get("supports", {}).get("stop"):
             continue
@@ -2460,6 +2445,75 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
                     "zatrzymaniu."
                 ),
             )
+    return shutdown_results
+
+
+async def _start_server_and_check_health(
+    *,
+    llm_controller: Any,
+    server_name: str,
+    target: dict[str, Any],
+) -> dict[str, Any]:
+    start_result = await _start_server_if_supported(llm_controller, server_name, target)
+    if start_result and start_result.get("ok"):
+        health_url = target.get("health_url")
+        if health_url and not await _await_server_health(server_name, health_url):
+            return {
+                "ok": False,
+                "error": "Health check timeout - serwer nie odpowiada",
+            }
+    return start_result
+
+
+async def _resolve_switch_model_selection(
+    *,
+    request: ActiveLlmServerRequest,
+    requested_alias: str,
+    server_name: str,
+    model_manager: Any,
+    config: dict[str, Any],
+    models: list[dict[str, Any]],
+) -> tuple[str, str, dict[str, Any]]:
+    selected_model, last_model_key = _resolve_selected_model_for_switch(
+        request=request,
+        server_name=server_name,
+        config=config,
+        models=models,
+    )
+    feedback_resolution = _feedback_loop_resolution_defaults(selected_model)
+    if server_name == "ollama":
+        selected_model, feedback_resolution = await _resolve_ollama_selected_model(
+            request=request,
+            requested_alias=requested_alias,
+            model_manager=model_manager,
+            models=models,
+            selected_model=selected_model,
+        )
+    return selected_model, last_model_key, feedback_resolution
+
+
+@router.post(
+    "/system/llm-servers/active",
+    responses=LLM_SERVER_ACTIVATE_RESPONSES,
+)
+async def set_active_llm_server(request: ActiveLlmServerRequest):
+    """
+    Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
+    """
+    _ensure_server_allowed(request.server_name)
+    server_name = request.server_name
+    requested_alias = str(request.model_alias or "").strip()
+    _validate_feedback_alias_request(
+        server_name=server_name, requested_alias=requested_alias
+    )
+    llm_controller = _get_llm_controller_or_503()
+    servers = llm_controller.list_servers()
+    stop_results = await _stop_other_servers(llm_controller, servers, server_name)
+    _assert_stop_results_clean(stop_results)
+    shutdown_results = await _collect_shutdown_results_for_switch(
+        servers=servers,
+        target_server_name=server_name,
+    )
     if server_name != "onnx":
         _release_onnx_runtime_caches()
     if server_name == "onnx":
@@ -2480,38 +2534,29 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     )
 
     target = _find_target_server(server_name, servers)
-
-    start_result = await _start_server_if_supported(llm_controller, server_name, target)
-
-    if start_result and start_result.get("ok"):
-        health_url = target.get("health_url")
-        if health_url and not await _await_server_health(server_name, health_url):
-            start_result = {
-                "ok": False,
-                "error": "Health check timeout - serwer nie odpowiada",
-            }
+    start_result = await _start_server_and_check_health(
+        llm_controller=llm_controller,
+        server_name=server_name,
+        target=target,
+    )
 
     endpoint = _resolve_local_endpoint(server_name, target)
     _persist_local_runtime_endpoint(server_name, endpoint)
 
     config = config_manager.get_config(mask_secrets=False)
     models = await model_manager.list_local_models()
-    selected_model, last_model_key = _resolve_selected_model_for_switch(
+    (
+        selected_model,
+        last_model_key,
+        feedback_resolution,
+    ) = await _resolve_switch_model_selection(
         request=request,
+        requested_alias=requested_alias,
         server_name=server_name,
+        model_manager=model_manager,
         config=config,
         models=models,
     )
-    feedback_resolution = _feedback_loop_resolution_defaults(selected_model)
-
-    if server_name == "ollama":
-        selected_model, feedback_resolution = await _resolve_ollama_selected_model(
-            request=request,
-            requested_alias=requested_alias,
-            model_manager=model_manager,
-            models=models,
-            selected_model=selected_model,
-        )
 
     old_last_model = config.get(last_model_key) or ""
     updates = _build_model_updates(

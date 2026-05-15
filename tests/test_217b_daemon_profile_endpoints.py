@@ -13,6 +13,8 @@ Weryfikują:
 
 from __future__ import annotations
 
+import sys
+import types
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
@@ -276,9 +278,10 @@ def test_update_profile_precision_soft_reload():
     assert data["required_apply_mode"] == "soft_reload"
 
 
-def test_update_profile_quantization_backend_requires_soft_reload():
+def test_update_profile_quantization_backend_requires_soft_reload(monkeypatch):
     stub = _daemon_stub()
     client = _client_with(stub)
+    monkeypatch.setitem(sys.modules, "bitsandbytes", types.ModuleType("bitsandbytes"))
     resp = client.post(
         "/v1/daemon/profile", json={"quantization_backend": "bitsandbytes"}
     )

@@ -339,20 +339,6 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_217a_multi_runtime_migration_contracts.py",
-      "domain": "runtime",
-      "test_type": "route_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
       "path": "tests/test_217b_api_multi_runtime_profile.py",
       "domain": "api",
       "test_type": "route_contract",
@@ -406,7 +392,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "217DC pipeline completion: image preprocessor, VRAM economy_mode, TTS fallback, async retrieval, quantization routing."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_academy_202c_signing_coverage.py",

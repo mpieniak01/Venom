@@ -395,6 +395,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_220a_runtime_lifecycle.py",
+      "domain": "runtime",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_academy_202c_signing_coverage.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -3248,19 +3262,6 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_220a_runtime_lifecycle.py",
-      "domain": "runtime",
-      "test_type": "integration",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite"
-      ],
-      "legacy_targeted": false,
-      "rationale": "PR 220A lifecycle regression: switch flow, health-check timeout, drift detection, ONNX cleanup."
-    },
-    {
       "path": "tests/test_llm_server_selection.py",
       "domain": "runtime",
       "test_type": "route_contract",
@@ -5061,6 +5062,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_runtime_switch_service_branches.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Nowy test gałęzi runtime switch dla bramki new-code i CI-lite."
     },
     {
       "path": "tests/test_scenario_weaver.py",

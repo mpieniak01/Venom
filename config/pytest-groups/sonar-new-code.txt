@@ -229,6 +229,7 @@ tests/test_runtime_policy_regression_contracts.py
 tests/test_runtime_registry_contracts.py
 tests/test_runtime_registry_translation_contracts.py
 tests/test_runtime_service_helpers.py
+tests/test_runtime_switch_service_branches.py
 tests/test_scheduler.py
 tests/test_scheduler_swarm_flow_streaming.py
 tests/test_service_monitor.py

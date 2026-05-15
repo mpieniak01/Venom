@@ -301,25 +301,28 @@ function ImageProbeSection({
 
 function ProfileModeBadge({ mode }: Readonly<{ mode: string }>) {
   const t = useTranslation();
-  const variant =
-    mode === "live"
-      ? "default"
-      : mode === "soft_reload"
-        ? "secondary"
-        : mode === "hard_restart"
-          ? "destructive"
-          : "outline";
-  const label =
-    mode === "live"
-      ? t("runtime.profile.applyModeLive")
-      : mode === "soft_reload"
-        ? t("runtime.profile.applyModeSoftReload")
-        : mode === "hard_restart"
-          ? t("runtime.profile.applyModeHardRestart")
-          : mode === "unsupported"
-            ? t("runtime.profile.applyModeUnsupported")
-            : mode;
+  const badge = getProfileModeBadgeConfig(mode, t);
+  const variant = badge.variant;
+  const label = badge.label;
   return <Badge variant={variant}>{label}</Badge>;
+}
+
+function getProfileModeBadgeConfig(
+  mode: string,
+  t: ReturnType<typeof useTranslation>,
+): Readonly<{ variant: "default" | "secondary" | "destructive" | "outline"; label: string }> {
+  switch (mode) {
+    case "live":
+      return { variant: "default", label: t("runtime.profile.applyModeLive") };
+    case "soft_reload":
+      return { variant: "secondary", label: t("runtime.profile.applyModeSoftReload") };
+    case "hard_restart":
+      return { variant: "destructive", label: t("runtime.profile.applyModeHardRestart") };
+    case "unsupported":
+      return { variant: "outline", label: t("runtime.profile.applyModeUnsupported") };
+    default:
+      return { variant: "outline", label: mode };
+  }
 }
 
 function RuntimeProfileControls() {

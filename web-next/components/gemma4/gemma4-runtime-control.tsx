@@ -190,10 +190,9 @@ function ImageProbeSection({
   onProbe,
 }: ImageProbeSectionProps) {
   const t = useTranslation();
+  const hasResult = !!(imageProbeResult || imageProbeDiagnostics || imageProbeError);
   return (
-    <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-      <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
-      <div className="mt-2 space-y-2">
+    <div className="space-y-2">
         <button
           type="button"
           onDragOver={(event) => { event.preventDefault(); }}
@@ -203,10 +202,28 @@ function ImageProbeSection({
             if (event.dataTransfer.files.item(0)) onImageUrlChange("");
           }}
           onClick={() => imageFileInputRef.current?.click()}
-          className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
+          className={`w-full rounded-lg border border-dashed px-3 py-3 text-center text-[11px] flex flex-col items-center gap-1.5 transition-colors ${
+            imageDataInput
+              ? "border-emerald-500/40 bg-emerald-500/[0.04] text-emerald-400"
+              : "border-white/20 bg-white/[0.02] text-zinc-400 hover:border-white/40 hover:bg-white/[0.04]"
+          }`}
           aria-label={t("voice.daemon.dragDropImage")}
         >
-          {t("voice.daemon.dragDropImage")}
+          {imageDataInput ? (
+            <>
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              <span className="truncate max-w-full">{imageFileName ?? t("voice.daemon.fileLoaded")}</span>
+            </>
+          ) : (
+            <>
+              <svg className="h-5 w-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <span>{t("voice.daemon.dragDropImage")}</span>
+            </>
+          )}
         </button>
         <div className="flex items-center gap-2">
           <Button
@@ -217,9 +234,6 @@ function ImageProbeSection({
           >
             {t("voice.daemon.chooseImageFromDisk")}
           </Button>
-          {imageFileName && (
-            <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
-          )}
           {imageDataInput && (
             <Button size="xs" variant="ghost" onClick={onClearImageData} disabled={busy || imageProbePending}>
               {t("voice.daemon.clearImageFile")}
@@ -237,64 +251,156 @@ function ImageProbeSection({
             }}
           />
         </div>
-        <input
-          type="url"
-          value={imageUrlInput}
-          onChange={(e) => onImageUrlChange(e.target.value)}
-          placeholder={imageDataInput ? t("voice.daemon.fileSelectedUrlDisabled") : t("voice.daemon.imageUrlPlaceholder")}
-          disabled={busy || imageProbePending}
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-          aria-label={t("voice.daemon.imageUrl")}
-        />
-        <input
-          type="text"
-          value={imagePromptInput}
-          onChange={(e) => onImagePromptChange(e.target.value)}
-          placeholder={t("voice.daemon.imagePromptPlaceholder")}
-          disabled={busy || imageProbePending}
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-          aria-label={t("voice.daemon.imagePrompt")}
-        />
+        <div>
+          <p className="text-[10px] text-zinc-500 mb-0.5">{t("voice.daemon.imageUrl")}</p>
+          <input
+            type="url"
+            value={imageUrlInput}
+            onChange={(e) => onImageUrlChange(e.target.value)}
+            placeholder={imageDataInput ? t("voice.daemon.fileSelectedUrlDisabled") : t("voice.daemon.imageUrlPlaceholder")}
+            disabled={busy || imageProbePending || !!imageDataInput}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+            aria-label={t("voice.daemon.imageUrl")}
+          />
+        </div>
+        <div>
+          <p className="text-[10px] text-zinc-500 mb-0.5">{t("voice.daemon.imagePrompt")}</p>
+          <input
+            type="text"
+            value={imagePromptInput}
+            onChange={(e) => onImagePromptChange(e.target.value)}
+            placeholder={t("voice.daemon.imagePromptPlaceholder")}
+            disabled={busy || imageProbePending}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+            aria-label={t("voice.daemon.imagePrompt")}
+          />
+        </div>
         <Button
           size="xs"
-          variant="secondary"
+          variant="primary"
           onClick={onProbe}
           disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
         >
           {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
         </Button>
-        {imageProbeResult && (
-          <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
-        )}
-        {imageProbeDiagnostics && (
-          <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 text-[10px] text-zinc-400 space-y-1">
-            <p><span className="text-zinc-500">selected_policy:</span> {imageProbeDiagnostics.selectedPolicy ?? "—"}</p>
-            <p><span className="text-zinc-500">image_strategy:</span> {imageProbeDiagnostics.selectedImageStrategy ?? "—"}</p>
-            <p><span className="text-zinc-500">trace:</span> {imageProbeDiagnostics.executionTrace.join(" -> ") || "—"}</p>
-            <p>
-              <span className="text-zinc-500">retrieval_used:</span>{" "}
-              {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}{" · "}
-              <span className="text-zinc-500">retrieval_route:</span>{" "}
-              {imageProbeDiagnostics.retrievalRoute ?? "—"}{" · "}
-              <span className="text-zinc-500">retrieval_items:</span>{" "}
-              {imageProbeDiagnostics.retrievalContextItems}{" · "}
-              <span className="text-zinc-500">assistant_used:</span>{" "}
-              {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}{" · "}
-              <span className="text-zinc-500">economy_mode:</span>{" "}
-              {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
+        {hasResult && (
+          <div className="mt-2 rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 space-y-1.5">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+              {t("voice.daemon.probeResult")}
             </p>
-            {imageProbeDiagnostics.degradationReasons.length > 0 && (
-              <p>
-                <span className="text-zinc-500">degradations:</span>{" "}
-                {imageProbeDiagnostics.degradationReasons.join(" | ")}
-              </p>
+            {imageProbeResult && (
+              <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
+            )}
+            {imageProbeDiagnostics && (
+              <details className="text-[10px] text-zinc-400">
+                <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 transition-colors">
+                  {t("voice.daemon.probeDiagnostics")}
+                </summary>
+                <div className="mt-1 space-y-1">
+                  <p><span className="text-zinc-500">selected_policy:</span> {imageProbeDiagnostics.selectedPolicy ?? "—"}</p>
+                  <p><span className="text-zinc-500">image_strategy:</span> {imageProbeDiagnostics.selectedImageStrategy ?? "—"}</p>
+                  <p><span className="text-zinc-500">trace:</span> {imageProbeDiagnostics.executionTrace.join(" → ") || "—"}</p>
+                  <p>
+                    <span className="text-zinc-500">retrieval_used:</span>{" "}
+                    {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}{" · "}
+                    <span className="text-zinc-500">retrieval_route:</span>{" "}
+                    {imageProbeDiagnostics.retrievalRoute ?? "—"}{" · "}
+                    <span className="text-zinc-500">retrieval_items:</span>{" "}
+                    {imageProbeDiagnostics.retrievalContextItems}{" · "}
+                    <span className="text-zinc-500">assistant_used:</span>{" "}
+                    {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}{" · "}
+                    <span className="text-zinc-500">economy_mode:</span>{" "}
+                    {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
+                  </p>
+                  {imageProbeDiagnostics.degradationReasons.length > 0 && (
+                    <p>
+                      <span className="text-zinc-500">degradations:</span>{" "}
+                      {imageProbeDiagnostics.degradationReasons.join(" | ")}
+                    </p>
+                  )}
+                </div>
+              </details>
+            )}
+            {imageProbeError && (
+              <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
             )}
           </div>
         )}
-        {imageProbeError && (
-          <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
-        )}
+    </div>
+  );
+}
+
+export function ImageProbeCard() {
+  const t = useTranslation();
+  const daemon = useGemma4Daemon();
+  const { status, actionPending } = daemon;
+  const busy = actionPending !== null;
+
+  const [imageUrlInput, setImageUrlInput] = useState("");
+  const [imageDataInput, setImageDataInput] = useState<string | null>(null);
+  const [imageFileName, setImageFileName] = useState<string | null>(null);
+  const [imagePromptInput, setImagePromptInput] = useState("");
+  const [imageProbePending, setImageProbePending] = useState(false);
+  const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
+  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<ImageProbeDiagnostics | null>(null);
+  const [imageProbeError, setImageProbeError] = useState<string | null>(null);
+  const [lastPipelineResponse, setLastPipelineResponse] = useState<DaemonRespondResponse | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  if (!status?.supports_image_input) return null;
+
+  const handleImageProbe = () =>
+    handleRuntimeImageProbe({
+      imageUrlInput,
+      imageDataInput,
+      imagePromptInput,
+      imageProbePending,
+      maxNewTokens: status.params.max_new_tokens ?? 128,
+      setImageProbeResult,
+      setImageProbeDiagnostics,
+      setImageProbeError,
+      setImageProbePending,
+      setLastPipelineResponse,
+    });
+
+  const handleImageFileChange = (fileList: FileList | null) =>
+    handleRuntimeImageFileSelection({
+      fileList,
+      setImageProbeError,
+      setImageDataInput,
+      setImageFileName,
+    });
+
+  const imageBudget = status.params.image_token_budget;
+
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3 text-xs text-zinc-300">
+      <div className="flex items-center justify-between mb-2">
+        <p className="eyebrow">{t("voice.daemon.imageInput")}</p>
+        <span className="text-[10px] text-zinc-500">
+          {t("voice.daemon.imageBudgetShort")}: {imageBudget}
+        </span>
       </div>
+      <ImageProbeSection
+        busy={busy}
+        imageProbePending={imageProbePending}
+        imageUrlInput={imageUrlInput}
+        imageDataInput={imageDataInput}
+        imageFileName={imageFileName}
+        imagePromptInput={imagePromptInput}
+        imageProbeResult={imageProbeResult}
+        imageProbeDiagnostics={imageProbeDiagnostics}
+        imageProbeError={imageProbeError}
+        imageFileInputRef={imageFileInputRef}
+        onFileChange={handleImageFileChange}
+        onImageUrlChange={setImageUrlInput}
+        onImagePromptChange={setImagePromptInput}
+        onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
+        onProbe={handleImageProbe}
+      />
+      {lastPipelineResponse && (
+        <PipelineDiagnosticsPanel response={lastPipelineResponse} />
+      )}
     </div>
   );
 }
@@ -927,16 +1033,7 @@ function Gemma4RuntimeControlPanel({
   const [localCache, setLocalCache] = useState<string | null>(null);
   const [drafterInput, setDrafterInput] = useState("");
   const [showDrafterInput, setShowDrafterInput] = useState(false);
-  const [imageUrlInput, setImageUrlInput] = useState("");
-  const [imageDataInput, setImageDataInput] = useState<string | null>(null);
-  const [imageFileName, setImageFileName] = useState<string | null>(null);
-  const [imagePromptInput, setImagePromptInput] = useState("");
-  const [imageProbePending, setImageProbePending] = useState(false);
-  const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
-  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<ImageProbeDiagnostics | null>(null);
-  const [imageProbeError, setImageProbeError] = useState<string | null>(null);
-  const [lastPipelineResponse, setLastPipelineResponse] = useState<DaemonRespondResponse | null>(null);
-  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showDrafter, setShowDrafter] = useState(false);
 
   const busy = actionPending !== null;
 
@@ -955,6 +1052,14 @@ function Gemma4RuntimeControlPanel({
       : localImageBudget;
   const effectiveCache =
     localCache === null ? (status?.params.cache_implementation ?? "") : localCache;
+  const cacheOptions = useMemo(
+    () =>
+      CACHE_OPTIONS.map((opt) => ({
+        value: opt.value,
+        label: opt.value === "" ? t("voice.daemon.cacheDefault") : opt.label,
+      })),
+    [t],
+  );
   const responseShapingToggles = [
     {
       label: t("voice.daemon.reasoningSummary"),
@@ -1010,28 +1115,6 @@ function Gemma4RuntimeControlPanel({
       drafterInput,
       setDrafterInput,
       setShowDrafterInput,
-    });
-
-  const handleImageProbe = () =>
-    handleRuntimeImageProbe({
-      imageUrlInput,
-      imageDataInput,
-      imagePromptInput,
-      imageProbePending,
-      maxNewTokens: status?.params.max_new_tokens ?? 128,
-      setImageProbeResult,
-      setImageProbeDiagnostics,
-      setImageProbeError,
-      setImageProbePending,
-      setLastPipelineResponse,
-    });
-
-  const handleImageFileChange = (fileList: FileList | null) =>
-    handleRuntimeImageFileSelection({
-      fileList,
-      setImageProbeError,
-      setImageDataInput,
-      setImageFileName,
     });
 
   const vram = status?.vram;
@@ -1109,24 +1192,25 @@ function Gemma4RuntimeControlPanel({
 
       {/* Params */}
       <div className="space-y-2.5 mb-3">
-        {/* Thinking toggle */}
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-xs text-zinc-400">{t("voice.daemon.thinking")}</label>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={effectiveThinking}
-              onCheckedChange={(v) => setLocalThinking(v)}
-              disabled={busy}
-              aria-label={t("voice.daemon.thinking")}
-            />
-            {status && (
-              <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
-            )}
-          </div>
-        </div>
-
-        {/* Reasoning / emotion shaping */}
+        {/* Reasoning / emotion shaping — thinking + response shaping group */}
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.responseShaping")}</p>
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+          {/* Thinking — first item in group */}
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs text-zinc-400">{t("voice.daemon.thinking")}</label>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={effectiveThinking}
+                onCheckedChange={(v) => setLocalThinking(v)}
+                disabled={busy}
+                aria-label={t("voice.daemon.thinking")}
+              />
+              {status && (
+                <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
+              )}
+            </div>
+          </div>
+          <div className="border-t border-white/[0.05]" />
           {responseShapingToggles.map((toggle) => (
             <div key={toggle.ariaLabel} className="flex items-center justify-between gap-2">
               <label className="text-xs text-zinc-400">{toggle.label}</label>
@@ -1142,6 +1226,9 @@ function Gemma4RuntimeControlPanel({
             </div>
           ))}
         </div>
+
+        {/* Generation params */}
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.generationParams")}</p>
 
         {/* Max tokens */}
         <div className="flex items-center justify-between gap-2">
@@ -1176,41 +1263,15 @@ function Gemma4RuntimeControlPanel({
         {/* Cache strategy */}
         <div className="flex items-center justify-between gap-2">
           <label className="text-xs text-zinc-400">{t("voice.daemon.cacheStrategy")}</label>
-          <select
+          <SelectMenu
             value={effectiveCache}
-            onChange={(e) => setLocalCache(e.target.value)}
+            options={cacheOptions}
+            onChange={(v) => setLocalCache(v)}
             disabled={busy}
-            className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-            aria-label={t("voice.daemon.cacheStrategy")}
-          >
-            {CACHE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.value === "" ? t("voice.daemon.cacheDefault") : opt.label}
-              </option>
-            ))}
-            </select>
-          </div>
+            ariaLabel={t("voice.daemon.cacheStrategy")}
+          />
         </div>
-
-      {status?.supports_image_input && (
-        <ImageProbeSection
-          busy={busy}
-          imageProbePending={imageProbePending}
-          imageUrlInput={imageUrlInput}
-          imageDataInput={imageDataInput}
-          imageFileName={imageFileName}
-          imagePromptInput={imagePromptInput}
-          imageProbeResult={imageProbeResult}
-          imageProbeDiagnostics={imageProbeDiagnostics}
-          imageProbeError={imageProbeError}
-          imageFileInputRef={imageFileInputRef}
-          onFileChange={handleImageFileChange}
-          onImageUrlChange={setImageUrlInput}
-          onImagePromptChange={setImagePromptInput}
-          onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
-          onProbe={handleImageProbe}
-        />
-      )}
+        </div>
 
       <RuntimeProfileControls />
 
@@ -1219,23 +1280,32 @@ function Gemma4RuntimeControlPanel({
         <VramSection vram={vram} vramPercent={vramPercent} />
       )}
 
-      {/* Drafter */}
-      <DrafterBox
-        daemon={daemon}
-        assistantModel={status?.assistant_model ?? null}
-        assistantModels={assistantModels}
-        busy={busy}
-        actionPending={actionPending}
-        drafterInput={drafterInput}
-        setDrafterInput={setDrafterInput}
-        showDrafterInput={showDrafterInput}
-        setShowDrafterInput={setShowDrafterInput}
-        onAttach={handleAttach}
-      />
-
-      {lastPipelineResponse && (
-        <PipelineDiagnosticsPanel response={lastPipelineResponse} />
-      )}
+      {/* Drafter — collapsible, collapsed by default */}
+      <div className="mb-3">
+        <button
+          type="button"
+          data-testid="drafter-accordion-toggle"
+          onClick={() => setShowDrafter(!showDrafter)}
+          className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
+        >
+          <span>{t("voice.daemon.assistantDrafter")}</span>
+          <span className="text-zinc-600">{showDrafter ? "▲" : "▼"}</span>
+        </button>
+        {showDrafter && (
+          <DrafterBox
+            daemon={daemon}
+            assistantModel={status?.assistant_model ?? null}
+            assistantModels={assistantModels}
+            busy={busy}
+            actionPending={actionPending}
+            drafterInput={drafterInput}
+            setDrafterInput={setDrafterInput}
+            showDrafterInput={showDrafterInput}
+            setShowDrafterInput={setShowDrafterInput}
+            onAttach={handleAttach}
+          />
+        )}
+      </div>
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
@@ -1332,7 +1402,7 @@ function ThinkingStatusLabel({
   if (localThinking !== null) {
     return <span className="text-[10px] text-zinc-500">{t("voice.daemon.signalLive")}</span>;
   }
-  const label = enabled ? t("voice.daemon.thinkingOn") : t("voice.daemon.thinkingOff");
+  const label = enabled ? t("common.yes") : t("common.no");
   return <span className="text-[10px] text-zinc-500">{label}</span>;
 }
 
@@ -1413,21 +1483,6 @@ function RuntimeSnapshotSummary({
       {profile && (
         <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
           {t("voice.controls.profile")}: {profile}
-        </p>
-      )}
-      {snapshot.voice_pipeline?.tts && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
-          {t("voice.controls.tts")}: {snapshot.voice_pipeline.tts}
-        </p>
-      )}
-      {snapshot.voice_pipeline?.reasoning_summary && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
-          {t("voice.controls.reasoningSummary")}: {snapshot.voice_pipeline.reasoning_summary}
-        </p>
-      )}
-      {snapshot.voice_pipeline?.emotion && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
-          {t("voice.controls.emotion")}: {snapshot.voice_pipeline.emotion}
         </p>
       )}
       {snapshot.error && (

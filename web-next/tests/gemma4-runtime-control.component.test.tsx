@@ -337,12 +337,15 @@ describe("Gemma4RuntimeControl — normal state (voice variant)", () => {
     assert.equal(screen.queryByText("multi_runtime / gemma2:2b"), null);
   });
 
-  it("renders image handling block before runtime profile controls", async () => {
+  it("image handling block is no longer inside Gemma4RuntimeControl (extracted to ImageProbeCard)", async () => {
     renderControl(makeState());
-    const imageHeading = screen.getByText(/Obsługa obrazu|Image input|Bildeingabe/i);
-    const profileSection = await screen.findByTestId("runtime-profile-inline");
-    assert.ok(
-      imageHeading.compareDocumentPosition(profileSection) & Node.DOCUMENT_POSITION_FOLLOWING,
+    // Wait for runtime-profile-inline to confirm the panel is fully rendered
+    await screen.findByTestId("runtime-profile-inline");
+    // ImageProbeSection has been extracted to ImageProbeCard — must NOT appear inside the panel
+    assert.equal(
+      screen.queryByText(/Obsługa obrazu|Image input|Bildeingabe/i),
+      null,
+      "ImageProbeSection must not be rendered inside Gemma4RuntimeControl",
     );
   });
 
@@ -384,7 +387,7 @@ describe("Gemma4RuntimeControl — pending reload state", () => {
 });
 
 describe("Gemma4RuntimeControl — assistant drafter on/off", () => {
-  it("shows assistant model name when attached", () => {
+  it("shows assistant model name when accordion is expanded", () => {
     renderControl(makeState({
       status: makeStatus({
         assistant_model: "google/gemma-4-E2B-it-assistant",
@@ -392,6 +395,8 @@ describe("Gemma4RuntimeControl — assistant drafter on/off", () => {
         assistant_loaded: true,
       }),
     }));
+    // DrafterBox is behind accordion — expand it first
+    fireEvent.click(screen.getByTestId("drafter-accordion-toggle"));
     assert.ok(screen.getByText("google/gemma-4-E2B-it-assistant"));
   });
 
@@ -403,28 +408,35 @@ describe("Gemma4RuntimeControl — assistant drafter on/off", () => {
         assistant_loaded: true,
       }),
     }));
+    // accordion toggle label already contains "drafter" text even when collapsed
     assert.ok(
       document.body.textContent?.includes("drafter") ||
-      document.body.textContent?.includes("aktywny"),
+      document.body.textContent?.includes("aktywny") ||
+      document.body.textContent?.includes("Drafter"),
     );
   });
 
-  it("shows no-drafter placeholder when no assistant", () => {
+  it("DrafterBox is collapsed by default — placeholder hidden until expanded", () => {
     renderControl(makeState({ status: makeStatus({ assistant_model: null }) }));
-    assert.ok(
+    // "Brak"/"None" is inside DrafterBox — must not be visible before expanding
+    const hidden = !(
       document.body.textContent?.includes("Brak") ||
-      document.body.textContent?.includes("None"),
+      document.body.textContent?.includes("None")
     );
+    assert.ok(hidden, "DrafterBox content should be hidden behind accordion when collapsed");
   });
 
-  it("shows assistant preset selector when assistant models are available", () => {
+  it("shows assistant preset selector when accordion is expanded", () => {
     renderControl(
       makeState({ status: makeStatus({ assistant_model: null }) }),
       "voice",
       null,
       ["google/gemma-4-E2B-it-assistant"],
     );
-    const attachButton = screen.queryByRole("button", { name: /drafter/i }) ?? screen.getByText(/drafter/i);
+    // Expand accordion first
+    fireEvent.click(screen.getByTestId("drafter-accordion-toggle"));
+    // Then click "Attach drafter" to reveal the preset select menu
+    const attachButton = screen.getByRole("button", { name: /attach|podepnij/i });
     fireEvent.click(attachButton);
     assert.ok(screen.getByText("google/gemma-4-E2B-it-assistant"));
   });

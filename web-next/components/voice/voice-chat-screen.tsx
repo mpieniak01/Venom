@@ -14,6 +14,7 @@ import {
   type VoiceStatusUpdate,
 } from "@/components/voice/voice-command-center";
 import { VoiceStatusSidebar } from "@/components/voice/voice-status-sidebar";
+import { ImageProbeCard } from "@/components/gemma4/gemma4-runtime-control";
 
 type VoiceModeCard = {
   mode: VoiceModePreset;
@@ -118,10 +119,55 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
             <p className="mt-3 text-xs text-zinc-400">{t("voice.modes.hint")}</p>
           </div>
 
+          {/* F3-01: System status bar */}
+          <VoiceSystemStatusBar status={voiceStatus} />
+
+          {/* Obsługa obrazu — osobny box bezpośrednio po Tryby voice */}
+          <ImageProbeCard />
+
           {/* STT/TTS + Runtime status — compact info boxes for tuning */}
           <VoiceStatusSidebar status={voiceStatus} isDevMode={isDevMode} />
         </div>
       </div>
+    </div>
+  );
+}
+
+function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate | null }>) {
+  const t = useTranslation();
+  if (!status) return null;
+
+  const sttOk = status.stt_ready === true;
+  const ttsOk = status.tts_ready === true;
+  const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
+  const runtimeOk = probeStatus === "verified";
+  const allOk = sttOk && ttsOk && runtimeOk;
+
+  return (
+    <div
+      className={`rounded-2xl px-4 py-2 flex items-center justify-between gap-3 text-[11px] ${
+        allOk
+          ? "border border-emerald-500/20 bg-emerald-500/[0.04] text-emerald-400"
+          : "border border-amber-500/20 bg-amber-500/[0.04] text-amber-400"
+      }`}
+    >
+      <span className="font-medium">
+        {allOk ? t("voice.status.systemReady") : t("voice.status.systemPartial")}
+      </span>
+      <span className="flex items-center gap-3">
+        <span className={`flex items-center gap-1 ${sttOk ? "text-emerald-400" : "text-zinc-600"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${sttOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          STT
+        </span>
+        <span className={`flex items-center gap-1 ${ttsOk ? "text-emerald-400" : "text-zinc-600"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${ttsOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          TTS
+        </span>
+        <span className={`flex items-center gap-1 ${runtimeOk ? "text-emerald-400" : "text-zinc-600"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${runtimeOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          {probeStatus ?? "—"}
+        </span>
+      </span>
     </div>
   );
 }

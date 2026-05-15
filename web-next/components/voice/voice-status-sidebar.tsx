@@ -78,6 +78,13 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
     return (
       <div className="space-y-3">
         <RuntimeSwitchCard />
+        <div className="flex items-center gap-3 pt-1">
+          <div className="flex-1 border-t border-white/[0.05]" />
+          <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+            {t("voice.controls.systemStatus")}
+          </span>
+          <div className="flex-1 border-t border-white/[0.05]" />
+        </div>
         <RuntimeOverviewCard
           runtime={null}
           title={t("voice.controls.runtime")}
@@ -110,6 +117,15 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
           assistantModels={runtime?.assistant_models ?? []}
         />
       )}
+      {/* F4-04: separator between control blocks and status/diagnostic blocks */}
+      <div className="flex items-center gap-3 pt-1">
+        <div className="flex-1 border-t border-white/[0.05]" />
+        <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+          {t("voice.controls.systemStatus")}
+        </span>
+        <div className="flex-1 border-t border-white/[0.05]" />
+      </div>
+
       <RuntimeOverviewCard
         runtime={runtime}
         title={t("voice.controls.runtime")}
@@ -171,10 +187,12 @@ function RuntimeSwitchCard() {
   const t = useTranslation();
   const runtime = useRuntime();
   const [pending, setPending] = useState(false);
+  const [applied, setApplied] = useState(false);
   const selectedRuntime = runtime.selectedServer ?? "";
   const selectedModel = runtime.selectedModel ?? "";
   const applyDisabled = pending || !selectedRuntime || !selectedModel;
   const runtimeError = runtime.activeServer.error ?? runtime.llmServers.error;
+  const serversLoading = runtime.llmServers.loading ?? false;
 
   const serverOptions = useMemo(
     () => runtime.serverOptions.map((item) => ({ value: item.value, label: item.label })),
@@ -190,6 +208,8 @@ function RuntimeSwitchCard() {
     setPending(true);
     try {
       await runtime.activateRuntimeSelection(selectedRuntime, selectedModel);
+      setApplied(true);
+      setTimeout(() => setApplied(false), 2500);
     } finally {
       setPending(false);
     }
@@ -204,7 +224,13 @@ function RuntimeSwitchCard() {
             value={selectedRuntime}
             options={serverOptions}
             onChange={(value) => runtime.setSelectedServer(value || null)}
-            placeholder={t("voice.controls.runtime")}
+            placeholder={
+              serversLoading
+                ? t("voice.controls.loading")
+                : serverOptions.length === 0
+                ? t("voice.controls.noRuntimes")
+                : t("voice.controls.runtime")
+            }
             className="w-full"
             disabled={pending || serverOptions.length === 0}
             buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)] overflow-hidden"
@@ -222,12 +248,16 @@ function RuntimeSwitchCard() {
         </div>
 
         <div>
-          <p className="text-caption mb-1">Model</p>
+          <p className="text-caption mb-1">{t("voice.controls.model")}</p>
           <SelectMenu
             value={selectedModel}
             options={modelOptions}
             onChange={(value) => runtime.setSelectedModel(value || null)}
-            placeholder={t("voice.controls.runtime")}
+            placeholder={
+              modelOptions.length === 0 && selectedRuntime
+                ? t("voice.controls.loading")
+                : t("voice.controls.model")
+            }
             className="w-full"
             disabled={pending || modelOptions.length === 0}
             buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)] overflow-hidden"
@@ -254,6 +284,10 @@ function RuntimeSwitchCard() {
         >
           {pending ? t("voice.controls.refreshing") : t("voice.controls.refresh")}
         </Button>
+
+        {applied && (
+          <p className="text-[11px] text-emerald-400">{t("voice.controls.runtimeApplied")}</p>
+        )}
 
         {runtimeError && (
           <p className="text-[11px] text-rose-300 truncate">

@@ -20,12 +20,58 @@ import { postDaemonRespond } from "@/lib/gemma4-daemon-api";
 import { PipelineDiagnosticsPanel } from "@/components/gemma4/pipeline-diagnostics-panel";
 import { getGemma4ApiBaseUrl } from "@/lib/env";
 import { type Gemma4DaemonState, useGemma4Daemon } from "@/hooks/use-gemma4-daemon";
+import {
+  type MultiRuntimeProfileUpdateRequest,
+  useMultiRuntimeProfile,
+} from "@/hooks/use-multi-runtime-profile";
 
 const CACHE_OPTIONS = [
   { value: "", label: "default" },
   { value: "static", label: "static" },
   { value: "quantized", label: "quantized" },
   { value: "offloaded_static", label: "offloaded_static" },
+] as const;
+
+const PROFILE_CACHE_OPTIONS = [
+  { value: "", label: "default (framework)" },
+  { value: "static", label: "static" },
+  { value: "dynamic", label: "dynamic" },
+  { value: "offloaded", label: "offloaded" },
+] as const;
+
+const PROFILE_EXECUTION_MODE_OPTIONS = [
+  { value: "balanced", label: "balanced" },
+  { value: "vision_priority", label: "vision_priority" },
+  { value: "voice_priority", label: "voice_priority" },
+] as const;
+
+const PROFILE_IMAGE_STRATEGY_OPTIONS = [
+  { value: "vlm_only", label: "vlm_only" },
+  { value: "ocr_first", label: "ocr_first" },
+  { value: "hybrid", label: "hybrid" },
+] as const;
+
+const PROFILE_RETRIEVAL_MODE_OPTIONS = [
+  { value: "off", label: "off" },
+  { value: "auto", label: "auto" },
+  { value: "always", label: "always" },
+] as const;
+
+const PROFILE_AUDIO_OUTPUT_MODE_OPTIONS = [
+  { value: "off", label: "off" },
+  { value: "text_first", label: "text_first" },
+  { value: "voice_first", label: "voice_first" },
+] as const;
+
+const PROFILE_ASSISTANT_MODE_OPTIONS = [
+  { value: "off", label: "off" },
+  { value: "attached", label: "attached" },
+  { value: "conditional", label: "conditional" },
+] as const;
+
+const PROFILE_ECONOMY_MODE_OPTIONS = [
+  { value: "off", label: "off" },
+  { value: "auto", label: "auto" },
 ] as const;
 
 type Variant = "cockpit" | "voice";
@@ -249,6 +295,246 @@ function ImageProbeSection({
           <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+function ProfileModeBadge({ mode }: Readonly<{ mode: string }>) {
+  const variant =
+    mode === "live"
+      ? "default"
+      : mode === "soft_reload"
+        ? "secondary"
+        : mode === "hard_restart"
+          ? "destructive"
+          : "outline";
+  return <Badge variant={variant}>{mode}</Badge>;
+}
+
+function RuntimeProfileControls() {
+  const t = useTranslation();
+  const profileState = useMultiRuntimeProfile();
+  const { data, updatePending, lastUpdateResult, applyUpdate } = profileState;
+  const profile = data?.profile ?? null;
+  const matrix = data?.apply_matrix ?? null;
+  const busy = updatePending;
+
+  const [localExecutionMode, setLocalExecutionMode] = useState<string | null>(null);
+  const [localImageStrategy, setLocalImageStrategy] = useState<string | null>(null);
+  const [localRetrievalMode, setLocalRetrievalMode] = useState<string | null>(null);
+  const [localAudioOutputMode, setLocalAudioOutputMode] = useState<string | null>(null);
+  const [localAssistantMode, setLocalAssistantMode] = useState<string | null>(null);
+  const [localEconomyMode, setLocalEconomyMode] = useState<string | null>(null);
+  const [localCache, setLocalCache] = useState<string | null>(null);
+
+  const effectiveExecutionMode =
+    localExecutionMode === null ? (profile?.execution_mode ?? "balanced") : localExecutionMode;
+  const effectiveImageStrategy =
+    localImageStrategy === null ? (profile?.image_strategy ?? "vlm_only") : localImageStrategy;
+  const effectiveRetrievalMode =
+    localRetrievalMode === null ? (profile?.retrieval_mode ?? "off") : localRetrievalMode;
+  const effectiveAudioOutputMode =
+    localAudioOutputMode === null ? (profile?.audio_output_mode ?? "off") : localAudioOutputMode;
+  const effectiveAssistantMode =
+    localAssistantMode === null ? (profile?.assistant_mode ?? "off") : localAssistantMode;
+  const effectiveEconomyMode =
+    localEconomyMode === null ? (profile?.economy_mode ?? "off") : localEconomyMode;
+  const effectiveCache = localCache === null ? (profile?.cache_implementation ?? "") : localCache;
+
+  const handleApplyPolicy = async () => {
+    await applyUpdate({
+      execution_mode:
+        effectiveExecutionMode as MultiRuntimeProfileUpdateRequest["execution_mode"],
+      image_strategy:
+        effectiveImageStrategy as MultiRuntimeProfileUpdateRequest["image_strategy"],
+      retrieval_mode:
+        effectiveRetrievalMode as MultiRuntimeProfileUpdateRequest["retrieval_mode"],
+      audio_output_mode:
+        effectiveAudioOutputMode as MultiRuntimeProfileUpdateRequest["audio_output_mode"],
+      assistant_mode:
+        effectiveAssistantMode as MultiRuntimeProfileUpdateRequest["assistant_mode"],
+      economy_mode:
+        effectiveEconomyMode as MultiRuntimeProfileUpdateRequest["economy_mode"],
+    });
+  };
+
+  const handleApplyCacheImpl = async () => {
+    await applyUpdate({
+      cache_implementation: effectiveCache === "" ? null : effectiveCache,
+    });
+  };
+
+  if (!data) {
+    return null;
+  }
+
+  return (
+    <section className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-3" data-testid="runtime-profile-inline">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("runtime.profile.title")}</p>
+          {matrix && <ProfileModeBadge mode={matrix.execution_mode} />}
+        </div>
+        {data.daemon_reachable === true ? (
+          <Badge variant="default" className="text-[10px]">
+            {t("runtime.profile.daemonOnline")}
+          </Badge>
+        ) : (
+          <span className="text-[10px] text-zinc-500">{t("runtime.profile.daemonOffline")}</span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+            Execution Policy
+          </span>
+          {matrix && <ProfileModeBadge mode={matrix.execution_mode} />}
+        </div>
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+          <RuntimeProfileRow label="execution_mode">
+            <SelectMenu
+              value={effectiveExecutionMode}
+              options={PROFILE_EXECUTION_MODE_OPTIONS}
+              onChange={setLocalExecutionMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label="image_strategy">
+            <SelectMenu
+              value={effectiveImageStrategy}
+              options={PROFILE_IMAGE_STRATEGY_OPTIONS}
+              onChange={setLocalImageStrategy}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label="retrieval_mode">
+            <SelectMenu
+              value={effectiveRetrievalMode}
+              options={PROFILE_RETRIEVAL_MODE_OPTIONS}
+              onChange={setLocalRetrievalMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label="audio_output_mode">
+            <SelectMenu
+              value={effectiveAudioOutputMode}
+              options={PROFILE_AUDIO_OUTPUT_MODE_OPTIONS}
+              onChange={setLocalAudioOutputMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label="assistant_mode">
+            <SelectMenu
+              value={effectiveAssistantMode}
+              options={PROFILE_ASSISTANT_MODE_OPTIONS}
+              onChange={setLocalAssistantMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label="economy_mode">
+            <SelectMenu
+              value={effectiveEconomyMode}
+              options={PROFILE_ECONOMY_MODE_OPTIONS}
+              onChange={setLocalEconomyMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+        </div>
+        <Button
+          size="xs"
+          variant="secondary"
+          className="w-full"
+          onClick={handleApplyPolicy}
+          disabled={busy || !data.daemon_reachable}
+        >
+          {busy ? t("runtime.profile.applying") : "Apply policy"}
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+            {t("runtime.profile.cacheImpl")}
+          </span>
+          {matrix && <ProfileModeBadge mode={matrix.cache_implementation} />}
+        </div>
+        <SelectMenu
+          value={effectiveCache}
+          options={PROFILE_CACHE_OPTIONS}
+          onChange={setLocalCache}
+          disabled={busy}
+        />
+        <Button
+          size="xs"
+          className="w-full"
+          onClick={handleApplyCacheImpl}
+          disabled={busy || !data.daemon_reachable}
+        >
+          {t("runtime.profile.stageCacheReload")}
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+            {t("runtime.profile.unsupportedFields")}
+          </span>
+          {matrix && <ProfileModeBadge mode={matrix.precision} />}
+        </div>
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-1.5 text-[11px] text-zinc-300">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-zinc-500">{t("runtime.profile.precision")}</span>
+            <strong>{profile?.precision ?? "auto"}</strong>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-zinc-500">{t("runtime.profile.quantizationBackend")}</span>
+            <strong>{profile?.quantization_backend ?? "none"}</strong>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-zinc-500">{t("runtime.profile.deviceTarget")}</span>
+            <strong>{profile?.device_target ?? "auto"}</strong>
+          </div>
+        </div>
+      </div>
+
+      {lastUpdateResult && (
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2 text-[11px] space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{t("runtime.profile.lastUpdate")}</span>
+            <ProfileModeBadge mode={lastUpdateResult.required_apply_mode} />
+            {lastUpdateResult.applied && (
+              <Badge variant="default">{t("runtime.profile.applied")}</Badge>
+            )}
+          </div>
+          {lastUpdateResult.rejected.length > 0 && (
+            <ul className="text-rose-300 space-y-0.5">
+              {lastUpdateResult.rejected.map((rejection) => (
+                <li key={rejection.field}>
+                  {rejection.field}: {rejection.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+          {Object.keys(lastUpdateResult.accepted).length > 0 && (
+            <div className="text-zinc-400">
+              Accepted: {Object.keys(lastUpdateResult.accepted).join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RuntimeProfileRow({
+  label,
+  children,
+}: Readonly<{ label: string; children: React.ReactNode }>) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <div className="w-48">{children}</div>
     </div>
   );
 }
@@ -763,6 +1049,8 @@ function Gemma4RuntimeControlPanel({
           </select>
         </div>
       </div>
+
+      <RuntimeProfileControls />
 
       {/* VRAM */}
       {vram && (

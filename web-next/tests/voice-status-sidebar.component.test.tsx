@@ -229,6 +229,50 @@ describe("VoiceStatusSidebar", () => {
     window.history.pushState({}, "", "/voice");
     globalThis.fetch = async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.includes("/v1/daemon/status")) {
+        return new Response(
+          JSON.stringify({
+            target_model: "google/gemma-4-E2B-it",
+            assistant_model: null,
+            mode: "target_only",
+            target_loaded: true,
+            assistant_loaded: false,
+            params: {
+              max_new_tokens: 128,
+              enable_thinking: false,
+              image_token_budget: 280,
+              reasoning_summary_enabled: false,
+              emotion_detection_enabled: false,
+              emotion_response_style_enabled: false,
+              cache_implementation: null,
+              execution_mode: "balanced",
+              image_strategy: "vlm_only",
+              retrieval_mode: "off",
+              audio_output_mode: "off",
+              assistant_mode: "off",
+              economy_mode: "off",
+            },
+            vram: {
+              backend: "cpu",
+              allocated_mb: 0,
+              reserved_mb: 0,
+              total_mb: 0,
+              free_mb: 0,
+            },
+            raw_thinking_available: false,
+            reasoning_summary_status: "disabled",
+            reasoning_summary: null,
+            emotion_label: null,
+            emotion_confidence: null,
+            emotion_source: null,
+            pending_reload: false,
+            reload_reason: null,
+            supports_image_input: true,
+            component_snapshot: [],
+          }),
+          { status: 200 },
+        );
+      }
       if (url.includes("/api/v1/runtime/multi-runtime/profile")) {
         return new Response(JSON.stringify(gemma4RuntimeProfile), { status: 200 });
       }
@@ -259,7 +303,8 @@ describe("VoiceStatusSidebar", () => {
     );
 
     assert.ok(await screen.findByText("Gemma 4 Runtime"));
-    assert.ok(await screen.findByTestId("multi-runtime-profile-panel"));
+    assert.ok(await screen.findByTestId("runtime-profile-inline"));
+    assert.equal(screen.queryByTestId("multi-runtime-profile-panel"), null);
     assert.ok(await screen.findByText(/session-123/i));
     assert.ok(screen.getByText(/curious/i));
   });

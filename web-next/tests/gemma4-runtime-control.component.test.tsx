@@ -1,11 +1,133 @@
+import "./component-test-setup";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Gemma4DaemonState } from "../hooks/use-gemma4-daemon";
 import type { DaemonStatus } from "../lib/gemma4-daemon-api";
 import { Gemma4RuntimeControlInner } from "../components/gemma4/gemma4-runtime-control";
 
 afterEach(() => cleanup());
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+beforeEach(() => {
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/v1/daemon/status")) {
+      return new Response(
+        JSON.stringify({
+          target_model: "google/gemma-4-E2B-it",
+          assistant_model: null,
+          mode: "target_only",
+          target_loaded: true,
+          assistant_loaded: false,
+          params: {
+            max_new_tokens: 128,
+            enable_thinking: false,
+            image_token_budget: 280,
+            reasoning_summary_enabled: false,
+            emotion_detection_enabled: false,
+            emotion_response_style_enabled: false,
+            cache_implementation: null,
+            execution_mode: "balanced",
+            image_strategy: "vlm_only",
+            retrieval_mode: "off",
+            audio_output_mode: "off",
+            assistant_mode: "off",
+            economy_mode: "off",
+          },
+          vram: {
+            backend: "cpu",
+            allocated_mb: 0,
+            reserved_mb: 0,
+            total_mb: 0,
+            free_mb: 0,
+          },
+          raw_thinking_available: false,
+          reasoning_summary_status: "disabled",
+          reasoning_summary: null,
+          emotion_label: null,
+          emotion_confidence: null,
+          emotion_source: null,
+          pending_reload: false,
+          reload_reason: null,
+          supports_image_input: true,
+          component_snapshot: [],
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/api/v1/runtime/multi-runtime/profile")) {
+      return new Response(
+        JSON.stringify({
+          runtime_id: "multi_runtime",
+          profile: {
+            profile_id: "default",
+            display_name: "Default",
+            runtime_id: "multi_runtime",
+            compatibility: "multi_runtime_native",
+            model_id: "google/gemma-4-E2B-it",
+            assistant_model_id: null,
+            cache_implementation: null,
+            max_new_tokens: 128,
+            image_token_budget: 280,
+            enable_thinking: false,
+            reasoning_summary_enabled: false,
+            emotion_detection_enabled: false,
+            emotion_response_style_enabled: false,
+            execution_mode: "balanced",
+            image_strategy: "vlm_only",
+            retrieval_mode: "off",
+            audio_output_mode: "off",
+            assistant_mode: "off",
+            economy_mode: "off",
+            precision: "auto",
+            quantization_backend: null,
+            device_target: "auto",
+          },
+          apply_matrix: {
+            model_id: "hard_restart",
+            assistant_model_id: "hard_restart",
+            cache_implementation: "soft_reload",
+            max_new_tokens: "live",
+            image_token_budget: "live",
+            enable_thinking: "live",
+            reasoning_summary_enabled: "live",
+            emotion_detection_enabled: "live",
+            emotion_response_style_enabled: "live",
+            execution_mode: "live",
+            image_strategy: "live",
+            retrieval_mode: "live",
+            audio_output_mode: "live",
+            assistant_mode: "live",
+            economy_mode: "live",
+            precision: "unsupported",
+            quantization_backend: "unsupported",
+            device_target: "unsupported",
+          },
+          supported_options: {
+            cache_implementation: [null, "static", "dynamic", "offloaded"],
+            precision: ["auto"],
+            device_target: ["auto", "cpu", "cuda"],
+            quantization_backend: [null],
+            execution_mode: ["balanced", "vision_priority", "voice_priority"],
+            image_strategy: ["vlm_only", "ocr_first", "hybrid"],
+            retrieval_mode: ["off", "auto", "always"],
+            audio_output_mode: ["off", "text_first", "voice_first"],
+            assistant_mode: ["off", "attached", "conditional"],
+            economy_mode: ["off", "auto"],
+          },
+          daemon_reachable: true,
+        }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+});
 
 const noop = async () => { };
 
@@ -178,6 +300,12 @@ describe("Gemma4RuntimeControl — normal state (voice variant)", () => {
   it("renders Fallback button", () => {
     renderControl(makeState());
     assert.ok(screen.getByTestId("fallback-button"));
+  });
+
+  it("renders inline runtime profile controls inside the daemon card", async () => {
+    renderControl(makeState());
+    assert.ok(await screen.findByTestId("runtime-profile-inline"));
+    assert.equal(screen.queryByTestId("multi-runtime-profile-panel"), null);
   });
 
   it("shows CPU / no VRAM when backend=cpu", () => {

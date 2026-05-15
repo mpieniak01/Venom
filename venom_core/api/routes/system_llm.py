@@ -248,12 +248,9 @@ def _assert_stop_results_clean(stop_results: dict[str, dict[str, Any]]) -> None:
         if not bool(result.get("ok", False))
     ]
     if failures:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Nie udało się zatrzymać poprzednich serwerów LLM: "
-                + ", ".join(sorted(failures))
-            ),
+        logger.warning(
+            "Nie udało się zatrzymać poprzednich serwerów LLM: %s",
+            ", ".join(sorted(failures)),
         )
 
 
@@ -290,6 +287,35 @@ async def _await_server_health(_server_name: str, health_url: str) -> bool:
                 pass
             await asyncio.sleep(0.5)
     logger.error("Serwer LLM nie odpowiedział prawidłowo po 30s")
+    return False
+
+
+async def _await_server_shutdown(server_name: str, health_url: str) -> bool:
+    """Wait until a stopped server no longer reports healthy."""
+    logger.info("Oczekiwanie na zwolnienie serwera LLM: %s", server_name)
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        for attempt in range(60):
+            try:
+                resp = await client.get(health_url)
+                if not _is_health_response_ready(
+                    server_name=server_name,
+                    response=resp,
+                ):
+                    logger.info(
+                        "Serwer LLM %s zwolnił zasoby po %.1fs",
+                        server_name,
+                        attempt * 0.5,
+                    )
+                    return True
+            except Exception:
+                logger.info(
+                    "Serwer LLM %s jest niedostępny po %.1fs",
+                    server_name,
+                    attempt * 0.5,
+                )
+                return True
+            await asyncio.sleep(0.5)
+    logger.error("Serwer LLM %s nadal odpowiada po 30s", server_name)
     return False
 
 
@@ -449,13 +475,12 @@ def _validate_requested_model_available(
         return None
     if requested in available_models:
         return requested
-    raise HTTPException(
-        status_code=400,
-        detail=(
-            f"Model '{requested}' nie jest dostępny na serwerze '{server_name}'. "
-            "Użyj /system/llm-runtime/options aby sprawdzić listę modeli."
-        ),
+    logger.warning(
+        "Requested model '%s' is unavailable on server '%s'; falling back.",
+        requested,
+        server_name,
     )
+    return None
 
 
 def _merge_monitor_status_into_servers(servers: list[dict], service_monitor) -> None:
@@ -2151,9 +2176,10 @@ def _resolve_selected_model_for_switch(
         )
         return selected_model, last_model_key
     except HTTPException:
-        fallback = _fallback_ollama_model_selection(
+        fallback = _fallback_model_selection(
             request=request,
             server_name=server_name,
+            config=config,
             models=models,
         )
         if fallback is None:
@@ -2220,23 +2246,30 @@ def _last_model_key_for_server(server_name: str) -> str:
     return "LAST_MODEL_VLLM"
 
 
-def _fallback_ollama_model_selection(
+def _fallback_model_selection(
     *,
     request: ActiveLlmServerRequest,
     server_name: str,
+    config: dict[str, Any],
     models: list[dict[str, Any]],
 ) -> tuple[str, str] | None:
-    explicit_model_request = bool(
-        str(request.model or "").strip() or str(request.model_alias or "").strip()
-    )
-    if server_name != "ollama" or not explicit_model_request:
-        return None
-    available_ollama = _available_models_for_server(
+    available_models = _available_models_for_server(
         models=models, server_name=server_name
     )
-    if not available_ollama:
+    if not available_models:
         return None
-    return available_ollama[0], "LAST_MODEL_OLLAMA"
+    last_model_key = _last_model_key_for_server(server_name)
+    previous_model_key = _previous_model_key_for_server(server_name)
+    candidates = [
+        str(request.model or "").strip(),
+        str(config.get(last_model_key) or "").strip(),
+        str(config.get(previous_model_key) or "").strip(),
+        str(config.get("LLM_MODEL_NAME") or "").strip(),
+    ]
+    for candidate in candidates:
+        if candidate and candidate in available_models:
+            return candidate, last_model_key
+    return available_models[0], last_model_key
 
 
 def _feedback_alias_resolution_payload(resolution) -> dict[str, Any]:
@@ -2386,6 +2419,79 @@ async def _resolve_ollama_selected_model(
     )
 
 
+async def _collect_shutdown_results_for_switch(
+    *, servers: list[dict[str, Any]], target_server_name: str
+) -> dict[str, dict[str, Any]]:
+    shutdown_results: dict[str, dict[str, Any]] = {}
+    for server in servers:
+        other_server_name = str(server.get("name") or "").strip().lower()
+        if not other_server_name or other_server_name == target_server_name:
+            continue
+        if not server.get("supports", {}).get("stop"):
+            continue
+        health_url = str(server.get("health_url") or "").strip()
+        if not health_url:
+            continue
+        shutdown_ok = await _await_server_shutdown(other_server_name, health_url)
+        shutdown_results[other_server_name] = {
+            "ok": shutdown_ok,
+            "health_url": health_url,
+        }
+        if not shutdown_ok:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Serwer LLM '{other_server_name}' nie zwolnił zasobów po "
+                    "zatrzymaniu."
+                ),
+            )
+    return shutdown_results
+
+
+async def _start_server_and_check_health(
+    *,
+    llm_controller: Any,
+    server_name: str,
+    target: dict[str, Any],
+) -> dict[str, Any]:
+    start_result = await _start_server_if_supported(llm_controller, server_name, target)
+    if start_result and start_result.get("ok"):
+        health_url = target.get("health_url")
+        if health_url and not await _await_server_health(server_name, health_url):
+            return {
+                "ok": False,
+                "error": "Health check timeout - serwer nie odpowiada",
+            }
+    return start_result
+
+
+async def _resolve_switch_model_selection(
+    *,
+    request: ActiveLlmServerRequest,
+    requested_alias: str,
+    server_name: str,
+    model_manager: Any,
+    config: dict[str, Any],
+    models: list[dict[str, Any]],
+) -> tuple[str, str, dict[str, Any]]:
+    selected_model, last_model_key = _resolve_selected_model_for_switch(
+        request=request,
+        server_name=server_name,
+        config=config,
+        models=models,
+    )
+    feedback_resolution = _feedback_loop_resolution_defaults(selected_model)
+    if server_name == "ollama":
+        selected_model, feedback_resolution = await _resolve_ollama_selected_model(
+            request=request,
+            requested_alias=requested_alias,
+            model_manager=model_manager,
+            models=models,
+            selected_model=selected_model,
+        )
+    return selected_model, last_model_key, feedback_resolution
+
+
 @router.post(
     "/system/llm-servers/active",
     responses=LLM_SERVER_ACTIVATE_RESPONSES,
@@ -2404,10 +2510,16 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     servers = llm_controller.list_servers()
     stop_results = await _stop_other_servers(llm_controller, servers, server_name)
     _assert_stop_results_clean(stop_results)
+    shutdown_results = await _collect_shutdown_results_for_switch(
+        servers=servers,
+        target_server_name=server_name,
+    )
     if server_name != "onnx":
         _release_onnx_runtime_caches()
     if server_name == "onnx":
-        return _activate_onnx_server_switch(stop_results=stop_results)
+        response = _activate_onnx_server_switch(stop_results=stop_results)
+        response["shutdown_results"] = shutdown_results
+        return response
 
     _, model_manager, request_tracer = _validate_switch_dependencies()
 
@@ -2422,38 +2534,29 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     )
 
     target = _find_target_server(server_name, servers)
-
-    start_result = await _start_server_if_supported(llm_controller, server_name, target)
-
-    if start_result and start_result.get("ok"):
-        health_url = target.get("health_url")
-        if health_url and not await _await_server_health(server_name, health_url):
-            start_result = {
-                "ok": False,
-                "error": "Health check timeout - serwer nie odpowiada",
-            }
+    start_result = await _start_server_and_check_health(
+        llm_controller=llm_controller,
+        server_name=server_name,
+        target=target,
+    )
 
     endpoint = _resolve_local_endpoint(server_name, target)
     _persist_local_runtime_endpoint(server_name, endpoint)
 
     config = config_manager.get_config(mask_secrets=False)
     models = await model_manager.list_local_models()
-    selected_model, last_model_key = _resolve_selected_model_for_switch(
+    (
+        selected_model,
+        last_model_key,
+        feedback_resolution,
+    ) = await _resolve_switch_model_selection(
         request=request,
+        requested_alias=requested_alias,
         server_name=server_name,
+        model_manager=model_manager,
         config=config,
         models=models,
     )
-    feedback_resolution = _feedback_loop_resolution_defaults(selected_model)
-
-    if server_name == "ollama":
-        selected_model, feedback_resolution = await _resolve_ollama_selected_model(
-            request=request,
-            requested_alias=requested_alias,
-            model_manager=model_manager,
-            models=models,
-            selected_model=selected_model,
-        )
 
     old_last_model = config.get(last_model_key) or ""
     updates = _build_model_updates(
@@ -2486,4 +2589,5 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         "resolution_reason": feedback_resolution["resolution_reason"],
         "start_result": start_result,
         "stop_results": stop_results,
+        "shutdown_results": shutdown_results,
     }

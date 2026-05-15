@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -21,63 +21,64 @@ import {
 
 const APPLY_MODE_BADGE: Record<
   MultiRuntimeApplyMode,
-  { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
+  { labelKey: string; variant: "default" | "secondary" | "outline" | "destructive" }
 > = {
-  live: { label: "live", variant: "default" },
-  soft_reload: { label: "soft reload", variant: "secondary" },
-  hard_restart: { label: "restart", variant: "destructive" },
-  unsupported: { label: "unsupported", variant: "outline" },
+  live: { labelKey: "runtime.profile.applyModeLive", variant: "default" },
+  soft_reload: { labelKey: "runtime.profile.applyModeSoftReload", variant: "secondary" },
+  hard_restart: { labelKey: "runtime.profile.applyModeHardRestart", variant: "destructive" },
+  unsupported: { labelKey: "runtime.profile.applyModeUnsupported", variant: "outline" },
 };
 
 function ApplyModeBadge({ mode }: Readonly<{ mode: MultiRuntimeApplyMode }>) {
-  const { label, variant } = APPLY_MODE_BADGE[mode];
-  return <Badge variant={variant}>{label}</Badge>;
+  const t = useTranslation();
+  const { labelKey, variant } = APPLY_MODE_BADGE[mode];
+  return <Badge variant={variant}>{t(labelKey)}</Badge>;
 }
 
 // ---------------------------------------------------------------------------
 // Cache options
 // ---------------------------------------------------------------------------
 
-const CACHE_OPTIONS: SelectMenuOption[] = [
-  { value: "", label: "default (framework)" },
-  { value: "static", label: "static" },
-  { value: "dynamic", label: "dynamic" },
-  { value: "offloaded", label: "offloaded" },
+const CACHE_OPTIONS: Array<SelectMenuOption & { labelKey: string }> = [
+  { value: "", labelKey: "runtime.profile.cacheDefaultFramework" },
+  { value: "static", labelKey: "runtime.profile.cacheStatic" },
+  { value: "dynamic", labelKey: "runtime.profile.cacheDynamic" },
+  { value: "offloaded", labelKey: "runtime.profile.cacheOffloaded" },
 ];
 
-const EXECUTION_MODE_OPTIONS: SelectMenuOption[] = [
-  { value: "balanced", label: "balanced" },
-  { value: "vision_priority", label: "vision_priority" },
-  { value: "voice_priority", label: "voice_priority" },
+const EXECUTION_MODE_OPTIONS: Array<SelectMenuOption & { labelKey: string }> = [
+  { value: "balanced", labelKey: "runtime.profile.executionModeBalanced" },
+  { value: "vision_priority", labelKey: "runtime.profile.executionModeVisionPriority" },
+  { value: "voice_priority", labelKey: "runtime.profile.executionModeVoicePriority" },
 ];
 
-const IMAGE_STRATEGY_OPTIONS: SelectMenuOption[] = [
-  { value: "vlm_only", label: "vlm_only" },
-  { value: "ocr_first", label: "ocr_first" },
-  { value: "hybrid", label: "hybrid" },
+const IMAGE_STRATEGY_OPTIONS: Array<SelectMenuOption & { labelKey: string }> = [
+  { value: "vlm_only", labelKey: "runtime.profile.imageStrategyVlmOnly" },
+  { value: "ocr_first", labelKey: "runtime.profile.imageStrategyOcrFirst" },
+  { value: "hybrid", labelKey: "runtime.profile.imageStrategyHybrid" },
 ];
 
-const RETRIEVAL_MODE_OPTIONS: SelectMenuOption[] = [
-  { value: "off", label: "off" },
-  { value: "auto", label: "auto" },
-  { value: "always", label: "always" },
+const RETRIEVAL_MODE_OPTIONS: Array<SelectMenuOption & { labelKey: string }> = [
+  { value: "off", labelKey: "runtime.profile.retrievalModeOff" },
+  { value: "auto", labelKey: "runtime.profile.retrievalModeAuto" },
+  { value: "always", labelKey: "runtime.profile.retrievalModeAlways" },
 ];
 
-const AUDIO_OUTPUT_MODE_OPTIONS: SelectMenuOption[] = [
-  { value: "off", label: "off" },
-  { value: "text_first", label: "text_first" },
-  { value: "voice_first", label: "voice_first" },
+const AUDIO_OUTPUT_MODE_OPTIONS: Array<SelectMenuOption & { labelKey: string }> = [
+  { value: "off", labelKey: "runtime.profile.audioOutputModeOff" },
+  { value: "text_first", labelKey: "runtime.profile.audioOutputModeTextFirst" },
+  { value: "voice_first", labelKey: "runtime.profile.audioOutputModeVoiceFirst" },
 ];
 
-const ASSISTANT_MODE_OPTIONS: SelectMenuOption[] = [
-  { value: "off", label: "off" },
-  { value: "attached", label: "attached" },
-  { value: "conditional", label: "conditional" },
+const ASSISTANT_MODE_OPTIONS: Array<SelectMenuOption & { labelKey: string }> = [
+  { value: "off", labelKey: "runtime.profile.assistantModeOff" },
+  { value: "attached", labelKey: "runtime.profile.assistantModeAttached" },
+  { value: "conditional", labelKey: "runtime.profile.assistantModeConditional" },
 ];
 
-const ECONOMY_MODE_OPTIONS: SelectMenuOption[] = [
-  { value: "off", label: "off" },
-  { value: "auto", label: "auto" },
+const ECONOMY_MODE_OPTIONS: Array<SelectMenuOption & { labelKey: string }> = [
+  { value: "off", labelKey: "runtime.profile.economyModeOff" },
+  { value: "auto", labelKey: "runtime.profile.economyModeAuto" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -128,6 +129,41 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
   const [localAudioOutputMode, setLocalAudioOutputMode] = useState<string | null>(null);
   const [localAssistantMode, setLocalAssistantMode] = useState<string | null>(null);
   const [localEconomyMode, setLocalEconomyMode] = useState<string | null>(null);
+
+  const cacheOptions = useMemo(
+    () => CACHE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+  const executionModeOptions = useMemo(
+    () =>
+      EXECUTION_MODE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+  const imageStrategyOptions = useMemo(
+    () =>
+      IMAGE_STRATEGY_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+  const retrievalModeOptions = useMemo(
+    () =>
+      RETRIEVAL_MODE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+  const audioOutputModeOptions = useMemo(
+    () =>
+      AUDIO_OUTPUT_MODE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+  const assistantModeOptions = useMemo(
+    () =>
+      ASSISTANT_MODE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
+  const economyModeOptions = useMemo(
+    () =>
+      ECONOMY_MODE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
 
   if (loading && !data) {
     return (
@@ -371,7 +407,7 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
         </div>
         <SelectMenu
           value={effectiveCache}
-          options={CACHE_OPTIONS}
+          options={cacheOptions}
           onChange={setLocalCache}
           disabled={busy}
         />
@@ -390,72 +426,72 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
       <section aria-labelledby="profile-policy-section">
         <div className="flex items-center gap-2 mb-2" id="profile-policy-section">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Execution Policy
+            {t("runtime.profile.executionPolicy")}
           </span>
           {matrix && <ApplyModeBadge mode={matrix.execution_mode} />}
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm">execution_mode</span>
+            <span className="text-sm">{t("runtime.profile.executionMode")}</span>
             <div className="w-48">
               <SelectMenu
                 value={effectiveExecutionMode}
-                options={EXECUTION_MODE_OPTIONS}
+                options={executionModeOptions}
                 onChange={setLocalExecutionMode}
                 disabled={busy}
               />
             </div>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm">image_strategy</span>
+            <span className="text-sm">{t("runtime.profile.imageStrategy")}</span>
             <div className="w-48">
               <SelectMenu
                 value={effectiveImageStrategy}
-                options={IMAGE_STRATEGY_OPTIONS}
+                options={imageStrategyOptions}
                 onChange={setLocalImageStrategy}
                 disabled={busy}
               />
             </div>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm">retrieval_mode</span>
+            <span className="text-sm">{t("runtime.profile.retrievalMode")}</span>
             <div className="w-48">
               <SelectMenu
                 value={effectiveRetrievalMode}
-                options={RETRIEVAL_MODE_OPTIONS}
+                options={retrievalModeOptions}
                 onChange={setLocalRetrievalMode}
                 disabled={busy}
               />
             </div>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm">audio_output_mode</span>
+            <span className="text-sm">{t("runtime.profile.audioOutputMode")}</span>
             <div className="w-48">
               <SelectMenu
                 value={effectiveAudioOutputMode}
-                options={AUDIO_OUTPUT_MODE_OPTIONS}
+                options={audioOutputModeOptions}
                 onChange={setLocalAudioOutputMode}
                 disabled={busy}
               />
             </div>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm">assistant_mode</span>
+            <span className="text-sm">{t("runtime.profile.assistantMode")}</span>
             <div className="w-48">
               <SelectMenu
                 value={effectiveAssistantMode}
-                options={ASSISTANT_MODE_OPTIONS}
+                options={assistantModeOptions}
                 onChange={setLocalAssistantMode}
                 disabled={busy}
               />
             </div>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm">economy_mode</span>
+            <span className="text-sm">{t("runtime.profile.economyMode")}</span>
             <div className="w-48">
               <SelectMenu
                 value={effectiveEconomyMode}
-                options={ECONOMY_MODE_OPTIONS}
+                options={economyModeOptions}
                 onChange={setLocalEconomyMode}
                 disabled={busy}
               />
@@ -468,32 +504,41 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
           onClick={handleApplyPolicy}
           disabled={busy || !data?.daemon_reachable}
         >
-          {busy ? t("runtime.profile.applying") : "Apply policy"}
+          {busy ? t("runtime.profile.applying") : t("runtime.profile.applyPolicy")}
         </Button>
       </section>
 
-      {/* Unsupported fields (read-only info) */}
-      <section aria-labelledby="profile-unsupported-section">
+      {/* Quantization/device target (read-only info) */}
+      <section aria-labelledby="profile-quantization-section">
         <div
           className="flex items-center gap-2 mb-2"
-          id="profile-unsupported-section"
+          id="profile-quantization-section"
         >
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            {t("runtime.profile.unsupportedFields")}
+            {t("runtime.profile.quantizationSection")}
           </span>
-          {matrix && <ApplyModeBadge mode={matrix.precision} />}
         </div>
         <div className="text-xs text-muted-foreground space-y-1">
-          <div>
-            {t("runtime.profile.precision")}: <strong>{profile?.precision ?? "auto"}</strong>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t("runtime.profile.precision")}</span>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.precision ?? "auto"}</strong>
+              {matrix && <ApplyModeBadge mode={matrix.precision} />}
+            </div>
           </div>
-          <div>
-            {t("runtime.profile.quantizationBackend")}:{" "}
-            <strong>{profile?.quantization_backend ?? "none"}</strong>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t("runtime.profile.quantizationBackend")}</span>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.quantization_backend ?? "none"}</strong>
+              {matrix && <ApplyModeBadge mode={matrix.quantization_backend} />}
+            </div>
           </div>
-          <div>
-            {t("runtime.profile.deviceTarget")}:{" "}
-            <strong>{profile?.device_target ?? "auto"}</strong>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t("runtime.profile.deviceTarget")}</span>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.device_target ?? "auto"}</strong>
+              {matrix && <ApplyModeBadge mode={matrix.device_target} />}
+            </div>
           </div>
         </div>
       </section>

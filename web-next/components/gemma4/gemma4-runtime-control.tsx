@@ -20,12 +20,58 @@ import { postDaemonRespond } from "@/lib/gemma4-daemon-api";
 import { PipelineDiagnosticsPanel } from "@/components/gemma4/pipeline-diagnostics-panel";
 import { getGemma4ApiBaseUrl } from "@/lib/env";
 import { type Gemma4DaemonState, useGemma4Daemon } from "@/hooks/use-gemma4-daemon";
+import {
+  type MultiRuntimeProfileUpdateRequest,
+  useMultiRuntimeProfile,
+} from "@/hooks/use-multi-runtime-profile";
 
 const CACHE_OPTIONS = [
   { value: "", label: "default" },
   { value: "static", label: "static" },
   { value: "quantized", label: "quantized" },
   { value: "offloaded_static", label: "offloaded_static" },
+] as const;
+
+const PROFILE_CACHE_OPTIONS = [
+  { value: "", labelKey: "runtime.profile.cacheDefaultFramework" },
+  { value: "static", labelKey: "runtime.profile.cacheStatic" },
+  { value: "dynamic", labelKey: "runtime.profile.cacheDynamic" },
+  { value: "offloaded", labelKey: "runtime.profile.cacheOffloaded" },
+] as const;
+
+const PROFILE_EXECUTION_MODE_OPTIONS = [
+  { value: "balanced", labelKey: "runtime.profile.executionModeBalanced" },
+  { value: "vision_priority", labelKey: "runtime.profile.executionModeVisionPriority" },
+  { value: "voice_priority", labelKey: "runtime.profile.executionModeVoicePriority" },
+] as const;
+
+const PROFILE_IMAGE_STRATEGY_OPTIONS = [
+  { value: "vlm_only", labelKey: "runtime.profile.imageStrategyVlmOnly" },
+  { value: "ocr_first", labelKey: "runtime.profile.imageStrategyOcrFirst" },
+  { value: "hybrid", labelKey: "runtime.profile.imageStrategyHybrid" },
+] as const;
+
+const PROFILE_RETRIEVAL_MODE_OPTIONS = [
+  { value: "off", labelKey: "runtime.profile.retrievalModeOff" },
+  { value: "auto", labelKey: "runtime.profile.retrievalModeAuto" },
+  { value: "always", labelKey: "runtime.profile.retrievalModeAlways" },
+] as const;
+
+const PROFILE_AUDIO_OUTPUT_MODE_OPTIONS = [
+  { value: "off", labelKey: "runtime.profile.audioOutputModeOff" },
+  { value: "text_first", labelKey: "runtime.profile.audioOutputModeTextFirst" },
+  { value: "voice_first", labelKey: "runtime.profile.audioOutputModeVoiceFirst" },
+] as const;
+
+const PROFILE_ASSISTANT_MODE_OPTIONS = [
+  { value: "off", labelKey: "runtime.profile.assistantModeOff" },
+  { value: "attached", labelKey: "runtime.profile.assistantModeAttached" },
+  { value: "conditional", labelKey: "runtime.profile.assistantModeConditional" },
+] as const;
+
+const PROFILE_ECONOMY_MODE_OPTIONS = [
+  { value: "off", labelKey: "runtime.profile.economyModeOff" },
+  { value: "auto", labelKey: "runtime.profile.economyModeAuto" },
 ] as const;
 
 type Variant = "cockpit" | "voice";
@@ -144,10 +190,9 @@ function ImageProbeSection({
   onProbe,
 }: ImageProbeSectionProps) {
   const t = useTranslation();
+  const hasResult = !!(imageProbeResult || imageProbeDiagnostics || imageProbeError);
   return (
-    <div className="mb-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-      <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.imageInput")}</p>
-      <div className="mt-2 space-y-2">
+    <div className="space-y-2">
         <button
           type="button"
           onDragOver={(event) => { event.preventDefault(); }}
@@ -157,10 +202,28 @@ function ImageProbeSection({
             if (event.dataTransfer.files.item(0)) onImageUrlChange("");
           }}
           onClick={() => imageFileInputRef.current?.click()}
-          className="w-full rounded-lg border border-dashed border-white/20 bg-white/[0.02] px-3 py-2 text-left text-[11px] text-zinc-400"
+          className={`w-full rounded-lg border border-dashed px-3 py-3 text-center text-[11px] flex flex-col items-center gap-1.5 transition-colors ${
+            imageDataInput
+              ? "border-emerald-500/40 bg-emerald-500/[0.04] text-emerald-400"
+              : "border-white/20 bg-white/[0.02] text-zinc-400 hover:border-white/40 hover:bg-white/[0.04]"
+          }`}
           aria-label={t("voice.daemon.dragDropImage")}
         >
-          {t("voice.daemon.dragDropImage")}
+          {imageDataInput ? (
+            <>
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              <span className="truncate max-w-full">{imageFileName ?? t("voice.daemon.fileLoaded")}</span>
+            </>
+          ) : (
+            <>
+              <svg className="h-5 w-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <span>{t("voice.daemon.dragDropImage")}</span>
+            </>
+          )}
         </button>
         <div className="flex items-center gap-2">
           <Button
@@ -171,9 +234,6 @@ function ImageProbeSection({
           >
             {t("voice.daemon.chooseImageFromDisk")}
           </Button>
-          {imageFileName && (
-            <span className="text-[10px] text-zinc-400 truncate">{imageFileName}</span>
-          )}
           {imageDataInput && (
             <Button size="xs" variant="ghost" onClick={onClearImageData} disabled={busy || imageProbePending}>
               {t("voice.daemon.clearImageFile")}
@@ -191,66 +251,587 @@ function ImageProbeSection({
             }}
           />
         </div>
-        <input
-          type="url"
-          value={imageUrlInput}
-          onChange={(e) => onImageUrlChange(e.target.value)}
-          placeholder={imageDataInput ? t("voice.daemon.fileSelectedUrlDisabled") : t("voice.daemon.imageUrlPlaceholder")}
-          disabled={busy || imageProbePending}
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-          aria-label={t("voice.daemon.imageUrl")}
-        />
-        <input
-          type="text"
-          value={imagePromptInput}
-          onChange={(e) => onImagePromptChange(e.target.value)}
-          placeholder={t("voice.daemon.imagePromptPlaceholder")}
-          disabled={busy || imageProbePending}
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-          aria-label={t("voice.daemon.imagePrompt")}
-        />
+        <div>
+          <p className="text-[10px] text-zinc-500 mb-0.5">{t("voice.daemon.imageUrl")}</p>
+          <input
+            type="url"
+            value={imageUrlInput}
+            onChange={(e) => onImageUrlChange(e.target.value)}
+            placeholder={imageDataInput ? t("voice.daemon.fileSelectedUrlDisabled") : t("voice.daemon.imageUrlPlaceholder")}
+            disabled={busy || imageProbePending || !!imageDataInput}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+            aria-label={t("voice.daemon.imageUrl")}
+          />
+        </div>
+        <div>
+          <p className="text-[10px] text-zinc-500 mb-0.5">{t("voice.daemon.imagePrompt")}</p>
+          <input
+            type="text"
+            value={imagePromptInput}
+            onChange={(e) => onImagePromptChange(e.target.value)}
+            placeholder={t("voice.daemon.imagePromptPlaceholder")}
+            disabled={busy || imageProbePending}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+            aria-label={t("voice.daemon.imagePrompt")}
+          />
+        </div>
         <Button
           size="xs"
-          variant="secondary"
+          variant="primary"
           onClick={onProbe}
           disabled={busy || imageProbePending || (!imageUrlInput.trim() && !imageDataInput)}
         >
           {imageProbePending ? t("voice.daemon.imageProbeRunning") : t("voice.daemon.runImageProbe")}
         </Button>
-        {imageProbeResult && (
-          <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
-        )}
-        {imageProbeDiagnostics && (
-          <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 text-[10px] text-zinc-400 space-y-1">
-            <p><span className="text-zinc-500">selected_policy:</span> {imageProbeDiagnostics.selectedPolicy ?? "—"}</p>
-            <p><span className="text-zinc-500">image_strategy:</span> {imageProbeDiagnostics.selectedImageStrategy ?? "—"}</p>
-            <p><span className="text-zinc-500">trace:</span> {imageProbeDiagnostics.executionTrace.join(" -> ") || "—"}</p>
-            <p>
-              <span className="text-zinc-500">retrieval_used:</span>{" "}
-              {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}{" · "}
-              <span className="text-zinc-500">retrieval_route:</span>{" "}
-              {imageProbeDiagnostics.retrievalRoute ?? "—"}{" · "}
-              <span className="text-zinc-500">retrieval_items:</span>{" "}
-              {imageProbeDiagnostics.retrievalContextItems}{" · "}
-              <span className="text-zinc-500">assistant_used:</span>{" "}
-              {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}{" · "}
-              <span className="text-zinc-500">economy_mode:</span>{" "}
-              {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
+        {hasResult && (
+          <div className="mt-2 rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 space-y-1.5">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+              {t("voice.daemon.probeResult")}
             </p>
-            {imageProbeDiagnostics.degradationReasons.length > 0 && (
-              <p>
-                <span className="text-zinc-500">degradations:</span>{" "}
-                {imageProbeDiagnostics.degradationReasons.join(" | ")}
-              </p>
+            {imageProbeResult && (
+              <p className="text-[11px] text-zinc-300 whitespace-pre-wrap">{imageProbeResult}</p>
+            )}
+            {imageProbeDiagnostics && (
+              <details className="text-[10px] text-zinc-400">
+                <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 transition-colors">
+                  {t("voice.daemon.probeDiagnostics")}
+                </summary>
+                <div className="mt-1 space-y-1">
+                  <p><span className="text-zinc-500">selected_policy:</span> {imageProbeDiagnostics.selectedPolicy ?? "—"}</p>
+                  <p><span className="text-zinc-500">image_strategy:</span> {imageProbeDiagnostics.selectedImageStrategy ?? "—"}</p>
+                  <p><span className="text-zinc-500">trace:</span> {imageProbeDiagnostics.executionTrace.join(" → ") || "—"}</p>
+                  <p>
+                    <span className="text-zinc-500">retrieval_used:</span>{" "}
+                    {imageProbeDiagnostics.retrievalUsed ? "yes" : "no"}{" · "}
+                    <span className="text-zinc-500">retrieval_route:</span>{" "}
+                    {imageProbeDiagnostics.retrievalRoute ?? "—"}{" · "}
+                    <span className="text-zinc-500">retrieval_items:</span>{" "}
+                    {imageProbeDiagnostics.retrievalContextItems}{" · "}
+                    <span className="text-zinc-500">assistant_used:</span>{" "}
+                    {imageProbeDiagnostics.assistantUsed ? "yes" : "no"}{" · "}
+                    <span className="text-zinc-500">economy_mode:</span>{" "}
+                    {imageProbeDiagnostics.economyModeActivated ? "on" : "off"}
+                  </p>
+                  {imageProbeDiagnostics.degradationReasons.length > 0 && (
+                    <p>
+                      <span className="text-zinc-500">degradations:</span>{" "}
+                      {imageProbeDiagnostics.degradationReasons.join(" | ")}
+                    </p>
+                  )}
+                </div>
+              </details>
+            )}
+            {imageProbeError && (
+              <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
             )}
           </div>
         )}
-        {imageProbeError && (
-          <p className="text-[10px] text-rose-400 break-all">{imageProbeError}</p>
-        )}
-      </div>
     </div>
   );
+}
+
+export function ImageProbeCard() {
+  const t = useTranslation();
+  const daemon = useGemma4Daemon();
+  const { status, actionPending } = daemon;
+  const busy = actionPending !== null;
+
+  const [imageUrlInput, setImageUrlInput] = useState("");
+  const [imageDataInput, setImageDataInput] = useState<string | null>(null);
+  const [imageFileName, setImageFileName] = useState<string | null>(null);
+  const [imagePromptInput, setImagePromptInput] = useState("");
+  const [imageProbePending, setImageProbePending] = useState(false);
+  const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
+  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<ImageProbeDiagnostics | null>(null);
+  const [imageProbeError, setImageProbeError] = useState<string | null>(null);
+  const [lastPipelineResponse, setLastPipelineResponse] = useState<DaemonRespondResponse | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  if (!status?.supports_image_input) return null;
+
+  const handleImageProbe = () =>
+    handleRuntimeImageProbe({
+      imageUrlInput,
+      imageDataInput,
+      imagePromptInput,
+      imageProbePending,
+      maxNewTokens: status.params.max_new_tokens ?? 128,
+      setImageProbeResult,
+      setImageProbeDiagnostics,
+      setImageProbeError,
+      setImageProbePending,
+      setLastPipelineResponse,
+    });
+
+  const handleImageFileChange = (fileList: FileList | null) =>
+    handleRuntimeImageFileSelection({
+      fileList,
+      setImageProbeError,
+      setImageDataInput,
+      setImageFileName,
+    });
+
+  const imageBudget = status.params.image_token_budget;
+
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3 text-xs text-zinc-300">
+      <div className="flex items-center justify-between mb-2">
+        <p className="eyebrow">{t("voice.daemon.imageInput")}</p>
+        <span className="text-[10px] text-zinc-500">
+          {t("voice.daemon.imageBudgetShort")}: {imageBudget}
+        </span>
+      </div>
+      <ImageProbeSection
+        busy={busy}
+        imageProbePending={imageProbePending}
+        imageUrlInput={imageUrlInput}
+        imageDataInput={imageDataInput}
+        imageFileName={imageFileName}
+        imagePromptInput={imagePromptInput}
+        imageProbeResult={imageProbeResult}
+        imageProbeDiagnostics={imageProbeDiagnostics}
+        imageProbeError={imageProbeError}
+        imageFileInputRef={imageFileInputRef}
+        onFileChange={handleImageFileChange}
+        onImageUrlChange={setImageUrlInput}
+        onImagePromptChange={setImagePromptInput}
+        onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
+        onProbe={handleImageProbe}
+      />
+      {lastPipelineResponse && (
+        <PipelineDiagnosticsPanel response={lastPipelineResponse} />
+      )}
+    </div>
+  );
+}
+
+function ProfileModeBadge({ mode }: Readonly<{ mode: string }>) {
+  const t = useTranslation();
+  const badge = getProfileModeBadgeConfig(mode, t);
+  const variant = badge.variant;
+  const label = badge.label;
+  return <Badge variant={variant}>{label}</Badge>;
+}
+
+function getProfileModeBadgeConfig(
+  mode: string,
+  t: ReturnType<typeof useTranslation>,
+): Readonly<{ variant: "default" | "secondary" | "destructive" | "outline"; label: string }> {
+  switch (mode) {
+    case "live":
+      return { variant: "default", label: t("runtime.profile.applyModeLive") };
+    case "soft_reload":
+      return { variant: "secondary", label: t("runtime.profile.applyModeSoftReload") };
+    case "hard_restart":
+      return { variant: "destructive", label: t("runtime.profile.applyModeHardRestart") };
+    case "unsupported":
+      return { variant: "outline", label: t("runtime.profile.applyModeUnsupported") };
+    default:
+      return { variant: "outline", label: mode };
+  }
+}
+
+function RuntimeProfileControls() {
+  const t = useTranslation();
+  const profileState = useMultiRuntimeProfile();
+  const { data, updatePending, lastUpdateResult, applyUpdate } = profileState;
+  const profile = data?.profile ?? null;
+  const matrix = data?.apply_matrix ?? null;
+  const busy = updatePending;
+
+  const [localExecutionMode, setLocalExecutionMode] = useState<string | null>(null);
+  const [localImageStrategy, setLocalImageStrategy] = useState<string | null>(null);
+  const [localRetrievalMode, setLocalRetrievalMode] = useState<string | null>(null);
+  const [localAudioOutputMode, setLocalAudioOutputMode] = useState<string | null>(null);
+  const [localAssistantMode, setLocalAssistantMode] = useState<string | null>(null);
+  const [localEconomyMode, setLocalEconomyMode] = useState<string | null>(null);
+  const [localCache, setLocalCache] = useState<string | null>(null);
+  const [localPrecision, setLocalPrecision] = useState<string | null>(null);
+  const [localQuantizationBackend, setLocalQuantizationBackend] = useState<string | null>(null);
+  const [localDeviceTarget, setLocalDeviceTarget] = useState<string | null>(null);
+
+  const profileCacheOptions = useMemo(
+    () =>
+      PROFILE_CACHE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileExecutionModeOptions = useMemo(
+    () =>
+      PROFILE_EXECUTION_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileImageStrategyOptions = useMemo(
+    () =>
+      PROFILE_IMAGE_STRATEGY_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileRetrievalModeOptions = useMemo(
+    () =>
+      PROFILE_RETRIEVAL_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileAudioOutputModeOptions = useMemo(
+    () =>
+      PROFILE_AUDIO_OUTPUT_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileAssistantModeOptions = useMemo(
+    () =>
+      PROFILE_ASSISTANT_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileEconomyModeOptions = useMemo(
+    () =>
+      PROFILE_ECONOMY_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+
+  // Quantization options derived from backend-reported supported_options
+  const precisionOptions = useMemo<SelectMenuOption[]>(
+    () =>
+      (data?.supported_options?.precision ?? ["auto", "float16", "bfloat16", "float32", "int8", "int4"]).map(
+        (v) => ({ value: v, label: v }),
+      ),
+    [data?.supported_options?.precision],
+  );
+  const deviceTargetOptions = useMemo<SelectMenuOption[]>(
+    () =>
+      (data?.supported_options?.device_target ?? ["auto", "cpu", "cuda"]).map(
+        (v) => ({ value: v, label: v }),
+      ),
+    [data?.supported_options?.device_target],
+  );
+  const quantizationBackendOptions = useMemo<SelectMenuOption[]>(
+    () =>
+      (data?.supported_options?.quantization_backend ?? [null, "bitsandbytes"]).map(
+        (v) => ({ value: v ?? "", label: v ?? t("runtime.profile.quantizationBackendNone") }),
+      ),
+    [data?.supported_options?.quantization_backend, t],
+  );
+
+  const effectiveExecutionMode =
+    localExecutionMode === null ? (profile?.execution_mode ?? "balanced") : localExecutionMode;
+  const effectiveImageStrategy =
+    localImageStrategy === null ? (profile?.image_strategy ?? "vlm_only") : localImageStrategy;
+  const effectiveRetrievalMode =
+    localRetrievalMode === null ? (profile?.retrieval_mode ?? "off") : localRetrievalMode;
+  const effectiveAudioOutputMode =
+    localAudioOutputMode === null ? (profile?.audio_output_mode ?? "off") : localAudioOutputMode;
+  const effectiveAssistantMode =
+    localAssistantMode === null ? (profile?.assistant_mode ?? "off") : localAssistantMode;
+  const effectiveEconomyMode =
+    localEconomyMode === null ? (profile?.economy_mode ?? "off") : localEconomyMode;
+  const effectiveCache = localCache === null ? (profile?.cache_implementation ?? "") : localCache;
+  const effectivePrecision = localPrecision === null ? (profile?.precision ?? "auto") : localPrecision;
+  const effectiveQuantizationBackend =
+    localQuantizationBackend === null ? (profile?.quantization_backend ?? "") : localQuantizationBackend;
+  const effectiveDeviceTarget = localDeviceTarget === null ? (profile?.device_target ?? "auto") : localDeviceTarget;
+
+  const handleApplyPolicy = async () => {
+    await applyUpdate({
+      execution_mode:
+        effectiveExecutionMode as MultiRuntimeProfileUpdateRequest["execution_mode"],
+      image_strategy:
+        effectiveImageStrategy as MultiRuntimeProfileUpdateRequest["image_strategy"],
+      retrieval_mode:
+        effectiveRetrievalMode as MultiRuntimeProfileUpdateRequest["retrieval_mode"],
+      audio_output_mode:
+        effectiveAudioOutputMode as MultiRuntimeProfileUpdateRequest["audio_output_mode"],
+      assistant_mode:
+        effectiveAssistantMode as MultiRuntimeProfileUpdateRequest["assistant_mode"],
+      economy_mode:
+        effectiveEconomyMode as MultiRuntimeProfileUpdateRequest["economy_mode"],
+    });
+  };
+
+  const handleApplyCacheImpl = async () => {
+    await applyUpdate({
+      cache_implementation: effectiveCache === "" ? null : effectiveCache,
+    });
+  };
+
+  const handleApplyQuantization = async () => {
+    await applyUpdate({
+      precision: effectivePrecision as MultiRuntimeProfileUpdateRequest["precision"],
+      quantization_backend: effectiveQuantizationBackend === "" ? null : effectiveQuantizationBackend,
+      device_target: effectiveDeviceTarget as MultiRuntimeProfileUpdateRequest["device_target"],
+    });
+  };
+
+  if (!data) {
+    return null;
+  }
+
+  return (
+    <section className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-3" data-testid="runtime-profile-inline">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("runtime.profile.title")}</p>
+          {matrix && <ProfileModeBadge mode={matrix.execution_mode} />}
+        </div>
+        {data.daemon_reachable === true ? (
+          <Badge variant="default" className="text-[10px]">
+            {t("runtime.profile.daemonOnline")}
+          </Badge>
+        ) : (
+          <span className="text-[10px] text-zinc-500">{t("runtime.profile.daemonOffline")}</span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+            {t("runtime.profile.executionPolicy")}
+          </span>
+          {matrix && <ProfileModeBadge mode={matrix.execution_mode} />}
+        </div>
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+          <RuntimeProfileRow label={t("runtime.profile.executionMode")}>
+            <SelectMenu
+              value={effectiveExecutionMode}
+              options={profileExecutionModeOptions}
+              onChange={setLocalExecutionMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.imageStrategy")}>
+            <SelectMenu
+              value={effectiveImageStrategy}
+              options={profileImageStrategyOptions}
+              onChange={setLocalImageStrategy}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.retrievalMode")}>
+            <SelectMenu
+              value={effectiveRetrievalMode}
+              options={profileRetrievalModeOptions}
+              onChange={setLocalRetrievalMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.audioOutputMode")}>
+            <SelectMenu
+              value={effectiveAudioOutputMode}
+              options={profileAudioOutputModeOptions}
+              onChange={setLocalAudioOutputMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.assistantMode")}>
+            <SelectMenu
+              value={effectiveAssistantMode}
+              options={profileAssistantModeOptions}
+              onChange={setLocalAssistantMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.economyMode")}>
+            <SelectMenu
+              value={effectiveEconomyMode}
+              options={profileEconomyModeOptions}
+              onChange={setLocalEconomyMode}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+        </div>
+        <Button
+          size="xs"
+          variant="secondary"
+          className="w-full"
+          onClick={handleApplyPolicy}
+          disabled={busy || !data.daemon_reachable}
+        >
+          {busy ? t("runtime.profile.applying") : t("runtime.profile.applyPolicy")}
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+            {t("runtime.profile.cacheImpl")}
+          </span>
+          {matrix && <ProfileModeBadge mode={matrix.cache_implementation} />}
+        </div>
+        <SelectMenu
+          value={effectiveCache}
+          options={profileCacheOptions}
+          onChange={setLocalCache}
+          disabled={busy}
+        />
+        <Button
+          size="xs"
+          className="w-full"
+          onClick={handleApplyCacheImpl}
+          disabled={busy || !data.daemon_reachable}
+        >
+          {t("runtime.profile.stageCacheReload")}
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+            {t("runtime.profile.quantizationSection")}
+          </span>
+          {matrix && <ProfileModeBadge mode={matrix.precision} />}
+        </div>
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+          <RuntimeProfileRow label={t("runtime.profile.precision")}>
+            <SelectMenu
+              value={effectivePrecision}
+              options={precisionOptions}
+              onChange={(v) => setLocalPrecision(v)}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.quantizationBackend")}>
+            <SelectMenu
+              value={effectiveQuantizationBackend}
+              options={quantizationBackendOptions}
+              onChange={(v) => setLocalQuantizationBackend(v)}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.deviceTarget")}>
+            <SelectMenu
+              value={effectiveDeviceTarget}
+              options={deviceTargetOptions}
+              onChange={(v) => setLocalDeviceTarget(v)}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+        </div>
+        <Button
+          size="xs"
+          variant="secondary"
+          className="w-full"
+          onClick={handleApplyQuantization}
+          disabled={busy || !data.daemon_reachable}
+        >
+          {busy ? t("runtime.profile.applying") : t("runtime.profile.applyQuantization")}
+        </Button>
+      </div>
+
+      {lastUpdateResult && (
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2 text-[11px] space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{t("runtime.profile.lastUpdate")}</span>
+            <ProfileModeBadge mode={lastUpdateResult.required_apply_mode} />
+            {lastUpdateResult.applied && (
+              <Badge variant="default">{t("runtime.profile.applied")}</Badge>
+            )}
+          </div>
+          {lastUpdateResult.rejected.length > 0 && (
+            <ul className="text-rose-300 space-y-0.5">
+              {lastUpdateResult.rejected.map((rejection) => (
+                <li key={rejection.field}>
+                  {rejection.field}: {rejection.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+          {Object.keys(lastUpdateResult.accepted).length > 0 && (
+            <div className="text-zinc-400">
+              Accepted: {Object.keys(lastUpdateResult.accepted).join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RuntimeProfileRow({
+  label,
+  children,
+}: Readonly<{ label: string; children: React.ReactNode }>) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <div className="w-48">{children}</div>
+    </div>
+  );
+}
+
+function resolveRuntimeComponentLabel(
+  componentId: string,
+  t: (path: string) => string,
+): string {
+  switch (componentId) {
+    case "main_model":
+      return t("runtime.profile.componentLabels.mainModel");
+    case "assistant_model":
+      return t("runtime.profile.componentLabels.assistantModel");
+    case "image_input":
+      return t("runtime.profile.componentLabels.imageInput");
+    case "ocr_component":
+      return t("runtime.profile.componentLabels.ocrComponent");
+    case "stt_component":
+      return t("runtime.profile.componentLabels.sttComponent");
+    case "tts_component":
+      return t("runtime.profile.componentLabels.ttsComponent");
+    case "embedding_component":
+      return t("runtime.profile.componentLabels.embeddingComponent");
+    default:
+      return componentId;
+  }
+}
+
+function resolveRuntimeComponentHealthLabel(
+  health: string | null | undefined,
+  t: (path: string) => string,
+): string {
+  switch (health) {
+    case "ok":
+      return t("runtime.profile.componentHealth.ok");
+    case "disabled":
+      return t("runtime.profile.componentHealth.disabled");
+    case "degraded":
+      return t("runtime.profile.componentHealth.degraded");
+    case "error":
+      return t("runtime.profile.componentHealth.error");
+    default:
+      return health ?? t("common.unknown");
+  }
+}
+
+function resolveRuntimeComponentHealthTone(
+  health: string | null | undefined,
+): "success" | "warning" | "danger" | "neutral" {
+  switch (health) {
+    case "ok":
+      return "success";
+    case "disabled":
+      return "neutral";
+    case "degraded":
+      return "warning";
+    case "error":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 function vramBarColor(pct: number): string {
@@ -503,16 +1084,7 @@ function Gemma4RuntimeControlPanel({
   const [localCache, setLocalCache] = useState<string | null>(null);
   const [drafterInput, setDrafterInput] = useState("");
   const [showDrafterInput, setShowDrafterInput] = useState(false);
-  const [imageUrlInput, setImageUrlInput] = useState("");
-  const [imageDataInput, setImageDataInput] = useState<string | null>(null);
-  const [imageFileName, setImageFileName] = useState<string | null>(null);
-  const [imagePromptInput, setImagePromptInput] = useState("");
-  const [imageProbePending, setImageProbePending] = useState(false);
-  const [imageProbeResult, setImageProbeResult] = useState<string | null>(null);
-  const [imageProbeDiagnostics, setImageProbeDiagnostics] = useState<ImageProbeDiagnostics | null>(null);
-  const [imageProbeError, setImageProbeError] = useState<string | null>(null);
-  const [lastPipelineResponse, setLastPipelineResponse] = useState<DaemonRespondResponse | null>(null);
-  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showDrafter, setShowDrafter] = useState(false);
 
   const busy = actionPending !== null;
 
@@ -531,6 +1103,14 @@ function Gemma4RuntimeControlPanel({
       : localImageBudget;
   const effectiveCache =
     localCache === null ? (status?.params.cache_implementation ?? "") : localCache;
+  const cacheOptions = useMemo(
+    () =>
+      CACHE_OPTIONS.map((opt) => ({
+        value: opt.value,
+        label: opt.value === "" ? t("voice.daemon.cacheDefault") : opt.label,
+      })),
+    [t],
+  );
   const responseShapingToggles = [
     {
       label: t("voice.daemon.reasoningSummary"),
@@ -588,28 +1168,6 @@ function Gemma4RuntimeControlPanel({
       setShowDrafterInput,
     });
 
-  const handleImageProbe = () =>
-    handleRuntimeImageProbe({
-      imageUrlInput,
-      imageDataInput,
-      imagePromptInput,
-      imageProbePending,
-      maxNewTokens: status?.params.max_new_tokens ?? 128,
-      setImageProbeResult,
-      setImageProbeDiagnostics,
-      setImageProbeError,
-      setImageProbePending,
-      setLastPipelineResponse,
-    });
-
-  const handleImageFileChange = (fileList: FileList | null) =>
-    handleRuntimeImageFileSelection({
-      fileList,
-      setImageProbeError,
-      setImageDataInput,
-      setImageFileName,
-    });
-
   const vram = status?.vram;
   const vramPercent =
     vram && vram.total_mb > 0
@@ -631,7 +1189,7 @@ function Gemma4RuntimeControlPanel({
         <p className="text-xs text-rose-400 py-1">{t("voice.daemon.daemonUnavailable")}</p>
         <p className="text-[10px] text-zinc-500 truncate">{error}</p>
         {hasRuntimeSnapshot && (
-          <RuntimeSnapshotSummary snapshot={runtimeSnapshot} />
+          <RuntimeSnapshotSummary snapshot={runtimeSnapshot} targetModelOverride={status?.target_model ?? null} />
         )}
       </DaemonCard>
     );
@@ -676,29 +1234,34 @@ function Gemma4RuntimeControlPanel({
       )}
 
       {runtimeSnapshot && (
-        <RuntimeSnapshotSummary snapshot={runtimeSnapshot} compact />
+        <RuntimeSnapshotSummary
+          snapshot={runtimeSnapshot}
+          compact
+          targetModelOverride={status?.target_model ?? null}
+        />
       )}
 
       {/* Params */}
       <div className="space-y-2.5 mb-3">
-        {/* Thinking toggle */}
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-xs text-zinc-400">{t("voice.daemon.thinking")}</label>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={effectiveThinking}
-              onCheckedChange={(v) => setLocalThinking(v)}
-              disabled={busy}
-              aria-label={t("voice.daemon.thinking")}
-            />
-            {status && (
-              <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
-            )}
-          </div>
-        </div>
-
-        {/* Reasoning / emotion shaping */}
+        {/* Reasoning / emotion shaping — thinking + response shaping group */}
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.responseShaping")}</p>
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+          {/* Thinking — first item in group */}
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs text-zinc-400">{t("voice.daemon.thinking")}</label>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={effectiveThinking}
+                onCheckedChange={(v) => setLocalThinking(v)}
+                disabled={busy}
+                aria-label={t("voice.daemon.thinking")}
+              />
+              {status && (
+                <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
+              )}
+            </div>
+          </div>
+          <div className="border-t border-white/[0.05]" />
           {responseShapingToggles.map((toggle) => (
             <div key={toggle.ariaLabel} className="flex items-center justify-between gap-2">
               <label className="text-xs text-zinc-400">{toggle.label}</label>
@@ -714,6 +1277,9 @@ function Gemma4RuntimeControlPanel({
             </div>
           ))}
         </div>
+
+        {/* Generation params */}
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.generationParams")}</p>
 
         {/* Max tokens */}
         <div className="flex items-center justify-between gap-2">
@@ -748,64 +1314,49 @@ function Gemma4RuntimeControlPanel({
         {/* Cache strategy */}
         <div className="flex items-center justify-between gap-2">
           <label className="text-xs text-zinc-400">{t("voice.daemon.cacheStrategy")}</label>
-          <select
+          <SelectMenu
             value={effectiveCache}
-            onChange={(e) => setLocalCache(e.target.value)}
+            options={cacheOptions}
+            onChange={(v) => setLocalCache(v)}
             disabled={busy}
-            className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-            aria-label={t("voice.daemon.cacheStrategy")}
-          >
-            {CACHE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.value === "" ? t("voice.daemon.cacheDefault") : opt.label}
-              </option>
-            ))}
-          </select>
+            ariaLabel={t("voice.daemon.cacheStrategy")}
+          />
         </div>
-      </div>
+        </div>
+
+      <RuntimeProfileControls />
 
       {/* VRAM */}
       {vram && (
         <VramSection vram={vram} vramPercent={vramPercent} />
       )}
 
-      {/* Drafter */}
-      <DrafterBox
-        daemon={daemon}
-        assistantModel={status?.assistant_model ?? null}
-        assistantModels={assistantModels}
-        busy={busy}
-        actionPending={actionPending}
-        drafterInput={drafterInput}
-        setDrafterInput={setDrafterInput}
-        showDrafterInput={showDrafterInput}
-        setShowDrafterInput={setShowDrafterInput}
-        onAttach={handleAttach}
-      />
-
-      {status?.supports_image_input && (
-        <ImageProbeSection
-          busy={busy}
-          imageProbePending={imageProbePending}
-          imageUrlInput={imageUrlInput}
-          imageDataInput={imageDataInput}
-          imageFileName={imageFileName}
-          imagePromptInput={imagePromptInput}
-          imageProbeResult={imageProbeResult}
-          imageProbeDiagnostics={imageProbeDiagnostics}
-          imageProbeError={imageProbeError}
-          imageFileInputRef={imageFileInputRef}
-          onFileChange={handleImageFileChange}
-          onImageUrlChange={setImageUrlInput}
-          onImagePromptChange={setImagePromptInput}
-          onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
-          onProbe={handleImageProbe}
-        />
-      )}
-
-      {lastPipelineResponse && (
-        <PipelineDiagnosticsPanel response={lastPipelineResponse} />
-      )}
+      {/* Drafter — collapsible, collapsed by default */}
+      <div className="mb-3">
+        <button
+          type="button"
+          data-testid="drafter-accordion-toggle"
+          onClick={() => setShowDrafter(!showDrafter)}
+          className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
+        >
+          <span>{t("voice.daemon.assistantDrafter")}</span>
+          <span className="text-zinc-600">{showDrafter ? "▲" : "▼"}</span>
+        </button>
+        {showDrafter && (
+          <DrafterBox
+            daemon={daemon}
+            assistantModel={status?.assistant_model ?? null}
+            assistantModels={assistantModels}
+            busy={busy}
+            actionPending={actionPending}
+            drafterInput={drafterInput}
+            setDrafterInput={setDrafterInput}
+            showDrafterInput={showDrafterInput}
+            setShowDrafterInput={setShowDrafterInput}
+            onAttach={handleAttach}
+          />
+        )}
+      </div>
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
@@ -866,7 +1417,7 @@ function Gemma4RuntimeControlPanel({
       {status?.component_snapshot && status.component_snapshot.length > 0 && (
         <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
           <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
-            component snapshot
+            {t("runtime.profile.componentSnapshot")}
           </p>
           <div className="space-y-1.5">
             {status.component_snapshot.slice(0, 7).map((component) => (
@@ -874,8 +1425,15 @@ function Gemma4RuntimeControlPanel({
                 key={component.component_id}
                 className="flex items-center justify-between gap-2 text-[10px]"
               >
-                <span className="text-zinc-300 truncate">{component.component_id}</span>
-                <span className="text-zinc-500 truncate">{component.health}</span>
+                <span className="text-zinc-300 truncate">
+                  {resolveRuntimeComponentLabel(component.component_id, t)}
+                </span>
+                <Badge
+                  tone={resolveRuntimeComponentHealthTone(component.health)}
+                  className="truncate text-[10px] uppercase tracking-wide"
+                >
+                  {resolveRuntimeComponentHealthLabel(component.health, t)}
+                </Badge>
               </div>
             ))}
           </div>
@@ -895,7 +1453,7 @@ function ThinkingStatusLabel({
   if (localThinking !== null) {
     return <span className="text-[10px] text-zinc-500">{t("voice.daemon.signalLive")}</span>;
   }
-  const label = enabled ? t("voice.daemon.thinkingOn") : t("voice.daemon.thinkingOff");
+  const label = enabled ? t("common.yes") : t("common.no");
   return <span className="text-[10px] text-zinc-500">{label}</span>;
 }
 
@@ -944,17 +1502,19 @@ function VramSection({
 type RuntimeSnapshotSummaryProps = Readonly<{
   snapshot: RuntimeSnapshotLike;
   compact?: boolean;
+  targetModelOverride?: string | null;
 }>;
 
 function RuntimeSnapshotSummary({
   snapshot,
   compact = false,
+  targetModelOverride = null,
 }: RuntimeSnapshotSummaryProps) {
   const t = useTranslation();
   if (!snapshot) return null;
 
   const provider = snapshot.provider ?? "—";
-  const model = snapshot.model_name ?? "—";
+  const model = resolveRuntimeSnapshotModel(snapshot, targetModelOverride);
   const profile = snapshot.runtime_capabilities?.compatibility_profile ?? snapshot.voice_pipeline?.profile ?? null;
   const title = t("voice.daemon.runtimeSnapshot");
 
@@ -976,26 +1536,32 @@ function RuntimeSnapshotSummary({
           {t("voice.controls.profile")}: {profile}
         </p>
       )}
-      {snapshot.voice_pipeline?.tts && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
-          {t("voice.controls.tts")}: {snapshot.voice_pipeline.tts}
-        </p>
-      )}
-      {snapshot.voice_pipeline?.reasoning_summary && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
-          {t("voice.controls.reasoningSummary")}: {snapshot.voice_pipeline.reasoning_summary}
-        </p>
-      )}
-      {snapshot.voice_pipeline?.emotion && (
-        <p className="mt-0.5 text-[10px] text-zinc-500 truncate">
-          {t("voice.controls.emotion")}: {snapshot.voice_pipeline.emotion}
-        </p>
-      )}
       {snapshot.error && (
         <p className="mt-0.5 text-[10px] text-rose-400 truncate">{snapshot.error}</p>
       )}
     </div>
   );
+}
+
+function resolveRuntimeSnapshotModel(
+  snapshot: RuntimeSnapshotLike,
+  targetModelOverride: string | null,
+): string {
+  const fallbackModel = snapshot?.model_name ?? "—";
+  if (!targetModelOverride) return fallbackModel;
+
+  const runtimeId = String(snapshot?.runtime_id ?? "").trim().toLowerCase();
+  const provider = String(snapshot?.provider ?? "").trim().toLowerCase();
+  const isMultiRuntimeSnapshot =
+    runtimeId === "multi_runtime" ||
+    runtimeId === "gemma4_audio" ||
+    runtimeId.startsWith("multi_runtime@") ||
+    runtimeId.startsWith("gemma4_audio@") ||
+    provider === "multi_runtime" ||
+    provider === "gemma4_audio" ||
+    provider.startsWith("multi_runtime@") ||
+    provider.startsWith("gemma4_audio@");
+  return isMultiRuntimeSnapshot ? targetModelOverride : fallbackModel;
 }
 
 type DrafterBoxProps = Readonly<{

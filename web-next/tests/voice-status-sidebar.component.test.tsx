@@ -6,6 +6,11 @@ import { ToastProvider } from "../components/ui/toast";
 import { VoiceStatusSidebar } from "../components/voice/voice-status-sidebar";
 
 afterEach(() => cleanup());
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 const voiceStatus = {
   enabled: true,
@@ -75,6 +80,136 @@ const gemma4VoiceStatus = {
   },
 } as const;
 
+const gemma4RuntimeProfile = {
+  runtime_id: "multi_runtime",
+  profile: {
+    profile_id: "default",
+    display_name: "Default",
+    runtime_id: "multi_runtime",
+    compatibility: "multi_runtime_native",
+    model_id: "google/gemma-4-E2B-it",
+    assistant_model_id: null,
+    cache_implementation: null,
+    max_new_tokens: 128,
+    image_token_budget: 280,
+    enable_thinking: false,
+    reasoning_summary_enabled: false,
+    emotion_detection_enabled: false,
+    emotion_response_style_enabled: false,
+    execution_mode: "balanced",
+    image_strategy: "vlm_only",
+    retrieval_mode: "off",
+    audio_output_mode: "off",
+    assistant_mode: "off",
+    economy_mode: "off",
+    precision: "auto",
+    quantization_backend: null,
+    device_target: "auto",
+  },
+  apply_matrix: {
+    model_id: "hard_restart",
+    assistant_model_id: "hard_restart",
+    cache_implementation: "soft_reload",
+    max_new_tokens: "live",
+    image_token_budget: "live",
+    enable_thinking: "live",
+    reasoning_summary_enabled: "live",
+    emotion_detection_enabled: "live",
+    emotion_response_style_enabled: "live",
+    execution_mode: "live",
+    image_strategy: "live",
+    retrieval_mode: "live",
+    audio_output_mode: "live",
+    assistant_mode: "live",
+    economy_mode: "live",
+    precision: "soft_reload",
+    quantization_backend: "soft_reload",
+    device_target: "soft_reload",
+  },
+  supported_options: {
+    cache_implementation: [null, "static", "dynamic", "offloaded"],
+    precision: ["auto", "float16", "bfloat16", "float32", "int4", "int8"],
+    device_target: ["auto", "cpu", "cuda"],
+    quantization_backend: [null, "bitsandbytes"],
+    execution_mode: ["balanced", "vision_priority", "voice_priority"],
+    image_strategy: ["vlm_only", "ocr_first", "hybrid"],
+    retrieval_mode: ["off", "auto", "always"],
+    audio_output_mode: ["off", "text_first", "voice_first"],
+    assistant_mode: ["off", "attached", "conditional"],
+    economy_mode: ["off", "auto"],
+  },
+  daemon_reachable: true,
+} as const;
+
+const runtimeSelectionPayloads = {
+  models: {
+    success: true,
+    models: [],
+    count: 0,
+    providers: {
+      gemma4_audio: [
+        {
+          name: "google/gemma-4-E2B-it",
+          provider: "gemma4_audio",
+          source: "local-runtime",
+          installed: true,
+          active: true,
+        },
+      ],
+    },
+    active: {
+      provider: "gemma4_audio",
+      model: "google/gemma-4-E2B-it",
+      endpoint: "http://localhost:8014/v1",
+      status: "ready",
+    },
+  },
+  runtimeOptions: {
+    status: "success",
+    active: {
+      runtime_id: "gemma4_audio",
+      active_server: "gemma4_audio",
+      active_model: "google/gemma-4-E2B-it",
+      active_endpoint: "http://localhost:8014/v1",
+      config_hash: "cfg123",
+      source_type: "local-runtime",
+    },
+    runtimes: [
+      {
+        runtime_id: "gemma4_audio",
+        source_type: "local-runtime",
+        configured: true,
+        available: true,
+        status: "ready",
+        active: true,
+        models: [
+          {
+            name: "google/gemma-4-E2B-it",
+            provider: "gemma4_audio",
+            source_type: "local-runtime",
+            chat_compatible: true,
+          },
+        ],
+      },
+    ],
+    selector_flow: ["server", "model"],
+  },
+  activeServer: {
+    status: "success",
+    active_server: "gemma4_audio",
+    active_endpoint: "http://localhost:8014/v1",
+    active_model: "google/gemma-4-E2B-it",
+    config_hash: "cfg123",
+    runtime_id: "gemma4_audio",
+    source_type: "local-runtime",
+  },
+  modelOperations: {
+    success: true,
+    operations: [],
+    count: 0,
+  },
+} as const;
+
 describe("VoiceStatusSidebar", () => {
   it("shows active runtime details and does not surface Gemma 4 controls for ollama", () => {
     window.history.pushState({}, "", "/voice");
@@ -92,6 +227,75 @@ describe("VoiceStatusSidebar", () => {
 
   it("surfaces Gemma 4 runtime controls for gemma4_audio without dev gate", async () => {
     window.history.pushState({}, "", "/voice");
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v1/daemon/status")) {
+        return new Response(
+          JSON.stringify({
+            target_model: "google/gemma-4-E2B-it",
+            assistant_model: null,
+            mode: "target_only",
+            target_loaded: true,
+            assistant_loaded: false,
+            params: {
+              max_new_tokens: 128,
+              enable_thinking: false,
+              image_token_budget: 280,
+              reasoning_summary_enabled: false,
+              emotion_detection_enabled: false,
+              emotion_response_style_enabled: false,
+              cache_implementation: null,
+              execution_mode: "balanced",
+              image_strategy: "vlm_only",
+              retrieval_mode: "off",
+              audio_output_mode: "off",
+              assistant_mode: "off",
+              economy_mode: "off",
+            },
+            vram: {
+              backend: "cpu",
+              allocated_mb: 0,
+              reserved_mb: 0,
+              total_mb: 0,
+              free_mb: 0,
+            },
+            raw_thinking_available: false,
+            reasoning_summary_status: "disabled",
+            reasoning_summary: null,
+            emotion_label: null,
+            emotion_confidence: null,
+            emotion_source: null,
+            pending_reload: false,
+            reload_reason: null,
+            supports_image_input: true,
+            component_snapshot: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/v1/runtime/multi-runtime/profile")) {
+        return new Response(JSON.stringify(gemma4RuntimeProfile), { status: 200 });
+      }
+      if (url.includes("/api/v1/models/operations")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.modelOperations), {
+          status: 200,
+        });
+      }
+      if (url.endsWith("/api/v1/models")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.models), { status: 200 });
+      }
+      if (url.endsWith("/api/v1/system/llm-runtime/options")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.runtimeOptions), {
+          status: 200,
+        });
+      }
+      if (url.endsWith("/api/v1/system/llm-servers/active")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.activeServer), {
+          status: 200,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    };
     render(
       <ToastProvider>
         <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
@@ -99,7 +303,28 @@ describe("VoiceStatusSidebar", () => {
     );
 
     assert.ok(await screen.findByText("Gemma 4 Runtime"));
+    assert.ok(await screen.findByTestId("runtime-profile-inline"));
+    assert.equal(screen.queryByTestId("multi-runtime-profile-panel"), null);
     assert.ok(await screen.findByText(/session-123/i));
     assert.ok(screen.getByText(/curious/i));
+  });
+
+  it("normalizes generic backend apology in latest session response", () => {
+    window.history.pushState({}, "", "/voice");
+    const statusWithGenericError = {
+      ...gemma4VoiceStatus,
+      latest_voice_session: {
+        ...gemma4VoiceStatus.latest_voice_session,
+        response_text: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
+      },
+    };
+    render(
+      <ToastProvider>
+        <VoiceStatusSidebar status={statusWithGenericError as never} isDevMode={false} />
+      </ToastProvider>,
+    );
+
+    assert.ok(screen.getByText(/Błąd kanału audio|Audio channel error|Fehler im Audiokanal/i));
+    assert.equal(screen.queryByText("Przepraszam, wystąpił błąd. Spróbuj ponownie."), null);
   });
 });

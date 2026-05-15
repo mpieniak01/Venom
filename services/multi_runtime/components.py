@@ -86,6 +86,8 @@ def build_component_snapshot(
     supports_image_input = bool(daemon_status.get("supports_image_input", True))
     params = daemon_status.get("params", {})
     overrides = request_overrides or {}
+    precision = str(params.get("precision", "auto")).strip().lower()
+    quantization_backend = str(params.get("quantization_backend", "")).strip().lower()
     retrieval_mode = str(
         overrides.get("retrieval_mode", params.get("retrieval_mode", "off"))
     )
@@ -122,7 +124,12 @@ def build_component_snapshot(
             component_type="model",
             enabled=True,
             available=target_loaded,
-            backend=vram_backend,
+            backend=(
+                "bitsandbytes"
+                if quantization_backend == "bitsandbytes"
+                and precision in {"int4", "int8"}
+                else vram_backend
+            ),
             model_id=daemon_status.get("target_model"),
             device_target=vram_backend,
             health=_component_health(True, target_loaded),

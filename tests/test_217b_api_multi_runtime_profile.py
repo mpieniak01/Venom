@@ -48,8 +48,8 @@ def _daemon_profile_payload(
             "reasoning_summary_enabled": False,
             "emotion_detection_enabled": False,
             "emotion_response_style_enabled": False,
-            "precision": "auto",
-            "quantization_backend": None,
+            "precision": "int4",
+            "quantization_backend": "bitsandbytes",
             "device_target": "auto",
         },
         "apply_matrix": {
@@ -62,15 +62,15 @@ def _daemon_profile_payload(
             "reasoning_summary_enabled": "live",
             "emotion_detection_enabled": "live",
             "emotion_response_style_enabled": "live",
-            "precision": "unsupported",
-            "quantization_backend": "unsupported",
-            "device_target": "unsupported",
+            "precision": "soft_reload",
+            "quantization_backend": "soft_reload",
+            "device_target": "soft_reload",
         },
         "supported_options": {
             "cache_implementation": [None, "static", "dynamic", "offloaded"],
-            "precision": ["auto"],
+            "precision": ["auto", "float16", "bfloat16", "float32", "int4", "int8"],
             "device_target": ["auto", "cpu", "cuda"],
-            "quantization_backend": [None],
+            "quantization_backend": [None, "bitsandbytes"],
         },
     }
 
@@ -128,7 +128,7 @@ def test_get_profile_apply_matrix_forwarded():
     assert data["apply_matrix"]["max_new_tokens"] == "live"
     assert data["apply_matrix"]["cache_implementation"] == "soft_reload"
     assert data["apply_matrix"]["model_id"] == "hard_restart"
-    assert data["apply_matrix"]["precision"] == "unsupported"
+    assert data["apply_matrix"]["precision"] == "soft_reload"
 
 
 def test_get_profile_fallback_when_daemon_unreachable():

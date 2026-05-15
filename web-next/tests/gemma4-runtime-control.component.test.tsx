@@ -1,11 +1,133 @@
+import "./component-test-setup";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Gemma4DaemonState } from "../hooks/use-gemma4-daemon";
 import type { DaemonStatus } from "../lib/gemma4-daemon-api";
 import { Gemma4RuntimeControlInner } from "../components/gemma4/gemma4-runtime-control";
 
 afterEach(() => cleanup());
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+beforeEach(() => {
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/v1/daemon/status")) {
+      return new Response(
+        JSON.stringify({
+          target_model: "google/gemma-4-E2B-it",
+          assistant_model: null,
+          mode: "target_only",
+          target_loaded: true,
+          assistant_loaded: false,
+          params: {
+            max_new_tokens: 128,
+            enable_thinking: false,
+            image_token_budget: 280,
+            reasoning_summary_enabled: false,
+            emotion_detection_enabled: false,
+            emotion_response_style_enabled: false,
+            cache_implementation: null,
+            execution_mode: "balanced",
+            image_strategy: "vlm_only",
+            retrieval_mode: "off",
+            audio_output_mode: "off",
+            assistant_mode: "off",
+            economy_mode: "off",
+          },
+          vram: {
+            backend: "cpu",
+            allocated_mb: 0,
+            reserved_mb: 0,
+            total_mb: 0,
+            free_mb: 0,
+          },
+          raw_thinking_available: false,
+          reasoning_summary_status: "disabled",
+          reasoning_summary: null,
+          emotion_label: null,
+          emotion_confidence: null,
+          emotion_source: null,
+          pending_reload: false,
+          reload_reason: null,
+          supports_image_input: true,
+          component_snapshot: [],
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/api/v1/runtime/multi-runtime/profile")) {
+      return new Response(
+        JSON.stringify({
+          runtime_id: "multi_runtime",
+          profile: {
+            profile_id: "default",
+            display_name: "Default",
+            runtime_id: "multi_runtime",
+            compatibility: "multi_runtime_native",
+            model_id: "google/gemma-4-E2B-it",
+            assistant_model_id: null,
+            cache_implementation: null,
+            max_new_tokens: 128,
+            image_token_budget: 280,
+            enable_thinking: false,
+            reasoning_summary_enabled: false,
+            emotion_detection_enabled: false,
+            emotion_response_style_enabled: false,
+            execution_mode: "balanced",
+            image_strategy: "vlm_only",
+            retrieval_mode: "off",
+            audio_output_mode: "off",
+            assistant_mode: "off",
+            economy_mode: "off",
+            precision: "auto",
+            quantization_backend: null,
+            device_target: "auto",
+          },
+          apply_matrix: {
+            model_id: "hard_restart",
+            assistant_model_id: "hard_restart",
+            cache_implementation: "soft_reload",
+            max_new_tokens: "live",
+            image_token_budget: "live",
+            enable_thinking: "live",
+            reasoning_summary_enabled: "live",
+            emotion_detection_enabled: "live",
+            emotion_response_style_enabled: "live",
+            execution_mode: "live",
+            image_strategy: "live",
+            retrieval_mode: "live",
+            audio_output_mode: "live",
+            assistant_mode: "live",
+            economy_mode: "live",
+            precision: "soft_reload",
+            quantization_backend: "soft_reload",
+            device_target: "soft_reload",
+          },
+          supported_options: {
+            cache_implementation: [null, "static", "dynamic", "offloaded"],
+            precision: ["auto", "float16", "bfloat16", "float32", "int4", "int8"],
+            device_target: ["auto", "cpu", "cuda"],
+            quantization_backend: [null, "bitsandbytes"],
+            execution_mode: ["balanced", "vision_priority", "voice_priority"],
+            image_strategy: ["vlm_only", "ocr_first", "hybrid"],
+            retrieval_mode: ["off", "auto", "always"],
+            audio_output_mode: ["off", "text_first", "voice_first"],
+            assistant_mode: ["off", "attached", "conditional"],
+            economy_mode: ["off", "auto"],
+          },
+          daemon_reachable: true,
+        }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+});
 
 const noop = async () => { };
 
@@ -180,6 +302,53 @@ describe("Gemma4RuntimeControl — normal state (voice variant)", () => {
     assert.ok(screen.getByTestId("fallback-button"));
   });
 
+  it("renders inline runtime profile controls inside the daemon card", async () => {
+    renderControl(makeState());
+    assert.ok(await screen.findByTestId("runtime-profile-inline"));
+    assert.equal(screen.queryByTestId("multi-runtime-profile-panel"), null);
+    assert.ok(screen.getByText("Profil runtime"));
+    assert.ok(screen.getByText("Polityka wykonania"));
+    assert.ok(screen.getByText("Snapshot komponentów"));
+    assert.ok(screen.getByText("Główny model"));
+    assert.equal(screen.queryByText("component snapshot"), null);
+  });
+
+  it("prefers daemon target model over stale multi_runtime snapshot model", () => {
+    renderControl(
+      makeState({
+        status: makeStatus({ target_model: "google/gemma-4-E2B-it" }),
+      }),
+      "voice",
+      {
+        runtime_id: "multi_runtime",
+        provider: "multi_runtime",
+        model_name: "gemma2:2b",
+        runtime_capabilities: {
+          compatibility_profile: "multi_runtime_native",
+          probe_status: "verified",
+        },
+        voice_pipeline: {
+          profile: "multi_runtime_native",
+          tts: "piper",
+        },
+      },
+    );
+    assert.ok(screen.getByText("multi_runtime / google/gemma-4-E2B-it"));
+    assert.equal(screen.queryByText("multi_runtime / gemma2:2b"), null);
+  });
+
+  it("image handling block is no longer inside Gemma4RuntimeControl (extracted to ImageProbeCard)", async () => {
+    renderControl(makeState());
+    // Wait for runtime-profile-inline to confirm the panel is fully rendered
+    await screen.findByTestId("runtime-profile-inline");
+    // ImageProbeSection has been extracted to ImageProbeCard — must NOT appear inside the panel
+    assert.equal(
+      screen.queryByText(/Obsługa obrazu|Image input|Bildeingabe/i),
+      null,
+      "ImageProbeSection must not be rendered inside Gemma4RuntimeControl",
+    );
+  });
+
   it("shows CPU / no VRAM when backend=cpu", () => {
     renderControl(makeState());
     assert.ok(document.body.textContent?.includes("CPU"));
@@ -218,7 +387,7 @@ describe("Gemma4RuntimeControl — pending reload state", () => {
 });
 
 describe("Gemma4RuntimeControl — assistant drafter on/off", () => {
-  it("shows assistant model name when attached", () => {
+  it("shows assistant model name when accordion is expanded", () => {
     renderControl(makeState({
       status: makeStatus({
         assistant_model: "google/gemma-4-E2B-it-assistant",
@@ -226,6 +395,8 @@ describe("Gemma4RuntimeControl — assistant drafter on/off", () => {
         assistant_loaded: true,
       }),
     }));
+    // DrafterBox is behind accordion — expand it first
+    fireEvent.click(screen.getByTestId("drafter-accordion-toggle"));
     assert.ok(screen.getByText("google/gemma-4-E2B-it-assistant"));
   });
 
@@ -237,28 +408,35 @@ describe("Gemma4RuntimeControl — assistant drafter on/off", () => {
         assistant_loaded: true,
       }),
     }));
+    // accordion toggle label already contains "drafter" text even when collapsed
     assert.ok(
       document.body.textContent?.includes("drafter") ||
-      document.body.textContent?.includes("aktywny"),
+      document.body.textContent?.includes("aktywny") ||
+      document.body.textContent?.includes("Drafter"),
     );
   });
 
-  it("shows no-drafter placeholder when no assistant", () => {
+  it("DrafterBox is collapsed by default — placeholder hidden until expanded", () => {
     renderControl(makeState({ status: makeStatus({ assistant_model: null }) }));
-    assert.ok(
+    // "Brak"/"None" is inside DrafterBox — must not be visible before expanding
+    const hidden = !(
       document.body.textContent?.includes("Brak") ||
-      document.body.textContent?.includes("None"),
+      document.body.textContent?.includes("None")
     );
+    assert.ok(hidden, "DrafterBox content should be hidden behind accordion when collapsed");
   });
 
-  it("shows assistant preset selector when assistant models are available", () => {
+  it("shows assistant preset selector when accordion is expanded", () => {
     renderControl(
       makeState({ status: makeStatus({ assistant_model: null }) }),
       "voice",
       null,
       ["google/gemma-4-E2B-it-assistant"],
     );
-    const attachButton = screen.queryByRole("button", { name: /drafter/i }) ?? screen.getByText(/drafter/i);
+    // Expand accordion first
+    fireEvent.click(screen.getByTestId("drafter-accordion-toggle"));
+    // Then click "Attach drafter" to reveal the preset select menu
+    const attachButton = screen.getByRole("button", { name: /attach|podepnij/i });
     fireEvent.click(attachButton);
     assert.ok(screen.getByText("google/gemma-4-E2B-it-assistant"));
   });

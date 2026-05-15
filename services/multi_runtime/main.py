@@ -545,6 +545,7 @@ async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
         economy_mode=body.economy_mode,
         precision=body.precision,
         quantization_backend=body.quantization_backend,
+        device_target=body.device_target,
     )
 
     raw = daemon.status()
@@ -785,6 +786,7 @@ async def respond(request: Request) -> RespondResponse:
     daemon_params = daemon_status["params"]
     generated_text = pipeline_result.generated_text
     duration = pipeline_result.audio_duration_sec
+    active_precision = str(daemon_params.get("precision", "auto"))
 
     total_duration_ms = pipeline_result.total_duration_ms
     voice_insights = build_voice_session_insights(
@@ -844,6 +846,7 @@ async def respond(request: Request) -> RespondResponse:
         component_snapshot=pipeline_result.diagnostics.component_snapshot,
         audio_output_bytes=pipeline_result.audio_bytes,
         audio_output_sample_rate=pipeline_result.audio_sample_rate,
+        active_precision=active_precision,
     )
 
 

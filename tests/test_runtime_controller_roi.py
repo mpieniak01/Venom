@@ -465,6 +465,44 @@ def test_ollama_and_vllm_start_stop(monkeypatch):
     assert controller._stop_vllm()["success"] is True
 
 
+def test_ollama_start_falls_back_to_repo_script_when_env_command_missing(monkeypatch):
+    controller = RuntimeController()
+    captured = {}
+
+    monkeypatch.setattr(runtime_controller.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        runtime_controller,
+        "SETTINGS",
+        SimpleNamespace(
+            OLLAMA_START_COMMAND="",
+            OLLAMA_STOP_COMMAND="",
+            VLLM_START_COMMAND="",
+            VLLM_STOP_COMMAND="",
+        ),
+    )
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "Popen",
+        lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs})
+        or SimpleNamespace(pid=7),
+    )
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda service: ServiceInfo(
+            service.value, service, ServiceStatus.RUNNING, pid=7
+        ),
+    )
+
+    result = controller._start_ollama()
+    assert result["success"] is True
+    assert captured["args"][0] == [
+        "bash",
+        str(controller.project_root / "scripts/llm/ollama_service.sh"),
+        "start",
+    ]
+
+
 def test_get_history_limit():
     controller = RuntimeController()
     controller._add_to_history("a", "start", True, "m1")

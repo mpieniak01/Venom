@@ -10,6 +10,9 @@ Weryfikują:
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from venom_core.api.schemas.multi_runtime_profile import (
@@ -57,12 +60,13 @@ def test_apply_matrix_hard_restart_fields():
     assert apply_mode_for_field("assistant_model_id") == "hard_restart"
 
 
-def test_apply_matrix_unsupported_fields():
-    unsupported = ["precision", "quantization_backend", "device_target"]
-    for field in unsupported:
-        assert apply_mode_for_field(field) == "unsupported", (
-            f"{field} should be unsupported"
-        )
+def test_apply_matrix_device_target_soft_reload():
+    assert apply_mode_for_field("device_target") == "soft_reload"
+
+
+def test_apply_matrix_quantization_fields_require_soft_reload():
+    assert apply_mode_for_field("precision") == "soft_reload"
+    assert apply_mode_for_field("quantization_backend") == "soft_reload"
 
 
 def test_apply_matrix_unknown_field_returns_unsupported():
@@ -114,13 +118,13 @@ def test_required_apply_mode_hard_restart_wins_over_all():
     )
 
 
-def test_required_apply_mode_only_unsupported_returns_unsupported():
-    assert required_apply_mode(["precision", "quantization_backend"]) == "unsupported"
+def test_required_apply_mode_device_target_returns_soft_reload():
+    assert required_apply_mode(["device_target"]) == "soft_reload"
 
 
 def test_required_apply_mode_unsupported_ignored_when_accepted_present():
     result = required_apply_mode(["max_new_tokens", "precision"])
-    assert result == "live"
+    assert result == "soft_reload"
 
 
 def test_required_apply_mode_empty_list():
@@ -152,6 +156,9 @@ def test_build_profile_from_daemon_params():
             "emotion_detection_enabled": False,
             "emotion_response_style_enabled": False,
             "cache_implementation": "static",
+            "precision": "int4",
+            "quantization_backend": "bitsandbytes",
+            "device_target": "cuda",
         },
     )
     assert p.model_id == "google/gemma-4-E2B-it"
@@ -161,6 +168,9 @@ def test_build_profile_from_daemon_params():
     assert p.image_token_budget == 560
     assert p.reasoning_summary_enabled is True
     assert p.cache_implementation == "static"
+    assert p.precision == "int4"
+    assert p.quantization_backend == "bitsandbytes"
+    assert p.device_target == "cuda"
 
 
 def test_build_profile_response_envelope():
@@ -207,41 +217,53 @@ def test_validate_model_id_requires_hard_restart():
     assert result.required_apply_mode == "hard_restart"
 
 
-def test_validate_unsupported_precision_rejected():
+def test_validate_precision_accepted():
     req = MultiRuntimeProfileUpdateRequest(precision="int4")
     result = validate_profile_update(req)
-    assert len(result.rejected) == 1
-    assert result.rejected[0].field == "precision"
-    assert result.rejected[0].reason == "precision_not_supported_for_runtime"
-    assert result.accepted == {}
-    assert result.required_apply_mode == "unsupported"
+    assert result.rejected == []
+    assert result.accepted["precision"] == "int4"
+    assert result.required_apply_mode == "soft_reload"
 
 
-def test_validate_quantization_backend_rejected():
+def test_validate_quantization_backend_accepted_when_available():
     req = MultiRuntimeProfileUpdateRequest(quantization_backend="bitsandbytes")
-    result = validate_profile_update(req)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(sys.modules, "bitsandbytes", types.ModuleType("bitsandbytes"))
+        result = validate_profile_update(req)
+    assert result.rejected == []
+    assert result.accepted["quantization_backend"] == "bitsandbytes"
+    assert result.required_apply_mode == "soft_reload"
+
+
+def test_validate_quantization_backend_rejected_when_unavailable():
+    req = MultiRuntimeProfileUpdateRequest(quantization_backend="bitsandbytes")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(sys.modules, "bitsandbytes", None)
+        result = validate_profile_update(req)
     assert len(result.rejected) == 1
     assert result.rejected[0].reason == "quantization_backend_unavailable"
 
 
-def test_validate_device_target_rejected():
+def test_validate_device_target_accepted():
     req = MultiRuntimeProfileUpdateRequest(device_target="cuda")
     result = validate_profile_update(req)
-    assert len(result.rejected) == 1
-    assert result.rejected[0].field == "device_target"
-    assert result.rejected[0].reason == "unsupported_field"
+    assert result.rejected == []
+    assert result.accepted["device_target"] == "cuda"
+    assert result.required_apply_mode == "soft_reload"
 
 
-def test_validate_mixed_accepted_and_rejected():
+def test_validate_mixed_live_and_soft_reload():
     req = MultiRuntimeProfileUpdateRequest(
         max_new_tokens=512,
         precision="int4",
-        quantization_backend="bitsandbytes",
+        device_target="cuda",
     )
     result = validate_profile_update(req)
     assert "max_new_tokens" in result.accepted
-    assert len(result.rejected) == 2
-    assert result.required_apply_mode == "live"
+    assert "precision" in result.accepted
+    assert result.accepted["device_target"] == "cuda"
+    assert result.rejected == []
+    assert result.required_apply_mode == "soft_reload"
 
 
 def test_validate_invalid_cache_implementation_rejected():

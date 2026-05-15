@@ -89,6 +89,14 @@ def _restore_settings(snapshot):
         SETTINGS.LLM_CONFIG_HASH = snapshot["config_hash"]
 
 
+@pytest.fixture(autouse=True)
+def _skip_real_shutdown_wait(monkeypatch):
+    async def _fake_shutdown(_server_name: str, _health_url: str) -> bool:
+        return True
+
+    monkeypatch.setattr(system_routes, "_await_server_shutdown", _fake_shutdown)
+
+
 @pytest.mark.asyncio
 async def test_await_server_health_gemma4_audio_waits_for_ready(monkeypatch):
     responses = [
@@ -129,6 +137,32 @@ async def test_await_server_health_non_gemma_accepts_http_200(monkeypatch):
     )
 
 
+@pytest.mark.asyncio
+async def test_await_server_shutdown_waits_until_unhealthy(monkeypatch):
+    responses = [
+        _FakeResponse(200, {"status": "ok"}),
+        _FakeResponse(200, {"status": "ok"}),
+        _FakeResponse(503, {"status": "down"}),
+    ]
+
+    async def _fast_sleep(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        system_routes.httpx,
+        "AsyncClient",
+        lambda timeout=2.0: _FakeAsyncClient(responses),
+    )
+    monkeypatch.setattr(system_routes.asyncio, "sleep", _fast_sleep)
+
+    assert (
+        await system_routes._await_server_shutdown(
+            "multi_runtime", "http://localhost:8014/health"
+        )
+        is True
+    )
+
+
 def test_extract_health_status_handles_non_json_response():
     response = _FakeResponse(200, ValueError("invalid json"))
     assert system_routes._extract_health_status(response) is None
@@ -148,8 +182,18 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
     monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
 
     servers = [
-        {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""},
-        {"name": "vllm", "supports": {"start": True, "stop": True}, "endpoint": ""},
+        {
+            "name": "ollama",
+            "supports": {"start": True, "stop": True},
+            "endpoint": "",
+            "health_url": "http://localhost:11434/api/tags",
+        },
+        {
+            "name": "vllm",
+            "supports": {"start": True, "stop": True},
+            "endpoint": "",
+            "health_url": "http://localhost:8001/models",
+        },
     ]
     models = [{"name": "phi3:mini", "provider": "ollama"}]
     monkeypatch.setattr(
@@ -174,6 +218,7 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
     request = system_routes.ActiveLlmServerRequest(server_name="ollama")
     response = await system_routes.set_active_llm_server(request)
     assert response["active_model"] == "phi3:mini"
+    assert response["shutdown_results"]["vllm"]["ok"] is True
     assert updates["LLM_MODEL_NAME"] == "phi3:mini"
 
     _restore_settings(original)
@@ -224,6 +269,70 @@ async def test_set_active_llm_server_fallbacks_to_previous(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_set_active_llm_server_waits_for_previous_runtime_shutdown_before_start(
+    monkeypatch,
+):
+    config = {
+        "LAST_MODEL_OLLAMA": "phi3:mini",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "phi3:mini",
+    }
+    updates = {}
+    shutdown_calls = []
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+
+    servers = [
+        {
+            "name": "ollama",
+            "supports": {"start": True, "stop": True},
+            "endpoint": "",
+            "health_url": "http://localhost:11434/api/tags",
+        },
+        {
+            "name": "vllm",
+            "supports": {"start": True, "stop": True},
+            "endpoint": "",
+            "health_url": "http://localhost:8001/models",
+        },
+    ]
+    models = [{"name": "phi3:mini", "provider": "ollama"}]
+    controller = DummyController(servers)
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps, "_model_manager", DummyModelManager(models)
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes,
+        "_installed_local_servers",
+        lambda: {"ollama", "vllm"},
+    )
+
+    async def _fake_shutdown(server_name: str, health_url: str) -> bool:
+        shutdown_calls.append((server_name, health_url))
+        return True
+
+    monkeypatch.setattr(system_routes, "_await_server_shutdown", _fake_shutdown)
+
+    original = _snapshot_settings()
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    try:
+        request = system_routes.ActiveLlmServerRequest(server_name="ollama")
+        response = await system_routes.set_active_llm_server(request)
+        assert response["status"] == "success"
+        assert shutdown_calls == [("vllm", "http://localhost:8001/models")]
+        assert controller.actions == [("vllm", "stop"), ("ollama", "start")]
+    finally:
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
 async def test_set_active_llm_server_raises_without_models(monkeypatch):
     config = {
         "LAST_MODEL_OLLAMA": "missing",
@@ -262,6 +371,108 @@ async def test_set_active_llm_server_raises_without_models(monkeypatch):
         with pytest.raises(system_routes.HTTPException) as exc:
             await system_routes.set_active_llm_server(request)
         assert exc.value.status_code == 400
+    finally:
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_uses_available_ollama_model_when_requested_model_is_stale(
+    monkeypatch,
+):
+    config = {
+        "LAST_MODEL_OLLAMA": "missing",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "missing",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+
+    servers = [
+        {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""},
+        {"name": "vllm", "supports": {"start": True, "stop": True}, "endpoint": ""},
+    ]
+    models = [
+        {"name": "phi3:mini", "provider": "ollama"},
+        {"name": "phi3:small", "provider": "ollama"},
+    ]
+    controller = DummyController(servers)
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps, "_model_manager", DummyModelManager(models)
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes,
+        "_installed_local_servers",
+        lambda: {"ollama", "vllm"},
+    )
+
+    original = _snapshot_settings()
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+    SETTINGS.LLM_MODEL_NAME = "missing"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    try:
+        request = system_routes.ActiveLlmServerRequest(
+            server_name="ollama",
+            model="gemma4_audio_only_model",
+        )
+        response = await system_routes.set_active_llm_server(request)
+        assert response["status"] == "success"
+        assert response["active_model"] in {"phi3:mini", "phi3:small"}
+        assert updates["LLM_MODEL_NAME"] in {"phi3:mini", "phi3:small"}
+        assert ("vllm", "stop") in controller.actions
+    finally:
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_continues_when_stopping_other_server_fails(
+    monkeypatch,
+):
+    config = {
+        "LAST_MODEL_OLLAMA": "phi3:mini",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "phi3:mini",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+
+    servers = [
+        {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""},
+        {"name": "vllm", "supports": {"start": True, "stop": True}, "endpoint": ""},
+    ]
+    models = [{"name": "phi3:mini", "provider": "ollama"}]
+    controller = DummyController(servers)
+    controller.fail_actions.add(("vllm", "stop"))
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps, "_model_manager", DummyModelManager(models)
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes,
+        "_installed_local_servers",
+        lambda: {"ollama", "vllm"},
+    )
+
+    original = _snapshot_settings()
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    try:
+        request = system_routes.ActiveLlmServerRequest(server_name="ollama")
+        response = await system_routes.set_active_llm_server(request)
+        assert response["status"] == "success"
+        assert response["active_model"] == "phi3:mini"
+        assert response["stop_results"]["vllm"]["ok"] is False
     finally:
         _restore_settings(original)
 
@@ -539,10 +750,10 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
         monkeypatch.setattr(system_routes, "OnnxLlmClient", lambda: dummy_client)
 
         request = system_routes.ActiveLlmServerRequest(server_name="onnx")
-        with pytest.raises(system_routes.HTTPException) as exc:
-            await system_routes.set_active_llm_server(request)
-        assert exc.value.status_code == 500
-        assert "Nie udało się zatrzymać" in str(exc.value.detail)
+        response = await system_routes.set_active_llm_server(request)
+        assert response["status"] == "success"
+        assert response["active_server"] == "onnx"
+        assert response["stop_results"]["ollama"]["ok"] is False
     finally:
         _restore_settings(original)
 

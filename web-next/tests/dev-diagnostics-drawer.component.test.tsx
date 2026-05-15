@@ -119,12 +119,14 @@ describe("DevDiagnosticsDrawer", () => {
       />,
     );
 
-    assert.ok(screen.getByText("WS: online"));
-    assert.ok(screen.getByText("signal: ws:open"));
-    assert.ok(screen.getByText("chunks: 2"));
+    assert.ok(screen.getByText("Audio WS: online"));
+    assert.ok(screen.getByText("Sygnał: ws:open"));
+    assert.ok(screen.getByText("Chunki: 2"));
     assert.ok(screen.getByText("render: debug"));
-    assert.ok(screen.getByText("provider: gemma4_audio"));
-    assert.ok(screen.getByText("session: session-123"));
+    assert.ok(screen.getByText("Dostawca: gemma4_audio"));
+    assert.ok(screen.getAllByText("ID sesji: session-123").length >= 2);
+    assert.ok(screen.getByText("Hash konfiguracji"));
+    assert.ok(screen.getByText("Pipeline głosu"));
     assert.ok(screen.getAllByText("Kanał gotowy").length >= 2);
     assert.ok(screen.getByText("Kopiuj runtime JSON"));
     assert.ok(screen.getByText("Kopiuj sesję JSON"));
@@ -157,7 +159,7 @@ describe("DevDiagnosticsDrawer", () => {
 
     assert.ok(screen.getByText("⚙ Diagnostics"));
     assert.ok(screen.getByText("Diagnostyka voice runtime i request path."));
-    assert.ok(screen.getByText("WS: online"));
+    assert.ok(screen.getByText("Audio WS: online"));
     assert.ok(screen.getByText("Kopiuj runtime JSON"));
   });
 

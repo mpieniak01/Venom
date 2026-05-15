@@ -44,12 +44,6 @@ type CockpitChatConsoleProps = Readonly<{
   onNewChat: () => void;
 }>;
 
-function resolveRuntimeEmptyStateTitle(loading: boolean, error: string | null): string {
-  if (loading) return "Connecting to runtime daemon";
-  if (error) return "Runtime daemon unavailable";
-  return "Runtime diagnostics unavailable";
-}
-
 export function CockpitChatConsole({
   chatFullscreen,
   onToggleFullscreen,
@@ -72,10 +66,15 @@ export function CockpitChatConsole({
   const t = useTranslation();
   const daemon = useGemma4Daemon(12_000);
   const runtimeStatus = daemon.status;
-  const runtimeEmptyStateTitle = resolveRuntimeEmptyStateTitle(daemon.loading, daemon.error);
-  const runtimeEmptyStateDescription = daemon.loading
-    ? "Waiting for multi_runtime status."
-    : daemon.error || "Daemon status is not available yet.";
+  let runtimeEmptyStateTitle = t("runtime.diagnostics.emptyStateTitle");
+  let runtimeEmptyStateDescription = t("runtime.diagnostics.emptyStateDescription");
+  if (daemon.loading) {
+    runtimeEmptyStateTitle = t("runtime.diagnostics.loading");
+    runtimeEmptyStateDescription = t("runtime.diagnostics.waitingForStatus");
+  } else if (daemon.error) {
+    runtimeEmptyStateTitle = t("runtime.diagnostics.daemonUnavailable");
+    runtimeEmptyStateDescription = daemon.error;
+  }
   useEffect(() => {
     if (!chatFullscreen) return;
     const previousOverflow = document.body.style.overflow;
@@ -89,50 +88,54 @@ export function CockpitChatConsole({
     if (!runtimeStatus) return [];
     return [
       {
-        label: "Target",
+        label: t("runtime.diagnostics.targetModel"),
         value: runtimeStatus.target_model,
         tone: runtimeStatus.target_loaded ? "success" : "warning",
         hint: runtimeStatus.mode,
       },
       {
-        label: "Assistant",
+        label: t("runtime.diagnostics.assistantModel"),
         value: runtimeStatus.assistant_model ?? "—",
         tone: runtimeStatus.assistant_loaded ? "success" : "neutral",
         hint: runtimeStatus.params.assistant_mode,
       },
       {
-        label: "Policy",
+        label: t("runtime.diagnostics.policy"),
         value: runtimeStatus.params.execution_mode,
         tone: "neutral",
-        hint: `image ${runtimeStatus.params.image_strategy}`,
+        hint: `${t("runtime.diagnostics.image")} ${runtimeStatus.params.image_strategy}`,
       },
       {
-        label: "Retrieval",
+        label: t("runtime.diagnostics.retrieval"),
         value: runtimeStatus.params.retrieval_mode,
         tone: runtimeStatus.params.retrieval_mode === "off" ? "neutral" : "success",
-        hint: `audio ${runtimeStatus.params.audio_output_mode}`,
+        hint: `${t("runtime.diagnostics.audio")} ${runtimeStatus.params.audio_output_mode}`,
       },
       {
-        label: "Economy",
+        label: t("runtime.diagnostics.economy"),
         value: runtimeStatus.params.economy_mode,
         tone: runtimeStatus.params.economy_mode === "auto" ? "warning" : "success",
-        hint: `assistant ${runtimeStatus.params.assistant_mode}`,
+        hint: `${t("runtime.diagnostics.assistant")} ${runtimeStatus.params.assistant_mode}`,
       },
       {
-        label: "Image budget",
+        label: t("runtime.diagnostics.imageBudget"),
         value: runtimeStatus.params.image_token_budget,
         tone: "neutral",
-        hint: `thinking ${runtimeStatus.params.enable_thinking ? "on" : "off"}`,
+        hint: `${t("voice.daemon.thinking")} ${runtimeStatus.params.enable_thinking ? t("runtime.diagnostics.on") : t("runtime.diagnostics.off")}`,
       },
     ];
-  }, [runtimeStatus]);
+  }, [runtimeStatus, t]);
 
   const runtimeDegradations = useMemo(() => {
     if (!runtimeStatus) return [];
     const reasons = new Set<string>();
     for (const component of runtimeStatus.component_snapshot ?? []) {
       if (component.enabled && component.available === false) {
-        reasons.add(`${component.component_id}: unavailable`);
+        reasons.add(
+          t("runtime.diagnostics.componentUnavailable", {
+            componentId: component.component_id ?? "component",
+          }),
+        );
       }
       if (component.last_error) {
         reasons.add(component.last_error);
@@ -142,10 +145,10 @@ export function CockpitChatConsole({
       reasons.add(runtimeStatus.reload_reason);
     }
     if (!runtimeStatus.target_loaded) {
-      reasons.add("target model not loaded");
+      reasons.add(t("runtime.diagnostics.targetModelNotLoaded"));
     }
     return Array.from(reasons);
-  }, [runtimeStatus]);
+  }, [runtimeStatus, t]);
 
   return (
     <div className="space-y-6">
@@ -220,8 +223,8 @@ export function CockpitChatConsole({
         </div>
       </CockpitPanel3D>
       <RuntimeDiagnosticsPanel
-        title="Runtime diagnostics"
-        description="Active daemon snapshot, component health and degradation reasons."
+        title={t("runtime.diagnostics.title")}
+        description={t("runtime.diagnostics.description")}
         summaryItems={runtimeSummary}
         componentSnapshot={runtimeStatus?.component_snapshot ?? []}
         degradationReasons={runtimeDegradations}

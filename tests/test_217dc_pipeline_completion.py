@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
+from services.multi_runtime.components import build_component_snapshot
 from services.multi_runtime.diagnostics import ExecutionDiagnostics
 from services.multi_runtime.policies import RuntimePolicyResolver
 from services.multi_runtime.stages.audio_output import AudioOutputStage, _clean_text
@@ -274,6 +275,41 @@ def test_audio_output_degraded_when_piper_not_installed() -> None:
     assert any("not installed" in d for d in ctx.diagnostics.degradation_reasons)
 
 
+def test_audio_output_writes_audio_bytes_and_sample_rate() -> None:
+    from pathlib import Path
+
+    from services.multi_runtime.policies import ExecutionPolicy
+
+    ctx = _make_context(
+        policy_overrides={"audio_output_mode": "voice_first"},
+        state={
+            "generated_text": "Hello **world**",
+            "policy": ExecutionPolicy(audio_output_mode="voice_first"),
+        },
+    )
+    ctx.diagnostics.component_snapshot = [
+        {"component_id": "tts_component", "available": True, "health": "ok"}
+    ]
+    with (
+        patch(
+            "services.multi_runtime.stages.audio_output._find_tts_model_path",
+            return_value=Path("/fake/model.onnx"),
+        ),
+        patch(
+            "services.multi_runtime.stages.audio_output._synthesize",
+            return_value=(b"wav-bytes", 24000),
+        ),
+    ):
+        AudioOutputStage().run(ctx)
+
+    assert ctx.state["audio_bytes"] == "d2F2LWJ5dGVz"
+    assert ctx.state["audio_sample_rate"] == 24000
+    assert any(
+        t.name == "audio_output" and t.outcome == "ok"
+        for t in ctx.diagnostics.execution_trace
+    )
+
+
 def test_clean_text_removes_markdown() -> None:
     raw = "**Bold** `code` [link](http://x.com) # header"
     result = _clean_text(raw)
@@ -312,6 +348,32 @@ def test_run_in_new_loop_safe_when_called_from_thread() -> None:
 
     result = asyncio.run(_outer())
     assert result == 42
+
+
+def test_retrieval_stage_uses_graph_service_when_available() -> None:
+    from services.multi_runtime.policies import ExecutionPolicy
+
+    async def _graph_search(text: str, max_hops: int = 2, limit: int = 4) -> str:
+        return "graph result: node A -> node B"
+
+    graph_service = MagicMock()
+    graph_service.local_search = _graph_search
+    vector_store = MagicMock()
+    vector_store.search = MagicMock(return_value=[])
+
+    ctx = _make_context(
+        policy_overrides={"retrieval_mode": "always"},
+        state={"policy": ExecutionPolicy(retrieval_mode="always")},
+    )
+    ctx.text_content = "compare graph relationship between A and B"
+
+    stage = RetrievalStage(graph_service=graph_service, vector_store=vector_store)
+    stage.run(ctx)
+
+    assert ctx.state["retrieval_context"] == "graph result: node A -> node B"
+    assert ctx.diagnostics.retrieval_route == "graph"
+    assert ctx.diagnostics.retrieval_used is True
+    vector_store.search.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +446,7 @@ def test_daemon_params_defaults_precision() -> None:
     p = DaemonParams()
     assert p.precision == "auto"
     assert p.quantization_backend is None
+    assert p.device_target == "auto"
 
 
 def test_update_params_precision_triggers_soft_reload() -> None:
@@ -406,3 +469,32 @@ def test_update_params_quantization_backend_triggers_soft_reload() -> None:
         d = Daemon(model_id="test/model", cache_dir="/tmp/cache")
         signal = d.update_params(quantization_backend="bitsandbytes")
     assert signal == ReloadSignal.SOFT_RELOAD
+
+
+def test_update_params_device_target_triggers_soft_reload() -> None:
+    from services.multi_runtime.engine import MultiRuntimeDaemon as Daemon
+    from services.multi_runtime.engine import ReloadSignal
+
+    with patch("services.multi_runtime.engine.MultiRuntimeEngine") as MockEngine:
+        MockEngine.return_value.load = MagicMock()
+        d = Daemon(model_id="test/model", cache_dir="/tmp/cache")
+        signal = d.update_params(device_target="cuda")
+    assert signal == ReloadSignal.SOFT_RELOAD
+
+
+def test_component_snapshot_reports_bitsandbytes_backend_for_quantized_main_model() -> (
+    None
+):
+    snapshot = build_component_snapshot(
+        {
+            "target_model": "test/model",
+            "assistant_model": None,
+            "target_loaded": True,
+            "assistant_loaded": False,
+            "supports_image_input": True,
+            "vram": {"backend": "cuda", "free_mb": 4096},
+            "params": {"precision": "int4", "quantization_backend": "bitsandbytes"},
+        }
+    )
+    main_model = next(item for item in snapshot if item["component_id"] == "main_model")
+    assert main_model["backend"] == "bitsandbytes"

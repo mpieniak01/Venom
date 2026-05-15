@@ -178,6 +178,10 @@ class RespondResponse(BaseModel):
         None,
         description="Sample rate of the synthesized audio output in Hz",
     )
+    active_precision: Optional[str] = Field(
+        None,
+        description="Active model precision used by the runtime during this request",
+    )
 
 
 class TranscribeRequest(BaseModel):
@@ -260,6 +264,7 @@ class DaemonParamsInfo(BaseModel):
     economy_mode: str = "off"
     precision: str = "auto"
     quantization_backend: Optional[str] = None
+    device_target: str = "auto"
 
 
 class DaemonStatusResponse(BaseModel):
@@ -324,6 +329,7 @@ class DaemonConfigRequest(BaseModel):
     economy_mode: Optional[str] = None
     precision: Optional[str] = None
     quantization_backend: Optional[str] = None
+    device_target: Optional[str] = None
 
 
 class DaemonConfigResponse(BaseModel):

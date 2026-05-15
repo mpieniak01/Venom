@@ -1613,6 +1613,7 @@ function createHandleAudioMessageHandler(params: {
   t: Translator;
   onTranscriptReady?: (text: string) => void;
   playAudioResponse: (base64Audio: string, sampleRate: number) => Promise<void>;
+  refreshAudioStatus: () => Promise<void>;
   setStatusMessage: Dispatch<SetStateAction<string | null>>;
   setLastAudioSignal: Dispatch<SetStateAction<string>>;
   setProcessingStatus: Dispatch<SetStateAction<string | null>>;
@@ -1624,6 +1625,7 @@ function createHandleAudioMessageHandler(params: {
     t,
     onTranscriptReady,
     playAudioResponse,
+    refreshAudioStatus,
     setStatusMessage,
     setLastAudioSignal,
     setProcessingStatus,
@@ -1655,10 +1657,12 @@ function createHandleAudioMessageHandler(params: {
     }
     if (messageType === "complete") {
       handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      refreshAudioStatus().catch(() => undefined);
       return;
     }
     if (messageType === "error") {
       handleVoiceError(t, data, setPlaybackState, setStatusMessage, setLastAudioSignal);
+      refreshAudioStatus().catch(() => undefined);
     }
   };
 }
@@ -2515,6 +2519,7 @@ function VoiceCommandCenterPanel({
         t,
         onTranscriptReady,
         playAudioResponse,
+        refreshAudioStatus,
         setStatusMessage,
         setLastAudioSignal,
         setProcessingStatus,
@@ -2525,6 +2530,7 @@ function VoiceCommandCenterPanel({
     [
       onTranscriptReady,
       playAudioResponse,
+      refreshAudioStatus,
       t,
       setStatusMessage,
       setLastAudioSignal,
@@ -2890,7 +2896,7 @@ function VoiceCommandCenterPanel({
             🎙 {viewState.recordingButtonLabel}
           </Button>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" data-testid="voice-mode-toggle">
             <Button
               type="button"
               size="xs"
@@ -2900,6 +2906,9 @@ function VoiceCommandCenterPanel({
             >
               {viewState.effectiveIsVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
             </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               size="xs"
@@ -2980,32 +2989,34 @@ function VoiceCommandCenterPanel({
 
           {viewState.effectiveAudioStatus?.latest_voice_session && (
             <RuntimeDiagnosticsPanel
-              title="Runtime execution"
-              description="Live voice session diagnostics and component health."
+              title={t("runtime.diagnostics.title")}
+              description={t("runtime.diagnostics.description")}
               summaryItems={
                 [
                   {
-                    label: "Policy",
+                    label: t("runtime.diagnostics.policy"),
                     value: viewState.effectiveAudioStatus.latest_voice_session.selected_policy ?? "—",
                     tone: "neutral",
                   },
                   {
-                    label: "Image",
+                    label: t("runtime.diagnostics.image"),
                     value: viewState.effectiveAudioStatus.latest_voice_session.selected_image_strategy ?? "—",
                     tone: "neutral",
-                    hint: `retrieval ${viewState.effectiveAudioStatus.latest_voice_session.retrieval_used ? "on" : "off"}`,
+                    hint: `${t("runtime.diagnostics.retrieval")} ${viewState.effectiveAudioStatus.latest_voice_session.retrieval_used ? t("runtime.diagnostics.on") : t("runtime.diagnostics.off")}`,
                   },
                   {
-                    label: "Route",
+                    label: t("runtime.diagnostics.route"),
                     value: viewState.effectiveAudioStatus.latest_voice_session.retrieval_route ?? "—",
                     tone: "neutral",
-                    hint: `assistant ${viewState.effectiveAudioStatus.latest_voice_session.assistant_used ? "on" : "off"}`,
+                    hint: `${t("runtime.diagnostics.assistant")} ${viewState.effectiveAudioStatus.latest_voice_session.assistant_used ? t("runtime.diagnostics.on") : t("runtime.diagnostics.off")}`,
                   },
                   {
-                    label: "Economy",
-                    value: viewState.effectiveAudioStatus.latest_voice_session.economy_mode_activated ? "on" : "off",
+                    label: t("runtime.diagnostics.economy"),
+                    value: viewState.effectiveAudioStatus.latest_voice_session.economy_mode_activated
+                      ? t("runtime.diagnostics.on")
+                      : t("runtime.diagnostics.off"),
                     tone: viewState.effectiveAudioStatus.latest_voice_session.economy_mode_activated ? "warning" : "success",
-                    hint: `retrieval items ${viewState.effectiveAudioStatus.latest_voice_session.retrieval_context_items ?? 0}`,
+                    hint: `${t("runtime.diagnostics.retrievalItems")} ${viewState.effectiveAudioStatus.latest_voice_session.retrieval_context_items ?? 0}`,
                   },
                 ] as RuntimeSummaryItem[]
               }

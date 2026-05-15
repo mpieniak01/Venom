@@ -130,9 +130,17 @@ def test_resolve_ollama_tags_url_and_metadata_fallbacks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     mgr = _Discovery(tmp_path)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_ENDPOINT", raising=False)
     monkeypatch.setenv(
         "LLM_LOCAL_ENDPOINT", "http://127.0.0.1:11434/v1/chat/completions"
     )
+    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11434/api/tags"
+
+    monkeypatch.setenv("LLM_LOCAL_ENDPOINT", "http://localhost:8014/v1")
+    assert mgr._resolve_ollama_tags_url() == "http://localhost:11434/api/tags"
+
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11434/api/tags"
 
     monkeypatch.setenv("LLM_LOCAL_ENDPOINT", "")

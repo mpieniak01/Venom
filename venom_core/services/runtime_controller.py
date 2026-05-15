@@ -667,12 +667,16 @@ class RuntimeController:
 
     def _start_ollama(self) -> Dict[str, Any]:
         """Uruchamia Ollama."""
+        fallback_command = (
+            f"bash {self.project_root / 'scripts/llm/ollama_service.sh'} start"
+        )
+        command = (SETTINGS.OLLAMA_START_COMMAND or "").strip() or fallback_command
 
         def _refresh_runtime_version() -> None:
             self._refresh_ollama_runtime_version(force=True)
 
         return start_ollama_impl(
-            command=SETTINGS.OLLAMA_START_COMMAND,
+            command=command,
             get_service_status_fn=self.get_service_status,
             ollama_service_type=ServiceType.LLM_OLLAMA,
             service_status_running=ServiceStatus.RUNNING,
@@ -683,8 +687,12 @@ class RuntimeController:
 
     def _stop_ollama(self) -> Dict[str, Any]:
         """Zatrzymuje Ollama."""
+        fallback_command = (
+            f"bash {self.project_root / 'scripts/llm/ollama_service.sh'} stop"
+        )
+        command = (SETTINGS.OLLAMA_STOP_COMMAND or "").strip() or fallback_command
         return stop_ollama_impl(
-            command=SETTINGS.OLLAMA_STOP_COMMAND,
+            command=command,
             subprocess_module=subprocess,
         )
 

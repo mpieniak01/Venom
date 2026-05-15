@@ -1,7 +1,12 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
-import type { LlmRuntimeModelOption, ModelInfo, ModelsResponse } from "@/lib/types";
+import type {
+    ActiveLlmServerResponse,
+    LlmRuntimeModelOption,
+    ModelInfo,
+    ModelsResponse,
+} from "@/lib/types";
 import {
     removeRegistryModel,
     setActiveLlmRuntime,
@@ -18,7 +23,7 @@ const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
     runtime === "openai" || runtime === "google";
 
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
-    runtime === "multi_runtime";
+    runtime === "multi_runtime" || runtime === "gemma4_audio";
 
 export function buildInstalledBuckets(
     data: ModelsResponse | null,
@@ -135,6 +140,44 @@ export function useRuntime() {
         [availableModelsForServer],
     );
 
+    const resolveSelectedModelForServer = useCallback(
+        (server: string, preferredModel: string | null): string | null => {
+            const serverRuntime = (runtimeOptions.data?.runtimes ?? []).find(
+                (item) => item.runtime_id === server,
+            );
+            const runtimeModels = (serverRuntime?.models ?? []).filter(
+                (model) => model.chat_compatible !== false,
+            );
+            const runtimeModelNames = runtimeModels
+                .map((model) => model.name)
+                .filter((name): name is string => Boolean(name));
+            const runtimeFallbackModels = installedBuckets[normalizeProvider(server) ?? ""] ?? [];
+            const fallbackModelNames = runtimeFallbackModels
+                .map((model) => model.name)
+                .filter((name): name is string => Boolean(name));
+            const availableModelNames = runtimeModelNames.length > 0
+                ? runtimeModelNames
+                : fallbackModelNames;
+            if (availableModelNames.length === 0) {
+                return null;
+            }
+            if (preferredModel && availableModelNames.includes(preferredModel)) {
+                return preferredModel;
+            }
+            const activeModel = activeServer.data?.active_model || activeRuntime?.model;
+            if (activeModel && availableModelNames.includes(activeModel)) {
+                return activeModel;
+            }
+            return availableModelNames[0] ?? null;
+        },
+        [
+            activeRuntime?.model,
+            activeServer.data?.active_model,
+            installedBuckets,
+            runtimeOptions.data?.runtimes,
+        ],
+    );
+
     useEffect(() => {
         if (selectedServer) return;
         const active = activeServer.data?.active_server;
@@ -177,18 +220,20 @@ export function useRuntime() {
     }, [activeRuntime?.model, activeServer.data?.active_model, availableModelsForServer, selectedModel]);
 
     const activateRuntimeSelection = useCallback(
-        async (server: string, model: string | null) => {
+        async (server: string, model: string | null): Promise<ActiveLlmServerResponse | void> => {
             if (!server) return;
+            const resolvedModel = resolveSelectedModelForServer(server, model);
+            let response: ActiveLlmServerResponse | void = undefined;
             if (isCloudRuntime(server)) {
-                await setActiveLlmRuntime(server, model ?? undefined);
+                response = await setActiveLlmRuntime(server, resolvedModel ?? model ?? undefined);
             } else if (isServerWithInlineModelActivation(server)) {
-                await setActiveLlmServer(server, model ?? undefined);
+                response = await setActiveLlmServer(server, resolvedModel ?? model ?? undefined);
             } else {
                 if (server !== activeServer.data?.active_server) {
-                    await setActiveLlmServer(server);
+                    response = await setActiveLlmServer(server, resolvedModel ?? undefined);
                 }
-                if (model) {
-                    await switchModel(model);
+                if (resolvedModel) {
+                    await switchModel(resolvedModel);
                 }
             }
             await Promise.all([
@@ -196,16 +241,27 @@ export function useRuntime() {
                 installed.refresh(),
                 runtimeOptions.refresh(),
             ]);
+            return response;
         },
-        [activeServer, installed, runtimeOptions],
+        [
+            activeServer,
+            installed,
+            resolveSelectedModelForServer,
+            runtimeOptions,
+        ],
     );
 
     const handleActivateRuntimeModel = useCallback(async (server: string, model: string) => {
         const key = `activate:${server}:${model}`;
         try {
             setPending(key, true);
-            await activateRuntimeSelection(server, model);
-            pushToast(t("models.toasts.activateSuccess", { name: model }), "success");
+            const response = await activateRuntimeSelection(server, model);
+            pushToast(
+                t("models.toasts.activateSuccess", {
+                    name: response?.active_model ?? model,
+                }),
+                "success",
+            );
         } catch {
             pushToast(t("models.toasts.activateError"), "error");
         } finally {

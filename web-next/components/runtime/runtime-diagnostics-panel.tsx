@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
+import { useTranslation } from "@/lib/i18n";
 
 type RuntimeSummaryItem = Readonly<{
   label: string;
@@ -59,6 +60,15 @@ function healthTone(health?: string | null): "success" | "warning" | "danger" | 
   return "neutral";
 }
 
+function healthLabel(t: ReturnType<typeof useTranslation>, health?: string | null): string {
+  const normalized = String(health || "").trim().toLowerCase();
+  if (normalized === "ok") return t("runtime.profile.componentHealth.ok");
+  if (normalized === "degraded") return t("runtime.profile.componentHealth.degraded");
+  if (normalized === "disabled") return t("runtime.profile.componentHealth.disabled");
+  if (normalized === "failed" || normalized === "error") return t("runtime.profile.componentHealth.error");
+  return t("runtime.diagnostics.unknown");
+}
+
 export function RuntimeDiagnosticsPanel({
   title,
   description,
@@ -66,10 +76,14 @@ export function RuntimeDiagnosticsPanel({
   trace,
   componentSnapshot,
   degradationReasons,
-  emptyStateTitle = "Runtime diagnostics unavailable",
-  emptyStateDescription = "No runtime snapshot has been captured yet.",
+  emptyStateTitle,
+  emptyStateDescription,
   className,
 }: RuntimeDiagnosticsPanelProps) {
+  const t = useTranslation();
+  const resolvedEmptyStateTitle = emptyStateTitle ?? t("runtime.diagnostics.emptyStateTitle");
+  const resolvedEmptyStateDescription =
+    emptyStateDescription ?? t("runtime.diagnostics.emptyStateDescription");
   const hasSummary = Boolean(summaryItems && summaryItems.length > 0);
   const hasTrace = Boolean(trace && trace.length > 0);
   const hasComponents = Boolean(componentSnapshot && componentSnapshot.length > 0);
@@ -107,7 +121,7 @@ export function RuntimeDiagnosticsPanel({
 
           {hasTrace && (
             <div className="rounded-2xl box-muted px-4 py-3">
-              <p className="text-caption">Execution trace</p>
+              <p className="text-caption">{t("runtime.diagnostics.executionTrace")}</p>
               <p className="mt-1 font-mono text-[11px] text-zinc-300">
                 {trace?.join(" -> ")}
               </p>
@@ -116,7 +130,7 @@ export function RuntimeDiagnosticsPanel({
 
           {hasComponents && (
             <div className="space-y-2">
-              <p className="text-caption">Runtime components</p>
+              <p className="text-caption">{t("runtime.diagnostics.runtimeComponents")}</p>
               <div className="grid gap-2 xl:grid-cols-2">
                 {componentSnapshot?.map((component) => {
                   const componentHealth = healthTone(component.health);
@@ -128,32 +142,32 @@ export function RuntimeDiagnosticsPanel({
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-white">
-                            {component.component_id || "component"}
+                            {component.component_id || t("runtime.diagnostics.runtimeComponent")}
                           </p>
                           <p className="text-[11px] text-zinc-500">
-                            {component.component_type ?? "runtime"}
+                            {component.component_type ?? t("runtime.diagnostics.runtimeComponent")}
                             {component.model_id ? ` · ${component.model_id}` : ""}
                           </p>
                         </div>
                         <Badge tone={componentHealth}>
-                          {component.health || "unknown"}
+                          {healthLabel(t, component.health)}
                         </Badge>
                       </div>
                       <div className="mt-2 grid gap-1 text-[11px] text-zinc-400">
                         <p>
-                          backend:{" "}
+                          {t("runtime.diagnostics.backend")}:{" "}
                           <span className="text-zinc-200">{component.backend ?? "—"}</span>
-                          {" · "}device:{" "}
+                          {" · "}{t("runtime.diagnostics.device")}:{" "}
                           <span className="text-zinc-200">{component.device_target ?? "—"}</span>
                         </p>
                         <p>
-                          enabled:{" "}
+                          {t("runtime.diagnostics.enabled")}:{" "}
                           <span className="text-zinc-200">
-                            {component.enabled ? "yes" : "no"}
+                            {component.enabled ? t("runtime.diagnostics.yes") : t("runtime.diagnostics.no")}
                           </span>
-                          {" · "}available:{" "}
+                          {" · "}{t("runtime.diagnostics.available")}:{" "}
                           <span className="text-zinc-200">
-                            {component.available ? "yes" : "no"}
+                            {component.available ? t("runtime.diagnostics.yes") : t("runtime.diagnostics.no")}
                           </span>
                         </p>
                         {component.last_error && (
@@ -169,7 +183,7 @@ export function RuntimeDiagnosticsPanel({
 
           {hasDegradations && (
             <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3">
-              <p className="text-caption text-amber-100">Degradations</p>
+              <p className="text-caption text-amber-100">{t("runtime.diagnostics.degradations")}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {degradationReasons?.map((reason) => (
                   <Badge key={reason} tone="warning">
@@ -182,8 +196,8 @@ export function RuntimeDiagnosticsPanel({
         </div>
       ) : (
         <EmptyState
-          title={emptyStateTitle}
-          description={emptyStateDescription}
+          title={resolvedEmptyStateTitle}
+          description={resolvedEmptyStateDescription}
         />
       )}
     </Panel>

@@ -367,7 +367,7 @@ class MultiRuntimeEngine:
                 "top_p": top_p,
                 "do_sample": do_sample if do_sample is not None else False,
             }
-            if cache_implementation is not None:
+            if cache_implementation is not _UNSET and cache_implementation is not None:
                 generate_kwargs["cache_implementation"] = cache_implementation
 
             try:
@@ -609,7 +609,7 @@ class MultiRuntimeDaemon:
         reasoning_summary_enabled: Optional[bool] = None,
         emotion_detection_enabled: Optional[bool] = None,
         emotion_response_style_enabled: Optional[bool] = None,
-        cache_implementation: Optional[str] = None,
+        cache_implementation: Optional[str] | object = _UNSET,
         execution_mode: Optional[str] = None,
         image_strategy: Optional[str] = None,
         retrieval_mode: Optional[str] = None,

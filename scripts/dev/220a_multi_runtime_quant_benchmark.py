@@ -132,6 +132,17 @@ def _wait_status_ready(daemon_base: str, timeout_sec: int = 180) -> bool:
     return False
 
 
+def _to_float(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _activate_multi_runtime(api_base: str, model: str) -> None:
     code, payload = _http_json(
         f"{api_base}/api/v1/system/llm-servers/active",
@@ -180,6 +191,18 @@ def _apply_variant(daemon_base: str, variant: Variant) -> dict[str, Any]:
         reload_executed = True
         if r_code != 200:
             raise RuntimeError(f"soft reload failed: status={r_code} payload={r_body}")
+    elif required_apply_mode == "hard_restart":
+        t0 = time.perf_counter()
+        r_code, r_body = _http_json(
+            f"{daemon_base}/v1/daemon/restart",
+            method="POST",
+            payload={},
+            timeout_sec=60.0,
+        )
+        reload_duration_sec = time.perf_counter() - t0
+        reload_executed = True
+        if r_code != 200:
+            raise RuntimeError(f"hard restart failed: status={r_code} payload={r_body}")
 
     if not _wait_status_ready(daemon_base, timeout_sec=300):
         raise RuntimeError("daemon not ready after profile apply")
@@ -393,13 +416,13 @@ def main() -> int:
                 "vram_before": vram_before,
                 "vram_after": vram_after,
                 "vram_allocated_delta_mb": round(
-                    float(vram_after.get("allocated_mb", 0.0))
-                    - float(vram_before.get("allocated_mb", 0.0)),
+                    _to_float(vram_after.get("allocated_mb"))
+                    - _to_float(vram_before.get("allocated_mb")),
                     2,
                 ),
                 "vram_reserved_delta_mb": round(
-                    float(vram_after.get("reserved_mb", 0.0))
-                    - float(vram_before.get("reserved_mb", 0.0)),
+                    _to_float(vram_after.get("reserved_mb"))
+                    - _to_float(vram_before.get("reserved_mb")),
                     2,
                 ),
                 "answer_preview": last_answer[:400],

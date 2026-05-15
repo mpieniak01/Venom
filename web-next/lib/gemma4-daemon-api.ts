@@ -26,6 +26,9 @@ export type DaemonParamsInfo = {
   audio_output_mode: "off" | "text_first" | "voice_first";
   assistant_mode: "off" | "attached" | "conditional";
   economy_mode: "off" | "auto";
+  precision: string;
+  quantization_backend: string | null;
+  device_target: string;
 };
 
 export type RuntimeComponentSnapshotItem = {

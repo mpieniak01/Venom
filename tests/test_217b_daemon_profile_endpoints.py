@@ -320,11 +320,11 @@ def test_update_profile_mixed_live_and_soft_reload():
     assert data["applied"] is False
 
 
-def test_update_profile_precision_calls_update_params():
+def test_update_profile_precision_calls_update_params(monkeypatch):
     stub = _daemon_stub(update_signal=ReloadSignal.SOFT_RELOAD)
     client = _client_with(stub)
     # CI/runtime may not have bitsandbytes installed; make this test deterministic.
-    sys.modules["bitsandbytes"] = types.ModuleType("bitsandbytes")
+    monkeypatch.setitem(sys.modules, "bitsandbytes", types.ModuleType("bitsandbytes"))
     client.post(
         "/v1/daemon/profile",
         json={

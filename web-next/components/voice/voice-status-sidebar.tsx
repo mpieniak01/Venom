@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control";
+import { MultiRuntimeProfilePanel } from "@/components/gemma4/multi-runtime-profile-panel";
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
 import { useTranslation } from "@/lib/i18n";
 import { useRuntime } from "@/components/models/hooks/use-runtime";
@@ -91,11 +92,14 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
     <div className="space-y-3">
       <RuntimeSwitchCard />
       {isGemma4AudioRuntime && (
-        <Gemma4RuntimeControl
-          variant="voice"
-          runtimeSnapshot={runtime}
-          assistantModels={runtime?.assistant_models ?? []}
-        />
+        <>
+          <Gemma4RuntimeControl
+            variant="voice"
+            runtimeSnapshot={runtime}
+            assistantModels={runtime?.assistant_models ?? []}
+          />
+          <MultiRuntimeProfilePanel />
+        </>
       )}
       <RuntimeOverviewCard
         runtime={runtime}

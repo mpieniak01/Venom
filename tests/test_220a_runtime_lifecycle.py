@@ -530,7 +530,7 @@ def test_detect_runtime_drift_detects_endpoint_mismatch():
     result = detect_runtime_drift(settings)
     assert result["drift_detected"] is True
     assert len(result["issues"]) > 0
-    assert "ollama" in result["issues"][0]
+    assert "conflicts with endpoint provider" in result["issues"][0]
 
 
 def test_detect_runtime_drift_multi_runtime_no_drift():
@@ -539,6 +539,28 @@ def test_detect_runtime_drift_multi_runtime_no_drift():
         ACTIVE_LLM_SERVER="multi_runtime",
         LLM_LOCAL_ENDPOINT="http://localhost:8014/v1",
         LLM_MODEL_NAME="gemma2:2b",
+    )
+    result = detect_runtime_drift(settings)
+    assert result["drift_detected"] is False
+
+
+def test_detect_runtime_drift_non_local_uses_service_type_as_inferred():
+    settings = _fake_settings(
+        LLM_SERVICE_TYPE="openai",
+        ACTIVE_LLM_SERVER="",
+        LLM_LOCAL_ENDPOINT="",
+        LLM_MODEL_NAME="gpt-4o-mini",
+    )
+    result = detect_runtime_drift(settings)
+    assert result["drift_detected"] is False
+    assert result["inferred_provider"] == "openai"
+
+
+def test_detect_runtime_drift_empty_endpoint_does_not_raise_false_positive():
+    settings = _fake_settings(
+        ACTIVE_LLM_SERVER="ollama",
+        LLM_LOCAL_ENDPOINT="",
+        LLM_MODEL_NAME="phi3:mini",
     )
     result = detect_runtime_drift(settings)
     assert result["drift_detected"] is False

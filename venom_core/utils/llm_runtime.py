@@ -369,32 +369,28 @@ def detect_runtime_drift(settings=None) -> dict:
     model_name = (getattr(settings, "LLM_MODEL_NAME", "") or "").strip()
     service_type = (getattr(settings, "LLM_SERVICE_TYPE", "local") or "local").lower()
 
+    inferred = _build_inferred_provider(
+        service_type=service_type,
+        endpoint=endpoint,
+    )
     issues: List[str] = []
-
-    if service_type == "local" and active_server and endpoint:
-        inferred = infer_local_provider(endpoint)
-        if inferred != active_server and active_server not in {"onnx"}:
-            if not (active_server == "ollama" and inferred == "local"):
-                issues.append(
-                    f"ACTIVE_LLM_SERVER='{active_server}' but endpoint "
-                    f"'{endpoint}' maps to provider='{inferred}'"
-                )
-    else:
-        inferred = infer_local_provider(endpoint) if endpoint else ""
+    endpoint_issue = _collect_endpoint_provider_issue(
+        service_type=service_type,
+        active_server=active_server,
+        endpoint=endpoint,
+        inferred_provider=inferred,
+    )
+    if endpoint_issue:
+        issues.append(endpoint_issue)
 
     runtime = get_active_llm_runtime(settings)
-    if runtime.provider and active_server and service_type == "local":
-        if (
-            runtime.provider != active_server
-            and not is_multi_runtime(active_server)
-            and not is_multi_runtime(runtime.provider)
-        ):
-            if active_server != "onnx" or runtime.provider != "onnx":
-                if runtime.provider not in {"local"} and active_server not in {"local"}:
-                    issues.append(
-                        f"Resolved runtime provider='{runtime.provider}' differs "
-                        f"from ACTIVE_LLM_SERVER='{active_server}'"
-                    )
+    runtime_issue = _collect_runtime_provider_issue(
+        service_type=service_type,
+        active_server=active_server,
+        runtime_provider=(runtime.provider or "").strip().lower(),
+    )
+    if runtime_issue:
+        issues.append(runtime_issue)
 
     return {
         "drift_detected": len(issues) > 0,
@@ -404,3 +400,69 @@ def detect_runtime_drift(settings=None) -> dict:
         "endpoint": endpoint,
         "issues": issues,
     }
+
+
+def _build_inferred_provider(*, service_type: str, endpoint: str) -> str:
+    if service_type != "local":
+        return service_type
+    return infer_local_provider(endpoint) if endpoint else ""
+
+
+def _collect_endpoint_provider_issue(
+    *,
+    service_type: str,
+    active_server: str,
+    endpoint: str,
+    inferred_provider: str,
+) -> str | None:
+    if service_type != "local":
+        return None
+    if not active_server or not endpoint:
+        return None
+    if active_server == "onnx":
+        return None
+    if inferred_provider == active_server:
+        return None
+    if active_server == "ollama" and inferred_provider == "local":
+        return None
+    if is_multi_runtime(active_server) and is_multi_runtime(inferred_provider):
+        return None
+    return (
+        f"Configured active server '{active_server}' conflicts with endpoint "
+        f"provider '{inferred_provider}' for '{endpoint}'."
+    )
+
+
+def _should_skip_provider_mismatch(
+    *, active_server: str, runtime_provider: str
+) -> bool:
+    if not active_server or not runtime_provider:
+        return True
+    if runtime_provider == active_server:
+        return True
+    if active_server == "local" or runtime_provider == "local":
+        return True
+    if active_server == "onnx" and runtime_provider == "onnx":
+        return True
+    if is_multi_runtime(active_server) or is_multi_runtime(runtime_provider):
+        return True
+    return False
+
+
+def _collect_runtime_provider_issue(
+    *,
+    service_type: str,
+    active_server: str,
+    runtime_provider: str,
+) -> str | None:
+    if service_type != "local":
+        return None
+    if _should_skip_provider_mismatch(
+        active_server=active_server,
+        runtime_provider=runtime_provider,
+    ):
+        return None
+    return (
+        f"Resolved runtime provider '{runtime_provider}' differs from configured "
+        f"ACTIVE_LLM_SERVER '{active_server}'."
+    )

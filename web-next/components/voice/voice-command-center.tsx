@@ -1613,6 +1613,7 @@ function createHandleAudioMessageHandler(params: {
   t: Translator;
   onTranscriptReady?: (text: string) => void;
   playAudioResponse: (base64Audio: string, sampleRate: number) => Promise<void>;
+  refreshAudioStatus: () => Promise<void>;
   setStatusMessage: Dispatch<SetStateAction<string | null>>;
   setLastAudioSignal: Dispatch<SetStateAction<string>>;
   setProcessingStatus: Dispatch<SetStateAction<string | null>>;
@@ -1624,6 +1625,7 @@ function createHandleAudioMessageHandler(params: {
     t,
     onTranscriptReady,
     playAudioResponse,
+    refreshAudioStatus,
     setStatusMessage,
     setLastAudioSignal,
     setProcessingStatus,
@@ -1655,10 +1657,12 @@ function createHandleAudioMessageHandler(params: {
     }
     if (messageType === "complete") {
       handleVoiceCompletion(t, setStatusMessage, setLastAudioSignal, setProcessingStatus);
+      refreshAudioStatus().catch(() => undefined);
       return;
     }
     if (messageType === "error") {
       handleVoiceError(t, data, setPlaybackState, setStatusMessage, setLastAudioSignal);
+      refreshAudioStatus().catch(() => undefined);
     }
   };
 }
@@ -2515,6 +2519,7 @@ function VoiceCommandCenterPanel({
         t,
         onTranscriptReady,
         playAudioResponse,
+        refreshAudioStatus,
         setStatusMessage,
         setLastAudioSignal,
         setProcessingStatus,
@@ -2525,6 +2530,7 @@ function VoiceCommandCenterPanel({
     [
       onTranscriptReady,
       playAudioResponse,
+      refreshAudioStatus,
       t,
       setStatusMessage,
       setLastAudioSignal,

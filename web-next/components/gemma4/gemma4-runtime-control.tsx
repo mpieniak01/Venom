@@ -33,45 +33,45 @@ const CACHE_OPTIONS = [
 ] as const;
 
 const PROFILE_CACHE_OPTIONS = [
-  { value: "", label: "default (framework)" },
-  { value: "static", label: "static" },
-  { value: "dynamic", label: "dynamic" },
-  { value: "offloaded", label: "offloaded" },
+  { value: "", labelKey: "runtime.profile.cacheDefaultFramework" },
+  { value: "static", labelKey: "runtime.profile.cacheStatic" },
+  { value: "dynamic", labelKey: "runtime.profile.cacheDynamic" },
+  { value: "offloaded", labelKey: "runtime.profile.cacheOffloaded" },
 ] as const;
 
 const PROFILE_EXECUTION_MODE_OPTIONS = [
-  { value: "balanced", label: "balanced" },
-  { value: "vision_priority", label: "vision_priority" },
-  { value: "voice_priority", label: "voice_priority" },
+  { value: "balanced", labelKey: "runtime.profile.executionModeBalanced" },
+  { value: "vision_priority", labelKey: "runtime.profile.executionModeVisionPriority" },
+  { value: "voice_priority", labelKey: "runtime.profile.executionModeVoicePriority" },
 ] as const;
 
 const PROFILE_IMAGE_STRATEGY_OPTIONS = [
-  { value: "vlm_only", label: "vlm_only" },
-  { value: "ocr_first", label: "ocr_first" },
-  { value: "hybrid", label: "hybrid" },
+  { value: "vlm_only", labelKey: "runtime.profile.imageStrategyVlmOnly" },
+  { value: "ocr_first", labelKey: "runtime.profile.imageStrategyOcrFirst" },
+  { value: "hybrid", labelKey: "runtime.profile.imageStrategyHybrid" },
 ] as const;
 
 const PROFILE_RETRIEVAL_MODE_OPTIONS = [
-  { value: "off", label: "off" },
-  { value: "auto", label: "auto" },
-  { value: "always", label: "always" },
+  { value: "off", labelKey: "runtime.profile.retrievalModeOff" },
+  { value: "auto", labelKey: "runtime.profile.retrievalModeAuto" },
+  { value: "always", labelKey: "runtime.profile.retrievalModeAlways" },
 ] as const;
 
 const PROFILE_AUDIO_OUTPUT_MODE_OPTIONS = [
-  { value: "off", label: "off" },
-  { value: "text_first", label: "text_first" },
-  { value: "voice_first", label: "voice_first" },
+  { value: "off", labelKey: "runtime.profile.audioOutputModeOff" },
+  { value: "text_first", labelKey: "runtime.profile.audioOutputModeTextFirst" },
+  { value: "voice_first", labelKey: "runtime.profile.audioOutputModeVoiceFirst" },
 ] as const;
 
 const PROFILE_ASSISTANT_MODE_OPTIONS = [
-  { value: "off", label: "off" },
-  { value: "attached", label: "attached" },
-  { value: "conditional", label: "conditional" },
+  { value: "off", labelKey: "runtime.profile.assistantModeOff" },
+  { value: "attached", labelKey: "runtime.profile.assistantModeAttached" },
+  { value: "conditional", labelKey: "runtime.profile.assistantModeConditional" },
 ] as const;
 
 const PROFILE_ECONOMY_MODE_OPTIONS = [
-  { value: "off", label: "off" },
-  { value: "auto", label: "auto" },
+  { value: "off", labelKey: "runtime.profile.economyModeOff" },
+  { value: "auto", labelKey: "runtime.profile.economyModeAuto" },
 ] as const;
 
 type Variant = "cockpit" | "voice";
@@ -300,6 +300,7 @@ function ImageProbeSection({
 }
 
 function ProfileModeBadge({ mode }: Readonly<{ mode: string }>) {
+  const t = useTranslation();
   const variant =
     mode === "live"
       ? "default"
@@ -308,7 +309,17 @@ function ProfileModeBadge({ mode }: Readonly<{ mode: string }>) {
         : mode === "hard_restart"
           ? "destructive"
           : "outline";
-  return <Badge variant={variant}>{mode}</Badge>;
+  const label =
+    mode === "live"
+      ? t("runtime.profile.applyModeLive")
+      : mode === "soft_reload"
+        ? t("runtime.profile.applyModeSoftReload")
+        : mode === "hard_restart"
+          ? t("runtime.profile.applyModeHardRestart")
+          : mode === "unsupported"
+            ? t("runtime.profile.applyModeUnsupported")
+            : mode;
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
 function RuntimeProfileControls() {
@@ -326,6 +337,63 @@ function RuntimeProfileControls() {
   const [localAssistantMode, setLocalAssistantMode] = useState<string | null>(null);
   const [localEconomyMode, setLocalEconomyMode] = useState<string | null>(null);
   const [localCache, setLocalCache] = useState<string | null>(null);
+
+  const profileCacheOptions = useMemo(
+    () =>
+      PROFILE_CACHE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileExecutionModeOptions = useMemo(
+    () =>
+      PROFILE_EXECUTION_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileImageStrategyOptions = useMemo(
+    () =>
+      PROFILE_IMAGE_STRATEGY_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileRetrievalModeOptions = useMemo(
+    () =>
+      PROFILE_RETRIEVAL_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileAudioOutputModeOptions = useMemo(
+    () =>
+      PROFILE_AUDIO_OUTPUT_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileAssistantModeOptions = useMemo(
+    () =>
+      PROFILE_ASSISTANT_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+  const profileEconomyModeOptions = useMemo(
+    () =>
+      PROFILE_ECONOMY_MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
 
   const effectiveExecutionMode =
     localExecutionMode === null ? (profile?.execution_mode ?? "balanced") : localExecutionMode;
@@ -387,55 +455,55 @@ function RuntimeProfileControls() {
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
-            Execution Policy
+            {t("runtime.profile.executionPolicy")}
           </span>
           {matrix && <ProfileModeBadge mode={matrix.execution_mode} />}
         </div>
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
-          <RuntimeProfileRow label="execution_mode">
+          <RuntimeProfileRow label={t("runtime.profile.executionMode")}>
             <SelectMenu
               value={effectiveExecutionMode}
-              options={PROFILE_EXECUTION_MODE_OPTIONS}
+              options={profileExecutionModeOptions}
               onChange={setLocalExecutionMode}
               disabled={busy}
             />
           </RuntimeProfileRow>
-          <RuntimeProfileRow label="image_strategy">
+          <RuntimeProfileRow label={t("runtime.profile.imageStrategy")}>
             <SelectMenu
               value={effectiveImageStrategy}
-              options={PROFILE_IMAGE_STRATEGY_OPTIONS}
+              options={profileImageStrategyOptions}
               onChange={setLocalImageStrategy}
               disabled={busy}
             />
           </RuntimeProfileRow>
-          <RuntimeProfileRow label="retrieval_mode">
+          <RuntimeProfileRow label={t("runtime.profile.retrievalMode")}>
             <SelectMenu
               value={effectiveRetrievalMode}
-              options={PROFILE_RETRIEVAL_MODE_OPTIONS}
+              options={profileRetrievalModeOptions}
               onChange={setLocalRetrievalMode}
               disabled={busy}
             />
           </RuntimeProfileRow>
-          <RuntimeProfileRow label="audio_output_mode">
+          <RuntimeProfileRow label={t("runtime.profile.audioOutputMode")}>
             <SelectMenu
               value={effectiveAudioOutputMode}
-              options={PROFILE_AUDIO_OUTPUT_MODE_OPTIONS}
+              options={profileAudioOutputModeOptions}
               onChange={setLocalAudioOutputMode}
               disabled={busy}
             />
           </RuntimeProfileRow>
-          <RuntimeProfileRow label="assistant_mode">
+          <RuntimeProfileRow label={t("runtime.profile.assistantMode")}>
             <SelectMenu
               value={effectiveAssistantMode}
-              options={PROFILE_ASSISTANT_MODE_OPTIONS}
+              options={profileAssistantModeOptions}
               onChange={setLocalAssistantMode}
               disabled={busy}
             />
           </RuntimeProfileRow>
-          <RuntimeProfileRow label="economy_mode">
+          <RuntimeProfileRow label={t("runtime.profile.economyMode")}>
             <SelectMenu
               value={effectiveEconomyMode}
-              options={PROFILE_ECONOMY_MODE_OPTIONS}
+              options={profileEconomyModeOptions}
               onChange={setLocalEconomyMode}
               disabled={busy}
             />
@@ -448,7 +516,7 @@ function RuntimeProfileControls() {
           onClick={handleApplyPolicy}
           disabled={busy || !data.daemon_reachable}
         >
-          {busy ? t("runtime.profile.applying") : "Apply policy"}
+          {busy ? t("runtime.profile.applying") : t("runtime.profile.applyPolicy")}
         </Button>
       </div>
 
@@ -461,7 +529,7 @@ function RuntimeProfileControls() {
         </div>
         <SelectMenu
           value={effectiveCache}
-          options={PROFILE_CACHE_OPTIONS}
+          options={profileCacheOptions}
           onChange={setLocalCache}
           disabled={busy}
         />
@@ -537,6 +605,65 @@ function RuntimeProfileRow({
       <div className="w-48">{children}</div>
     </div>
   );
+}
+
+function resolveRuntimeComponentLabel(
+  componentId: string,
+  t: (path: string) => string,
+): string {
+  switch (componentId) {
+    case "main_model":
+      return t("runtime.profile.componentLabels.mainModel");
+    case "assistant_model":
+      return t("runtime.profile.componentLabels.assistantModel");
+    case "image_input":
+      return t("runtime.profile.componentLabels.imageInput");
+    case "ocr_component":
+      return t("runtime.profile.componentLabels.ocrComponent");
+    case "stt_component":
+      return t("runtime.profile.componentLabels.sttComponent");
+    case "tts_component":
+      return t("runtime.profile.componentLabels.ttsComponent");
+    case "embedding_component":
+      return t("runtime.profile.componentLabels.embeddingComponent");
+    default:
+      return componentId;
+  }
+}
+
+function resolveRuntimeComponentHealthLabel(
+  health: string | null | undefined,
+  t: (path: string) => string,
+): string {
+  switch (health) {
+    case "ok":
+      return t("runtime.profile.componentHealth.ok");
+    case "disabled":
+      return t("runtime.profile.componentHealth.disabled");
+    case "degraded":
+      return t("runtime.profile.componentHealth.degraded");
+    case "error":
+      return t("runtime.profile.componentHealth.error");
+    default:
+      return health ?? t("common.unknown");
+  }
+}
+
+function resolveRuntimeComponentHealthTone(
+  health: string | null | undefined,
+): "success" | "warning" | "danger" | "neutral" {
+  switch (health) {
+    case "ok":
+      return "success";
+    case "disabled":
+      return "neutral";
+    case "degraded":
+      return "warning";
+    case "error":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 function vramBarColor(pct: number): string {
@@ -1154,7 +1281,7 @@ function Gemma4RuntimeControlPanel({
       {status?.component_snapshot && status.component_snapshot.length > 0 && (
         <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
           <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
-            component snapshot
+            {t("runtime.profile.componentSnapshot")}
           </p>
           <div className="space-y-1.5">
             {status.component_snapshot.slice(0, 7).map((component) => (
@@ -1162,8 +1289,15 @@ function Gemma4RuntimeControlPanel({
                 key={component.component_id}
                 className="flex items-center justify-between gap-2 text-[10px]"
               >
-                <span className="text-zinc-300 truncate">{component.component_id}</span>
-                <span className="text-zinc-500 truncate">{component.health}</span>
+                <span className="text-zinc-300 truncate">
+                  {resolveRuntimeComponentLabel(component.component_id, t)}
+                </span>
+                <Badge
+                  tone={resolveRuntimeComponentHealthTone(component.health)}
+                  className="truncate text-[10px] uppercase tracking-wide"
+                >
+                  {resolveRuntimeComponentHealthLabel(component.health, t)}
+                </Badge>
               </div>
             ))}
           </div>

@@ -10,6 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useTranslation } from "@/lib/i18n";
 
 type AudioStatus = {
   enabled: boolean;
@@ -161,6 +162,7 @@ export function DevDiagnosticsDrawerContent({
   renderDiagnosticMode,
   onClose,
 }: DevDiagnosticsDrawerContentProps) {
+  const t = useTranslation();
   const latestVoiceSession = audioStatus?.latest_voice_session ?? null;
   const runtimeSnapshot = audioStatus?.runtime_snapshot ?? null;
   const wsState = audioStatus?.enabled ? "online" : "offline";
@@ -173,17 +175,27 @@ export function DevDiagnosticsDrawerContent({
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Badge tone={wsState === "online" ? "success" : "warning"}>WS: {wsState}</Badge>
-        <Badge tone="neutral">signal: {lastAudioSignal || "none"}</Badge>
-        <Badge tone="neutral">chunks: {audioChunkCount}</Badge>
+        <Badge tone={wsState === "online" ? "success" : "warning"}>
+          {t("voice.controls.audioWs")}: {wsState}
+        </Badge>
+        <Badge tone="neutral">
+          {t("voice.controls.signal")}: {lastAudioSignal || t("common.unknown")}
+        </Badge>
+        <Badge tone="neutral">
+          {t("voice.controls.chunks")}: {audioChunkCount}
+        </Badge>
         {renderDiagnosticMode && renderDiagnosticMode !== "off" && (
           <Badge tone="neutral">render: {renderDiagnosticMode}</Badge>
         )}
         {runtimeSnapshot?.provider && (
-          <Badge tone="neutral">provider: {runtimeSnapshot.provider}</Badge>
+          <Badge tone="neutral">
+            {t("runtime.snapshot.provider")}: {runtimeSnapshot.provider}
+          </Badge>
         )}
         {latestVoiceSession?.session_id && (
-          <Badge tone="neutral">session: {latestVoiceSession.session_id}</Badge>
+          <Badge tone="neutral">
+            {t("voice.controls.sessionId")}: {latestVoiceSession.session_id}
+          </Badge>
         )}
       </div>
 
@@ -376,10 +388,11 @@ function RuntimeSnapshotSection({
 }: Readonly<{
   runtimeSnapshot: AudioStatus["runtime_snapshot"];
 }>) {
+  const t = useTranslation();
   if (!runtimeSnapshot) return null;
   const capabilities = runtimeSnapshot.runtime_capabilities;
   const pipeline = runtimeSnapshot.voice_pipeline;
-  const probeStatus = capabilities?.probe_status ?? "unknown";
+  const probeStatus = capabilities?.probe_status ?? t("runtime.snapshot.unknown");
   const probes = capabilities?.probes ?? {};
   const probeSummary = Object.entries(probes)
     .map(([name, probe]) => `${name}:${probe.status ?? "?"}`)
@@ -389,40 +402,44 @@ function RuntimeSnapshotSection({
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="eyebrow">Snapshot Runtime</p>
+          <p className="eyebrow">{t("runtime.snapshot.title")}</p>
           <p className="mt-1 text-base font-semibold text-white">
-            {runtimeSnapshot.model_name ?? "Unknown model"}
+            {runtimeSnapshot.model_name ?? t("runtime.snapshot.unknownModel")}
           </p>
           {runtimeSnapshot.error && <p className="mt-1 text-xs text-rose-200">{runtimeSnapshot.error}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge tone={getProbeTone(probeStatus)}>Probe: {probeStatus}</Badge>
-          <Badge tone="neutral">{capabilities?.compatibility_profile ?? pipeline?.profile ?? "unknown"}</Badge>
+          <Badge tone={getProbeTone(probeStatus)}>
+            {t("runtime.snapshot.probeStatus")}: {probeStatus}
+          </Badge>
+          <Badge tone="neutral">
+            {capabilities?.compatibility_profile ?? pipeline?.profile ?? t("runtime.snapshot.unknown")}
+          </Badge>
         </div>
       </div>
       <div className="mb-3 grid gap-2 text-xs sm:grid-cols-3">
         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-          <p className="text-caption">Provider</p>
+          <p className="text-caption">{t("runtime.snapshot.provider")}</p>
           <p className="mt-1 text-white">{runtimeSnapshot.provider ?? runtimeSnapshot.runtime_id ?? "—"}</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-          <p className="text-caption">Endpoint</p>
+          <p className="text-caption">{t("runtime.snapshot.endpoint")}</p>
           <p className="mt-1 text-white">{runtimeSnapshot.endpoint ?? "—"}</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-          <p className="text-caption">Config hash</p>
+          <p className="text-caption">{t("runtime.snapshot.configHash")}</p>
           <p className="mt-1 font-mono text-white">{runtimeSnapshot.config_hash ?? "—"}</p>
         </div>
       </div>
       {capabilities?.probes && Object.keys(capabilities.probes).length > 0 && (
         <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="mb-1 text-caption">Probes</p>
+          <p className="mb-1 text-caption">{t("runtime.snapshot.probes")}</p>
           <p className="font-mono">{probeSummary || "—"}</p>
         </div>
       )}
       {pipeline && (
         <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-zinc-300">
-          <p className="mb-1 text-caption">Voice pipeline</p>
+          <p className="mb-1 text-caption">{t("runtime.snapshot.voicePipeline")}</p>
           <p className="font-mono">
             {joinParts([
               pipeline.profile && `profile:${pipeline.profile}`,

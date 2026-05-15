@@ -306,6 +306,11 @@ describe("Gemma4RuntimeControl — normal state (voice variant)", () => {
     renderControl(makeState());
     assert.ok(await screen.findByTestId("runtime-profile-inline"));
     assert.equal(screen.queryByTestId("multi-runtime-profile-panel"), null);
+    assert.ok(screen.getByText("Profil runtime"));
+    assert.ok(screen.getByText("Polityka wykonania"));
+    assert.ok(screen.getByText("Snapshot komponentów"));
+    assert.ok(screen.getByText("Główny model"));
+    assert.equal(screen.queryByText("component snapshot"), null);
   });
 
   it("shows CPU / no VRAM when backend=cpu", () => {

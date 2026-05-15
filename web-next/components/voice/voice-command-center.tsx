@@ -2890,7 +2890,7 @@ function VoiceCommandCenterPanel({
             🎙 {viewState.recordingButtonLabel}
           </Button>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" data-testid="voice-mode-toggle">
             <Button
               type="button"
               size="xs"
@@ -2900,6 +2900,9 @@ function VoiceCommandCenterPanel({
             >
               {viewState.effectiveIsVoiceModeEnabled ? t("voice.controls.voice") : t("voice.controls.text")}
             </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               size="xs"

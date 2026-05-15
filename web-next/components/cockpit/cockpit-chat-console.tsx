@@ -223,8 +223,8 @@ export function CockpitChatConsole({
         </div>
       </CockpitPanel3D>
       <RuntimeDiagnosticsPanel
-        title="Runtime diagnostics"
-        description="Active daemon snapshot, component health and degradation reasons."
+        title={t("runtime.diagnostics.title")}
+        description={t("runtime.diagnostics.description")}
         summaryItems={runtimeSummary}
         componentSnapshot={runtimeStatus?.component_snapshot ?? []}
         degradationReasons={runtimeDegradations}

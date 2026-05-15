@@ -57,7 +57,7 @@ export function useMultiRuntimeProfile(
     async (timeoutMs: number): Promise<void> => {
       const daemonBase = daemonBaseRef.current || getGemma4ApiBaseUrl();
       const startedAt = Date.now();
-      while (Date.now() - startedAt < timeoutMs) {
+      while (Date.now() - startedAt < timeoutMs && mountedRef.current) {
         try {
           const status = await fetchDaemonStatus(daemonBase);
           if (!status.pending_reload) return;

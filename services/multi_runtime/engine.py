@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 from PIL import Image
@@ -16,6 +16,7 @@ from PIL import Image
 from .audio import get_audio_duration, normalize_audio
 
 logger = logging.getLogger(__name__)
+_UNSET = object()
 
 
 class ModelLoadError(Exception):
@@ -289,7 +290,7 @@ class MultiRuntimeEngine:
         top_p: Optional[float] = None,
         do_sample: Optional[bool] = None,
         enable_thinking: bool = False,
-        cache_implementation: Optional[str] = None,
+        cache_implementation: Optional[str] | object = _UNSET,
     ) -> tuple[str, float]:
         """Run inference on audio with optional text.
 
@@ -616,7 +617,7 @@ class MultiRuntimeDaemon:
         assistant_mode: Optional[str] = None,
         economy_mode: Optional[str] = None,
         precision: Optional[str] = None,
-        quantization_backend: Optional[str] = None,
+        quantization_backend: Optional[str] | object = _UNSET,
         device_target: Optional[str] = None,
     ) -> ReloadSignal:
         """Apply parameter changes. Returns the minimum reload action required."""
@@ -657,10 +658,12 @@ class MultiRuntimeDaemon:
             )
 
         if (
-            cache_implementation is not None
+            cache_implementation is not _UNSET
             and cache_implementation != self._params.cache_implementation
         ):
-            self._params.cache_implementation = cache_implementation
+            self._params.cache_implementation = cast(
+                Optional[str], cache_implementation
+            )
             self._reload_reason = (
                 f"cache_implementation changed to '{cache_implementation}'"
             )
@@ -697,10 +700,12 @@ class MultiRuntimeDaemon:
             reload_signal = ReloadSignal.SOFT_RELOAD
 
         if (
-            quantization_backend is not None
+            quantization_backend is not _UNSET
             and quantization_backend != self._params.quantization_backend
         ):
-            self._params.quantization_backend = quantization_backend
+            self._params.quantization_backend = cast(
+                Optional[str], quantization_backend
+            )
             self._reload_reason = (
                 f"quantization_backend changed to '{quantization_backend}'"
             )

@@ -618,24 +618,8 @@ async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
     except RuntimeError:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
 
-    signal = daemon.update_params(
-        max_new_tokens=body.max_new_tokens,
-        enable_thinking=body.enable_thinking,
-        image_token_budget=body.image_token_budget,
-        reasoning_summary_enabled=body.reasoning_summary_enabled,
-        emotion_detection_enabled=body.emotion_detection_enabled,
-        emotion_response_style_enabled=body.emotion_response_style_enabled,
-        cache_implementation=body.cache_implementation,
-        execution_mode=body.execution_mode,
-        image_strategy=body.image_strategy,
-        retrieval_mode=body.retrieval_mode,
-        audio_output_mode=body.audio_output_mode,
-        assistant_mode=body.assistant_mode,
-        economy_mode=body.economy_mode,
-        precision=body.precision,
-        quantization_backend=body.quantization_backend,
-        device_target=body.device_target,
-    )
+    update_kwargs = body.model_dump(exclude_unset=True)
+    signal = daemon.update_params(**update_kwargs)
 
     raw = daemon.status()
     msg_map = {

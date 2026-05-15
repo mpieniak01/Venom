@@ -340,6 +340,28 @@ def test_update_profile_precision_calls_update_params():
     )
 
 
+def test_update_profile_quantization_backend_null_calls_update_params():
+    stub = _daemon_stub(update_signal=ReloadSignal.SOFT_RELOAD)
+    client = _client_with(stub)
+    resp = client.post("/v1/daemon/profile", json={"quantization_backend": None})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "quantization_backend" in data["accepted"]
+    assert data["accepted"]["quantization_backend"] is None
+    stub.update_params.assert_called_once_with(quantization_backend=None)
+
+
+def test_update_profile_cache_implementation_null_calls_update_params():
+    stub = _daemon_stub(update_signal=ReloadSignal.SOFT_RELOAD)
+    client = _client_with(stub)
+    resp = client.post("/v1/daemon/profile", json={"cache_implementation": None})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "cache_implementation" in data["accepted"]
+    assert data["accepted"]["cache_implementation"] is None
+    stub.update_params.assert_called_once_with(cache_implementation=None)
+
+
 def test_update_profile_empty_request():
     stub = _daemon_stub()
     client = _client_with(stub)

@@ -248,12 +248,9 @@ def _assert_stop_results_clean(stop_results: dict[str, dict[str, Any]]) -> None:
         if not bool(result.get("ok", False))
     ]
     if failures:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Nie udało się zatrzymać poprzednich serwerów LLM: "
-                + ", ".join(sorted(failures))
-            ),
+        logger.warning(
+            "Nie udało się zatrzymać poprzednich serwerów LLM: %s",
+            ", ".join(sorted(failures)),
         )
 
 
@@ -449,13 +446,12 @@ def _validate_requested_model_available(
         return None
     if requested in available_models:
         return requested
-    raise HTTPException(
-        status_code=400,
-        detail=(
-            f"Model '{requested}' nie jest dostępny na serwerze '{server_name}'. "
-            "Użyj /system/llm-runtime/options aby sprawdzić listę modeli."
-        ),
+    logger.warning(
+        "Requested model '%s' is unavailable on server '%s'; falling back.",
+        requested,
+        server_name,
     )
+    return None
 
 
 def _merge_monitor_status_into_servers(servers: list[dict], service_monitor) -> None:
@@ -2151,9 +2147,10 @@ def _resolve_selected_model_for_switch(
         )
         return selected_model, last_model_key
     except HTTPException:
-        fallback = _fallback_ollama_model_selection(
+        fallback = _fallback_model_selection(
             request=request,
             server_name=server_name,
+            config=config,
             models=models,
         )
         if fallback is None:
@@ -2220,23 +2217,30 @@ def _last_model_key_for_server(server_name: str) -> str:
     return "LAST_MODEL_VLLM"
 
 
-def _fallback_ollama_model_selection(
+def _fallback_model_selection(
     *,
     request: ActiveLlmServerRequest,
     server_name: str,
+    config: dict[str, Any],
     models: list[dict[str, Any]],
 ) -> tuple[str, str] | None:
-    explicit_model_request = bool(
-        str(request.model or "").strip() or str(request.model_alias or "").strip()
-    )
-    if server_name != "ollama" or not explicit_model_request:
-        return None
-    available_ollama = _available_models_for_server(
+    available_models = _available_models_for_server(
         models=models, server_name=server_name
     )
-    if not available_ollama:
+    if not available_models:
         return None
-    return available_ollama[0], "LAST_MODEL_OLLAMA"
+    last_model_key = _last_model_key_for_server(server_name)
+    previous_model_key = _previous_model_key_for_server(server_name)
+    candidates = [
+        str(request.model or "").strip(),
+        str(config.get(last_model_key) or "").strip(),
+        str(config.get(previous_model_key) or "").strip(),
+        str(config.get("LLM_MODEL_NAME") or "").strip(),
+    ]
+    for candidate in candidates:
+        if candidate and candidate in available_models:
+            return candidate, last_model_key
+    return available_models[0], last_model_key
 
 
 def _feedback_alias_resolution_payload(resolution) -> dict[str, Any]:

@@ -237,7 +237,7 @@ class LlmServerController:
                 f"Dla serwera {server.display_name} nie skonfigurowano akcji '{action}'."
             )
 
-        logger.info("Uruchamiam komendę %s dla %s: %s", action, server.name, command)
+        logger.info("Uruchamiam komendę {} dla {}: {}", action, server.name, command)
 
         process = await asyncio.create_subprocess_shell(
             command,
@@ -251,7 +251,7 @@ class LlmServerController:
         except asyncio.TimeoutError:
             process.kill()
             logger.error(
-                "Komenda %s dla %s przekroczyła timeout (300s). Zabijanie procesu.",
+                "Komenda {} dla {} przekroczyła timeout (300s). Zabijanie procesu.",
                 action,
                 server.name,
             )
@@ -263,18 +263,18 @@ class LlmServerController:
 
         if ok:
             logger.info(
-                "Akcja %s dla %s zakończona sukcesem (exit=%s)",
+                "Akcja {} dla {} zakończona sukcesem (exit={})",
                 action,
                 server.name,
                 process.returncode,
             )
         else:
             logger.error(
-                "Akcja %s dla %s zakończona błędem (exit=%s): %s",
+                "Akcja {} dla {} zakończona błędem (exit={}): {}",
                 action,
                 server.name,
                 process.returncode,
-                stderr,
+                stderr or stdout,
             )
 
         return LlmCommandResult(

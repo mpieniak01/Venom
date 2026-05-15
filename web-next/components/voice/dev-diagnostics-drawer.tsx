@@ -125,6 +125,12 @@ export function DevDiagnosticsDrawer({
       <SheetContent
         className="max-h-[90vh] overflow-y-auto border-l border-r-0 border-white/10 pr-2 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
       >
+        <SheetHeader className="mb-4 text-left">
+          <SheetTitle className="heading-h3">⚙ Diagnostics</SheetTitle>
+          <SheetDescription className="text-sm text-muted">
+            Diagnostyka voice runtime i request path.
+          </SheetDescription>
+        </SheetHeader>
         <DevDiagnosticsDrawerContent
           audioStatus={audioStatus}
           lastAudioSignal={lastAudioSignal}
@@ -166,13 +172,6 @@ export function DevDiagnosticsDrawerContent({
 
   return (
     <>
-      <SheetHeader className="mb-4 text-left">
-        <SheetTitle className="heading-h3">⚙ Diagnostics</SheetTitle>
-        <SheetDescription className="text-sm text-muted">
-          Diagnostyka voice runtime i request path.
-        </SheetDescription>
-      </SheetHeader>
-
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Badge tone={wsState === "online" ? "success" : "warning"}>WS: {wsState}</Badge>
         <Badge tone="neutral">signal: {lastAudioSignal || "none"}</Badge>

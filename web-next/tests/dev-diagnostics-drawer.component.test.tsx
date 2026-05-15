@@ -119,7 +119,6 @@ describe("DevDiagnosticsDrawer", () => {
       />,
     );
 
-    assert.ok(screen.getByText("⚙ Diagnostics"));
     assert.ok(screen.getByText("WS: online"));
     assert.ok(screen.getByText("signal: ws:open"));
     assert.ok(screen.getByText("chunks: 2"));
@@ -157,6 +156,7 @@ describe("DevDiagnosticsDrawer", () => {
     );
 
     assert.ok(screen.getByText("⚙ Diagnostics"));
+    assert.ok(screen.getByText("Diagnostyka voice runtime i request path."));
     assert.ok(screen.getByText("WS: online"));
     assert.ok(screen.getByText("Kopiuj runtime JSON"));
   });

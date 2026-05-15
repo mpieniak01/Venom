@@ -195,7 +195,7 @@ def validate_profile_update(
         mode = apply_mode_for_field(field)
 
         if mode == "unsupported":
-            reason, detail = _unsupported_reason(field, value)
+            reason, detail = _unsupported_reason(field)
             rejected.append(_reject(field, value, reason, detail))
             continue
 
@@ -218,7 +218,7 @@ def validate_profile_update(
     )
 
 
-def _unsupported_reason(field: str, value: Any) -> tuple[str, str]:
+def _unsupported_reason(field: str) -> tuple[str, str]:
     """Return (rejection_reason, detail) for an unsupported field."""
     return (
         "unsupported_field",
@@ -228,45 +228,69 @@ def _unsupported_reason(field: str, value: Any) -> tuple[str, str]:
 
 def _semantic_check(field: str, value: Any) -> Optional[tuple[str, str]]:
     """Return (rejection_reason, detail) for semantic violations, or None if OK."""
-    if field == "cache_implementation" and value is not None:
-        allowed = [v for v in SUPPORTED_OPTIONS.cache_implementation if v is not None]
-        if value not in allowed:
-            return (
-                "unsupported_combination",
-                f"cache_implementation='{value}' is not in supported set: {allowed}",
-            )
-    if field == "precision":
-        normalized = str(value or "auto").lower().strip()
-        allowed = {"auto", "float16", "bfloat16", "float32", "int4", "int8"}
-        if normalized not in allowed:
-            return (
-                "value_out_of_range",
-                f"precision='{value}' is not in supported set: {sorted(allowed)}",
-            )
-    if field == "quantization_backend":
-        normalized = None if value is None else str(value).lower().strip()
-        if normalized not in {None, "bitsandbytes"}:
-            return (
-                "unsupported_combination",
-                "quantization_backend must be either None or 'bitsandbytes'",
-            )
-        if normalized == "bitsandbytes":
-            try:
-                import bitsandbytes  # noqa: F401
-            except ImportError:
-                return (
-                    "quantization_backend_unavailable",
-                    "bitsandbytes is not installed; quantization_backend cannot be activated",
-                )
-    if field == "device_target":
-        normalized = str(value or "auto").lower().strip()
-        allowed = {"auto", "cpu", "cuda"}
-        if normalized not in allowed:
-            return (
-                "value_out_of_range",
-                f"device_target='{value}' is not in supported set: {sorted(allowed)}",
-            )
+    validators = {
+        "cache_implementation": _validate_cache_implementation,
+        "precision": _validate_precision,
+        "quantization_backend": _validate_quantization_backend,
+        "device_target": _validate_device_target,
+    }
+    validator = validators.get(field)
+    if validator is None:
+        return None
+    return validator(value)
+
+
+def _validate_cache_implementation(value: Any) -> Optional[tuple[str, str]]:
+    if value is None:
+        return None
+    allowed = [v for v in SUPPORTED_OPTIONS.cache_implementation if v is not None]
+    if value in allowed:
+        return None
+    return (
+        "unsupported_combination",
+        f"cache_implementation='{value}' is not in supported set: {allowed}",
+    )
+
+
+def _validate_precision(value: Any) -> Optional[tuple[str, str]]:
+    normalized = str(value or "auto").lower().strip()
+    allowed = {"auto", "float16", "bfloat16", "float32", "int4", "int8"}
+    if normalized in allowed:
+        return None
+    return (
+        "value_out_of_range",
+        f"precision='{value}' is not in supported set: {sorted(allowed)}",
+    )
+
+
+def _validate_quantization_backend(value: Any) -> Optional[tuple[str, str]]:
+    normalized = None if value is None else str(value).lower().strip()
+    if normalized not in {None, "bitsandbytes"}:
+        return (
+            "unsupported_combination",
+            "quantization_backend must be either None or 'bitsandbytes'",
+        )
+    if normalized != "bitsandbytes":
+        return None
+    try:
+        import bitsandbytes  # noqa: F401
+    except ImportError:
+        return (
+            "quantization_backend_unavailable",
+            "bitsandbytes is not installed; quantization_backend cannot be activated",
+        )
     return None
+
+
+def _validate_device_target(value: Any) -> Optional[tuple[str, str]]:
+    normalized = str(value or "auto").lower().strip()
+    allowed = {"auto", "cpu", "cuda"}
+    if normalized in allowed:
+        return None
+    return (
+        "value_out_of_range",
+        f"device_target='{value}' is not in supported set: {sorted(allowed)}",
+    )
 
 
 def _summary_message(

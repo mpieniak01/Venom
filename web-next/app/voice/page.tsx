@@ -8,9 +8,11 @@ type VoicePageProps = Readonly<{
   };
 }>;
 
+export function isVoiceDevModeEnabled(devFlag: string | string[] | undefined): boolean {
+  return Array.isArray(devFlag) ? devFlag.includes("1") : devFlag === "1";
+}
+
 export default async function VoicePage({ searchParams }: VoicePageProps) {
   const resolvedSearchParams = await searchParams;
-  const devFlag = resolvedSearchParams?.dev;
-  const isDevMode = Array.isArray(devFlag) ? devFlag.includes("1") : devFlag === "1";
-  return <VoiceChatScreen isDevMode={isDevMode} />;
+  return <VoiceChatScreen isDevMode={isVoiceDevModeEnabled(resolvedSearchParams?.dev)} />;
 }

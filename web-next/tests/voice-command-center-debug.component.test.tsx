@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { VoiceCommandCenter } from "../components/voice/voice-command-center";
+import { isVoiceDevModeEnabled } from "../app/voice/page";
 
 afterEach(() => cleanup());
 
@@ -45,5 +46,26 @@ describe("VoiceCommandCenter debug mode", () => {
     });
     assert.ok(screen.getByLabelText(/diagnostyka dev/i));
     assert.equal(fetchMock.mock.callCount(), 0);
+  });
+
+  it("shows the diagnostics button even when dev mode is off", async () => {
+    const fetchMock = mock.fn(async () => new Response("{}", { status: 200 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    render(<VoiceCommandCenter />);
+
+    await waitFor(() => {
+      assert.ok(screen.getByLabelText(/diagnostyka/i));
+    });
+  });
+});
+
+describe("VoicePage dev flag", () => {
+  it("enables dev mode only for dev=1", () => {
+    assert.equal(isVoiceDevModeEnabled("1"), true);
+    assert.equal(isVoiceDevModeEnabled("0"), false);
+    assert.equal(isVoiceDevModeEnabled(undefined), false);
+    assert.equal(isVoiceDevModeEnabled(["0", "1"]), true);
+    assert.equal(isVoiceDevModeEnabled(["0", "2"]), false);
   });
 });

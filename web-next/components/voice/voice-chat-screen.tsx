@@ -157,14 +157,17 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
       <span className="flex items-center gap-3">
         <span className={`flex items-center gap-1 ${sttOk ? "text-emerald-400" : "text-zinc-600"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${sttOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          {" "}
           STT
         </span>
         <span className={`flex items-center gap-1 ${ttsOk ? "text-emerald-400" : "text-zinc-600"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${ttsOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          {" "}
           TTS
         </span>
         <span className={`flex items-center gap-1 ${runtimeOk ? "text-emerald-400" : "text-zinc-600"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${runtimeOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          {" "}
           {probeStatus ?? "—"}
         </span>
       </span>

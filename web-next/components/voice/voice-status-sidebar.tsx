@@ -198,6 +198,11 @@ function RuntimeSwitchCard() {
     () => runtime.serverOptions.map((item) => ({ value: item.value, label: item.label })),
     [runtime.serverOptions],
   );
+  const runtimePlaceholder = serversLoading
+    ? t("voice.controls.loading")
+    : serverOptions.length === 0
+      ? t("voice.controls.noRuntimes")
+      : t("voice.controls.runtime");
   const modelOptions = useMemo(
     () => runtime.modelOptions.map((item) => ({ value: item.value, label: item.label })),
     [runtime.modelOptions],
@@ -224,13 +229,7 @@ function RuntimeSwitchCard() {
             value={selectedRuntime}
             options={serverOptions}
             onChange={(value) => runtime.setSelectedServer(value || null)}
-            placeholder={
-              serversLoading
-                ? t("voice.controls.loading")
-                : serverOptions.length === 0
-                ? t("voice.controls.noRuntimes")
-                : t("voice.controls.runtime")
-            }
+            placeholder={runtimePlaceholder}
             className="w-full"
             disabled={pending || serverOptions.length === 0}
             buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)] overflow-hidden"

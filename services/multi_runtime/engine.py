@@ -74,6 +74,8 @@ def _free_vram() -> None:
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                torch.cuda.ipc_collect()
     except ImportError:
         pass
 

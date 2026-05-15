@@ -290,6 +290,35 @@ async def _await_server_health(_server_name: str, health_url: str) -> bool:
     return False
 
 
+async def _await_server_shutdown(server_name: str, health_url: str) -> bool:
+    """Wait until a stopped server no longer reports healthy."""
+    logger.info("Oczekiwanie na zwolnienie serwera LLM: %s", server_name)
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        for attempt in range(60):
+            try:
+                resp = await client.get(health_url)
+                if not _is_health_response_ready(
+                    server_name=server_name,
+                    response=resp,
+                ):
+                    logger.info(
+                        "Serwer LLM %s zwolnił zasoby po %.1fs",
+                        server_name,
+                        attempt * 0.5,
+                    )
+                    return True
+            except Exception:
+                logger.info(
+                    "Serwer LLM %s jest niedostępny po %.1fs",
+                    server_name,
+                    attempt * 0.5,
+                )
+                return True
+            await asyncio.sleep(0.5)
+    logger.error("Serwer LLM %s nadal odpowiada po 30s", server_name)
+    return False
+
+
 def _extract_health_status(response: httpx.Response) -> str | None:
     try:
         payload = response.json()
@@ -2408,10 +2437,35 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     servers = llm_controller.list_servers()
     stop_results = await _stop_other_servers(llm_controller, servers, server_name)
     _assert_stop_results_clean(stop_results)
+    shutdown_results: dict[str, dict[str, Any]] = {}
+    for server in servers:
+        other_server_name = str(server.get("name") or "").strip().lower()
+        if not other_server_name or other_server_name == server_name:
+            continue
+        if not server.get("supports", {}).get("stop"):
+            continue
+        health_url = str(server.get("health_url") or "").strip()
+        if not health_url:
+            continue
+        shutdown_ok = await _await_server_shutdown(other_server_name, health_url)
+        shutdown_results[other_server_name] = {
+            "ok": shutdown_ok,
+            "health_url": health_url,
+        }
+        if not shutdown_ok:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Serwer LLM '{other_server_name}' nie zwolnił zasobów po "
+                    "zatrzymaniu."
+                ),
+            )
     if server_name != "onnx":
         _release_onnx_runtime_caches()
     if server_name == "onnx":
-        return _activate_onnx_server_switch(stop_results=stop_results)
+        response = _activate_onnx_server_switch(stop_results=stop_results)
+        response["shutdown_results"] = shutdown_results
+        return response
 
     _, model_manager, request_tracer = _validate_switch_dependencies()
 
@@ -2490,4 +2544,5 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         "resolution_reason": feedback_resolution["resolution_reason"],
         "start_result": start_result,
         "stop_results": stop_results,
+        "shutdown_results": shutdown_results,
     }

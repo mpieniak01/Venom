@@ -39,6 +39,25 @@ is_systemd_active() {
     "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" is-active --quiet "$SYSTEMD_UNIT"
 }
 
+_kill_ollama_strays() {
+  local pids pid
+  pids="$(pgrep -f "ollama serve" || true)"
+  for pid in $pids; do
+    if [[ "$pid" == "$$" || "$pid" == "$PPID" ]]; then
+      continue
+    fi
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  pids="$(pgrep -f "ollama serve" || true)"
+  for pid in $pids; do
+    if [[ "$pid" == "$$" || "$pid" == "$PPID" ]]; then
+      continue
+    fi
+    kill -9 "$pid" 2>/dev/null || true
+  done
+}
+
 start() {
   echo "🧭 Ollama config: base_url=${OLLAMA_BASE_URL}, health_url=${HEALTH_URL}, env_file=${ENV_FILE}"
 
@@ -118,10 +137,8 @@ stop() {
     rm -f "$PID_FILE"
   fi
 
-  # Graceful cleanup zombie processes
-  pkill -f "ollama serve" 2>/dev/null || true
-  sleep 1
-  pkill -9 -f "ollama serve" 2>/dev/null || true
+  # Cleanup stray daemon processes with explicit PID filtering.
+  _kill_ollama_strays
 
   echo "Ollama zatrzymana"
   return 0

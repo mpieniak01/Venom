@@ -75,7 +75,7 @@ _OLLAMA_GGUF_ADAPTER_FILENAMES = ("Adapter-F16-LoRA.gguf", "Adapter-F32-LoRA.ggu
 
 # Network metrics sampling state (module-level, shared across calls)
 _NET_MAX_BPS: float = 10_000_000  # 10 MB/s = 100%
-_net_prev: object = None
+_net_prev: Any = None
 _net_prev_t: float = 0.0
 _net_state_lock = Lock()
 
@@ -96,7 +96,7 @@ def _get_net_normalized() -> float:
         prev = _net_prev
         raw_bps = (
             cur.bytes_sent + cur.bytes_recv - prev.bytes_sent - prev.bytes_recv
-        ) / dt  # type: ignore[union-attr]
+        ) / dt
         bps = max(0.0, raw_bps)
         _net_prev, _net_prev_t = cur, now
 

@@ -134,7 +134,7 @@ def infer_voice_emotion(
 
     source = _resolve_emotion_source(transcript_text, response_text)
 
-    label = max(scores, key=scores.get)
+    label = max(scores, key=lambda emotion: scores[emotion])
     confidence = max(scores.values())
     if confidence <= 0.1:
         return "neutral", 0.15, source

@@ -1266,8 +1266,13 @@ class AudioStreamHandler:
             connection_id, {"type": "response_text", "text": response_text}
         )
         await self._send_json(connection_id, {"type": "processing", "status": "tts"})
+        audio_engine = self.audio_engine
+        if audio_engine is None:
+            logger.warning("Brak audio_engine podczas etapu TTS; pomijam speak().")
+            await self._send_json(connection_id, {"type": "complete"})
+            return
         tts_started_at = time.perf_counter()
-        audio_response = await self.audio_engine.speak(response_text)
+        audio_response = await audio_engine.speak(response_text)
         timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
         timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
         self._update_voice_session_metadata(

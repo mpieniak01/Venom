@@ -2427,6 +2427,8 @@ async def _start_server_and_check_health(
     target: dict[str, Any],
 ) -> dict[str, Any]:
     start_result = await _start_server_if_supported(llm_controller, server_name, target)
+    if start_result is None:
+        return {"ok": True, "skipped": True}
     if start_result and start_result.get("ok"):
         health_url = target.get("health_url")
         if health_url and not await _await_server_health(server_name, health_url):

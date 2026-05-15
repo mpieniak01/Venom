@@ -105,6 +105,15 @@ class LLMRuntimeInfo:
         }
 
 
+def _apply_http_policy_if_present(raw_url: object) -> Optional[str]:
+    if raw_url is None:
+        return None
+    text = str(raw_url).strip()
+    if not text:
+        return None
+    return apply_http_policy_to_url(text)
+
+
 def infer_local_provider(endpoint: Optional[str]) -> str:
     """Próbuje określić typ lokalnego serwera na podstawie endpointu."""
     endpoint_lower = (endpoint or "").lower()
@@ -181,23 +190,23 @@ def _resolve_local_runtime(
     if is_multi_runtime(active_server):
         return (
             MULTI_RUNTIME_ID,
-            apply_http_policy_to_url(
+            _apply_http_policy_if_present(
                 getattr(settings, "GEMMA4_AUDIO_ENDPOINT", endpoint)
             ),
         )
     if active_server == "vllm":
         return (
             "vllm",
-            apply_http_policy_to_url(getattr(settings, "VLLM_ENDPOINT", endpoint)),
+            _apply_http_policy_if_present(getattr(settings, "VLLM_ENDPOINT", endpoint)),
         )
     if active_server == "ollama":
-        candidate = apply_http_policy_to_url(endpoint)
+        candidate = _apply_http_policy_if_present(endpoint)
         if infer_local_provider(candidate) != "ollama":
             candidate = apply_http_policy_to_url("http://localhost:11434/v1")
         return "ollama", candidate
     if active_server == "onnx":
         return "onnx", None
-    normalized_endpoint = apply_http_policy_to_url(endpoint)
+    normalized_endpoint = _apply_http_policy_if_present(endpoint)
     return infer_local_provider(normalized_endpoint), normalized_endpoint
 
 

@@ -11,7 +11,7 @@ this layer can be tested and used independently of whether the daemon is running
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional, cast
 
 from venom_core.api.schemas.multi_runtime_profile import (
     ApplyMode,
@@ -93,7 +93,7 @@ def required_apply_mode(fields: list[str]) -> ApplyMode:
 
 def build_default_profile(model_id: str) -> MultiRuntimeProfile:
     """Return a minimal default profile for the given model_id."""
-    return MultiRuntimeProfile(model_id=model_id)
+    return MultiRuntimeProfile.model_validate({"model_id": model_id})
 
 
 def build_profile_from_daemon_params(
@@ -114,31 +114,53 @@ def build_profile_from_daemon_params(
         text = str(value).strip()
         return text or default
 
-    return MultiRuntimeProfile(
-        model_id=target_model,
-        assistant_model_id=assistant_model,
-        max_new_tokens=int(daemon_params.get("max_new_tokens", 128)),
-        enable_thinking=bool(daemon_params.get("enable_thinking", False)),
-        image_token_budget=int(daemon_params.get("image_token_budget", 280)),
-        reasoning_summary_enabled=bool(
-            daemon_params.get("reasoning_summary_enabled", False)
-        ),
-        emotion_detection_enabled=bool(
-            daemon_params.get("emotion_detection_enabled", False)
-        ),
-        emotion_response_style_enabled=bool(
-            daemon_params.get("emotion_response_style_enabled", False)
-        ),
-        cache_implementation=daemon_params.get("cache_implementation"),
-        execution_mode=str(daemon_params.get("execution_mode", "balanced")),
-        image_strategy=str(daemon_params.get("image_strategy", "vlm_only")),
-        retrieval_mode=str(daemon_params.get("retrieval_mode", "off")),
-        audio_output_mode=str(daemon_params.get("audio_output_mode", "off")),
-        assistant_mode=str(daemon_params.get("assistant_mode", "off")),
-        economy_mode=str(daemon_params.get("economy_mode", "off")),
-        precision=str(daemon_params.get("precision", "auto")),
-        quantization_backend=daemon_params.get("quantization_backend"),
-        device_target=_str_or_default(daemon_params.get("device_target"), "auto"),
+    return MultiRuntimeProfile.model_validate(
+        {
+            "model_id": target_model,
+            "assistant_model_id": assistant_model,
+            "max_new_tokens": int(daemon_params.get("max_new_tokens", 128)),
+            "enable_thinking": bool(daemon_params.get("enable_thinking", False)),
+            "image_token_budget": int(daemon_params.get("image_token_budget", 280)),
+            "reasoning_summary_enabled": bool(
+                daemon_params.get("reasoning_summary_enabled", False)
+            ),
+            "emotion_detection_enabled": bool(
+                daemon_params.get("emotion_detection_enabled", False)
+            ),
+            "emotion_response_style_enabled": bool(
+                daemon_params.get("emotion_response_style_enabled", False)
+            ),
+            "cache_implementation": daemon_params.get("cache_implementation"),
+            "execution_mode": cast(
+                Literal["balanced", "vision_priority", "voice_priority"],
+                _str_or_default(daemon_params.get("execution_mode"), "balanced"),
+            ),
+            "image_strategy": cast(
+                Literal["vlm_only", "ocr_first", "hybrid"],
+                _str_or_default(daemon_params.get("image_strategy"), "vlm_only"),
+            ),
+            "retrieval_mode": cast(
+                Literal["off", "auto", "always"],
+                _str_or_default(daemon_params.get("retrieval_mode"), "off"),
+            ),
+            "audio_output_mode": cast(
+                Literal["off", "text_first", "voice_first"],
+                _str_or_default(daemon_params.get("audio_output_mode"), "off"),
+            ),
+            "assistant_mode": cast(
+                Literal["off", "attached", "conditional"],
+                _str_or_default(daemon_params.get("assistant_mode"), "off"),
+            ),
+            "economy_mode": cast(
+                Literal["off", "auto"],
+                _str_or_default(daemon_params.get("economy_mode"), "off"),
+            ),
+            "precision": _str_or_default(daemon_params.get("precision"), "auto"),
+            "quantization_backend": daemon_params.get("quantization_backend"),
+            "device_target": _str_or_default(
+                daemon_params.get("device_target"), "auto"
+            ),
+        }
     )
 
 

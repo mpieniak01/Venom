@@ -1496,14 +1496,17 @@ async def update_audio_tts_model(payload: AudioTtsModelUpdateRequest, request: R
             handler_reload_state = reload_state
 
     effective_model_path = str(model_path)
+    handler_audio_engine = (
+        getattr(audio_stream_handler, "audio_engine", None)
+        if audio_stream_handler is not None
+        else None
+    )
     if (
-        audio_stream_handler is not None
-        and getattr(audio_stream_handler, "audio_engine", None) is not None
-        and getattr(audio_stream_handler.audio_engine, "voice", None) is not None
+        handler_audio_engine is not None
+        and getattr(handler_audio_engine, "voice", None) is not None
     ):
         effective_model_path = str(
-            getattr(audio_stream_handler.audio_engine.voice, "model_path", "")
-            or model_path
+            getattr(handler_audio_engine.voice, "model_path", "") or model_path
         )
 
     return {

@@ -446,6 +446,9 @@ function RuntimeProfileControls() {
   const [localAssistantMode, setLocalAssistantMode] = useState<string | null>(null);
   const [localEconomyMode, setLocalEconomyMode] = useState<string | null>(null);
   const [localCache, setLocalCache] = useState<string | null>(null);
+  const [localPrecision, setLocalPrecision] = useState<string | null>(null);
+  const [localQuantizationBackend, setLocalQuantizationBackend] = useState<string | null>(null);
+  const [localDeviceTarget, setLocalDeviceTarget] = useState<string | null>(null);
 
   const profileCacheOptions = useMemo(
     () =>
@@ -504,6 +507,29 @@ function RuntimeProfileControls() {
     [t],
   );
 
+  // Quantization options derived from backend-reported supported_options
+  const precisionOptions = useMemo<SelectMenuOption[]>(
+    () =>
+      (data?.supported_options?.precision ?? ["auto", "float16", "bfloat16", "float32", "int8", "int4"]).map(
+        (v) => ({ value: v, label: v }),
+      ),
+    [data?.supported_options?.precision],
+  );
+  const deviceTargetOptions = useMemo<SelectMenuOption[]>(
+    () =>
+      (data?.supported_options?.device_target ?? ["auto", "cpu", "cuda"]).map(
+        (v) => ({ value: v, label: v }),
+      ),
+    [data?.supported_options?.device_target],
+  );
+  const quantizationBackendOptions = useMemo<SelectMenuOption[]>(
+    () =>
+      (data?.supported_options?.quantization_backend ?? [null, "bitsandbytes"]).map(
+        (v) => ({ value: v ?? "", label: v ?? t("runtime.profile.quantizationBackendNone") }),
+      ),
+    [data?.supported_options?.quantization_backend, t],
+  );
+
   const effectiveExecutionMode =
     localExecutionMode === null ? (profile?.execution_mode ?? "balanced") : localExecutionMode;
   const effectiveImageStrategy =
@@ -517,6 +543,10 @@ function RuntimeProfileControls() {
   const effectiveEconomyMode =
     localEconomyMode === null ? (profile?.economy_mode ?? "off") : localEconomyMode;
   const effectiveCache = localCache === null ? (profile?.cache_implementation ?? "") : localCache;
+  const effectivePrecision = localPrecision === null ? (profile?.precision ?? "auto") : localPrecision;
+  const effectiveQuantizationBackend =
+    localQuantizationBackend === null ? (profile?.quantization_backend ?? "") : localQuantizationBackend;
+  const effectiveDeviceTarget = localDeviceTarget === null ? (profile?.device_target ?? "auto") : localDeviceTarget;
 
   const handleApplyPolicy = async () => {
     await applyUpdate({
@@ -538,6 +568,14 @@ function RuntimeProfileControls() {
   const handleApplyCacheImpl = async () => {
     await applyUpdate({
       cache_implementation: effectiveCache === "" ? null : effectiveCache,
+    });
+  };
+
+  const handleApplyQuantization = async () => {
+    await applyUpdate({
+      precision: effectivePrecision as MultiRuntimeProfileUpdateRequest["precision"],
+      quantization_backend: effectiveQuantizationBackend === "" ? null : effectiveQuantizationBackend,
+      device_target: effectiveDeviceTarget as MultiRuntimeProfileUpdateRequest["device_target"],
     });
   };
 
@@ -657,30 +695,43 @@ function RuntimeProfileControls() {
           <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
             {t("runtime.profile.quantizationSection")}
           </span>
+          {matrix && <ProfileModeBadge mode={matrix.precision} />}
         </div>
-        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-1.5 text-[11px] text-zinc-300">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-zinc-500">{t("runtime.profile.precision")}</span>
-            <div className="flex items-center gap-2">
-              <strong>{profile?.precision ?? "auto"}</strong>
-              {matrix && <ProfileModeBadge mode={matrix.precision} />}
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-zinc-500">{t("runtime.profile.quantizationBackend")}</span>
-            <div className="flex items-center gap-2">
-              <strong>{profile?.quantization_backend ?? "none"}</strong>
-              {matrix && <ProfileModeBadge mode={matrix.quantization_backend} />}
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-zinc-500">{t("runtime.profile.deviceTarget")}</span>
-            <div className="flex items-center gap-2">
-              <strong>{profile?.device_target ?? "auto"}</strong>
-              {matrix && <ProfileModeBadge mode={matrix.device_target} />}
-            </div>
-          </div>
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+          <RuntimeProfileRow label={t("runtime.profile.precision")}>
+            <SelectMenu
+              value={effectivePrecision}
+              options={precisionOptions}
+              onChange={(v) => setLocalPrecision(v)}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.quantizationBackend")}>
+            <SelectMenu
+              value={effectiveQuantizationBackend}
+              options={quantizationBackendOptions}
+              onChange={(v) => setLocalQuantizationBackend(v)}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.deviceTarget")}>
+            <SelectMenu
+              value={effectiveDeviceTarget}
+              options={deviceTargetOptions}
+              onChange={(v) => setLocalDeviceTarget(v)}
+              disabled={busy}
+            />
+          </RuntimeProfileRow>
         </div>
+        <Button
+          size="xs"
+          variant="secondary"
+          className="w-full"
+          onClick={handleApplyQuantization}
+          disabled={busy || !data.daemon_reachable}
+        >
+          {busy ? t("runtime.profile.applying") : t("runtime.profile.applyQuantization")}
+        </Button>
       </div>
 
       {lastUpdateResult && (

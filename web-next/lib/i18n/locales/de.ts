@@ -122,6 +122,8 @@ export const de = {
       precision: "Präzision",
       quantizationBackend: "Quantisierungs-Backend",
       deviceTarget: "Zielgerät",
+      applyQuantization: "Quantisierung anwenden",
+      quantizationBackendNone: "Kein",
       lastUpdate: "Letzte Aktualisierung",
       applied: "Angewendet",
       componentSnapshot: "Komponentensnapshot",

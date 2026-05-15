@@ -124,6 +124,8 @@ export const pl = {
       precision: "Precyzja",
       quantizationBackend: "Backend kwantyzacji",
       deviceTarget: "Docelowe urządzenie",
+      applyQuantization: "Zastosuj kwantyzację",
+      quantizationBackendNone: "Brak",
       lastUpdate: "Ostatnia aktualizacja",
       applied: "Zastosowano",
       componentSnapshot: "Snapshot komponentów",

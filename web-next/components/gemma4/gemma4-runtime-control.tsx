@@ -536,23 +536,31 @@ function RuntimeProfileControls({
     [data?.supported_options?.quantization_backend, t],
   );
 
-  const effectiveExecutionMode =
-    localExecutionMode === null ? (profile?.execution_mode ?? "balanced") : localExecutionMode;
-  const effectiveImageStrategy =
-    localImageStrategy === null ? (profile?.image_strategy ?? "vlm_only") : localImageStrategy;
-  const effectiveRetrievalMode =
-    localRetrievalMode === null ? (profile?.retrieval_mode ?? "off") : localRetrievalMode;
-  const effectiveAudioOutputMode =
-    localAudioOutputMode === null ? (profile?.audio_output_mode ?? "off") : localAudioOutputMode;
-  const effectiveAssistantMode =
-    localAssistantMode === null ? (profile?.assistant_mode ?? "off") : localAssistantMode;
-  const effectiveEconomyMode =
-    localEconomyMode === null ? (profile?.economy_mode ?? "off") : localEconomyMode;
-  const effectiveCache = localCache === null ? (profile?.cache_implementation ?? "") : localCache;
-  const effectivePrecision = localPrecision === null ? (profile?.precision ?? "auto") : localPrecision;
-  const effectiveQuantizationBackend =
-    localQuantizationBackend === null ? (profile?.quantization_backend ?? "") : localQuantizationBackend;
-  const effectiveDeviceTarget = localDeviceTarget === null ? (profile?.device_target ?? "auto") : localDeviceTarget;
+  const effectiveState = resolveRuntimeProfileEffectiveState({
+    profile,
+    localExecutionMode,
+    localImageStrategy,
+    localRetrievalMode,
+    localAudioOutputMode,
+    localAssistantMode,
+    localEconomyMode,
+    localCache,
+    localPrecision,
+    localQuantizationBackend,
+    localDeviceTarget,
+  });
+  const {
+    effectiveExecutionMode,
+    effectiveImageStrategy,
+    effectiveRetrievalMode,
+    effectiveAudioOutputMode,
+    effectiveAssistantMode,
+    effectiveEconomyMode,
+    effectiveCache,
+    effectivePrecision,
+    effectiveQuantizationBackend,
+    effectiveDeviceTarget,
+  } = effectiveState;
   const stagedConfig = daemonStatus?.staged_runtime_config ?? daemonStatus?.params ?? null;
   const activeConfig = daemonStatus?.active_runtime_config ?? daemonStatus?.params ?? null;
   const stagedRuntimeLine = stagedConfig
@@ -813,6 +821,51 @@ function RuntimeProfileControls({
 function hasRuntimeConfigDrift(stagedRuntimeLine: string, activeRuntimeLine: string): boolean {
   if (stagedRuntimeLine === "—" || activeRuntimeLine === "—") return false;
   return stagedRuntimeLine !== activeRuntimeLine;
+}
+
+function resolveRuntimeProfileEffectiveState(params: {
+  profile: NonNullable<ReturnType<typeof useMultiRuntimeProfile>["data"]>["profile"] | null;
+  localExecutionMode: string | null;
+  localImageStrategy: string | null;
+  localRetrievalMode: string | null;
+  localAudioOutputMode: string | null;
+  localAssistantMode: string | null;
+  localEconomyMode: string | null;
+  localCache: string | null;
+  localPrecision: string | null;
+  localQuantizationBackend: string | null;
+  localDeviceTarget: string | null;
+}): {
+  effectiveExecutionMode: string;
+  effectiveImageStrategy: string;
+  effectiveRetrievalMode: string;
+  effectiveAudioOutputMode: string;
+  effectiveAssistantMode: string;
+  effectiveEconomyMode: string;
+  effectiveCache: string;
+  effectivePrecision: string;
+  effectiveQuantizationBackend: string;
+  effectiveDeviceTarget: string;
+} {
+  return {
+    effectiveExecutionMode:
+      params.localExecutionMode ?? params.profile?.execution_mode ?? "balanced",
+    effectiveImageStrategy:
+      params.localImageStrategy ?? params.profile?.image_strategy ?? "vlm_only",
+    effectiveRetrievalMode:
+      params.localRetrievalMode ?? params.profile?.retrieval_mode ?? "off",
+    effectiveAudioOutputMode:
+      params.localAudioOutputMode ?? params.profile?.audio_output_mode ?? "off",
+    effectiveAssistantMode:
+      params.localAssistantMode ?? params.profile?.assistant_mode ?? "off",
+    effectiveEconomyMode:
+      params.localEconomyMode ?? params.profile?.economy_mode ?? "off",
+    effectiveCache: params.localCache ?? params.profile?.cache_implementation ?? "",
+    effectivePrecision: params.localPrecision ?? params.profile?.precision ?? "auto",
+    effectiveQuantizationBackend:
+      params.localQuantizationBackend ?? params.profile?.quantization_backend ?? "",
+    effectiveDeviceTarget: params.localDeviceTarget ?? params.profile?.device_target ?? "auto",
+  };
 }
 
 function getQuantizationInactiveReason(

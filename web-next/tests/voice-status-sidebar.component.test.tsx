@@ -308,4 +308,23 @@ describe("VoiceStatusSidebar", () => {
     assert.ok(await screen.findByText(/session-123/i));
     assert.ok(screen.getByText(/curious/i));
   });
+
+  it("normalizes generic backend apology in latest session response", () => {
+    window.history.pushState({}, "", "/voice");
+    const statusWithGenericError = {
+      ...gemma4VoiceStatus,
+      latest_voice_session: {
+        ...gemma4VoiceStatus.latest_voice_session,
+        response_text: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
+      },
+    };
+    render(
+      <ToastProvider>
+        <VoiceStatusSidebar status={statusWithGenericError as never} isDevMode={false} />
+      </ToastProvider>,
+    );
+
+    assert.ok(screen.getByText(/Błąd kanału audio|Audio channel error|Fehler im Audiokanal/i));
+    assert.equal(screen.queryByText("Przepraszam, wystąpił błąd. Spróbuj ponownie."), null);
+  });
 });

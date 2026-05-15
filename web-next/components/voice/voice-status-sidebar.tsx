@@ -45,6 +45,19 @@ function formatConfidence(value?: number | null): string | null {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
+function isGenericFailureResponse(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("przepraszam, wystąpił błąd") ||
+    normalized.includes("przepraszam, wystapil blad") ||
+    normalized.includes("spróbuj ponownie") ||
+    normalized.includes("sprobuj ponownie") ||
+    normalized.includes("sorry, an error occurred") ||
+    normalized.includes("please try again")
+  );
+}
+
 export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSidebarProps) {
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
@@ -319,6 +332,10 @@ function VoiceSessionCard({
 }>) {
   const t = useTranslation();
   const confidence = formatConfidence(session.emotion_confidence);
+  const responseText =
+    session.response_text && isGenericFailureResponse(session.response_text)
+      ? t("voice.status.channelError")
+      : session.response_text;
 
   return (
     <StatusCard title={t("voice.controls.latestSession")}>
@@ -354,8 +371,8 @@ function VoiceSessionCard({
       {session.transcription && (
         <Row label={t("voice.controls.transcription")} value={session.transcription} />
       )}
-      {session.response_text && (
-        <Row label={t("voice.controls.response")} value={session.response_text} />
+      {responseText && (
+        <Row label={t("voice.controls.response")} value={responseText} />
       )}
     </StatusCard>
   );

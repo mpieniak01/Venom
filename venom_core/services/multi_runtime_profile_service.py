@@ -46,7 +46,7 @@ APPLY_MATRIX: dict[str, ApplyMode] = {
     "economy_mode": "live",
     "precision": "soft_reload",
     "quantization_backend": "soft_reload",
-    "device_target": "unsupported",
+    "device_target": "soft_reload",
 }
 
 # Priority order for resolving most-restrictive apply_mode.
@@ -107,6 +107,13 @@ def build_profile_from_daemon_params(
     Accepts the same field names as DaemonParamsInfo so callers can use
     ``**daemon_status.params.model_dump()`` after expanding model fields.
     """
+
+    def _str_or_default(value: Any, default: str) -> str:
+        if value is None:
+            return default
+        text = str(value).strip()
+        return text or default
+
     return MultiRuntimeProfile(
         model_id=target_model,
         assistant_model_id=assistant_model,
@@ -131,7 +138,7 @@ def build_profile_from_daemon_params(
         economy_mode=str(daemon_params.get("economy_mode", "off")),
         precision=str(daemon_params.get("precision", "auto")),
         quantization_backend=daemon_params.get("quantization_backend"),
-        device_target=str(daemon_params.get("device_target", "auto")),
+        device_target=_str_or_default(daemon_params.get("device_target"), "auto"),
     )
 
 
@@ -213,12 +220,6 @@ def validate_profile_update(
 
 def _unsupported_reason(field: str, value: Any) -> tuple[str, str]:
     """Return (rejection_reason, detail) for an unsupported field."""
-    if field == "device_target":
-        return (
-            "unsupported_field",
-            "device_target is declared in the profile contract but runtime "
-            "device selection is not yet active",
-        )
     return (
         "unsupported_field",
         f"'{field}' is not yet supported in this runtime version",
@@ -257,6 +258,14 @@ def _semantic_check(field: str, value: Any) -> Optional[tuple[str, str]]:
                     "quantization_backend_unavailable",
                     "bitsandbytes is not installed; quantization_backend cannot be activated",
                 )
+    if field == "device_target":
+        normalized = str(value or "auto").lower().strip()
+        allowed = {"auto", "cpu", "cuda"}
+        if normalized not in allowed:
+            return (
+                "value_out_of_range",
+                f"device_target='{value}' is not in supported set: {sorted(allowed)}",
+            )
     return None
 
 

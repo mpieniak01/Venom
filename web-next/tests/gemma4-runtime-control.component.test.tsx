@@ -106,7 +106,7 @@ beforeEach(() => {
             economy_mode: "live",
             precision: "soft_reload",
             quantization_backend: "soft_reload",
-            device_target: "unsupported",
+            device_target: "soft_reload",
           },
           supported_options: {
             cache_implementation: [null, "static", "dynamic", "offloaded"],

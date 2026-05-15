@@ -21,6 +21,7 @@ RejectionReason = Literal[
     "model_not_available",
     "assistant_model_not_available",
     "quantization_backend_unavailable",
+    "device_target_unavailable",
     "value_out_of_range",
 ]
 
@@ -88,7 +89,7 @@ class MultiRuntimeProfile(BaseModel):
         "off", description="Economy/degradation mode"
     )
 
-    # --- Prepared limited fields (apply_mode=unsupported until loader supports them) ---
+    # --- Prepared runtime fields (apply_mode=soft_reload) ---
     precision: str = Field(
         "auto",
         description=(
@@ -104,7 +105,7 @@ class MultiRuntimeProfile(BaseModel):
     )
     device_target: str = Field(
         "auto",
-        description="Compute device target ('auto', 'cpu', 'cuda'). Currently unsupported.",
+        description="Compute device target ('auto', 'cpu', 'cuda'). Applied on soft reload.",
     )
 
 
@@ -128,7 +129,7 @@ class MultiRuntimeApplyMatrix(BaseModel):
     economy_mode: ApplyMode = "live"
     precision: ApplyMode = "soft_reload"
     quantization_backend: ApplyMode = "soft_reload"
-    device_target: ApplyMode = "unsupported"
+    device_target: ApplyMode = "soft_reload"
 
 
 class MultiRuntimeSupportedOptions(BaseModel):

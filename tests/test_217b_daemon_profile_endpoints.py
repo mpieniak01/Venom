@@ -5,8 +5,8 @@ Weryfikują:
 2. POST /v1/daemon/profile z polami live — applied=True, brak reload.
 3. POST /v1/daemon/profile z cache_implementation — soft_reload, applied=False.
 4. POST /v1/daemon/profile z model_id — hard_restart, applied=False.
-5. POST /v1/daemon/profile z precision / quantization_backend — soft_reload.
-6. POST /v1/daemon/profile mieszane: live+soft_reload+unsupported device_target.
+5. POST /v1/daemon/profile z precision / quantization_backend / device_target — soft_reload.
+6. POST /v1/daemon/profile mieszane: live+soft_reload.
 7. Stary POST /v1/daemon/config nadal działa (backward compat).
 8. 503 gdy daemon niezainicjalizowany.
 """
@@ -116,6 +116,7 @@ def test_get_profile_apply_matrix_present():
     assert matrix["cache_implementation"] == "soft_reload"
     assert matrix["precision"] == "soft_reload"
     assert matrix["quantization_backend"] == "soft_reload"
+    assert matrix["device_target"] == "soft_reload"
 
 
 def test_get_profile_supported_options_present():
@@ -261,7 +262,7 @@ def test_update_profile_assistant_model_id_hard_restart():
 
 
 # ---------------------------------------------------------------------------
-# POST /v1/daemon/profile — quantization + unsupported device target
+# POST /v1/daemon/profile — quantization + device target
 # ---------------------------------------------------------------------------
 
 
@@ -288,20 +289,22 @@ def test_update_profile_quantization_backend_requires_soft_reload():
     assert data["applied"] is True
 
 
-def test_update_profile_device_target_rejected():
+def test_update_profile_device_target_soft_reload():
     stub = _daemon_stub()
     client = _client_with(stub)
     resp = client.post("/v1/daemon/profile", json={"device_target": "cuda"})
     data = resp.json()
-    assert data["rejected"][0]["field"] == "device_target"
+    assert data["rejected"] == []
+    assert data["accepted"]["device_target"] == "cuda"
+    assert data["required_apply_mode"] == "soft_reload"
 
 
 # ---------------------------------------------------------------------------
-# POST /v1/daemon/profile — mixed scenarios
+# POST /v1/daemon/profile — mixed live + soft_reload scenarios
 # ---------------------------------------------------------------------------
 
 
-def test_update_profile_mixed_live_and_unsupported():
+def test_update_profile_mixed_live_and_soft_reload():
     stub = _daemon_stub(update_signal=ReloadSignal.NONE)
     client = _client_with(stub)
     resp = client.post(
@@ -310,7 +313,6 @@ def test_update_profile_mixed_live_and_unsupported():
     )
     data = resp.json()
     assert "max_new_tokens" in data["accepted"]
-    assert len(data["rejected"]) == 1
     assert data["required_apply_mode"] == "soft_reload"
     assert data["applied"] is True
 

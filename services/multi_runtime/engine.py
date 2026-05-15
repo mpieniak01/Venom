@@ -54,6 +54,7 @@ class DaemonParams:
     economy_mode: str = "off"
     precision: str = "auto"
     quantization_backend: Optional[str] = None
+    device_target: str = "auto"
 
 
 @dataclass
@@ -484,10 +485,15 @@ class MultiRuntimeDaemon:
     def load_target(self) -> None:
         """Load target model. Cleans VRAM first to prevent orphaned models."""
         self._ensure_vram_clean()
+        effective_device = (
+            self._params.device_target
+            if self._params.device_target != "auto"
+            else self._device
+        )
         self._target_engine = MultiRuntimeEngine(
             model_id=self._target_id,
             cache_dir=self._cache_dir,
-            device=self._device,
+            device=effective_device,
             max_new_tokens=self._params.max_new_tokens,
             precision=self._params.precision,
             quantization_backend=self._params.quantization_backend,
@@ -533,8 +539,12 @@ class MultiRuntimeDaemon:
             engine = MultiRuntimeEngine(
                 model_id=model_id,
                 cache_dir=self._cache_dir,
-                device=self._device,
+                device=self._params.device_target
+                if self._params.device_target != "auto"
+                else self._device,
                 max_new_tokens=self._params.max_new_tokens,
+                precision=self._params.precision,
+                quantization_backend=self._params.quantization_backend,
             )
             engine.load()
             self._assistant_engine = engine
@@ -582,6 +592,7 @@ class MultiRuntimeDaemon:
         economy_mode: Optional[str] = None,
         precision: Optional[str] = None,
         quantization_backend: Optional[str] = None,
+        device_target: Optional[str] = None,
     ) -> ReloadSignal:
         """Apply parameter changes. Returns the minimum reload action required."""
         reload_signal = ReloadSignal.NONE
@@ -652,6 +663,11 @@ class MultiRuntimeDaemon:
             )
             reload_signal = ReloadSignal.SOFT_RELOAD
 
+        if device_target is not None and device_target != self._params.device_target:
+            self._params.device_target = device_target
+            self._reload_reason = f"device_target changed to '{device_target}'"
+            reload_signal = ReloadSignal.SOFT_RELOAD
+
         return reload_signal
 
     def fallback(self) -> ReloadSignal:
@@ -663,6 +679,7 @@ class MultiRuntimeDaemon:
         self._drop_assistant()
         prev_target = self._target_id
         prev_cache = self._params.cache_implementation
+        prev_device_target = self._params.device_target
         self._params = DaemonParams()
 
         if prev_target != self.DEFAULT_TARGET:
@@ -672,6 +689,10 @@ class MultiRuntimeDaemon:
 
         if prev_cache is not None:
             self._reload_reason = "fallback: cache_implementation reset to default"
+            return ReloadSignal.SOFT_RELOAD
+
+        if prev_device_target != self._params.device_target:
+            self._reload_reason = "fallback: device_target reset to default"
             return ReloadSignal.SOFT_RELOAD
 
         self._reload_reason = "fallback: clean reload"
@@ -741,6 +762,7 @@ class MultiRuntimeDaemon:
                 "economy_mode": self._params.economy_mode,
                 "precision": self._params.precision,
                 "quantization_backend": self._params.quantization_backend,
+                "device_target": self._params.device_target,
             },
             "vram": _get_vram_info().__dict__,
             "raw_thinking_available": raw_thinking_available,

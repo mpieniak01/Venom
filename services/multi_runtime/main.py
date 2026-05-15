@@ -545,6 +545,7 @@ async def daemon_config(body: DaemonConfigRequest) -> DaemonConfigResponse:
         economy_mode=body.economy_mode,
         precision=body.precision,
         quantization_backend=body.quantization_backend,
+        device_target=body.device_target,
     )
 
     raw = daemon.status()

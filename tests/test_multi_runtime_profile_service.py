@@ -60,8 +60,8 @@ def test_apply_matrix_hard_restart_fields():
     assert apply_mode_for_field("assistant_model_id") == "hard_restart"
 
 
-def test_apply_matrix_unsupported_fields():
-    assert apply_mode_for_field("device_target") == "unsupported"
+def test_apply_matrix_device_target_soft_reload():
+    assert apply_mode_for_field("device_target") == "soft_reload"
 
 
 def test_apply_matrix_quantization_fields_require_soft_reload():
@@ -118,8 +118,8 @@ def test_required_apply_mode_hard_restart_wins_over_all():
     )
 
 
-def test_required_apply_mode_only_unsupported_returns_unsupported():
-    assert required_apply_mode(["device_target"]) == "unsupported"
+def test_required_apply_mode_device_target_returns_soft_reload():
+    assert required_apply_mode(["device_target"]) == "soft_reload"
 
 
 def test_required_apply_mode_unsupported_ignored_when_accepted_present():
@@ -244,15 +244,15 @@ def test_validate_quantization_backend_rejected_when_unavailable():
     assert result.rejected[0].reason == "quantization_backend_unavailable"
 
 
-def test_validate_device_target_rejected():
+def test_validate_device_target_accepted():
     req = MultiRuntimeProfileUpdateRequest(device_target="cuda")
     result = validate_profile_update(req)
-    assert len(result.rejected) == 1
-    assert result.rejected[0].field == "device_target"
-    assert result.rejected[0].reason == "unsupported_field"
+    assert result.rejected == []
+    assert result.accepted["device_target"] == "cuda"
+    assert result.required_apply_mode == "soft_reload"
 
 
-def test_validate_mixed_accepted_and_rejected():
+def test_validate_mixed_live_and_soft_reload():
     req = MultiRuntimeProfileUpdateRequest(
         max_new_tokens=512,
         precision="int4",
@@ -260,8 +260,9 @@ def test_validate_mixed_accepted_and_rejected():
     )
     result = validate_profile_update(req)
     assert "max_new_tokens" in result.accepted
-    assert len(result.rejected) == 1
-    assert result.rejected[0].field == "device_target"
+    assert "precision" in result.accepted
+    assert result.accepted["device_target"] == "cuda"
+    assert result.rejected == []
     assert result.required_apply_mode == "soft_reload"
 
 

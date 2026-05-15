@@ -446,6 +446,7 @@ def test_daemon_params_defaults_precision() -> None:
     p = DaemonParams()
     assert p.precision == "auto"
     assert p.quantization_backend is None
+    assert p.device_target == "auto"
 
 
 def test_update_params_precision_triggers_soft_reload() -> None:
@@ -467,6 +468,17 @@ def test_update_params_quantization_backend_triggers_soft_reload() -> None:
         MockEngine.return_value.load = MagicMock()
         d = Daemon(model_id="test/model", cache_dir="/tmp/cache")
         signal = d.update_params(quantization_backend="bitsandbytes")
+    assert signal == ReloadSignal.SOFT_RELOAD
+
+
+def test_update_params_device_target_triggers_soft_reload() -> None:
+    from services.multi_runtime.engine import MultiRuntimeDaemon as Daemon
+    from services.multi_runtime.engine import ReloadSignal
+
+    with patch("services.multi_runtime.engine.MultiRuntimeEngine") as MockEngine:
+        MockEngine.return_value.load = MagicMock()
+        d = Daemon(model_id="test/model", cache_dir="/tmp/cache")
+        signal = d.update_params(device_target="cuda")
     assert signal == ReloadSignal.SOFT_RELOAD
 
 

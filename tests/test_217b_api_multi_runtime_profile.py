@@ -64,7 +64,7 @@ def _daemon_profile_payload(
             "emotion_response_style_enabled": "live",
             "precision": "soft_reload",
             "quantization_backend": "soft_reload",
-            "device_target": "unsupported",
+            "device_target": "soft_reload",
         },
         "supported_options": {
             "cache_implementation": [None, "static", "dynamic", "offloaded"],

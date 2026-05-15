@@ -71,7 +71,7 @@ function makeMatrix(): MultiRuntimeApplyMatrix {
     economy_mode: "live",
     precision: "soft_reload",
     quantization_backend: "soft_reload",
-    device_target: "unsupported",
+    device_target: "soft_reload",
   };
 }
 
@@ -141,7 +141,7 @@ describe("MultiRuntimeProfile type contract", () => {
     assert.equal(matrix.assistant_model_id, "hard_restart");
     assert.equal(matrix.precision, "soft_reload");
     assert.equal(matrix.quantization_backend, "soft_reload");
-    assert.equal(matrix.device_target, "unsupported");
+    assert.equal(matrix.device_target, "soft_reload");
   });
 });
 
@@ -217,9 +217,9 @@ describe("MultiRuntimeProfileUpdateResponse contract", () => {
       accepted: { max_new_tokens: 512 },
       rejected: [
         {
-          field: "device_target",
-          value: "cuda",
-          reason: "unsupported_field",
+          field: "cache_implementation",
+          value: "nonexistent",
+          reason: "unsupported_combination",
           detail: "",
         },
       ],
@@ -229,7 +229,7 @@ describe("MultiRuntimeProfileUpdateResponse contract", () => {
     };
     assert.equal(resp.accepted["max_new_tokens"], 512);
     assert.equal(resp.rejected.length, 1);
-    assert.equal(resp.rejected[0].field, "device_target");
+    assert.equal(resp.rejected[0].field, "cache_implementation");
   });
 
   it("hard_restart fields are accepted but applied=false", () => {

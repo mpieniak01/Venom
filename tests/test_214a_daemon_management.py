@@ -29,6 +29,7 @@ def _make_params_dict(**kw):
         "emotion_detection_enabled": False,
         "emotion_response_style_enabled": False,
         "cache_implementation": None,
+        "device_target": "auto",
         **kw,
     }
 
@@ -92,6 +93,7 @@ def test_daemon_status_returns_params():
     assert data["params"]["emotion_detection_enabled"] is False
     assert data["params"]["emotion_response_style_enabled"] is False
     assert data["params"]["cache_implementation"] is None
+    assert data["params"]["device_target"] == "auto"
 
 
 def test_daemon_status_includes_vram_field():
@@ -193,6 +195,7 @@ def test_daemon_config_cache_change_triggers_soft_reload():
         economy_mode=None,
         precision=None,
         quantization_backend=None,
+        device_target=None,
     )
 
 

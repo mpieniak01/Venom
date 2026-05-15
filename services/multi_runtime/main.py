@@ -74,6 +74,73 @@ _startup_error: Optional[str] = None
 _lifecycle_lock: asyncio.Lock = asyncio.Lock()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_startup_runtime_params() -> dict[str, object]:
+    """Resolve startup runtime params with safe defaults for constrained VRAM.
+
+    Priority:
+    1. Explicit env overrides (GEMMA4_AUDIO_*).
+    2. Safe auto profile for Gemma-4 on CUDA (int4 + bitsandbytes when available).
+    3. Legacy defaults (auto/no quant/auto).
+    """
+    precision = str(os.getenv("GEMMA4_AUDIO_PRECISION", "")).strip().lower()
+    quantization_backend = (
+        str(os.getenv("GEMMA4_AUDIO_QUANTIZATION_BACKEND", "")).strip().lower()
+    )
+    device_target = str(os.getenv("GEMMA4_AUDIO_DEVICE_TARGET", "")).strip().lower()
+    cache_impl = str(os.getenv("GEMMA4_AUDIO_CACHE_IMPLEMENTATION", "")).strip().lower()
+
+    if not precision:
+        precision = "auto"
+    if precision not in {"auto", "float16", "bfloat16", "int8", "int4"}:
+        precision = "auto"
+
+    if quantization_backend not in {"", "bitsandbytes"}:
+        quantization_backend = ""
+    if device_target not in {"", "auto", "cpu", "cuda"}:
+        device_target = "auto"
+    if cache_impl not in {"", "dynamic", "static", "offloaded", "quantized"}:
+        cache_impl = ""
+
+    # Safe default to reduce startup OOM risk for Gemma4 on 12GB-class cards.
+    safe_auto = _env_bool("GEMMA4_AUDIO_SAFE_AUTO_PROFILE", True)
+    if safe_auto and precision == "auto" and not quantization_backend:
+        try:
+            import torch
+
+            cuda_ok = bool(torch.cuda.is_available())
+        except Exception:
+            cuda_ok = False
+        if cuda_ok:
+            try:
+                import bitsandbytes as _  # noqa: F401
+
+                precision = "int4"
+                quantization_backend = "bitsandbytes"
+                if device_target in {"", "auto"}:
+                    device_target = "cuda"
+                logger.info(
+                    "Applying startup safe profile: precision=int4, quantization_backend=bitsandbytes, device_target=%s",
+                    device_target or "auto",
+                )
+            except Exception:
+                # Keep defaults when bitsandbytes is unavailable.
+                pass
+
+    return {
+        "precision": precision,
+        "quantization_backend": quantization_backend or None,
+        "device_target": device_target or "auto",
+        "cache_implementation": cache_impl or None,
+    }
+
+
 def get_daemon() -> MultiRuntimeDaemon:
     global _daemon
     if _daemon is None:
@@ -115,6 +182,13 @@ async def initialize_daemon(
                     False,
                 )
             ),
+        )
+        startup_params = _resolve_startup_runtime_params()
+        daemon.update_params(
+            precision=str(startup_params["precision"]),
+            quantization_backend=startup_params["quantization_backend"],  # type: ignore[arg-type]
+            device_target=str(startup_params["device_target"]),
+            cache_implementation=startup_params["cache_implementation"],  # type: ignore[arg-type]
         )
         # Expose daemon immediately so control endpoints work during warmup.
         _daemon = daemon

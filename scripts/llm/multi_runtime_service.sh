@@ -23,6 +23,10 @@ CACHE_DIR="$(env_contract_get GEMMA4_AUDIO_CACHE_DIR "models_cache/hf" "$ENV_FIL
 DEVICE="$(env_contract_get GEMMA4_AUDIO_DEVICE "auto" "$ENV_FILE")"
 MAX_NEW_TOKENS="$(env_contract_get GEMMA4_AUDIO_MAX_NEW_TOKENS "128" "$ENV_FILE")"
 STARTUP_TIMEOUT_SECONDS="$(env_contract_get GEMMA4_AUDIO_STARTUP_TIMEOUT_SECONDS "600" "$ENV_FILE")"
+PRECISION="$(env_contract_get GEMMA4_AUDIO_PRECISION "int4" "$ENV_FILE")"
+QUANT_BACKEND="$(env_contract_get GEMMA4_AUDIO_QUANTIZATION_BACKEND "bitsandbytes" "$ENV_FILE")"
+DEVICE_TARGET="$(env_contract_get GEMMA4_AUDIO_DEVICE_TARGET "cuda" "$ENV_FILE")"
+CACHE_IMPL="$(env_contract_get GEMMA4_AUDIO_CACHE_IMPLEMENTATION "dynamic" "$ENV_FILE")"
 
 # Detect systemd
 SYSTEMCTL_BIN="$(command -v systemctl || true)"
@@ -85,7 +89,7 @@ is_warming() {
 }
 
 start() {
-  echo "🧭 Multi-Runtime config: model=${MODEL_ID}, host=${HOST}, port=${PORT}, device=${DEVICE}, env_file=${ENV_FILE}"
+  echo "🧭 Multi-Runtime config: model=${MODEL_ID}, host=${HOST}, port=${PORT}, device=${DEVICE}, precision=${PRECISION}, quant=${QUANT_BACKEND}, device_target=${DEVICE_TARGET}, env_file=${ENV_FILE}"
 
   if [[ "$USE_SYSTEMD" == "true" ]]; then
     echo "Starting systemd unit ${SYSTEMD_UNIT}"
@@ -128,14 +132,22 @@ start() {
   export GEMMA4_AUDIO_CACHE_DIR="$ROOT_DIR/$CACHE_DIR"
   export GEMMA4_AUDIO_DEVICE="$DEVICE"
   export GEMMA4_AUDIO_MAX_NEW_TOKENS="$MAX_NEW_TOKENS"
+  export GEMMA4_AUDIO_PRECISION="$PRECISION"
+  export GEMMA4_AUDIO_QUANTIZATION_BACKEND="$QUANT_BACKEND"
+  export GEMMA4_AUDIO_DEVICE_TARGET="$DEVICE_TARGET"
+  export GEMMA4_AUDIO_CACHE_IMPLEMENTATION="$CACHE_IMPL"
   export GEMMA4_AUDIO_HOST="$HOST"
   export GEMMA4_AUDIO_PORT="$PORT"
   export GEMMA4_AUDIO_LOG_PATH="$LOG_FILE"
   export GEMMA4_AUDIO_PID_PATH="$PID_FILE"
   export PYTHONUNBUFFERED=1
 
-  # Start daemon
-  nohup "$PYTHON_BIN" -m services.multi_runtime.main >>"$LOG_FILE" 2>&1 &
+  # Start daemon detached from current TTY/session to avoid accidental teardown.
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$PYTHON_BIN" -m services.multi_runtime.main </dev/null >>"$LOG_FILE" 2>&1 &
+  else
+    nohup "$PYTHON_BIN" -m services.multi_runtime.main </dev/null >>"$LOG_FILE" 2>&1 &
+  fi
   echo $! >"$PID_FILE"
   local pid
   pid="$(cat "$PID_FILE")"

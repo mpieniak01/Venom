@@ -222,6 +222,12 @@ export function PipelineDiagnosticsPanel({ response }: PipelineDiagnosticsPanelP
         sampleRate={response.audio_output_sample_rate}
         title={pd("audioOutput")}
       />
+      {response.active_precision && (
+        <div>
+          <p className="mb-1 text-[9px] uppercase tracking-widest text-zinc-600">{pd("precision")}</p>
+          <p className="text-[10px] text-zinc-300">{response.active_precision}</p>
+        </div>
+      )}
       <div className="flex flex-wrap gap-x-4 gap-y-0.5 border-t border-white/[0.04] pt-2">
         {response.retrieval_used && (
           <span className="text-[10px] text-zinc-400">

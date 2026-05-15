@@ -178,6 +178,10 @@ class RespondResponse(BaseModel):
         None,
         description="Sample rate of the synthesized audio output in Hz",
     )
+    active_precision: Optional[str] = Field(
+        None,
+        description="Active model precision used by the runtime during this request",
+    )
 
 
 class TranscribeRequest(BaseModel):

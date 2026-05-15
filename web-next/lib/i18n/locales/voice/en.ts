@@ -168,6 +168,7 @@ export const voice = {
       components: "Components",
       degradations: "Degradations",
       audioOutput: "Audio Output",
+      precision: "Precision",
       noData: "No pipeline data — run a query first.",
       retrieval: "retrieval",
       assistant: "assistant",

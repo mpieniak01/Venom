@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
+from services.multi_runtime.components import build_component_snapshot
 from services.multi_runtime.diagnostics import ExecutionDiagnostics
 from services.multi_runtime.policies import RuntimePolicyResolver
 from services.multi_runtime.stages.audio_output import AudioOutputStage, _clean_text
@@ -406,3 +407,21 @@ def test_update_params_quantization_backend_triggers_soft_reload() -> None:
         d = Daemon(model_id="test/model", cache_dir="/tmp/cache")
         signal = d.update_params(quantization_backend="bitsandbytes")
     assert signal == ReloadSignal.SOFT_RELOAD
+
+
+def test_component_snapshot_reports_bitsandbytes_backend_for_quantized_main_model() -> (
+    None
+):
+    snapshot = build_component_snapshot(
+        {
+            "target_model": "test/model",
+            "assistant_model": None,
+            "target_loaded": True,
+            "assistant_loaded": False,
+            "supports_image_input": True,
+            "vram": {"backend": "cuda", "free_mb": 4096},
+            "params": {"precision": "int4", "quantization_backend": "bitsandbytes"},
+        }
+    )
+    main_model = next(item for item in snapshot if item["component_id"] == "main_model")
+    assert main_model["backend"] == "bitsandbytes"

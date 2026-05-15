@@ -116,6 +116,7 @@ class RetrievalStage:
         route_name = decision.route_hint
         retrieval_context = ""
         try:
+            graph_result = ""
             if route_name == "graph":
                 if self._graph_service is None or self._graph_init_error:
                     route_name = "vector_fallback"

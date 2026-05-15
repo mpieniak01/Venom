@@ -115,6 +115,7 @@ export type DaemonRespondResponse = {
   component_snapshot: RuntimeComponentSnapshotItem[];
   audio_output_bytes?: string | null;
   audio_output_sample_rate?: number | null;
+  active_precision?: string | null;
 };
 
 async function daemonFetch<T>(

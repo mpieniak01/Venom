@@ -210,24 +210,8 @@ def test_daemon_config_cache_change_triggers_soft_reload():
     data = resp.json()
     assert data["reload_signal"] == "soft_reload"
     assert data["applied"]["cache_implementation"] == "static"
-    stub.update_params.assert_called_once_with(
-        max_new_tokens=None,
-        enable_thinking=None,
-        image_token_budget=None,
-        reasoning_summary_enabled=None,
-        emotion_detection_enabled=None,
-        emotion_response_style_enabled=None,
-        cache_implementation="static",
-        execution_mode=None,
-        image_strategy=None,
-        retrieval_mode=None,
-        audio_output_mode=None,
-        assistant_mode=None,
-        economy_mode=None,
-        precision=None,
-        quantization_backend=None,
-        device_target=None,
-    )
+    # /v1/daemon/config forwards only explicitly provided fields.
+    stub.update_params.assert_called_once_with(cache_implementation="static")
 
 
 def test_daemon_config_same_cache_no_reload():

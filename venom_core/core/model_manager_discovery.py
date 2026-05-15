@@ -80,15 +80,22 @@ class ModelManagerDiscoveryMixin:
         }
 
     def _resolve_ollama_tags_url(self) -> str:
-        endpoint = os.getenv(
-            "LLM_LOCAL_ENDPOINT",
-            build_http_url("localhost", 11434, "/v1"),
+        # Prefer dedicated Ollama base URL over active runtime endpoint.
+        # LLM_LOCAL_ENDPOINT can point to a different provider (e.g. multi_runtime:8014).
+        endpoint = (
+            os.getenv("OLLAMA_BASE_URL", "").strip()
+            or os.getenv("OLLAMA_ENDPOINT", "").strip()
+            or os.getenv("LLM_LOCAL_ENDPOINT", "").strip()
+            or build_http_url("localhost", 11434, "/v1")
         )
         endpoint = apply_http_policy_to_url(endpoint)
         parsed = urlparse(endpoint)
         if parsed.scheme and parsed.netloc:
             base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
-            return f"{base}/api/tags"
+            host = (parsed.hostname or "").lower()
+            port = parsed.port
+            if "ollama" in host or port == 11434:
+                return f"{base}/api/tags"
         return build_http_url("localhost", 11434, "/api/tags")
 
     def _register_local_entry(

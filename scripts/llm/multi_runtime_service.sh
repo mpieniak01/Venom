@@ -178,8 +178,7 @@ start() {
 stop() {
   if [[ "$USE_SYSTEMD" == "true" ]]; then
     echo "Stopping systemd unit ${SYSTEMD_UNIT}"
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT"
-    return 0
+    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT" || true
   fi
 
   if [[ -f "$PID_FILE" ]]; then
@@ -207,6 +206,8 @@ stop() {
 
   # Cleanup stray processes
   pkill -f "services.multi_runtime" 2>/dev/null || true
+  sleep 1
+  pkill -9 -f "services.multi_runtime" 2>/dev/null || true
 
   echo "Multi-Runtime stopped"
   return 0

@@ -89,8 +89,7 @@ start() {
 stop() {
   if [[ "$USE_SYSTEMD" == "true" ]]; then
     echo "Zatrzymuję usługę systemd ${SYSTEMD_UNIT}"
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT"
-    return 0
+    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT" || true
   fi
 
   # Explicitly unload model if Ollama is still running (e.g. managed externally)
@@ -121,6 +120,8 @@ stop() {
 
   # Graceful cleanup zombie processes
   pkill -f "ollama serve" 2>/dev/null || true
+  sleep 1
+  pkill -9 -f "ollama serve" 2>/dev/null || true
 
   echo "Ollama zatrzymana"
   return 0

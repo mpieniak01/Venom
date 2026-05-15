@@ -789,32 +789,42 @@ function RuntimeProfileControls({
         </Button>
       </div>
 
-      {lastUpdateResult && (
-        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2 text-[11px] space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{t("runtime.profile.lastUpdate")}</span>
-            <ProfileModeBadge mode={lastUpdateResult.required_apply_mode} />
-            {lastUpdateResult.applied && (
-              <Badge variant="default">{t("runtime.profile.applied")}</Badge>
-            )}
-          </div>
-          {lastUpdateResult.rejected.length > 0 && (
-            <ul className="text-rose-300 space-y-0.5">
-              {lastUpdateResult.rejected.map((rejection) => (
-                <li key={rejection.field}>
-                  {rejection.field}: {rejection.reason}
-                </li>
-              ))}
-            </ul>
-          )}
-          {Object.keys(lastUpdateResult.accepted).length > 0 && (
-            <div className="text-zinc-400">
-              Accepted: {Object.keys(lastUpdateResult.accepted).join(", ")}
-            </div>
-          )}
+      <RuntimeProfileLastUpdateSummary lastUpdateResult={lastUpdateResult} />
+    </section>
+  );
+}
+
+function RuntimeProfileLastUpdateSummary({
+  lastUpdateResult,
+}: Readonly<{
+  lastUpdateResult: MultiRuntimeProfileUpdateResponse | null;
+}>) {
+  const t = useTranslation();
+  if (!lastUpdateResult) return null;
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2 text-[11px] space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="font-medium">{t("runtime.profile.lastUpdate")}</span>
+        <ProfileModeBadge mode={lastUpdateResult.required_apply_mode} />
+        {lastUpdateResult.applied && (
+          <Badge variant="default">{t("runtime.profile.applied")}</Badge>
+        )}
+      </div>
+      {lastUpdateResult.rejected.length > 0 && (
+        <ul className="text-rose-300 space-y-0.5">
+          {lastUpdateResult.rejected.map((rejection) => (
+            <li key={rejection.field}>
+              {rejection.field}: {rejection.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+      {Object.keys(lastUpdateResult.accepted).length > 0 && (
+        <div className="text-zinc-400">
+          Accepted: {Object.keys(lastUpdateResult.accepted).join(", ")}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

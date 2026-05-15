@@ -120,7 +120,7 @@ export const pl = {
       applyPolicy: "Zastosuj politykę",
       cacheImpl: "Implementacja cache",
       stageCacheReload: "Przygotuj przeładowanie cache",
-      unsupportedFields: "Niewspierane pola",
+      quantizationSection: "Kwantyzacja i docelowe urządzenie",
       precision: "Precyzja",
       quantizationBackend: "Backend kwantyzacji",
       deviceTarget: "Docelowe urządzenie",

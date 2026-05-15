@@ -21,7 +21,6 @@ RejectionReason = Literal[
     "model_not_available",
     "assistant_model_not_available",
     "quantization_backend_unavailable",
-    "precision_not_supported_for_runtime",
     "value_out_of_range",
 ]
 
@@ -93,15 +92,14 @@ class MultiRuntimeProfile(BaseModel):
     precision: str = Field(
         "auto",
         description=(
-            "Model precision. Currently only 'auto' is loaded; "
-            "other values are accepted in the contract but marked unsupported."
+            "Model precision. Supported values include auto, float16, bfloat16, "
+            "float32, int4, and int8."
         ),
     )
     quantization_backend: Optional[str] = Field(
         None,
         description=(
-            "Quantization backend (e.g. 'bitsandbytes'). "
-            "Accepted in the contract but unsupported until bitsandbytes is installed."
+            "Quantization backend (e.g. 'bitsandbytes') used for int4/int8 loads."
         ),
     )
     device_target: str = Field(
@@ -128,8 +126,8 @@ class MultiRuntimeApplyMatrix(BaseModel):
     audio_output_mode: ApplyMode = "live"
     assistant_mode: ApplyMode = "live"
     economy_mode: ApplyMode = "live"
-    precision: ApplyMode = "unsupported"
-    quantization_backend: ApplyMode = "unsupported"
+    precision: ApplyMode = "soft_reload"
+    quantization_backend: ApplyMode = "soft_reload"
     device_target: ApplyMode = "unsupported"
 
 
@@ -139,9 +137,20 @@ class MultiRuntimeSupportedOptions(BaseModel):
     cache_implementation: list[Optional[str]] = Field(
         default_factory=lambda: [None, "static", "dynamic", "offloaded"]
     )
-    precision: list[str] = Field(default_factory=lambda: ["auto"])
+    precision: list[str] = Field(
+        default_factory=lambda: [
+            "auto",
+            "float16",
+            "bfloat16",
+            "float32",
+            "int4",
+            "int8",
+        ]
+    )
     device_target: list[str] = Field(default_factory=lambda: ["auto", "cpu", "cuda"])
-    quantization_backend: list[Optional[str]] = Field(default_factory=lambda: [None])
+    quantization_backend: list[Optional[str]] = Field(
+        default_factory=lambda: [None, "bitsandbytes"]
+    )
     execution_mode: list[str] = Field(
         default_factory=lambda: ["balanced", "vision_priority", "voice_priority"]
     )

@@ -118,7 +118,7 @@ export const en = {
       applyPolicy: "Apply policy",
       cacheImpl: "Cache implementation",
       stageCacheReload: "Stage cache reload",
-      unsupportedFields: "Unsupported fields",
+      quantizationSection: "Quantization and device target",
       precision: "Precision",
       quantizationBackend: "Quantization backend",
       deviceTarget: "Device target",

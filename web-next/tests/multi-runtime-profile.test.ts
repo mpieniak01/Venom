@@ -69,8 +69,8 @@ function makeMatrix(): MultiRuntimeApplyMatrix {
     audio_output_mode: "live",
     assistant_mode: "live",
     economy_mode: "live",
-    precision: "unsupported",
-    quantization_backend: "unsupported",
+    precision: "soft_reload",
+    quantization_backend: "soft_reload",
     device_target: "unsupported",
   };
 }
@@ -84,9 +84,9 @@ function makeProfileResponse(
     apply_matrix: makeMatrix(),
     supported_options: {
       cache_implementation: [null, "static", "dynamic", "offloaded"],
-      precision: ["auto"],
+      precision: ["auto", "float16", "bfloat16", "float32", "int4", "int8"],
       device_target: ["auto", "cpu", "cuda"],
-      quantization_backend: [null],
+      quantization_backend: [null, "bitsandbytes"],
       execution_mode: ["balanced", "vision_priority", "voice_priority"],
       image_strategy: ["vlm_only", "ocr_first", "hybrid"],
       retrieval_mode: ["off", "auto", "always"],
@@ -139,8 +139,8 @@ describe("MultiRuntimeProfile type contract", () => {
     assert.equal(matrix.cache_implementation, "soft_reload");
     assert.equal(matrix.model_id, "hard_restart");
     assert.equal(matrix.assistant_model_id, "hard_restart");
-    assert.equal(matrix.precision, "unsupported");
-    assert.equal(matrix.quantization_backend, "unsupported");
+    assert.equal(matrix.precision, "soft_reload");
+    assert.equal(matrix.quantization_backend, "soft_reload");
     assert.equal(matrix.device_target, "unsupported");
   });
 });
@@ -217,9 +217,9 @@ describe("MultiRuntimeProfileUpdateResponse contract", () => {
       accepted: { max_new_tokens: 512 },
       rejected: [
         {
-          field: "precision",
-          value: "int4",
-          reason: "precision_not_supported_for_runtime",
+          field: "device_target",
+          value: "cuda",
+          reason: "unsupported_field",
           detail: "",
         },
       ],
@@ -229,7 +229,7 @@ describe("MultiRuntimeProfileUpdateResponse contract", () => {
     };
     assert.equal(resp.accepted["max_new_tokens"], 512);
     assert.equal(resp.rejected.length, 1);
-    assert.equal(resp.rejected[0].field, "precision");
+    assert.equal(resp.rejected[0].field, "device_target");
   });
 
   it("hard_restart fields are accepted but applied=false", () => {

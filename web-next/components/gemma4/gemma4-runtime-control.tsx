@@ -546,22 +546,30 @@ function RuntimeProfileControls() {
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
-            {t("runtime.profile.unsupportedFields")}
+            {t("runtime.profile.quantizationSection")}
           </span>
-          {matrix && <ProfileModeBadge mode={matrix.precision} />}
         </div>
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-1.5 text-[11px] text-zinc-300">
           <div className="flex items-center justify-between gap-2">
             <span className="text-zinc-500">{t("runtime.profile.precision")}</span>
-            <strong>{profile?.precision ?? "auto"}</strong>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.precision ?? "auto"}</strong>
+              {matrix && <ProfileModeBadge mode={matrix.precision} />}
+            </div>
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-zinc-500">{t("runtime.profile.quantizationBackend")}</span>
-            <strong>{profile?.quantization_backend ?? "none"}</strong>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.quantization_backend ?? "none"}</strong>
+              {matrix && <ProfileModeBadge mode={matrix.quantization_backend} />}
+            </div>
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-zinc-500">{t("runtime.profile.deviceTarget")}</span>
-            <strong>{profile?.device_target ?? "auto"}</strong>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.device_target ?? "auto"}</strong>
+              {matrix && <ProfileModeBadge mode={matrix.device_target} />}
+            </div>
           </div>
         </div>
       </div>

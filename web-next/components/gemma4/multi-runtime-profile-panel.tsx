@@ -508,28 +508,37 @@ export function MultiRuntimeProfilePanelInner({ state }: InnerProps) {
         </Button>
       </section>
 
-      {/* Unsupported fields (read-only info) */}
-      <section aria-labelledby="profile-unsupported-section">
+      {/* Quantization/device target (read-only info) */}
+      <section aria-labelledby="profile-quantization-section">
         <div
           className="flex items-center gap-2 mb-2"
-          id="profile-unsupported-section"
+          id="profile-quantization-section"
         >
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            {t("runtime.profile.unsupportedFields")}
+            {t("runtime.profile.quantizationSection")}
           </span>
-          {matrix && <ApplyModeBadge mode={matrix.precision} />}
         </div>
         <div className="text-xs text-muted-foreground space-y-1">
-          <div>
-            {t("runtime.profile.precision")}: <strong>{profile?.precision ?? "auto"}</strong>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t("runtime.profile.precision")}</span>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.precision ?? "auto"}</strong>
+              {matrix && <ApplyModeBadge mode={matrix.precision} />}
+            </div>
           </div>
-          <div>
-            {t("runtime.profile.quantizationBackend")}:{" "}
-            <strong>{profile?.quantization_backend ?? "none"}</strong>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t("runtime.profile.quantizationBackend")}</span>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.quantization_backend ?? "none"}</strong>
+              {matrix && <ApplyModeBadge mode={matrix.quantization_backend} />}
+            </div>
           </div>
-          <div>
-            {t("runtime.profile.deviceTarget")}:{" "}
-            <strong>{profile?.device_target ?? "auto"}</strong>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t("runtime.profile.deviceTarget")}</span>
+            <div className="flex items-center gap-2">
+              <strong>{profile?.device_target ?? "auto"}</strong>
+              {matrix && <ApplyModeBadge mode={matrix.device_target} />}
+            </div>
           </div>
         </div>
       </section>

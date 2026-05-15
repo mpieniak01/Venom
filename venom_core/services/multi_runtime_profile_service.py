@@ -44,8 +44,8 @@ APPLY_MATRIX: dict[str, ApplyMode] = {
     "audio_output_mode": "live",
     "assistant_mode": "live",
     "economy_mode": "live",
-    "precision": "unsupported",
-    "quantization_backend": "unsupported",
+    "precision": "soft_reload",
+    "quantization_backend": "soft_reload",
     "device_target": "unsupported",
 }
 
@@ -129,6 +129,9 @@ def build_profile_from_daemon_params(
         audio_output_mode=str(daemon_params.get("audio_output_mode", "off")),
         assistant_mode=str(daemon_params.get("assistant_mode", "off")),
         economy_mode=str(daemon_params.get("economy_mode", "off")),
+        precision=str(daemon_params.get("precision", "auto")),
+        quantization_backend=daemon_params.get("quantization_backend"),
+        device_target=str(daemon_params.get("device_target", "auto")),
     )
 
 
@@ -210,17 +213,6 @@ def validate_profile_update(
 
 def _unsupported_reason(field: str, value: Any) -> tuple[str, str]:
     """Return (rejection_reason, detail) for an unsupported field."""
-    if field == "quantization_backend":
-        return (
-            "quantization_backend_unavailable",
-            "bitsandbytes is not installed; quantization_backend cannot be activated",
-        )
-    if field == "precision":
-        return (
-            "precision_not_supported_for_runtime",
-            f"precision='{value}' is accepted in the contract but the loader "
-            "uses dtype='auto'; explicit precision is not yet applied",
-        )
     if field == "device_target":
         return (
             "unsupported_field",
@@ -242,6 +234,29 @@ def _semantic_check(field: str, value: Any) -> Optional[tuple[str, str]]:
                 "unsupported_combination",
                 f"cache_implementation='{value}' is not in supported set: {allowed}",
             )
+    if field == "precision":
+        normalized = str(value or "auto").lower().strip()
+        allowed = {"auto", "float16", "bfloat16", "float32", "int4", "int8"}
+        if normalized not in allowed:
+            return (
+                "value_out_of_range",
+                f"precision='{value}' is not in supported set: {sorted(allowed)}",
+            )
+    if field == "quantization_backend":
+        normalized = None if value is None else str(value).lower().strip()
+        if normalized not in {None, "bitsandbytes"}:
+            return (
+                "unsupported_combination",
+                "quantization_backend must be either None or 'bitsandbytes'",
+            )
+        if normalized == "bitsandbytes":
+            try:
+                import bitsandbytes  # noqa: F401
+            except ImportError:
+                return (
+                    "quantization_backend_unavailable",
+                    "bitsandbytes is not installed; quantization_backend cannot be activated",
+                )
     return None
 
 

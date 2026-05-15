@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getGemma4ApiBaseUrl } from "@/lib/env";
 import { getApiBaseUrl } from "@/lib/env";
 import {
+  fetchDaemonStatus,
+  postDaemonReload,
+  postDaemonRestart,
   type MultiRuntimeProfileResponse,
   type MultiRuntimeProfileUpdateRequest,
   type MultiRuntimeProfileUpdateResponse,
@@ -40,12 +44,32 @@ export function useMultiRuntimeProfile(
     useState<MultiRuntimeProfileUpdateResponse | null>(null);
 
   const apiBaseRef = useRef<string>("");
+  const daemonBaseRef = useRef<string>("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     apiBaseRef.current = getApiBaseUrl();
+    daemonBaseRef.current = getGemma4ApiBaseUrl();
   }, []);
+
+  const waitForDaemonReadyAfterAction = useCallback(
+    async (timeoutMs: number): Promise<void> => {
+      const daemonBase = daemonBaseRef.current || getGemma4ApiBaseUrl();
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        try {
+          const status = await fetchDaemonStatus(daemonBase);
+          if (!status.pending_reload) return;
+        } catch {
+          // daemon can be temporarily unavailable during restart
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      throw new Error("Timed out while waiting for daemon runtime to become ready");
+    },
+    [],
+  );
 
   const doFetch = useCallback(async () => {
     const base = apiBaseRef.current || getApiBaseUrl();
@@ -97,8 +121,16 @@ export function useMultiRuntimeProfile(
         const result = await updateMultiRuntimeProfile(base, update);
         if (mountedRef.current) {
           setLastUpdateResult(result);
-          if (result.applied) await doFetch();
         }
+        const daemonBase = daemonBaseRef.current || getGemma4ApiBaseUrl();
+        if (result.required_apply_mode === "soft_reload") {
+          await postDaemonReload(daemonBase);
+          await waitForDaemonReadyAfterAction(180_000);
+        } else if (result.required_apply_mode === "hard_restart") {
+          await postDaemonRestart(daemonBase);
+          await waitForDaemonReadyAfterAction(240_000);
+        }
+        await doFetch();
         return result;
       } catch (e) {
         if (mountedRef.current) {

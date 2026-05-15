@@ -479,6 +479,13 @@ class MultiRuntimeDaemon:
         self._device = device
         self._reload_reason: Optional[str] = None
         self._mode: RuntimeMode = RuntimeMode.TARGET_ONLY
+        self._active_runtime_config: DaemonParams = DaemonParams(
+            max_new_tokens=max_new_tokens
+        )
+        self._quantization_effective: bool = False
+        self._quantization_effective_reason: Optional[str] = "model_not_loaded"
+        self._effective_precision_mode: str = "unknown"
+        self._effective_config_reason: Optional[str] = "model_not_loaded"
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -501,6 +508,18 @@ class MultiRuntimeDaemon:
             quantization_backend=self._params.quantization_backend,
         )
         self._target_engine.load()
+        self._active_runtime_config = DaemonParams(**self._params.__dict__)
+        self._quantization_effective, self._quantization_effective_reason = (
+            self._compute_quantization_effectiveness(
+                active=self._active_runtime_config,
+                staged=self._params,
+                engine=self._target_engine,
+            )
+        )
+        (
+            self._effective_precision_mode,
+            self._effective_config_reason,
+        ) = self._resolve_effective_precision_mode(self._active_runtime_config)
         logger.info("Target model loaded: %s", self._target_id)
 
     def soft_reload(self) -> str:
@@ -526,6 +545,10 @@ class MultiRuntimeDaemon:
         self._ensure_vram_clean()
         self._assistant_id = None
         self._mode = RuntimeMode.TARGET_ONLY
+        self._quantization_effective = False
+        self._quantization_effective_reason = "model_not_loaded"
+        self._effective_precision_mode = "unknown"
+        self._effective_config_reason = "model_not_loaded"
         logger.info("All models unloaded (pre-restart)")
 
     # ------------------------------------------------------------------
@@ -601,6 +624,7 @@ class MultiRuntimeDaemon:
 
         if max_new_tokens is not None:
             self._params.max_new_tokens = max_new_tokens
+            self._active_runtime_config.max_new_tokens = max_new_tokens
             if self._target_engine:
                 self._target_engine.default_max_new_tokens = max_new_tokens
             if self._assistant_engine:
@@ -608,18 +632,29 @@ class MultiRuntimeDaemon:
 
         if enable_thinking is not None:
             self._params.enable_thinking = enable_thinking
+            self._active_runtime_config.enable_thinking = enable_thinking
 
         if image_token_budget is not None:
             self._params.image_token_budget = image_token_budget
+            self._active_runtime_config.image_token_budget = image_token_budget
 
         if reasoning_summary_enabled is not None:
             self._params.reasoning_summary_enabled = reasoning_summary_enabled
+            self._active_runtime_config.reasoning_summary_enabled = (
+                reasoning_summary_enabled
+            )
 
         if emotion_detection_enabled is not None:
             self._params.emotion_detection_enabled = emotion_detection_enabled
+            self._active_runtime_config.emotion_detection_enabled = (
+                emotion_detection_enabled
+            )
 
         if emotion_response_style_enabled is not None:
             self._params.emotion_response_style_enabled = emotion_response_style_enabled
+            self._active_runtime_config.emotion_response_style_enabled = (
+                emotion_response_style_enabled
+            )
 
         if (
             cache_implementation is not None
@@ -633,21 +668,27 @@ class MultiRuntimeDaemon:
 
         if execution_mode is not None:
             self._params.execution_mode = execution_mode
+            self._active_runtime_config.execution_mode = execution_mode
 
         if image_strategy is not None:
             self._params.image_strategy = image_strategy
+            self._active_runtime_config.image_strategy = image_strategy
 
         if retrieval_mode is not None:
             self._params.retrieval_mode = retrieval_mode
+            self._active_runtime_config.retrieval_mode = retrieval_mode
 
         if audio_output_mode is not None:
             self._params.audio_output_mode = audio_output_mode
+            self._active_runtime_config.audio_output_mode = audio_output_mode
 
         if assistant_mode is not None:
             self._params.assistant_mode = assistant_mode
+            self._active_runtime_config.assistant_mode = assistant_mode
 
         if economy_mode is not None:
             self._params.economy_mode = economy_mode
+            self._active_runtime_config.economy_mode = economy_mode
 
         # precision and quantization_backend require a soft reload to take effect
         if precision is not None and precision != self._params.precision:
@@ -669,6 +710,18 @@ class MultiRuntimeDaemon:
             self._params.device_target = device_target
             self._reload_reason = f"device_target changed to '{device_target}'"
             reload_signal = ReloadSignal.SOFT_RELOAD
+
+        self._quantization_effective, self._quantization_effective_reason = (
+            self._compute_quantization_effectiveness(
+                active=self._active_runtime_config,
+                staged=self._params,
+                engine=self._target_engine,
+            )
+        )
+        (
+            self._effective_precision_mode,
+            self._effective_config_reason,
+        ) = self._resolve_effective_precision_mode(self._active_runtime_config)
 
         return reload_signal
 
@@ -766,6 +819,47 @@ class MultiRuntimeDaemon:
                 "quantization_backend": self._params.quantization_backend,
                 "device_target": self._params.device_target,
             },
+            "active_runtime_config": {
+                "max_new_tokens": self._active_runtime_config.max_new_tokens,
+                "enable_thinking": self._active_runtime_config.enable_thinking,
+                "image_token_budget": self._active_runtime_config.image_token_budget,
+                "reasoning_summary_enabled": self._active_runtime_config.reasoning_summary_enabled,
+                "emotion_detection_enabled": self._active_runtime_config.emotion_detection_enabled,
+                "emotion_response_style_enabled": self._active_runtime_config.emotion_response_style_enabled,
+                "cache_implementation": self._active_runtime_config.cache_implementation,
+                "execution_mode": self._active_runtime_config.execution_mode,
+                "image_strategy": self._active_runtime_config.image_strategy,
+                "retrieval_mode": self._active_runtime_config.retrieval_mode,
+                "audio_output_mode": self._active_runtime_config.audio_output_mode,
+                "assistant_mode": self._active_runtime_config.assistant_mode,
+                "economy_mode": self._active_runtime_config.economy_mode,
+                "precision": self._active_runtime_config.precision,
+                "quantization_backend": self._active_runtime_config.quantization_backend,
+                "device_target": self._active_runtime_config.device_target,
+            },
+            "staged_runtime_config": {
+                "max_new_tokens": self._params.max_new_tokens,
+                "enable_thinking": self._params.enable_thinking,
+                "image_token_budget": self._params.image_token_budget,
+                "reasoning_summary_enabled": self._params.reasoning_summary_enabled,
+                "emotion_detection_enabled": self._params.emotion_detection_enabled,
+                "emotion_response_style_enabled": self._params.emotion_response_style_enabled,
+                "cache_implementation": self._params.cache_implementation,
+                "execution_mode": self._params.execution_mode,
+                "image_strategy": self._params.image_strategy,
+                "retrieval_mode": self._params.retrieval_mode,
+                "audio_output_mode": self._params.audio_output_mode,
+                "assistant_mode": self._params.assistant_mode,
+                "economy_mode": self._params.economy_mode,
+                "precision": self._params.precision,
+                "quantization_backend": self._params.quantization_backend,
+                "device_target": self._params.device_target,
+            },
+            "quantization_effective": self._quantization_effective,
+            "quantization_effective_reason": self._quantization_effective_reason,
+            "effective_precision_mode": self._effective_precision_mode,
+            "effective_config_reason": self._effective_config_reason,
+            "vram_interpretation_hint": self._build_vram_interpretation_hint(),
             "vram": _get_vram_info().__dict__,
             "raw_thinking_available": raw_thinking_available,
             "reasoning_summary_status": (
@@ -805,3 +899,52 @@ class MultiRuntimeDaemon:
             self._assistant_engine.unload()
             self._assistant_engine = None
         _free_vram()
+
+    @staticmethod
+    def _compute_quantization_effectiveness(
+        *,
+        active: DaemonParams,
+        staged: DaemonParams,
+        engine: Optional[MultiRuntimeEngine],
+    ) -> tuple[bool, Optional[str]]:
+        if engine is None:
+            return False, "model_not_loaded"
+        if (
+            staged.precision in {"int4", "int8"}
+            and staged.quantization_backend == "bitsandbytes"
+        ):
+            if (
+                active.precision in {"int4", "int8"}
+                and active.quantization_backend == "bitsandbytes"
+            ):
+                return True, None
+            return False, "requested_int_quantization_not_active"
+        if (
+            active.precision in {"int4", "int8"}
+            and active.quantization_backend == "bitsandbytes"
+        ):
+            return True, None
+        return False, "no_quantization_requested"
+
+    @staticmethod
+    def _resolve_effective_precision_mode(
+        active: DaemonParams,
+    ) -> tuple[str, Optional[str]]:
+        precision = str(active.precision or "auto").lower().strip()
+        qbackend = str(active.quantization_backend or "").lower().strip()
+        if precision in {"int4", "int8"} and qbackend == "bitsandbytes":
+            return (f"{precision}_bnb", None)
+        if precision == "auto":
+            return ("framework_default", "auto_precision_selected")
+        if precision in {"float16", "bfloat16", "float32"}:
+            return (f"explicit_{precision}", None)
+        return ("unknown", f"unrecognized_precision:{precision}")
+
+    def _build_vram_interpretation_hint(self) -> str:
+        vram = _get_vram_info()
+        if vram.backend != "cuda":
+            return "cpu_runtime_no_cuda_vram"
+        return (
+            "cuda_reserved_includes_cache; compare allocated_mb across same prompt/model "
+            "to evaluate precision/quantization impact"
+        )

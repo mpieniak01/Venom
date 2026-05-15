@@ -15,7 +15,11 @@ import {
 } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "@/lib/i18n";
-import type { DaemonConfigRequest, DaemonRespondResponse } from "@/lib/gemma4-daemon-api";
+import type {
+  DaemonConfigRequest,
+  DaemonRespondResponse,
+  DaemonStatus,
+} from "@/lib/gemma4-daemon-api";
 import { postDaemonRespond } from "@/lib/gemma4-daemon-api";
 import { PipelineDiagnosticsPanel } from "@/components/gemma4/pipeline-diagnostics-panel";
 import { getGemma4ApiBaseUrl } from "@/lib/env";
@@ -431,7 +435,9 @@ function getProfileModeBadgeConfig(
   }
 }
 
-function RuntimeProfileControls() {
+function RuntimeProfileControls({
+  daemonStatus,
+}: Readonly<{ daemonStatus: DaemonStatus | null }>) {
   const t = useTranslation();
   const profileState = useMultiRuntimeProfile();
   const { data, updatePending, lastUpdateResult, applyUpdate } = profileState;
@@ -547,6 +553,18 @@ function RuntimeProfileControls() {
   const effectiveQuantizationBackend =
     localQuantizationBackend === null ? (profile?.quantization_backend ?? "") : localQuantizationBackend;
   const effectiveDeviceTarget = localDeviceTarget === null ? (profile?.device_target ?? "auto") : localDeviceTarget;
+  const stagedConfig = daemonStatus?.staged_runtime_config ?? daemonStatus?.params ?? null;
+  const activeConfig = daemonStatus?.active_runtime_config ?? daemonStatus?.params ?? null;
+  const stagedRuntimeLine = stagedConfig
+    ? `${stagedConfig.precision}/${stagedConfig.quantization_backend ?? "none"}/${stagedConfig.device_target}`
+    : "—";
+  const activeRuntimeLine = activeConfig
+    ? `${activeConfig.precision}/${activeConfig.quantization_backend ?? "none"}/${activeConfig.device_target}`
+    : "—";
+  const runtimeConfigDrift =
+    stagedRuntimeLine !== "—" &&
+    activeRuntimeLine !== "—" &&
+    stagedRuntimeLine !== activeRuntimeLine;
 
   const handleApplyPolicy = async () => {
     await applyUpdate({
@@ -722,7 +740,39 @@ function RuntimeProfileControls() {
               disabled={busy}
             />
           </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.stagedRuntime")}>
+            <span className="text-xs text-zinc-300">{stagedRuntimeLine}</span>
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.activeRuntime")}>
+            <span className="text-xs text-zinc-300">{activeRuntimeLine}</span>
+          </RuntimeProfileRow>
+          <RuntimeProfileRow label={t("runtime.profile.effectivePrecisionMode")}>
+            <span className="text-xs text-zinc-300">
+              {daemonStatus?.effective_precision_mode ?? "unknown"}
+            </span>
+          </RuntimeProfileRow>
+          {daemonStatus?.effective_config_reason && (
+            <RuntimeProfileRow label={t("runtime.profile.effectiveConfigReason")}>
+              <span className="text-xs text-zinc-400">{daemonStatus.effective_config_reason}</span>
+            </RuntimeProfileRow>
+          )}
+          {runtimeConfigDrift && (
+            <div className="flex items-center justify-end">
+              <Badge variant="secondary">{t("runtime.profile.notAppliedYet")}</Badge>
+            </div>
+          )}
+          {daemonStatus?.quantization_effective === false &&
+            daemonStatus?.quantization_effective_reason && (
+              <p className="text-[10px] text-amber-300">
+                {t("runtime.profile.quantizationEffectiveNo")}: {daemonStatus.quantization_effective_reason}
+              </p>
+          )}
         </div>
+        {daemonStatus?.vram_interpretation_hint && (
+          <p className="text-[10px] text-zinc-500">
+            {t("runtime.profile.vramInterpretationHint")}: {daemonStatus.vram_interpretation_hint}
+          </p>
+        )}
         <Button
           size="xs"
           variant="secondary"
@@ -1324,7 +1374,7 @@ function Gemma4RuntimeControlPanel({
         </div>
         </div>
 
-      <RuntimeProfileControls />
+      <RuntimeProfileControls daemonStatus={status ?? null} />
 
       {/* VRAM */}
       {vram && (
@@ -1359,19 +1409,11 @@ function Gemma4RuntimeControlPanel({
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="xs"
-          variant="primary"
-          onClick={handleApply}
-          disabled={busy || !hasLocalChanges}
-          data-testid="apply-button"
-        >
-          {actionPending === "config"
-            ? t("voice.daemon.applying")
-            : t("voice.daemon.applyConfig")}
-        </Button>
-
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+          {t("runtime.profile.manualOverrides")}
+        </p>
+        <div className="flex flex-wrap gap-2">
         {buildDaemonConfirmActions({ t, daemon }).map((action) => (
           <DaemonConfirmActionButton
             key={action.key}
@@ -1399,6 +1441,28 @@ function Gemma4RuntimeControlPanel({
         >
           {actionPending === "fallback" ? t("voice.daemon.busy") : t("voice.daemon.fallback")}
         </Button>
+        </div>
+        <p className="text-[10px] text-zinc-500">
+          {t("runtime.profile.manualOverridesHint")}
+        </p>
+        <details className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+          <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors">
+            {t("runtime.profile.advancedActions")}
+          </summary>
+          <div className="mt-2">
+            <Button
+              size="xs"
+              variant="primary"
+              onClick={handleApply}
+              disabled={busy || !hasLocalChanges}
+              data-testid="apply-button"
+            >
+              {actionPending === "config"
+                ? t("voice.daemon.applying")
+                : t("runtime.profile.applyLegacyConfig")}
+            </Button>
+          </div>
+        </details>
       </div>
 
       {/* Last signal feedback */}

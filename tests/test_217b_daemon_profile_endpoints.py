@@ -289,7 +289,7 @@ def test_update_profile_quantization_backend_requires_soft_reload(monkeypatch):
     assert data["rejected"] == []
     assert data["accepted"]["quantization_backend"] == "bitsandbytes"
     assert data["required_apply_mode"] == "soft_reload"
-    assert data["applied"] is True
+    assert data["applied"] is False
 
 
 def test_update_profile_device_target_soft_reload():
@@ -317,7 +317,25 @@ def test_update_profile_mixed_live_and_soft_reload():
     data = resp.json()
     assert "max_new_tokens" in data["accepted"]
     assert data["required_apply_mode"] == "soft_reload"
-    assert data["applied"] is True
+    assert data["applied"] is False
+
+
+def test_update_profile_precision_calls_update_params():
+    stub = _daemon_stub(update_signal=ReloadSignal.SOFT_RELOAD)
+    client = _client_with(stub)
+    client.post(
+        "/v1/daemon/profile",
+        json={
+            "precision": "int4",
+            "quantization_backend": "bitsandbytes",
+            "device_target": "cuda",
+        },
+    )
+    stub.update_params.assert_called_once_with(
+        precision="int4",
+        quantization_backend="bitsandbytes",
+        device_target="cuda",
+    )
 
 
 def test_update_profile_empty_request():

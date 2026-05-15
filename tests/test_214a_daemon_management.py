@@ -42,6 +42,10 @@ def _make_status_dict(**kw):
         "target_loaded": True,
         "assistant_loaded": False,
         "params": _make_params_dict(),
+        "active_runtime_config": _make_params_dict(),
+        "staged_runtime_config": _make_params_dict(),
+        "quantization_effective": False,
+        "quantization_effective_reason": "no_quantization_requested",
         "vram": _make_vram_dict(),
         "pending_reload": False,
         "reload_reason": None,
@@ -122,6 +126,33 @@ def test_daemon_status_pending_reload_flag():
     data = client.get("/v1/daemon/status").json()
     assert data["pending_reload"] is True
     assert data["reload_reason"] == "cache_implementation changed"
+
+
+def test_daemon_status_includes_active_and_staged_runtime_config():
+    stub = _daemon_stub(
+        status_dict=_make_status_dict(
+            active_runtime_config=_make_params_dict(
+                precision="float16",
+                quantization_backend=None,
+                device_target="cuda",
+            ),
+            staged_runtime_config=_make_params_dict(
+                precision="int4",
+                quantization_backend="bitsandbytes",
+                device_target="cuda",
+            ),
+            quantization_effective=False,
+            quantization_effective_reason="requested_int_quantization_not_active",
+        )
+    )
+    client = _client_with(stub)
+    data = client.get("/v1/daemon/status").json()
+    assert data["active_runtime_config"]["precision"] == "float16"
+    assert data["staged_runtime_config"]["precision"] == "int4"
+    assert data["quantization_effective"] is False
+    assert (
+        data["quantization_effective_reason"] == "requested_int_quantization_not_active"
+    )
 
 
 def test_daemon_status_assistant_mode():

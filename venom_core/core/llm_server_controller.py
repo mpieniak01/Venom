@@ -102,6 +102,21 @@ class LlmServerController:
                 return normalized
             return fallback
 
+        def _normalize_multi_runtime_command(
+            command: Optional[str], fallback: str
+        ) -> str:
+            normalized = _normalize(command, fallback)
+            legacy = "gemma4_audio_service.sh"
+            if legacy in normalized:
+                migrated = normalized.replace(legacy, "multi_runtime_service.sh")
+                logger.warning(
+                    "Wykryto legacy komendę runtime '{}'; używam '{}'",
+                    normalized,
+                    migrated,
+                )
+                return migrated
+            return normalized
+
         # Komendy dla vLLM (puste = akcja niedostępna)
         vllm_start_cmd = _normalize(
             cfg.VLLM_START_COMMAND,
@@ -179,15 +194,15 @@ class LlmServerController:
         )
 
         # Multi-runtime (Gemma 4 multimodal — audio, image, text)
-        multi_runtime_start_cmd = _normalize(
+        multi_runtime_start_cmd = _normalize_multi_runtime_command(
             cfg.GEMMA4_AUDIO_START_COMMAND,
             f"bash {repo_root / 'scripts/llm/multi_runtime_service.sh'} start",
         )
-        multi_runtime_stop_cmd = _normalize(
+        multi_runtime_stop_cmd = _normalize_multi_runtime_command(
             cfg.GEMMA4_AUDIO_STOP_COMMAND,
             f"bash {repo_root / 'scripts/llm/multi_runtime_service.sh'} stop",
         )
-        multi_runtime_restart_cmd = _normalize(
+        multi_runtime_restart_cmd = _normalize_multi_runtime_command(
             cfg.GEMMA4_AUDIO_RESTART_COMMAND,
             f"bash {repo_root / 'scripts/llm/multi_runtime_service.sh'} restart",
         )

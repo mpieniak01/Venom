@@ -189,7 +189,7 @@ def validate_profile_update(
     accepted: dict[str, Any] = {}
     rejected: list[MultiRuntimeFieldRejection] = []
 
-    update_dict = request.model_dump(exclude_none=True)
+    update_dict = request.model_dump(exclude_unset=True)
 
     for field, value in update_dict.items():
         mode = apply_mode_for_field(field)

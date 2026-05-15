@@ -1,7 +1,7 @@
 import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Gemma4DaemonState } from "../hooks/use-gemma4-daemon";
 import type { DaemonStatus } from "../lib/gemma4-daemon-api";
 import { Gemma4RuntimeControlInner } from "../components/gemma4/gemma4-runtime-control";
@@ -204,6 +204,44 @@ function makeState(overrides: Partial<Gemma4DaemonState> = {}): Gemma4DaemonStat
   };
 }
 
+function makeProfileMatrix() {
+  return {
+    model_id: "hard_restart",
+    assistant_model_id: "hard_restart",
+    cache_implementation: "soft_reload",
+    max_new_tokens: "live",
+    image_token_budget: "live",
+    enable_thinking: "live",
+    reasoning_summary_enabled: "live",
+    emotion_detection_enabled: "live",
+    emotion_response_style_enabled: "live",
+    execution_mode: "live",
+    image_strategy: "live",
+    retrieval_mode: "live",
+    audio_output_mode: "live",
+    assistant_mode: "live",
+    economy_mode: "live",
+    precision: "soft_reload",
+    quantization_backend: "soft_reload",
+    device_target: "soft_reload",
+  };
+}
+
+function makeSupportedOptions() {
+  return {
+    cache_implementation: [null, "static", "dynamic", "offloaded"],
+    precision: ["auto", "float16", "bfloat16", "float32", "int4", "int8"],
+    device_target: ["auto", "cpu", "cuda"],
+    quantization_backend: [null, "bitsandbytes"],
+    execution_mode: ["balanced", "vision_priority", "voice_priority"],
+    image_strategy: ["vlm_only", "ocr_first", "hybrid"],
+    retrieval_mode: ["off", "auto", "always"],
+    audio_output_mode: ["off", "text_first", "voice_first"],
+    assistant_mode: ["off", "attached", "conditional"],
+    economy_mode: ["off", "auto"],
+  };
+}
+
 function renderControl(
   state: Gemma4DaemonState,
   variant: "cockpit" | "voice" = "voice",
@@ -383,6 +421,96 @@ describe("Gemma4RuntimeControl — pending reload state", () => {
     const banner = screen.getByTestId("reload-banner");
     assert.ok(banner);
     assert.ok(banner.textContent?.includes("cache_implementation"));
+  });
+
+  it("auto-triggers daemon reload after profile update requiring soft_reload", async () => {
+    let reloadCalled = false;
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/v1/runtime/multi-runtime/profile") && method === "POST") {
+        return new Response(
+          JSON.stringify({
+            accepted: { precision: "int4", quantization_backend: "bitsandbytes", device_target: "cuda" },
+            rejected: [],
+            required_apply_mode: "soft_reload",
+            applied: false,
+            message: "staged",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/daemon/reload") && method === "POST") {
+        reloadCalled = true;
+        return new Response(JSON.stringify({ reason: "manual_reload" }), { status: 200 });
+      }
+      if (url.includes("/v1/daemon/status")) {
+        return new Response(
+          JSON.stringify({
+            ...makeStatus(),
+            pending_reload: false,
+            active_runtime_config: {
+              ...makeStatus().params,
+              precision: "int4",
+              quantization_backend: "bitsandbytes",
+              device_target: "cuda",
+            },
+            staged_runtime_config: {
+              ...makeStatus().params,
+              precision: "int4",
+              quantization_backend: "bitsandbytes",
+              device_target: "cuda",
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/v1/runtime/multi-runtime/profile") && method === "GET") {
+        return new Response(
+          JSON.stringify({
+            runtime_id: "multi_runtime",
+            profile: {
+              profile_id: "default",
+              display_name: "Default",
+              runtime_id: "multi_runtime",
+              compatibility: "multi_runtime_native",
+              model_id: "google/gemma-4-E2B-it",
+              assistant_model_id: null,
+              cache_implementation: null,
+              max_new_tokens: 128,
+              image_token_budget: 280,
+              enable_thinking: false,
+              reasoning_summary_enabled: false,
+              emotion_detection_enabled: false,
+              emotion_response_style_enabled: false,
+              execution_mode: "balanced",
+              image_strategy: "vlm_only",
+              retrieval_mode: "off",
+              audio_output_mode: "off",
+              assistant_mode: "off",
+              economy_mode: "off",
+              precision: "auto",
+              quantization_backend: null,
+              device_target: "auto",
+            },
+            apply_matrix: makeProfileMatrix(),
+            supported_options: makeSupportedOptions(),
+            daemon_reachable: true,
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    };
+    renderControl(makeState());
+    const applyQuant = await screen.findByRole("button", {
+      name: /zastosuj kwantyzację|apply quantization/i,
+    });
+    await act(async () => {
+      fireEvent.click(applyQuant);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(reloadCalled, true);
   });
 });
 

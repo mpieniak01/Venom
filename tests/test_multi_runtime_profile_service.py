@@ -278,7 +278,7 @@ def test_validate_none_cache_implementation_accepted():
     req = MultiRuntimeProfileUpdateRequest(cache_implementation=None)
     result = validate_profile_update(req)
     assert result.rejected == []
-    assert result.accepted == {}
+    assert result.accepted == {"cache_implementation": None}
 
 
 def test_validate_empty_request():

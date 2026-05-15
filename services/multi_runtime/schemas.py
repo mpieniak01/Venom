@@ -276,6 +276,28 @@ class DaemonStatusResponse(BaseModel):
     target_loaded: bool
     assistant_loaded: bool
     params: DaemonParamsInfo
+    active_runtime_config: DaemonParamsInfo
+    staged_runtime_config: DaemonParamsInfo
+    quantization_effective: bool = Field(
+        False,
+        description="Whether active runtime config effectively uses requested quantization precision/backend.",
+    )
+    quantization_effective_reason: Optional[str] = Field(
+        None,
+        description="Reason when quantization is not effectively active.",
+    )
+    effective_precision_mode: str = Field(
+        "unknown",
+        description="Effective precision strategy currently loaded in runtime.",
+    )
+    effective_config_reason: Optional[str] = Field(
+        None,
+        description="Additional explanation for effective precision/config mode.",
+    )
+    vram_interpretation_hint: Optional[str] = Field(
+        None,
+        description="Hint explaining how to interpret VRAM metrics.",
+    )
     vram: VRAMStatus
     raw_thinking_available: bool = Field(
         False, description="Whether the current target can emit raw thinking"

@@ -11,6 +11,10 @@ from typing import Any
 from venom_core.config import SETTINGS
 
 _MULTI_RUNTIME_TARGET_MODEL_CANDIDATES: tuple[str, ...] = (
+    "google/gemma-3-1b-it",
+    "google/gemma-3-4b-it",
+    "google/gemma-3-12b-it",
+    "google/gemma-3-27b-it",
     "google/gemma-4-E2B-it",
     "google/gemma-4-E4B-it",
 )

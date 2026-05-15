@@ -161,19 +161,33 @@ def _apply_variant(daemon_base: str, variant: Variant) -> dict[str, Any]:
     if code != 200:
         raise RuntimeError(f"profile update failed: status={code} payload={body}")
 
-    if isinstance(body, dict) and body.get("required_apply_mode") == "soft_reload":
+    required_apply_mode = (
+        str(body.get("required_apply_mode", "live"))
+        if isinstance(body, dict)
+        else "live"
+    )
+    reload_executed = False
+    reload_duration_sec = 0.0
+    if required_apply_mode == "soft_reload":
+        t0 = time.perf_counter()
         r_code, r_body = _http_json(
             f"{daemon_base}/v1/daemon/reload",
             method="POST",
             payload={},
-            timeout_sec=180.0,
+            timeout_sec=300.0,
         )
+        reload_duration_sec = time.perf_counter() - t0
+        reload_executed = True
         if r_code != 200:
             raise RuntimeError(f"soft reload failed: status={r_code} payload={r_body}")
 
-    if not _wait_status_ready(daemon_base):
+    if not _wait_status_ready(daemon_base, timeout_sec=300):
         raise RuntimeError("daemon not ready after profile apply")
-    return body if isinstance(body, dict) else {"raw": body}
+    out = body if isinstance(body, dict) else {"raw": body}
+    out["required_apply_mode"] = required_apply_mode
+    out["reload_executed"] = reload_executed
+    out["reload_duration_sec"] = reload_duration_sec
+    return out
 
 
 def _daemon_status(daemon_base: str) -> dict[str, Any]:
@@ -181,6 +195,10 @@ def _daemon_status(daemon_base: str) -> dict[str, Any]:
     if code != 200 or not isinstance(payload, dict):
         raise RuntimeError(f"daemon status failed: status={code} payload={payload}")
     return payload
+
+
+def _warmup_prompt(daemon_base: str, model: str, prompt: str, max_tokens: int) -> None:
+    _run_prompt(daemon_base, model, prompt, max_tokens)
 
 
 def _run_prompt(
@@ -289,6 +307,8 @@ def main() -> int:
             latencies: list[float] = []
             last_answer = ""
             apply_result: dict[str, Any] = {"mode": "direct_engine"}
+            active_before: dict[str, Any] = {}
+            active_after: dict[str, Any] = {}
             daemon_params_after: dict[str, Any] = {
                 "precision": variant.precision,
                 "quantization_backend": variant.quantization_backend,
@@ -325,7 +345,14 @@ def main() -> int:
             apply_result = _apply_variant(daemon_base, variant)
             status_before = _daemon_status(daemon_base)
             vram_before = status_before.get("vram", {})
+            active_before = status_before.get("active_runtime_config", {})
 
+            _warmup_prompt(
+                daemon_base,
+                args.model,
+                args.prompt,
+                min(args.max_tokens, 32),
+            )
             latencies = []
             last_answer = ""
             for _ in range(max(1, args.runs)):
@@ -340,6 +367,7 @@ def main() -> int:
 
             status_after = _daemon_status(daemon_base)
             daemon_params_after = status_after.get("params", {})
+            active_after = status_after.get("active_runtime_config", {})
             vram_after = status_after.get("vram", {})
 
         report["results"].append(
@@ -360,8 +388,20 @@ def main() -> int:
                     "median": statistics.median(latencies) if latencies else None,
                 },
                 "daemon_params_after": daemon_params_after,
+                "active_runtime_config_before": active_before,
+                "active_runtime_config_after": active_after,
                 "vram_before": vram_before,
                 "vram_after": vram_after,
+                "vram_allocated_delta_mb": round(
+                    float(vram_after.get("allocated_mb", 0.0))
+                    - float(vram_before.get("allocated_mb", 0.0)),
+                    2,
+                ),
+                "vram_reserved_delta_mb": round(
+                    float(vram_after.get("reserved_mb", 0.0))
+                    - float(vram_before.get("reserved_mb", 0.0)),
+                    2,
+                ),
                 "answer_preview": last_answer[:400],
             }
         )

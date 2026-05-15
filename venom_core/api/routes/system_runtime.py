@@ -196,7 +196,7 @@ async def update_multi_runtime_profile(
     url = _daemon_profile_url()
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(url, json=body.model_dump(exclude_none=True))
+            resp = await client.post(url, json=body.model_dump(exclude_unset=True))
         if resp.status_code == 200:
             return MultiRuntimeProfileUpdateResponse.model_validate(resp.json())
         detail = resp.text[:200]

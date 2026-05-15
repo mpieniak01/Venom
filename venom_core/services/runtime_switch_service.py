@@ -99,11 +99,23 @@ def _is_health_response_ready(*, server_name: str, response: httpx.Response) -> 
     return status in {"ok", "ready", "running"}
 
 
+def _health_probe_attempts(server_name: str) -> int:
+    """Return number of health probe attempts for a runtime.
+
+    multi_runtime can need more than 30s while loading Gemma weights.
+    """
+    if is_multi_runtime(server_name):
+        return 240  # 120s at 0.5s interval
+    return _HEALTH_MAX_ATTEMPTS
+
+
 async def probe_health_ready(server_name: str, health_url: str) -> bool:
-    """Return True when server reports healthy within 30 seconds."""
+    """Return True when server reports healthy within runtime-specific timeout."""
     logger.info("Oczekiwanie na gotowość serwera LLM: {}", server_name)
+    max_attempts = _health_probe_attempts(server_name)
+    timeout_seconds = max_attempts * _HEALTH_POLL_INTERVAL
     async with httpx.AsyncClient(timeout=2.0) as client:
-        for attempt in range(_HEALTH_MAX_ATTEMPTS):
+        for attempt in range(max_attempts):
             try:
                 resp = await client.get(health_url)
                 if _is_health_response_ready(server_name=server_name, response=resp):
@@ -116,7 +128,11 @@ async def probe_health_ready(server_name: str, health_url: str) -> bool:
             except Exception:
                 pass
             await asyncio.sleep(_HEALTH_POLL_INTERVAL)
-    logger.error("Serwer LLM {} nie odpowiedział prawidłowo po 30s", server_name)
+    logger.error(
+        "Serwer LLM {} nie odpowiedział prawidłowo po {:.0f}s",
+        server_name,
+        timeout_seconds,
+    )
     return False
 
 
@@ -348,7 +364,7 @@ class RuntimeSwitchOrchestrator:
                     )
                     raise HTTPException(
                         status_code=503,
-                        detail="Health check timeout — serwer LLM nie odpowiada po 30s.",
+                        detail="Health check timeout — serwer LLM nie osiągnął gotowości.",
                     )
 
         state.mark_done(LifecycleStep.HEALTH_READY)

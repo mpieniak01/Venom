@@ -74,20 +74,13 @@ _startup_error: Optional[str] = None
 _lifecycle_lock: asyncio.Lock = asyncio.Lock()
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _resolve_startup_runtime_params() -> dict[str, object]:
     """Resolve startup runtime params with safe defaults for constrained VRAM.
 
     Priority:
     1. Explicit env overrides (GEMMA4_AUDIO_*).
-    2. Safe auto profile for Gemma-4 on CUDA (int4 + bitsandbytes when available).
-    3. Legacy defaults (auto/no quant/auto).
+    2. Optional startup profile override (safe_int4) when explicitly enabled.
+    3. Defaults (auto/no quant/auto).
     """
     precision = str(os.getenv("GEMMA4_AUDIO_PRECISION", "")).strip().lower()
     quantization_backend = (
@@ -108,9 +101,15 @@ def _resolve_startup_runtime_params() -> dict[str, object]:
     if cache_impl not in {"", "dynamic", "static", "offloaded", "quantized"}:
         cache_impl = ""
 
-    # Safe default to reduce startup OOM risk for Gemma4 on 12GB-class cards.
-    safe_auto = _env_bool("GEMMA4_AUDIO_SAFE_AUTO_PROFILE", True)
-    if safe_auto and precision == "auto" and not quantization_backend:
+    # Optional startup profile: explicitly opt-in, does not redefine "auto".
+    startup_profile = (
+        str(os.getenv("GEMMA4_AUDIO_STARTUP_PROFILE", "default")).strip().lower()
+    )
+    if (
+        startup_profile == "safe_int4"
+        and precision == "auto"
+        and not quantization_backend
+    ):
         try:
             import torch
 
@@ -471,6 +470,17 @@ async def daemon_status() -> DaemonStatusResponse:
         target_loaded=raw["target_loaded"],
         assistant_loaded=raw["assistant_loaded"],
         params=DaemonParamsInfo(**raw["params"]),
+        active_runtime_config=DaemonParamsInfo(
+            **raw.get("active_runtime_config", raw["params"])
+        ),
+        staged_runtime_config=DaemonParamsInfo(
+            **raw.get("staged_runtime_config", raw["params"])
+        ),
+        quantization_effective=bool(raw.get("quantization_effective", False)),
+        quantization_effective_reason=raw.get("quantization_effective_reason"),
+        effective_precision_mode=str(raw.get("effective_precision_mode", "unknown")),
+        effective_config_reason=raw.get("effective_config_reason"),
+        vram_interpretation_hint=raw.get("vram_interpretation_hint"),
         vram=VRAMStatus(**raw["vram"]),
         raw_thinking_available=bool(raw.get("raw_thinking_available", False)),
         reasoning_summary_status=str(raw.get("reasoning_summary_status", "disabled")),
@@ -534,6 +544,9 @@ _UPDATE_PARAMS_FIELDS = frozenset(
         "audio_output_mode",
         "assistant_mode",
         "economy_mode",
+        "precision",
+        "quantization_backend",
+        "device_target",
     }
 )
 
@@ -571,11 +584,13 @@ async def daemon_update_profile(
     has_hard_restart = any(
         k in result.accepted for k in ("model_id", "assistant_model_id")
     )
-    applied = (
-        signal == ReloadSignal.NONE and not has_hard_restart and bool(result.accepted)
-    )
-
     required_mode = result.required_apply_mode
+    applied = (
+        bool(result.accepted)
+        and required_mode == "live"
+        and signal == ReloadSignal.NONE
+        and not has_hard_restart
+    )
     if has_hard_restart and required_mode != "hard_restart":
         required_mode = "hard_restart"
 

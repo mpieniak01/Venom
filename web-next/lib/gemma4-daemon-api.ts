@@ -47,6 +47,13 @@ export type DaemonStatus = {
   target_loaded: boolean;
   assistant_loaded: boolean;
   params: DaemonParamsInfo;
+  active_runtime_config?: DaemonParamsInfo;
+  staged_runtime_config?: DaemonParamsInfo;
+  quantization_effective?: boolean;
+  quantization_effective_reason?: string | null;
+  effective_precision_mode?: string;
+  effective_config_reason?: string | null;
+  vram_interpretation_hint?: string | null;
   vram: VRAMStatus;
   raw_thinking_available: boolean;
   reasoning_summary_status: "disabled" | "summary" | "raw_available";

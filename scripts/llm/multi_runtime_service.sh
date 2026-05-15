@@ -57,6 +57,25 @@ except Exception:
     print("unknown")'
 }
 
+_kill_multi_runtime_strays() {
+  local pids pid
+  pids="$(pgrep -f "python -m services.multi_runtime.main" || true)"
+  for pid in $pids; do
+    if [[ "$pid" == "$$" || "$pid" == "$PPID" ]]; then
+      continue
+    fi
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  pids="$(pgrep -f "python -m services.multi_runtime.main" || true)"
+  for pid in $pids; do
+    if [[ "$pid" == "$$" || "$pid" == "$PPID" ]]; then
+      continue
+    fi
+    kill -9 "$pid" 2>/dev/null || true
+  done
+}
+
 is_ready() {
   [[ "$(health_status)" == "ok" ]]
 }
@@ -178,8 +197,7 @@ start() {
 stop() {
   if [[ "$USE_SYSTEMD" == "true" ]]; then
     echo "Stopping systemd unit ${SYSTEMD_UNIT}"
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT"
-    return 0
+    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT" || true
   fi
 
   if [[ -f "$PID_FILE" ]]; then
@@ -205,8 +223,8 @@ stop() {
     rm -f "$PID_FILE"
   fi
 
-  # Cleanup stray processes
-  pkill -f "services.multi_runtime" 2>/dev/null || true
+  # Cleanup stray daemon processes with explicit PID filtering.
+  _kill_multi_runtime_strays
 
   echo "Multi-Runtime stopped"
   return 0

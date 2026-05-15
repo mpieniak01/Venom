@@ -196,6 +196,28 @@ def test_status_payload_contains_resolved_path_and_runtime_fields(
     assert payload["ready"] is True
     assert "active_execution_provider" in payload
     assert "runtime_device_type" in payload
+    assert "available_execution_providers" in payload
+    assert "requested_provider_available" in payload
+
+
+def test_ensure_ready_fails_when_requested_provider_unavailable(tmp_path, monkeypatch):
+    model_dir = _prepare_model_dir(tmp_path)
+    client = OnnxLlmClient(settings=_settings(ONNX_LLM_MODEL_PATH=str(model_dir)))
+    monkeypatch.setattr(
+        "venom_core.execution.onnx_llm_client.is_onnx_genai_available", lambda: True
+    )
+    monkeypatch.setattr(
+        "venom_core.execution.onnx_llm_client.OnnxLlmClient._is_provider_available",
+        classmethod(lambda cls, provider: False),
+    )
+    monkeypatch.setattr(
+        "venom_core.execution.onnx_llm_client.OnnxLlmClient._available_execution_providers",
+        staticmethod(lambda: ["CPUExecutionProvider"]),
+    )
+    with pytest.raises(
+        RuntimeError, match="requested execution provider is unavailable"
+    ):
+        client.ensure_ready()
 
 
 @pytest.mark.parametrize(
@@ -324,6 +346,10 @@ def test_ensure_runtime_builds_model_once_and_caches(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "venom_core.execution.onnx_llm_client.is_onnx_genai_available", lambda: True
     )
+    monkeypatch.setattr(
+        "venom_core.execution.onnx_llm_client.OnnxLlmClient._is_provider_available",
+        classmethod(lambda cls, provider: True),
+    )
     monkeypatch.setitem(sys.modules, "onnxruntime_genai", fake_og)
     client._ensure_runtime()
     first_model = client._model
@@ -343,6 +369,10 @@ def test_stream_generate_and_generate_return_text(tmp_path, monkeypatch):
     fake_og = _fake_og_module()
     monkeypatch.setattr(
         "venom_core.execution.onnx_llm_client.is_onnx_genai_available", lambda: True
+    )
+    monkeypatch.setattr(
+        "venom_core.execution.onnx_llm_client.OnnxLlmClient._is_provider_available",
+        classmethod(lambda cls, provider: True),
     )
     monkeypatch.setitem(sys.modules, "onnxruntime_genai", fake_og)
     parts = list(

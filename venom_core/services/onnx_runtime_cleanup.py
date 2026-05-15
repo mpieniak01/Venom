@@ -19,11 +19,10 @@ def _safe_call(module_name: str, function_name: str, **kwargs: Any) -> bool:
         func(**kwargs)
         return True
     except Exception:
-        logger.warning(
-            "Failed to run ONNX cleanup hook: %s.%s",
+        logger.exception(
+            "Failed to run ONNX cleanup hook: {}.{}",
             module_name,
             function_name,
-            exc_info=True,
         )
         return False
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse, urlunparse
 
 import httpx
@@ -12,6 +13,64 @@ import httpx
 from venom_core.config import SETTINGS
 from venom_core.utils.runtime_names import MULTI_RUNTIME_ID, is_multi_runtime
 from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
+
+
+class LifecycleStep(str, Enum):
+    """Kroki lifecycle switch runtime — używane do śledzenia postępu przełączenia."""
+
+    PROCESS_STOPPED = "process_stopped"
+    RELEASE_DONE = "release_done"
+    CACHE_INVALIDATED = "cache_invalidated"
+    START_DONE = "start_done"
+    HEALTH_READY = "health_ready"
+    ENDPOINT_SWITCHED = "endpoint_switched"
+    CONFIG_SAVED = "config_saved"
+
+
+@dataclass
+class LifecycleSwitchState:
+    """Opisuje stan przełączenia runtime w danym momencie switch flow.
+
+    Umożliwia diagnostykę i detekcję driftu: które kroki zostały wykonane,
+    a które nie. W razie niepowodzenia pozwala określić, w którym miejscu
+    switch się zatrzymał.
+    """
+
+    from_server: str
+    to_server: str
+    completed_steps: List[LifecycleStep] = field(default_factory=list)
+    failed_step: Optional[LifecycleStep] = None
+    error_message: Optional[str] = None
+
+    def mark_done(self, step: LifecycleStep) -> None:
+        if step not in self.completed_steps:
+            self.completed_steps.append(step)
+
+    def mark_failed(self, step: LifecycleStep, error: str) -> None:
+        self.failed_step = step
+        self.error_message = error
+
+    @property
+    def is_complete(self) -> bool:
+        return (
+            self.failed_step is None
+            and LifecycleStep.CONFIG_SAVED in self.completed_steps
+        )
+
+    @property
+    def is_in_partial_state(self) -> bool:
+        return self.failed_step is not None and len(self.completed_steps) > 0
+
+    def to_payload(self) -> dict:
+        return {
+            "from_server": self.from_server,
+            "to_server": self.to_server,
+            "completed_steps": [s.value for s in self.completed_steps],
+            "failed_step": self.failed_step.value if self.failed_step else None,
+            "error_message": self.error_message,
+            "is_complete": self.is_complete,
+            "is_in_partial_state": self.is_in_partial_state,
+        }
 
 
 @dataclass
@@ -281,3 +340,129 @@ async def warmup_local_runtime(
         return response.status_code < 400
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Drift detection (Faza 4 PR 220A)
+# ---------------------------------------------------------------------------
+
+
+def detect_runtime_drift(settings=None) -> dict:
+    """Detect inconsistency between ACTIVE_LLM_SERVER, endpoint, and model.
+
+    Drift occurs when the config keys disagree with each other or with what
+    get_active_llm_runtime() resolves — e.g. ACTIVE_LLM_SERVER says "ollama"
+    but LLM_LOCAL_ENDPOINT points at a vLLM port, or the model name belongs
+    to a different provider than the active server.
+
+    Returns a dict with:
+      - "drift_detected": bool
+      - "active_server": the ACTIVE_LLM_SERVER value
+      - "inferred_provider": what infer_local_provider() resolves from endpoint
+      - "model_name": current LLM_MODEL_NAME
+      - "endpoint": current LLM_LOCAL_ENDPOINT
+      - "issues": list of human-readable inconsistency descriptions
+    """
+    settings = settings or SETTINGS
+    active_server = (getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+    endpoint = (getattr(settings, "LLM_LOCAL_ENDPOINT", "") or "").strip()
+    model_name = (getattr(settings, "LLM_MODEL_NAME", "") or "").strip()
+    service_type = (getattr(settings, "LLM_SERVICE_TYPE", "local") or "local").lower()
+
+    inferred = _build_inferred_provider(
+        service_type=service_type,
+        endpoint=endpoint,
+    )
+    issues: List[str] = []
+    endpoint_issue = _collect_endpoint_provider_issue(
+        service_type=service_type,
+        active_server=active_server,
+        endpoint=endpoint,
+        inferred_provider=inferred,
+    )
+    if endpoint_issue:
+        issues.append(endpoint_issue)
+
+    runtime = get_active_llm_runtime(settings)
+    runtime_issue = _collect_runtime_provider_issue(
+        service_type=service_type,
+        active_server=active_server,
+        runtime_provider=(runtime.provider or "").strip().lower(),
+    )
+    if runtime_issue:
+        issues.append(runtime_issue)
+
+    return {
+        "drift_detected": len(issues) > 0,
+        "active_server": active_server,
+        "inferred_provider": inferred if service_type == "local" else service_type,
+        "model_name": model_name,
+        "endpoint": endpoint,
+        "issues": issues,
+    }
+
+
+def _build_inferred_provider(*, service_type: str, endpoint: str) -> str:
+    if service_type != "local":
+        return service_type
+    return infer_local_provider(endpoint) if endpoint else ""
+
+
+def _collect_endpoint_provider_issue(
+    *,
+    service_type: str,
+    active_server: str,
+    endpoint: str,
+    inferred_provider: str,
+) -> str | None:
+    if service_type != "local":
+        return None
+    if not active_server or not endpoint:
+        return None
+    if active_server == "onnx":
+        return None
+    if inferred_provider == active_server:
+        return None
+    if active_server == "ollama" and inferred_provider == "local":
+        return None
+    if is_multi_runtime(active_server) and is_multi_runtime(inferred_provider):
+        return None
+    return (
+        f"Configured active server '{active_server}' conflicts with endpoint "
+        f"provider '{inferred_provider}' for '{endpoint}'."
+    )
+
+
+def _should_skip_provider_mismatch(
+    *, active_server: str, runtime_provider: str
+) -> bool:
+    if not active_server or not runtime_provider:
+        return True
+    if runtime_provider == active_server:
+        return True
+    if active_server == "local" or runtime_provider == "local":
+        return True
+    if active_server == "onnx" and runtime_provider == "onnx":
+        return True
+    if is_multi_runtime(active_server) or is_multi_runtime(runtime_provider):
+        return True
+    return False
+
+
+def _collect_runtime_provider_issue(
+    *,
+    service_type: str,
+    active_server: str,
+    runtime_provider: str,
+) -> str | None:
+    if service_type != "local":
+        return None
+    if _should_skip_provider_mismatch(
+        active_server=active_server,
+        runtime_provider=runtime_provider,
+    ):
+        return None
+    return (
+        f"Resolved runtime provider '{runtime_provider}' differs from configured "
+        f"ACTIVE_LLM_SERVER '{active_server}'."
+    )

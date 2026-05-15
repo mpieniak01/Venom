@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -12,6 +12,36 @@ from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class RuntimeCapabilities:
+    """Formalny kontrakt lifecycle dla jednego runtime stack.
+
+    Opisuje które operacje lifecycle są dostępne i jak runtime zachowuje się
+    podczas switch flow: stop → release → flush_cache → start → await_ready.
+    """
+
+    supports_stop: bool
+    supports_start: bool
+    supports_restart: bool
+    supports_health_wait: bool
+    supports_cache_flush: bool
+    supports_model_unload: bool
+    is_in_process: bool
+    release_wait_seconds: int = 0
+
+    def as_dict(self) -> dict:
+        return {
+            "supports_stop": self.supports_stop,
+            "supports_start": self.supports_start,
+            "supports_restart": self.supports_restart,
+            "supports_health_wait": self.supports_health_wait,
+            "supports_cache_flush": self.supports_cache_flush,
+            "supports_model_unload": self.supports_model_unload,
+            "is_in_process": self.is_in_process,
+            "release_wait_seconds": self.release_wait_seconds,
+        }
 
 
 @dataclass
@@ -25,6 +55,17 @@ class LlmServerConfig:
     provider: str
     commands: Dict[str, str]
     health_url: Optional[str] = None
+    capabilities: RuntimeCapabilities = field(
+        default_factory=lambda: RuntimeCapabilities(
+            supports_stop=False,
+            supports_start=False,
+            supports_restart=False,
+            supports_health_wait=False,
+            supports_cache_flush=False,
+            supports_model_unload=False,
+            is_in_process=False,
+        )
+    )
 
 
 @dataclass
@@ -87,6 +128,16 @@ class LlmServerController:
                 "stop": vllm_stop_cmd,
                 "restart": vllm_restart_cmd,
             },
+            capabilities=RuntimeCapabilities(
+                supports_stop=True,
+                supports_start=True,
+                supports_restart=True,
+                supports_health_wait=True,
+                supports_cache_flush=False,
+                supports_model_unload=False,
+                is_in_process=False,
+                release_wait_seconds=10,
+            ),
         )
 
         # Komendy dla Ollama (puste = brak akcji)
@@ -115,6 +166,16 @@ class LlmServerController:
                 "stop": ollama_stop_cmd,
                 "restart": ollama_restart_cmd,
             },
+            capabilities=RuntimeCapabilities(
+                supports_stop=True,
+                supports_start=True,
+                supports_restart=True,
+                supports_health_wait=True,
+                supports_cache_flush=False,
+                supports_model_unload=True,
+                is_in_process=False,
+                release_wait_seconds=5,
+            ),
         )
 
         # Multi-runtime (Gemma 4 multimodal — audio, image, text)
@@ -145,6 +206,16 @@ class LlmServerController:
                 "stop": multi_runtime_stop_cmd,
                 "restart": multi_runtime_restart_cmd,
             },
+            capabilities=RuntimeCapabilities(
+                supports_stop=True,
+                supports_start=True,
+                supports_restart=True,
+                supports_health_wait=True,
+                supports_cache_flush=False,
+                supports_model_unload=False,
+                is_in_process=False,
+                release_wait_seconds=10,
+            ),
         )
 
         # ONNX Runtime działa in-process, ale utrzymujemy spójny wpis serwera
@@ -161,6 +232,16 @@ class LlmServerController:
                 "stop": "",
                 "restart": "",
             },
+            capabilities=RuntimeCapabilities(
+                supports_stop=False,
+                supports_start=False,
+                supports_restart=False,
+                supports_health_wait=False,
+                supports_cache_flush=True,
+                supports_model_unload=True,
+                is_in_process=True,
+                release_wait_seconds=0,
+            ),
         )
 
         return servers
@@ -183,6 +264,7 @@ class LlmServerController:
                         action: bool(command)
                         for action, command in server.commands.items()
                     },
+                    "capabilities": server.capabilities.as_dict(),
                 }
             )
         return servers
@@ -190,6 +272,12 @@ class LlmServerController:
     def has_server(self, server_name: str) -> bool:
         """Sprawdza czy mamy konfigurację serwera."""
         return server_name in self._servers
+
+    def get_capabilities(self, server_name: str) -> RuntimeCapabilities:
+        """Zwraca kontrakt lifecycle dla danego runtime."""
+        if server_name not in self._servers:
+            raise ValueError(f"Nieznany serwer LLM: {server_name}")
+        return self._servers[server_name].capabilities
 
     async def check_systemd_available(
         self, service_name: str = "ollama.service"

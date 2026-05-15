@@ -98,13 +98,37 @@ class OnnxLlmClient:
     def can_serve(self) -> bool:
         return self.is_enabled() and is_onnx_genai_available() and self.has_model_path()
 
+    @staticmethod
+    def _available_execution_providers() -> list[str]:
+        try:
+            import onnxruntime as ort  # type: ignore[import-untyped]
+
+            return [str(item) for item in ort.get_available_providers()]
+        except Exception:
+            return []
+
+    @classmethod
+    def _is_provider_available(cls, provider: str) -> bool:
+        normalized = cls._normalize_execution_provider(provider)
+        aliases = {alias.lower() for alias in cls._provider_aliases(normalized)}
+        for available in cls._available_execution_providers():
+            if str(available).lower() in aliases:
+                return True
+        return False
+
     def status_payload(self) -> dict[str, Any]:
         resolved_path = self._resolve_runtime_model_path()
+        available_providers = self._available_execution_providers()
+        requested_provider_available = self._is_provider_available(
+            self._config.execution_provider
+        )
         return {
             **asdict(self._config),
             "genai_installed": is_onnx_genai_available(),
             "model_path_exists": self.has_model_path(),
             "resolved_model_path": str(resolved_path) if resolved_path else None,
+            "available_execution_providers": available_providers,
+            "requested_provider_available": requested_provider_available,
             "active_execution_provider": self._active_execution_provider,
             "runtime_device_type": self._runtime_device_type,
             "ready": self.can_serve(),
@@ -210,6 +234,19 @@ class OnnxLlmClient:
         if resolved_path is None:
             raise RuntimeError(
                 f"ONNX LLM model path does not exist: {self._config.model_path}"
+            )
+        requested_provider = self._normalize_execution_provider(
+            self._config.execution_provider
+        )
+        if requested_provider != "cpu" and not self._is_provider_available(
+            requested_provider
+        ):
+            available = ", ".join(self._available_execution_providers()) or "none"
+            raise RuntimeError(
+                "ONNX requested execution provider is unavailable "
+                f"(requested={requested_provider}, available={available}). "
+                "Install and activate GPU runtime (onnxruntime-gpu) or set "
+                "ONNX_LLM_EXECUTION_PROVIDER=cpu."
             )
         self._resolved_model_path = str(resolved_path)
 

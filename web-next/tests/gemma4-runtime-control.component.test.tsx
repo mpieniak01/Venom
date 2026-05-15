@@ -313,6 +313,15 @@ describe("Gemma4RuntimeControl — normal state (voice variant)", () => {
     assert.equal(screen.queryByText("component snapshot"), null);
   });
 
+  it("renders image handling block before runtime profile controls", async () => {
+    renderControl(makeState());
+    const imageHeading = screen.getByText(/Obsługa obrazu|Image input|Bildeingabe/i);
+    const profileSection = await screen.findByTestId("runtime-profile-inline");
+    assert.ok(
+      imageHeading.compareDocumentPosition(profileSection) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it("shows CPU / no VRAM when backend=cpu", () => {
     renderControl(makeState());
     assert.ok(document.body.textContent?.includes("CPU"));

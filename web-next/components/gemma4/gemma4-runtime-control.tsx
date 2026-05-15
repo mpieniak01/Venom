@@ -1181,9 +1181,29 @@ function Gemma4RuntimeControlPanel({
                 {opt.value === "" ? t("voice.daemon.cacheDefault") : opt.label}
               </option>
             ))}
-          </select>
+            </select>
+          </div>
         </div>
-      </div>
+
+      {status?.supports_image_input && (
+        <ImageProbeSection
+          busy={busy}
+          imageProbePending={imageProbePending}
+          imageUrlInput={imageUrlInput}
+          imageDataInput={imageDataInput}
+          imageFileName={imageFileName}
+          imagePromptInput={imagePromptInput}
+          imageProbeResult={imageProbeResult}
+          imageProbeDiagnostics={imageProbeDiagnostics}
+          imageProbeError={imageProbeError}
+          imageFileInputRef={imageFileInputRef}
+          onFileChange={handleImageFileChange}
+          onImageUrlChange={setImageUrlInput}
+          onImagePromptChange={setImagePromptInput}
+          onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
+          onProbe={handleImageProbe}
+        />
+      )}
 
       <RuntimeProfileControls />
 
@@ -1205,26 +1225,6 @@ function Gemma4RuntimeControlPanel({
         setShowDrafterInput={setShowDrafterInput}
         onAttach={handleAttach}
       />
-
-      {status?.supports_image_input && (
-        <ImageProbeSection
-          busy={busy}
-          imageProbePending={imageProbePending}
-          imageUrlInput={imageUrlInput}
-          imageDataInput={imageDataInput}
-          imageFileName={imageFileName}
-          imagePromptInput={imagePromptInput}
-          imageProbeResult={imageProbeResult}
-          imageProbeDiagnostics={imageProbeDiagnostics}
-          imageProbeError={imageProbeError}
-          imageFileInputRef={imageFileInputRef}
-          onFileChange={handleImageFileChange}
-          onImageUrlChange={setImageUrlInput}
-          onImagePromptChange={setImagePromptInput}
-          onClearImageData={() => { setImageDataInput(null); setImageFileName(null); }}
-          onProbe={handleImageProbe}
-        />
-      )}
 
       {lastPipelineResponse && (
         <PipelineDiagnosticsPanel response={lastPipelineResponse} />

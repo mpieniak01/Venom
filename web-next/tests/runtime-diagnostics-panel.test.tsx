@@ -35,6 +35,12 @@ describe("RuntimeDiagnosticsPanel", () => {
     );
 
     assert.ok(screen.getByText("Runtime diagnostics"));
+    assert.ok(
+      screen.getByText(/Execution trace|Ślad wykonania|Ausführungsspur/i),
+    );
+    assert.ok(
+      screen.getByText(/Runtime components|Komponenty runtime|Runtime-Komponenten/i),
+    );
     assert.ok(screen.getByText("balanced|vlm_only"));
     assert.ok(screen.getByText("main_model"));
     assert.ok(screen.getByText("retrieval fallback"));

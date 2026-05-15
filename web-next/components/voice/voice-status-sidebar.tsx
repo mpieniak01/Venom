@@ -198,11 +198,12 @@ function RuntimeSwitchCard() {
     () => runtime.serverOptions.map((item) => ({ value: item.value, label: item.label })),
     [runtime.serverOptions],
   );
-  const runtimePlaceholder = serversLoading
-    ? t("voice.controls.loading")
-    : serverOptions.length === 0
-      ? t("voice.controls.noRuntimes")
-      : t("voice.controls.runtime");
+  let runtimePlaceholder = t("voice.controls.runtime");
+  if (serversLoading) {
+    runtimePlaceholder = t("voice.controls.loading");
+  } else if (serverOptions.length === 0) {
+    runtimePlaceholder = t("voice.controls.noRuntimes");
+  }
   const modelOptions = useMemo(
     () => runtime.modelOptions.map((item) => ({ value: item.value, label: item.label })),
     [runtime.modelOptions],

@@ -225,6 +225,7 @@ tests/test_llm_server_selection.py
 tests/test_llm_simple_logic.py
 tests/test_llm_simple_payload_service.py
 tests/test_llm_simple_route_model_resolution.py
+tests/test_llm_simple_service_streaming.py
 tests/test_llm_simple_stream.py
 tests/test_logger_utils.py
 tests/test_main_internal_helpers.py
@@ -408,6 +409,7 @@ tests/test_update_sonar_scope_group.py
 tests/test_url_policy.py
 tests/test_ux_analyst.py
 tests/test_validate_sonar_architecture.py
+tests/test_venom_core_init_compat.py
 tests/test_verify_acceptance_criteria.py
 tests/test_vision_grounding.py
 tests/test_voice_metadata.py

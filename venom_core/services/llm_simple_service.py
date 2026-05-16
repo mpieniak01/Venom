@@ -140,7 +140,7 @@ def _get_request_tracer():
     return get_request_tracer()
 
 
-def _get_active_adapter_id() -> str | None:
+async def _get_active_adapter_id() -> str | None:
     manager = get_model_manager()
     if manager is None:
         return None
@@ -149,12 +149,51 @@ def _get_active_adapter_id() -> str | None:
         return None
     try:
         active = info_getter()
+        if asyncio.iscoroutine(active):
+            active = await active
     except Exception:
         return None
     if not isinstance(active, dict):
         return None
     adapter_id = str(active.get("adapter_id") or "").strip()
     return adapter_id or None
+
+
+async def _aiter_sync_onnx_stream(
+    client: OnnxLlmClient,
+    *,
+    messages: list[dict[str, str]],
+    max_new_tokens: int | None,
+    temperature: float | None,
+) -> AsyncIterator[str]:
+    """Bridge sync ONNX generator to async iteration without blocking event loop."""
+    queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
+
+    def _producer() -> None:
+        try:
+            for token in client.stream_generate(
+                messages=messages,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+            ):
+                asyncio.run_coroutine_threadsafe(queue.put(token), loop)
+        except BaseException as exc:  # pragma: no cover - safety bridge
+            asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
+        finally:
+            asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+    loop = asyncio.get_running_loop()
+    producer_task = asyncio.create_task(asyncio.to_thread(_producer))
+    try:
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        await producer_task
 
 
 def _resolve_model_name_for_simple_request(
@@ -866,7 +905,8 @@ async def _stream_simple_chunks_onnx(
     yield "event: start\ndata: {}\n\n"
     try:
         client = _get_onnx_simple_client()
-        for content in client.stream_generate(
+        async for content in _aiter_sync_onnx_stream(
+            client,
             messages=messages,
             max_new_tokens=max_tokens,
             temperature=temperature,
@@ -926,8 +966,11 @@ async def _stream_simple_chunks_non_stream(
 
     yield "event: start\ndata: {}\n\n"
     try:
-        async with httpx.AsyncClient(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
-            response = await client.post(completions_url, json=payload)
+        async with llm_simple_transport.open_stream_response(
+            provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
+            completions_url=completions_url,
+            payload=payload,
+        ) as response:
             response.raise_for_status()
             data = response.json()
 
@@ -979,7 +1022,7 @@ async def stream_simple_chat(request: SimpleChatRequest):
     model_name = _resolve_model_name_for_simple_request(
         request_model=request.model,
         runtime_model=runtime.model_name,
-        active_adapter_id=_get_active_adapter_id(),
+        active_adapter_id=await _get_active_adapter_id(),
     )
     if not model_name:
         raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")

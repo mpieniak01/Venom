@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { useTranslation } from "@/lib/i18n";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
@@ -17,8 +18,12 @@ type ModelIntrospectionMechanismContextValue = {
 const ModelIntrospectionMechanismContext = createContext<ModelIntrospectionMechanismContextValue | null>(null);
 
 function readEnabledFromStorage(): boolean {
-  if (globalThis.window === undefined) return false;
-  return globalThis.window.localStorage.getItem(STORAGE_KEY) === "true";
+  if (globalThis.window === undefined || globalThis.window.localStorage === undefined) return false;
+  try {
+    return globalThis.window.localStorage.getItem(STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -38,9 +43,13 @@ function subscribe(listener: () => void): () => void {
 }
 
 function writeEnabledToStorage(enabled: boolean) {
-  if (globalThis.window === undefined) return;
-  globalThis.window.localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
-  globalThis.window.dispatchEvent(new Event(STORE_EVENT));
+  if (globalThis.window === undefined || globalThis.window.localStorage === undefined) return;
+  try {
+    globalThis.window.localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
+    globalThis.window.dispatchEvent(new Event(STORE_EVENT));
+  } catch {
+    // Storage may be blocked (privacy mode); keep UI responsive.
+  }
 }
 
 export function ModelIntrospectionMechanismProvider({
@@ -89,8 +98,9 @@ export function ModelIntrospectionMechanismControl({
   variant = "panel",
   className,
 }: Readonly<ModelIntrospectionMechanismControlProps>) {
+  const t = useTranslation();
   const { enabled, setEnabled } = useModelIntrospectionMechanism();
-  const label = enabled ? "enabled" : "disabled";
+  const label = enabled ? t("inspector.modelIntrospection.mechanism.enabled") : t("inspector.modelIntrospection.mechanism.disabled");
 
   if (variant === "compact") {
     return (
@@ -100,12 +110,12 @@ export function ModelIntrospectionMechanismControl({
           className,
         )}
       >
-        <span className="uppercase tracking-[0.28em] text-[color:var(--ui-muted)]">Analysis</span>
+        <span className="uppercase tracking-[0.28em] text-[color:var(--ui-muted)]">{t("inspector.modelIntrospection.mechanism.analysisLabel")}</span>
         <Badge tone={enabled ? "success" : "neutral"}>{label}</Badge>
         <Switch
           checked={enabled}
           onCheckedChange={setEnabled}
-          aria-label="Toggle live analysis mechanism"
+          aria-label={t("inspector.modelIntrospection.mechanism.toggleAria")}
         />
       </div>
     );
@@ -119,9 +129,9 @@ export function ModelIntrospectionMechanismControl({
       )}
     >
       <div className="space-y-1">
-        <p className="text-xs uppercase tracking-wide text-zinc-500">Mechanism</p>
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{t("inspector.modelIntrospection.mechanism.title")}</p>
         <p className="text-sm text-zinc-200">
-          Shared live analysis switch used by Inspector, sidebar and TopBar. Disabled by default to keep the stack light.
+          {t("inspector.modelIntrospection.mechanism.description")}
         </p>
       </div>
       <div className="flex items-center gap-3">
@@ -129,7 +139,7 @@ export function ModelIntrospectionMechanismControl({
         <Switch
           checked={enabled}
           onCheckedChange={setEnabled}
-          aria-label="Toggle live analysis mechanism"
+          aria-label={t("inspector.modelIntrospection.mechanism.toggleAria")}
         />
       </div>
     </div>

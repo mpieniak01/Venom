@@ -84,5 +84,77 @@ def test_model_introspection_stream_endpoint_forwards_sse() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
     assert "event: analysis_start" in response.text
     assert "event: analysis_done" in response.text
+
+
+def test_model_introspection_snapshot_endpoint_returns_500_without_internal_detail() -> (
+    None
+):
+    async def _boom_snapshot(**_kwargs):
+        raise RuntimeError("secret backend detail")
+
+    original = models_introspection.build_model_introspection_snapshot
+    models_introspection.build_model_introspection_snapshot = _boom_snapshot
+    try:
+        client = _client()
+        response = client.get("/api/v1/models/introspection")
+    finally:
+        models_introspection.build_model_introspection_snapshot = original
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+
+
+def test_model_introspection_analyze_endpoint_returns_500_without_internal_detail() -> (
+    None
+):
+    async def _boom_analyze(**_kwargs):
+        raise RuntimeError("sensitive trace")
+
+    original = models_introspection.analyze_model_with_optional_live_run
+    models_introspection.analyze_model_with_optional_live_run = _boom_analyze
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/analyze",
+            json={
+                "prompt": "Co to jest slonce?",
+                "live_analysis_enabled": True,
+                "max_tokens": 32,
+                "temperature": 0.2,
+            },
+        )
+    finally:
+        models_introspection.analyze_model_with_optional_live_run = original
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+
+
+def test_model_introspection_stream_endpoint_returns_500_without_internal_detail() -> (
+    None
+):
+    def _boom_stream(**_kwargs):
+        raise RuntimeError("stream failure")
+
+    original = models_introspection.stream_model_introspection_analysis
+    models_introspection.stream_model_introspection_analysis = _boom_stream
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/analyze/stream",
+            json={
+                "prompt": "Co to jest slonce?",
+                "live_analysis_enabled": True,
+                "max_tokens": 32,
+                "temperature": 0.2,
+            },
+        )
+    finally:
+        models_introspection.stream_model_introspection_analysis = original
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"

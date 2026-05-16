@@ -136,6 +136,7 @@ type AnalysisProcessTrace = {
   request_id: string;
   status: string;
   step_count: number;
+  trace_step_count?: number | null;
   steps: AnalysisProcessStep[];
   first_chunk_ms?: number | null;
   response_chunks?: number | null;
@@ -326,12 +327,7 @@ function AnalysisOrb({
     const targetValue = progressPercent;
     const distance = Math.abs(targetValue - startValue);
 
-    if (distance < 0.25) {
-      setDisplayProgress(targetValue);
-      return;
-    }
-
-    const duration = Math.max(240, Math.min(1200, 160 + distance * 9));
+    const duration = distance < 0.25 ? 80 : Math.max(240, Math.min(1200, 160 + distance * 9));
     const animate = (timestamp: number) => {
       if (startAt === 0) {
         startAt = timestamp;
@@ -518,7 +514,9 @@ export function ModelIntrospectionDashboard() {
   const [snapshot, setSnapshot] = useState<IntrospectionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [analysisPrompt, setAnalysisPrompt] = useState("Co to jest slonce?");
+  const [analysisPrompt, setAnalysisPrompt] = useState(
+    t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder"),
+  );
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -792,7 +790,7 @@ export function ModelIntrospectionDashboard() {
         };
       }
     }
-  }, [analysisMechanismEnabled, analysisResult?.analysis, analysisVisible, selectedGraphNode, snapshot]);
+  }, [analysisMechanismEnabled, analysisResult?.analysis, analysisResult?.status, analysisVisible, selectedGraphNode, snapshot]);
 
   const runAnalysis = useCallback(async () => {
     if (!analysisPrompt.trim()) {

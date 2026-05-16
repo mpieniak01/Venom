@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import warnings
 
 
 def _patch_pydantic_url() -> None:
@@ -13,9 +14,13 @@ def _patch_pydantic_url() -> None:
             from pydantic import AnyUrl
 
             networks.Url = AnyUrl  # type: ignore[attr-defined]
-    except Exception:
+    except (ImportError, AttributeError) as exc:
         # Best-effort compatibility; never block test collection.
-        pass
+        warnings.warn(
+            f"pydantic Url compatibility patch failed: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def _patch_openai_omit() -> None:
@@ -24,9 +29,13 @@ def _patch_openai_omit() -> None:
         openai_types = importlib.import_module("openai._types")
         if not hasattr(openai_types, "omit") and hasattr(openai_types, "Omit"):
             openai_types.omit = openai_types.Omit()  # type: ignore[attr-defined]
-    except Exception:
+    except (ImportError, AttributeError) as exc:
         # Best-effort compatibility; never block test collection.
-        pass
+        warnings.warn(
+            f"openai omit compatibility patch failed: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 _patch_pydantic_url()

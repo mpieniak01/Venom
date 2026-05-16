@@ -58,7 +58,11 @@ def main() -> int:
     args = parser.parse_args()
 
     runs = max(1, int(args.runs))
-    samples = [_run_once(args.base_url.rstrip("/")) for _ in range(runs)]
+    try:
+        samples = [_run_once(args.base_url.rstrip("/")) for _ in range(runs)]
+    except Exception as exc:  # noqa: BLE001
+        print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+        return 1
     elapsed = [float(sample["elapsed_sec"]) for sample in samples]
     payload_sizes = [int(sample["payload_bytes"]) for sample in samples]
 

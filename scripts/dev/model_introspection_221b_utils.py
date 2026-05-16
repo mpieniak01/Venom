@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 from urllib import error, request
+from urllib.parse import urlparse
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -41,6 +42,9 @@ def request_json(
     payload: dict[str, Any] | None = None,
     timeout_sec: float = 30.0,
 ) -> tuple[int, Any]:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return 0, {"error": f"unsupported URL scheme: {parsed.scheme or '<empty>'}"}
     data_bytes: bytes | None = None
     headers: dict[str, str] = {}
     if payload is not None:

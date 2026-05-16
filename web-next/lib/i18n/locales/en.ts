@@ -538,6 +538,10 @@ export const en = {
     },
   },
   inspector: {
+    links: {
+      openModelIntrospection: "Open model introspection",
+      goToKnowledgeGraph: "Go to Knowledge Graph",
+    },
     page: {
       eyebrow: "Inspector / Diagnostics",
       title: "Trace Analysis",
@@ -598,6 +602,15 @@ export const en = {
           stateOpen: "open",
           stateCollapsed: "collapsed",
         },
+      },
+      mechanism: {
+        enabled: "enabled",
+        disabled: "disabled",
+        analysisLabel: "Analysis",
+        title: "Mechanism",
+        description:
+          "Shared live analysis switch used by Inspector, sidebar and TopBar. Disabled by default to keep the stack light.",
+        toggleAria: "Toggle live analysis mechanism",
       },
       actions: {
         refresh: "Refresh snapshot",

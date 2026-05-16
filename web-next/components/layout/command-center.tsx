@@ -169,8 +169,8 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         <section className="surface-card p-4">
           <header className="mb-3 flex items-center justify-between">
             <div>
-              <p className="eyebrow">Introspection</p>
-              <h3 className="heading-h3">Live analysis mechanism</h3>
+              <p className="eyebrow">{t("commandCenter.introspection.eyebrow")}</p>
+              <h3 className="heading-h3">{t("commandCenter.introspection.title")}</h3>
             </div>
             <Compass className="h-5 w-5 text-sky-300" />
           </header>

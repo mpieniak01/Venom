@@ -7,6 +7,7 @@ Pydantic 2.12+ where `Url` is no longer exported from that module.
 """
 
 import importlib
+import warnings
 
 # Compat: ensure pydantic.networks.Url exists for dependencies expecting it.
 try:
@@ -15,9 +16,13 @@ try:
         from pydantic import AnyUrl
 
         networks.Url = AnyUrl  # type: ignore[attr-defined]
-except Exception:
+except (ImportError, ModuleNotFoundError, AttributeError) as exc:
     # Best-effort compatibility; avoid breaking import chain.
-    pass
+    warnings.warn(
+        f"pydantic Url compatibility patch skipped: {exc}",
+        RuntimeWarning,
+        stacklevel=2,
+    )
 
 # Compat: Semantic Kernel 1.39.x still imports `openai._types.omit`, but the
 # symbol was removed from newer OpenAI SDK releases. Re-create it lazily so
@@ -26,6 +31,10 @@ try:
     openai_types = importlib.import_module("openai._types")
     if not hasattr(openai_types, "omit") and hasattr(openai_types, "Omit"):
         openai_types.omit = openai_types.Omit()  # type: ignore[attr-defined]
-except Exception:
+except (ImportError, ModuleNotFoundError, AttributeError) as exc:
     # Best-effort compatibility; avoid breaking import chain.
-    pass
+    warnings.warn(
+        f"openai omit compatibility patch skipped: {exc}",
+        RuntimeWarning,
+        stacklevel=2,
+    )

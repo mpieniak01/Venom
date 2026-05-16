@@ -25,6 +25,10 @@ export const commandCenter = {
       strategy: { label: "Strategia", description: "Strategia i KPI operacyjne" },
     },
   },
+  introspection: {
+    eyebrow: "Introspekcja",
+    title: "Mechanizm analizy na żywo",
+  },
   tasks: {
     eyebrow: "Aktywne taski",
     title: "Status agentów",

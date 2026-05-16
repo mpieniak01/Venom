@@ -35,6 +35,24 @@ def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
     return events
 
 
+def _drain_sse_events(buffer: str) -> tuple[list[tuple[str, str]], str]:
+    events: list[tuple[str, str]] = []
+    blocks = buffer.split("\n\n")
+    tail = blocks.pop() if blocks else ""
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        events.extend(_iter_sse_events(block + "\n\n"))
+    return events, tail
+
+
+def parse_sse_events(chunk_text: str) -> list[tuple[str, str]]:
+    """Public SSE parsing helper used by tests and probes."""
+    events, _ = _drain_sse_events(f"{chunk_text}\n\n")
+    return events
+
+
 def _serialize_sse_event(event_name: str, data: Any) -> str:
     return f"event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -254,6 +272,7 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
         }
 
     raw_chunks: list[str] = []
+    sse_tail = ""
     async for chunk in body_iterator:
         chunk_at_ms = (time.perf_counter() - stream_started_at) * 1000.0
         chunk_text = (
@@ -262,7 +281,8 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
             else str(chunk)
         )
         raw_chunks.append(chunk_text)
-        for event_name, payload in _iter_sse_events(chunk_text):
+        drained_events, sse_tail = _drain_sse_events(sse_tail + chunk_text)
+        for event_name, payload in drained_events:
             events.append(event_name)
             if event_name == "content" and payload:
                 try:
@@ -412,6 +432,7 @@ async def stream_model_introspection_analysis(
     if body_iterator is None:
         raise RuntimeError("analysis stream response does not expose a body iterator")
 
+    sse_tail = ""
     async for chunk in body_iterator:
         chunk_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
         chunk_text = (
@@ -419,7 +440,8 @@ async def stream_model_introspection_analysis(
             if isinstance(chunk, bytes)
             else str(chunk)
         )
-        for event_name, payload in _iter_sse_events(chunk_text):
+        drained_events, sse_tail = _drain_sse_events(sse_tail + chunk_text)
+        for event_name, payload in drained_events:
             events.append(event_name)
             if event_name == "content" and payload:
                 try:
@@ -435,6 +457,26 @@ async def stream_model_introspection_analysis(
             elif event_name == "error":
                 raise RuntimeError(payload or "analysis stream failed")
         yield chunk_text
+
+    if sse_tail.strip():
+        drained_events, _ = _drain_sse_events(sse_tail + "\n\n")
+        for event_name, payload in drained_events:
+            events.append(event_name)
+            if event_name == "content" and payload:
+                try:
+                    parsed = json.loads(payload)
+                except Exception:
+                    parsed = {}
+                text = str(parsed.get("text") or "")
+                if text:
+                    content_parts.append(text)
+                    chunk_count += 1
+                    if first_content_at_ms is None:
+                        first_content_at_ms = (
+                            time.perf_counter() - flow_started_at
+                        ) * 1000.0
+            elif event_name == "error":
+                raise RuntimeError(payload or "analysis stream failed")
 
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
     refreshed_snapshot = await build_model_introspection_snapshot(
@@ -497,9 +539,9 @@ async def analyze_model_with_optional_live_run(
     )
     runtime = snapshot["runtime"]
     if not live_analysis_enabled:
-        result = _build_skipped_analysis_result(prompt, runtime)
-        result["snapshot"] = snapshot
-        return result
+        skipped_result = _build_skipped_analysis_result(prompt, runtime)
+        skipped_result["snapshot"] = snapshot
+        return skipped_result
 
     if not prompt.strip():
         raise ValueError("prompt cannot be empty")

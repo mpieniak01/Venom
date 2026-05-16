@@ -7,11 +7,11 @@ import json
 import threading
 import time
 from typing import Any, AsyncIterator, Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter
 
+import venom_core.services.llm_simple_service as llm_simple_service_module
 from venom_core.api.routes import system_deps
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.config import SETTINGS
@@ -24,12 +24,6 @@ from venom_core.services.llm_simple_payload_service import (
 )
 from venom_core.services.llm_simple_payload_service import (
     apply_output_format_to_payload as _apply_output_format_to_payload,
-)
-from venom_core.services.llm_simple_payload_service import (
-    build_messages as _build_messages,
-)
-from venom_core.services.llm_simple_payload_service import (
-    build_streaming_headers as _build_streaming_headers,
 )
 from venom_core.services.llm_simple_payload_service import (
     extract_runtime_telemetry as _extract_runtime_telemetry,
@@ -51,6 +45,9 @@ from venom_core.services.llm_simple_payload_service import (
 )
 from venom_core.services.llm_simple_payload_service import (
     resolve_output_format as _resolve_output_format,
+)
+from venom_core.services.llm_simple_service import (
+    stream_simple_chat as stream_simple_chat_service,
 )
 from venom_core.services.llm_simple_stream_service import (
     SimpleStreamState as _SimpleStreamState,
@@ -81,7 +78,6 @@ from venom_core.utils.llm_runtime import (
     get_active_llm_runtime,
 )
 from venom_core.utils.ollama_tuning import build_ollama_runtime_options
-from venom_core.utils.runtime_names import is_multi_runtime
 from venom_core.utils.text import trim_to_char_limit
 
 # Backwards-compatible aliases for older tests/imports.
@@ -358,6 +354,24 @@ def _build_payload(
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     return payload
+
+
+def _build_messages(system_prompt: str, user_content: str) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_content})
+    return messages
+
+
+def _build_streaming_headers(request_id: str, session_id: str) -> dict[str, str]:
+    return {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Request-Id": request_id,
+        "X-Session-Id": session_id,
+        "X-Accel-Buffering": "no",
+    }
 
 
 def _extract_message_content(data: dict[str, object], fallback_text: str = "") -> str:
@@ -988,73 +1002,13 @@ async def _stream_simple_chunks_non_stream(
     },
 )
 async def stream_simple_chat(request: SimpleChatRequest):
-    await asyncio.sleep(0)
-    runtime = get_active_llm_runtime()
-    model_name = _resolve_model_name_for_simple_request(
-        request_model=request.model,
-        runtime_model=runtime.model_name,
-        active_adapter_id=_get_active_adapter_id(),
+    # Compatibility bridge: existing route-level tests monkeypatch symbols in this module.
+    setattr(llm_simple_service_module, "get_active_llm_runtime", get_active_llm_runtime)
+    setattr(
+        llm_simple_service_module,
+        "_build_chat_completions_url",
+        _build_chat_completions_url,
     )
-    if not model_name:
-        raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
-    request_id: UUID = uuid4()
-    _trace_simple_request(request_id, request, runtime, model_name)
-
-    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
-    user_content = _trim_user_content_for_runtime(
-        request.content, system_prompt, runtime, request_id
-    )
-    messages = _build_messages(system_prompt, user_content)
-    payload = _build_payload(request, runtime, model_name, messages)
-    _trace_context_preview(request_id, messages)
-    headers = _build_streaming_headers(str(request_id), request.session_id or "")
-    runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
-    runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
-    completions_url = _build_chat_completions_url(runtime)
-    if runtime_provider == "onnx" or runtime_service_type == "onnx":
-        return StreamingResponse(
-            _stream_simple_chunks_onnx(
-                runtime=runtime,
-                request_id=request_id,
-                model_name=model_name,
-                messages=messages,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-            ),
-            media_type="text/event-stream",
-            headers=headers,
-        )
-
-    if is_multi_runtime(runtime_provider):
-        if not completions_url:
-            raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
-        return StreamingResponse(
-            _stream_simple_chunks_non_stream(
-                completions_url=completions_url,
-                payload=_build_payload(
-                    request,
-                    runtime,
-                    model_name,
-                    messages,
-                    stream=False,
-                ),
-                runtime=runtime,
-                request_id=request_id,
-                model_name=model_name,
-            ),
-            media_type="text/event-stream",
-            headers=headers,
-        )
-    if not completions_url:
-        raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
-    return StreamingResponse(
-        _stream_simple_chunks(
-            completions_url=completions_url,
-            payload=payload,
-            runtime=runtime,
-            request_id=request_id,
-            model_name=model_name,
-        ),
-        media_type="text/event-stream",
-        headers=headers,
-    )
+    setattr(llm_simple_service_module, "_stream_simple_chunks", _stream_simple_chunks)
+    setattr(llm_simple_service_module, "OnnxLlmClient", OnnxLlmClient)
+    return await stream_simple_chat_service(request)

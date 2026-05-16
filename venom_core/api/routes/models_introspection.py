@@ -36,7 +36,7 @@ async def get_model_introspection() -> dict[str, object]:
         return {"success": True, "snapshot": snapshot}
     except Exception as exc:
         logger.exception("Błąd podczas budowania snapshotu modelu")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.post(
@@ -63,7 +63,7 @@ async def analyze_model_introspection(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Błąd podczas analizy modelu")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.post(
@@ -98,4 +98,4 @@ async def stream_model_introspection_analysis_endpoint(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Błąd podczas streamowanej analizy modelu")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Internal server error") from exc

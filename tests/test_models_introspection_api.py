@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import models as models_routes
 from venom_core.api.routes import models_dependencies
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_model_dependencies() -> None:
+    yield
+    models_dependencies.set_dependencies(model_manager=None)
 
 
 class DummyModelManager:

@@ -64,3 +64,25 @@ def test_221c_probe_script_writes_analysis_snapshot(
     assert calls[0]["method"] == "POST"
     assert calls[0]["payload"]["live_analysis_enabled"] is False
     assert json.loads(out.read_text(encoding="utf-8")) == payload
+
+
+def test_221c_probe_script_returns_error_on_non_200(
+    tmp_path: Path, monkeypatch
+) -> None:
+    def fake_request_json(url, **kwargs):
+        return 500, {"error": "boom"}
+
+    monkeypatch.setattr(probe_script, "request_json", fake_request_json)
+    monkeypatch.setattr(
+        probe_script,
+        "base_url_from_env",
+        lambda default: "http://127.0.0.1:8000",
+    )
+    out = tmp_path / "analysis-error.json"
+    with patch.object(
+        probe_script.sys,
+        "argv",
+        ["probe", "--output", str(out)],
+    ):
+        assert probe_script.main() == 1
+    assert not out.exists() or out.read_text(encoding="utf-8").strip() == ""

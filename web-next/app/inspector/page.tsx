@@ -28,10 +28,10 @@ export default function InspectorPage() {
 
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link href="/inspector/model-introspection">Otwórz introspekcję modelu</Link>
+          <Link href="/inspector/model-introspection">{t("inspector.links.openModelIntrospection")}</Link>
         </Button>
         <Button asChild variant="ghost" size="sm">
-          <Link href="/brain">Przejdź do Grafu wiedzy</Link>
+          <Link href="/brain">{t("inspector.links.goToKnowledgeGraph")}</Link>
         </Button>
       </div>
 

@@ -539,6 +539,10 @@ export const pl = {
     },
   },
   inspector: {
+    links: {
+      openModelIntrospection: "Otwórz introspekcję modelu",
+      goToKnowledgeGraph: "Przejdź do Grafu wiedzy",
+    },
     page: {
       eyebrow: "Inspector / Diagnostyka",
       title: "Analiza śladów",
@@ -563,7 +567,7 @@ export const pl = {
           title: "Analiza modelu na żywo",
           description: "Opcjonalne wykonanie promptu na aktywnym modelu. Domyślnie wyłączone, aby nie obciążać stosu.",
           promptLabel: "Prompt",
-          promptPlaceholder: "Co to jest slonce?",
+          promptPlaceholder: "Co to jest słońce?",
           run: "Uruchom analizę",
           running: "Uruchamianie...",
           reset: "Resetuj prompt",
@@ -599,6 +603,15 @@ export const pl = {
           stateOpen: "otwarte",
           stateCollapsed: "zwinięte",
         },
+      },
+      mechanism: {
+        enabled: "włączony",
+        disabled: "wyłączony",
+        analysisLabel: "Analiza",
+        title: "Mechanizm",
+        description:
+          "Wspólny przełącznik analizy live dla Inspektora, sidebara i TopBar. Domyślnie wyłączony, aby odciążyć stos.",
+        toggleAria: "Przełącz mechanizm analizy na żywo",
       },
       actions: {
         refresh: "Odśwież snapshot",

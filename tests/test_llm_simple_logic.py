@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -9,6 +12,8 @@ from fastapi.testclient import TestClient
 from tests.helpers.url_fixtures import MOCK_HTTP, http_url
 from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.main import app
+from venom_core.services import llm_simple_service
+from venom_core.services.llm_simple_stream_service import SimpleStreamState
 
 
 class DummyRuntime:
@@ -484,7 +489,22 @@ def test_stream_simple_chat_multi_runtime_uses_non_stream_upstream(monkeypatch):
         "_build_chat_completions_url",
         lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
-    monkeypatch.setattr(httpx, "AsyncClient", DummyTrafficControlledClient)
+
+    @asynccontextmanager
+    async def _fake_open_stream_response(**_kwargs):
+        yield DummyNonStreamResponse(
+            {
+                "choices": [
+                    {"message": {"content": "Witaj z multi_runtime"}},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(
+        llm_simple_routes.llm_simple_transport,
+        "open_stream_response",
+        _fake_open_stream_response,
+    )
     client = TestClient(app)
 
     with client.stream(
@@ -501,3 +521,374 @@ def test_stream_simple_chat_multi_runtime_uses_non_stream_upstream(monkeypatch):
         "done",
     ]
     assert events[1]["data"]["text"] == "Witaj z multi_runtime"
+
+
+@pytest.mark.asyncio
+async def test_service_handles_missing_model_and_endpoint(monkeypatch):
+    runtime = DummyRuntime(provider="ollama", model_name=None)
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+
+    async def _no_adapter():
+        return None
+
+    monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", _no_adapter)
+
+    with pytest.raises(llm_simple_service.HTTPException) as missing_model:
+        await llm_simple_service.stream_simple_chat(
+            llm_simple_routes.SimpleChatRequest(content="x")
+        )
+    assert missing_model.value.status_code == 400
+
+    runtime = DummyRuntime(provider="ollama", model_name="model-x")
+    runtime.endpoint = None
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", _no_adapter)
+    monkeypatch.setattr(
+        llm_simple_service, "_build_chat_completions_url", lambda _rt: None
+    )
+    with pytest.raises(llm_simple_service.HTTPException) as missing_endpoint:
+        await llm_simple_service.stream_simple_chat(
+            llm_simple_routes.SimpleChatRequest(content="x")
+        )
+    assert missing_endpoint.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_service_non_stream_invalid_json_path(monkeypatch):
+    class _BadResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return ["invalid"]
+
+    @asynccontextmanager
+    async def _fake_open_stream_response(**_kwargs):
+        yield _BadResponse()
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport,
+        "open_stream_response",
+        _fake_open_stream_response,
+    )
+
+    events = []
+    async for event in llm_simple_service._stream_simple_chunks_non_stream(
+        completions_url="http://localhost/v1/chat/completions",
+        payload={"messages": []},
+        runtime=DummyRuntime(provider="multi_runtime"),
+        request_id=llm_simple_service.uuid4(),
+        model_name="model-x",
+    ):
+        events.append(event)
+
+    assert events[0].startswith("event: start")
+    assert events[-1].startswith("event: done")
+
+
+def test_service_resolve_post_attempt_action_retry_and_done(monkeypatch):
+    state_retry = SimpleStreamState(chunks=[], retry_requested=True)
+    action_retry = llm_simple_service._resolve_post_attempt_action(
+        runtime=DummyRuntime(),
+        request_id=llm_simple_service.uuid4(),
+        stream_start=0.0,
+        state=state_retry,
+        runtime_telemetry={},
+    )
+    assert action_retry == "retry"
+    assert llm_simple_service._apply_post_attempt_action(action_retry) == (True, False)
+
+    collector_calls = []
+    monkeypatch.setattr(
+        llm_simple_service,
+        "get_metrics_collector",
+        lambda: SimpleNamespace(
+            record_provider_request=lambda **kwargs: collector_calls.append(kwargs),
+            record_runtime_sample=lambda **_kwargs: None,
+        ),
+    )
+    state_done = SimpleStreamState(chunks=["A"], chunk_count=1, completed=True)
+    action_done = llm_simple_service._resolve_post_attempt_action(
+        runtime=DummyRuntime(),
+        request_id=llm_simple_service.uuid4(),
+        stream_start=0.0,
+        state=state_done,
+        runtime_telemetry={},
+    )
+    assert action_done == "done"
+    assert llm_simple_service._apply_post_attempt_action(action_done) == (False, True)
+    assert collector_calls and collector_calls[-1]["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_service_onnx_stream_success_and_error(monkeypatch):
+    collector_calls = []
+    monkeypatch.setattr(
+        llm_simple_service,
+        "get_metrics_collector",
+        lambda: SimpleNamespace(
+            record_provider_request=lambda **kwargs: collector_calls.append(kwargs),
+            record_runtime_sample=lambda **_kwargs: None,
+        ),
+    )
+    monkeypatch.setattr(
+        llm_simple_service,
+        "_get_onnx_simple_client",
+        lambda: SimpleNamespace(stream_generate=lambda **_kwargs: iter(())),
+    )
+
+    async def _fake_stream_ok(*_args, **_kwargs):
+        yield "A"
+
+    monkeypatch.setattr(llm_simple_service, "_aiter_sync_onnx_stream", _fake_stream_ok)
+    ok_events = []
+    async for event in llm_simple_service._stream_simple_chunks_onnx(
+        runtime=DummyRuntime(provider="onnx"),
+        request_id=llm_simple_service.uuid4(),
+        model_name="onnx-model",
+        messages=[{"role": "user", "content": "x"}],
+        max_tokens=8,
+        temperature=0.2,
+    ):
+        ok_events.append(event)
+    assert ok_events[-1].startswith("event: done")
+
+    async def _fake_stream_boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(
+        llm_simple_service, "_aiter_sync_onnx_stream", _fake_stream_boom
+    )
+    err_events = []
+    async for event in llm_simple_service._stream_simple_chunks_onnx(
+        runtime=DummyRuntime(provider="onnx"),
+        request_id=llm_simple_service.uuid4(),
+        model_name="onnx-model",
+        messages=[{"role": "user", "content": "x"}],
+        max_tokens=8,
+        temperature=0.2,
+    ):
+        err_events.append(event)
+    assert err_events[-1].startswith("event: error")
+
+
+def test_service_helper_branches_and_emitters(monkeypatch):
+    class _Tracer:
+        def __init__(self):
+            self.steps = []
+            self.errors = []
+            self.status = []
+
+        def add_step(self, *args, **kwargs):
+            self.steps.append((args, kwargs))
+
+        def set_error_metadata(self, *args, **kwargs):
+            self.errors.append((args, kwargs))
+
+        def update_status(self, *args, **kwargs):
+            self.status.append((args, kwargs))
+
+    tracer = _Tracer()
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: tracer)
+
+    assert (
+        llm_simple_service._get_simple_context_char_limit(DummyRuntime("ollama"))
+        is None
+    )
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "VLLM_MAX_MODEL_LEN", 128)
+    assert (
+        llm_simple_service._get_simple_context_char_limit(DummyRuntime("vllm"))
+        is not None
+    )
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "VLLM_MAX_MODEL_LEN", 0)
+    assert (
+        llm_simple_service._get_simple_context_char_limit(DummyRuntime("vllm")) is None
+    )
+
+    assert llm_simple_service._call_tracer(None, "add_step") is False
+    assert llm_simple_service._build_preview("abcd", max_chars=2) == "ab..."
+
+    request_id = uuid4()
+    llm_simple_service._trace_context_preview(
+        request_id,
+        [{"role": "user", "content": "x" * 2500}],
+    )
+    llm_simple_service._record_simple_error(
+        request_id,
+        error_code="code",
+        error_message="msg",
+        error_details={"k": "v"},
+    )
+
+    monkeypatch.setattr(
+        llm_simple_service,
+        "_get_simple_context_char_limit",
+        lambda _rt: 16,
+    )
+    trimmed = llm_simple_service._trim_user_content_for_runtime(
+        "x" * 200, "sys", DummyRuntime("vllm"), request_id
+    )
+    assert len(trimmed) < 200
+    assert tracer.steps
+
+    collector_calls = []
+    monkeypatch.setattr(
+        llm_simple_service,
+        "get_metrics_collector",
+        lambda: SimpleNamespace(
+            record_provider_request=lambda **kwargs: collector_calls.append(kwargs),
+            record_runtime_sample=lambda **_kwargs: None,
+        ),
+    )
+    emit1 = llm_simple_service._emit_connection_error_and_mark_failed(
+        exc=httpx.ConnectError("offline"),
+        runtime=DummyRuntime(),
+        request_id=request_id,
+        model_name="model-x",
+        stream_start=0.0,
+    )
+    emit2 = llm_simple_service._emit_internal_error_and_mark_failed(
+        exc=RuntimeError("boom"),
+        runtime=DummyRuntime(),
+        request_id=request_id,
+        stream_start=0.0,
+    )
+    assert emit1.startswith("event: error")
+    assert emit2.startswith("event: error")
+    assert collector_calls
+
+
+@pytest.mark.asyncio
+async def test_service_stream_single_attempt_wrapper_covers_retry_config(monkeypatch):
+    captured = {}
+
+    async def _fake_impl(**kwargs):
+        captured.update(kwargs)
+        yield 'event: content\ndata: {"text":"x"}\n\n'
+        kwargs["state"].retry_requested = True
+
+    monkeypatch.setattr(llm_simple_service, "_stream_single_attempt_impl", _fake_impl)
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport,
+        "httpx_module",
+        lambda: httpx,
+    )
+
+    state = SimpleStreamState(chunks=[])
+    runtime_telemetry = {"prompt_eval_count": 3}
+    events = []
+    async for event in llm_simple_service._stream_single_attempt(
+        completions_url="http://localhost/v1/chat/completions",
+        payload={"messages": []},
+        runtime=DummyRuntime("ollama"),
+        request_id=uuid4(),
+        model_name="model-x",
+        stream_start=0.0,
+        attempt=1,
+        max_attempts=2,
+        retry_backoff=0.1,
+        state=state,
+        runtime_telemetry=runtime_telemetry,
+    ):
+        events.append(event)
+
+    assert events and events[0].startswith("event: content")
+    assert captured["retry"].max_attempts == 2
+    assert runtime_telemetry == {}
+
+
+def test_service_release_onnx_client_handles_close_error(monkeypatch):
+    class _Client:
+        def __init__(self, boom: bool):
+            self.boom = boom
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+            if self.boom:
+                raise RuntimeError("close failed")
+
+    client_ok = _Client(False)
+    monkeypatch.setattr(llm_simple_service, "_ONNX_SIMPLE_CLIENT", client_ok)
+    llm_simple_service.release_onnx_simple_client()
+    assert client_ok.closed is True
+
+    client_boom = _Client(True)
+    monkeypatch.setattr(llm_simple_service, "_ONNX_SIMPLE_CLIENT", client_boom)
+    llm_simple_service.release_onnx_simple_client()
+    assert client_boom.closed is True
+
+
+@pytest.mark.asyncio
+async def test_service_non_stream_http_status_error_branch(monkeypatch):
+    request = httpx.Request("POST", MOCK_HTTP)
+    response = httpx.Response(502, request=request, text="upstream failed")
+
+    class _BadResponse:
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError("bad", request=request, response=response)
+
+        def json(self):
+            return {}
+
+    @asynccontextmanager
+    async def _fake_open_stream_response(**_kwargs):
+        yield _BadResponse()
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport,
+        "open_stream_response",
+        _fake_open_stream_response,
+    )
+
+    events = []
+    async for event in llm_simple_service._stream_simple_chunks_non_stream(
+        completions_url="http://localhost/v1/chat/completions",
+        payload={"messages": []},
+        runtime=DummyRuntime(),
+        request_id=uuid4(),
+        model_name="model-x",
+    ):
+        events.append(event)
+    assert events[-1].startswith("event: error")
+
+
+@pytest.mark.asyncio
+async def test_service_handle_stream_http_error_retry_and_emit(monkeypatch):
+    request = httpx.Request("POST", MOCK_HTTP)
+    response = httpx.Response(503, request=request, text="retry me")
+    err = httpx.HTTPStatusError("bad", request=request, response=response)
+
+    monkeypatch.setattr(
+        llm_simple_service,
+        "_is_retryable_runtime_http_error",
+        lambda **kwargs: kwargs["attempt_no"] < kwargs["max_retries"],
+    )
+    retry_result = await llm_simple_service._handle_stream_http_error(
+        exc=err,
+        runtime=DummyRuntime("ollama"),
+        request_id=uuid4(),
+        model_name="model-x",
+        stream_start=0.0,
+        attempt=1,
+        max_attempts=2,
+        retry_backoff=0.0,
+        chunk_count=0,
+        runtime_telemetry={},
+    )
+    assert retry_result == "retry"
+
+    emit_result = await llm_simple_service._handle_stream_http_error(
+        exc=err,
+        runtime=DummyRuntime("ollama"),
+        request_id=uuid4(),
+        model_name="model-x",
+        stream_start=0.0,
+        attempt=2,
+        max_attempts=2,
+        retry_backoff=0.0,
+        chunk_count=0,
+        runtime_telemetry={},
+    )
+    assert emit_result.startswith("event: error")

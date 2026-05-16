@@ -236,7 +236,7 @@ async def test_analysis_stream_emits_progressive_events(
 
     events = []
     for chunk in chunks:
-        events.extend(analysis_service._iter_sse_events(chunk))
+        events.extend(analysis_service.parse_sse_events(chunk))
 
     event_names = [event_name for event_name, _ in events]
     assert event_names[0] == "analysis_start"

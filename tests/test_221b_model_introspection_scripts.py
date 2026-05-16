@@ -53,6 +53,23 @@ def test_probe_script_writes_snapshot(
     assert json.loads(out.read_text(encoding="utf-8")) == payload
 
 
+def test_probe_script_returns_error_on_non_200(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        probe_script, "request_json", lambda url, **_kwargs: (500, {"error": "boom"})
+    )
+    monkeypatch.setattr(
+        probe_script,
+        "base_url_from_env",
+        lambda default: "http://127.0.0.1:8000",
+    )
+    out = tmp_path / "snapshot-error.json"
+    with patch.object(probe_script.sys, "argv", ["probe", "--output", str(out)]):
+        assert probe_script.main() == 1
+    assert not out.exists() or out.read_text(encoding="utf-8").strip() == ""
+
+
 def test_benchmark_script_produces_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -83,3 +100,26 @@ def test_benchmark_script_produces_report(
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["runs"] == 2
     assert report["summary"]["payload_bytes_max"] > 0
+
+
+def test_benchmark_script_returns_error_on_non_200(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        benchmark_script,
+        "request_json",
+        lambda url, **_kwargs: (500, {"error": "boom"}),
+    )
+    monkeypatch.setattr(
+        benchmark_script,
+        "base_url_from_env",
+        lambda default: "http://127.0.0.1:8000",
+    )
+    out = tmp_path / "benchmark-error.json"
+    with patch.object(
+        benchmark_script.sys,
+        "argv",
+        ["benchmark", "--runs", "2", "--output", str(out)],
+    ):
+        assert benchmark_script.main() == 1
+    assert not out.exists() or out.read_text(encoding="utf-8").strip() == ""

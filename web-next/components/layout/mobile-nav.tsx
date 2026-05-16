@@ -172,9 +172,9 @@ export function MobileNav() {
           <section className="mt-4 card-shell card-base p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="eyebrow">Introspection</p>
+                <p className="eyebrow">{t("mobileNav.introspection.eyebrow")}</p>
                 <p className="text-base font-semibold text-[color:var(--text-heading)]">
-                  Live analysis mechanism
+                  {t("mobileNav.introspection.title")}
                 </p>
               </div>
               <Sparkles className="h-5 w-5 text-violet-300" />

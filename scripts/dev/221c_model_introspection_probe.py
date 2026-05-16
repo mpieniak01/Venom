@@ -20,6 +20,20 @@ from scripts.dev.model_introspection_221b_utils import (  # noqa: E402
 )
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("max-tokens must be >= 1")
+    return parsed
+
+
+def _bounded_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0.0 or parsed > 1.0:
+        raise argparse.ArgumentTypeError("temperature must be in range [0.0, 1.0]")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="221C model introspection probe")
     parser.add_argument(
@@ -44,15 +58,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--max-tokens",
-        type=int,
+        type=_positive_int,
         default=128,
-        help="Max tokens for the optional live analysis request.",
+        help="Max tokens for the optional live analysis request (>=1).",
     )
     parser.add_argument(
         "--temperature",
-        type=float,
+        type=_bounded_float,
         default=0.2,
-        help="Temperature for the optional live analysis request.",
+        help="Temperature for the optional live analysis request ([0.0, 1.0]).",
     )
     parser.add_argument(
         "--output",

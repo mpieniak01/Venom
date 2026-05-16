@@ -123,6 +123,21 @@ function getPhaseStyles(phase: AnalysisPhase) {
   return styles[phase];
 }
 
+function resolveOrbScale(args: {
+  active: boolean;
+  isAnimating: boolean;
+  elapsedFactor: number;
+}): string {
+  const { active, isAnimating, elapsedFactor } = args;
+  if (!active) {
+    return "scale(1)";
+  }
+  if (!isAnimating) {
+    return "scale(1)";
+  }
+  return `scale(${1 + elapsedFactor / 1000})`;
+}
+
 export function GraphNodeCard({
   label,
   kind,
@@ -177,6 +192,17 @@ export function AnalysisOrbPanel({
   const colors = getPhaseStyles(phase);
   const packageRingColor = getPackageRingColor(packageCoveragePercent);
   const isAnimating = active && phase !== "completed";
+  const activityTone: BadgeTone = active ? "success" : "neutral";
+  const activityLabel = active ? "analysis alive" : "analysis idle";
+  const firstChunkAvailable = firstChunkMs != null;
+  const firstChunkTone: BadgeTone = firstChunkAvailable ? "success" : "neutral";
+  const firstChunkLabel = firstChunkAvailable
+    ? `${formatCount(Math.round(firstChunkMs))} ms`
+    : "n/a";
+  const traceLabel = traceId ? shortenTraceId(traceId) : "no trace";
+  const firstChunkDetailLabel = firstChunkAvailable ? `${firstChunkMs.toFixed(1)} ms` : "n/a";
+  const rateLabel = charsPerSecond != null ? `${charsPerSecond.toFixed(1)} chars/s` : "n/a";
+  const orbTransform = resolveOrbScale({ active, isAnimating, elapsedFactor });
 
   useEffect(() => {
     displayProgressRef.current = displayProgress;
@@ -243,9 +269,7 @@ export function AnalysisOrbPanel({
           <div
             className={`absolute inset-6 rounded-full ${colors.core} ${isAnimating ? "motion-safe:animate-pulse" : ""}`}
             style={{
-              transform: active
-                ? `scale(${1 + (isAnimating ? elapsedFactor / 1000 : 0)})`
-                : "scale(1)",
+              transform: orbTransform,
               boxShadow: getOrbCoreShadow(phase),
             }}
           />
@@ -254,15 +278,10 @@ export function AnalysisOrbPanel({
         <div className="min-w-0 flex-1 space-y-3">
           <p className="text-sm text-zinc-200">{subtitle}</p>
           <div className="flex flex-wrap gap-2">
-            <Badge tone={active ? "success" : "neutral"}>
-              {active ? "analysis alive" : "analysis idle"}
-            </Badge>
+            <Badge tone={activityTone}>{activityLabel}</Badge>
             <Badge tone={phaseTone}>{phaseLabel}</Badge>
             <Badge tone="neutral">{formatCount(Math.round(elapsedMs))} ms</Badge>
-            <Badge tone={firstChunkMs != null ? "success" : "neutral"}>
-              first chunk{" "}
-              {firstChunkMs != null ? `${formatCount(Math.round(firstChunkMs))} ms` : "n/a"}
-            </Badge>
+            <Badge tone={firstChunkTone}>first chunk {firstChunkLabel}</Badge>
             <Badge tone={intensity > 0 ? "warning" : "neutral"}>
               intensity {formatCount(Math.round(intensity))}%
             </Badge>
@@ -297,9 +316,7 @@ export function AnalysisOrbPanel({
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-lg border border-white/5 bg-white/5 px-2 py-1.5">
                 <p className="text-[10px] uppercase tracking-wide text-zinc-500">Trace</p>
-                <p className="mt-1 font-mono text-xs text-white">
-                  {traceId ? shortenTraceId(traceId) : "no trace"}
-                </p>
+                <p className="mt-1 font-mono text-xs text-white">{traceLabel}</p>
               </div>
               <div className="rounded-lg border border-white/5 bg-white/5 px-2 py-1.5">
                 <p className="text-[10px] uppercase tracking-wide text-zinc-500">Steps</p>
@@ -307,15 +324,11 @@ export function AnalysisOrbPanel({
               </div>
               <div className="rounded-lg border border-white/5 bg-white/5 px-2 py-1.5">
                 <p className="text-[10px] uppercase tracking-wide text-zinc-500">First chunk</p>
-                <p className="mt-1 font-mono text-xs text-white">
-                  {firstChunkMs != null ? `${firstChunkMs.toFixed(1)} ms` : "n/a"}
-                </p>
+                <p className="mt-1 font-mono text-xs text-white">{firstChunkDetailLabel}</p>
               </div>
               <div className="rounded-lg border border-white/5 bg-white/5 px-2 py-1.5">
                 <p className="text-[10px] uppercase tracking-wide text-zinc-500">Rate</p>
-                <p className="mt-1 font-mono text-xs text-white">
-                  {charsPerSecond != null ? `${charsPerSecond.toFixed(1)} chars/s` : "n/a"}
-                </p>
+                <p className="mt-1 font-mono text-xs text-white">{rateLabel}</p>
               </div>
             </div>
           </div>

@@ -194,6 +194,23 @@ async def _aiter_sync_onnx_stream(
         finally:
             asyncio.run_coroutine_threadsafe(queue.put(None), loop)
 
+    def _close_onnx_client_safely() -> None:
+        client_close = getattr(client, "close", None)
+        if not callable(client_close):
+            return
+        try:
+            client_close()
+        except RuntimeError:
+            pass
+
+    async def _wait_producer_or_cancel(task: asyncio.Task[None]) -> None:
+        try:
+            await asyncio.wait_for(task, timeout=0.5)
+        except TimeoutError:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
     loop = asyncio.get_running_loop()
     producer_task = asyncio.create_task(asyncio.to_thread(_producer))
     try:
@@ -206,18 +223,8 @@ async def _aiter_sync_onnx_stream(
             yield item
     finally:
         stop_event.set()
-        client_close = getattr(client, "close", None)
-        if callable(client_close):
-            try:
-                client_close()
-            except RuntimeError:
-                pass
-        try:
-            await asyncio.wait_for(producer_task, timeout=0.5)
-        except TimeoutError:
-            producer_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await producer_task
+        _close_onnx_client_safely()
+        await _wait_producer_or_cancel(producer_task)
 
 
 def _resolve_model_name_for_simple_request(

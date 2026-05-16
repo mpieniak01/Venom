@@ -188,7 +188,7 @@ export function computeAnalysisProgress(args: {
   }
   const estimatedProgress = Math.min(
     100,
-    analysisStepCount * 18 + (firstChunkMs != null ? 20 : 0),
+    analysisStepCount * 18 + (firstChunkMs == null ? 0 : 20),
   );
   const noChunkYet = chunkCount === 0 && firstChunkMs == null;
   if (analysisStatus === "running" && noChunkYet) {

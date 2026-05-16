@@ -174,11 +174,16 @@ type AnalysisResult = {
   skipped_reason?: string;
 };
 
+type BadgeTone = "success" | "warning" | "neutral";
+type AnalysisUpdateFn = (
+  analysis: NonNullable<AnalysisResult["analysis"]>,
+) => NonNullable<AnalysisResult["analysis"]>;
+
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
-function timelineBadgeTone(status: string): "success" | "warning" | "neutral" {
+function timelineBadgeTone(status: string): BadgeTone {
   if (status === "done") return "success";
   if (status === "running") return "warning";
   return "neutral";
@@ -241,12 +246,10 @@ function getPhaseTone(phase: AnalysisPhase): "success" | "warning" | "neutral" {
 }
 
 function getPhaseLabel(phase: AnalysisPhase): string {
-  switch (phase) {
-    case "first_chunk":
-      return "first chunk";
-    default:
-      return phase;
+  if (phase === "first_chunk") {
+    return "first chunk";
   }
+  return phase;
 }
 
 function getAnalysisPhase(args: {
@@ -285,6 +288,352 @@ function getAnswerTone(answer: string, analysisVisible: boolean): "success" | "w
     return "neutral";
   }
   return /potrzebuj|need more context|more context/i.test(answer) ? "warning" : "success";
+}
+
+function getPackageRingColor(packageCoveragePercent: number): string {
+  if (packageCoveragePercent >= 100) {
+    return "#047857";
+  }
+  if (packageCoveragePercent >= 80) {
+    return "#059669";
+  }
+  return "#f59e0b";
+}
+
+function getOrbCoreShadow(phase: AnalysisPhase): string {
+  if (phase === "completed") {
+    return "0 0 16px rgba(4,120,87,0.26)";
+  }
+  if (phase === "streaming" || phase === "first_chunk") {
+    return "0 0 18px rgba(6,182,212,0.28)";
+  }
+  if (phase === "requesting") {
+    return "0 0 18px rgba(245,158,11,0.28)";
+  }
+  return "0 0 14px rgba(113,113,122,0.22)";
+}
+
+function getAnalysisProgressBarColor(phase: AnalysisPhase): string {
+  if (phase === "completed") {
+    return "#10b981";
+  }
+  if (phase === "streaming" || phase === "first_chunk") {
+    return "#06b6d4";
+  }
+  if (phase === "requesting") {
+    return "#f59e0b";
+  }
+  return "#71717a";
+}
+
+function getGraphNodeTone(status: string): BadgeTone {
+  if (status === "available" || status === "connected" || status === "ready") {
+    return "success";
+  }
+  if (status === "missing" || status === "offline") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function computeAnalysisProgress(args: {
+  analysisVisible: boolean;
+  analysisTimelineProgress: number;
+  analysisStepCount: number;
+  chunkCount: number;
+  firstChunkMs: number | null | undefined;
+}): number {
+  const {
+    analysisVisible,
+    analysisTimelineProgress,
+    analysisStepCount,
+    chunkCount,
+    firstChunkMs,
+  } = args;
+  if (!analysisVisible) {
+    return 0;
+  }
+  if (analysisTimelineProgress > 0) {
+    return clampPercent(analysisTimelineProgress);
+  }
+  const estimatedProgress = Math.min(
+    100,
+    analysisStepCount * 18 + (firstChunkMs != null ? 20 : 0),
+  );
+  if (chunkCount === 0 && firstChunkMs == null) {
+    return clampPercent(Math.min(estimatedProgress, 30));
+  }
+  return clampPercent(estimatedProgress);
+}
+
+function getOrbSubtitle(args: {
+  analysisStatus: string | undefined;
+  analysisActive: boolean;
+  chunkCount: number;
+  analysisStepCount: number;
+  idleLabel: string;
+}): string {
+  const { analysisStatus, analysisActive, chunkCount, analysisStepCount, idleLabel } = args;
+  if (analysisStatus === "completed") {
+    return `${chunkCount} chunk(s) · ${analysisStepCount} step(s) · completed`;
+  }
+  if (analysisActive) {
+    return `${chunkCount} chunk(s) · ${analysisStepCount} step(s)`;
+  }
+  return idleLabel;
+}
+
+function getAnswerStatusLabel(args: {
+  response: string;
+  analysisRunning: boolean;
+}): string {
+  if (args.response) {
+    return "model answered";
+  }
+  if (args.analysisRunning) {
+    return "streaming answer";
+  }
+  return "awaiting answer";
+}
+
+function getTypeHintText(kind: string): string {
+  if (kind === "package") {
+    return "Package drilldown uses the same snapshot as runtime health, so it is safe to inspect without triggering extra probes.";
+  }
+  if (kind === "reuse") {
+    return "Reuse drilldown helps confirm that Brain and diagnostics stay shared rather than duplicated.";
+  }
+  return "Runtime drilldown summarizes the active runtime, model and analysis attachment points.";
+}
+
+function updateLiveAnalysisResult(
+  liveResult: AnalysisResult | null,
+  updater: AnalysisUpdateFn,
+): AnalysisResult | null {
+  if (!liveResult?.analysis) {
+    return liveResult;
+  }
+  return {
+    ...liveResult,
+    analysis: updater(liveResult.analysis),
+  };
+}
+
+async function processAnalysisStream(params: {
+  response: Response;
+  streamStartedAt: number;
+  onSetLiveResult: (result: AnalysisResult) => void;
+  onPatchLiveResult: (updater: AnalysisUpdateFn) => void;
+}): Promise<void> {
+  const { response, streamStartedAt, onSetLiveResult, onPatchLiveResult } = params;
+  if (!response.body) {
+    throw new Error("Streaming response unavailable.");
+  }
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = "";
+  let sawFirstChunk = false;
+
+  const handleEvent = (eventName: string, dataText: string) => {
+    if (eventName === "analysis_start" || eventName === "analysis_done") {
+      onSetLiveResult(JSON.parse(dataText) as AnalysisResult);
+      return;
+    }
+    if (eventName === "error") {
+      throw new Error(dataText || "Analysis stream failed");
+    }
+    if (eventName === "start") {
+      onPatchLiveResult((analysis) => ({
+        ...analysis,
+        events: analysis.events.includes("start") ? analysis.events : [...analysis.events, "start"],
+      }));
+      return;
+    }
+    if (eventName === "content") {
+      const payload = dataText ? (JSON.parse(dataText) as { text?: string }) : {};
+      const text = String(payload.text ?? "");
+      if (!text) {
+        return;
+      }
+      onPatchLiveResult((analysis) => {
+        const nextTimeline = [...analysis.timeline];
+        const nextChunkCount = analysis.chunk_count + 1;
+        const nowMs = performance.now() - streamStartedAt;
+        if (!sawFirstChunk) {
+          sawFirstChunk = true;
+          nextTimeline.push({
+            id: "first_chunk",
+            label: "First content chunk",
+            status: "done",
+            detail: `${nextChunkCount} chunk(s) total`,
+            at_ms: nowMs,
+            progress: 40,
+          });
+        }
+        return {
+          ...analysis,
+          response: `${analysis.response}${text}`,
+          chunk_count: nextChunkCount,
+          events: [...analysis.events, "content"],
+          timeline: nextTimeline,
+          elapsed_ms: nowMs,
+        };
+      });
+      return;
+    }
+    if (eventName !== "done") {
+      return;
+    }
+    onPatchLiveResult((analysis) => {
+      const nextTimeline = [...analysis.timeline];
+      if (!nextTimeline.some((entry) => entry.id === "response_finalized")) {
+        nextTimeline.push({
+          id: "response_finalized",
+          label: "Response assembled",
+          status: "done",
+          detail: `${analysis.response.length} chars`,
+          at_ms: performance.now() - streamStartedAt,
+          progress: 90,
+        });
+      }
+      return {
+        ...analysis,
+        events: [...analysis.events, "done"],
+        timeline: nextTimeline,
+        elapsed_ms: performance.now() - streamStartedAt,
+      };
+    });
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
+      let separatorIndex = buffer.indexOf("\n\n");
+      while (separatorIndex !== -1) {
+        const block = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + 2);
+        const parsed = parseSseBlock(block);
+        if (parsed) {
+          handleEvent(parsed.event, parsed.data);
+        }
+        separatorIndex = buffer.indexOf("\n\n");
+      }
+    }
+    buffer += decoder.decode().replaceAll("\r\n", "\n");
+    const tail = parseSseBlock(buffer);
+    if (tail) {
+      handleEvent(tail.event, tail.data);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+type GraphNodeDetails = {
+  title: string;
+  lines: string[];
+};
+
+function resolveSelectedGraphNodeDetails(args: {
+  snapshot: IntrospectionSnapshot;
+  selectedGraphNode: { id: string; label: string; kind: string; status: string };
+  analysisMechanismEnabled: boolean;
+  analysisStatus: string | undefined;
+  analysisVisible: boolean;
+  analysisChunkCount: number;
+  analysisElapsedMs: number;
+}): GraphNodeDetails {
+  const {
+    snapshot,
+    selectedGraphNode,
+    analysisMechanismEnabled,
+    analysisStatus,
+    analysisVisible,
+    analysisChunkCount,
+    analysisElapsedMs,
+  } = args;
+
+  if (selectedGraphNode.id === "runtime") {
+    return {
+      title: "Runtime details",
+      lines: [
+        `Provider: ${snapshot.runtime.provider}`,
+        `Model: ${snapshot.runtime.model}`,
+        `Endpoint: ${snapshot.runtime.endpoint ?? "local"}`,
+        `Service type: ${snapshot.runtime.service_type}`,
+        `Mode: ${snapshot.runtime.mode}`,
+      ],
+    };
+  }
+  if (selectedGraphNode.id === "model") {
+    return {
+      title: "Model details",
+      lines: [
+        `Active model: ${snapshot.summary.active_model}`,
+        `Runtime label: ${snapshot.summary.runtime_label}`,
+        `Drift issues: ${snapshot.runtime_drift.issues.length}`,
+      ],
+    };
+  }
+  if (selectedGraphNode.id === "analysis") {
+    return {
+      title: "Analysis details",
+      lines: [
+        `Mechanism: ${analysisMechanismEnabled ? "enabled" : "disabled"}`,
+        `Status: ${analysisStatus ?? "idle"}`,
+        `Content chunks: ${analysisVisible ? analysisChunkCount : 0}`,
+        `Elapsed: ${analysisVisible ? `${analysisElapsedMs.toFixed(1)} ms` : "—"}`,
+      ],
+    };
+  }
+  if (selectedGraphNode.id === "manager") {
+    return {
+      title: "ModelManager details",
+      lines: [
+        `Available: ${snapshot.model_manager.available ? "yes" : "no"}`,
+        `Metrics: ${snapshot.model_manager.usage_metrics ? "present" : "absent"}`,
+        `Error: ${snapshot.model_manager.error ?? "—"}`,
+      ],
+    };
+  }
+  if (selectedGraphNode.id === "brain") {
+    return {
+      title: "Reuse details",
+      lines: [
+        `Path: ${snapshot.reuse.brain.path}`,
+        `Available: ${snapshot.reuse.brain.available ? "yes" : "no"}`,
+        `Purpose: ${snapshot.reuse.brain.purpose}`,
+      ],
+    };
+  }
+  if (selectedGraphNode.id === "diagnostics") {
+    return {
+      title: "Diagnostics reuse",
+      lines: snapshot.reuse.diagnostics.map((entry) => `${entry.id}: ${entry.purpose}`),
+    };
+  }
+
+  const packageNode = snapshot.packages[selectedGraphNode.id.replaceAll("package:", "")];
+  if (packageNode) {
+    return {
+      title: "Package details",
+      lines: [
+        `Package: ${packageNode.package}`,
+        `Module: ${packageNode.module}`,
+        `Available: ${packageNode.available ? "yes" : "no"}`,
+        `Version: ${packageNode.version ?? "n/a"}`,
+      ],
+    };
+  }
+
+  return {
+    title: "Package details",
+    lines: [`Node: ${selectedGraphNode.label}`, `Status: ${selectedGraphNode.status}`],
+  };
 }
 
 function AnalysisOrb({
@@ -351,8 +700,7 @@ function AnalysisOrb({
     },
   };
   const colors = phaseColors[phase];
-  const packageRingColor =
-    packageCoveragePercent >= 100 ? "#047857" : packageCoveragePercent >= 80 ? "#059669" : "#f59e0b";
+  const packageRingColor = getPackageRingColor(packageCoveragePercent);
   const isAnimating = active && phase !== "completed";
 
   useEffect(() => {
@@ -369,7 +717,7 @@ function AnalysisOrb({
       typeof w?.cancelAnimationFrame === "function"
         ? w.cancelAnimationFrame.bind(w)
         : (handle: number) => globalThis.clearTimeout(handle);
-    let frameId: number | null = null;
+    let frameId: ReturnType<typeof globalThis.setTimeout> | null = null;
     let startAt = 0;
     const startValue = displayProgressRef.current;
     const targetValue = progressPercent;
@@ -385,11 +733,11 @@ function AnalysisOrb({
       const eased = 1 - Math.pow(1 - t, 3);
       setDisplayProgress(startValue + (targetValue - startValue) * eased);
       if (t < 1) {
-        frameId = scheduleFrame(animate) as number;
+        frameId = scheduleFrame(animate);
       }
     };
 
-    frameId = scheduleFrame(animate) as number;
+    frameId = scheduleFrame(animate);
     return () => {
       if (frameId != null) {
         cancelFrame(frameId);
@@ -423,14 +771,7 @@ function AnalysisOrb({
               transform: active
                 ? `scale(${1 + (isAnimating ? elapsedFactor / 1000 : 0)})`
                 : "scale(1)",
-              boxShadow:
-                phase === "completed"
-                  ? "0 0 16px rgba(4,120,87,0.26)"
-                  : phase === "streaming" || phase === "first_chunk"
-                    ? "0 0 18px rgba(6,182,212,0.28)"
-                    : phase === "requesting"
-                      ? "0 0 18px rgba(245,158,11,0.28)"
-                      : "0 0 14px rgba(113,113,122,0.22)",
+              boxShadow: getOrbCoreShadow(phase),
             }}
           />
           <div className="relative h-full w-full rounded-full" aria-hidden="true" />
@@ -475,14 +816,7 @@ function AnalysisOrb({
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${displayProgress}%`,
-                  backgroundColor:
-                    phase === "completed"
-                      ? "#10b981"
-                      : phase === "streaming" || phase === "first_chunk"
-                        ? "#06b6d4"
-                        : phase === "requesting"
-                          ? "#f59e0b"
-                          : "#71717a",
+                  backgroundColor: getAnalysisProgressBarColor(phase),
                 }}
               />
             </div>
@@ -530,12 +864,7 @@ function GraphNodeCard({
   selected: boolean;
   onClick: () => void;
 }>) {
-  const tone =
-    status === "available" || status === "connected" || status === "ready"
-      ? "success"
-      : status === "missing" || status === "offline"
-        ? "warning"
-        : "neutral";
+  const tone = getGraphNodeTone(status);
   return (
     <button
       type="button"
@@ -713,17 +1042,13 @@ export function ModelIntrospectionDashboard() {
     const total = available + missing;
     const packageCoverage = total > 0 ? (available / total) * 100 : 0;
     const driftIntensity = total > 0 ? (snapshot?.runtime_drift.issues.length ?? 0) / total : 0;
-    const analysisProgress = analysisVisible
-      ? analysisTimelineProgress > 0
-        ? clampPercent(analysisTimelineProgress)
-        : clampPercent(
-            Math.min(
-              100,
-              (analysisStepCount ?? analysisResult?.analysis?.chunk_count ?? 0) * 18 +
-                (analysisProcess?.first_chunk_ms != null ? 20 : 0),
-            ),
-          )
-      : 0;
+    const analysisProgress = computeAnalysisProgress({
+      analysisVisible,
+      analysisTimelineProgress,
+      analysisStepCount,
+      chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+      firstChunkMs: analysisProcess?.first_chunk_ms,
+    });
     return {
       packageCoverage,
       driftIntensity: clampPercent(driftIntensity * 100),
@@ -755,80 +1080,15 @@ export function ModelIntrospectionDashboard() {
     if (!snapshot || !selectedGraphNode) {
       return null;
     }
-    switch (selectedGraphNode.id) {
-      case "runtime":
-        return {
-          title: "Runtime details",
-          lines: [
-            `Provider: ${snapshot.runtime.provider}`,
-            `Model: ${snapshot.runtime.model}`,
-            `Endpoint: ${snapshot.runtime.endpoint ?? "local"}`,
-            `Service type: ${snapshot.runtime.service_type}`,
-            `Mode: ${snapshot.runtime.mode}`,
-          ],
-        };
-      case "model":
-        return {
-          title: "Model details",
-          lines: [
-            `Active model: ${snapshot.summary.active_model}`,
-            `Runtime label: ${snapshot.summary.runtime_label}`,
-            `Drift issues: ${snapshot.runtime_drift.issues.length}`,
-          ],
-        };
-      case "analysis":
-        return {
-          title: "Analysis details",
-          lines: [
-            `Mechanism: ${analysisMechanismEnabled ? "enabled" : "disabled"}`,
-            `Status: ${analysisResult?.status ?? "idle"}`,
-            `Content chunks: ${analysisVisible ? analysisResult?.analysis?.chunk_count ?? 0 : 0}`,
-            `Elapsed: ${analysisVisible ? `${(analysisResult?.analysis?.elapsed_ms ?? 0).toFixed(1)} ms` : "—"}`,
-          ],
-        };
-      case "manager":
-        return {
-          title: "ModelManager details",
-          lines: [
-            `Available: ${snapshot.model_manager.available ? "yes" : "no"}`,
-            `Metrics: ${snapshot.model_manager.usage_metrics ? "present" : "absent"}`,
-            `Error: ${snapshot.model_manager.error ?? "—"}`,
-          ],
-        };
-      case "brain":
-        return {
-          title: "Reuse details",
-          lines: [
-            `Path: ${snapshot.reuse.brain.path}`,
-            `Available: ${snapshot.reuse.brain.available ? "yes" : "no"}`,
-            `Purpose: ${snapshot.reuse.brain.purpose}`,
-          ],
-        };
-      case "diagnostics":
-        return {
-          title: "Diagnostics reuse",
-          lines: snapshot.reuse.diagnostics.map(
-            (entry) => `${entry.id}: ${entry.purpose}`,
-          ),
-        };
-      default: {
-        const packageNode = snapshot.packages[selectedGraphNode.id.replace("package:", "")];
-        return {
-          title: "Package details",
-          lines: packageNode
-            ? [
-                `Package: ${packageNode.package}`,
-                `Module: ${packageNode.module}`,
-                `Available: ${packageNode.available ? "yes" : "no"}`,
-                `Version: ${packageNode.version ?? "n/a"}`,
-              ]
-            : [
-                `Node: ${selectedGraphNode.label}`,
-                `Status: ${selectedGraphNode.status}`,
-              ],
-        };
-      }
-    }
+    return resolveSelectedGraphNodeDetails({
+      snapshot,
+      selectedGraphNode,
+      analysisMechanismEnabled,
+      analysisStatus: analysisResult?.status,
+      analysisVisible,
+      analysisChunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+      analysisElapsedMs: analysisResult?.analysis?.elapsed_ms ?? 0,
+    });
   }, [analysisMechanismEnabled, analysisResult?.analysis, analysisResult?.status, analysisVisible, selectedGraphNode, snapshot]);
 
   const runAnalysis = useCallback(async () => {
@@ -870,129 +1130,26 @@ export function ModelIntrospectionDashboard() {
       if (!response.body) {
         throw new Error("Streaming response unavailable.");
       }
-      const decoder = new TextDecoder();
       const streamStartedAt = performance.now();
-      let buffer = "";
       let liveResult: AnalysisResult | null = null;
-      let sawFirstChunk = false;
       const pushAnalysisResult = (nextResult: AnalysisResult) => {
         liveResult = nextResult;
         setAnalysisResult(nextResult);
       };
-      const updatePartialAnalysis = (
-        updater: (analysis: NonNullable<AnalysisResult["analysis"]>) => NonNullable<AnalysisResult["analysis"]>,
-      ) => {
-        if (!liveResult?.analysis) {
+      const patchAnalysisResult = (updater: AnalysisUpdateFn) => {
+        const nextResult = updateLiveAnalysisResult(liveResult, updater);
+        if (!nextResult) {
           return;
         }
-        liveResult = {
-          ...liveResult,
-          analysis: updater(liveResult.analysis),
-        };
-        setAnalysisResult(liveResult);
+        liveResult = nextResult;
+        setAnalysisResult(nextResult);
       };
-      const handleEvent = (eventName: string, dataText: string) => {
-        if (eventName === "analysis_start" || eventName === "analysis_done") {
-          const parsed = JSON.parse(dataText) as AnalysisResult;
-          pushAnalysisResult(parsed);
-          return;
-        }
-        if (!liveResult?.analysis) {
-          return;
-        }
-        if (eventName === "error") {
-          throw new Error(dataText || "Analysis stream failed");
-        }
-        if (eventName === "start") {
-          updatePartialAnalysis((analysis) => ({
-            ...analysis,
-            events: analysis.events.includes("start")
-              ? analysis.events
-              : [...analysis.events, "start"],
-          }));
-          return;
-        }
-        if (eventName === "content") {
-          const payload = dataText ? (JSON.parse(dataText) as { text?: string }) : {};
-          const text = String(payload.text ?? "");
-          if (!text) {
-            return;
-          }
-          updatePartialAnalysis((analysis) => {
-            const nextTimeline = [...analysis.timeline];
-            const nextChunkCount = analysis.chunk_count + 1;
-            const nowMs = performance.now() - streamStartedAt;
-            if (!sawFirstChunk) {
-              sawFirstChunk = true;
-              nextTimeline.push({
-                id: "first_chunk",
-                label: "First content chunk",
-                status: "done",
-                detail: `${nextChunkCount} chunk(s) total`,
-                at_ms: nowMs,
-                progress: 40,
-              });
-            }
-            return {
-              ...analysis,
-              response: `${analysis.response}${text}`,
-              chunk_count: nextChunkCount,
-              events: [...analysis.events, "content"],
-              timeline: nextTimeline,
-              elapsed_ms: nowMs,
-            };
-          });
-          return;
-        }
-        if (eventName === "done") {
-          updatePartialAnalysis((analysis) => {
-            const nextTimeline = [...analysis.timeline];
-            if (!nextTimeline.some((entry) => entry.id === "response_finalized")) {
-              nextTimeline.push({
-                id: "response_finalized",
-                label: "Response assembled",
-                status: "done",
-                detail: `${analysis.response.length} chars`,
-                at_ms: performance.now() - streamStartedAt,
-                progress: 90,
-              });
-            }
-            return {
-              ...analysis,
-              events: [...analysis.events, "done"],
-              timeline: nextTimeline,
-              elapsed_ms: performance.now() - streamStartedAt,
-            };
-          });
-        }
-      };
-      const reader = response.body.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-          let separatorIndex = buffer.indexOf("\n\n");
-          while (separatorIndex !== -1) {
-            const block = buffer.slice(0, separatorIndex);
-            buffer = buffer.slice(separatorIndex + 2);
-            const parsed = parseSseBlock(block);
-            if (parsed) {
-              handleEvent(parsed.event, parsed.data);
-            }
-            separatorIndex = buffer.indexOf("\n\n");
-          }
-        }
-        buffer += decoder.decode().replace(/\r\n/g, "\n");
-        const tail = parseSseBlock(buffer);
-        if (tail) {
-          handleEvent(tail.event, tail.data);
-        }
-      } finally {
-        reader.releaseLock();
-      }
+      await processAnalysisStream({
+        response,
+        streamStartedAt,
+        onSetLiveResult: pushAnalysisResult,
+        onPatchLiveResult: patchAnalysisResult,
+      });
     } catch (analysisRunError) {
       setAnalysisError(
         analysisRunError instanceof Error
@@ -1156,13 +1313,13 @@ export function ModelIntrospectionDashboard() {
                 stepCount={analysisStepCount}
                 charsPerSecond={analysisProcess?.chars_per_second ?? null}
                 progress={visualMetrics.analysisProgress}
-                subtitle={
-                  analysisResult?.status === "completed"
-                    ? `${analysisResult?.analysis?.chunk_count ?? 0} chunk(s) · ${analysisStepCount} step(s) · completed`
-                    : analysisActive
-                      ? `${analysisResult?.analysis?.chunk_count ?? 0} chunk(s) · ${analysisStepCount} step(s)`
-                      : t("inspector.modelIntrospection.dashboard.analysis.orbIdle")
-                }
+                subtitle={getOrbSubtitle({
+                  analysisStatus: analysisResult?.status,
+                  analysisActive,
+                  chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+                  analysisStepCount: analysisStepCount,
+                  idleLabel: t("inspector.modelIntrospection.dashboard.analysis.orbIdle"),
+                })}
               />
             </div>
           </div>
@@ -1235,11 +1392,10 @@ export function ModelIntrospectionDashboard() {
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={analysisAnswerTone}>
-                    {analysisResult?.analysis?.response
-                      ? "model answered"
-                      : analysisRunning
-                        ? "streaming answer"
-                        : "awaiting answer"}
+                    {getAnswerStatusLabel({
+                      response: analysisResult?.analysis?.response ?? "",
+                      analysisRunning,
+                    })}
                   </Badge>
                   <Badge tone={snapshot.model_manager.available ? "success" : "warning"}>
                     {snapshot.model_manager.available ? "manager metrics on" : "manager metrics off"}
@@ -1497,11 +1653,7 @@ export function ModelIntrospectionDashboard() {
                         <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
                           <p className="text-[11px] uppercase tracking-wide text-zinc-500">Type hint</p>
                           <p className="mt-1 text-sm text-zinc-300">
-                            {selectedGraphNode.kind === "package"
-                              ? "Package drilldown uses the same snapshot as runtime health, so it is safe to inspect without triggering extra probes."
-                              : selectedGraphNode.kind === "reuse"
-                              ? "Reuse drilldown helps confirm that Brain and diagnostics stay shared rather than duplicated."
-                              : "Runtime drilldown summarizes the active runtime, model and analysis attachment points."}
+                            {getTypeHintText(selectedGraphNode.kind)}
                           </p>
                         </div>
                       </div>

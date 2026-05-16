@@ -126,7 +126,16 @@ def _parse_trace_step_details(step: Any) -> dict[str, Any]:
         "details": details,
     }
     action = str(getattr(step, "action", "") or "")
-    if action == "response" and isinstance(details, str):
+    if not isinstance(details, str):
+        return payload
+    _enrich_trace_payload(action=action, details=details, payload=payload)
+    return payload
+
+
+def _enrich_trace_payload(
+    *, action: str, details: str, payload: dict[str, Any]
+) -> None:
+    if action == "response":
         parsed = _parse_json_dict(details)
         payload.update(
             {
@@ -136,22 +145,28 @@ def _parse_trace_step_details(step: Any) -> dict[str, Any]:
                 "truncated": parsed.get("truncated"),
             }
         )
-    elif action == "first_chunk" and isinstance(details, str):
-        elapsed_ms = None
-        for fragment in details.split():
-            if fragment.startswith("elapsed_ms="):
-                try:
-                    elapsed_ms = float(fragment.split("=", 1)[1])
-                except ValueError:
-                    elapsed_ms = None
-        payload["elapsed_ms"] = elapsed_ms
-    elif action == "context_preview" and isinstance(details, str):
+        return
+    if action == "first_chunk":
+        payload["elapsed_ms"] = _extract_elapsed_ms(details)
+        return
+    if action == "context_preview":
         parsed = _parse_json_dict(details)
         payload["prompt_context_truncated"] = parsed.get("prompt_context_truncated")
         payload["hidden_prompts_count"] = parsed.get("hidden_prompts_count")
-    elif action == "prompt_trim" and isinstance(details, str):
+        return
+    if action == "prompt_trim":
         payload["prompt_trimmed"] = True
-    return payload
+
+
+def _extract_elapsed_ms(details: str) -> float | None:
+    for fragment in details.split():
+        if not fragment.startswith("elapsed_ms="):
+            continue
+        try:
+            return float(fragment.split("=", 1)[1])
+        except ValueError:
+            return None
+    return None
 
 
 def _summarize_request_trace(request_id: UUID | None) -> dict[str, Any] | None:

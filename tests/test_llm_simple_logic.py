@@ -10,7 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.helpers.url_fixtures import MOCK_HTTP, http_url
-from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.main import app
 from venom_core.services import llm_simple_service, llm_simple_stream_service
 from venom_core.services.llm_simple_stream_service import SimpleStreamState
@@ -186,30 +185,31 @@ def _collect_sse_events(response):
 
 
 def test_get_simple_context_char_limit(monkeypatch):
-    monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 1024)
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "VLLM_MAX_MODEL_LEN", 1024)
     assert (
-        llm_simple_routes._get_simple_context_char_limit(DummyRuntime("ollama")) is None
+        llm_simple_service._get_simple_context_char_limit(DummyRuntime("ollama"))
+        is None
     )
     assert (
-        llm_simple_routes._get_simple_context_char_limit(DummyRuntime("vllm")) == 3072
+        llm_simple_service._get_simple_context_char_limit(DummyRuntime("vllm")) == 3072
     )
-    monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 0)
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "VLLM_MAX_MODEL_LEN", 0)
     assert (
-        llm_simple_routes._get_simple_context_char_limit(DummyRuntime("vllm")) is None
+        llm_simple_service._get_simple_context_char_limit(DummyRuntime("vllm")) is None
     )
 
 
 def test_build_preview_messages_and_payload(monkeypatch):
-    assert llm_simple_routes._build_preview("abc", max_chars=2) == "ab..."
-    assert llm_simple_routes._build_preview("ab", max_chars=2) == "ab"
+    assert llm_simple_service._build_preview("abc", max_chars=2) == "ab..."
+    assert llm_simple_service._build_preview("ab", max_chars=2) == "ab"
 
-    messages = llm_simple_routes._build_messages("sys", "user")
+    messages = llm_simple_service._build_messages("sys", "user")
     assert messages[0]["role"] == "system"
     assert messages[1]["role"] == "user"
 
-    monkeypatch.setattr(llm_simple_routes.SETTINGS, "LLM_KEEP_ALIVE", "30m")
-    monkeypatch.setattr(llm_simple_routes.SETTINGS, "OLLAMA_ENABLE_THINK", True)
-    req = llm_simple_routes.SimpleChatRequest(
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "LLM_KEEP_ALIVE", "30m")
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "OLLAMA_ENABLE_THINK", True)
+    req = llm_simple_service.SimpleChatRequest(
         content="x",
         max_tokens=42,
         temperature=0.3,
@@ -218,7 +218,7 @@ def test_build_preview_messages_and_payload(monkeypatch):
         tool_choice="auto",
         think=True,
     )
-    payload = llm_simple_routes._build_payload(
+    payload = llm_simple_service._build_payload(
         req, DummyRuntime(provider="ollama"), "m1", messages
     )
     assert payload["keep_alive"] == "30m"
@@ -237,9 +237,9 @@ def test_build_llm_http_error_and_stream_headers():
     exc = httpx.HTTPStatusError("bad gateway", request=request, response=response)
 
     error_message, error_details, error_payload = (
-        llm_simple_routes._build_llm_http_error(exc, DummyRuntime(), "model-x")
+        llm_simple_service._build_llm_http_error(exc, DummyRuntime(), "model-x")
     )
-    headers = llm_simple_routes._build_streaming_headers("rid", "sid")
+    headers = llm_simple_service._build_streaming_headers("rid", "sid")
 
     assert "LLM HTTP 502" in error_message
     assert error_details["status_code"] == 502
@@ -252,25 +252,21 @@ def test_build_llm_http_error_and_stream_headers():
 async def test_read_http_error_response_text_returns_body():
     request = httpx.Request("POST", MOCK_HTTP)
     response = httpx.Response(502, request=request, content=b"upstream error")
-    text = await llm_simple_routes._read_http_error_response_text(response)
+    text = await llm_simple_service._read_http_error_response_text(response)
     assert "upstream error" in text
 
 
 def test_trim_user_content_for_runtime_adds_trace_step(monkeypatch):
-    monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 64)
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "VLLM_MAX_MODEL_LEN", 64)
     captured = {"steps": []}
 
     class DummyTracer:
         def add_step(self, *args, **kwargs):
             captured["steps"].append((args, kwargs))
 
-    monkeypatch.setattr(
-        llm_simple_routes.system_deps,
-        "get_request_tracer",
-        lambda: DummyTracer(),
-    )
+    monkeypatch.setattr(llm_simple_service, "get_request_tracer", lambda: DummyTracer())
 
-    trimmed = llm_simple_routes._trim_user_content_for_runtime(
+    trimmed = llm_simple_service._trim_user_content_for_runtime(
         "x" * 200, "sys", DummyRuntime("vllm"), request_id="rid"
     )
     assert len(trimmed) < 200
@@ -286,7 +282,7 @@ def test_extract_sse_contents_filters_invalid_packets():
             {},
         ]
     }
-    assert llm_simple_routes._extract_sse_contents(packet) == ["A"]
+    assert llm_simple_service._extract_sse_contents(packet) == ["A"]
 
 
 def test_extract_sse_tool_calls_and_telemetry():
@@ -296,11 +292,11 @@ def test_extract_sse_tool_calls_and_telemetry():
         "prompt_eval_count": 12,
         "eval_count": 21,
     }
-    tool_calls = llm_simple_routes._extract_sse_tool_calls(packet)
-    telemetry = llm_simple_routes._extract_ollama_telemetry(packet)
+    tool_calls = llm_simple_service._extract_sse_tool_calls(packet)
+    telemetry = llm_simple_service._extract_runtime_telemetry(packet)
     assert tool_calls == [{"id": "c1"}]
     assert telemetry["prompt_eval_count"] == 12
-    assert llm_simple_routes._normalize_ns_to_ms(3_000_000) == 3.0
+    assert llm_simple_service._normalize_ns_to_ms(3_000_000) == 3.0
 
 
 @pytest.mark.asyncio
@@ -317,27 +313,23 @@ async def test_iter_stream_contents_parses_and_stops_on_done():
         ]
     )
     chunks: list[str] = []
-    async for packet in llm_simple_routes._iter_stream_packets(resp):
-        chunks.extend(llm_simple_routes._extract_sse_contents(packet))
+    async for packet in llm_simple_service._iter_stream_packets(resp):
+        chunks.extend(llm_simple_service._extract_sse_contents(packet))
     assert chunks == ["A"]
 
 
 def test_trace_helpers_and_error_metadata(monkeypatch):
     tracer = DummyTracer()
-    monkeypatch.setattr(
-        llm_simple_routes.system_deps,
-        "get_request_tracer",
-        lambda: tracer,
-    )
+    monkeypatch.setattr(llm_simple_service, "get_request_tracer", lambda: tracer)
 
-    request = llm_simple_routes.SimpleChatRequest(content="hello", session_id="s1")
-    llm_simple_routes._trace_simple_request("rid", request, DummyRuntime(), "model")
-    llm_simple_routes._trace_context_preview(
+    request = llm_simple_service.SimpleChatRequest(content="hello", session_id="s1")
+    llm_simple_service._trace_simple_request("rid", request, DummyRuntime(), "model")
+    llm_simple_service._trace_context_preview(
         "rid", [{"role": "user", "content": "x" * 2100}]
     )
-    llm_simple_routes._trace_first_chunk("rid", 0.0, "content")
-    llm_simple_routes._trace_stream_completion("rid", "abc", 2, 0.0)
-    llm_simple_routes._record_simple_error(
+    llm_simple_service._trace_first_chunk("rid", 0.0, "content")
+    llm_simple_service._trace_stream_completion("rid", "abc", 2, 0.0)
+    llm_simple_service._record_simple_error(
         "rid",
         error_code="e1",
         error_message="msg",
@@ -352,7 +344,7 @@ def test_trace_helpers_and_error_metadata(monkeypatch):
 
 def test_stream_simple_chat_returns_400_without_model(monkeypatch):
     monkeypatch.setattr(
-        llm_simple_routes,
+        llm_simple_service,
         "get_active_llm_runtime",
         lambda: DummyRuntime(model_name=None),
     )
@@ -364,10 +356,10 @@ def test_stream_simple_chat_returns_400_without_model(monkeypatch):
 
 def test_stream_simple_chat_returns_503_without_endpoint(monkeypatch):
     monkeypatch.setattr(
-        llm_simple_routes, "get_active_llm_runtime", lambda: DummyRuntime()
+        llm_simple_service, "get_active_llm_runtime", lambda: DummyRuntime()
     )
     monkeypatch.setattr(
-        llm_simple_routes, "_build_chat_completions_url", lambda _rt: None
+        llm_simple_service, "_build_chat_completions_url", lambda _rt: None
     )
     client = TestClient(app)
 
@@ -377,10 +369,10 @@ def test_stream_simple_chat_returns_503_without_endpoint(monkeypatch):
 
 def test_stream_simple_chat_http_status_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
-        llm_simple_routes, "get_active_llm_runtime", lambda: DummyRuntime()
+        llm_simple_service, "get_active_llm_runtime", lambda: DummyRuntime()
     )
     monkeypatch.setattr(
-        llm_simple_routes,
+        llm_simple_service,
         "_build_chat_completions_url",
         lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
@@ -402,10 +394,10 @@ def test_stream_simple_chat_http_status_error_emits_error_event(monkeypatch):
 
 def test_stream_simple_chat_connection_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
-        llm_simple_routes, "get_active_llm_runtime", lambda: DummyRuntime()
+        llm_simple_service, "get_active_llm_runtime", lambda: DummyRuntime()
     )
     monkeypatch.setattr(
-        llm_simple_routes,
+        llm_simple_service,
         "_build_chat_completions_url",
         lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
@@ -427,10 +419,10 @@ def test_stream_simple_chat_connection_error_emits_error_event(monkeypatch):
 
 def test_stream_simple_chat_internal_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
-        llm_simple_routes, "get_active_llm_runtime", lambda: DummyRuntime()
+        llm_simple_service, "get_active_llm_runtime", lambda: DummyRuntime()
     )
     monkeypatch.setattr(
-        llm_simple_routes,
+        llm_simple_service,
         "_build_chat_completions_url",
         lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
@@ -450,9 +442,9 @@ def test_stream_simple_chat_onnx_streams_without_http_endpoint(monkeypatch):
     runtime = DummyRuntime(provider="onnx")
     runtime.service_type = "onnx"
     runtime.endpoint = None
-    monkeypatch.setattr(llm_simple_routes, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
     monkeypatch.setattr(
-        llm_simple_routes, "_build_chat_completions_url", lambda _rt: None
+        llm_simple_service, "_build_chat_completions_url", lambda _rt: None
     )
 
     class FakeOnnxClient:
@@ -460,7 +452,7 @@ def test_stream_simple_chat_onnx_streams_without_http_endpoint(monkeypatch):
             yield "A"
             yield "B"
 
-    monkeypatch.setattr(llm_simple_routes, "OnnxLlmClient", lambda: FakeOnnxClient())
+    monkeypatch.setattr(llm_simple_service, "OnnxLlmClient", lambda: FakeOnnxClient())
     client = TestClient(app)
 
     with client.stream(
@@ -483,9 +475,9 @@ def test_stream_simple_chat_onnx_streams_without_http_endpoint(monkeypatch):
 
 def test_stream_simple_chat_multi_runtime_uses_non_stream_upstream(monkeypatch):
     runtime = DummyRuntime(provider="multi_runtime")
-    monkeypatch.setattr(llm_simple_routes, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
     monkeypatch.setattr(
-        llm_simple_routes,
+        llm_simple_service,
         "_build_chat_completions_url",
         lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
@@ -501,7 +493,7 @@ def test_stream_simple_chat_multi_runtime_uses_non_stream_upstream(monkeypatch):
         )
 
     monkeypatch.setattr(
-        llm_simple_routes.llm_simple_transport,
+        llm_simple_service.llm_simple_transport,
         "open_stream_response",
         _fake_open_stream_response,
     )
@@ -535,7 +527,7 @@ async def test_service_handles_missing_model_and_endpoint(monkeypatch):
 
     with pytest.raises(llm_simple_service.HTTPException) as missing_model:
         await llm_simple_service.stream_simple_chat(
-            llm_simple_routes.SimpleChatRequest(content="x")
+            llm_simple_service.SimpleChatRequest(content="x")
         )
     assert missing_model.value.status_code == 400
 
@@ -548,7 +540,7 @@ async def test_service_handles_missing_model_and_endpoint(monkeypatch):
     )
     with pytest.raises(llm_simple_service.HTTPException) as missing_endpoint:
         await llm_simple_service.stream_simple_chat(
-            llm_simple_routes.SimpleChatRequest(content="x")
+            llm_simple_service.SimpleChatRequest(content="x")
         )
     assert missing_endpoint.value.status_code == 503
 

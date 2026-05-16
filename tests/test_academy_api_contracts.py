@@ -766,15 +766,15 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "venom_core.api.routes.llm_simple.get_active_llm_runtime",
+            "venom_core.services.llm_simple_service.get_active_llm_runtime",
             lambda: current_runtime,
         ),
         patch(
-            "venom_core.api.routes.llm_simple._build_chat_completions_url",
+            "venom_core.services.llm_simple_service._build_chat_completions_url",
             lambda _runtime: "http://runtime.test/v1/chat/completions",
         ),
         patch(
-            "venom_core.api.routes.llm_simple._stream_simple_chunks",
+            "venom_core.services.llm_simple_service._stream_simple_chunks",
             _fake_stream_simple_chunks,
         ),
         patch(

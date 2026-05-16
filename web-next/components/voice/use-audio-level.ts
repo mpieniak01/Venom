@@ -5,7 +5,9 @@ import type { RefObject } from "react";
 
 const computeRms = (analyser: AnalyserNode, bufferRef: RefObject<Float32Array | null>): number => {
   if (bufferRef.current?.length !== analyser.fftSize) {
-    bufferRef.current = new Float32Array(analyser.fftSize);
+    bufferRef.current = new Float32Array(
+      new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT),
+    );
   }
 
   const buffer = bufferRef.current;
@@ -13,9 +15,7 @@ const computeRms = (analyser: AnalyserNode, bufferRef: RefObject<Float32Array | 
     return 0;
   }
 
-  analyser.getFloatTimeDomainData(
-    buffer as unknown as Float32Array<ArrayBuffer>,
-  );
+  analyser.getFloatTimeDomainData(buffer as Float32Array<ArrayBuffer>);
   let sum = 0;
   for (const sample of buffer) {
     sum += sample ** 2;

@@ -87,7 +87,7 @@ function buildSnapshotComparison(args: {
   snapshotAfter: IntrospectionSnapshot | undefined;
 }): SnapshotComparison | null {
   const { snapshot, analysisCompleted, snapshotAfter } = args;
-  if (!(snapshot && analysisCompleted)) {
+  if (!snapshot || !analysisCompleted) {
     return null;
   }
   const before = snapshot;
@@ -137,7 +137,7 @@ function resolveGraphDetails(args: {
     analysisChunkCount,
     analysisElapsedMs,
   } = args;
-  if (!(snapshot && selectedGraphNode)) {
+  if (!snapshot || !selectedGraphNode) {
     return null;
   }
   return resolveSelectedGraphNodeDetails({
@@ -192,14 +192,12 @@ export function ModelIntrospectionDashboard() {
   }, [analysisCompleted, analysisResult?.snapshot_after, snapshot]);
 
   const analysisResponse = analysisResult?.analysis?.response ?? "";
+  const analysisSourceResponse = analysisVisible ? analysisResponse : "";
   const analysisHighlights = useMemo(
-    () => splitAnswerHighlights(analysisVisible ? analysisResponse : ""),
-    [analysisResponse, analysisVisible],
+    () => splitAnswerHighlights(analysisSourceResponse),
+    [analysisSourceResponse],
   );
-  const analysisTimeline = useMemo(
-    () => (analysisVisible ? analysisResult?.analysis?.timeline ?? [] : []),
-    [analysisResult?.analysis?.timeline, analysisVisible],
-  );
+  const analysisTimeline = analysisVisible ? analysisResult?.analysis?.timeline ?? [] : [];
   const analysisProcess = analysisResult?.analysis?.process ?? null;
   const analysisTimelineStepCount =
     analysisResult?.analysis?.timeline_step_count ?? analysisTimeline.length;
@@ -275,7 +273,7 @@ export function ModelIntrospectionDashboard() {
 
   const selectedGraphNode = useMemo(() => {
     const nodes = snapshot?.graph?.nodes ?? [];
-    if (!(nodes.length > 0 && selectedGraphNodeIdEffective)) {
+    if (nodes.length === 0 || !selectedGraphNodeIdEffective) {
       return null;
     }
     return nodes.find((node) => node.id === selectedGraphNodeIdEffective) ?? null;

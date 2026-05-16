@@ -17,6 +17,9 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 _ANALYSIS_STREAM_FAILED = "analysis stream failed"
+_TIMELINE_LABEL_SNAPSHOT_CAPTURED = "Snapshot captured"
+_TIMELINE_LABEL_PROMPT_PREPARED = "Prompt prepared"
+_TIMELINE_LABEL_STREAM_OPENED = "Stream opened"
 
 
 def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
@@ -37,6 +40,7 @@ def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
 
 
 def _drain_sse_events(buffer: str) -> tuple[list[tuple[str, str]], str]:
+    buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
     events: list[tuple[str, str]] = []
     blocks = buffer.split("\n\n")
     tail = blocks.pop() if blocks else ""
@@ -273,21 +277,21 @@ def _build_running_analysis_result(
             "timeline": [
                 {
                     "id": "snapshot_before",
-                    "label": "Snapshot captured",
+                    "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
                     "status": "done",
                     "detail": runtime["label"],
                     "at_ms": 0.0,
                 },
                 {
                     "id": "request_ready",
-                    "label": "Prompt prepared",
+                    "label": _TIMELINE_LABEL_PROMPT_PREPARED,
                     "status": "done",
                     "detail": prompt,
                     "at_ms": request_ready_at_ms,
                 },
                 {
                     "id": "stream_opened",
-                    "label": "Stream opened",
+                    "label": _TIMELINE_LABEL_STREAM_OPENED,
                     "status": "running",
                     "detail": "Awaiting streamed content",
                     "at_ms": request_ready_at_ms,
@@ -319,21 +323,21 @@ def _build_failed_analysis_result(
     timeline: list[dict[str, Any]] = [
         {
             "id": "snapshot_before",
-            "label": "Snapshot captured",
+            "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
             "status": "done",
             "detail": runtime["label"],
             "at_ms": 0.0,
         },
         {
             "id": "request_ready",
-            "label": "Prompt prepared",
+            "label": _TIMELINE_LABEL_PROMPT_PREPARED,
             "status": "done",
             "detail": prompt,
             "at_ms": request_ready_at_ms,
         },
         {
             "id": "stream_opened",
-            "label": "Stream opened",
+            "label": _TIMELINE_LABEL_STREAM_OPENED,
             "status": "done",
             "detail": f"{len(events)} event(s) observed",
             "at_ms": response_received_at_ms,
@@ -379,13 +383,10 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
 
     body_iterator = getattr(response, "body_iterator", None)
     if body_iterator is None:
-        return {
-            "response_text": "",
-            "chunk_count": 0,
-            "events": [],
-            "raw_chunks": [],
-            "first_content_at_ms": None,
-        }
+        status_code = getattr(response, "status_code", "unknown")
+        raise RuntimeError(
+            f"analysis stream response does not expose body iterator (status={status_code})"
+        )
 
     raw_chunks: list[str] = []
     sse_tail = ""
@@ -433,12 +434,15 @@ def _build_analysis_timeline(
     runtime: dict[str, Any],
     stream_payload: dict[str, Any],
     elapsed_ms: float,
+    request_ready_at_ms: float,
+    response_received_at_ms: float,
+    snapshot_after_at_ms: float | None,
     refreshed_snapshot: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     timeline: list[dict[str, Any]] = [
         {
             "id": "snapshot_before",
-            "label": "Snapshot captured",
+            "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
             "status": "done",
             "detail": runtime["label"],
             "at_ms": 0.0,
@@ -446,18 +450,18 @@ def _build_analysis_timeline(
         },
         {
             "id": "request_ready",
-            "label": "Prompt prepared",
+            "label": _TIMELINE_LABEL_PROMPT_PREPARED,
             "status": "done",
             "detail": prompt,
-            "at_ms": 0.0,
+            "at_ms": request_ready_at_ms,
             "progress": 10,
         },
         {
             "id": "stream_opened",
-            "label": "Stream opened",
+            "label": _TIMELINE_LABEL_STREAM_OPENED,
             "status": "done",
             "detail": f"{len(stream_payload.get('events', []))} event(s) observed",
-            "at_ms": float(stream_payload.get("first_content_at_ms") or 0.0),
+            "at_ms": response_received_at_ms,
             "progress": 20,
         },
     ]
@@ -492,7 +496,7 @@ def _build_analysis_timeline(
                 "label": "Snapshot refreshed",
                 "status": "done",
                 "detail": f"{len(refreshed_snapshot.get('available_packages', []))} packages available",
-                "at_ms": elapsed_ms,
+                "at_ms": float(snapshot_after_at_ms or elapsed_ms),
                 "progress": 100,
             }
         )
@@ -643,6 +647,9 @@ async def stream_model_introspection_analysis(
         runtime=runtime,
         stream_payload=stream_payload,
         elapsed_ms=elapsed_ms,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        snapshot_after_at_ms=snapshot_after_at_ms,
         refreshed_snapshot=refreshed_snapshot,
     )
     final_result = {
@@ -722,6 +729,9 @@ async def analyze_model_with_optional_live_run(
         runtime=runtime,
         stream_payload=stream_payload,
         elapsed_ms=elapsed_ms,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        snapshot_after_at_ms=snapshot_after_at_ms,
         refreshed_snapshot=refreshed_snapshot,
     )
 

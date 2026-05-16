@@ -183,17 +183,18 @@ export function AnalysisOrbPanel({
   }, [displayProgress]);
 
   useEffect(() => {
-    type FrameHandle = number | ReturnType<typeof globalThis.setTimeout>;
     const hasRaf =
       typeof globalThis.requestAnimationFrame === "function" &&
       typeof globalThis.cancelAnimationFrame === "function";
-    const scheduleFrame = (callback: FrameRequestCallback): FrameHandle => {
+    let rafId: number | null = null;
+    let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+    const scheduleFrame = (callback: FrameRequestCallback): void => {
       if (hasRaf) {
-        return globalThis.requestAnimationFrame(callback);
+        rafId = globalThis.requestAnimationFrame(callback);
+        return;
       }
-      return globalThis.setTimeout(() => callback(performance.now()), 16);
+      timeoutId = globalThis.setTimeout(() => callback(performance.now()), 16);
     };
-    let frameId: FrameHandle | null = null;
     let startAt = 0;
     const startValue = displayProgressRef.current;
     const targetValue = progressPercent;
@@ -210,18 +211,17 @@ export function AnalysisOrbPanel({
       const eased = 1 - Math.pow(1 - t, 3);
       setDisplayProgress(startValue + (targetValue - startValue) * eased);
       if (t < 1) {
-        frameId = scheduleFrame(animate);
+        scheduleFrame(animate);
       }
     };
 
-    frameId = scheduleFrame(animate);
+    scheduleFrame(animate);
     return () => {
-      if (frameId != null) {
-        if (hasRaf) {
-          globalThis.cancelAnimationFrame(frameId as number);
-        } else {
-          globalThis.clearTimeout(frameId as ReturnType<typeof globalThis.setTimeout>);
-        }
+      if (rafId != null) {
+        globalThis.cancelAnimationFrame(rafId);
+      }
+      if (timeoutId != null) {
+        globalThis.clearTimeout(timeoutId);
       }
     };
   }, [progressPercent]);
@@ -401,7 +401,10 @@ function renderVerdictCopy(args: {
 }
 
 function renderManagerMetricsBadge(available: boolean): string {
-  return available ? "manager metrics on" : "manager metrics off";
+  if (available) {
+    return "manager metrics on";
+  }
+  return "manager metrics off";
 }
 
 function renderProcessFirstChunkLabel(firstChunkMs: number | null | undefined): string {
@@ -409,6 +412,31 @@ function renderProcessFirstChunkLabel(firstChunkMs: number | null | undefined): 
     return `${firstChunkMs.toFixed(1)} ms`;
   }
   return "n/a";
+}
+
+function renderAnalysisResponseStateLabel(analysisResponse: string): string {
+  if (analysisResponse) {
+    return "presented";
+  }
+  return "awaiting data";
+}
+
+function renderManagerBadgeTone(managerAvailable: boolean): BadgeTone {
+  if (managerAvailable) {
+    return "success";
+  }
+  return "warning";
+}
+
+function renderBooleanTelemetryBadge(args: {
+  flag: boolean | null | undefined;
+  trueLabel: string;
+  falseLabel: string;
+}): { tone: BadgeTone; label: string } {
+  if (args.flag) {
+    return { tone: "warning", label: args.trueLabel };
+  }
+  return { tone: "success", label: args.falseLabel };
 }
 
 export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
@@ -437,6 +465,23 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
   } = props;
 
   const managerBadgeText = renderManagerMetricsBadge(managerAvailable);
+  const managerBadgeTone = renderManagerBadgeTone(managerAvailable);
+  const responseStateLabel = renderAnalysisResponseStateLabel(analysisResponse);
+  const responseShapeBadge = renderBooleanTelemetryBadge({
+    flag: analysisProcess?.response_truncated,
+    trueLabel: "response truncated",
+    falseLabel: "response complete",
+  });
+  const promptShapeBadge = renderBooleanTelemetryBadge({
+    flag: analysisProcess?.prompt_trimmed,
+    trueLabel: "prompt trimmed",
+    falseLabel: "prompt intact",
+  });
+  const contextShapeBadge = renderBooleanTelemetryBadge({
+    flag: analysisProcess?.context_preview_truncated,
+    trueLabel: "context truncated",
+    falseLabel: "context intact",
+  });
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -482,9 +527,9 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
           <p className="text-xs uppercase tracking-wide text-zinc-500">{resultsVerdictLabel}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge tone={analysisAnswerTone}>
-              {analysisResponse ? "presented" : "awaiting data"}
+              {responseStateLabel}
             </Badge>
-            <Badge tone={managerAvailable ? "success" : "warning"}>{managerBadgeText}</Badge>
+            <Badge tone={managerBadgeTone}>{managerBadgeText}</Badge>
           </div>
           <p className="mt-3 text-sm text-zinc-300">
             {renderVerdictCopy({
@@ -499,7 +544,7 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={analysisAnswerTone}>{answerStatusLabel}</Badge>
-            <Badge tone={managerAvailable ? "success" : "warning"}>{managerBadgeText}</Badge>
+            <Badge tone={managerBadgeTone}>{managerBadgeText}</Badge>
             <Badge tone="neutral">{eventsCount} stream event(s)</Badge>
           </div>
           <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">Analysis process</p>
@@ -534,15 +579,9 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
             </Badge>
             <Badge tone="neutral">chunks {analysisProcess?.response_chunks ?? chunkCount}</Badge>
             <Badge tone="neutral">chars {analysisProcess?.response_chars ?? responseChars}</Badge>
-            <Badge tone={analysisProcess?.response_truncated ? "warning" : "success"}>
-              {analysisProcess?.response_truncated ? "response truncated" : "response complete"}
-            </Badge>
-            <Badge tone={analysisProcess?.prompt_trimmed ? "warning" : "success"}>
-              {analysisProcess?.prompt_trimmed ? "prompt trimmed" : "prompt intact"}
-            </Badge>
-            <Badge tone={analysisProcess?.context_preview_truncated ? "warning" : "success"}>
-              {analysisProcess?.context_preview_truncated ? "context truncated" : "context intact"}
-            </Badge>
+            <Badge tone={responseShapeBadge.tone}>{responseShapeBadge.label}</Badge>
+            <Badge tone={promptShapeBadge.tone}>{promptShapeBadge.label}</Badge>
+            <Badge tone={contextShapeBadge.tone}>{contextShapeBadge.label}</Badge>
           </div>
           {analysisProcess && (
             <>

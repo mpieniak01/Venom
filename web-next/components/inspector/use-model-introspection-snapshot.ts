@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getServerApiBaseUrl } from "@/lib/env";
 import type {
   IntrospectionSnapshot,
@@ -25,8 +25,10 @@ export function useModelIntrospectionSnapshot(): SnapshotHookResult {
   const [snapshot, setSnapshot] = useState<IntrospectionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequestIdRef = useRef(0);
 
   const loadSnapshot = useCallback(async () => {
+    const requestId = ++latestRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -40,13 +42,19 @@ export function useModelIntrospectionSnapshot(): SnapshotHookResult {
       if (!response.ok) {
         throw new Error(readErrorMessage(data));
       }
-      setSnapshot(data.snapshot);
+      if (requestId === latestRequestIdRef.current) {
+        setSnapshot(data.snapshot);
+      }
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Request failed";
-      setError(message);
-      setSnapshot(null);
+      if (requestId === latestRequestIdRef.current) {
+        setError(message);
+        setSnapshot(null);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 

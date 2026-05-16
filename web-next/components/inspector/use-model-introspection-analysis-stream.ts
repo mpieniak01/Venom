@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getServerApiBaseUrl } from "@/lib/env";
 import {
   processAnalysisStream,
@@ -41,15 +41,26 @@ export function useModelIntrospectionAnalysisStream(
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const isRunningRef = useRef(false);
+  const analysisHasPayload = Boolean(analysisResult?.analysis);
 
   useEffect(() => {
-    const analysisRunning = analysisResult?.status === "running";
-    const analysisVisible = Boolean(analysisResult?.analysis);
-    if (!(analysisRunning && analysisVisible)) {
+    isRunningRef.current = analysisResult?.status === "running";
+  }, [analysisResult?.status]);
+
+  useEffect(() => {
+    if (!isRunningRef.current) {
+      return;
+    }
+    if (!analysisHasPayload) {
       return;
     }
     const startedAt = performance.now();
     const timer = globalThis.setInterval(() => {
+      if (!isRunningRef.current) {
+        globalThis.clearInterval(timer);
+        return;
+      }
       setAnalysisResult((current) => {
         if (!current?.analysis || current.status !== "running") {
           return current;
@@ -68,7 +79,7 @@ export function useModelIntrospectionAnalysisStream(
     return () => {
       globalThis.clearInterval(timer);
     };
-  }, [analysisResult]);
+  }, [analysisHasPayload, analysisResult?.status]);
 
   const runAnalysis = useCallback(async () => {
     if (!analysisPrompt.trim()) {

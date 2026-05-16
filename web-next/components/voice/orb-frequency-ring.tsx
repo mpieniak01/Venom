@@ -70,11 +70,9 @@ export function OrbFrequencyRing({ analyserRef, active, color, size }: OrbFreque
         lastSampleRef.current = now;
         const binCount = analyser.frequencyBinCount;
         if (!bufferRef.current || bufferRef.current.length !== binCount) {
-          bufferRef.current = new Uint8Array(binCount);
+          bufferRef.current = new Uint8Array(new ArrayBuffer(binCount));
         }
-        analyser.getByteFrequencyData(
-          bufferRef.current as unknown as Uint8Array<ArrayBuffer>,
-        );
+        analyser.getByteFrequencyData(bufferRef.current as Uint8Array<ArrayBuffer>);
         const data = bufferRef.current;
         const step = Math.max(1, Math.floor(binCount / N));
 

@@ -7,6 +7,7 @@ streaming logic without importing ``venom_core.api.routes``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import threading
 import time
@@ -172,6 +173,7 @@ async def _aiter_sync_onnx_stream(
 ) -> AsyncIterator[str]:
     """Bridge sync ONNX generator to async iteration without blocking event loop."""
     queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
+    stop_event = threading.Event()
 
     def _producer() -> None:
         try:
@@ -180,8 +182,14 @@ async def _aiter_sync_onnx_stream(
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
             ):
+                if stop_event.is_set():
+                    break
                 asyncio.run_coroutine_threadsafe(queue.put(token), loop)
-        except Exception as exc:  # pragma: no cover - safety bridge
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:  # pragma: no cover - safety bridge
             asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
         finally:
             asyncio.run_coroutine_threadsafe(queue.put(None), loop)
@@ -197,7 +205,19 @@ async def _aiter_sync_onnx_stream(
                 raise item
             yield item
     finally:
-        await producer_task
+        stop_event.set()
+        client_close = getattr(client, "close", None)
+        if callable(client_close):
+            try:
+                client_close()
+            except RuntimeError:
+                pass
+        try:
+            await asyncio.wait_for(producer_task, timeout=0.5)
+        except TimeoutError:
+            producer_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await producer_task
 
 
 def _resolve_model_name_for_simple_request(
@@ -807,14 +827,22 @@ async def _handle_stream_http_error(
         await asyncio.sleep(retry_backoff * attempt)
         return "retry"
 
-    yield_event = _emit_connection_error_and_mark_failed(
+    if isinstance(status_code, int) and 400 <= status_code <= 599:
+        return await _emit_http_status_error_and_mark_failed(
+            exc=exc,
+            runtime=runtime,
+            request_id=request_id,
+            model_name=model_name,
+            stream_start=stream_start,
+        )
+
+    return _emit_connection_error_and_mark_failed(
         exc=exc,
         runtime=runtime,
         request_id=request_id,
         model_name=model_name,
         stream_start=stream_start,
     )
-    return yield_event
 
 
 async def _stream_simple_chunks(

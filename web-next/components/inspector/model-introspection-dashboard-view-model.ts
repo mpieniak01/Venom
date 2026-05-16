@@ -22,7 +22,10 @@ export function shortenTraceId(requestId: string | null | undefined): string {
   if (!requestId) {
     return "—";
   }
-  return requestId.length > 8 ? `${requestId.slice(0, 8)}…` : requestId;
+  if (requestId.length > 8) {
+    return `${requestId.slice(0, 8)}…`;
+  }
+  return requestId;
 }
 
 export function timelineBadgeTone(status: string): BadgeTone {
@@ -58,7 +61,10 @@ export function getPhaseTone(phase: AnalysisPhase): BadgeTone {
 }
 
 export function getPhaseLabel(phase: AnalysisPhase): string {
-  return phase === "first_chunk" ? "first chunk" : phase;
+  if (phase === "first_chunk") {
+    return "first chunk";
+  }
+  return phase;
 }
 
 export function getAnalysisPhase(args: {
@@ -82,14 +88,20 @@ export function getAnalysisPhase(args: {
       return "completed";
     }
     if (analysisStatus === "running") {
-      return chunkCount > 0 ? "streaming" : "requesting";
+      if (chunkCount > 0) {
+        return "streaming";
+      }
+      return "requesting";
     }
     if (firstChunkMs != null || chunkCount > 0) {
       return "first_chunk";
     }
     return "idle";
   }
-  return analysisLoading ? "requesting" : "idle";
+  if (analysisLoading) {
+    return "requesting";
+  }
+  return "idle";
 }
 
 export function getAnswerTone(
@@ -168,25 +180,25 @@ export function computeAnalysisProgress(args: {
     elapsedMs,
     analysisStatus,
   } = args;
-  if (analysisVisible) {
-    if (analysisTimelineProgress > 0) {
-      return clampPercent(analysisTimelineProgress);
-    }
-    const estimatedProgress = Math.min(
-      100,
-      analysisStepCount * 18 + (firstChunkMs != null ? 20 : 0),
-    );
-    const noChunkYet = chunkCount === 0 && firstChunkMs == null;
-    if (analysisStatus === "running" && noChunkYet) {
-      const waitingProgress = 30 + Math.min(50, elapsedMs / 250);
-      return clampPercent(Math.max(estimatedProgress, waitingProgress));
-    }
-    if (noChunkYet) {
-      return clampPercent(Math.min(estimatedProgress, 30));
-    }
-    return clampPercent(estimatedProgress);
+  if (!analysisVisible) {
+    return 0;
   }
-  return 0;
+  if (analysisTimelineProgress > 0) {
+    return clampPercent(analysisTimelineProgress);
+  }
+  const estimatedProgress = Math.min(
+    100,
+    analysisStepCount * 18 + (firstChunkMs != null ? 20 : 0),
+  );
+  const noChunkYet = chunkCount === 0 && firstChunkMs == null;
+  if (analysisStatus === "running" && noChunkYet) {
+    const waitingProgress = 30 + Math.min(50, elapsedMs / 250);
+    return clampPercent(Math.max(estimatedProgress, waitingProgress));
+  }
+  if (noChunkYet) {
+    return clampPercent(Math.min(estimatedProgress, 30));
+  }
+  return clampPercent(estimatedProgress);
 }
 
 export function getOrbSubtitle(args: {
@@ -246,6 +258,108 @@ function formatElapsedDetails(args: {
   return "—";
 }
 
+function getRuntimeGraphNodeDetails(snapshot: IntrospectionSnapshot): GraphNodeDetails {
+  return {
+    title: "Runtime details",
+    lines: [
+      `Provider: ${snapshot.runtime.provider}`,
+      `Model: ${snapshot.runtime.model}`,
+      `Endpoint: ${snapshot.runtime.endpoint ?? "local"}`,
+      `Service type: ${snapshot.runtime.service_type}`,
+      `Mode: ${snapshot.runtime.mode}`,
+    ],
+  };
+}
+
+function getModelGraphNodeDetails(snapshot: IntrospectionSnapshot): GraphNodeDetails {
+  return {
+    title: "Model details",
+    lines: [
+      `Active model: ${snapshot.summary.active_model}`,
+      `Runtime label: ${snapshot.summary.runtime_label}`,
+      `Drift issues: ${snapshot.runtime_drift.issues.length}`,
+    ],
+  };
+}
+
+function getAnalysisGraphNodeDetails(args: {
+  analysisMechanismEnabled: boolean;
+  analysisStatus: string | undefined;
+  analysisVisible: boolean;
+  analysisChunkCount: number;
+  analysisElapsedMs: number;
+}): GraphNodeDetails {
+  const {
+    analysisMechanismEnabled,
+    analysisStatus,
+    analysisVisible,
+    analysisChunkCount,
+    analysisElapsedMs,
+  } = args;
+  return {
+    title: "Analysis details",
+    lines: [
+      `Mechanism: ${analysisMechanismEnabled ? "enabled" : "disabled"}`,
+      `Status: ${analysisStatus ?? "idle"}`,
+      `Content chunks: ${analysisVisible ? analysisChunkCount : 0}`,
+      `Elapsed: ${formatElapsedDetails({ analysisVisible, analysisElapsedMs })}`,
+    ],
+  };
+}
+
+function getManagerGraphNodeDetails(snapshot: IntrospectionSnapshot): GraphNodeDetails {
+  return {
+    title: "ModelManager details",
+    lines: [
+      `Available: ${snapshot.model_manager.available ? "yes" : "no"}`,
+      `Metrics: ${snapshot.model_manager.usage_metrics ? "present" : "absent"}`,
+      `Error: ${snapshot.model_manager.error ?? "—"}`,
+    ],
+  };
+}
+
+function getBrainGraphNodeDetails(snapshot: IntrospectionSnapshot): GraphNodeDetails {
+  return {
+    title: "Reuse details",
+    lines: [
+      `Path: ${snapshot.reuse.brain.path}`,
+      `Available: ${snapshot.reuse.brain.available ? "yes" : "no"}`,
+      `Purpose: ${snapshot.reuse.brain.purpose}`,
+    ],
+  };
+}
+
+function getDiagnosticsGraphNodeDetails(snapshot: IntrospectionSnapshot): GraphNodeDetails {
+  return {
+    title: "Diagnostics reuse",
+    lines: snapshot.reuse.diagnostics.map((entry) => `${entry.id}: ${entry.purpose}`),
+  };
+}
+
+function getPackageGraphNodeDetails(args: {
+  snapshot: IntrospectionSnapshot;
+  selectedGraphNode: { id: string; label: string; kind: string; status: string };
+}): GraphNodeDetails {
+  const { snapshot, selectedGraphNode } = args;
+  const packageKey = selectedGraphNode.id.replaceAll("package:", "");
+  const packageNode = snapshot.packages[packageKey];
+  if (packageNode) {
+    return {
+      title: "Package details",
+      lines: [
+        `Package: ${packageNode.package}`,
+        `Module: ${packageNode.module}`,
+        `Available: ${packageNode.available ? "yes" : "no"}`,
+        `Version: ${packageNode.version ?? "n/a"}`,
+      ],
+    };
+  }
+  return {
+    title: "Package details",
+    lines: [`Node: ${selectedGraphNode.label}`, `Status: ${selectedGraphNode.status}`],
+  };
+}
+
 export function resolveSelectedGraphNodeDetails(args: {
   snapshot: IntrospectionSnapshot;
   selectedGraphNode: { id: string; label: string; kind: string; status: string };
@@ -265,87 +379,20 @@ export function resolveSelectedGraphNodeDetails(args: {
     analysisElapsedMs,
   } = args;
 
-  if (selectedGraphNode.id === "runtime") {
-    return {
-      title: "Runtime details",
-      lines: [
-        `Provider: ${snapshot.runtime.provider}`,
-        `Model: ${snapshot.runtime.model}`,
-        `Endpoint: ${snapshot.runtime.endpoint ?? "local"}`,
-        `Service type: ${snapshot.runtime.service_type}`,
-        `Mode: ${snapshot.runtime.mode}`,
-      ],
-    };
+  const nodeId = selectedGraphNode.id;
+  if (nodeId === "runtime") return getRuntimeGraphNodeDetails(snapshot);
+  if (nodeId === "model") return getModelGraphNodeDetails(snapshot);
+  if (nodeId === "analysis") {
+    return getAnalysisGraphNodeDetails({
+      analysisMechanismEnabled,
+      analysisStatus,
+      analysisVisible,
+      analysisChunkCount,
+      analysisElapsedMs,
+    });
   }
-  if (selectedGraphNode.id === "model") {
-    return {
-      title: "Model details",
-      lines: [
-        `Active model: ${snapshot.summary.active_model}`,
-        `Runtime label: ${snapshot.summary.runtime_label}`,
-        `Drift issues: ${snapshot.runtime_drift.issues.length}`,
-      ],
-    };
-  }
-  if (selectedGraphNode.id === "analysis") {
-    return {
-      title: "Analysis details",
-      lines: [
-        `Mechanism: ${analysisMechanismEnabled ? "enabled" : "disabled"}`,
-        `Status: ${analysisStatus ?? "idle"}`,
-        `Content chunks: ${analysisVisible ? analysisChunkCount : 0}`,
-        `Elapsed: ${formatElapsedDetails({ analysisVisible, analysisElapsedMs })}`,
-      ],
-    };
-  }
-  if (selectedGraphNode.id === "manager") {
-    return {
-      title: "ModelManager details",
-      lines: [
-        `Available: ${snapshot.model_manager.available ? "yes" : "no"}`,
-        `Metrics: ${snapshot.model_manager.usage_metrics ? "present" : "absent"}`,
-        `Error: ${snapshot.model_manager.error ?? "—"}`,
-      ],
-    };
-  }
-  if (selectedGraphNode.id === "brain") {
-    return {
-      title: "Reuse details",
-      lines: [
-        `Path: ${snapshot.reuse.brain.path}`,
-        `Available: ${snapshot.reuse.brain.available ? "yes" : "no"}`,
-        `Purpose: ${snapshot.reuse.brain.purpose}`,
-      ],
-    };
-  }
-  if (selectedGraphNode.id === "diagnostics") {
-    return {
-      title: "Diagnostics reuse",
-      lines: snapshot.reuse.diagnostics.map(
-        (entry) => `${entry.id}: ${entry.purpose}`,
-      ),
-    };
-  }
-
-  const packageKey = selectedGraphNode.id.replaceAll("package:", "");
-  const packageNode = snapshot.packages[packageKey];
-  if (packageNode) {
-    return {
-      title: "Package details",
-      lines: [
-        `Package: ${packageNode.package}`,
-        `Module: ${packageNode.module}`,
-        `Available: ${packageNode.available ? "yes" : "no"}`,
-        `Version: ${packageNode.version ?? "n/a"}`,
-      ],
-    };
-  }
-
-  return {
-    title: "Package details",
-    lines: [
-      `Node: ${selectedGraphNode.label}`,
-      `Status: ${selectedGraphNode.status}`,
-    ],
-  };
+  if (nodeId === "manager") return getManagerGraphNodeDetails(snapshot);
+  if (nodeId === "brain") return getBrainGraphNodeDetails(snapshot);
+  if (nodeId === "diagnostics") return getDiagnosticsGraphNodeDetails(snapshot);
+  return getPackageGraphNodeDetails({ snapshot, selectedGraphNode });
 }

@@ -65,7 +65,7 @@ function applyReplacements(value: string, replacements?: Record<string, string |
 }
 
 function resolvePreferredLanguage(): LanguageCode {
-  if (typeof globalThis.window === "undefined") return "pl";
+  if (globalThis.window === undefined) return "pl";
   const stored = globalThis.window.localStorage.getItem(STORAGE_KEY);
   if (stored && (stored === "pl" || stored === "en" || stored === "de")) {
     return stored;
@@ -78,7 +78,7 @@ function resolvePreferredLanguage(): LanguageCode {
 }
 
 function subscribeToLanguagePreference(onStoreChange: () => void): () => void {
-  if (typeof globalThis.window === "undefined") return () => undefined;
+  if (globalThis.window === undefined) return () => undefined;
   const handleStorage = (event: StorageEvent) => {
     if (event.key === STORAGE_KEY) {
       onStoreChange();
@@ -98,12 +98,12 @@ export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>
   const language = userSelectedLanguage ?? preferredLanguage;
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     document.documentElement.dataset.hydrated = "true";
   }, []);
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     globalThis.window.localStorage.setItem(STORAGE_KEY, language);
     dayjs.locale(language);
     document.documentElement.lang = language;

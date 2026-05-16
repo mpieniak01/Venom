@@ -49,20 +49,20 @@ export function Sidebar() {
       />
 
       <div>
-        <NavigationSection
-          collapsed={collapsed}
-          isSynced={isSynced}
-          pathname={pathname}
-          language={language}
-          t={t}
-        />
+            <NavigationSection
+              collapsed={collapsed}
+              isSynced={isSynced}
+              pathname={pathname}
+              language={language}
+              t={t}
+            />
 
-        <div className={cn("mt-4", isSynced && "transition-all duration-300 ease-in-out", collapsed ? "opacity-0 translate-y-4 pointer-events-none overflow-hidden max-h-0" : "opacity-100 translate-y-0 max-h-[1000px]")}>
-          <div className="space-y-4 pt-3">
-            <SystemStatusPanel />
+            <div className={cn("mt-4", isSynced && "transition-all duration-300 ease-in-out", collapsed ? "opacity-0 translate-y-4 pointer-events-none overflow-hidden max-h-0" : "opacity-100 translate-y-0 max-h-[1000px]")}>
+              <div className="space-y-4 pt-3">
+                <SystemStatusPanel />
 
-            <CostModeSection
-              costMode={costMode}
+                <CostModeSection
+                  costMode={costMode}
               costLoading={costLoading}
               onToggle={handleCostToggle}
               t={t}

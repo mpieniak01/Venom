@@ -15,6 +15,7 @@ import {
 } from "@/lib/workflow-control-screen";
 import type { PropertyPanelOptions } from "@/lib/workflow-control-options";
 import type {
+  OperatorConfigField,
   OperatorExecutionStep,
   OperatorRuntimeService,
   SystemState,
@@ -43,7 +44,7 @@ interface WorkflowInspectorPanelProps {
   onSelectControlDomain: (domainId: ControlDomainId) => void;
   expandedGroupKeys: Set<string>;
   groupSizes: Map<string, number>;
-  groupToStepIds: Map<string, string[]>;
+  groupToStepIds: Map<string, readonly string[]>;
   onSelectExecutionStep: (stepId: string, groupKey?: string) => void;
   onToggleExecutionGroup: (groupKey: string) => void;
   isLoading?: boolean;
@@ -369,7 +370,7 @@ function ExecutionStepInspector({
   step: OperatorExecutionStep;
   groupKey?: string;
   groupSizes: Map<string, number>;
-  groupToStepIds: Map<string, string[]>;
+  groupToStepIds: Map<string, readonly string[]>;
   expandedGroupKeys: Set<string>;
   executionSteps: OperatorExecutionStep[];
   onToggleExecutionGroup: (groupKey: string) => void;
@@ -516,7 +517,7 @@ export function WorkflowInspectorPanel({
         selectedNode={buildSelectionNode(selection, draftState)}
         onUpdateNode={onUpdateNode}
         availableOptions={propertyPanelOptions}
-        configFields={draftState?.config_fields}
+        configFields={draftState?.config_fields as OperatorConfigField[] | undefined}
       />
     );
   }
@@ -548,7 +549,9 @@ export function WorkflowInspectorPanel({
         groupSizes={groupSizes}
         groupToStepIds={groupToStepIds}
         expandedGroupKeys={expandedGroupKeys}
-        executionSteps={systemState?.execution_steps ?? []}
+        executionSteps={
+          (systemState?.execution_steps ?? []) as OperatorExecutionStep[]
+        }
         onToggleExecutionGroup={onToggleExecutionGroup}
         onSelectExecutionStep={onSelectExecutionStep}
         onSelectRuntimeService={onSelectRuntimeService}

@@ -538,10 +538,109 @@ export const en = {
     },
   },
   inspector: {
+    links: {
+      openModelIntrospection: "Open model introspection",
+      goToKnowledgeGraph: "Go to Knowledge Graph",
+    },
     page: {
       eyebrow: "Inspector / Diagnostics",
       title: "Trace Analysis",
       description: "RequestTracer + Mermaid: instant view of flow, steps, and queue health.",
+    },
+    modelIntrospection: {
+      page: {
+        eyebrow: "Inspector / Model Introspection",
+        title: "Model interior view",
+        description: "Runtime snapshot, introspection packages, drift and Brain reuse without duplicating diagnostics.",
+      },
+      dashboard: {
+        loading: {
+          title: "Snapshot loading",
+          description: "Fetching model introspection snapshot from backend.",
+        },
+        error: {
+          title: "Snapshot fetch failed",
+          note: "The page is ready, but the API snapshot is unavailable right now.",
+        },
+        analysis: {
+          title: "Live model analysis",
+          description: "Opt-in prompt execution on the active model. Disabled by default to avoid slowing the stack.",
+          promptLabel: "Prompt",
+          promptPlaceholder: "What is the sun?",
+          run: "Run analysis",
+          running: "Running...",
+          reset: "Reset prompt",
+          disabled: "Live analysis is disabled. Turn on the mechanism to execute the active model.",
+          skipped: "Live analysis is disabled. Enable the mechanism to run the active model.",
+          orbIdle: "Run analysis to activate the orb",
+        },
+        results: {
+          title: "Analysis results",
+          description: "Answer, highlights and process telemetry are grouped here.",
+          answer: "Answer",
+          waitingToken: "Waiting for first streamed token...",
+          streaming: "Streaming live from the model",
+          highlights: "Presentation highlights",
+          highlightsEmpty: "Run analysis to populate structured highlights.",
+          verdict: "Model verdict",
+          verdictReady: "The page now surfaces the answer as structured data instead of one raw paragraph.",
+          verdictPending: "The presentation layer will become active after the first analysis run.",
+        },
+        snapshotComparison: {
+          title: "Snapshot comparison",
+          before: "Before",
+          after: "After",
+          delta: "Delta",
+          fallback: "Snapshot after analysis remains available for comparison with the runtime section above.",
+        },
+        graph: {
+          title: "Graph view",
+          description: "Optional technical drilldown for runtime, analysis, reuse and package state.",
+          drilldownTitle: "Graph drilldown",
+          open: "Open the technical graph layer on demand",
+          hide: "Hide the technical graph layer",
+          stateOpen: "open",
+          stateCollapsed: "collapsed",
+        },
+      },
+      mechanism: {
+        enabled: "enabled",
+        disabled: "disabled",
+        analysisLabel: "Analysis",
+        title: "Mechanism",
+        description:
+          "Shared live analysis switch used by Inspector, sidebar and TopBar. Disabled by default to keep the stack light.",
+        toggleAria: "Toggle live analysis mechanism",
+      },
+      actions: {
+        refresh: "Refresh snapshot",
+        openInspector: "Back to Inspector",
+        openBrain: "Open Knowledge Graph",
+      },
+      summary: {
+        runtime: "Runtime",
+        provider: "Provider",
+        packages: "Available packages",
+        missing: "Missing packages",
+      },
+      panels: {
+        runtime: {
+          title: "Runtime snapshot",
+          description: "Active runtime state and detected configuration drift.",
+        },
+        packages: {
+          title: "Introspection packages",
+          description: "Availability of libraries used for model analysis.",
+        },
+        reuse: {
+          title: "Reuse surface",
+          description: "Existing screens and diagnostics reused without duplication.",
+        },
+        manager: {
+          title: "ModelManager",
+          description: "Resource metrics when the backend exposes the model manager.",
+        },
+      },
     },
     stats: {
       successRate: "Success Rate",

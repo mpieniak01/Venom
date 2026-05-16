@@ -20,15 +20,15 @@ export type DaemonParamsInfo = {
   emotion_detection_enabled: boolean;
   emotion_response_style_enabled: boolean;
   cache_implementation: string | null;
-  execution_mode: "balanced" | "vision_priority" | "voice_priority";
-  image_strategy: "vlm_only" | "ocr_first" | "hybrid";
-  retrieval_mode: "off" | "auto" | "always";
-  audio_output_mode: "off" | "text_first" | "voice_first";
-  assistant_mode: "off" | "attached" | "conditional";
-  economy_mode: "off" | "auto";
-  precision: string;
-  quantization_backend: string | null;
-  device_target: string;
+  execution_mode?: "balanced" | "vision_priority" | "voice_priority";
+  image_strategy?: "vlm_only" | "ocr_first" | "hybrid";
+  retrieval_mode?: "off" | "auto" | "always";
+  audio_output_mode?: "off" | "text_first" | "voice_first";
+  assistant_mode?: "off" | "attached" | "conditional";
+  economy_mode?: "off" | "auto";
+  precision?: string;
+  quantization_backend?: string | null;
+  device_target?: string;
 };
 
 export type RuntimeComponentSnapshotItem = {

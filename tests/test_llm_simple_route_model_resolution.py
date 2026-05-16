@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from venom_core.api.routes import llm_simple
+from venom_core.services import llm_simple_service
 
 
 def test_resolve_model_name_prefers_runtime_adapter_when_active_adapter_exists() -> (
     None
 ):
-    resolved = llm_simple._resolve_model_name_for_simple_request(
+    resolved = llm_simple_service._resolve_model_name_for_simple_request(
         request_model="gemma3:4b",
         runtime_model="venom-adapter-self_learning_abc",
         active_adapter_id="self_learning_abc",
@@ -15,7 +15,7 @@ def test_resolve_model_name_prefers_runtime_adapter_when_active_adapter_exists()
 
 
 def test_resolve_model_name_keeps_requested_model_without_active_adapter() -> None:
-    resolved = llm_simple._resolve_model_name_for_simple_request(
+    resolved = llm_simple_service._resolve_model_name_for_simple_request(
         request_model="gemma3:4b",
         runtime_model="venom-adapter-self_learning_abc",
         active_adapter_id=None,
@@ -24,7 +24,7 @@ def test_resolve_model_name_keeps_requested_model_without_active_adapter() -> No
 
 
 def test_resolve_model_name_falls_back_to_runtime_when_request_missing() -> None:
-    resolved = llm_simple._resolve_model_name_for_simple_request(
+    resolved = llm_simple_service._resolve_model_name_for_simple_request(
         request_model="",
         runtime_model="gemma3:4b",
         active_adapter_id=None,
@@ -33,7 +33,7 @@ def test_resolve_model_name_falls_back_to_runtime_when_request_missing() -> None
 
 
 def test_resolve_model_name_forces_adapter_model_when_active_adapter_exists() -> None:
-    resolved = llm_simple._resolve_model_name_for_simple_request(
+    resolved = llm_simple_service._resolve_model_name_for_simple_request(
         request_model="gemma2:2b",
         runtime_model="gemma2:2b",
         active_adapter_id="self_learning_bdc2d5fc-f7d4-44cd-a34a-cfc892a58cd9",

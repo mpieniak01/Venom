@@ -246,6 +246,7 @@ function renderControl(
   state: Gemma4DaemonState,
   variant: "cockpit" | "voice" = "voice",
   runtimeSnapshot?: {
+    runtime_id?: string | null;
     provider?: string | null;
     model_name?: string | null;
     runtime_capabilities?: {

@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { ListCard } from "@/components/ui/list-card";
 import { ArrowUpRight, Compass, Cpu, RefreshCw } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
+import { ModelIntrospectionMechanismControl } from "@/components/inspector/model-introspection-mechanism";
 import { useTranslation } from "@/lib/i18n";
 
 type CommandCenterProps = Readonly<{
@@ -66,6 +67,11 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         label: t("commandCenter.shortcuts.links.inspector.label"),
         description: t("commandCenter.shortcuts.links.inspector.description"),
         href: "/inspector",
+      },
+      {
+        label: t("commandCenter.shortcuts.links.modelIntrospection.label"),
+        description: t("commandCenter.shortcuts.links.modelIntrospection.description"),
+        href: "/inspector/model-introspection",
       },
       {
         label: t("commandCenter.shortcuts.links.brain.label"),
@@ -158,6 +164,17 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
               />
             ))}
           </div>
+        </section>
+
+        <section className="surface-card p-4">
+          <header className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="eyebrow">{t("commandCenter.introspection.eyebrow")}</p>
+              <h3 className="heading-h3">{t("commandCenter.introspection.title")}</h3>
+            </div>
+            <Compass className="h-5 w-5 text-sky-300" />
+          </header>
+          <ModelIntrospectionMechanismControl />
         </section>
 
         <section className="surface-card p-4">

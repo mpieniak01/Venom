@@ -54,7 +54,7 @@ Oracle Models (cloud) are optional and work only in selected policies.
 <tr><td>Frontal lobe</td><td>Fast thinking</td><td>Generates 90% of code</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td><td>Ollama `0.17.4` (local); `vllm==0.11.0` (profile pin); ONNX Runtime packages enabled (unpinned)</td></tr>
 <tr><td>Oracle</td><td>Deep thinking</td><td>Difficult problems</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td><td>`openai>=1.98.0,<2`; `anthropic` (unpinned); Gemini via provider API</td></tr>
 <tr><td>Extended intelligence</td><td>External sense</td><td>Internet knowledge</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td><td>Service integration layer in repo; no fixed external binary version in local host</td></tr>
-<tr><td>Hippocampus</td><td>Memory</td><td>Knowledge map</td><td>GraphRAG + LanceDB</td><td>v1.0</td><td>`graphrag==2.7.0`; `lancedb==0.25.3`</td></tr>
+<tr><td>Hippocampus</td><td>Memory</td><td>Knowledge map</td><td>GraphRAG + LanceDB</td><td>v1.0</td><td>`graphrag==2.7.2`; `lancedb==0.25.3`</td></tr>
 <tr><td>Cerebellum</td><td>Learning (Fine-tuning)</td><td>Muscle memory, reflexes</td><td>The Academy (LoRA/QLoRA)</td><td>v1.5</td><td>Academy pipeline in repo (no single pinned external runtime version)</td></tr>
 <tr><td>Prefrontal Cortex</td><td>Control</td><td>Conscious planning</td><td>Workflow Control Plane</td><td>v1.5</td><td>Venom app line `v1.8.0` (`web-next` package version)</td></tr>
 <tr><td>Hands</td><td>Action</td><td>Files, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td><td>`semantic-kernel==1.39.4` (CI/minimal pin); Git `2.43.0`</td></tr>

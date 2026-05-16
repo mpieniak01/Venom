@@ -20,9 +20,14 @@ export const commandCenter = {
     links: {
       cockpit: { label: "Cockpit", description: "Chat und Runtime-Logs" },
       inspector: { label: "Inspektor", description: "Trace-Analyse" },
+      modelIntrospection: { label: "Modellintrospektion", description: "Aktivierungen, Attribution und Modell-Snapshot prüfen" },
       brain: { label: "Wissensgraph", description: "Graph & Lessons" },
       strategy: { label: "Strategie", description: "Strategie und KPIs" },
     },
+  },
+  introspection: {
+    eyebrow: "Introspektion",
+    title: "Live-Analyse-Mechanismus",
   },
   tasks: {
     eyebrow: "Aktive Tasks",

@@ -10,9 +10,9 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.main import app
+from venom_core.services import llm_simple_service
 
 
 class DummyRuntime:
@@ -123,18 +123,14 @@ class SequencedAsyncClient:
 @pytest.fixture
 def simple_client(monkeypatch):
     tracer = RequestTracer()
-    monkeypatch.setattr(
-        llm_simple_routes.system_deps,
-        "get_request_tracer",
-        lambda: tracer,
-    )
+    monkeypatch.setattr(llm_simple_service, "get_request_tracer", lambda: tracer)
 
     monkeypatch.setattr(
-        "venom_core.api.routes.llm_simple.get_active_llm_runtime",
+        "venom_core.services.llm_simple_service.get_active_llm_runtime",
         lambda: DummyRuntime(),
     )
     monkeypatch.setattr(
-        "venom_core.api.routes.llm_simple._build_chat_completions_url",
+        "venom_core.services.llm_simple_service._build_chat_completions_url",
         lambda runtime: "http://localhost:11434/v1/chat/completions",
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyAsyncClient)
@@ -196,20 +192,20 @@ def _parse_sse_event(frame: str) -> tuple[str, dict]:
 
 def test_incompatible_tracer_is_ignored_by_safe_call(monkeypatch):
     monkeypatch.setattr(
-        llm_simple_routes.system_deps,
+        llm_simple_service,
         "get_request_tracer",
         lambda: object(),
     )
 
-    assert not llm_simple_routes._call_tracer(object(), "add_step", "rid", "s", "a")
+    assert not llm_simple_service._call_tracer(object(), "add_step", "rid", "s", "a")
 
 
 @pytest.mark.asyncio
 async def test_stream_simple_chunks_retries_on_503_then_succeeds(monkeypatch):
     runtime = DummyRuntime()
-    monkeypatch.setattr(llm_simple_routes.SETTINGS, "OLLAMA_RETRY_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "OLLAMA_RETRY_MAX_ATTEMPTS", 3)
     monkeypatch.setattr(
-        llm_simple_routes.SETTINGS, "OLLAMA_RETRY_BACKOFF_SECONDS", 0.01
+        llm_simple_service.SETTINGS, "OLLAMA_RETRY_BACKOFF_SECONDS", 0.01
     )
 
     sleep_calls: list[float] = []
@@ -230,7 +226,7 @@ async def test_stream_simple_chunks_retries_on_503_then_succeeds(monkeypatch):
     SequencedAsyncClient.attempt_count = 0
     monkeypatch.setattr("httpx.AsyncClient", SequencedAsyncClient)
 
-    stream = llm_simple_routes._stream_simple_chunks(
+    stream = llm_simple_service._stream_simple_chunks(
         completions_url="http://localhost:11434/v1/chat/completions",
         payload={"model": "gemma3", "messages": [], "stream": True},
         runtime=runtime,
@@ -250,9 +246,9 @@ async def test_stream_simple_chunks_retries_on_503_then_succeeds(monkeypatch):
 @pytest.mark.asyncio
 async def test_stream_simple_chunks_stops_after_max_attempts(monkeypatch):
     runtime = DummyRuntime()
-    monkeypatch.setattr(llm_simple_routes.SETTINGS, "OLLAMA_RETRY_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "OLLAMA_RETRY_MAX_ATTEMPTS", 2)
     monkeypatch.setattr(
-        llm_simple_routes.SETTINGS, "OLLAMA_RETRY_BACKOFF_SECONDS", 0.01
+        llm_simple_service.SETTINGS, "OLLAMA_RETRY_BACKOFF_SECONDS", 0.01
     )
 
     sleep_calls: list[float] = []
@@ -268,7 +264,7 @@ async def test_stream_simple_chunks_stops_after_max_attempts(monkeypatch):
     SequencedAsyncClient.attempt_count = 0
     monkeypatch.setattr("httpx.AsyncClient", SequencedAsyncClient)
 
-    stream = llm_simple_routes._stream_simple_chunks(
+    stream = llm_simple_service._stream_simple_chunks(
         completions_url="http://localhost:11434/v1/chat/completions",
         payload={"model": "gemma3", "messages": [], "stream": True},
         runtime=runtime,

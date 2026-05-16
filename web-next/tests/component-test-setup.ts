@@ -8,6 +8,7 @@ const { window } = dom;
 
 Object.assign(globalThis, {
   window,
+  self: window,
   document: window.document,
   navigator: window.navigator,
   HTMLElement: window.HTMLElement,

@@ -34,16 +34,16 @@ export type OperatorGraphEdge = {
 };
 
 export type OperatorConfigField = {
-  entity_id: string;
-  field: string;
+  entity_id?: string;
+  field?: string;
   key: string;
   value?: unknown;
   effective_value?: unknown;
   source?: string;
   editable?: boolean;
   restart_required?: boolean;
-  affected_services?: string[];
-  options?: string[];
+  affected_services?: string[] | readonly string[];
+  options?: string[] | readonly string[];
 };
 
 export type OperatorRuntimeService = {
@@ -58,8 +58,8 @@ export type OperatorRuntimeService = {
   uptime_seconds?: number | null;
   runtime_version?: string | null;
   actionable?: boolean;
-  allowed_actions?: string[];
-  dependencies?: string[];
+  allowed_actions?: string[] | readonly string[];
+  dependencies?: string[] | readonly string[];
 };
 
 export type OperatorExecutionStep = {
@@ -71,21 +71,25 @@ export type OperatorExecutionStep = {
   details?: string | null;
   stage?: string;
   related_service_id?: string | null;
-  related_config_keys?: string[];
+  related_config_keys?: string[] | readonly string[];
   depends_on_step_id?: string | null;
   severity?: string;
-  allowed_actions?: string[];
+  allowed_actions?: string[] | readonly string[];
 };
 
 export type SystemState = Partial<Omit<ApiSystemState, "runtime" | "provider">> & {
   runtime?: RuntimeState;
   provider?: ProviderState;
-  config_fields?: OperatorConfigField[];
-  runtime_services?: OperatorRuntimeService[];
-  execution_steps?: OperatorExecutionStep[];
+  config_fields?: OperatorConfigField[] | readonly OperatorConfigField[];
+  runtime_services?:
+    | OperatorRuntimeService[]
+    | readonly OperatorRuntimeService[];
+  execution_steps?:
+    | OperatorExecutionStep[]
+    | readonly OperatorExecutionStep[];
   graph?: {
-    nodes?: OperatorGraphNode[];
-    edges?: OperatorGraphEdge[];
+    nodes?: OperatorGraphNode[] | readonly OperatorGraphNode[];
+    edges?: OperatorGraphEdge[] | readonly OperatorGraphEdge[];
   };
 };
 
@@ -128,11 +132,15 @@ type WorkflowTargetPayload = {
 export type WorkflowControlStatePayload = {
   system_state?: SystemState;
   workflow_target?: WorkflowTargetPayload;
-  config_fields?: OperatorConfigField[];
-  runtime_services?: OperatorRuntimeService[];
-  execution_steps?: OperatorExecutionStep[];
+  config_fields?: OperatorConfigField[] | readonly OperatorConfigField[];
+  runtime_services?:
+    | OperatorRuntimeService[]
+    | readonly OperatorRuntimeService[];
+  execution_steps?:
+    | OperatorExecutionStep[]
+    | readonly OperatorExecutionStep[];
   graph?: {
-    nodes?: OperatorGraphNode[];
-    edges?: OperatorGraphEdge[];
+    nodes?: OperatorGraphNode[] | readonly OperatorGraphNode[];
+    edges?: OperatorGraphEdge[] | readonly OperatorGraphEdge[];
   };
 };

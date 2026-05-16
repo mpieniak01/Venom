@@ -177,7 +177,7 @@ class MetricsCollector:
             for reason_code, count in ordered_counts[:5]
         ]
 
-    def record_ollama_runtime_sample(
+    def record_runtime_sample(
         self,
         *,
         load_duration_ms: Optional[float] = None,
@@ -207,6 +207,9 @@ class MetricsCollector:
                     max(eval_duration_ms, 0.0)
                 )
             self.metrics["ollama_runtime_samples"] += 1
+
+    # Backwards-compatible alias for existing callers.
+    record_ollama_runtime_sample = record_runtime_sample
 
     def increment_tool_usage(self, tool_name: str):
         """

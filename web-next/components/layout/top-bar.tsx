@@ -14,6 +14,7 @@ import { NotificationDrawer } from "./notification-drawer";
 import { ServiceStatusDrawer } from "./service-status-drawer";
 import { LanguageSwitcher } from "./language-switcher";
 import { ThemeSwitcher } from "./theme-switcher";
+import { ModelIntrospectionMechanismControl } from "@/components/inspector/model-introspection-mechanism";
 import { useTranslation } from "@/lib/i18n";
 
 export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: StatusPillsInitialData }>) {
@@ -44,6 +45,7 @@ export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: Sta
         </div>
         <div className="flex flex-1 items-center justify-end gap-4">
           <StatusPills initialData={initialStatusData} />
+          <ModelIntrospectionMechanismControl variant="compact" />
           <TopBarIconAction
             icon={<BellRing className="h-4 w-4 text-amber-300" />}
             label={t("topBar.alertCenter")}

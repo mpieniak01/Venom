@@ -44,14 +44,14 @@ export type WorkflowSelectionSummary = {
 };
 
 function findRuntimeServiceById(
-  services: OperatorRuntimeService[] | undefined,
+  services: ReadonlyArray<OperatorRuntimeService> | undefined,
   serviceId: string,
 ): OperatorRuntimeService | null {
   return (services ?? []).find((service) => service.id === serviceId) ?? null;
 }
 
 function findExecutionStepById(
-  steps: OperatorExecutionStep[] | undefined,
+  steps: ReadonlyArray<OperatorExecutionStep> | undefined,
   stepId: string,
 ): OperatorExecutionStep | null {
   return (steps ?? []).find((step) => step.id === stepId) ?? null;

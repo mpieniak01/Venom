@@ -97,6 +97,13 @@ function formatSeconds(milliseconds?: number | null): string | null {
   return `${(milliseconds / 1000).toFixed(2)}s`;
 }
 
+function formatTtsSampleRateLabel(sampleRate?: number | null): string | null {
+  if (sampleRate == null) {
+    return null;
+  }
+  return `TTS ${sampleRate} Hz`;
+}
+
 function joinParts(parts: Array<string | null | false | undefined>): string {
   return parts.filter(Boolean).join(" · ");
 }
@@ -344,7 +351,7 @@ function LatestRecordingSection({
             {joinParts([
               runtime.llm_model && `LLM ${runtime.llm_service_id}:${runtime.llm_model}`,
               runtime.stt_model && `STT ${runtime.stt_model}/${runtime.stt_device}`,
-              runtime.tts_sample_rate && `TTS ${runtime.tts_sample_rate} Hz`,
+              formatTtsSampleRateLabel(runtime.tts_sample_rate),
             ])}
           </p>
         )}

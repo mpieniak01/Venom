@@ -339,6 +339,28 @@ export function useCockpitChatUi({
     autoScrollEnabled,
   });
 
+  const normalizeGenerationParams = useCallback(
+    (value: Record<string, unknown> | undefined): GenerationParams | null => {
+      if (!value) {
+        return null;
+      }
+      const normalized: GenerationParams = {};
+      for (const [key, item] of Object.entries(value)) {
+        if (
+          item === null
+          || item === undefined
+          || typeof item === "number"
+          || typeof item === "string"
+          || typeof item === "boolean"
+        ) {
+          normalized[key] = item;
+        }
+      }
+      return normalized;
+    },
+    [],
+  );
+
   const handleOpenTuning = useCallback(async () => {
     setTuningOpen(true);
     setLoadingSchema(true);
@@ -348,16 +370,14 @@ export function useCockpitChatUi({
       const config = await fetchModelConfig(activeModelName);
       const schema = config?.generation_schema;
       setModelSchema(schema ?? null);
-      if (config?.current_values) {
-        setGenerationParams(config.current_values);
-      }
+      setGenerationParams(normalizeGenerationParams(config?.current_values));
     } catch (err) {
       console.error(t("cockpit.feedback.schemaError"), err);
       setModelSchema(null);
     } finally {
       setLoadingSchema(false);
     }
-  }, [fetchModelConfig, models, setGenerationParams, setLoadingSchema, setModelSchema, setTuningOpen, t]);
+  }, [fetchModelConfig, models, normalizeGenerationParams, setGenerationParams, setLoadingSchema, setModelSchema, setTuningOpen, t]);
 
   const handleApplyTuning = useCallback(async () => {
     const activeModelName = models?.active?.model;

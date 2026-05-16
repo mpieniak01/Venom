@@ -24,7 +24,7 @@ const translations = {
   pl,
   en,
   de,
-};
+} as const;
 
 export type LanguageCode = keyof typeof translations;
 
@@ -66,8 +66,8 @@ function applyReplacements(value: string, replacements?: Record<string, string |
 
 function resolvePreferredLanguage(): LanguageCode {
   if (globalThis.window === undefined) return "pl";
-  const stored = globalThis.window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
-  if (stored && stored in translations) {
+  const stored = globalThis.window.localStorage.getItem(STORAGE_KEY);
+  if (stored && (stored === "pl" || stored === "en" || stored === "de")) {
     return stored;
   }
   const browser = globalThis.window.navigator.language?.slice(0, 2).toLowerCase();
@@ -89,10 +89,10 @@ function subscribeToLanguagePreference(onStoreChange: () => void): () => void {
 }
 
 export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const preferredLanguage = useSyncExternalStore(
+  const preferredLanguage = useSyncExternalStore<LanguageCode>(
     subscribeToLanguagePreference,
     resolvePreferredLanguage,
-    () => "pl",
+    (): LanguageCode => "pl",
   );
   const [userSelectedLanguage, setUserSelectedLanguage] = useState<LanguageCode | null>(null);
   const language = userSelectedLanguage ?? preferredLanguage;
@@ -112,7 +112,7 @@ export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>
   const translate = useCallback(
     (path: string, replacements?: Record<string, string | number>) => {
       const value =
-        resolvePath(translations[language], path) ??
+        resolvePath(translations[language as LanguageCode], path) ??
         resolvePath(translations.pl, path) ??
         path;
       return applyReplacements(value, replacements);
@@ -123,10 +123,10 @@ export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>
   const value = useMemo(
     () => ({
       language,
-      setLanguage: setUserSelectedLanguage,
+      setLanguage: (code: LanguageCode) => setUserSelectedLanguage(code),
       t: translate,
     }),
-    [language, translate, setUserSelectedLanguage],
+    [language, translate],
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

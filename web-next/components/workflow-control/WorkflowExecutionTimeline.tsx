@@ -19,7 +19,7 @@ interface WorkflowExecutionTimelineProps {
   runtimeServices: OperatorRuntimeService[];
   stepToGroupKey: Map<string, string>;
   groupSizes: Map<string, number>;
-  groupToStepIds: Map<string, string[]>;
+  groupToStepIds: Map<string, readonly string[]>;
   expandedGroupKeys: Set<string>;
   selection: WorkflowControlSelection | null;
   onSelectStep: (stepId: string) => void;

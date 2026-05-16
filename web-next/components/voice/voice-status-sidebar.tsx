@@ -291,7 +291,7 @@ function RuntimeSwitchCard() {
 
         {runtimeError && (
           <p className="text-[11px] text-rose-300 truncate">
-            {runtimeError.message}
+            {String(runtimeError)}
           </p>
         )}
       </div>

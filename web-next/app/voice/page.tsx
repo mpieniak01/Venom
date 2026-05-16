@@ -1,16 +1,11 @@
 import { VoiceChatScreen } from "@/components/voice/voice-chat-screen";
+import { isVoiceDevModeEnabled } from "@/lib/voice-dev-mode";
 
 type VoicePageProps = Readonly<{
   searchParams?: Promise<{
     dev?: string | string[];
-  }> | {
-    dev?: string | string[];
-  };
+  }>;
 }>;
-
-export function isVoiceDevModeEnabled(devFlag: string | string[] | undefined): boolean {
-  return Array.isArray(devFlag) ? devFlag.includes("1") : devFlag === "1";
-}
 
 export default async function VoicePage({ searchParams }: VoicePageProps) {
   const resolvedSearchParams = await searchParams;

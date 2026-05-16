@@ -40,8 +40,10 @@ export type ModelPickerOption = SelectMenuOption & {
   model?: TrainableModelInfo;
 };
 
-function isModelPickerOption(option: SelectMenuOption): option is ModelPickerOption {
-  return "kind" in option;
+function isModelPickerOption(
+  option: SelectMenuOption | null | undefined,
+): option is ModelPickerOption {
+  return Boolean(option && "kind" in option);
 }
 
 type TranslateFn = (key: string) => string;

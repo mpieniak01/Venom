@@ -3,6 +3,10 @@ export const mobileNav = {
   menuButton: "Menu",
   voiceTitle: "Voice chat",
   voiceDescription: "Dedicated screen for speech control and analysis modes.",
+  introspection: {
+    eyebrow: "Introspection",
+    title: "Live analysis mechanism",
+  },
   telemetry: {
     title: "Telemetry",
     queue: "Queue",

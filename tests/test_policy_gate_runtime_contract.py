@@ -1,5 +1,6 @@
 """Runtime policy-gate contract tests executed in fast PR lane."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -103,3 +104,43 @@ def test_runtime_policy_context_does_not_mix_intent_into_planned_tools() -> None
     assert ctx.planned_tools == []
     assert ctx.intent == "RESEARCH"
     assert ctx.risk_context["tool_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_execute_with_stream_callback_skips_streaming_for_multi_runtime() -> None:
+    orch = MagicMock()
+    orch.streaming_handler = MagicMock()
+    orch.streaming_handler.create_stream_callback = MagicMock()
+
+    class _Strategy:
+        def __init__(self, _orch):
+            self._orch = _orch
+
+        async def execute(self, task_id, intent, context, request):
+            return {"task_id": str(task_id), "intent": intent, "context": context}
+
+    task_id = uuid4()
+    request = TaskRequest(content="hello")
+
+    with (
+        patch.object(
+            dispatch_module,
+            "get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="multi_runtime"),
+        ),
+        patch.object(dispatch_module, "ExecutionStrategy", _Strategy),
+        patch.object(dispatch_module, "set_llm_stream_callback") as set_cb,
+        patch.object(dispatch_module, "reset_llm_stream_callback") as reset_cb,
+    ):
+        result = await dispatch_module._execute_with_stream_callback(
+            orch,
+            task_id,
+            "GENERAL_CHAT",
+            "context",
+            request,
+        )
+
+    assert result["task_id"] == str(task_id)
+    orch.streaming_handler.create_stream_callback.assert_not_called()
+    set_cb.assert_not_called()
+    reset_cb.assert_not_called()

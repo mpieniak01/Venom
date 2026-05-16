@@ -576,14 +576,15 @@ export function useCockpitSectionProps() {
   const gemma4AudioRuntimeInfo = useMemo(() => {
     const target = runtimeTargets.find((rt) => rt.runtime_id === "multi_runtime");
     if (!target) return null;
+    const runtimeTarget = target as Record<string, unknown>;
     return {
-      supports_text_input: target.supports_text_input,
-      supports_audio_input: target.supports_audio_input,
-      supports_text_output: target.supports_text_output,
-      supports_image_input: target.supports_image_input,
-      assistant_models: target.assistant_models,
-      log_path: target.log_path,
-      pid_path: target.pid_path,
+      supports_text_input: runtimeTarget.supports_text_input as boolean | undefined,
+      supports_audio_input: runtimeTarget.supports_audio_input as boolean | undefined,
+      supports_text_output: runtimeTarget.supports_text_output as boolean | undefined,
+      supports_image_input: runtimeTarget.supports_image_input as boolean | undefined,
+      assistant_models: runtimeTarget.assistant_models as string[] | undefined,
+      log_path: runtimeTarget.log_path as string | undefined,
+      pid_path: runtimeTarget.pid_path as string | undefined,
     };
   }, [runtimeTargets]);
 

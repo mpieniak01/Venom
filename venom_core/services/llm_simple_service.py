@@ -1,0 +1,1177 @@
+"""Service-layer entrypoint for the simple LLM streaming flow.
+
+This mirrors the API route implementation so other services can reuse the
+streaming logic without importing ``venom_core.api.routes``.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import threading
+import time
+from typing import Any, AsyncIterator, Optional
+from uuid import UUID, uuid4
+
+from fastapi import HTTPException
+from fastapi.responses import StreamingResponse
+
+from venom_core.api.schemas.llm_simple import SimpleChatRequest
+from venom_core.config import SETTINGS
+from venom_core.core.metrics import get_metrics_collector
+from venom_core.core.tracer import TraceStatus
+from venom_core.execution.onnx_llm_client import OnnxLlmClient
+from venom_core.services import llm_simple_transport
+from venom_core.services.llm_simple_payload_service import (
+    apply_optional_features_to_payload as _apply_optional_features_to_payload,
+)
+from venom_core.services.llm_simple_payload_service import (
+    apply_output_format_to_payload as _apply_output_format_to_payload,
+)
+from venom_core.services.llm_simple_payload_service import (
+    build_messages as _build_messages,
+)
+from venom_core.services.llm_simple_payload_service import (
+    build_streaming_headers as _build_streaming_headers,
+)
+from venom_core.services.llm_simple_payload_service import (
+    extract_runtime_telemetry as _extract_runtime_telemetry,
+)
+from venom_core.services.llm_simple_payload_service import (
+    extract_sse_contents as _extract_sse_contents,
+)
+from venom_core.services.llm_simple_payload_service import (
+    extract_sse_tool_calls as _extract_sse_tool_calls,
+)
+from venom_core.services.llm_simple_payload_service import (
+    is_retryable_runtime_http_error as _is_retryable_runtime_http_error,
+)
+from venom_core.services.llm_simple_payload_service import (
+    is_retryable_runtime_status as _is_retryable_runtime_status,
+)
+from venom_core.services.llm_simple_payload_service import (
+    normalize_ns_to_ms as _normalize_ns_to_ms,
+)
+from venom_core.services.llm_simple_payload_service import (
+    resolve_output_format as _resolve_output_format,
+)
+from venom_core.services.llm_simple_stream_service import (
+    SimpleStreamState as _SimpleStreamState,
+)
+from venom_core.services.llm_simple_stream_service import (
+    StreamRetryConfig as _StreamRetryConfig,
+)
+from venom_core.services.llm_simple_stream_service import (
+    StreamTransportConfig as _StreamTransportConfig,
+)
+from venom_core.services.llm_simple_stream_service import (
+    apply_post_attempt_action as _apply_post_attempt_action_impl,
+)
+from venom_core.services.llm_simple_stream_service import (
+    reset_stream_attempt_state as _reset_stream_attempt_state_impl,
+)
+from venom_core.services.llm_simple_stream_service import (
+    resolve_post_attempt_action as _resolve_post_attempt_action_impl,
+)
+from venom_core.services.llm_simple_stream_service import (
+    stream_single_attempt as _stream_single_attempt_impl,
+)
+from venom_core.services.llm_simple_stream_service import (
+    update_stream_state_from_packet as _update_stream_state_from_packet_impl,
+)
+from venom_core.services.runtime_dependencies import (
+    get_model_manager,
+    get_request_tracer,
+)
+from venom_core.utils.llm_runtime import (
+    _build_chat_completions_url,
+    get_active_llm_runtime,
+)
+from venom_core.utils.logger import get_logger
+from venom_core.utils.ollama_tuning import build_ollama_runtime_options
+from venom_core.utils.runtime_names import is_multi_runtime
+from venom_core.utils.text import trim_to_char_limit
+
+logger = get_logger(__name__)
+
+_SIMPLE_MODE_STEP = "SimpleMode"
+_PROMPT_PREVIEW_MAX_CHARS = 200
+_CONTEXT_PREVIEW_MAX_CHARS = 2000
+_RESPONSE_PREVIEW_MAX_CHARS = 4000
+_SSE_EVENT_START = "event: start\ndata: {}\n\n"
+_SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
+_SSE_MEDIA_TYPE = "text/event-stream"
+_NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
+httpx = llm_simple_transport.httpx_module()
+_ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
+
+
+def _get_onnx_simple_client() -> OnnxLlmClient:
+    # Per-request client lifecycle avoids cross-request close/use races.
+    return OnnxLlmClient()
+
+
+def release_onnx_simple_client() -> None:
+    """Compatibility shim for legacy tests/callers; runtime uses per-request clients."""
+    global _ONNX_SIMPLE_CLIENT
+    if _ONNX_SIMPLE_CLIENT is None:
+        return
+    _close_onnx_client_safely(_ONNX_SIMPLE_CLIENT)
+    _ONNX_SIMPLE_CLIENT = None
+
+
+def _get_simple_context_char_limit(runtime) -> Optional[int]:
+    if runtime.provider != "vllm":
+        return None
+    max_ctx = getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", 0) or 0
+    if max_ctx <= 0:
+        return None
+    reserve = max(64, max_ctx // 4)
+    input_tokens = max(32, max_ctx - reserve)
+    return input_tokens * 4
+
+
+def _get_request_tracer():
+    return get_request_tracer()
+
+
+async def _get_active_adapter_id() -> str | None:
+    manager = get_model_manager()
+    if manager is None:
+        return None
+    info_getter = getattr(manager, "get_active_adapter_info", None)
+    if not callable(info_getter):
+        return None
+    try:
+        active = info_getter()
+        if asyncio.iscoroutine(active):
+            active = await active
+    except (TypeError, ValueError, RuntimeError):
+        return None
+    if not isinstance(active, dict):
+        return None
+    adapter_id = str(active.get("adapter_id") or "").strip()
+    return adapter_id or None
+
+
+async def _aiter_sync_onnx_stream(
+    client: OnnxLlmClient,
+    *,
+    messages: list[dict[str, str]],
+    max_new_tokens: int | None,
+    temperature: float | None,
+) -> AsyncIterator[str]:
+    """Bridge sync ONNX generator to async iteration without blocking event loop."""
+    queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
+    stop_event = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def _producer() -> None:
+        try:
+            for token in client.stream_generate(
+                messages=messages,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+            ):
+                if stop_event.is_set():
+                    break
+                asyncio.run_coroutine_threadsafe(queue.put(token), loop)
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:  # pragma: no cover - safety bridge
+            asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
+        finally:
+            asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+    producer_task = asyncio.create_task(asyncio.to_thread(_producer))
+    try:
+        async for token in _consume_onnx_stream_queue(queue):
+            yield token
+    finally:
+        stop_event.set()
+        _close_onnx_client_safely(client)
+        await _wait_producer_or_cancel(producer_task)
+
+
+async def _consume_onnx_stream_queue(
+    queue: asyncio.Queue[str | BaseException | None],
+) -> AsyncIterator[str]:
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        if isinstance(item, BaseException):
+            raise item
+        yield item
+
+
+def _close_onnx_client_safely(client: OnnxLlmClient) -> None:
+    client_close = getattr(client, "close", None)
+    if not callable(client_close):
+        return
+    try:
+        client_close()
+    except RuntimeError:
+        pass
+
+
+async def _wait_producer_or_cancel(task: asyncio.Task[None]) -> None:
+    try:
+        await asyncio.wait_for(task, timeout=0.5)
+    except TimeoutError:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+def _resolve_model_name_for_simple_request(
+    *,
+    request_model: str | None,
+    runtime_model: str | None,
+    active_adapter_id: str | None,
+) -> str:
+    requested = str(request_model or "").strip()
+    runtime_selected = str(runtime_model or "").strip()
+    adapter_prefix = "venom-adapter-"
+    runtime_is_adapter = runtime_selected.startswith(adapter_prefix)
+    request_is_adapter = requested.startswith(adapter_prefix)
+    if active_adapter_id:
+        expected_adapter_model = f"{adapter_prefix}{active_adapter_id}"
+        if request_is_adapter:
+            return requested
+        if runtime_is_adapter:
+            return runtime_selected
+        return expected_adapter_model
+    return requested or runtime_selected
+
+
+def _call_tracer(request_tracer: Any, method_name: str, *args, **kwargs) -> bool:
+    if not request_tracer:
+        return False
+    method = getattr(request_tracer, method_name, None)
+    if not callable(method):
+        return False
+    method(*args, **kwargs)
+    return True
+
+
+def _build_preview(text: str, *, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "..."
+
+
+def _trace_simple_request(
+    request_id: UUID, request: "SimpleChatRequest", runtime, model_name: str
+) -> None:
+    request_tracer = _get_request_tracer()
+    if not _call_tracer(
+        request_tracer,
+        "create_trace",
+        request_id,
+        request.content,
+        session_id=request.session_id,
+    ):
+        return
+    adapter_prefix = "venom-adapter-"
+    adapter_applied = str(model_name or "").startswith(adapter_prefix)
+    adapter_id = (
+        str(model_name or "")[len(adapter_prefix) :].strip()
+        if adapter_applied
+        else None
+    )
+    _call_tracer(
+        request_tracer,
+        "set_llm_metadata",
+        request_id,
+        provider=runtime.provider,
+        model=model_name,
+        endpoint=runtime.endpoint,
+        metadata={
+            "config_hash": runtime.config_hash,
+            "runtime_id": runtime.runtime_id,
+            "adapter_applied": adapter_applied,
+            "adapter_id": adapter_id,
+        },
+    )
+    _call_tracer(request_tracer, "update_status", request_id, TraceStatus.PROCESSING)
+    _call_tracer(
+        request_tracer,
+        "add_step",
+        request_id,
+        _SIMPLE_MODE_STEP,
+        "request",
+        details=(
+            f"session_id={request.session_id or '-'} "
+            f"prompt={_build_preview(request.content, max_chars=_PROMPT_PREVIEW_MAX_CHARS)}"
+        ),
+    )
+
+
+def _trace_context_preview(request_id: UUID, messages: list[dict[str, str]]) -> None:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
+        return
+    preview_parts = []
+    for message in messages:
+        role = (message.get("role") or "").upper()
+        content = message.get("content") or ""
+        preview_parts.append(f"{role}:\n{content}")
+    full_context = "\n\n".join(preview_parts).strip()
+    truncated = len(full_context) > _CONTEXT_PREVIEW_MAX_CHARS
+    context_preview = (
+        f"{full_context[:_CONTEXT_PREVIEW_MAX_CHARS]}...(truncated)"
+        if truncated
+        else full_context
+    )
+    _call_tracer(
+        request_tracer,
+        "add_step",
+        request_id,
+        _SIMPLE_MODE_STEP,
+        "context_preview",
+        status="ok",
+        details=json.dumps(
+            {
+                "mode": "direct",
+                "prompt_context_preview": context_preview,
+                "prompt_context_truncated": truncated,
+                "hidden_prompts_count": 0,
+            }
+        ),
+    )
+
+
+def _record_simple_error(
+    request_id: UUID,
+    *,
+    error_code: str,
+    error_message: str,
+    error_details: dict,
+    error_class: Optional[str] = None,
+    retryable: bool = True,
+) -> None:
+    request_tracer = _get_request_tracer()
+    _call_tracer(
+        request_tracer,
+        "add_step",
+        request_id,
+        _SIMPLE_MODE_STEP,
+        "error",
+        status="error",
+        details=error_message,
+    )
+    _call_tracer(
+        request_tracer,
+        "set_error_metadata",
+        request_id,
+        {
+            "error_code": error_code,
+            "error_class": error_class or error_code,
+            "error_message": error_message,
+            "error_details": error_details,
+            "stage": "simple_mode",
+            "retryable": retryable,
+        },
+    )
+    _call_tracer(request_tracer, "update_status", request_id, TraceStatus.FAILED)
+
+
+def _build_payload(
+    request: "SimpleChatRequest",
+    runtime,
+    model_name: str,
+    messages: list[dict[str, str]],
+    *,
+    stream: bool = True,
+) -> dict:
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "stream": stream,
+    }
+    if runtime.provider == "ollama":
+        payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
+        payload["options"] = build_ollama_runtime_options(SETTINGS)
+
+    output_format = _resolve_output_format(
+        request_format=request.format,
+        response_format=request.response_format,
+    )
+    _apply_output_format_to_payload(
+        payload=payload,
+        provider=runtime.provider,
+        output_format=output_format,
+        response_format=request.response_format,
+        request_format=request.format,
+        ollama_structured_outputs_enabled=SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS,
+    )
+    _apply_optional_features_to_payload(
+        payload=payload,
+        provider=runtime.provider,
+        tools=request.tools,
+        tool_choice=request.tool_choice,
+        think=request.think,
+        ollama_enable_tool_calling=SETTINGS.OLLAMA_ENABLE_TOOL_CALLING,
+        ollama_enable_think=SETTINGS.OLLAMA_ENABLE_THINK,
+    )
+
+    if request.max_tokens is not None:
+        payload["max_tokens"] = request.max_tokens
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    return payload
+
+
+def _extract_message_content(data: dict[str, object], fallback_text: str = "") -> str:
+    choices = data.get("choices", [])
+    if not isinstance(choices, list) or not choices:
+        return fallback_text
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return fallback_text
+    message = first_choice.get("message", {})
+    if isinstance(message, dict):
+        content = message.get("content", "")
+        if isinstance(content, str):
+            content = content.strip()
+            if content:
+                return content
+    text = first_choice.get("text", "")
+    if isinstance(text, str):
+        text = text.strip()
+        if text:
+            return text
+    return fallback_text
+
+
+def _trim_user_content_for_runtime(
+    user_content: str,
+    system_prompt: str,
+    runtime,
+    request_id: UUID,
+) -> str:
+    char_limit = _get_simple_context_char_limit(runtime)
+    if not char_limit:
+        return user_content
+
+    overhead = len(system_prompt) + 32 if system_prompt else 0
+    available = max(0, char_limit - overhead)
+    trimmed_content, was_trimmed = trim_to_char_limit(user_content, available)
+    request_tracer = _get_request_tracer()
+    if was_trimmed and request_tracer:
+        _call_tracer(
+            request_tracer,
+            "add_step",
+            request_id,
+            _SIMPLE_MODE_STEP,
+            "prompt_trim",
+            status="ok",
+            details=f"Trimmed prompt to {available} chars for vLLM limit",
+        )
+    return trimmed_content
+
+
+async def _iter_stream_packets(resp: Any) -> AsyncIterator[dict]:
+    async for packet in llm_simple_transport.iter_stream_packets(resp):
+        yield packet
+
+
+def _trace_first_chunk(
+    request_id: UUID,
+    stream_start: float,
+    content: str,
+) -> None:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
+        return
+    elapsed_ms = int((time.perf_counter() - stream_start) * 1000)
+    _call_tracer(
+        request_tracer,
+        "add_step",
+        request_id,
+        _SIMPLE_MODE_STEP,
+        "first_chunk",
+        details=(
+            f"elapsed_ms={elapsed_ms} "
+            f"preview={_build_preview(content, max_chars=_PROMPT_PREVIEW_MAX_CHARS)}"
+        ),
+    )
+
+
+def _trace_stream_completion(
+    request_id: UUID, full_text: str, chunk_count: int, stream_start: float
+) -> None:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
+        return
+    total_ms = int((time.perf_counter() - stream_start) * 1000)
+    truncated = len(full_text) > _RESPONSE_PREVIEW_MAX_CHARS
+    response_text = (
+        f"{full_text[:_RESPONSE_PREVIEW_MAX_CHARS]}...(truncated)"
+        if truncated
+        else full_text
+    )
+    _call_tracer(
+        request_tracer,
+        "add_step",
+        request_id,
+        _SIMPLE_MODE_STEP,
+        "response",
+        details=json.dumps(
+            {
+                "chunks": chunk_count,
+                "total_ms": total_ms,
+                "chars": len(full_text),
+                "response": response_text,
+                "truncated": truncated,
+            }
+        ),
+    )
+    _call_tracer(request_tracer, "update_status", request_id, TraceStatus.COMPLETED)
+
+
+def _build_llm_http_error(
+    exc: Any,
+    runtime,
+    model_name: str,
+    *,
+    response_text: str = "",
+) -> tuple[str, dict, dict]:
+    error_message = (
+        f"LLM HTTP {exc.response.status_code} dla {runtime.provider}"
+        if exc.response
+        else f"LLM HTTP error dla {runtime.provider}"
+    )
+    error_details = {
+        "status_code": exc.response.status_code if exc.response else None,
+        "response": response_text[:2000],
+        "provider": runtime.provider,
+        "endpoint": runtime.endpoint,
+        "model": model_name,
+    }
+    error_payload = {
+        "code": "llm_http_error",
+        "message": (
+            f"Błąd LLM ({runtime.provider}): "
+            f"{exc.response.status_code if exc.response else 'HTTP'}"
+        ),
+    }
+    return error_message, error_details, error_payload
+
+
+async def _read_http_error_response_text(response: Optional[Any]) -> str:
+    return await llm_simple_transport.read_http_error_response_text(response)
+
+
+async def _emit_http_status_error_and_mark_failed(
+    *,
+    exc: Any,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+) -> str:
+    status_code = exc.response.status_code if exc.response else None
+    response_text = await _read_http_error_response_text(exc.response)
+    error_message, error_details, error_payload = _build_llm_http_error(
+        exc, runtime, model_name, response_text=response_text
+    )
+    _record_simple_error(
+        request_id,
+        error_code="llm_http_error",
+        error_message=error_message,
+        error_details=error_details,
+        error_class=exc.__class__.__name__,
+        retryable=False,
+    )
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=False,
+        latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        error_code=f"http_{status_code or 'error'}",
+    )
+    return f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+
+def _emit_connection_error_and_mark_failed(
+    *,
+    exc: Any,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+) -> str:
+    _record_simple_error(
+        request_id,
+        error_code="llm_connection_error",
+        error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+        error_details={
+            "provider": runtime.provider,
+            "endpoint": runtime.endpoint,
+            "model": model_name,
+        },
+        error_class=exc.__class__.__name__,
+        retryable=True,
+    )
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=False,
+        latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        error_code="connection_error",
+    )
+    error_payload = {
+        "code": "llm_connection_error",
+        "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+    }
+    return f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+
+def _emit_internal_error_and_mark_failed(
+    *, exc: Exception, runtime, request_id: UUID, stream_start: float
+) -> str:
+    _record_simple_error(
+        request_id,
+        error_code="internal_error",
+        error_message=f"Nieoczekiwany błąd: {exc}",
+        error_details={
+            "provider": getattr(runtime, "provider", "unknown"),
+            "endpoint": getattr(runtime, "endpoint", None),
+            "exception": exc.__class__.__name__,
+        },
+        error_class=exc.__class__.__name__,
+        retryable=False,
+    )
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=False,
+        latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        error_code="internal_error",
+    )
+    error_payload = {
+        "code": "internal_error",
+        "message": f"Nieoczekiwany błąd: {exc}",
+    }
+    return f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+
+def _update_stream_state_from_packet(
+    *,
+    packet: dict[str, Any],
+    runtime,
+    state: _SimpleStreamState,
+    request_id: UUID,
+    stream_start: float,
+    runtime_telemetry: dict[str, int],
+) -> list[str]:
+    return _update_stream_state_from_packet_impl(
+        packet=packet,
+        runtime=runtime,
+        state=state,
+        runtime_telemetry=runtime_telemetry,
+        extract_runtime_telemetry_fn=_extract_runtime_telemetry,
+        extract_sse_tool_calls_fn=_extract_sse_tool_calls,
+        extract_sse_contents_fn=_extract_sse_contents,
+        on_first_chunk_fn=lambda content: _trace_first_chunk(
+            request_id, stream_start, content
+        ),
+    )
+
+
+async def _stream_single_attempt(
+    *,
+    completions_url: str,
+    payload: dict,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+    attempt: int,
+    max_attempts: int,
+    retry_backoff: float,
+    state: _SimpleStreamState,
+    runtime_telemetry: dict[str, int],
+) -> AsyncIterator[str]:
+    provider_name = str(getattr(runtime, "provider", "") or "llm_runtime")
+    transport = _StreamTransportConfig(
+        open_stream_response_fn=llm_simple_transport.open_stream_response,
+        iter_stream_packets_fn=_iter_stream_packets,
+        completions_url=completions_url,
+        payload=payload,
+        provider_name=provider_name,
+    )
+    retry = _StreamRetryConfig(
+        http_status_error_type=llm_simple_transport.httpx_module().HTTPStatusError,
+        max_attempts=max_attempts,
+        is_retryable_status_fn=_is_retryable_runtime_status,
+        runtime_provider=runtime.provider,
+        retry_backoff=retry_backoff,
+        sleep_fn=asyncio.sleep,
+    )
+    async for event in _stream_single_attempt_impl(
+        transport=transport,
+        retry=retry,
+        state=state,
+        attempt=attempt,
+        handle_packet_fn=lambda packet: _update_stream_state_from_packet(
+            packet=packet,
+            runtime=runtime,
+            state=state,
+            request_id=request_id,
+            stream_start=stream_start,
+            runtime_telemetry=runtime_telemetry,
+        ),
+        emit_http_error_fn=lambda exc: _emit_http_status_error_and_mark_failed(
+            exc=exc,
+            runtime=runtime,
+            request_id=request_id,
+            model_name=model_name,
+            stream_start=stream_start,
+        ),
+    ):
+        yield event
+    if state.retry_requested:
+        runtime_telemetry.clear()
+
+
+def _reset_stream_attempt_state(state: _SimpleStreamState) -> None:
+    _reset_stream_attempt_state_impl(state)
+
+
+def _finalize_successful_stream_attempt(
+    *,
+    runtime,
+    request_id: UUID,
+    stream_start: float,
+    state: _SimpleStreamState,
+    runtime_telemetry: dict[str, int],
+) -> None:
+    _trace_stream_completion(
+        request_id, "".join(state.chunks), state.chunk_count, stream_start
+    )
+    total_ms = (time.perf_counter() - stream_start) * 1000.0
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=True,
+        latency_ms=total_ms,
+        tokens=(
+            int(runtime_telemetry.get("prompt_eval_count", 0))
+            + int(runtime_telemetry.get("eval_count", 0))
+        ),
+    )
+    if runtime.provider == "ollama":
+        collector.record_runtime_sample(
+            load_duration_ms=_normalize_ns_to_ms(
+                runtime_telemetry.get("load_duration")
+            ),
+            prompt_eval_count=runtime_telemetry.get("prompt_eval_count"),
+            eval_count=runtime_telemetry.get("eval_count"),
+            prompt_eval_duration_ms=_normalize_ns_to_ms(
+                runtime_telemetry.get("prompt_eval_duration")
+            ),
+            eval_duration_ms=_normalize_ns_to_ms(
+                runtime_telemetry.get("eval_duration")
+            ),
+        )
+
+
+def _resolve_post_attempt_action(
+    *,
+    runtime,
+    request_id: UUID,
+    stream_start: float,
+    state: _SimpleStreamState,
+    runtime_telemetry: dict[str, int],
+) -> str:
+    return _resolve_post_attempt_action_impl(
+        state=state,
+        finalize_success_fn=lambda: _finalize_successful_stream_attempt(
+            runtime=runtime,
+            request_id=request_id,
+            stream_start=stream_start,
+            state=state,
+            runtime_telemetry=runtime_telemetry,
+        ),
+    )
+
+
+def _apply_post_attempt_action(action: str) -> tuple[bool, bool]:
+    return _apply_post_attempt_action_impl(action)
+
+
+async def _handle_stream_http_error(
+    *,
+    exc: Any,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+    attempt: int,
+    max_attempts: int,
+    retry_backoff: float,
+    chunk_count: int,
+    runtime_telemetry: dict[str, int],
+) -> str:
+    status_code = (
+        getattr(getattr(exc, "response", None), "status_code", None)
+        if exc is not None
+        else None
+    )
+    if chunk_count == 0 and _is_retryable_runtime_http_error(
+        provider=runtime.provider,
+        status_code=status_code,
+        attempt_no=attempt,
+        max_retries=max_attempts,
+    ):
+        runtime_telemetry.clear()
+        await asyncio.sleep(retry_backoff * attempt)
+        return "retry"
+
+    if isinstance(status_code, int) and 400 <= status_code <= 599:
+        return await _emit_http_status_error_and_mark_failed(
+            exc=exc,
+            runtime=runtime,
+            request_id=request_id,
+            model_name=model_name,
+            stream_start=stream_start,
+        )
+
+    return _emit_connection_error_and_mark_failed(
+        exc=exc,
+        runtime=runtime,
+        request_id=request_id,
+        model_name=model_name,
+        stream_start=stream_start,
+    )
+
+
+async def _stream_simple_chunks(
+    *,
+    completions_url: str,
+    payload: dict,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+) -> AsyncIterator[str]:
+    state = _SimpleStreamState(chunks=[])
+    stream_start = time.perf_counter()
+    runtime_telemetry: dict[str, int] = {}
+
+    yield _SSE_EVENT_START
+
+    max_attempts = (
+        max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
+        if runtime.provider == "ollama"
+        else 1
+    )
+    retry_backoff = max(0.0, float(SETTINGS.OLLAMA_RETRY_BACKOFF_SECONDS))
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            _reset_stream_attempt_state(state)
+            async for event in _stream_single_attempt(
+                completions_url=completions_url,
+                payload=payload,
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                stream_start=stream_start,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                retry_backoff=retry_backoff,
+                state=state,
+                runtime_telemetry=runtime_telemetry,
+            ):
+                yield event
+
+            action = _resolve_post_attempt_action(
+                runtime=runtime,
+                request_id=request_id,
+                stream_start=stream_start,
+                state=state,
+                runtime_telemetry=runtime_telemetry,
+            )
+            should_retry, should_emit_done = _apply_post_attempt_action(action)
+            if should_retry:
+                continue
+            if should_emit_done:
+                yield _SSE_EVENT_DONE
+            return
+
+        except httpx.HTTPError as exc:
+            result = await _handle_stream_http_error(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                stream_start=stream_start,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                retry_backoff=retry_backoff,
+                chunk_count=state.chunk_count,
+                runtime_telemetry=runtime_telemetry,
+            )
+            if result == "retry":
+                continue
+
+            yield result
+            return
+        except Exception as exc:
+            yield _emit_internal_error_and_mark_failed(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                stream_start=stream_start,
+            )
+            return
+
+
+async def _stream_simple_chunks_onnx(
+    *,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    messages: list[dict[str, str]],
+    max_tokens: int | None,
+    temperature: float | None,
+) -> AsyncIterator[str]:
+    stream_start = time.perf_counter()
+    chunks: list[str] = []
+    chunk_count = 0
+    first_chunk_seen = False
+
+    yield _SSE_EVENT_START
+    try:
+        client = _get_onnx_simple_client()
+        async for content in _aiter_sync_onnx_stream(
+            client,
+            messages=messages,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+        ):
+            if not content:
+                continue
+            chunk_count += 1
+            chunks.append(content)
+            if not first_chunk_seen:
+                _trace_first_chunk(request_id, stream_start, content)
+                first_chunk_seen = True
+            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+
+        _trace_stream_completion(request_id, "".join(chunks), chunk_count, stream_start)
+        collector = get_metrics_collector()
+        collector.record_provider_request(
+            provider=runtime.provider,
+            success=True,
+            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        )
+        yield _SSE_EVENT_DONE
+    except Exception as exc:
+        _record_simple_error(
+            request_id,
+            error_code="onnx_generation_error",
+            error_message=f"Błąd generacji ONNX: {exc}",
+            error_details={"provider": "onnx", "model": model_name},
+            error_class=exc.__class__.__name__,
+            retryable=False,
+        )
+        collector = get_metrics_collector()
+        collector.record_provider_request(
+            provider=runtime.provider,
+            success=False,
+            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+            error_code="onnx_generation_error",
+        )
+        yield (
+            "event: error\ndata: "
+            + json.dumps(
+                {"code": "onnx_generation_error", "message": f"Błąd ONNX: {exc}"}
+            )
+            + "\n\n"
+        )
+
+
+async def _stream_simple_chunks_non_stream(
+    *,
+    completions_url: str,
+    payload: dict,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+) -> AsyncIterator[str]:
+    stream_start = time.perf_counter()
+    chunks: list[str] = []
+
+    yield _SSE_EVENT_START
+    try:
+        async with llm_simple_transport.open_stream_response(
+            provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
+            completions_url=completions_url,
+            payload=payload,
+        ) as response:
+            response.raise_for_status()
+            aread = getattr(response, "aread", None)
+            if callable(aread):
+                raw_body = await aread()
+                if raw_body:
+                    data = json.loads(raw_body.decode("utf-8", errors="replace"))
+                else:
+                    data = {}
+            else:
+                json_reader = getattr(response, "json", None)
+                data = json_reader() if callable(json_reader) else {}
+
+        if not isinstance(data, dict):
+            _trace_stream_completion(request_id, "", 0, stream_start)
+            _record_simple_error(
+                request_id,
+                error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
+                error_message=(
+                    f"Nieprawidłowa odpowiedź LLM ({runtime.provider}): "
+                    "oczekiwano obiektu JSON."
+                ),
+                error_details={
+                    "provider": runtime.provider,
+                    "model": model_name,
+                    "response_type": type(data).__name__,
+                },
+                error_class=type(data).__name__,
+                retryable=False,
+            )
+            collector = get_metrics_collector()
+            collector.record_provider_request(
+                provider=runtime.provider,
+                success=False,
+                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
+            )
+            yield (
+                "event: error\ndata: "
+                + json.dumps(
+                    {
+                        "code": _NON_STREAM_INVALID_RESPONSE_CODE,
+                        "message": ("Nieprawidłowa odpowiedź z aktywnego runtime LLM."),
+                    }
+                )
+                + "\n\n"
+            )
+            return
+
+        content = _extract_message_content(data, fallback_text="")
+        if content:
+            chunks.append(content)
+            _trace_first_chunk(request_id, stream_start, content)
+            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+
+        _trace_stream_completion(request_id, "".join(chunks), len(chunks), stream_start)
+        collector = get_metrics_collector()
+        collector.record_provider_request(
+            provider=runtime.provider,
+            success=True,
+            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        )
+        yield _SSE_EVENT_DONE
+    except httpx.HTTPStatusError as exc:
+        result = await _emit_http_status_error_and_mark_failed(
+            exc=exc,
+            runtime=runtime,
+            request_id=request_id,
+            model_name=model_name,
+            stream_start=stream_start,
+        )
+        yield result
+    except httpx.HTTPError as exc:
+        yield _emit_connection_error_and_mark_failed(
+            exc=exc,
+            runtime=runtime,
+            request_id=request_id,
+            model_name=model_name,
+            stream_start=stream_start,
+        )
+    except Exception as exc:
+        yield _emit_internal_error_and_mark_failed(
+            exc=exc,
+            runtime=runtime,
+            request_id=request_id,
+            stream_start=stream_start,
+        )
+
+
+async def stream_simple_chat(request: SimpleChatRequest):
+    await asyncio.sleep(0)
+    runtime = get_active_llm_runtime()
+    model_name = _resolve_model_name_for_simple_request(
+        request_model=request.model,
+        runtime_model=runtime.model_name,
+        active_adapter_id=await _get_active_adapter_id(),
+    )
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
+    request_id: UUID = uuid4()
+    _trace_simple_request(request_id, request, runtime, model_name)
+
+    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    user_content = _trim_user_content_for_runtime(
+        request.content, system_prompt, runtime, request_id
+    )
+    messages = _build_messages(system_prompt, user_content)
+    payload = _build_payload(request, runtime, model_name, messages)
+    _trace_context_preview(request_id, messages)
+    headers = _build_streaming_headers(str(request_id), request.session_id or "")
+    runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
+    runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
+    completions_url = _build_chat_completions_url(runtime)
+    if runtime_provider == "onnx" or runtime_service_type == "onnx":
+        return StreamingResponse(
+            _stream_simple_chunks_onnx(
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+            ),
+            media_type=_SSE_MEDIA_TYPE,
+            headers=headers,
+        )
+
+    if is_multi_runtime(runtime_provider):
+        if not completions_url:
+            raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
+        return StreamingResponse(
+            _stream_simple_chunks_non_stream(
+                completions_url=completions_url,
+                payload=_build_payload(
+                    request,
+                    runtime,
+                    model_name,
+                    messages,
+                    stream=False,
+                ),
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+            ),
+            media_type=_SSE_MEDIA_TYPE,
+            headers=headers,
+        )
+    if not completions_url:
+        raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
+    return StreamingResponse(
+        _stream_simple_chunks(
+            completions_url=completions_url,
+            payload=payload,
+            runtime=runtime,
+            request_id=request_id,
+            model_name=model_name,
+        ),
+        media_type=_SSE_MEDIA_TYPE,
+        headers=headers,
+    )

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { VoiceCommandCenter } from "../components/voice/voice-command-center";
-import { isVoiceDevModeEnabled } from "../app/voice/page";
+import { isVoiceDevModeEnabled } from "../lib/voice-dev-mode";
 
 afterEach(() => cleanup());
 

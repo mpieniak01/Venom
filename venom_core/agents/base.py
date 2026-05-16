@@ -15,6 +15,7 @@ from venom_core.config import SETTINGS
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
+from venom_core.utils.runtime_names import is_multi_runtime
 
 logger = get_logger(__name__)
 
@@ -279,8 +280,10 @@ class BaseAgent(ABC):
             kwargs["kernel"] = self.kernel
 
         stream_callback = _llm_stream_callback.get()
+        runtime = get_active_llm_runtime()
         if (
             stream_callback
+            and not is_multi_runtime(getattr(runtime, "provider", None))
             and not functions_enabled
             and hasattr(chat_service, "get_streaming_chat_message_contents")
         ):

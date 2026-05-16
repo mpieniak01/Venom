@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 export type SelectMenuOption = {
   value: string;
-  label: string;
+  label?: string;
   description?: string;
   icon?: ReactNode;
   disabled?: boolean;
@@ -143,7 +143,7 @@ export function SelectMenu({
           renderButton(currentOption)
         ) : (
           <span className="min-w-0 flex-1 truncate text-left">
-            {currentOption?.label ?? placeholder}
+            {currentOption?.label ?? currentOption?.value ?? placeholder}
           </span>
         )}
         <ChevronDown className="h-3 w-3 text-[color:var(--ui-muted)]" aria-hidden />
@@ -192,7 +192,7 @@ export function SelectMenu({
                         {option.icon}
                         <div className="flex flex-col text-left">
                           <span className="text-xs uppercase tracking-[0.3em] text-[color:var(--ui-muted)]">
-                            {option.label}
+                            {option.label ?? option.value}
                           </span>
                           {option.description && (
                             <span className="text-sm">{option.description}</span>

@@ -127,7 +127,7 @@ function installFetchMock(state: CatalogState) {
                 provider: "vllm",
                 runtime_id: "vllm",
                 source_type: "local-runtime",
-                active: state.selectedRuntime === "vllm",
+                active: false,
                 canonical_model_id: "unsloth/phi-3-mini-4k-instruct",
               },
               {
@@ -136,7 +136,7 @@ function installFetchMock(state: CatalogState) {
                 provider: "ollama",
                 runtime_id: "ollama",
                 source_type: "local-runtime",
-                active: state.selectedRuntime === "ollama",
+                active: true,
                 canonical_model_id: "gemma-3-4b-it",
               },
             ],

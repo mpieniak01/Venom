@@ -18,35 +18,39 @@ type ModelIntrospectionMechanismContextValue = {
 const ModelIntrospectionMechanismContext = createContext<ModelIntrospectionMechanismContextValue | null>(null);
 
 function readEnabledFromStorage(): boolean {
-  if (globalThis.window === undefined || globalThis.window.localStorage === undefined) return false;
+  const localStorage = globalThis.window?.localStorage;
+  if (!localStorage) return false;
   try {
-    return globalThis.window.localStorage.getItem(STORAGE_KEY) === "true";
+    return localStorage.getItem(STORAGE_KEY) === "true";
   } catch {
     return false;
   }
 }
 
 function subscribe(listener: () => void): () => void {
-  if (globalThis.window === undefined) return () => undefined;
+  const windowRef = globalThis.window;
+  if (!windowRef) return () => undefined;
   const handleStorage = (event: StorageEvent) => {
     if (event.key === STORAGE_KEY) {
       listener();
     }
   };
   const handleCustomEvent = () => listener();
-  globalThis.window.addEventListener("storage", handleStorage);
-  globalThis.window.addEventListener(STORE_EVENT, handleCustomEvent);
+  windowRef.addEventListener("storage", handleStorage);
+  windowRef.addEventListener(STORE_EVENT, handleCustomEvent);
   return () => {
-    globalThis.window.removeEventListener("storage", handleStorage);
-    globalThis.window.removeEventListener(STORE_EVENT, handleCustomEvent);
+    windowRef.removeEventListener("storage", handleStorage);
+    windowRef.removeEventListener(STORE_EVENT, handleCustomEvent);
   };
 }
 
 function writeEnabledToStorage(enabled: boolean) {
-  if (globalThis.window === undefined || globalThis.window.localStorage === undefined) return;
+  const windowRef = globalThis.window;
+  const localStorage = windowRef?.localStorage;
+  if (!windowRef || !localStorage) return;
   try {
-    globalThis.window.localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
-    globalThis.window.dispatchEvent(new Event(STORE_EVENT));
+    localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
+    windowRef.dispatchEvent(new Event(STORE_EVENT));
   } catch {
     // Storage may be blocked (privacy mode); keep UI responsive.
   }

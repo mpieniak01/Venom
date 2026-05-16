@@ -16,7 +16,7 @@ try:
         from pydantic import AnyUrl
 
         networks.Url = AnyUrl  # type: ignore[attr-defined]
-except (ImportError, ModuleNotFoundError, AttributeError) as exc:
+except (ModuleNotFoundError, AttributeError) as exc:
     # Best-effort compatibility; avoid breaking import chain.
     warnings.warn(
         f"pydantic Url compatibility patch skipped: {exc}",
@@ -31,7 +31,7 @@ try:
     openai_types = importlib.import_module("openai._types")
     if not hasattr(openai_types, "omit") and hasattr(openai_types, "Omit"):
         openai_types.omit = openai_types.Omit()  # type: ignore[attr-defined]
-except (ImportError, ModuleNotFoundError, AttributeError) as exc:
+except (ModuleNotFoundError, AttributeError) as exc:
     # Best-effort compatibility; avoid breaking import chain.
     warnings.warn(
         f"openai omit compatibility patch skipped: {exc}",

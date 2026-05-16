@@ -16,6 +16,7 @@ from venom_core.services.runtime_dependencies import get_request_tracer
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+_ANALYSIS_STREAM_FAILED = "analysis stream failed"
 
 
 def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
@@ -57,12 +58,52 @@ def _serialize_sse_event(event_name: str, data: Any) -> str:
     return f"event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _parse_json_dict(raw: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _extract_content_text(payload: str) -> str:
+    if not payload:
+        return ""
+    parsed = _parse_json_dict(payload)
+    return str(parsed.get("text") or "")
+
+
+def _consume_sse_events(
+    *,
+    drained_events: list[tuple[str, str]],
+    events: list[str],
+    content_parts: list[str],
+    chunk_count: int,
+    first_content_at_ms: float | None,
+    chunk_at_ms: float,
+) -> tuple[int, float | None]:
+    for event_name, payload in drained_events:
+        events.append(event_name)
+        if event_name == "error":
+            raise RuntimeError(payload or _ANALYSIS_STREAM_FAILED)
+        if event_name != "content":
+            continue
+        text = _extract_content_text(payload)
+        if not text:
+            continue
+        content_parts.append(text)
+        chunk_count += 1
+        if first_content_at_ms is None:
+            first_content_at_ms = chunk_at_ms
+    return chunk_count, first_content_at_ms
+
+
 def _parse_request_id(raw_request_id: Any) -> UUID | None:
     if raw_request_id is None:
         return None
     try:
         return UUID(str(raw_request_id).strip())
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -86,10 +127,7 @@ def _parse_trace_step_details(step: Any) -> dict[str, Any]:
     }
     action = str(getattr(step, "action", "") or "")
     if action == "response" and isinstance(details, str):
-        try:
-            parsed = json.loads(details)
-        except Exception:
-            parsed = {}
+        parsed = _parse_json_dict(details)
         payload.update(
             {
                 "chunks": parsed.get("chunks"),
@@ -104,14 +142,11 @@ def _parse_trace_step_details(step: Any) -> dict[str, Any]:
             if fragment.startswith("elapsed_ms="):
                 try:
                     elapsed_ms = float(fragment.split("=", 1)[1])
-                except Exception:
+                except ValueError:
                     elapsed_ms = None
         payload["elapsed_ms"] = elapsed_ms
     elif action == "context_preview" and isinstance(details, str):
-        try:
-            parsed = json.loads(details)
-        except Exception:
-            parsed = {}
+        parsed = _parse_json_dict(details)
         payload["prompt_context_truncated"] = parsed.get("prompt_context_truncated")
         payload["hidden_prompts_count"] = parsed.get("hidden_prompts_count")
     elif action == "prompt_trim" and isinstance(details, str):
@@ -282,21 +317,25 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
         )
         raw_chunks.append(chunk_text)
         drained_events, sse_tail = _drain_sse_events(sse_tail + chunk_text)
-        for event_name, payload in drained_events:
-            events.append(event_name)
-            if event_name == "content" and payload:
-                try:
-                    parsed = json.loads(payload)
-                except Exception:
-                    continue
-                text = str(parsed.get("text") or "")
-                if text:
-                    content_parts.append(text)
-                    chunk_count += 1
-                    if first_content_at_ms is None:
-                        first_content_at_ms = chunk_at_ms
-            elif event_name == "error":
-                raise RuntimeError(payload or "analysis stream failed")
+        chunk_count, first_content_at_ms = _consume_sse_events(
+            drained_events=drained_events,
+            events=events,
+            content_parts=content_parts,
+            chunk_count=chunk_count,
+            first_content_at_ms=first_content_at_ms,
+            chunk_at_ms=chunk_at_ms,
+        )
+
+    if sse_tail.strip():
+        drained_events, _ = _drain_sse_events(sse_tail + "\n\n")
+        chunk_count, first_content_at_ms = _consume_sse_events(
+            drained_events=drained_events,
+            events=events,
+            content_parts=content_parts,
+            chunk_count=chunk_count,
+            first_content_at_ms=first_content_at_ms,
+            chunk_at_ms=(time.perf_counter() - stream_started_at) * 1000.0,
+        )
 
     return {
         "response_text": "".join(content_parts),
@@ -427,12 +466,12 @@ async def stream_model_introspection_analysis(
     events: list[str] = []
     chunk_count = 0
     first_content_at_ms: float | None = None
+    sse_tail = ""
 
     body_iterator = getattr(response, "body_iterator", None)
     if body_iterator is None:
         raise RuntimeError("analysis stream response does not expose a body iterator")
 
-    sse_tail = ""
     async for chunk in body_iterator:
         chunk_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
         chunk_text = (
@@ -441,42 +480,26 @@ async def stream_model_introspection_analysis(
             else str(chunk)
         )
         drained_events, sse_tail = _drain_sse_events(sse_tail + chunk_text)
-        for event_name, payload in drained_events:
-            events.append(event_name)
-            if event_name == "content" and payload:
-                try:
-                    parsed = json.loads(payload)
-                except Exception:
-                    parsed = {}
-                text = str(parsed.get("text") or "")
-                if text:
-                    content_parts.append(text)
-                    chunk_count += 1
-                    if first_content_at_ms is None:
-                        first_content_at_ms = chunk_at_ms
-            elif event_name == "error":
-                raise RuntimeError(payload or "analysis stream failed")
+        chunk_count, first_content_at_ms = _consume_sse_events(
+            drained_events=drained_events,
+            events=events,
+            content_parts=content_parts,
+            chunk_count=chunk_count,
+            first_content_at_ms=first_content_at_ms,
+            chunk_at_ms=chunk_at_ms,
+        )
         yield chunk_text
 
     if sse_tail.strip():
         drained_events, _ = _drain_sse_events(sse_tail + "\n\n")
-        for event_name, payload in drained_events:
-            events.append(event_name)
-            if event_name == "content" and payload:
-                try:
-                    parsed = json.loads(payload)
-                except Exception:
-                    parsed = {}
-                text = str(parsed.get("text") or "")
-                if text:
-                    content_parts.append(text)
-                    chunk_count += 1
-                    if first_content_at_ms is None:
-                        first_content_at_ms = (
-                            time.perf_counter() - flow_started_at
-                        ) * 1000.0
-            elif event_name == "error":
-                raise RuntimeError(payload or "analysis stream failed")
+        chunk_count, first_content_at_ms = _consume_sse_events(
+            drained_events=drained_events,
+            events=events,
+            content_parts=content_parts,
+            chunk_count=chunk_count,
+            first_content_at_ms=first_content_at_ms,
+            chunk_at_ms=(time.perf_counter() - flow_started_at) * 1000.0,
+        )
 
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
     refreshed_snapshot = await build_model_introspection_snapshot(

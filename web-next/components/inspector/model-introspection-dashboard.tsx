@@ -150,6 +150,8 @@ type AnalysisProcessTrace = {
   adapter_id?: string | null;
 };
 
+type AnalysisPhase = "idle" | "requesting" | "streaming" | "first_chunk" | "completed";
+
 type AnalysisResult = {
   status: string;
   analysis: {
@@ -226,6 +228,65 @@ function shortenTraceId(requestId: string | null | undefined): string {
   return requestId.length > 8 ? `${requestId.slice(0, 8)}…` : requestId;
 }
 
+function getPhaseTone(phase: AnalysisPhase): "success" | "warning" | "neutral" {
+  switch (phase) {
+    case "completed":
+      return "success";
+    case "streaming":
+    case "first_chunk":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function getPhaseLabel(phase: AnalysisPhase): string {
+  switch (phase) {
+    case "first_chunk":
+      return "first chunk";
+    default:
+      return phase;
+  }
+}
+
+function getAnalysisPhase(args: {
+  analysisVisible: boolean;
+  analysisLoading: boolean;
+  analysisStatus: string | undefined;
+  timelineHasResponseFinalized: boolean;
+  firstChunkMs: number | null;
+  chunkCount: number;
+}): AnalysisPhase {
+  const {
+    analysisVisible,
+    analysisLoading,
+    analysisStatus,
+    timelineHasResponseFinalized,
+    firstChunkMs,
+    chunkCount,
+  } = args;
+  if (!analysisVisible) {
+    return analysisLoading ? "requesting" : "idle";
+  }
+  if (analysisStatus === "completed" || timelineHasResponseFinalized) {
+    return "completed";
+  }
+  if (analysisStatus === "running") {
+    return chunkCount > 0 ? "streaming" : "requesting";
+  }
+  if (firstChunkMs != null || chunkCount > 0) {
+    return "first_chunk";
+  }
+  return "idle";
+}
+
+function getAnswerTone(answer: string, analysisVisible: boolean): "success" | "warning" | "neutral" {
+  if (!analysisVisible || !answer) {
+    return "neutral";
+  }
+  return /potrzebuj|need more context|more context/i.test(answer) ? "warning" : "success";
+}
+
 function AnalysisOrb({
   active,
   phase,
@@ -238,9 +299,9 @@ function AnalysisOrb({
   stepCount,
   charsPerSecond,
   progress,
-}: {
+}: Readonly<{
   active: boolean;
-  phase: "idle" | "requesting" | "streaming" | "first_chunk" | "completed";
+  phase: AnalysisPhase;
   packageCoverage: number;
   chunks: number;
   elapsedMs: number;
@@ -250,28 +311,15 @@ function AnalysisOrb({
   stepCount: number;
   charsPerSecond: number | null;
   progress: number;
-}) {
+}>) {
   const intensity = clampPercent(chunks * 32);
   const elapsedFactor = clampPercent(elapsedMs / 120);
   const packageCoveragePercent = clampPercent(packageCoverage);
   const progressPercent = clampPercent(progress);
   const [displayProgress, setDisplayProgress] = useState(progressPercent);
   const displayProgressRef = useRef(progressPercent);
-  const phaseLabel = {
-    idle: "idle",
-    requesting: "requesting",
-    streaming: "streaming",
-    first_chunk: "first chunk",
-    completed: "completed",
-  }[phase];
-  const phaseTone =
-    phase === "completed"
-      ? "success"
-      : phase === "streaming" || phase === "first_chunk"
-        ? "warning"
-        : phase === "requesting"
-          ? "neutral"
-          : "neutral";
+  const phaseLabel = getPhaseLabel(phase);
+  const phaseTone = getPhaseTone(phase);
   const phaseColors: Record<
     "idle" | "requesting" | "streaming" | "first_chunk" | "completed",
     { ring: string; core: string; text: string }
@@ -312,15 +360,15 @@ function AnalysisOrb({
   }, [displayProgress]);
 
   useEffect(() => {
+    const w = globalThis.window;
     const scheduleFrame =
-      typeof window.requestAnimationFrame === "function"
-        ? window.requestAnimationFrame.bind(window)
-        : (callback: FrameRequestCallback) =>
-            window.setTimeout(() => callback(performance.now()), 16);
+      typeof w?.requestAnimationFrame === "function"
+        ? w.requestAnimationFrame.bind(w)
+        : (callback: FrameRequestCallback) => globalThis.setTimeout(() => callback(performance.now()), 16);
     const cancelFrame =
-      typeof window.cancelAnimationFrame === "function"
-        ? window.cancelAnimationFrame.bind(window)
-        : (handle: number) => window.clearTimeout(handle);
+      typeof w?.cancelAnimationFrame === "function"
+        ? w.cancelAnimationFrame.bind(w)
+        : (handle: number) => globalThis.clearTimeout(handle);
     let frameId: number | null = null;
     let startAt = 0;
     const startValue = displayProgressRef.current;
@@ -475,13 +523,13 @@ function GraphNodeCard({
   status,
   selected,
   onClick,
-}: {
+}: Readonly<{
   label: string;
   kind: string;
   status: string;
   selected: boolean;
   onClick: () => void;
-}) {
+}>) {
   const tone =
     status === "available" || status === "connected" || status === "ready"
       ? "success"
@@ -548,7 +596,10 @@ export function ModelIntrospectionDashboard() {
   }, []);
 
   useEffect(() => {
-    void loadSnapshot();
+    const run = async () => {
+      await loadSnapshot();
+    };
+    run().catch(() => undefined);
   }, [loadSnapshot]);
 
   const stats = useMemo(() => {
@@ -646,27 +697,15 @@ export function ModelIntrospectionDashboard() {
   const analysisStepCount = analysisTimelineStepCount;
   const analysisTraceId = analysisProcess?.request_id ?? null;
   const analysisStreaming = analysisRunning && analysisVisible;
-  const analysisPhase: "idle" | "requesting" | "streaming" | "first_chunk" | "completed" = !analysisVisible
-    ? analysisLoading
-      ? "requesting"
-      : "idle"
-    : analysisResult?.status === "completed" || analysisTimelineResponseFinalized != null
-      ? "completed"
-    : analysisRunning
-      ? analysisResult?.analysis?.chunk_count
-        ? "streaming"
-        : "requesting"
-      : analysisFirstChunkMs != null
-        ? "first_chunk"
-      : analysisResult?.analysis?.chunk_count
-          ? "first_chunk"
-          : "idle";
-  const analysisAnswerTone =
-    !analysisVisible || !analysisResponse
-      ? "neutral"
-      : /potrzebuj|need more context|more context/i.test(analysisResponse)
-      ? "warning"
-      : "success";
+  const analysisPhase = getAnalysisPhase({
+    analysisVisible,
+    analysisLoading,
+    analysisStatus: analysisResult?.status,
+    timelineHasResponseFinalized: analysisTimelineResponseFinalized != null,
+    firstChunkMs: analysisFirstChunkMs,
+    chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+  });
+  const analysisAnswerTone = getAnswerTone(analysisResponse, analysisVisible);
 
   const visualMetrics = useMemo(() => {
     const available = snapshot?.available_packages.length ?? 0;
@@ -966,6 +1005,20 @@ export function ModelIntrospectionDashboard() {
     }
   }, [analysisMechanismEnabled, analysisPrompt]);
 
+  const handleRefreshSnapshot = useCallback(() => {
+    const run = async () => {
+      await loadSnapshot();
+    };
+    run().catch(() => undefined);
+  }, [loadSnapshot]);
+
+  const handleRunAnalysis = useCallback(() => {
+    const run = async () => {
+      await runAnalysis();
+    };
+    run().catch(() => undefined);
+  }, [runAnalysis]);
+
   return (
     <div className="space-y-6 pb-10">
       <SectionHeading
@@ -976,7 +1029,7 @@ export function ModelIntrospectionDashboard() {
         size="lg"
         rightSlot={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => void loadSnapshot()} disabled={loading}>
+            <Button variant="outline" onClick={handleRefreshSnapshot} disabled={loading}>
               <RefreshCcw className="h-4 w-4" />
               {loading
                 ? t("common.loading")
@@ -1060,7 +1113,7 @@ export function ModelIntrospectionDashboard() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  onClick={() => void runAnalysis()}
+                  onClick={handleRunAnalysis}
                   disabled={analysisLoading || !snapshot || !analysisMechanismEnabled}
                 >
                   {analysisLoading
@@ -1105,7 +1158,7 @@ export function ModelIntrospectionDashboard() {
                 progress={visualMetrics.analysisProgress}
                 subtitle={
                   analysisResult?.status === "completed"
-                      ? `${analysisResult?.analysis?.chunk_count ?? 0} chunk(s) · ${analysisStepCount} step(s) · completed`
+                    ? `${analysisResult?.analysis?.chunk_count ?? 0} chunk(s) · ${analysisStepCount} step(s) · completed`
                     : analysisActive
                       ? `${analysisResult?.analysis?.chunk_count ?? 0} chunk(s) · ${analysisStepCount} step(s)`
                       : t("inspector.modelIntrospection.dashboard.analysis.orbIdle")

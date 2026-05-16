@@ -98,6 +98,9 @@ _SIMPLE_MODE_STEP = "SimpleMode"
 _PROMPT_PREVIEW_MAX_CHARS = 200
 _CONTEXT_PREVIEW_MAX_CHARS = 2000
 _RESPONSE_PREVIEW_MAX_CHARS = 4000
+_SSE_EVENT_START = "event: start\ndata: {}\n\n"
+_SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
+_SSE_MEDIA_TYPE = "text/event-stream"
 _ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
 _ONNX_SIMPLE_CLIENT_LOCK = threading.Lock()
 httpx = llm_simple_transport.httpx_module()
@@ -151,7 +154,7 @@ async def _get_active_adapter_id() -> str | None:
         active = info_getter()
         if asyncio.iscoroutine(active):
             active = await active
-    except Exception:
+    except (TypeError, ValueError, RuntimeError):
         return None
     if not isinstance(active, dict):
         return None
@@ -177,7 +180,7 @@ async def _aiter_sync_onnx_stream(
                 temperature=temperature,
             ):
                 asyncio.run_coroutine_threadsafe(queue.put(token), loop)
-        except BaseException as exc:  # pragma: no cover - safety bridge
+        except Exception as exc:  # pragma: no cover - safety bridge
             asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
         finally:
             asyncio.run_coroutine_threadsafe(queue.put(None), loop)
@@ -819,7 +822,7 @@ async def _stream_simple_chunks(
     stream_start = time.perf_counter()
     runtime_telemetry: dict[str, int] = {}
 
-    yield "event: start\ndata: {}\n\n"
+    yield _SSE_EVENT_START
 
     max_attempts = (
         max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
@@ -857,7 +860,7 @@ async def _stream_simple_chunks(
             if should_retry:
                 continue
             if should_emit_done:
-                yield "event: done\ndata: {}\n\n"
+                yield _SSE_EVENT_DONE
             return
 
         except httpx.HTTPError as exc:
@@ -902,7 +905,7 @@ async def _stream_simple_chunks_onnx(
     chunk_count = 0
     first_chunk_seen = False
 
-    yield "event: start\ndata: {}\n\n"
+    yield _SSE_EVENT_START
     try:
         client = _get_onnx_simple_client()
         async for content in _aiter_sync_onnx_stream(
@@ -927,7 +930,7 @@ async def _stream_simple_chunks_onnx(
             success=True,
             latency_ms=(time.perf_counter() - stream_start) * 1000.0,
         )
-        yield "event: done\ndata: {}\n\n"
+        yield _SSE_EVENT_DONE
     except Exception as exc:
         _record_simple_error(
             request_id,
@@ -964,7 +967,7 @@ async def _stream_simple_chunks_non_stream(
     stream_start = time.perf_counter()
     chunks: list[str] = []
 
-    yield "event: start\ndata: {}\n\n"
+    yield _SSE_EVENT_START
     try:
         async with llm_simple_transport.open_stream_response(
             provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
@@ -989,7 +992,7 @@ async def _stream_simple_chunks_non_stream(
             success=True,
             latency_ms=(time.perf_counter() - stream_start) * 1000.0,
         )
-        yield "event: done\ndata: {}\n\n"
+        yield _SSE_EVENT_DONE
     except httpx.HTTPStatusError as exc:
         result = await _emit_http_status_error_and_mark_failed(
             exc=exc,
@@ -1050,7 +1053,7 @@ async def stream_simple_chat(request: SimpleChatRequest):
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
             ),
-            media_type="text/event-stream",
+            media_type=_SSE_MEDIA_TYPE,
             headers=headers,
         )
 
@@ -1071,7 +1074,7 @@ async def stream_simple_chat(request: SimpleChatRequest):
                 request_id=request_id,
                 model_name=model_name,
             ),
-            media_type="text/event-stream",
+            media_type=_SSE_MEDIA_TYPE,
             headers=headers,
         )
     if not completions_url:
@@ -1084,6 +1087,6 @@ async def stream_simple_chat(request: SimpleChatRequest):
             request_id=request_id,
             model_name=model_name,
         ),
-        media_type="text/event-stream",
+        media_type=_SSE_MEDIA_TYPE,
         headers=headers,
     )

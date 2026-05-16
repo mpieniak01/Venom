@@ -17,6 +17,8 @@ from venom_core.services.model_introspection_service import (
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+_ERROR_INTERNAL_SERVER = "Internal server error"
+_SSE_MEDIA_TYPE = "text/event-stream"
 
 router = APIRouter(prefix="/api/v1/models", tags=["models"])
 
@@ -36,7 +38,7 @@ async def get_model_introspection() -> dict[str, object]:
         return {"success": True, "snapshot": snapshot}
     except Exception as exc:
         logger.exception("Błąd podczas budowania snapshotu modelu")
-        raise HTTPException(status_code=500, detail="Internal server error") from exc
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc
 
 
 @router.post(
@@ -60,10 +62,17 @@ async def analyze_model_introspection(
         )
         return {"success": True, "snapshot": payload}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning(
+            "Nieprawidłowe parametry analizy modelu",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid request parameters",
+        ) from exc
     except Exception as exc:
         logger.exception("Błąd podczas analizy modelu")
-        raise HTTPException(status_code=500, detail="Internal server error") from exc
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc
 
 
 @router.post(
@@ -88,14 +97,21 @@ async def stream_model_introspection_analysis_endpoint(
                 temperature=request.temperature,
                 model_manager=get_model_manager(),
             ),
-            media_type="text/event-stream",
+            media_type=_SSE_MEDIA_TYPE,
             headers={
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
             },
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning(
+            "Nieprawidłowe parametry streamowanej analizy modelu",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid request parameters",
+        ) from exc
     except Exception as exc:
         logger.exception("Błąd podczas streamowanej analizy modelu")
-        raise HTTPException(status_code=500, detail="Internal server error") from exc
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc

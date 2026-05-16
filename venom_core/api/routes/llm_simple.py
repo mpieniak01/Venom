@@ -90,6 +90,9 @@ _SIMPLE_MODE_STEP = "SimpleMode"
 _PROMPT_PREVIEW_MAX_CHARS = 200
 _CONTEXT_PREVIEW_MAX_CHARS = 2000
 _RESPONSE_PREVIEW_MAX_CHARS = 4000
+_SSE_EVENT_START = "event: start\ndata: {}\n\n"
+_SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
+_SSE_MEDIA_TYPE = "text/event-stream"
 _ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
 _ONNX_SIMPLE_CLIENT_LOCK = threading.Lock()
 httpx = llm_simple_transport.httpx_module()
@@ -113,7 +116,7 @@ def release_onnx_simple_client() -> None:
     if client is not None:
         try:
             client.close()
-        except Exception:
+        except (RuntimeError, OSError):
             # Cleanup path must be best-effort; runtime may be partially initialized.
             pass
 
@@ -799,7 +802,7 @@ async def _stream_simple_chunks(
     stream_start = time.perf_counter()
     runtime_telemetry: dict[str, int] = {}
 
-    yield "event: start\ndata: {}\n\n"
+    yield _SSE_EVENT_START
 
     max_attempts = (
         max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
@@ -837,7 +840,7 @@ async def _stream_simple_chunks(
             if should_retry:
                 continue
             if should_emit_done:
-                yield "event: done\ndata: {}\n\n"
+                yield _SSE_EVENT_DONE
             return
 
         except httpx.HTTPError as exc:
@@ -882,7 +885,7 @@ async def _stream_simple_chunks_onnx(
     chunk_count = 0
     first_chunk_seen = False
 
-    yield "event: start\ndata: {}\n\n"
+    yield _SSE_EVENT_START
     try:
         # Keep a warm ONNX client in API process to avoid reloading model
         # between consecutive simple-mode requests.
@@ -908,7 +911,7 @@ async def _stream_simple_chunks_onnx(
             success=True,
             latency_ms=(time.perf_counter() - stream_start) * 1000.0,
         )
-        yield "event: done\ndata: {}\n\n"
+        yield _SSE_EVENT_DONE
     except Exception as exc:
         _record_simple_error(
             request_id,
@@ -945,10 +948,13 @@ async def _stream_simple_chunks_non_stream(
     stream_start = time.perf_counter()
     chunks: list[str] = []
 
-    yield "event: start\ndata: {}\n\n"
+    yield _SSE_EVENT_START
     try:
-        async with httpx.AsyncClient(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
-            response = await client.post(completions_url, json=payload)
+        async with llm_simple_transport.open_stream_response(
+            provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
+            completions_url=completions_url,
+            payload=payload,
+        ) as response:
             response.raise_for_status()
             data = response.json()
 
@@ -967,7 +973,7 @@ async def _stream_simple_chunks_non_stream(
             success=True,
             latency_ms=(time.perf_counter() - stream_start) * 1000.0,
         )
-        yield "event: done\ndata: {}\n\n"
+        yield _SSE_EVENT_DONE
     except httpx.HTTPStatusError as exc:
         result = await _emit_http_status_error_and_mark_failed(
             exc=exc,

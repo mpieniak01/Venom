@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from tests.helpers.url_fixtures import MOCK_HTTP, http_url
 from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.main import app
-from venom_core.services import llm_simple_service
+from venom_core.services import llm_simple_service, llm_simple_stream_service
 from venom_core.services.llm_simple_stream_service import SimpleStreamState
 
 
@@ -892,3 +892,35 @@ async def test_service_handle_stream_http_error_retry_and_emit(monkeypatch):
         runtime_telemetry={},
     )
     assert emit_result.startswith("event: error")
+
+
+def test_stream_service_packet_update_and_post_attempt_branches() -> None:
+    state = llm_simple_stream_service.SimpleStreamState(chunks=[])
+    first_chunk_seen = {"called": 0}
+
+    def _on_first(_content: str) -> None:
+        first_chunk_seen["called"] += 1
+
+    events = llm_simple_stream_service.update_stream_state_from_packet(
+        packet={"choices": [{"delta": {"content": "A"}}]},
+        runtime=SimpleNamespace(provider="ollama"),
+        state=state,
+        runtime_telemetry=None,
+        extract_runtime_telemetry_fn=None,
+        extract_sse_tool_calls_fn=lambda _packet: [{"id": "t1"}],
+        extract_sse_contents_fn=lambda _packet: ["A"],
+        on_first_chunk_fn=_on_first,
+        ollama_telemetry={},
+        extract_ollama_telemetry_fn=lambda _packet: {"eval_count": 1},
+    )
+    assert first_chunk_seen["called"] == 1
+    assert any(event.startswith("event: tool_calls") for event in events)
+    assert any(event.startswith("event: content") for event in events)
+
+    stop_action = llm_simple_stream_service.resolve_post_attempt_action(
+        state=llm_simple_stream_service.SimpleStreamState(chunks=[], failed=True),
+        finalize_success_fn=lambda: None,
+    )
+    unknown_apply = llm_simple_stream_service.apply_post_attempt_action("stop")
+    assert stop_action == "stop"
+    assert unknown_apply == (False, False)

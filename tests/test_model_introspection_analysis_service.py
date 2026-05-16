@@ -251,3 +251,67 @@ async def test_analysis_stream_emits_progressive_events(
     assert analysis_done["status"] == "completed"
     assert analysis_done["analysis"]["response"] == "Slonce to gwiazda."
     assert analysis_done["analysis"]["timeline_step_count"] == 6
+
+
+@pytest.mark.asyncio
+async def test_analysis_stream_flushes_sse_tail_and_emits_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        # Tail flush path: final event has no trailing \n\n in chunk body
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: content\ndata: {"text":"A"}',
+            ]
+        )
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events = []
+    for chunk in chunks:
+        events.extend(analysis_service.parse_sse_events(chunk))
+    event_names = [name for name, _ in events]
+    assert event_names[-1] == "analysis_done"
+    done_payload = json.loads(events[-1][1])
+    assert done_payload["analysis"]["response"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_analysis_stream_raises_when_response_has_no_body_iterator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        return object()
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    with pytest.raises(RuntimeError, match="body iterator"):
+        async for _ in analysis_service.stream_model_introspection_analysis(
+            prompt="Co to jest slonce?",
+            live_analysis_enabled=True,
+        ):
+            pass

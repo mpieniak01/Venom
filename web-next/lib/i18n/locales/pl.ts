@@ -544,6 +544,92 @@ export const pl = {
       title: "Analiza śladów",
       description: "RequestTracer + Mermaid: natychmiastowy podgląd przepływu, kroków i kondycji kolejki.",
     },
+    modelIntrospection: {
+      page: {
+        eyebrow: "Inspector / Introspekcja modelu",
+        title: "Podgląd wnętrza modelu",
+        description: "Snapshot runtime, pakiety introspekcji, drift i reuse z Brain bez dublowania diagnostyki.",
+      },
+      dashboard: {
+        loading: {
+          title: "Ładowanie snapshotu",
+          description: "Pobieranie snapshotu introspekcji modelu z backendu.",
+        },
+        error: {
+          title: "Nie udało się pobrać snapshotu",
+          note: "Widok jest gotowy, ale snapshot API jest chwilowo niedostępny.",
+        },
+        analysis: {
+          title: "Analiza modelu na żywo",
+          description: "Opcjonalne wykonanie promptu na aktywnym modelu. Domyślnie wyłączone, aby nie obciążać stosu.",
+          promptLabel: "Prompt",
+          promptPlaceholder: "Co to jest slonce?",
+          run: "Uruchom analizę",
+          running: "Uruchamianie...",
+          reset: "Resetuj prompt",
+          disabled: "Analiza live jest wyłączona. Włącz mechanizm, aby uruchomić aktywny model.",
+          skipped: "Analiza live jest wyłączona. Włącz mechanizm, aby uruchomić analizę.",
+          orbIdle: "Uruchom analizę, aby aktywować orb",
+        },
+        results: {
+          title: "Wyniki analizy",
+          description: "Odpowiedź, highlights i telemetria procesu są zebrane w jednym miejscu.",
+          answer: "Odpowiedź",
+          waitingToken: "Oczekiwanie na pierwszy token strumienia...",
+          streaming: "Strumień odpowiedzi na żywo",
+          highlights: "Najważniejsze fragmenty",
+          highlightsEmpty: "Uruchom analizę, aby wypełnić highlights.",
+          verdict: "Werdykt modelu",
+          verdictReady: "Widok prezentuje odpowiedź jako uporządkowane dane zamiast jednego surowego akapitu.",
+          verdictPending: "Warstwa prezentacji aktywuje się po pierwszym uruchomieniu analizy.",
+        },
+        snapshotComparison: {
+          title: "Porównanie snapshotów",
+          before: "Przed",
+          after: "Po",
+          delta: "Różnica",
+          fallback: "Snapshot po analizie pozostaje dostępny do porównania z sekcją runtime powyżej.",
+        },
+        graph: {
+          title: "Widok grafu",
+          description: "Opcjonalny drilldown techniczny dla runtime, analizy, reuse i stanu pakietów.",
+          drilldownTitle: "Drilldown grafu",
+          open: "Otwórz techniczną warstwę grafu",
+          hide: "Ukryj techniczną warstwę grafu",
+          stateOpen: "otwarte",
+          stateCollapsed: "zwinięte",
+        },
+      },
+      actions: {
+        refresh: "Odśwież snapshot",
+        openInspector: "Wróć do Inspektora",
+        openBrain: "Otwórz Graf wiedzy",
+      },
+      summary: {
+        runtime: "Runtime",
+        provider: "Provider",
+        packages: "Pakiety dostępne",
+        missing: "Pakiety brakujące",
+      },
+      panels: {
+        runtime: {
+          title: "Snapshot runtime",
+          description: "Stan aktywnego runtime i wykryty drift konfiguracji.",
+        },
+        packages: {
+          title: "Pakiety introspekcji",
+          description: "Dostępność bibliotek potrzebnych do analizy modelu.",
+        },
+        reuse: {
+          title: "Reuse powierzchni",
+          description: "Istniejące ekrany i diagnostyka używane bez dublowania.",
+        },
+        manager: {
+          title: "ModelManager",
+          description: "Metryki zasobów, jeśli backend exposeuje menedżera modeli.",
+        },
+      },
+    },
     stats: {
       successRate: "Skuteczność",
       completed: "{{count}} zakończonych",

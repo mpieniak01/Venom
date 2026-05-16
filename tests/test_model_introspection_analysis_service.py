@@ -1,0 +1,253 @@
+"""Tests for optional model introspection analysis service."""
+
+from __future__ import annotations
+
+import json
+import types
+
+import pytest
+
+from venom_core.services import model_introspection_analysis_service as analysis_service
+
+
+class _FakeStreamingResponse:
+    def __init__(
+        self, chunks: list[str], headers: dict[str, str] | None = None
+    ) -> None:
+        self.body_iterator = self._iter(chunks)
+        self.headers = headers or {}
+
+    async def _iter(self, chunks: list[str]):
+        for chunk in chunks:
+            yield chunk
+
+
+def _build_snapshot() -> dict[str, object]:
+    return {
+        "runtime": {
+            "provider": "multi_runtime",
+            "model": "google/gemma-4-E2B-it",
+            "endpoint": "http://localhost:8014/v1",
+            "service_type": "local",
+            "mode": "LOCAL",
+            "label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+            "config_hash": "abc123",
+            "runtime_id": "multi_runtime@http://localhost:8014/v1",
+        },
+        "runtime_drift": {"issues": []},
+        "packages": {},
+        "available_packages": [],
+        "missing_packages": [],
+        "model_manager": {"available": False, "usage_metrics": None, "error": None},
+        "reuse": {
+            "brain": {"path": "/brain", "available": True, "purpose": "rag"},
+            "diagnostics": [],
+        },
+        "summary": {
+            "active_model": "google/gemma-4-E2B-it",
+            "provider": "multi_runtime",
+            "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+            "introspection_ready": True,
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_analysis_skipped_when_live_mode_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=False,
+    )
+
+    assert result["status"] == "skipped"
+    assert result["skipped_reason"] == "live_analysis_disabled"
+    assert result["analysis"]["timeline"][0]["label"] == "Live analysis disabled"
+    assert result["analysis"]["timeline"][0]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_analysis_collects_streamed_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _build_snapshot()
+
+    async def fake_snapshot(**kwargs):
+        return snapshot
+
+    async def fake_stream_simple_chat(request):
+        assert request.content == "Co to jest slonce?"
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: content\ndata: {"text":"Slonce to gwiazda."}\n\n',
+                "event: done\ndata: {}\n\n",
+            ]
+        )
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    )
+
+    assert result["status"] == "completed"
+    assert result["analysis"]["response"] == "Slonce to gwiazda."
+    assert result["analysis"]["chunk_count"] == 1
+    assert result["analysis"]["provider"] == "multi_runtime"
+    assert result["analysis"]["events"] == ["start", "content", "done"]
+    assert result["analysis"]["timeline_step_count"] == 6
+    assert result["analysis"]["timeline"][0]["label"] == "Snapshot captured"
+    assert result["analysis"]["timeline"][-1]["label"] == "Snapshot refreshed"
+
+
+@pytest.mark.asyncio
+async def test_analysis_includes_request_trace_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _build_snapshot()
+    trace_id = "8fd5af48-7d34-4f69-90e2-3e6b2c2a1c11"
+
+    class _FakeTrace:
+        def __init__(self) -> None:
+            self.request_id = trace_id
+            self.status = types.SimpleNamespace(value="COMPLETED")
+            self.adapter_applied = False
+            self.adapter_id = None
+            self.steps = [
+                types.SimpleNamespace(
+                    component="SimpleMode",
+                    action="request",
+                    status="ok",
+                    details="session_id=- prompt=Co to jest slonce?",
+                ),
+                types.SimpleNamespace(
+                    component="SimpleMode",
+                    action="first_chunk",
+                    status="ok",
+                    details="elapsed_ms=18 preview=Slonce to gwiazda.",
+                ),
+                types.SimpleNamespace(
+                    component="SimpleMode",
+                    action="response",
+                    status="ok",
+                    details=json.dumps(
+                        {
+                            "chunks": 2,
+                            "total_ms": 61.7,
+                            "chars": 18,
+                            "response": "Slonce to gwiazda.",
+                            "truncated": False,
+                        }
+                    ),
+                ),
+            ]
+
+    class _FakeTracer:
+        def get_trace(self, request_id):
+            if str(request_id) == trace_id:
+                return _FakeTrace()
+            return None
+
+    async def fake_snapshot(**kwargs):
+        return snapshot
+
+    async def fake_stream_simple_chat(request):
+        assert request.content == "Co to jest slonce?"
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: content\ndata: {"text":"Slonce to gwiazda."}\n\n',
+                "event: done\ndata: {}\n\n",
+            ],
+            headers={"X-Request-Id": trace_id},
+        )
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "get_request_tracer", lambda: _FakeTracer())
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    )
+
+    process = result["analysis"]["process"]
+    assert process["request_id"] == trace_id
+    assert process["status"] == "COMPLETED"
+    assert process["trace_step_count"] == 3
+    assert process["first_chunk_ms"] == 18
+    assert process["response_chars"] == 18
+    assert process["response_chunks"] == 2
+    assert process["response_truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_analysis_stream_emits_progressive_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(request):
+        assert request.content == "Co to jest slonce?"
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: content\ndata: {"text":"Slonce to "}\n\n',
+                'event: content\ndata: {"text":"gwiazda."}\n\n',
+                "event: done\ndata: {}\n\n",
+            ]
+        )
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events = []
+    for chunk in chunks:
+        events.extend(analysis_service._iter_sse_events(chunk))
+
+    event_names = [event_name for event_name, _ in events]
+    assert event_names[0] == "analysis_start"
+    assert "start" in event_names
+    assert "content" in event_names
+    assert event_names[-1] == "analysis_done"
+
+    analysis_start = json.loads(events[0][1])
+    analysis_done = json.loads(events[-1][1])
+    assert analysis_start["status"] == "running"
+    assert analysis_start["analysis"]["timeline"][0]["label"] == "Snapshot captured"
+    assert analysis_done["status"] == "completed"
+    assert analysis_done["analysis"]["response"] == "Slonce to gwiazda."
+    assert analysis_done["analysis"]["timeline_step_count"] == 6

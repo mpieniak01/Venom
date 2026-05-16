@@ -18,7 +18,7 @@ python-multipart==0.0.22 # Required for FastAPI multipart/form-data support (fil
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
 # UWAGA: nie pinujemy tu do konkretnej wersji, bo starsze wersje wymuszały openai<2 i openapi-core<0.20.
-# W full stack używamy openai>=2.x (przez graphrag/litellm), więc resolver musi dobrać nowszy SK.
+# Full stack pozostaje na OpenAI 1.x, żeby zachować zgodność z semantic-kernel i GraphRAG 2.7.x.
 semantic-kernel>=1.39.4 # Microsoft Semantic Kernel (zakres po fixach CVE)
 mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
 aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
@@ -45,7 +45,8 @@ protobuf>=5.29.6,<6.0.0 # Zakres po fixie CVE (Uncontrolled Recursion), zgodny z
 
 # --- VENOM HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
 
-graphrag==2.7.0         # Microsoft GraphRAG (Pamięć długotrwała) - pin dla stabilnego resolvera
+graphrag==2.7.2         # Microsoft GraphRAG (Pamięć długotrwała) - pin zgodny z OpenAI 1.x
+litellm==1.78.7         # Stable LiteLLM line compatible with GraphRAG 2.7.x and OpenAI 1.x
 networkx==3.6.1         # Analiza grafów (pin zgodny z profilem CI Lite)
 lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego resolvera
 # uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
@@ -53,7 +54,7 @@ lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego reso
 # Ingestion Engine dependencies
 pypdf>=6.6.0            # Ekstrakcja tekstu z PDF (fix CVE)
 filelock>=3.20.3        # Fix for TOCTOU/symlink issues (transitive from HF stack)
-# litellm>=1.81.3         # Fix for graphrag transitive vulnerability (wymaga openai>=2.x)
+# litellm>=1.77.1         # Fix for graphrag transitive vulnerability (pozostaje na OpenAI 1.x)
 marshmallow>=4.1.2      # Fix for graphrag/environs transitive vulnerability
 pyasn1>=0.6.2           # Fix for google-auth transitive vulnerability
 werkzeug>=3.1.6         # Fix for Windows safe_join CVE chain
@@ -91,7 +92,7 @@ google-api-python-client>=2.100.0  # Google Calendar API client
 
 # --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
 
-openai<2,>=1.98.0           # SDK OpenAI (wersja 2.x; wymagane przez litellm>=1.81)
+openai<2,>=1.99.5           # SDK OpenAI (1.x; kompatybilne z semantic-kernel i GraphRAG 2.7.x)
 google-genai            # Gemini API (Google GenAI SDK)
 anthropic               # Claude API
 azure-core>=1.38.0      # Azure SDK core – aktualizacja pod CVE dot. deserializacji

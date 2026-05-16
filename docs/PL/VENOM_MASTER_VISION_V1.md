@@ -54,7 +54,7 @@ Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykac
 <tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td><td>Ollama `0.17.4` (lokalnie); `vllm==0.11.0` (pin profilu); pakiety ONNX Runtime aktywne (bez pina)</td></tr>
 <tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td><td>`openai>=1.98.0,<2`; `anthropic` (bez pina); Gemini przez API providera</td></tr>
 <tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td><td>Warstwa integracyjna w repo; brak jednej pinowanej wersji binarnej na hoście</td></tr>
-<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td><td>`graphrag==2.7.0`; `lancedb==0.25.3`</td></tr>
+<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td><td>`graphrag==2.7.2`; `lancedb==0.25.3`</td></tr>
 <tr><td>Móżdżek (Cerebellum)</td><td>Uczenie (Fine-tuning)</td><td>Pamięć mięśniowa, odruchy</td><td>The Academy (LoRA/QLoRA)</td><td>v1.5</td><td>Pipeline Academy w repo (brak jednej pinowanej zewnętrznej wersji runtime)</td></tr>
 <tr><td>Kora przedczołowa (Prefrontal Cortex)</td><td>Kontrola</td><td>Świadome planowanie</td><td>Workflow Control Plane</td><td>v1.5</td><td>Linia aplikacji Venom `v1.8.0` (wersja pakietu `web-next`)</td></tr>
 <tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td><td>`semantic-kernel==1.39.4` (pin CI/minimal); Git `2.43.0`</td></tr>

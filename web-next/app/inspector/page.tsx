@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useTranslation } from "@/lib/i18n";
 import { useInspectorState } from "./use-inspector-state";
 import { InspectorHeaderStats } from "@/components/inspector/inspector-header-stats";
 import { InspectorSidebar } from "@/components/inspector/inspector-sidebar";
 import { InspectorWorkspace } from "@/components/inspector/inspector-workspace";
+import { Button } from "@/components/ui/button";
 
 export default function InspectorPage() {
   const t = useTranslation();
@@ -23,6 +25,15 @@ export default function InspectorPage() {
         taskBreakdown={state.taskBreakdown}
         latencyCards={state.latencyCards}
       />
+
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/inspector/model-introspection">Otwórz introspekcję modelu</Link>
+        </Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/brain">Przejdź do Grafu wiedzy</Link>
+        </Button>
+      </div>
 
       <div className={`grid gap-6 ${state.flowFullscreen ? "grid-cols-1" : "xl:grid-cols-[360px_minmax(0,1fr)]"}`}>
         <InspectorSidebar

@@ -48,7 +48,7 @@ def apply_output_format_to_payload(
         payload["format"] = request_format
 
 
-def ollama_feature_enabled(provider: str, enabled_flag: bool) -> bool:
+def runtime_feature_enabled(provider: str, enabled_flag: bool) -> bool:
     return provider != "ollama" or enabled_flag
 
 
@@ -62,13 +62,13 @@ def apply_optional_features_to_payload(
     ollama_enable_tool_calling: bool,
     ollama_enable_think: bool,
 ) -> None:
-    if tools and ollama_feature_enabled(provider, ollama_enable_tool_calling):
+    if tools and runtime_feature_enabled(provider, ollama_enable_tool_calling):
         payload["tools"] = tools
-    if tool_choice is not None and ollama_feature_enabled(
+    if tool_choice is not None and runtime_feature_enabled(
         provider, ollama_enable_tool_calling
     ):
         payload["tool_choice"] = tool_choice
-    if think is not None and ollama_feature_enabled(provider, ollama_enable_think):
+    if think is not None and runtime_feature_enabled(provider, ollama_enable_think):
         payload["think"] = think
 
 
@@ -100,7 +100,7 @@ def extract_sse_tool_calls(packet: dict[str, Any]) -> list[dict[str, Any]]:
     return tool_calls
 
 
-def extract_ollama_telemetry(packet: dict[str, Any]) -> dict[str, int]:
+def extract_runtime_telemetry(packet: dict[str, Any]) -> dict[str, int]:
     out: dict[str, int] = {}
     for key in (
         "load_duration",
@@ -133,13 +133,13 @@ def build_streaming_headers(request_id: str, session_id: str) -> dict[str, str]:
     }
 
 
-def is_retryable_ollama_status(status_code: Optional[int]) -> bool:
+def is_retryable_runtime_status(status_code: Optional[int]) -> bool:
     if status_code is None:
         return False
     return status_code in {429, 500, 502, 503, 504}
 
 
-def is_retryable_ollama_http_error(
+def is_retryable_runtime_http_error(
     *, provider: str, status_code: Optional[int], attempt_no: int, max_retries: int
 ) -> bool:
     if provider != "ollama":
@@ -148,4 +148,11 @@ def is_retryable_ollama_http_error(
         return False
     if status_code is None:
         return True
-    return is_retryable_ollama_status(status_code)
+    return is_retryable_runtime_status(status_code)
+
+
+# Backwards-compatible aliases for legacy imports.
+ollama_feature_enabled = runtime_feature_enabled
+extract_ollama_telemetry = extract_runtime_telemetry
+is_retryable_ollama_status = is_retryable_runtime_status
+is_retryable_ollama_http_error = is_retryable_runtime_http_error

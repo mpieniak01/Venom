@@ -18,3 +18,14 @@ try:
 except Exception:
     # Best-effort compatibility; avoid breaking import chain.
     pass
+
+# Compat: Semantic Kernel 1.39.x still imports `openai._types.omit`, but the
+# symbol was removed from newer OpenAI SDK releases. Re-create it lazily so
+# imports continue to work without pinning the whole stack back.
+try:
+    openai_types = importlib.import_module("openai._types")
+    if not hasattr(openai_types, "omit") and hasattr(openai_types, "Omit"):
+        openai_types.omit = openai_types.Omit()  # type: ignore[attr-defined]
+except Exception:
+    # Best-effort compatibility; avoid breaking import chain.
+    pass

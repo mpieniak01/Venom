@@ -74,17 +74,29 @@ def update_stream_state_from_packet(
     packet: dict[str, Any],
     runtime: RuntimeLike,
     state: SimpleStreamState,
-    ollama_telemetry: dict[str, int],
-    extract_ollama_telemetry_fn: Callable[[dict[str, Any]], dict[str, int]],
+    runtime_telemetry: dict[str, int] | None = None,
+    extract_runtime_telemetry_fn: Callable[[dict[str, Any]], dict[str, int]]
+    | None = None,
     extract_sse_tool_calls_fn: Callable[[dict[str, Any]], list[dict[str, Any]]],
     extract_sse_contents_fn: Callable[[dict[str, Any]], list[str]],
     on_first_chunk_fn: Callable[[str], None],
+    ollama_telemetry: dict[str, int] | None = None,
+    extract_ollama_telemetry_fn: Callable[[dict[str, Any]], dict[str, int]]
+    | None = None,
 ) -> list[str]:
     emitted_events: list[str] = []
+    if runtime_telemetry is None:
+        runtime_telemetry = ollama_telemetry if ollama_telemetry is not None else {}
+    if extract_runtime_telemetry_fn is None:
+        extract_runtime_telemetry_fn = (
+            extract_ollama_telemetry_fn
+            if extract_ollama_telemetry_fn is not None
+            else (lambda _packet: {})
+        )
     if runtime.provider == "ollama":
-        telemetry = extract_ollama_telemetry_fn(packet)
+        telemetry = extract_runtime_telemetry_fn(packet)
         if telemetry:
-            ollama_telemetry.update(telemetry)
+            runtime_telemetry.update(telemetry)
 
     tool_calls = extract_sse_tool_calls_fn(packet)
     if tool_calls:

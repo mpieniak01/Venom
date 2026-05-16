@@ -33,7 +33,9 @@ from venom_core.services.execution_template_planner import (
     resolve_browser_execution_contract,
     resolve_browser_profile,
 )
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
+from venom_core.utils.runtime_names import is_multi_runtime
 
 from .constants import (
     DEFAULT_USER_ID,
@@ -621,13 +623,18 @@ async def _broadcast_intent(orch: "Orchestrator", task_id: UUID, intent: str) ->
 async def _execute_with_stream_callback(
     orch: "Orchestrator", task_id: UUID, intent: str, context: str, request: TaskRequest
 ):
-    stream_callback = orch.streaming_handler.create_stream_callback(task_id)
-    stream_token = set_llm_stream_callback(stream_callback)
+    runtime = get_active_llm_runtime()
+    use_stream_callback = not is_multi_runtime(getattr(runtime, "provider", None))
+    stream_token = None
+    if use_stream_callback:
+        stream_callback = orch.streaming_handler.create_stream_callback(task_id)
+        stream_token = set_llm_stream_callback(stream_callback)
     try:
         strategy = ExecutionStrategy(orch)
         return await strategy.execute(task_id, intent, context, request)
     finally:
-        reset_llm_stream_callback(stream_token)
+        if stream_token is not None:
+            reset_llm_stream_callback(stream_token)
 
 
 def append_learning_log(

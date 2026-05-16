@@ -543,6 +543,92 @@ export const de = {
       title: "Trace-Analyse",
       description: "RequestTracer + Mermaid: Sofortansicht von Flow, Schritten und Queue-Gesundheit.",
     },
+    modelIntrospection: {
+      page: {
+        eyebrow: "Inspector / Modellintrospektion",
+        title: "Blick ins Modellinnere",
+        description: "Runtime-Snapshot, Introspektionspakete, Drift und Brain-Reuse ohne doppelte Diagnostik.",
+      },
+      dashboard: {
+        loading: {
+          title: "Snapshot wird geladen",
+          description: "Modell-Introspektionssnapshot wird aus dem Backend geladen.",
+        },
+        error: {
+          title: "Snapshot konnte nicht geladen werden",
+          note: "Die Seite ist bereit, aber der API-Snapshot ist gerade nicht verfügbar.",
+        },
+        analysis: {
+          title: "Live-Modellanalyse",
+          description: "Optionale Prompt-Ausführung auf dem aktiven Modell. Standardmäßig deaktiviert, um den Stack nicht zu bremsen.",
+          promptLabel: "Prompt",
+          promptPlaceholder: "Was ist die Sonne?",
+          run: "Analyse starten",
+          running: "Läuft...",
+          reset: "Prompt zurücksetzen",
+          disabled: "Live-Analyse ist deaktiviert. Aktiviere den Mechanismus, um das aktive Modell auszuführen.",
+          skipped: "Live-Analyse ist deaktiviert. Aktiviere den Mechanismus, um die Analyse auszuführen.",
+          orbIdle: "Starte die Analyse, um den Orb zu aktivieren",
+        },
+        results: {
+          title: "Analyseergebnisse",
+          description: "Antwort, Highlights und Prozess-Telemetrie sind hier gebündelt.",
+          answer: "Antwort",
+          waitingToken: "Warte auf das erste Streaming-Token...",
+          streaming: "Live-Streaming aus dem Modell",
+          highlights: "Wichtigste Highlights",
+          highlightsEmpty: "Starte die Analyse, um strukturierte Highlights zu füllen.",
+          verdict: "Modell-Fazit",
+          verdictReady: "Die Seite zeigt die Antwort jetzt als strukturierte Daten statt als einen Rohabsatz.",
+          verdictPending: "Die Präsentationsschicht wird nach dem ersten Analyselauf aktiv.",
+        },
+        snapshotComparison: {
+          title: "Snapshot-Vergleich",
+          before: "Vorher",
+          after: "Nachher",
+          delta: "Delta",
+          fallback: "Der Snapshot nach der Analyse bleibt für den Vergleich mit dem Runtime-Bereich oben verfügbar.",
+        },
+        graph: {
+          title: "Graphansicht",
+          description: "Optionaler technischer Drilldown für Runtime, Analyse, Reuse und Paketstatus.",
+          drilldownTitle: "Graph-Drilldown",
+          open: "Technische Graph-Ebene bei Bedarf öffnen",
+          hide: "Technische Graph-Ebene ausblenden",
+          stateOpen: "offen",
+          stateCollapsed: "eingeklappt",
+        },
+      },
+      actions: {
+        refresh: "Snapshot aktualisieren",
+        openInspector: "Zurück zum Inspector",
+        openBrain: "Wissensgraph öffnen",
+      },
+      summary: {
+        runtime: "Runtime",
+        provider: "Provider",
+        packages: "Verfügbare Pakete",
+        missing: "Fehlende Pakete",
+      },
+      panels: {
+        runtime: {
+          title: "Runtime-Snapshot",
+          description: "Aktueller Runtime-Status und erkannter Konfigurations-Drift.",
+        },
+        packages: {
+          title: "Introspektionspakete",
+          description: "Verfügbarkeit der Bibliotheken für die Modellanalyse.",
+        },
+        reuse: {
+          title: "Reuse-Fläche",
+          description: "Vorhandene Oberflächen und Diagnostik ohne Duplikation wiederverwenden.",
+        },
+        manager: {
+          title: "ModelManager",
+          description: "Ressourcenmetriken, wenn der Backend-Manager verfügbar ist.",
+        },
+      },
+    },
     stats: {
       successRate: "Erfolgsrate",
       completed: "{{count}} abgeschlossen",

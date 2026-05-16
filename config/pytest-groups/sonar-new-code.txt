@@ -11,6 +11,8 @@ tests/test_217b_daemon_profile_endpoints.py
 tests/test_217da_multi_runtime_pipeline_basics.py
 tests/test_217dc_pipeline_completion.py
 tests/test_220a_runtime_lifecycle.py
+tests/test_221b_model_introspection_scripts.py
+tests/test_221c_model_introspection_scripts.py
 tests/test_academy_202c_signing_coverage.py
 tests/test_academy_202d_lora_onnx_deploy.py
 tests/test_academy_adapter_runtime_service.py
@@ -152,6 +154,8 @@ tests/test_message_broker.py
 tests/test_metrics.py
 tests/test_metrics_routes.py
 tests/test_model_discovery.py
+tests/test_model_introspection_analysis_api.py
+tests/test_model_introspection_analysis_service.py
 tests/test_model_manager.py
 tests/test_model_manager_adapter_ops.py
 tests/test_model_manager_discovery.py
@@ -166,6 +170,7 @@ tests/test_model_router.py
 tests/test_model_services.py
 tests/test_model_validators.py
 tests/test_models_install_feedback_loop.py
+tests/test_models_introspection_api.py
 tests/test_models_registry_ops_onnx.py
 tests/test_models_remote_api.py
 tests/test_models_remote_contracts.py
@@ -181,6 +186,7 @@ tests/test_notifier.py
 tests/test_ollama_tuning.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
+tests/test_openai_semantic_kernel_compat.py
 tests/test_operator_agent.py
 tests/test_optional_modules_contracts_guard.py
 tests/test_oracle_agent.py

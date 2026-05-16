@@ -9,6 +9,7 @@ export const sidebar = {
     cockpit: "Cockpit",
     brain: "Knowledge Graph",
     inspector: "Inspector",
+    modelIntrospection: "Model Introspection",
     strategy: "Strategy",
     models: "Models",
     academy: "Academy",

@@ -26,6 +26,7 @@ import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { LanguageSwitcher } from "./language-switcher";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 import { getNavigationItems } from "./sidebar-helpers";
+import { ModelIntrospectionMechanismControl } from "@/components/inspector/model-introspection-mechanism";
 import {
   TelemetryTab,
   AUTONOMY_LEVELS,
@@ -167,6 +168,21 @@ export function MobileNav() {
               );
             })}
           </nav>
+
+          <section className="mt-4 card-shell card-base p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Introspection</p>
+                <p className="text-base font-semibold text-[color:var(--text-heading)]">
+                  Live analysis mechanism
+                </p>
+              </div>
+              <Sparkles className="h-5 w-5 text-violet-300" />
+            </div>
+            <div className="mt-3">
+              <ModelIntrospectionMechanismControl />
+            </div>
+          </section>
 
           <section className="mt-6 card-shell card-base p-4">
             <div className="flex items-center justify-between">

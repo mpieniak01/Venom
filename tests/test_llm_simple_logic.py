@@ -111,6 +111,53 @@ class DummyClientInternalError:
         raise RuntimeError("boom")
 
 
+class DummyNonStreamResponse:
+    def __init__(self, payload: dict, status_code: int = 200):
+        self._payload = payload
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            request = httpx.Request("POST", MOCK_HTTP)
+            response = httpx.Response(
+                self.status_code, request=request, text="upstream failed"
+            )
+            raise httpx.HTTPStatusError("bad", request=request, response=response)
+
+    def json(self):
+        return self._payload
+
+
+class DummyTrafficControlledClient:
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url: str, **kwargs):
+        return DummyNonStreamResponse(
+            {
+                "choices": [
+                    {"message": {"content": "Witaj z multi_runtime"}},
+                ]
+            }
+        )
+
+    async def apost(self, url: str, **kwargs):
+        return DummyNonStreamResponse(
+            {
+                "choices": [
+                    {"message": {"content": "Witaj z multi_runtime"}},
+                ]
+            }
+        )
+
+
 class StreamLinesResponse:
     def __init__(self, lines):
         self._lines = lines
@@ -427,3 +474,30 @@ def test_stream_simple_chat_onnx_streams_without_http_endpoint(monkeypatch):
     ]
     assert events[1]["data"]["text"] == "A"
     assert events[2]["data"]["text"] == "B"
+
+
+def test_stream_simple_chat_multi_runtime_uses_non_stream_upstream(monkeypatch):
+    runtime = DummyRuntime(provider="multi_runtime")
+    monkeypatch.setattr(llm_simple_routes, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        llm_simple_routes,
+        "_build_chat_completions_url",
+        lambda _rt: http_url("localhost", path="/v1/chat/completions"),
+    )
+    monkeypatch.setattr(httpx, "AsyncClient", DummyTrafficControlledClient)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/api/v1/llm/simple/stream",
+        json={"content": "hello"},
+    ) as response:
+        assert response.status_code == 200
+        events = _collect_sse_events(response)
+
+    assert [event["event"] for event in events] == [
+        "start",
+        "content",
+        "done",
+    ]
+    assert events[1]["data"]["text"] == "Witaj z multi_runtime"

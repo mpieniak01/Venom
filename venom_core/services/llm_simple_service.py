@@ -1,4 +1,8 @@
-"""Minimalny bypass do bezpośredniego streamingu LLM (tryb prosty)."""
+"""Service-layer entrypoint for the simple LLM streaming flow.
+
+This mirrors the API route implementation so other services can reuse the
+streaming logic without importing ``venom_core.api.routes``.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +13,9 @@ import time
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
-from venom_core.api.routes import system_deps
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import get_metrics_collector
@@ -76,20 +79,21 @@ from venom_core.services.llm_simple_stream_service import (
 from venom_core.services.llm_simple_stream_service import (
     update_stream_state_from_packet as _update_stream_state_from_packet_impl,
 )
+from venom_core.services.runtime_dependencies import (
+    get_model_manager,
+    get_request_tracer,
+)
 from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
     get_active_llm_runtime,
 )
+from venom_core.utils.logger import get_logger
 from venom_core.utils.ollama_tuning import build_ollama_runtime_options
 from venom_core.utils.runtime_names import is_multi_runtime
 from venom_core.utils.text import trim_to_char_limit
 
-# Backwards-compatible aliases for older tests/imports.
-_extract_ollama_telemetry = _extract_runtime_telemetry
-_is_retryable_ollama_status = _is_retryable_runtime_status
-_is_retryable_ollama_http_error = _is_retryable_runtime_http_error
+logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
 _SIMPLE_MODE_STEP = "SimpleMode"
 _PROMPT_PREVIEW_MAX_CHARS = 200
 _CONTEXT_PREVIEW_MAX_CHARS = 2000
@@ -118,7 +122,6 @@ def release_onnx_simple_client() -> None:
         try:
             client.close()
         except Exception:
-            # Cleanup path must be best-effort; runtime may be partially initialized.
             pass
 
 
@@ -134,18 +137,18 @@ def _get_simple_context_char_limit(runtime) -> Optional[int]:
 
 
 def _get_request_tracer():
-    return system_deps.get_request_tracer()
+    return get_request_tracer()
 
 
 def _get_active_adapter_id() -> str | None:
-    manager = system_deps.get_model_manager()
+    manager = get_model_manager()
     if manager is None:
         return None
-    getter = getattr(manager, "get_active_adapter_info", None)
-    if not callable(getter):
+    info_getter = getattr(manager, "get_active_adapter_info", None)
+    if not callable(info_getter):
         return None
     try:
-        active = getter()
+        active = info_getter()
     except Exception:
         return None
     if not isinstance(active, dict):
@@ -171,8 +174,6 @@ def _resolve_model_name_for_simple_request(
             return requested
         if runtime_is_adapter:
             return runtime_selected
-        # Contract: when adapter is active, simple-mode should target adapter model,
-        # not silently fall back to base model.
         return expected_adapter_model
     return requested or runtime_selected
 
@@ -326,11 +327,6 @@ def _build_payload(
         payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
         payload["options"] = build_ollama_runtime_options(SETTINGS)
 
-    # Keep a deterministic precedence to avoid sending both `response_format` and
-    # `format` in one payload:
-    # 1) For Ollama we prefer `format` (native structured output support).
-    # 2) For non-Ollama providers we prefer client-provided `response_format`.
-    # 3) Fallback: `request.format` (if response_format is absent).
     output_format = _resolve_output_format(
         request_format=request.format,
         response_format=request.response_format,
@@ -640,7 +636,7 @@ async def _stream_single_attempt(
         provider_name=provider_name,
     )
     retry = _StreamRetryConfig(
-        http_status_error_type=httpx.HTTPStatusError,
+        http_status_error_type=llm_simple_transport.httpx_module().HTTPStatusError,
         max_attempts=max_attempts,
         is_retryable_status_fn=_is_retryable_runtime_status,
         runtime_provider=runtime.provider,
@@ -736,7 +732,6 @@ def _resolve_post_attempt_action(
 
 
 def _apply_post_attempt_action(action: str) -> tuple[bool, bool]:
-    """Converts action token into retry/done flags for stream control flow."""
     return _apply_post_attempt_action_impl(action)
 
 
@@ -870,8 +865,6 @@ async def _stream_simple_chunks_onnx(
 
     yield "event: start\ndata: {}\n\n"
     try:
-        # Keep a warm ONNX client in API process to avoid reloading model
-        # between consecutive simple-mode requests.
         client = _get_onnx_simple_client()
         for content in client.stream_generate(
             messages=messages,
@@ -980,13 +973,6 @@ async def _stream_simple_chunks_non_stream(
         )
 
 
-@router.post(
-    "/simple/stream",
-    responses={
-        400: {"description": "Nieprawidłowe dane wejściowe (np. brak modelu)"},
-        503: {"description": "Brak dostępnego endpointu LLM"},
-    },
-)
 async def stream_simple_chat(request: SimpleChatRequest):
     await asyncio.sleep(0)
     runtime = get_active_llm_runtime()

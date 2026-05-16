@@ -104,6 +104,7 @@ _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
 httpx = llm_simple_transport.httpx_module()
+_ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
 
 
 def _get_onnx_simple_client() -> OnnxLlmClient:
@@ -112,8 +113,12 @@ def _get_onnx_simple_client() -> OnnxLlmClient:
 
 
 def release_onnx_simple_client() -> None:
-    """Kept for API compatibility; ONNX simple clients are now per-request."""
-    return
+    """Compatibility shim for legacy tests/callers; runtime uses per-request clients."""
+    global _ONNX_SIMPLE_CLIENT
+    if _ONNX_SIMPLE_CLIENT is None:
+        return
+    _close_onnx_client_safely(_ONNX_SIMPLE_CLIENT)
+    _ONNX_SIMPLE_CLIENT = None
 
 
 def _get_simple_context_char_limit(runtime) -> Optional[int]:

@@ -13,7 +13,9 @@ const computeRms = (analyser: AnalyserNode, bufferRef: RefObject<Float32Array | 
     return 0;
   }
 
-  analyser.getFloatTimeDomainData(buffer);
+  analyser.getFloatTimeDomainData(
+    buffer as unknown as Float32Array<ArrayBuffer>,
+  );
   let sum = 0;
   for (const sample of buffer) {
     sum += sample ** 2;

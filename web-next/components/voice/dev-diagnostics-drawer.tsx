@@ -344,7 +344,7 @@ function LatestRecordingSection({
             {joinParts([
               runtime.llm_model && `LLM ${runtime.llm_service_id}:${runtime.llm_model}`,
               runtime.stt_model && `STT ${runtime.stt_model}/${runtime.stt_device}`,
-              runtime.tts_sample_rate && `TTS ${runtime.tts_sample_rate} Hz`,
+              runtime.tts_sample_rate != null ? `TTS ${runtime.tts_sample_rate} Hz` : null,
             ])}
           </p>
         )}

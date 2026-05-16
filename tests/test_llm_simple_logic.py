@@ -575,7 +575,8 @@ async def test_service_non_stream_invalid_json_path(monkeypatch):
         events.append(event)
 
     assert events[0].startswith("event: start")
-    assert events[-1].startswith("event: done")
+    assert events[-1].startswith("event: error")
+    assert '"code": "llm_invalid_response"' in events[-1]
 
 
 def test_service_resolve_post_attempt_action_retry_and_done(monkeypatch):
@@ -749,6 +750,11 @@ def test_service_helper_branches_and_emitters(monkeypatch):
     assert emit1.startswith("event: error")
     assert emit2.startswith("event: error")
     assert collector_calls
+    assert tracer.errors
+    assert any(
+        len(args) > 1 and args[1] == llm_simple_service.TraceStatus.FAILED
+        for args, _kwargs in tracer.status
+    )
 
 
 @pytest.mark.asyncio
@@ -852,10 +858,16 @@ async def test_service_handle_stream_http_error_retry_and_emit(monkeypatch):
     response = httpx.Response(503, request=request, text="retry me")
     err = httpx.HTTPStatusError("bad", request=request, response=response)
 
+    retry_checks: list[dict[str, object]] = []
+
+    def _is_retryable(**kwargs):
+        retry_checks.append(kwargs)
+        return kwargs["attempt_no"] < kwargs["max_retries"]
+
     monkeypatch.setattr(
         llm_simple_service,
         "_is_retryable_runtime_http_error",
-        lambda **kwargs: kwargs["attempt_no"] < kwargs["max_retries"],
+        _is_retryable,
     )
     retry_result = await llm_simple_service._handle_stream_http_error(
         exc=err,
@@ -884,6 +896,9 @@ async def test_service_handle_stream_http_error_retry_and_emit(monkeypatch):
         runtime_telemetry={},
     )
     assert emit_result.startswith("event: error")
+    assert len(retry_checks) == 2
+    assert retry_checks[0]["status_code"] == 503
+    assert retry_checks[1]["status_code"] == 503
 
 
 def test_stream_service_packet_update_and_post_attempt_branches() -> None:

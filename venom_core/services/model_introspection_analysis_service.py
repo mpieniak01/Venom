@@ -304,6 +304,72 @@ def _build_running_analysis_result(
     }
 
 
+def _build_failed_analysis_result(
+    *,
+    prompt: str,
+    runtime: dict[str, Any],
+    events: list[str],
+    chunk_count: int,
+    response_text: str,
+    request_ready_at_ms: float,
+    response_received_at_ms: float,
+    elapsed_ms: float,
+    error_message: str,
+) -> dict[str, Any]:
+    timeline: list[dict[str, Any]] = [
+        {
+            "id": "snapshot_before",
+            "label": "Snapshot captured",
+            "status": "done",
+            "detail": runtime["label"],
+            "at_ms": 0.0,
+        },
+        {
+            "id": "request_ready",
+            "label": "Prompt prepared",
+            "status": "done",
+            "detail": prompt,
+            "at_ms": request_ready_at_ms,
+        },
+        {
+            "id": "stream_opened",
+            "label": "Stream opened",
+            "status": "done",
+            "detail": f"{len(events)} event(s) observed",
+            "at_ms": response_received_at_ms,
+        },
+        {
+            "id": "analysis_failed",
+            "label": "Analysis failed",
+            "status": "failed",
+            "detail": error_message,
+            "at_ms": elapsed_ms,
+        },
+    ]
+    return {
+        "analysis_enabled": True,
+        "status": "failed",
+        "snapshot_after": None,
+        "analysis": {
+            "prompt": prompt,
+            "response": response_text,
+            "chunk_count": chunk_count,
+            "events": events,
+            "timeline_step_count": len(timeline),
+            "timeline": timeline,
+            "elapsed_ms": elapsed_ms,
+            "provider": runtime["provider"],
+            "model": runtime["model"],
+            "runtime_label": runtime["label"],
+            "request_ready_ms": request_ready_at_ms,
+            "response_received_ms": response_received_at_ms,
+            "snapshot_after_ms": None,
+            "process": None,
+            "error": error_message,
+        },
+    }
+
+
 async def _collect_streaming_response(response: Any) -> dict[str, Any]:
     content_parts: list[str] = []
     events: list[str] = []
@@ -485,36 +551,80 @@ async def stream_model_introspection_analysis(
 
     body_iterator = getattr(response, "body_iterator", None)
     if body_iterator is None:
-        raise RuntimeError("analysis stream response does not expose a body iterator")
+        elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        error_message = "analysis stream response does not expose a body iterator"
+        yield _serialize_sse_event(
+            "error",
+            {"code": "analysis_stream_failed", "message": error_message},
+        )
+        yield _serialize_sse_event(
+            "analysis_done",
+            _build_failed_analysis_result(
+                prompt=prompt,
+                runtime=runtime,
+                events=events + ["error"],
+                chunk_count=chunk_count,
+                response_text="".join(content_parts),
+                request_ready_at_ms=request_ready_at_ms,
+                response_received_at_ms=response_received_at_ms,
+                elapsed_ms=elapsed_ms,
+                error_message=error_message,
+            ),
+        )
+        return
 
-    async for chunk in body_iterator:
-        chunk_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-        chunk_text = (
-            chunk.decode("utf-8", errors="replace")
-            if isinstance(chunk, bytes)
-            else str(chunk)
-        )
-        drained_events, sse_tail = _drain_sse_events(sse_tail + chunk_text)
-        chunk_count, first_content_at_ms = _consume_sse_events(
-            drained_events=drained_events,
-            events=events,
-            content_parts=content_parts,
-            chunk_count=chunk_count,
-            first_content_at_ms=first_content_at_ms,
-            chunk_at_ms=chunk_at_ms,
-        )
-        yield chunk_text
+    try:
+        async for chunk in body_iterator:
+            chunk_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+            chunk_text = (
+                chunk.decode("utf-8", errors="replace")
+                if isinstance(chunk, bytes)
+                else str(chunk)
+            )
+            drained_events, sse_tail = _drain_sse_events(sse_tail + chunk_text)
+            chunk_count, first_content_at_ms = _consume_sse_events(
+                drained_events=drained_events,
+                events=events,
+                content_parts=content_parts,
+                chunk_count=chunk_count,
+                first_content_at_ms=first_content_at_ms,
+                chunk_at_ms=chunk_at_ms,
+            )
+            yield chunk_text
 
-    if sse_tail.strip():
-        drained_events, _ = _drain_sse_events(sse_tail + "\n\n")
-        chunk_count, first_content_at_ms = _consume_sse_events(
-            drained_events=drained_events,
-            events=events,
-            content_parts=content_parts,
-            chunk_count=chunk_count,
-            first_content_at_ms=first_content_at_ms,
-            chunk_at_ms=(time.perf_counter() - flow_started_at) * 1000.0,
+        if sse_tail.strip():
+            drained_events, _ = _drain_sse_events(sse_tail + "\n\n")
+            chunk_count, first_content_at_ms = _consume_sse_events(
+                drained_events=drained_events,
+                events=events,
+                content_parts=content_parts,
+                chunk_count=chunk_count,
+                first_content_at_ms=first_content_at_ms,
+                chunk_at_ms=(time.perf_counter() - flow_started_at) * 1000.0,
+            )
+    except Exception as exc:
+        logger.exception("Model introspection analysis stream failed")
+        elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        error_message = str(exc) or _ANALYSIS_STREAM_FAILED
+        yield _serialize_sse_event(
+            "error",
+            {"code": "analysis_stream_failed", "message": error_message},
         )
+        yield _serialize_sse_event(
+            "analysis_done",
+            _build_failed_analysis_result(
+                prompt=prompt,
+                runtime=runtime,
+                events=events + ["error"],
+                chunk_count=chunk_count,
+                response_text="".join(content_parts),
+                request_ready_at_ms=request_ready_at_ms,
+                response_received_at_ms=response_received_at_ms,
+                elapsed_ms=elapsed_ms,
+                error_message=error_message,
+            ),
+        )
+        return
 
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
     refreshed_snapshot = await build_model_introspection_snapshot(

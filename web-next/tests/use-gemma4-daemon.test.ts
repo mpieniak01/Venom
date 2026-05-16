@@ -40,6 +40,7 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
     pending_reload: false,
     reload_reason: null,
     supports_image_input: true,
+    component_snapshot: [],
     ...overrides,
   };
 }

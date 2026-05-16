@@ -27,18 +27,18 @@ export type StatusTone = "success" | "warning" | "danger" | "neutral";
 
 export type RuntimeServiceTrack = {
   depth: number;
-  services: OperatorRuntimeService[];
+  services: ReadonlyArray<OperatorRuntimeService>;
 };
 
 export type ExecutionStepLane = {
   stage: string;
-  steps: OperatorExecutionStep[];
+  steps: ReadonlyArray<OperatorExecutionStep>;
 };
 
 export type ExecutionStepGroupState = {
   stepToGroupKey: Map<string, string>;
   groupSizes: Map<string, number>;
-  groupToStepIds: Map<string, string[]>;
+  groupToStepIds: Map<string, ReadonlyArray<string>>;
 };
 
 export type ControlDomainCard = {
@@ -48,7 +48,7 @@ export type ControlDomainCard = {
   restartRequired: boolean;
   editable: boolean;
   changed: boolean;
-  affectedServices: string[];
+  affectedServices: ReadonlyArray<string>;
 };
 
 const DOMAIN_TO_CONFIG_KEY: Record<Exclude<ControlDomainId, "config">, string> = {
@@ -89,7 +89,7 @@ function formatValue(value: unknown): string {
 }
 
 function findConfigField(
-  configFields: OperatorConfigField[] | undefined,
+  configFields: ReadonlyArray<OperatorConfigField> | undefined,
   key: string,
 ): OperatorConfigField | undefined {
   return (configFields ?? []).find((field) => field.key === key);
@@ -321,7 +321,7 @@ export function buildSelectionNode(selection: WorkflowControlSelection | null, d
 }
 
 export function findRuntimeService(
-  services: OperatorRuntimeService[] | undefined,
+  services: ReadonlyArray<OperatorRuntimeService> | undefined,
   serviceId: string | null | undefined,
 ): OperatorRuntimeService | null {
   if (!serviceId) return null;
@@ -329,7 +329,7 @@ export function findRuntimeService(
 }
 
 export function findExecutionStep(
-  steps: OperatorExecutionStep[] | undefined,
+  steps: ReadonlyArray<OperatorExecutionStep> | undefined,
   stepId: string | null | undefined,
 ): OperatorExecutionStep | null {
   if (!stepId) return null;
@@ -371,7 +371,7 @@ function computeServiceDepth(
 }
 
 export function buildRuntimeServiceTracks(
-  services: OperatorRuntimeService[] | undefined,
+  services: ReadonlyArray<OperatorRuntimeService> | undefined,
 ): RuntimeServiceTrack[] {
   const serviceList = services ?? [];
   const serviceMap = new Map(serviceList.map((service) => [service.id, service]));
@@ -394,7 +394,7 @@ export function buildRuntimeServiceTracks(
 }
 
 export function buildExecutionStepLanes(
-  steps: OperatorExecutionStep[] | undefined,
+  steps: ReadonlyArray<OperatorExecutionStep> | undefined,
 ): ExecutionStepLane[] {
   const lanes = new Map<string, OperatorExecutionStep[]>();
 
@@ -412,7 +412,7 @@ export function buildExecutionStepLanes(
 }
 
 export function buildExecutionStepGroupState(
-  steps: OperatorExecutionStep[] | undefined,
+  steps: ReadonlyArray<OperatorExecutionStep> | undefined,
 ): ExecutionStepGroupState {
   const stepList = steps ?? [];
   const byId = new Map(stepList.map((step) => [step.id, step]));

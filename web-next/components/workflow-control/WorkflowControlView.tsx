@@ -19,7 +19,12 @@ import {
   shouldShowApplyResultsModal,
 } from "@/lib/workflow-control-ui-helpers";
 import { buildPropertyPanelOptions } from "@/lib/workflow-control-options";
-import type { ApplyResults, PlanResponse } from "@/types/workflow-control";
+import type {
+  ApplyResults,
+  OperatorExecutionStep,
+  OperatorRuntimeService,
+  PlanResponse,
+} from "@/types/workflow-control";
 import { useWorkflowState } from "@/hooks/useWorkflowState";
 
 import { ApplyResultsModal } from "./ApplyResultsModal";
@@ -570,8 +575,12 @@ export function WorkflowControlView() {
               {isTimelineExpanded ? (
                 <div className="mt-3">
                   <WorkflowExecutionTimeline
-                    executionSteps={systemState?.execution_steps ?? []}
-                    runtimeServices={systemState?.runtime_services ?? []}
+                    executionSteps={
+                      (systemState?.execution_steps ?? []) as OperatorExecutionStep[]
+                    }
+                    runtimeServices={
+                      (systemState?.runtime_services ?? []) as OperatorRuntimeService[]
+                    }
                     stepToGroupKey={executionStepGroupState.stepToGroupKey}
                     groupSizes={executionStepGroupState.groupSizes}
                     groupToStepIds={executionStepGroupState.groupToStepIds}

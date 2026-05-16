@@ -349,7 +349,7 @@ export function useCockpitChatUi({
       const schema = config?.generation_schema;
       setModelSchema(schema ?? null);
       if (config?.current_values) {
-        setGenerationParams(config.current_values);
+        setGenerationParams(config.current_values as GenerationParams);
       }
     } catch (err) {
       console.error(t("cockpit.feedback.schemaError"), err);

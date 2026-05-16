@@ -19,6 +19,7 @@ import type {
   DaemonConfigRequest,
   DaemonRespondResponse,
   DaemonStatus,
+  MultiRuntimeProfileUpdateResponse,
 } from "@/lib/gemma4-daemon-api";
 import { postDaemonRespond } from "@/lib/gemma4-daemon-api";
 import { PipelineDiagnosticsPanel } from "@/components/gemma4/pipeline-diagnostics-panel";
@@ -812,7 +813,7 @@ function RuntimeProfileLastUpdateSummary({
       </div>
       {lastUpdateResult.rejected.length > 0 && (
         <ul className="text-rose-300 space-y-0.5">
-          {lastUpdateResult.rejected.map((rejection) => (
+          {lastUpdateResult.rejected.map((rejection: { field: string; reason: string }) => (
             <li key={rejection.field}>
               {rejection.field}: {rejection.reason}
             </li>
@@ -1311,7 +1312,10 @@ function Gemma4RuntimeControlPanel({
         <p className="text-xs text-rose-400 py-1">{t("voice.daemon.daemonUnavailable")}</p>
         <p className="text-[10px] text-zinc-500 truncate">{error}</p>
         {hasRuntimeSnapshot && (
-          <RuntimeSnapshotSummary snapshot={runtimeSnapshot} targetModelOverride={status?.target_model ?? null} />
+          <RuntimeSnapshotSummary
+            snapshot={runtimeSnapshot}
+            targetModelOverride={runtimeSnapshot?.model_name ?? null}
+          />
         )}
       </DaemonCard>
     );
@@ -1837,7 +1841,7 @@ function DaemonCard({
 type ConfirmActionDefinition = Readonly<{
   key: "reload" | "restart";
   buttonVariant: "ghost" | "secondary";
-  confirmVariant?: "default" | "danger";
+  confirmVariant?: "primary" | "danger";
   onConfirm: () => void | Promise<void>;
 }>;
 
@@ -1897,7 +1901,7 @@ type DaemonConfirmActionButtonProps = Readonly<{
   confirmLabel: string;
   onConfirm: () => void | Promise<void>;
   buttonVariant: "ghost" | "secondary";
-  confirmVariant?: "default" | "danger";
+  confirmVariant?: "primary" | "danger";
   testId: string;
 }>;
 

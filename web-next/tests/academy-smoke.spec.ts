@@ -395,11 +395,7 @@ test.describe("Academy smoke", () => {
           base_model: "gemma-3-4b-it",
           created_at: "2026-02-11T12:01:08+00:00",
           training_params: {
-            runtime_id: "ollama",
-            lora_rank: 8,
-            learning_rate: 0.0002,
             num_epochs: 2,
-            selected_files: "README_PL.md",
           },
           target_runtime: "ollama",
           source_flow: "self_learning",

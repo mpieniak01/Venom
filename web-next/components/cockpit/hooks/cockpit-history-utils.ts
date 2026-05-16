@@ -15,8 +15,8 @@ type HistoryEntryLike = {
 };
 
 type StreamLike = {
-  result?: string;
-  status?: string;
+  result?: string | null;
+  status?: string | null;
   contextUsed?: { lessons?: string[]; memory_entries?: string[] } | null;
 };
 

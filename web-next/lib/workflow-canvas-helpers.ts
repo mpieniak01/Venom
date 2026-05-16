@@ -259,7 +259,7 @@ function mapControlDomainData(node: OperatorGraphNode): Record<string, unknown> 
   };
 }
 
-function mapBackendNodes(nodes: OperatorGraphNode[]): Node[] {
+function mapBackendNodes(nodes: ReadonlyArray<OperatorGraphNode>): Node[] {
   return nodes.map((node) => {
     const normalizedType = normalizeBackendNodeType(node);
     let mappedData: Record<string, unknown>;
@@ -285,7 +285,7 @@ function mapBackendNodes(nodes: OperatorGraphNode[]): Node[] {
   });
 }
 
-function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
+function mapBackendEdges(edges: ReadonlyArray<OperatorGraphEdge>): Edge[] {
   const inferRelationKind = (
     edgeId: string,
     sourceId: string,
@@ -364,7 +364,7 @@ function mapBackendEdges(edges: OperatorGraphEdge[]): Edge[] {
 }
 
 function findConfigField(
-  fields: OperatorConfigField[] | undefined,
+  fields: ReadonlyArray<OperatorConfigField> | undefined,
   key: string,
 ): OperatorConfigField | undefined {
   return (fields ?? []).find((field) => field.key === key);
@@ -383,8 +383,8 @@ function readFieldValue(field: OperatorConfigField | undefined): string | null {
 }
 
 function buildStepAlternativePreview(
-  configFields: OperatorConfigField[] | undefined,
-  relatedConfigKeys: string[] | undefined,
+  configFields: ReadonlyArray<OperatorConfigField> | undefined,
+  relatedConfigKeys: ReadonlyArray<string> | undefined,
 ): { alternatives: string[]; alternativeCount: number } {
   const keys = relatedConfigKeys ?? [];
   const alternatives = keys.flatMap((configKey) => {
@@ -502,7 +502,7 @@ function buildFallbackControlDomainNodes(
 function buildFallbackRuntimeServiceNodes(
   systemState: SystemState,
 ): Node[] {
-  const services: OperatorRuntimeService[] =
+  const services: ReadonlyArray<OperatorRuntimeService> =
     systemState.runtime_services ??
     ((systemState.runtime?.services ?? []).map((service) =>
       typeof service === "string"
@@ -561,8 +561,8 @@ type ExecutionStepNodeBuildResult = {
 };
 
 function buildFallbackExecutionStepNodes(
-  configFields: OperatorConfigField[] | undefined,
-  steps: OperatorExecutionStep[] | undefined,
+  configFields: ReadonlyArray<OperatorConfigField> | undefined,
+  steps: ReadonlyArray<OperatorExecutionStep> | undefined,
   expandedGroupKeys: Set<string>,
 ): ExecutionStepNodeBuildResult {
   const orderedSteps = steps ?? [];
@@ -594,7 +594,7 @@ function buildFallbackExecutionStepNodes(
       stage: string;
       component: string;
       relatedServiceId: string | null;
-      relatedConfigKeys: string[];
+      relatedConfigKeys: ReadonlyArray<string>;
       parentId: string | null;
       firstIndex: number;
     }

@@ -276,7 +276,8 @@ type TimingStripProps = Readonly<{
 }>;
 
 function TimingStrip({ timings }: TimingStripProps) {
-  const hasAny = Boolean(timings) && TIMING_STAGES.some((s) => timings[s.key] != null);
+  const timingValues = timings ?? null;
+  const hasAny = Boolean(timingValues) && TIMING_STAGES.some((s) => timingValues?.[s.key] != null);
   return (
     <div className="grid grid-cols-5 gap-1.5 text-xs">
       {TIMING_STAGES.map(({ key, label, accent }) => {
@@ -350,7 +351,7 @@ const closeAudioContext = (ctx: AudioContext | null | undefined) => {
 
 const createPlaybackContext = (
   AudioContextCtor: typeof AudioContext,
-  sourceRef: RefObject<MediaElementAudioSourceNode | null>,
+  sourceRef: RefObject<AudioNode | null>,
 ): AudioContext | null => {
   try {
     const context = new AudioContextCtor();
@@ -1329,7 +1330,7 @@ function createStartRecordingHandler(params: {
   getMediaRecorderMimeType: () => string;
   ensurePlaybackContext: () => Promise<AudioContext | null>;
   stopRecording: () => void;
-  activeWindow: Window | null;
+  activeWindow?: BrowserWindowLike;
 }) {
   const {
     debugDryRunRequested,
@@ -1733,7 +1734,7 @@ type VoiceCommandCenterViewState = Readonly<{
   visualOrbState: VoiceOrbState;
   effectiveEffectsConfig: ReturnType<typeof useOrbEffectsConfig>;
   orbReducedMotion: boolean;
-  metricsRef: ReturnType<typeof useOrbMetrics>;
+  metricsRef: ReturnType<typeof useOrbMetrics> | null;
   recordingButtonClass: string;
   recordingButtonLabel: string;
   voiceChatModeLabel: string;
@@ -1766,7 +1767,7 @@ function buildVoiceCommandCenterViewState(params: {
   renderDiagnostics: ReturnType<typeof useVoiceRenderDiagnostics>;
   effectsConfig: ReturnType<typeof useOrbEffectsConfig>;
   orbActivityWindow: boolean;
-  metricsRef: ReturnType<typeof useOrbMetrics>;
+  metricsRef: ReturnType<typeof useOrbMetrics> | null;
 }): VoiceCommandCenterViewState {
   const {
     audioEnabled,
@@ -2170,7 +2171,7 @@ function useVoiceCaptureWarmupEffect(params: {
   sourceNodeRef: MutableRefObject<MediaStreamAudioSourceNode | null>;
   analyserRef: MutableRefObject<AnalyserNode | null>;
   mediaRecorderRef: MutableRefObject<MediaRecorder | null>;
-  ensurePlaybackContext: () => Promise<AudioContext>;
+  ensurePlaybackContext: () => Promise<AudioContext | null>;
   getMediaRecorderMimeType: () => string;
 }) {
   const {
@@ -2868,7 +2869,7 @@ function VoiceCommandCenterPanel({
               audioEnabled={viewState.effectiveAudioEnabled}
               micAnalyserRef={analyserRef}
               ttsAnalyserRef={ttsAnalyserRef}
-              metricsRef={viewState.metricsRef}
+              metricsRef={viewState.metricsRef ?? undefined}
               showOrb={renderDiagnostics.showOrb}
               showDialogs={renderDiagnostics.showDialogs}
               plainOrbWrapper={renderDiagnostics.plainOrbWrapper}

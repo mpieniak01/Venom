@@ -293,7 +293,7 @@ async def test_analysis_stream_flushes_sse_tail_and_emits_done(
 
 
 @pytest.mark.asyncio
-async def test_analysis_stream_raises_when_response_has_no_body_iterator(
+async def test_analysis_stream_emits_failed_result_when_response_has_no_body_iterator(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_snapshot(**kwargs):
@@ -309,9 +309,20 @@ async def test_analysis_stream_raises_when_response_has_no_body_iterator(
     )
     monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
 
-    with pytest.raises(RuntimeError, match="body iterator"):
-        async for _ in analysis_service.stream_model_introspection_analysis(
-            prompt="Co to jest slonce?",
-            live_analysis_enabled=True,
-        ):
-            pass
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events: list[tuple[str, str]] = []
+    for chunk in chunks:
+        events.extend(analysis_service.parse_sse_events(chunk))
+
+    event_names = [name for name, _ in events]
+    assert "error" in event_names
+    assert event_names[-1] == "analysis_done"
+    done_payload = json.loads(events[-1][1])
+    assert done_payload["status"] == "failed"
+    assert "body iterator" in done_payload["analysis"]["error"]

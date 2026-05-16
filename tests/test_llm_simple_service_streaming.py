@@ -255,6 +255,51 @@ async def test_stream_simple_chunks_non_stream_returns_content(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_simple_chunks_non_stream_invalid_payload_emits_error(monkeypatch):
+    class _InvalidResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return ["invalid"]
+
+    collector_calls: list[dict[str, object]] = []
+
+    class _Collector:
+        def record_provider_request(self, **kwargs):
+            collector_calls.append(kwargs)
+
+    @asynccontextmanager
+    async def _fake_open_stream_response(**_kwargs):
+        yield _InvalidResponse()
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport,
+        "open_stream_response",
+        _fake_open_stream_response,
+    )
+    monkeypatch.setattr(
+        llm_simple_service, "get_metrics_collector", lambda: _Collector()
+    )
+
+    runtime = _Runtime("multi_runtime")
+    events = await _collect_events(
+        llm_simple_service._stream_simple_chunks_non_stream(
+            completions_url="http://localhost/v1/chat/completions",
+            payload={"messages": []},
+            runtime=runtime,
+            request_id=uuid4(),
+            model_name="model-x",
+        )
+    )
+
+    assert [name for name, _ in events] == ["start", "error"]
+    assert events[1][1]["code"] == "llm_invalid_response"
+    assert collector_calls
+    assert collector_calls[-1]["success"] is False
+
+
+@pytest.mark.asyncio
 async def test_stream_simple_chunks_non_stream_error_paths(monkeypatch):
     request = httpx.Request("POST", "http://localhost/v1/chat/completions")
 
@@ -331,10 +376,22 @@ def test_emit_connection_error_and_internal_error_payloads(monkeypatch):
         def record_provider_request(self, **_kwargs):
             return None
 
+    tracer_calls: list[tuple[str, tuple, dict]] = []
+
+    class _Tracer:
+        def add_step(self, *args, **kwargs):
+            tracer_calls.append(("add_step", args, kwargs))
+
+        def set_error_metadata(self, *args, **kwargs):
+            tracer_calls.append(("set_error_metadata", args, kwargs))
+
+        def update_status(self, *args, **kwargs):
+            tracer_calls.append(("update_status", args, kwargs))
+
     monkeypatch.setattr(
         llm_simple_service, "get_metrics_collector", lambda: _Collector()
     )
-    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: None)
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: _Tracer())
 
     runtime = _Runtime("ollama")
     connection_event = llm_simple_service._emit_connection_error_and_mark_failed(
@@ -353,14 +410,27 @@ def test_emit_connection_error_and_internal_error_payloads(monkeypatch):
 
     assert '"code": "llm_connection_error"' in connection_event
     assert '"code": "internal_error"' in internal_event
+    assert any(call[0] == "set_error_metadata" for call in tracer_calls)
+    assert any(
+        call[0] == "update_status"
+        and len(call[1]) > 1
+        and call[1][1] == llm_simple_service.TraceStatus.FAILED
+        for call in tracer_calls
+    )
 
 
 @pytest.mark.asyncio
 async def test_handle_stream_http_error_returns_retry_when_retryable(monkeypatch):
+    checks: list[dict[str, object]] = []
+
+    def _retry_checker(**kwargs):
+        checks.append(kwargs)
+        return True
+
     monkeypatch.setattr(
         llm_simple_service,
         "_is_retryable_runtime_http_error",
-        lambda **_kwargs: True,
+        _retry_checker,
     )
 
     async def _no_sleep(_seconds: float):
@@ -384,6 +454,8 @@ async def test_handle_stream_http_error_returns_retry_when_retryable(monkeypatch
 
     assert result == "retry"
     assert runtime_telemetry == {}
+    assert checks
+    assert checks[-1]["status_code"] is None
 
 
 @pytest.mark.asyncio

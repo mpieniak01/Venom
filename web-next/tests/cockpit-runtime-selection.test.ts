@@ -154,8 +154,9 @@ describe("cockpit runtime model selection", () => {
       };
 
       const catalogRuntimes = localCatalog?.runtimes ?? [];
+      const activeCatalog = (localCatalog?.active ?? {}) as Record<string, string | undefined>;
       const declaredRuntimeId = normalizeRuntimeId(
-        localCatalog?.active?.runtime_id || localCatalog?.active?.active_server,
+        activeCatalog.runtime_id || activeCatalog.active_server,
       );
       const activeRuntime =
         catalogRuntimes.find(
@@ -175,19 +176,25 @@ describe("cockpit runtime model selection", () => {
       }
 
       const runtimeModels = activeRuntime?.models ?? [];
-      const declaredActiveModel = (localCatalog?.active?.active_model || "").trim();
+      const declaredActiveModel = (activeCatalog.active_model || "").trim();
       const runtimeActiveModel =
         runtimeModels.find((model) => model.active)?.name || "";
       const activeModelFromCatalog = declaredActiveModel || runtimeActiveModel.trim();
+      const fallbackInfo = (localFallback ?? {}) as {
+        active_server?: string;
+        runtime_id?: string;
+        active_model?: string | null;
+        source_type?: string;
+      };
       const fallbackMatchesActiveRuntime =
         normalizeRuntimeId(
-          localFallback?.active_server || localFallback?.runtime_id || "",
+          fallbackInfo.active_server || fallbackInfo.runtime_id || "",
         ) === activeRuntimeId;
       let resolvedActiveModel: string | null = null;
       if (activeModelFromCatalog) {
         resolvedActiveModel = activeModelFromCatalog;
       } else if (fallbackMatchesActiveRuntime) {
-        resolvedActiveModel = localFallback?.active_model || null;
+        resolvedActiveModel = fallbackInfo.active_model || null;
       }
 
       return {
@@ -195,8 +202,12 @@ describe("cockpit runtime model selection", () => {
         active_server: activeRuntimeId,
         runtime_id: activeRuntimeId,
         active_model: resolvedActiveModel,
-        ...(activeRuntime?.source_type ?? localFallback?.source_type
-          ? { source_type: activeRuntime?.source_type ?? localFallback?.source_type }
+        ...((activeRuntime as { source_type?: string } | null)?.source_type ?? fallbackInfo.source_type
+          ? {
+            source_type:
+              (activeRuntime as { source_type?: string } | null)?.source_type ??
+              fallbackInfo.source_type,
+          }
           : {}),
       };
     };

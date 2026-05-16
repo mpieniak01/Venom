@@ -101,6 +101,7 @@ _RESPONSE_PREVIEW_MAX_CHARS = 4000
 _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
+_NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
 _ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
 _ONNX_SIMPLE_CLIENT_LOCK = threading.Lock()
 httpx = llm_simple_transport.httpx_module()
@@ -607,17 +608,18 @@ def _emit_connection_error_and_mark_failed(
 def _emit_internal_error_and_mark_failed(
     *, exc: Exception, runtime, request_id: UUID, stream_start: float
 ) -> str:
-    request_tracer = _get_request_tracer()
-    if request_tracer:
-        _call_tracer(
-            request_tracer,
-            "add_step",
-            request_id,
-            _SIMPLE_MODE_STEP,
-            "error",
-            status="error",
-            details=str(exc),
-        )
+    _record_simple_error(
+        request_id,
+        error_code="internal_error",
+        error_message=f"Nieoczekiwany błąd: {exc}",
+        error_details={
+            "provider": getattr(runtime, "provider", "unknown"),
+            "endpoint": getattr(runtime, "endpoint", None),
+            "exception": exc.__class__.__name__,
+        },
+        error_class=exc.__class__.__name__,
+        retryable=False,
+    )
     collector = get_metrics_collector()
     collector.record_provider_request(
         provider=runtime.provider,
@@ -790,9 +792,14 @@ async def _handle_stream_http_error(
     chunk_count: int,
     runtime_telemetry: dict[str, int],
 ) -> str:
+    status_code = (
+        getattr(getattr(exc, "response", None), "status_code", None)
+        if exc is not None
+        else None
+    )
     if chunk_count == 0 and _is_retryable_runtime_http_error(
         provider=runtime.provider,
-        status_code=None,
+        status_code=status_code,
         attempt_no=attempt,
         max_retries=max_attempts,
     ):
@@ -975,10 +982,53 @@ async def _stream_simple_chunks_non_stream(
             payload=payload,
         ) as response:
             response.raise_for_status()
-            data = response.json()
+            aread = getattr(response, "aread", None)
+            if callable(aread):
+                raw_body = await aread()
+                if raw_body:
+                    data = json.loads(raw_body.decode("utf-8", errors="replace"))
+                else:
+                    data = {}
+            else:
+                json_reader = getattr(response, "json", None)
+                data = json_reader() if callable(json_reader) else {}
 
         if not isinstance(data, dict):
-            data = {}
+            _trace_stream_completion(request_id, "", 0, stream_start)
+            _record_simple_error(
+                request_id,
+                error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
+                error_message=(
+                    f"Nieprawidłowa odpowiedź LLM ({runtime.provider}): "
+                    "oczekiwano obiektu JSON."
+                ),
+                error_details={
+                    "provider": runtime.provider,
+                    "model": model_name,
+                    "response_type": type(data).__name__,
+                },
+                error_class=type(data).__name__,
+                retryable=False,
+            )
+            collector = get_metrics_collector()
+            collector.record_provider_request(
+                provider=runtime.provider,
+                success=False,
+                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
+            )
+            yield (
+                "event: error\ndata: "
+                + json.dumps(
+                    {
+                        "code": _NON_STREAM_INVALID_RESPONSE_CODE,
+                        "message": ("Nieprawidłowa odpowiedź z aktywnego runtime LLM."),
+                    }
+                )
+                + "\n\n"
+            )
+            return
+
         content = _extract_message_content(data, fallback_text="")
         if content:
             chunks.append(content)

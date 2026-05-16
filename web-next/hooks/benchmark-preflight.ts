@@ -9,7 +9,10 @@ export interface PreflightMessages {
   runtimeUnhealthy: string;
 }
 
-type TranslateFn = (key: string, params?: Record<string, unknown>) => string;
+type TranslateFn = (
+  key: string,
+  params?: Record<string, string | number>,
+) => string;
 
 export function emitPreflightLogs(
   addLog: (message: string, level?: BenchmarkLog["level"]) => void,

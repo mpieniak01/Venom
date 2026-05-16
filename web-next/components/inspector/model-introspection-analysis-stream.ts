@@ -1,0 +1,229 @@
+"use client";
+
+import type {
+  AnalysisResult,
+  AnalysisUpdateFn,
+} from "@/components/inspector/model-introspection-dashboard-types";
+
+type ParsedSseBlock = {
+  event: string;
+  data: string;
+};
+
+type SseDispatchState = {
+  streamStartedAt: number;
+  sawFirstChunk: boolean;
+  sawAnalysisDone: boolean;
+  streamErrorMessage: string | null;
+};
+
+type SseDispatchContext = {
+  onSetLiveResult: (result: AnalysisResult) => void;
+  onPatchLiveResult: (updater: AnalysisUpdateFn) => void;
+};
+
+export function parseSseBlock(block: string): ParsedSseBlock | null {
+  const trimmed = block.trim();
+  if (!trimmed) {
+    return null;
+  }
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const rawLine of trimmed.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim() || "message";
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trim());
+    }
+  }
+  return { event, data: dataLines.join("\n") };
+}
+
+async function* readSseBlocks(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
+    let separatorIndex = buffer.indexOf("\n\n");
+    while (separatorIndex !== -1) {
+      const block = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + 2);
+      if (block.trim()) {
+        yield block;
+      }
+      separatorIndex = buffer.indexOf("\n\n");
+    }
+  }
+  buffer += decoder.decode().replaceAll("\r\n", "\n");
+  if (buffer.trim()) {
+    yield buffer;
+  }
+}
+
+function appendUniqueEvent(events: string[], nextEvent: string): string[] {
+  if (events.includes(nextEvent)) {
+    return events;
+  }
+  return [...events, nextEvent];
+}
+
+function applyContentEvent(args: {
+  analysis: NonNullable<AnalysisResult["analysis"]>;
+  dataText: string;
+  state: SseDispatchState;
+}): NonNullable<AnalysisResult["analysis"]> {
+  const { analysis, dataText, state } = args;
+  const payload = dataText ? (JSON.parse(dataText) as { text?: string }) : {};
+  const text = String(payload.text ?? "");
+  if (!text) {
+    return analysis;
+  }
+  const nextTimeline = [...analysis.timeline];
+  const nextChunkCount = analysis.chunk_count + 1;
+  const nowMs = performance.now() - state.streamStartedAt;
+  if (!state.sawFirstChunk) {
+    state.sawFirstChunk = true;
+    nextTimeline.push({
+      id: "first_chunk",
+      label: "First content chunk",
+      status: "done",
+      detail: `${nextChunkCount} chunk(s) total`,
+      at_ms: nowMs,
+      progress: 40,
+    });
+  }
+  return {
+    ...analysis,
+    response: `${analysis.response}${text}`,
+    chunk_count: nextChunkCount,
+    events: [...analysis.events, "content"],
+    timeline: nextTimeline,
+    elapsed_ms: nowMs,
+  };
+}
+
+function applyDoneEvent(
+  analysis: NonNullable<AnalysisResult["analysis"]>,
+  state: SseDispatchState,
+): NonNullable<AnalysisResult["analysis"]> {
+  const nextTimeline = [...analysis.timeline];
+  const hasFinalized = nextTimeline.some((entry) => entry.id === "response_finalized");
+  if (!hasFinalized) {
+    nextTimeline.push({
+      id: "response_finalized",
+      label: "Response assembled",
+      status: "done",
+      detail: `${analysis.response.length} chars`,
+      at_ms: performance.now() - state.streamStartedAt,
+      progress: 90,
+    });
+  }
+  return {
+    ...analysis,
+    events: [...analysis.events, "done"],
+    timeline: nextTimeline,
+    elapsed_ms: performance.now() - state.streamStartedAt,
+  };
+}
+
+function dispatchAnalysisEvent(args: {
+  eventName: string;
+  dataText: string;
+  state: SseDispatchState;
+  context: SseDispatchContext;
+}) {
+  const { eventName, dataText, state, context } = args;
+  if (eventName === "analysis_start" || eventName === "analysis_done") {
+    if (eventName === "analysis_done") {
+      state.sawAnalysisDone = true;
+    }
+    context.onSetLiveResult(JSON.parse(dataText) as AnalysisResult);
+    return;
+  }
+  if (eventName === "error") {
+    state.streamErrorMessage = dataText || "Analysis stream failed";
+    context.onPatchLiveResult((analysis) => ({
+      ...analysis,
+      events: appendUniqueEvent(analysis.events, "error"),
+    }));
+    return;
+  }
+  if (eventName === "start") {
+    context.onPatchLiveResult((analysis) => ({
+      ...analysis,
+      events: appendUniqueEvent(analysis.events, "start"),
+    }));
+    return;
+  }
+  if (eventName === "content") {
+    context.onPatchLiveResult((analysis) =>
+      applyContentEvent({ analysis, dataText, state }),
+    );
+    return;
+  }
+  if (eventName !== "done") {
+    return;
+  }
+  context.onPatchLiveResult((analysis) => applyDoneEvent(analysis, state));
+}
+
+export async function processAnalysisStream(params: {
+  response: Response;
+  streamStartedAt: number;
+  onSetLiveResult: (result: AnalysisResult) => void;
+  onPatchLiveResult: (updater: AnalysisUpdateFn) => void;
+}): Promise<void> {
+  const { response, streamStartedAt, onSetLiveResult, onPatchLiveResult } = params;
+  if (!response.body) {
+    throw new Error("Streaming response unavailable.");
+  }
+
+  const reader = response.body.getReader();
+  const state: SseDispatchState = {
+    streamStartedAt,
+    sawFirstChunk: false,
+    sawAnalysisDone: false,
+    streamErrorMessage: null,
+  };
+  const context: SseDispatchContext = { onSetLiveResult, onPatchLiveResult };
+
+  try {
+    for await (const block of readSseBlocks(reader)) {
+      const parsed = parseSseBlock(block);
+      if (!parsed) {
+        continue;
+      }
+      dispatchAnalysisEvent({
+        eventName: parsed.event,
+        dataText: parsed.data,
+        state,
+        context,
+      });
+    }
+    if (state.streamErrorMessage && !state.sawAnalysisDone) {
+      throw new Error(state.streamErrorMessage);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export function updateLiveAnalysisResult(
+  liveResult: AnalysisResult | null,
+  updater: AnalysisUpdateFn,
+): AnalysisResult | null {
+  if (!liveResult?.analysis) {
+    return liveResult;
+  }
+  return {
+    ...liveResult,
+    analysis: updater(liveResult.analysis),
+  };
+}

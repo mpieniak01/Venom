@@ -362,7 +362,7 @@ export function useServiceStatus(intervalMs = 15000) {
       const data = await apiFetch<ServiceStatus[] | { services?: ServiceStatus[]; status?: string }>(
         "/api/v1/system/services",
       );
-      if (Array.isArray(data?.services)) {
+      if (!Array.isArray(data) && Array.isArray(data?.services)) {
         return data.services;
       }
       if (Array.isArray(data)) {

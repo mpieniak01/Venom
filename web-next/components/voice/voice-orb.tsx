@@ -273,7 +273,7 @@ function sectorPath(
 }
 
 type OrbMetricsBars2DProps = Readonly<{
-  metricsRef: RefObject<OrbMetrics>;
+  metricsRef: RefObject<OrbMetrics> | null | undefined;
   orbSize: number;
   colorMode: boolean;
 }>;
@@ -312,7 +312,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
       lastTickRef.current = now;
 
       const t    = now / 1000;
-      const m    = metricsRef.current;
+      const m    = metricsRef?.current ?? { cpu: 0, gpu: 0, vram: 0, ram: 0 };
       const vals = [m.cpu, m.gpu, m.vram, m.ram];
 
       currents.current = currents.current.map((c, i) => {
@@ -413,7 +413,7 @@ function OrbMetricsBars2D({ metricsRef, orbSize, colorMode }: OrbMetricsBars2DPr
         <path
           key={`s-${key}`}
           ref={(el) => { sectorRefs.current[i] = el; }}
-          fill={colorMode ? color : MONO}
+          fill={colorMode ? color : MONO_METRIC_COLOR}
           fillOpacity={0.14}
           stroke="none"
         />

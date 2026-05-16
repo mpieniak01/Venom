@@ -201,7 +201,7 @@ export function AnalysisOrbPanel({
     : "n/a";
   const traceLabel = traceId ? shortenTraceId(traceId) : "no trace";
   const firstChunkDetailLabel = firstChunkAvailable ? `${firstChunkMs.toFixed(1)} ms` : "n/a";
-  const rateLabel = charsPerSecond != null ? `${charsPerSecond.toFixed(1)} chars/s` : "n/a";
+  const rateLabel = formatRateLabel(charsPerSecond);
   const orbTransform = resolveOrbScale({ active, isAnimating, elapsedFactor });
 
   useEffect(() => {
@@ -425,6 +425,13 @@ function renderProcessFirstChunkLabel(firstChunkMs: number | null | undefined): 
     return `${firstChunkMs.toFixed(1)} ms`;
   }
   return "n/a";
+}
+
+function formatRateLabel(charsPerSecond: number | null): string {
+  if (charsPerSecond == null) {
+    return "n/a";
+  }
+  return `${charsPerSecond.toFixed(1)} chars/s`;
 }
 
 function renderAnalysisResponseStateLabel(analysisResponse: string): string {

@@ -38,9 +38,20 @@ export function useModelIntrospectionSnapshot(): SnapshotHookResult {
           cache: "no-store",
         },
       );
-      const data = (await response.json()) as SnapshotResponse & { detail?: string };
+      const rawBody = await response.text();
+      let data: (SnapshotResponse & { detail?: string }) | null = null;
+      try {
+        data = JSON.parse(rawBody) as SnapshotResponse & { detail?: string };
+      } catch {
+        data = null;
+      }
       if (!response.ok) {
-        throw new Error(readErrorMessage(data));
+        const fallbackMessage = rawBody.trim() || "Request failed";
+        const errorMessage = data ? readErrorMessage(data) : fallbackMessage;
+        throw new Error(errorMessage);
+      }
+      if (!data) {
+        throw new Error("Request failed");
       }
       if (requestId === latestRequestIdRef.current) {
         setSnapshot(data.snapshot);

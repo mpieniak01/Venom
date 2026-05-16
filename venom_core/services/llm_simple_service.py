@@ -103,31 +103,17 @@ _SSE_EVENT_START = "event: start\ndata: {}\n\n"
 _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
-_ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
-_ONNX_SIMPLE_CLIENT_LOCK = threading.Lock()
 httpx = llm_simple_transport.httpx_module()
 
 
 def _get_onnx_simple_client() -> OnnxLlmClient:
-    global _ONNX_SIMPLE_CLIENT
-    if _ONNX_SIMPLE_CLIENT is None:
-        with _ONNX_SIMPLE_CLIENT_LOCK:
-            if _ONNX_SIMPLE_CLIENT is None:
-                _ONNX_SIMPLE_CLIENT = OnnxLlmClient()
-    return _ONNX_SIMPLE_CLIENT
+    # Per-request client lifecycle avoids cross-request close/use races.
+    return OnnxLlmClient()
 
 
 def release_onnx_simple_client() -> None:
-    """Drop warm ONNX simple-mode client to free runtime memory."""
-    global _ONNX_SIMPLE_CLIENT
-    with _ONNX_SIMPLE_CLIENT_LOCK:
-        client = _ONNX_SIMPLE_CLIENT
-        _ONNX_SIMPLE_CLIENT = None
-    if client is not None:
-        try:
-            client.close()
-        except Exception:
-            pass
+    """Kept for API compatibility; ONNX simple clients are now per-request."""
+    return
 
 
 def _get_simple_context_char_limit(runtime) -> Optional[int]:
@@ -174,6 +160,7 @@ async def _aiter_sync_onnx_stream(
     """Bridge sync ONNX generator to async iteration without blocking event loop."""
     queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
     stop_event = threading.Event()
+    loop = asyncio.get_running_loop()
 
     def _producer() -> None:
         try:
@@ -194,37 +181,45 @@ async def _aiter_sync_onnx_stream(
         finally:
             asyncio.run_coroutine_threadsafe(queue.put(None), loop)
 
-    def _close_onnx_client_safely() -> None:
-        client_close = getattr(client, "close", None)
-        if not callable(client_close):
-            return
-        try:
-            client_close()
-        except RuntimeError:
-            pass
-
-    async def _wait_producer_or_cancel(task: asyncio.Task[None]) -> None:
-        try:
-            await asyncio.wait_for(task, timeout=0.5)
-        except TimeoutError:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-
-    loop = asyncio.get_running_loop()
     producer_task = asyncio.create_task(asyncio.to_thread(_producer))
     try:
-        while True:
-            item = await queue.get()
-            if item is None:
-                break
-            if isinstance(item, BaseException):
-                raise item
-            yield item
+        async for token in _consume_onnx_stream_queue(queue):
+            yield token
     finally:
         stop_event.set()
-        _close_onnx_client_safely()
+        _close_onnx_client_safely(client)
         await _wait_producer_or_cancel(producer_task)
+
+
+async def _consume_onnx_stream_queue(
+    queue: asyncio.Queue[str | BaseException | None],
+) -> AsyncIterator[str]:
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        if isinstance(item, BaseException):
+            raise item
+        yield item
+
+
+def _close_onnx_client_safely(client: OnnxLlmClient) -> None:
+    client_close = getattr(client, "close", None)
+    if not callable(client_close):
+        return
+    try:
+        client_close()
+    except RuntimeError:
+        pass
+
+
+async def _wait_producer_or_cancel(task: asyncio.Task[None]) -> None:
+    try:
+        await asyncio.wait_for(task, timeout=0.5)
+    except TimeoutError:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 
 def _resolve_model_name_for_simple_request(

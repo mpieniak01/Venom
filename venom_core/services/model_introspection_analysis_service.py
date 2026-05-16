@@ -89,7 +89,14 @@ def _consume_sse_events(
     for event_name, payload in drained_events:
         events.append(event_name)
         if event_name == "error":
-            raise RuntimeError(payload or _ANALYSIS_STREAM_FAILED)
+            parsed_error = _parse_json_dict(payload)
+            message = str(
+                parsed_error.get("message")
+                or parsed_error.get("code")
+                or payload
+                or _ANALYSIS_STREAM_FAILED
+            )
+            raise RuntimeError(message)
         if event_name != "content":
             continue
         text = _extract_content_text(payload)

@@ -64,7 +64,7 @@ openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.6
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
 
-transformers>=4.57.6,<5.0.0  # Zgodne z constraints-hf-onnx i stabilnym resolverem HF/ONNX
+transformers>=5.0.0rc3  # Zgodne z constraints-hf-onnx i stabilnym resolverem HF/ONNX
 sentence-transformers   # Embeddingi do RAG
 pillow                  # Przetwarzanie obrazów
 timm                    # Modele wizyjne (zależność dla Florence-2)
@@ -100,7 +100,7 @@ tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT
 
 # --- VENOM INFRASTRUCTURE & UTILS ---
 
-python-dotenv==1.2.1    # Zmienne środowiskowe (.env) (pin zgodny z profilem CI Lite)
+python-dotenv==1.2.2    # Zmienne środowiskowe (.env) (pin zgodny z profilem CI Lite)
 pydantic==2.11.10       # Walidacja (pin zgodny z profilem CI Lite i FastAPI)
 pydantic-settings==2.10.1  # Settings loader używany przez runtime
 numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)

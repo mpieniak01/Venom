@@ -783,6 +783,31 @@ async def test_synchronize_startup_local_model_prefers_daemon_target(monkeypatch
     assert any(call.get("LLM_MODEL_NAME") == "model-b" for call in updates_calls)
 
 
+def test_resolve_startup_runtime_context_falls_back_when_snapshot_incomplete():
+    fake_config_manager = SimpleNamespace(
+        get_runtime_snapshot=lambda mask_secrets=False: {
+            "config": {"LLM_MODEL_NAME": "x"},
+            "active_server": "ollama",
+            "active_model_id": "",
+            "daemon_target_model": "model-b",
+        },
+        get_config=lambda mask_secrets=False: {"LLM_MODEL_NAME": "fallback-model"},
+    )
+    runtime = SimpleNamespace(provider="vllm", model_name="runtime-model")
+
+    config, server_name, active_model, daemon_target_model = (
+        main_module._resolve_startup_runtime_context(
+            config_manager=fake_config_manager,
+            runtime=runtime,
+        )
+    )
+
+    assert config == {"LLM_MODEL_NAME": "fallback-model"}
+    assert server_name == "vllm"
+    assert active_model == "runtime-model"
+    assert daemon_target_model == ""
+
+
 @pytest.mark.asyncio
 async def test_start_configured_local_server_runs_stop_and_start(monkeypatch):
     calls = []

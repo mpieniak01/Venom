@@ -365,6 +365,27 @@ def test_system_generate_external_map_covers_config_branches(monkeypatch):
     assert "Stable Diffusion" in targets
 
 
+def test_system_generate_external_map_survives_runtime_resolution_error(monkeypatch):
+    monkeypatch.setattr(
+        system_routes.SETTINGS, "LLM_SERVICE_TYPE", "local", raising=False
+    )
+    monkeypatch.setattr(
+        system_routes.SETTINGS,
+        "LLM_LOCAL_ENDPOINT",
+        "http://localhost:11434/v1",
+        raising=False,
+    )
+    monkeypatch.setattr(system_routes, "get_active_llm_runtime", lambda: 1 / 0)
+
+    external = system_routes._generate_external_map()
+
+    local_llm = next(
+        (c for c in external if c.target_component.startswith("Local LLM")), None
+    )
+    assert local_llm is not None
+    assert local_llm.target_component == "Local LLM (auto)"
+
+
 def test_system_generate_internal_map_optional_components(monkeypatch):
     app = FastAPI()
     test_router = APIRouter()

@@ -283,7 +283,11 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
 def _generate_external_map() -> List[ApiConnection]:
     """Generates external API connections based on configuration settings."""
     external = []
-    runtime = get_active_llm_runtime()
+    runtime = None
+    try:
+        runtime = get_active_llm_runtime()
+    except Exception:
+        runtime = None
     runtime_provider = str(getattr(runtime, "provider", "") or "").strip().lower()
     runtime_endpoint = str(getattr(runtime, "endpoint", "") or "").strip()
 

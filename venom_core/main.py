@@ -491,18 +491,22 @@ def _resolve_startup_runtime_context(
     runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
     if callable(runtime_snapshot_getter):
         runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
-        config = runtime_snapshot["config"]
-        server_name = (
-            runtime_snapshot["active_server"] or runtime.provider or ""
-        ).lower()
-        active_model = runtime_snapshot["active_model_id"] or ""
-        daemon_target_model = str(
-            runtime_snapshot.get("daemon_target_model") or ""
-        ).strip()
-        return config, server_name, active_model, daemon_target_model
+        if isinstance(runtime_snapshot, dict):
+            config = runtime_snapshot.get("config")
+            server_name = (
+                str(runtime_snapshot.get("active_server") or runtime.provider or "")
+                .strip()
+                .lower()
+            )
+            active_model = str(runtime_snapshot.get("active_model_id") or "").strip()
+            daemon_target_model = str(
+                runtime_snapshot.get("daemon_target_model") or ""
+            ).strip()
+            if isinstance(config, dict) and server_name and active_model:
+                return config, server_name, active_model, daemon_target_model
 
     config = config_manager.get_config(mask_secrets=False)
-    server_name = (runtime.provider or "").lower()
+    server_name = str(runtime.provider or "").strip().lower()
     active_model = str(getattr(runtime, "model_name", "") or "").strip()
     return config, server_name, active_model, ""
 

@@ -58,7 +58,8 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
-        "release"
+        "release",
+        "new-code"
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
@@ -5282,7 +5283,8 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
-        "release"
+        "release",
+        "new-code"
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."

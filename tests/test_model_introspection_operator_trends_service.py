@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from venom_core.services import model_introspection_operator_trends_service as service
 
@@ -120,3 +121,10 @@ def test_record_operator_run_rejects_empty_request_id() -> None:
         )
         is None
     )
+
+
+def test_resolve_storage_path_uses_closed_namespace_for_untrusted_prefix() -> None:
+    cfg = SimpleNamespace(STORAGE_PREFIX="../../etc/passwd", ENVIRONMENT_ROLE="dev")
+    path = service._resolve_storage_path(settings=cfg)  # noqa: SLF001
+    assert path.parent.name == "dev"
+    assert str(path).endswith("/data/introspection/dev/operator_run_trends.json")

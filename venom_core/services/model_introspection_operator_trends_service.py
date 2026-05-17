@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import threading
 import time
 from contextlib import contextmanager
@@ -26,44 +25,25 @@ _TRENDS_FILENAME = "operator_run_trends.json"
 _MAX_STORED_RUNS = 200
 _DEFAULT_WINDOW = 20
 _STORE_LOCK = threading.Lock()
-_SAFE_STORAGE_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
 _DEFAULT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "data" / "introspection"
 
 
-def _sanitize_storage_prefix(storage_prefix: str) -> str:
-    normalized = storage_prefix.strip().strip("/")
-    if not normalized:
-        return ""
-    safe_parts: list[str] = []
-    for raw_part in Path(normalized).parts:
-        part = raw_part.strip()
-        if not part or part in {".", ".."}:
-            continue
-        if _SAFE_STORAGE_SEGMENT.fullmatch(part) is None:
-            logger.warning(
-                "Ignoring unsafe storage prefix segment", extra={"segment": part}
-            )
-            continue
-        safe_parts.append(part)
-    return "/".join(safe_parts)
+def _resolve_storage_namespace(cfg: Any) -> str:
+    """Map runtime config to a closed namespace, never raw user path segments."""
+    storage_prefix = str(getattr(cfg, "STORAGE_PREFIX", "") or "").strip().lower()
+    if storage_prefix.strip("/") == "preprod":
+        return "preprod"
+    environment_role = str(getattr(cfg, "ENVIRONMENT_ROLE", "") or "").strip().lower()
+    if environment_role == "preprod":
+        return "preprod"
+    return "dev"
 
 
 def _resolve_storage_path(settings: Any | None = None) -> Path:
     cfg = settings or SETTINGS
-    storage_prefix = _sanitize_storage_prefix(
-        str(getattr(cfg, "STORAGE_PREFIX", "") or "")
-    )
+    namespace = _resolve_storage_namespace(cfg)
     root = _DEFAULT_STORAGE_ROOT.resolve()
-    base = root
-    if storage_prefix:
-        candidate = (root / storage_prefix).resolve()
-        if candidate == root or root in candidate.parents:
-            base = candidate
-        else:
-            logger.warning(
-                "Rejected unsafe storage prefix", extra={"prefix": storage_prefix}
-            )
-    return base / _TRENDS_FILENAME
+    return root / namespace / _TRENDS_FILENAME
 
 
 def _normalize_record(raw: Any) -> dict[str, Any] | None:

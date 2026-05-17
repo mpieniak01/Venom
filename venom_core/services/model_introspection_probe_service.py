@@ -20,6 +20,7 @@ _PROBE_MAX_PROMPT_TOKENS = 1024
 _PROBE_UNAVAILABLE = "probe_unavailable"
 _PROBE_OK = "ok"
 _PROBE_FAILED = "failed"
+_PROBE_TRANSIENT_STATUS_CODES = {502, 503, 504}
 _PROBE_DEFAULT_PROFILE = "dev"
 _PROBE_HTTP_CLIENT: httpx.AsyncClient | None = None
 _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
@@ -399,6 +400,15 @@ async def _execute_probe_with_retry(
                 payload=probe_payload,
                 timeout_seconds=timeout_seconds,
             )
+            if response.status_code in _PROBE_TRANSIENT_STATUS_CODES:
+                if attempt >= max_attempts:
+                    return _probe_unavailable(
+                        code="runtime_error",
+                        message="Runtime probe is temporarily unavailable",
+                        runtime_label=runtime_label,
+                        flow_started_at=flow_started_at,
+                    )
+                continue
             handled = _handle_probe_http_response(
                 response=response,
                 runtime_label=runtime_label,

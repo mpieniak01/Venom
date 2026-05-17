@@ -162,40 +162,50 @@ def _extract_grounding_score_from_trace_steps(
     return None
 
 
-def _extract_query_from_trace_steps(steps: list[dict[str, Any]]) -> str | None:
-    def _extract_query_from_request_details(details: str) -> str | None:
-        marker = "prompt="
-        if marker not in details:
-            return None
-        prompt_part = details.split(marker, 1)[1].strip()
-        return prompt_part or None
-
-    def _extract_query_from_context_preview(details: str) -> str | None:
-        parsed = _parse_json_dict(details)
-        preview = str(parsed.get("prompt_context_preview") or "")
-        if not preview:
-            return None
-        lines = [line.strip() for line in preview.splitlines() if line.strip()]
-        for line in lines:
-            if line.upper().startswith("USER:"):
-                content = line.split(":", 1)[1].strip()
-                if content:
-                    return content
+def _extract_query_from_request_details(details: str) -> str | None:
+    marker = "prompt="
+    if marker not in details:
         return None
+    prompt_part = details.split(marker, 1)[1].strip()
+    return prompt_part or None
 
-    for step in reversed(steps):
-        details = step.get("details")
-        if not isinstance(details, str):
+
+def _extract_user_query_from_context_preview(preview: str) -> str | None:
+    if not preview:
+        return None
+    lines = [line.strip() for line in preview.splitlines() if line.strip()]
+    for line in lines:
+        if not line.upper().startswith("USER:"):
             continue
-        action = str(step.get("action") or "")
-        if action == "request":
-            query = _extract_query_from_request_details(details)
-            if query:
-                return query
-        if action == "context_preview":
-            query = _extract_query_from_context_preview(details)
-            if query:
-                return query
+        content = line.split(":", 1)[1].strip()
+        if content:
+            return content
+    return None
+
+
+def _extract_query_from_context_preview_details(details: str) -> str | None:
+    parsed = _parse_json_dict(details)
+    preview = str(parsed.get("prompt_context_preview") or "")
+    return _extract_user_query_from_context_preview(preview)
+
+
+def _extract_query_from_step(step: dict[str, Any]) -> str | None:
+    details = step.get("details")
+    if not isinstance(details, str):
+        return None
+    action = str(step.get("action") or "")
+    if action == "request":
+        return _extract_query_from_request_details(details)
+    if action == "context_preview":
+        return _extract_query_from_context_preview_details(details)
+    return None
+
+
+def _extract_query_from_trace_steps(steps: list[dict[str, Any]]) -> str | None:
+    for step in reversed(steps):
+        query = _extract_query_from_step(step)
+        if query:
+            return query
     return None
 
 
@@ -327,6 +337,60 @@ def _build_answer_evidence_links(
     return links
 
 
+def _build_fallback_entities_from_nodes(nodes_payload: Any) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    if not isinstance(nodes_payload, list):
+        return collected
+    for node in nodes_payload:
+        if not isinstance(node, dict):
+            continue
+        node_id = str(node.get("id") or "")
+        if not node_id or node_id == "runtime":
+            continue
+        collected.append(
+            {
+                "id": node_id,
+                "label": str(node.get("label") or node_id),
+                "kind": str(node.get("kind") or "entity"),
+                "active": True,
+            }
+        )
+        if len(collected) >= _MAX_ENTITIES:
+            break
+    return collected
+
+
+def _build_fallback_edges_from_graph(
+    *,
+    edges_payload: Any,
+    entities_payload: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    if not isinstance(edges_payload, list):
+        return collected
+    entity_ids = {entity["id"] for entity in entities_payload}
+    for edge in edges_payload:
+        if not isinstance(edge, dict):
+            continue
+        edge_from = str(edge.get("from") or "")
+        edge_to = str(edge.get("to") or "")
+        if not edge_from or not edge_to:
+            continue
+        if edge_from not in entity_ids and edge_to not in entity_ids:
+            continue
+        collected.append(
+            {
+                "from": edge_from,
+                "to": edge_to,
+                "label": str(edge.get("label") or "evidence"),
+                "active": True,
+            }
+        )
+        if len(collected) >= _MAX_EDGES:
+            break
+    return collected
+
+
 def _build_graph_fallback_payload(
     *,
     prompt: str,
@@ -337,62 +401,14 @@ def _build_graph_fallback_payload(
     nodes = graph.get("nodes") if isinstance(graph, dict) else []
     edges = graph.get("edges") if isinstance(graph, dict) else []
 
-    def _build_fallback_entities(nodes_payload: Any) -> list[dict[str, Any]]:
-        collected: list[dict[str, Any]] = []
-        if not isinstance(nodes_payload, list):
-            return collected
-        for node in nodes_payload:
-            if not isinstance(node, dict):
-                continue
-            node_id = str(node.get("id") or "")
-            if not node_id or node_id == "runtime":
-                continue
-            collected.append(
-                {
-                    "id": node_id,
-                    "label": str(node.get("label") or node_id),
-                    "kind": str(node.get("kind") or "entity"),
-                    "active": True,
-                }
-            )
-            if len(collected) >= _MAX_ENTITIES:
-                break
-        return collected
-
-    def _build_fallback_edges(
-        edges_payload: Any,
-        entities_payload: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        collected: list[dict[str, Any]] = []
-        if not isinstance(edges_payload, list):
-            return collected
-        entity_ids = {entity["id"] for entity in entities_payload}
-        for edge in edges_payload:
-            if not isinstance(edge, dict):
-                continue
-            edge_from = str(edge.get("from") or "")
-            edge_to = str(edge.get("to") or "")
-            if not edge_from or not edge_to:
-                continue
-            if edge_from not in entity_ids and edge_to not in entity_ids:
-                continue
-            collected.append(
-                {
-                    "from": edge_from,
-                    "to": edge_to,
-                    "label": str(edge.get("label") or "evidence"),
-                    "active": True,
-                }
-            )
-            if len(collected) >= _MAX_EDGES:
-                break
-        return collected
-
-    entities = _build_fallback_entities(nodes)
+    entities = _build_fallback_entities_from_nodes(nodes)
     if not entities:
         entities = _extract_prompt_entities(prompt)
 
-    evidence_edges = _build_fallback_edges(edges, entities)
+    evidence_edges = _build_fallback_edges_from_graph(
+        edges_payload=edges,
+        entities_payload=entities,
+    )
     if not evidence_edges:
         evidence_edges = _build_context_edges(entities)
     evidence_edges = _assign_edge_ids(evidence_edges)

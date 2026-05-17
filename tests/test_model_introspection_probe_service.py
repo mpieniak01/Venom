@@ -303,3 +303,37 @@ async def test_probe_service_timeout_and_transport_retry_paths(
     )
     assert result["status"] == "probe_unavailable"
     assert result["code"] == "probe_timeout"
+
+
+@pytest.mark.asyncio
+async def test_probe_service_retries_transient_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: _runtime("multi_runtime", "http://localhost:8014/v1"),
+    )
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_ATTEMPTS", "2")
+    calls = {"count": 0}
+
+    async def _service_unavailable_then_ok(**_kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(status_code=503, json={"detail": "busy"})
+        return httpx.Response(status_code=200, json={"status": "ok", "probe": {}})
+
+    monkeypatch.setattr(
+        probe_service,
+        "_post_probe_request",
+        _service_unavailable_then_ok,
+    )
+
+    result = await probe_service.run_model_introspection_probe(
+        prompt="q",
+        mode="hidden",
+        layer_selection=[1],
+        top_k=1,
+    )
+    assert result["status"] == "ok"
+    assert calls["count"] == 2

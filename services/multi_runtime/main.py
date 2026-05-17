@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import ipaddress
+import json
 import logging
 import os
 import sys
@@ -118,6 +119,14 @@ _PROBE_EXECUTOR = ThreadPoolExecutor(
     thread_name_prefix="introspection-probe",
 )
 _PROBE_SEMAPHORE = asyncio.Semaphore(_PROBE_MAX_CONCURRENCY)
+
+
+def _estimate_payload_bytes(payload: Any) -> int:
+    try:
+        serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return len(serialized.encode("utf-8"))
+    except (TypeError, ValueError):
+        return len(str(payload).encode("utf-8"))
 
 
 # Global daemon instance
@@ -1419,7 +1428,7 @@ async def introspection_probe(payload: IntrospectionProbeRequest) -> dict[str, o
         "request_id": request_id,
         "elapsed_ms": elapsed_ms,
         "limits_hit": sorted(set(limits_hit)),
-        "payload_bytes": len(str(probe_result)),
+        "payload_bytes": _estimate_payload_bytes(probe_result),
     }
     return {
         "status": "ok",

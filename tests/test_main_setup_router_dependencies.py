@@ -514,11 +514,12 @@ async def test_lifespan_invokes_ghost_init_step(monkeypatch):
     monkeypatch.setattr(main_module, "_ensure_local_llm_ready", AsyncMock())
     shutdown_runtime = AsyncMock()
     monkeypatch.setattr(main_module, "_shutdown_runtime_components", shutdown_runtime)
-    monkeypatch.setattr(main_module.asyncio, "create_task", lambda _coro: MagicMock())
+    monkeypatch.setattr(main_module, "audio_engine", None)
 
     app = SimpleNamespace(state=SimpleNamespace())
     async with main_module.lifespan(app):
-        pass
+        if hasattr(app.state, "startup_llm_task"):
+            await app.state.startup_llm_task
 
     ghost_init.assert_called_once()
     setup_routes.assert_called_once()

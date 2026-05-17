@@ -171,6 +171,8 @@ background_scheduler = None
 file_watcher = None
 documenter_agent = None
 startup_runtime_retention_task: asyncio.Task[None] | None = None
+startup_audio_task: asyncio.Task[object] | None = None
+startup_llm_task: asyncio.Task[object] | None = None
 
 # Inicjalizacja Audio i IoT (THE_AVATAR)
 audio_engine = None
@@ -948,8 +950,22 @@ def _clear_startup_runtime_retention_task() -> None:
 
 
 async def _shutdown_runtime_components() -> None:
-    global startup_runtime_retention_task
+    global startup_runtime_retention_task, startup_audio_task, startup_llm_task
     logger.info("Zamykanie aplikacji...")
+
+    if startup_audio_task:
+        if not startup_audio_task.done():
+            startup_audio_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await startup_audio_task
+    startup_audio_task = None
+
+    if startup_llm_task:
+        if not startup_llm_task.done():
+            startup_llm_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await startup_llm_task
+    startup_llm_task = None
 
     if startup_runtime_retention_task and not startup_runtime_retention_task.done():
         startup_runtime_retention_task.cancel()
@@ -999,6 +1015,7 @@ async def _shutdown_runtime_components() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
+    global startup_audio_task, startup_llm_task
     validate_environment_policy()
     await _initialize_observability()
     _initialize_model_services()
@@ -1014,14 +1031,16 @@ async def lifespan(app: FastAPI):
     await _initialize_documenter_and_watcher(workspace_path)
     await _initialize_avatar_stack()
     if audio_engine is not None:
-        app.state.startup_audio_task = asyncio.create_task(
+        startup_audio_task = asyncio.create_task(
             rt_warmup_audio_engine_if_enabled(audio_engine=audio_engine, logger=logger)
         )
+        app.state.startup_audio_task = startup_audio_task
     await _initialize_shadow_stack()
     _initialize_ghost_agent_if_enabled()
     setup_router_dependencies()
     logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
-    app.state.startup_llm_task = asyncio.create_task(_ensure_local_llm_ready())
+    startup_llm_task = asyncio.create_task(_ensure_local_llm_ready())
+    app.state.startup_llm_task = startup_llm_task
 
     yield
 

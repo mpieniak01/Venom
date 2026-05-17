@@ -16,7 +16,7 @@ Context and token discipline:
 2) For OpenAI/Codex product questions, use official docs through Docs MCP first.
 3) Do not copy long external documentation into chat; summarize only decision-relevant facts.
 4) Use repository source-of-truth files and scoped retrieval instead of full repository scanning.
-5) If available in CI artifacts, use `test-results/agent-context/brief.json` as first context brief.
+5) If available, use `test-results/agent-context/preflight-brief.json` first, then `brief.json`.
 
 Editing/output contract:
 1) Return concrete file edits and concise rationale.

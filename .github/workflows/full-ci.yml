@@ -21,6 +21,7 @@ jobs:
       - name: Generate coding-agent context brief artifact
         run: |
           python3 scripts/generate_agent_context_brief.py
+          python3 scripts/generate_agent_context_brief.py --mode preflight --repo-root .
       - name: Upload coding-agent context brief
         uses: actions/upload-artifact@v6
         with:

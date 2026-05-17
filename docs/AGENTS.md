@@ -27,7 +27,7 @@ This reduces unnecessary context growth and avoids repeated manual doc copying.
 
 ## Lightweight Context Brief (CI Artifact)
 
-When available, start from `test-results/agent-context/brief.json` (or `brief.md`) before reading large parts of the repository.
+When available, start from `test-results/agent-context/preflight-brief.json` (or `preflight-brief.md`), then `brief.json`, before reading large parts of the repository.
 Treat it as a compact entrypoint for:
 
 1. gate command order,

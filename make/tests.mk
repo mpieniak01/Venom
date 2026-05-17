@@ -609,3 +609,9 @@ install-hooks:
 
 sync-sonar-new-code-group:
 	pre-commit run --hook-stage manual update-sonar-new-code-group
+
+agent-prep:
+	@$(PYTHON_BIN) scripts/generate_agent_context_brief.py --mode preflight --repo-root .
+	@echo "✅ Preflight brief generated:"
+	@echo "   - test-results/agent-context/preflight-brief.json"
+	@echo "   - test-results/agent-context/preflight-brief.md"

@@ -27,7 +27,7 @@ To ogranicza wzrost kontekstu i zmniejsza token burn.
 
 ## Lekki Brief Kontekstowy (artefakt CI)
 
-Jeśli jest dostępny, zaczynaj od `test-results/agent-context/brief.json` (lub `brief.md`) zanim wejdziesz w szerokie czytanie repo.
+Jeśli jest dostępny, zaczynaj od `test-results/agent-context/preflight-brief.json` (lub `preflight-brief.md`), a potem `brief.json`, zanim wejdziesz w szerokie czytanie repo.
 Traktuj go jako krótki punkt startowy dla:
 
 1. kolejności bramek,

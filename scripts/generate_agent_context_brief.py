@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 DEFAULT_OUTPUT_JSON = Path("test-results/agent-context/brief.json")
 DEFAULT_OUTPUT_MD = Path("test-results/agent-context/brief.md")
+DEFAULT_PREFLIGHT_OUTPUT_JSON = Path("test-results/agent-context/preflight-brief.json")
+DEFAULT_PREFLIGHT_OUTPUT_MD = Path("test-results/agent-context/preflight-brief.md")
+MAX_SESSION_TAIL = 3
 
 
 def _load_lines(path: Path) -> list[str]:
@@ -67,6 +71,110 @@ def _load_recent_session_index(path: Path) -> dict[str, str] | None:
     return None
 
 
+def _load_session_tail(
+    path: Path, *, limit: int = MAX_SESSION_TAIL
+) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, str]] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        rows.append(
+            {
+                "ts": str(payload.get("ts") or payload.get("timestamp") or ""),
+                "topic": str(payload.get("topic") or payload.get("title") or ""),
+                "model": str(payload.get("model") or ""),
+            }
+        )
+    if not rows:
+        return []
+    return rows[-limit:]
+
+
+def _git_changed_files(repo_root: Path, *, diff_base: str) -> list[str]:
+    cmd = ["git", "-C", str(repo_root), "diff", "--name-only", f"{diff_base}...HEAD"]
+    try:
+        completed = subprocess.run(
+            cmd, check=True, capture_output=True, text=True, encoding="utf-8"
+        )
+    except subprocess.SubprocessError:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _infer_scope(changed_files: list[str]) -> dict[str, bool]:
+    scope = {"backend": False, "frontend": False, "tests": False, "docs_only": False}
+    if not changed_files:
+        scope["docs_only"] = False
+        return scope
+    docs_only = True
+    for path in changed_files:
+        if path.startswith("venom_core/") or path.startswith("scripts/"):
+            scope["backend"] = True
+        if path.startswith("web-next/"):
+            scope["frontend"] = True
+        if path.startswith("tests/"):
+            scope["tests"] = True
+        if not (
+            path.endswith(".md")
+            or path.startswith("docs/")
+            or path.startswith("docs_dev/")
+        ):
+            docs_only = False
+    scope["docs_only"] = docs_only
+    return scope
+
+
+def _lane_hints(scope: dict[str, bool]) -> list[str]:
+    hints: list[str] = []
+    if scope["docs_only"]:
+        return [
+            "markdown-only: quality gates may be skipped except documentation checks"
+        ]
+    if scope["frontend"]:
+        hints.append(
+            "frontend-scope: run npm --prefix web-next ci before frontend checks"
+        )
+    if scope["backend"] or scope["tests"]:
+        hints.append(
+            "python-scope: run make test-catalog-check + make test-groups-check"
+        )
+        hints.append("python-scope: run make check-new-code-coverage-diagnostics")
+    hints.append("final-gate: run make pr-fast")
+    return hints
+
+
+def _gate_snapshot(repo_root: Path) -> dict[str, Any]:
+    history_file = repo_root / "test-results/sonar/test-intelligence-history.jsonl"
+    if not history_file.exists():
+        return {"status": "n/a", "note": "no local history"}
+    lines = [
+        line.strip()
+        for line in history_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        return {"status": "n/a", "note": "history file empty"}
+    try:
+        payload = json.loads(lines[-1])
+    except json.JSONDecodeError:
+        return {"status": "n/a", "note": "history parse failed"}
+    return {
+        "status": "last-known",
+        "total_runtime_seconds": payload.get("total_runtime_seconds"),
+        "ts_utc": payload.get("ts_utc"),
+        "note": "advisory only; rerun gates for current diff",
+    }
+
+
 def build_brief(
     *,
     repo_root: Path,
@@ -114,6 +222,42 @@ def build_brief(
     }
 
 
+def build_preflight_brief(
+    *,
+    repo_root: Path,
+    codex_home: Path | None,
+    diff_base: str,
+) -> dict[str, Any]:
+    changed_files = _git_changed_files(repo_root, diff_base=diff_base)
+    scope = _infer_scope(changed_files)
+    session_tail: list[dict[str, str]] = []
+    if codex_home is not None:
+        session_tail = _load_session_tail(codex_home / "session_index.jsonl")
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "scope": "coding-agent-preflight-brief",
+        "diff_base": diff_base,
+        "changed_files_count": len(changed_files),
+        "changed_files": changed_files[:200],
+        "scope_signals": scope,
+        "lane_hints": _lane_hints(scope),
+        "gate_snapshot": _gate_snapshot(repo_root),
+        "session_tail": session_tail,
+        "docs_mcp_policy": {
+            "openai_codex_questions": "Use official Docs MCP first, then local source-of-truth files.",
+            "copy_policy": "Keep summaries short; avoid pasting long docs.",
+        },
+        "source_of_truth_files": [
+            "docs/AGENTS.md",
+            "docs/PL/AGENTS.md",
+            "config/testing/test_catalog.json",
+            "config/pytest-groups/ci-lite.txt",
+            "config/pytest-groups/sonar-new-code.txt",
+        ],
+    }
+
+
 def render_markdown(brief: dict[str, Any]) -> str:
     lane = brief["test_lanes"]
     catalog = brief["catalog"]
@@ -141,9 +285,43 @@ def render_markdown(brief: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_preflight_markdown(brief: dict[str, Any]) -> str:
+    scope = brief["scope_signals"]
+    gate = brief["gate_snapshot"]
+    lines = [
+        "# Agent Preflight Brief",
+        "",
+        f"- Generated (UTC): {brief['generated_at_utc']}",
+        f"- Diff base: {brief['diff_base']}",
+        f"- Changed files: {brief['changed_files_count']}",
+        f"- Scope: backend={scope['backend']} frontend={scope['frontend']} tests={scope['tests']} docs_only={scope['docs_only']}",
+        f"- Last gate snapshot: {gate.get('status')} ({gate.get('ts_utc') or 'n/a'})",
+        "",
+        "## Lane Hints",
+    ]
+    for hint in brief["lane_hints"]:
+        lines.append(f"- {hint}")
+    lines.extend(["", "## Changed Files (first 50)"])
+    for path in brief["changed_files"][:50]:
+        lines.append(f"- `{path}`")
+    lines.extend(["", "## MCP Rule", "- For OpenAI/Codex topics: use Docs MCP first."])
+    return "\n".join(lines) + "\n"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate lightweight agent context brief."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("brief", "preflight"),
+        default="brief",
+        help="Generation mode.",
+    )
+    parser.add_argument(
+        "--diff-base",
+        default="origin/main",
+        help="Git diff base for preflight mode.",
     )
     parser.add_argument(
         "--repo-root",
@@ -179,13 +357,28 @@ def main() -> int:
     if codex_home is not None and not codex_home.exists():
         codex_home = None
 
-    brief = build_brief(repo_root=repo_root, codex_home=codex_home)
-    args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.output_md.parent.mkdir(parents=True, exist_ok=True)
-    args.output_json.write_text(
+    output_json = args.output_json
+    output_md = args.output_md
+    if args.mode == "preflight":
+        if output_json == DEFAULT_OUTPUT_JSON:
+            output_json = DEFAULT_PREFLIGHT_OUTPUT_JSON
+        if output_md == DEFAULT_OUTPUT_MD:
+            output_md = DEFAULT_PREFLIGHT_OUTPUT_MD
+        brief = build_preflight_brief(
+            repo_root=repo_root,
+            codex_home=codex_home,
+            diff_base=args.diff_base,
+        )
+        markdown = render_preflight_markdown(brief)
+    else:
+        brief = build_brief(repo_root=repo_root, codex_home=codex_home)
+        markdown = render_markdown(brief)
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+    output_md.parent.mkdir(parents=True, exist_ok=True)
+    output_json.write_text(
         json.dumps(brief, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    args.output_md.write_text(render_markdown(brief), encoding="utf-8")
+    output_md.write_text(markdown, encoding="utf-8")
     return 0
 
 

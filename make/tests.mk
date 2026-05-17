@@ -599,6 +599,14 @@ test-env-contracts-multi-runtime:
 	ENV_CONTRACT_GEMMA4_AUDIO_ENDPOINT=http://localhost:8014/v1 \
 	$(PYTEST_BIN) -q tests/test_env_contracts.py::test_runtime_profile_endpoint_contracts[multi_runtime]
 
+test-223e-slo-gate:
+	@echo "🧪 223E: quality gate SLO (probe success, fallback rate, p95 first chunk)..."
+	@$(PYTEST_BIN) -q tests/test_model_introspection_operator_trends_service.py
+
+test-223e-slo-consecutive:
+	@echo "🧪 223E: SLO gate on persisted trends (3 consecutive windows)..."
+	@$(PYTHON_BIN) -c "from venom_core.services import model_introspection_operator_trends_service as s; r=s.evaluate_persisted_slo_windows(window=20, required_consecutive=3); print(r); import sys; sys.exit(0 if r.get('ok') else 1)"
+
 ci-lite-preflight:
 	@if ! command -v "$(PYTHON_BIN)" >/dev/null 2>&1; then \
 		echo "❌ Nie znaleziono interpretera Pythona: $(PYTHON_BIN)"; \

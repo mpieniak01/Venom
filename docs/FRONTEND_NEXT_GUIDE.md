@@ -17,7 +17,8 @@ web-next/
 │   ├── page.tsx            # Cockpit
 │   ├── chat/page.tsx       # Cockpit reference (full layout)
 │   ├── brain/page.tsx      # Brain view
-│   ├── inspector/page.tsx  # Flow Inspector
+│   ├── inspector/          # Flow Inspector
+│   │   └── model-introspection/page.tsx  # Inspector / Model Introspection
 │   ├── strategy/page.tsx   # Strategy / KPI (v2.0 - Hidden)
 │   └── config/page.tsx     # Configuration Panel (Task 060)
 ├── components/             # Shared components (layout, UI, overlays)
@@ -128,6 +129,13 @@ From repository root, you can use:
   - `e2e-quality-gate.mjs`
   - `check-dev-turbo.mjs`
 - When adding new voice visuals, document them as part of the orb stack first; treat CSS-only variants as fallback, not as the primary architecture.
+
+### 0.7 Inspector / Model Introspection
+- Route: `/inspector/model-introspection`.
+- The view is driven by `analysis_capabilities` and separates `answer verdict` from `internals verdict`.
+- `Flow Inspector` (`/inspector`) remains a separate screen for system flows.
+- The `internals fallback` state is transitional and means probes did not provide full data, not that the whole UI failed.
+- Operational details: `docs/MODEL_INTROSPECTION_GUIDE.md`.
 
 ## 1. Brain / Strategy – Data sources and hooks
 

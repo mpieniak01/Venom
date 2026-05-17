@@ -1,4 +1,4 @@
-## Current platform structure (v1.8.0+)
+## Current platform structure (v1.8.x)
 
 ```text
 ~/venom
@@ -16,6 +16,7 @@
 
 Reference detailed tree (legacy extended view):
 
+```text
 ~/venom                          # Venom project ROOT (repo)
 ├── .venv/                       # Python virtual environment
 ├── .env                         # configuration / secrets (outside Git)
@@ -128,3 +129,4 @@ Reference detailed tree (legacy extended view):
         ├── __init__.py
         ├── logger.py            # Loguru/Rich configuration
         └── helpers.py           # small helpers (ID, time, conversions, etc.)
+```

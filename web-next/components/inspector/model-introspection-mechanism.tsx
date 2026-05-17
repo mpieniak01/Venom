@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "@/lib/i18n";
 import { Switch } from "@/components/ui/switch";
@@ -59,14 +59,28 @@ function writeEnabledToStorage(enabled: boolean) {
 export function ModelIntrospectionMechanismProvider({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  const enabled = useSyncExternalStore(subscribe, readEnabledFromStorage, () => false);
+  const [enabled, setEnabledState] = useState(false);
+
+  useEffect(() => {
+    const syncFromStorage = () => {
+      setEnabledState(readEnabledFromStorage());
+    };
+
+    syncFromStorage();
+    return subscribe(syncFromStorage);
+  }, []);
 
   const setEnabled = useCallback((nextEnabled: boolean) => {
+    setEnabledState(nextEnabled);
     writeEnabledToStorage(nextEnabled);
   }, []);
 
   const toggle = useCallback(() => {
-    writeEnabledToStorage(!readEnabledFromStorage());
+    setEnabledState((currentEnabled) => {
+      const nextEnabled = !currentEnabled;
+      writeEnabledToStorage(nextEnabled);
+      return nextEnabled;
+    });
   }, []);
 
   const value = useMemo(
@@ -104,7 +118,8 @@ export function ModelIntrospectionMechanismControl({
 }: Readonly<ModelIntrospectionMechanismControlProps>) {
   const t = useTranslation();
   const { enabled, setEnabled } = useModelIntrospectionMechanism();
-  const label = enabled ? t("inspector.modelIntrospection.mechanism.enabled") : t("inspector.modelIntrospection.mechanism.disabled");
+  const displayEnabled = enabled;
+  const label = displayEnabled ? t("inspector.modelIntrospection.mechanism.enabled") : t("inspector.modelIntrospection.mechanism.disabled");
 
   if (variant === "compact") {
     return (
@@ -115,9 +130,9 @@ export function ModelIntrospectionMechanismControl({
         )}
       >
         <span className="uppercase tracking-[0.28em] text-[color:var(--ui-muted)]">{t("inspector.modelIntrospection.mechanism.analysisLabel")}</span>
-        <Badge tone={enabled ? "success" : "neutral"}>{label}</Badge>
+        <Badge tone={displayEnabled ? "success" : "neutral"}>{label}</Badge>
         <Switch
-          checked={enabled}
+          checked={displayEnabled}
           onCheckedChange={setEnabled}
           aria-label={t("inspector.modelIntrospection.mechanism.toggleAria")}
         />
@@ -139,9 +154,9 @@ export function ModelIntrospectionMechanismControl({
         </p>
       </div>
       <div className="flex items-center gap-3">
-        <Badge tone={enabled ? "success" : "neutral"}>{label}</Badge>
+        <Badge tone={displayEnabled ? "success" : "neutral"}>{label}</Badge>
         <Switch
-          checked={enabled}
+          checked={displayEnabled}
           onCheckedChange={setEnabled}
           aria-label={t("inspector.modelIntrospection.mechanism.toggleAria")}
         />

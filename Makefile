@@ -71,7 +71,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		test-202c3-perf-profile test-202c3-all \
 		test-202c4-automation-matrix test-202c4-decision-refined test-202c4-all \
 		test-202c5-lora-runtime-gap test-202c6-signature-contract-smoke test-202c7-signed-activation-success \
-		test-env-contracts-ollama test-env-contracts-vllm test-env-contracts-multi-runtime
+		test-env-contracts-ollama test-env-contracts-vllm test-env-contracts-multi-runtime test-223e-slo-gate test-223e-slo-consecutive
 
 lint:
 	pre-commit run --all-files

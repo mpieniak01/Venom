@@ -145,6 +145,38 @@ async def test_probe_service_maps_404_to_unavailable(
 
 
 @pytest.mark.asyncio
+async def test_probe_service_maps_attention_and_saliency_to_mode_specific_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: _runtime("multi_runtime", "http://localhost:8014/v1"),
+    )
+
+    async def _fake_post_probe_request(**_kwargs):
+        return httpx.Response(status_code=404, json={"detail": "not found"})
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _fake_post_probe_request)
+
+    attention_result = await probe_service.run_model_introspection_probe(
+        prompt="Co to jest słońce?",
+        mode="attention",
+        layer_selection=[1],
+        top_k=8,
+    )
+    saliency_result = await probe_service.run_model_introspection_probe(
+        prompt="Co to jest słońce?",
+        mode="saliency",
+        layer_selection=[1],
+        top_k=8,
+    )
+
+    assert attention_result["code"] == "attention_unavailable"
+    assert saliency_result["code"] == "saliency_unavailable"
+
+
+@pytest.mark.asyncio
 async def test_probe_service_maps_timeout_to_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -167,7 +199,7 @@ async def test_probe_service_maps_timeout_to_unavailable(
     )
 
     assert result["status"] == "probe_unavailable"
-    assert result["code"] == "probe_timeout"
+    assert result["code"] == "probe_timeout_hard"
 
 
 def test_probe_health_payload_contains_profile_and_limits(
@@ -182,7 +214,39 @@ def test_probe_health_payload_contains_profile_and_limits(
     assert payload["endpoint_configured"] is True
     assert payload["profile"] == "stage"
     assert payload["healthy"] is True
+    assert payload["model_whitelisted"] is True
     assert payload["limits"]["max_top_k"] <= 32
+
+
+@pytest.mark.asyncio
+async def test_probe_service_returns_unavailable_for_non_whitelisted_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "VENOM_INTROSPECTION_PROBE_MODEL_WHITELIST",
+        "google/gemma-4-e2b-it",
+    )
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: LLMRuntimeInfo(
+            provider="multi_runtime",
+            model_name="openclaw-qwen3vl-8b-opt:latest",
+            endpoint="http://localhost:8014/v1",
+            service_type="local",
+            mode="LOCAL",
+        ),
+    )
+
+    result = await probe_service.run_model_introspection_probe(
+        prompt="Co to jest słońce?",
+        mode="hidden",
+        layer_selection=[1],
+        top_k=8,
+    )
+
+    assert result["status"] == "probe_unavailable"
+    assert result["code"] == "model_not_whitelisted"
 
 
 def test_probe_runtime_config_normalizes_invalid_values(
@@ -193,6 +257,7 @@ def test_probe_runtime_config_normalizes_invalid_values(
     monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_ATTEMPTS", "bad")
     monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_TOP_K", "-5")
     monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_LAYER_COUNT", "0")
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_HEAD_COUNT", "0")
     monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_PROMPT_TOKENS", "-1")
     monkeypatch.setenv("GEMMA4_AUDIO_PROBE_ENABLED", "weird")
 
@@ -201,7 +266,38 @@ def test_probe_runtime_config_normalizes_invalid_values(
     assert cfg["enabled"] is False
     assert cfg["max_top_k"] == 1
     assert cfg["max_layer_count"] == 1
+    assert cfg["max_head_count"] == 1
     assert cfg["max_prompt_tokens"] == 1
+
+
+@pytest.mark.asyncio
+async def test_probe_service_forwards_head_selection_and_target_output_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: _runtime("multi_runtime", "http://localhost:8014/v1"),
+    )
+    captured_payload: dict[str, object] = {}
+
+    async def _fake_post_probe_request(**kwargs):
+        captured_payload.update(kwargs.get("payload", {}))
+        return httpx.Response(status_code=200, json={"status": "ok", "probe": {}})
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _fake_post_probe_request)
+    result = await probe_service.run_model_introspection_probe(
+        prompt="q",
+        mode="saliency",
+        layer_selection=[1],
+        head_selection=[2, 2, 5],
+        target_output_token_index=3,
+        top_k=4,
+    )
+
+    assert result["status"] == "ok"
+    assert captured_payload["head_selection"] == [2, 5]
+    assert captured_payload["target_output_token_index"] == 3
 
 
 @pytest.mark.asyncio
@@ -290,6 +386,8 @@ async def test_probe_service_timeout_and_transport_retry_paths(
     )
     assert result["status"] == "ok"
     assert calls["count"] == 2
+    assert result["diagnostics"]["retry_class"] == "soft_timeout_recovered"
+    assert result["diagnostics"]["retry_count"] == 1
 
     async def _transport_error(**_kwargs):
         raise httpx.ConnectError("down")

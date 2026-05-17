@@ -4,6 +4,7 @@ import type {
   AnalysisProcessTrace,
   AnalysisPhase,
   AnalysisTimelineEntry,
+  AttentionModel,
   BadgeTone,
   GraphNodeDetails,
   IntrospectionSnapshot,
@@ -12,6 +13,7 @@ import type {
   RagFocusGrounding,
   RagFocusModel,
   RagFocusStepStatus,
+  SaliencyModel,
 } from "@/components/inspector/model-introspection-dashboard-types";
 
 export type OperatorFinalStatus = "idle" | "running" | "completed" | "failed" | "skipped";
@@ -577,6 +579,46 @@ type LogitLensPayloadInput = {
   diagnostics?: Record<string, unknown>;
 };
 
+type AttentionPayloadInput = {
+  source?: string;
+  status?: string;
+  code?: string | null;
+  message?: string | null;
+  runtime_label?: string | null;
+  tokens?: string[];
+  layers?: Array<{
+    layer?: number;
+    heads?: Array<{
+      head?: number;
+      top_links?: Array<{
+        from_index?: number;
+        to_index?: number;
+        from_token?: string;
+        to_token?: string;
+        weight?: number;
+      }>;
+    }>;
+  }>;
+  diagnostics?: Record<string, unknown>;
+};
+
+type SaliencyPayloadInput = {
+  source?: string;
+  status?: string;
+  code?: string | null;
+  message?: string | null;
+  runtime_label?: string | null;
+  method?: string | null;
+  target_output_token_index?: number | null;
+  target_output_token?: string | null;
+  token_weights?: Array<{
+    token?: string;
+    token_index?: number;
+    weight?: number;
+  }>;
+  diagnostics?: Record<string, unknown>;
+};
+
 export function buildLogitLensModel(
   payload: LogitLensPayloadInput | null | undefined,
 ): LogitLensModel | null {
@@ -652,6 +694,135 @@ export function getDataSourceTone(source: string): BadgeTone {
     return "warning";
   }
   return "neutral";
+}
+
+export function buildAttentionModel(
+  payload: AttentionPayloadInput | null | undefined,
+): AttentionModel | null {
+  if (!payload) {
+    return null;
+  }
+  const layersRaw = Array.isArray(payload.layers) ? payload.layers : [];
+  const layers = layersRaw
+    .map((layer) => {
+      if (typeof layer?.layer !== "number") {
+        return null;
+      }
+      const headsRaw = Array.isArray(layer.heads) ? layer.heads : [];
+      const heads = headsRaw
+        .map((head) => {
+          if (typeof head?.head !== "number") {
+            return null;
+          }
+          const linksRaw = Array.isArray(head.top_links) ? head.top_links : [];
+          const topLinks = linksRaw
+            .filter(
+              (link) =>
+                typeof link?.from_index === "number" &&
+                typeof link?.to_index === "number" &&
+                typeof link?.weight === "number",
+            )
+            .map((link) => ({
+              from_index: Number(link.from_index),
+              to_index: Number(link.to_index),
+              from_token: normalizeLensToken(link.from_token),
+              to_token: normalizeLensToken(link.to_token),
+              weight: Number(link.weight),
+            }))
+            .sort((left, right) => right.weight - left.weight)
+            .slice(0, 6);
+          if (topLinks.length === 0) {
+            return null;
+          }
+          return {
+            head: Number(head.head),
+            top_links: topLinks,
+          };
+        })
+        .filter(
+          (
+            head,
+          ): head is NonNullable<AttentionModel["layers"]>[number]["heads"][number] =>
+            head !== null,
+        );
+      if (heads.length === 0) {
+        return null;
+      }
+      heads.sort((left, right) => left.head - right.head);
+      return {
+        layer: Number(layer.layer),
+        heads,
+      };
+    })
+    .filter(
+      (
+        layer,
+      ): layer is NonNullable<AttentionModel["layers"]>[number] => layer !== null,
+    );
+
+  return {
+    source: String(payload.source || "probe_unavailable"),
+    status: String(payload.status || "probe_unavailable"),
+    code: payload.code ?? null,
+    message: payload.message ?? null,
+    runtime_label: payload.runtime_label ?? null,
+    tokens: Array.isArray(payload.tokens)
+      ? payload.tokens.map((token) => normalizeLensToken(token)).slice(0, 64)
+      : [],
+    layers,
+    diagnostics:
+      payload.diagnostics && typeof payload.diagnostics === "object"
+        ? payload.diagnostics
+        : {},
+  };
+}
+
+export function buildSaliencyModel(
+  payload: SaliencyPayloadInput | null | undefined,
+): SaliencyModel | null {
+  if (!payload) {
+    return null;
+  }
+  const tokenWeightsRaw = Array.isArray(payload.token_weights)
+    ? payload.token_weights
+    : [];
+  const token_weights = tokenWeightsRaw
+    .filter(
+      (item) =>
+        typeof item?.token_index === "number" && typeof item?.weight === "number",
+    )
+    .map((item) => ({
+      token: normalizeLensToken(item.token),
+      token_index: Number(item.token_index),
+      weight: Number(item.weight),
+    }))
+    .sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight))
+    .slice(0, 24);
+
+  return {
+    source: String(payload.source || "probe_unavailable"),
+    status: String(payload.status || "probe_unavailable"),
+    code: payload.code ?? null,
+    message: payload.message ?? null,
+    runtime_label: payload.runtime_label ?? null,
+    method:
+      typeof payload.method === "string" && payload.method
+        ? payload.method
+        : null,
+    target_output_token_index:
+      typeof payload.target_output_token_index === "number"
+        ? payload.target_output_token_index
+        : null,
+    target_output_token:
+      typeof payload.target_output_token === "string"
+        ? normalizeLensToken(payload.target_output_token)
+        : null,
+    token_weights,
+    diagnostics:
+      payload.diagnostics && typeof payload.diagnostics === "object"
+        ? payload.diagnostics
+        : {},
+  };
 }
 
 export function buildRagFocusModel(args: {

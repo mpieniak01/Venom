@@ -30,11 +30,19 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 ## Key capabilities
 - 🤖 **Agent orchestration** - planning and execution through specialized roles.
 - 🧭 **Hybrid model runtime (3-stack)** - Ollama / vLLM / ONNX + cloud switching with local-first behavior.
+- 🔎 **Model introspection** - a dedicated screen for answers, internals, `analysis_capabilities`, and probe readiness gates.
 - 💾 **Memory and knowledge** - persistent context, lessons learned, and knowledge reuse.
 - 🎓 **Workflow learning** - automation built from user demonstrations.
 - 🛠️ **Operations and governance** - service panel, policy gate, and provider cost control.
 - 🔍 **Transparency and full auditability** - end-to-end trace of decisions, actions, and outcomes for operational trust, compliance, and faster incident review.
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
+
+## Recent updates (2026-05)
+- Added a dedicated model-introspection screen at `/inspector/model-introspection`.
+- Separated `answer verdict` from `internals verdict` so answer quality is not mixed with probe state.
+- Introduced `analysis_capabilities` for runtime/probe readiness, including `model_whitelisted` and probe limits.
+- Timeline now exposes separate `answer_path` and `internals_path`.
+- Added readiness thresholds and SLO gates for probes plus the operational guide in `docs/MODEL_INTROSPECTION_GUIDE.md`.
 
 ## Recent updates (2026-03, v1.8)
 - Global Policy Gate is active as one central runtime checkpoint in orchestrator flow (`global_pre_execution`).
@@ -53,6 +61,7 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - [Deployment + startup](docs/DEPLOYMENT_NEXT.md) - Development/production startup flow and runtime requirements.
 - [Environment support matrix](docs/ENVIRONMENTS_SUPPORT.md) - Current support status for `dev`/`preprod`/`prod` and required configuration model.
 - [Dashboard Guide](docs/DASHBOARD_GUIDE.md) - Web dashboard startup, scripts, and operational cockpit overview.
+- [Model Introspection Guide](docs/MODEL_INTROSPECTION_GUIDE.md) - Transitional vs target state, `analysis_capabilities`, verdicts, and SLO gates.
 - [Tools Usage Guide](docs/TOOLS_USAGE_GUIDE.md) - Slash-tool routing, tool behavior, and web-search runtime requirements.
 - [Configuration panel](docs/CONFIG_PANEL.md) - What can be edited from UI and safe editing rules.
 - [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md) - `web-next` structure, views, and implementation standards.

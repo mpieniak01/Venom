@@ -117,6 +117,7 @@ export type AnalysisTimelineEntry = {
   label: string;
   status: string;
   detail: string;
+  path?: "answer_path" | "internals_path" | string;
   at_ms: number;
   progress?: number;
 };
@@ -250,6 +251,46 @@ export type LogitLensModel = {
   diagnostics: Record<string, unknown>;
 };
 
+export type AttentionModel = {
+  source: string;
+  status: string;
+  code: string | null;
+  message: string | null;
+  runtime_label: string | null;
+  tokens: string[];
+  layers: Array<{
+    layer: number;
+    heads: Array<{
+      head: number;
+      top_links: Array<{
+        from_index: number;
+        to_index: number;
+        from_token: string;
+        to_token: string;
+        weight: number;
+      }>;
+    }>;
+  }>;
+  diagnostics: Record<string, unknown>;
+};
+
+export type SaliencyModel = {
+  source: string;
+  status: string;
+  code: string | null;
+  message: string | null;
+  runtime_label: string | null;
+  method: string | null;
+  target_output_token_index: number | null;
+  target_output_token: string | null;
+  token_weights: Array<{
+    token: string;
+    token_index: number;
+    weight: number;
+  }>;
+  diagnostics: Record<string, unknown>;
+};
+
 export type AnalysisPhase = "idle" | "requesting" | "streaming" | "first_chunk" | "completed";
 
 export type AnalysisResult = {
@@ -331,6 +372,44 @@ export type AnalysisResult = {
       };
       diagnostics?: Record<string, unknown>;
     } | null;
+    attention?: {
+      source?: string;
+      status?: string;
+      code?: string | null;
+      message?: string | null;
+      runtime_label?: string | null;
+      tokens?: string[];
+      layers?: Array<{
+        layer?: number;
+        heads?: Array<{
+          head?: number;
+          top_links?: Array<{
+            from_index?: number;
+            to_index?: number;
+            from_token?: string;
+            to_token?: string;
+            weight?: number;
+          }>;
+        }>;
+      }>;
+      diagnostics?: Record<string, unknown>;
+    } | null;
+    saliency?: {
+      source?: string;
+      status?: string;
+      code?: string | null;
+      message?: string | null;
+      runtime_label?: string | null;
+      method?: string | null;
+      target_output_token_index?: number | null;
+      target_output_token?: string | null;
+      token_weights?: Array<{
+        token?: string;
+        token_index?: number;
+        weight?: number;
+      }>;
+      diagnostics?: Record<string, unknown>;
+    } | null;
     logit_profile?: {
       source?: string;
       status?: string;
@@ -391,6 +470,43 @@ export type AnalysisResult = {
       internals_quality?: string;
       evidence_coverage_percent?: number;
       token_noise_ratio?: number;
+    } | null;
+    analysis_capabilities?: {
+      attention?: {
+        available?: boolean;
+        source?: string;
+        status?: string;
+        reason?: string;
+      };
+      saliency?: {
+        available?: boolean;
+        source?: string;
+        status?: string;
+        reason?: string;
+      };
+      logit_lens?: {
+        available?: boolean;
+        source?: string;
+        status?: string;
+        reason?: string;
+      };
+      available_count?: number;
+      total_count?: number;
+      probe_profile?: string;
+      probe_enabled?: boolean;
+      probe_healthy?: boolean;
+      runtime_supported?: boolean;
+      endpoint_configured?: boolean;
+      model_whitelisted?: boolean;
+      limits?: {
+        timeout_seconds?: number;
+        max_attempts?: number;
+        max_top_k?: number;
+        max_layer_count?: number;
+        max_head_count?: number;
+        max_prompt_tokens?: number;
+      };
+      internals_verdict?: string;
     } | null;
     run_trends?: {
       runs?: number;

@@ -10,13 +10,16 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { useTranslation } from "@/lib/i18n";
 import { useModelIntrospectionMechanism } from "@/components/inspector/model-introspection-mechanism";
 import type {
+  BadgeTone,
   GraphNodeDetails,
   IntrospectionSnapshot,
   SnapshotComparison,
 } from "@/components/inspector/model-introspection-dashboard-types";
 import {
+  buildAttentionModel,
   buildOperatorConclusion,
   buildLogitLensModel,
+  buildSaliencyModel,
   buildRagFocusModel,
   computeAnalysisProgress,
   formatCount,
@@ -40,7 +43,9 @@ import {
   AnalysisInputPanel,
   AnalysisLiveResponsePanel,
   AnalysisOrbPanel,
+  AttentionPanel,
   LogitLensPanel,
+  SaliencyPanel,
   RagFocusPanel,
   AnalysisResultsPanel,
   GraphPanel,
@@ -284,6 +289,7 @@ export function ModelIntrospectionDashboard() {
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [graphLayerOpen, setGraphLayerOpen] = useState(false);
   const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
+  const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
 
   const stats = useMemo(() => {
     if (!snapshot) {
@@ -379,6 +385,83 @@ export function ModelIntrospectionDashboard() {
   const logitLens = buildLogitLensModel(
     analysisResult?.analysis?.logit_lens ?? null,
   );
+  const attention = buildAttentionModel(
+    analysisResult?.analysis?.attention ?? null,
+  );
+  const saliency = buildSaliencyModel(
+    analysisResult?.analysis?.saliency ?? null,
+  );
+  const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
+  const internalsProbeElapsedMs = useMemo(() => {
+    const values = [
+      logitLens?.diagnostics?.elapsed_ms,
+      attention?.diagnostics?.elapsed_ms,
+      saliency?.diagnostics?.elapsed_ms,
+    ]
+      .filter((value): value is number => typeof value === "number")
+      .map((value) => Number(value));
+    if (values.length === 0) {
+      return null;
+    }
+    return values.reduce((sum, value) => sum + value, 0);
+  }, [attention?.diagnostics?.elapsed_ms, logitLens?.diagnostics?.elapsed_ms, saliency?.diagnostics?.elapsed_ms]);
+  const internalsCapabilityRows = useMemo(() => {
+    const payload = analysisCapabilities;
+    const buildRow = (
+      label: string,
+      capability:
+        | {
+            available?: boolean;
+            reason?: string;
+          }
+        | undefined,
+    ) => {
+      const available = Boolean(capability?.available);
+      return {
+        label,
+        available,
+        reason: available ? "ok" : String(capability?.reason || "unknown"),
+      };
+    };
+    return [
+      buildRow("attention", payload?.attention),
+      buildRow("saliency", payload?.saliency),
+      buildRow("logit lens", payload?.logit_lens),
+    ];
+  }, [analysisCapabilities]);
+  const internalsVerdictLabel =
+    analysisCapabilities?.internals_verdict === "full"
+      ? "internals full"
+      : analysisCapabilities?.internals_verdict === "partial"
+      ? "internals partial"
+      : "internals fallback";
+  const internalsVerdictTone: BadgeTone =
+    analysisCapabilities?.internals_verdict === "full"
+      ? "success"
+      : analysisCapabilities?.internals_verdict === "partial"
+      ? "warning"
+      : "neutral";
+  const probeLimitsLabel = useMemo(() => {
+    const limits = analysisCapabilities?.limits;
+    if (!limits) {
+      return "limits: n/a";
+    }
+    return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
+  }, [analysisCapabilities?.limits]);
+  const internalsVerdict = useMemo(() => {
+    if (!analysisCapabilities) {
+      return null;
+    }
+    const availableCount = Number(analysisCapabilities.available_count ?? 0);
+    const totalCount = Number(analysisCapabilities.total_count ?? 3);
+    return {
+      verdict: internalsVerdictLabel,
+      tone: internalsVerdictTone,
+      availableCount,
+      totalCount,
+      details: internalsCapabilityRows.map((row) => `${row.label}:${row.reason}`),
+    };
+  }, [analysisCapabilities, internalsCapabilityRows, internalsVerdictLabel, internalsVerdictTone]);
   const operatorConclusion = buildOperatorConclusion({
     analysisVisible,
     analysisStatus: analysisResult?.status,
@@ -689,44 +772,117 @@ export function ModelIntrospectionDashboard() {
             />
           </div>
           <div className="mb-4">
-            <LogitLensPanel
-              logitLens={logitLens}
-              title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
-              emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
-              unavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
-              )}
-              signalsLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.confidence")}
-              tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
-              checkpointsLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
-              )}
-              signalEarlyUnstableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
-              )}
-              signalLateStabilizedLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
-              )}
-              signalLowConfidenceLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
-              )}
-              signalStableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
-              )}
-              changedLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.changed")}
-              stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
-              sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
-              sourceRuntimeLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
-              )}
-              sourceUnavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
-              )}
-              sourceFallbackWarning={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
-              )}
-            />
+            <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-wide text-amber-100">Advanced internals</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
+                  <Badge tone="warning">
+                    {internalsProbeElapsedMs != null
+                      ? `probe budget ~${internalsProbeElapsedMs.toFixed(1)} ms`
+                      : "probe budget unknown"}
+                  </Badge>
+                </div>
+              </div>
+              <p className="mt-2 text-sm text-amber-50/90">
+                Attention i Saliency to kosztowna analiza opt-in. Może wydłużać odpowiedź i podlega limitom runtime/probe.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge tone="neutral">
+                  profile: {analysisCapabilities?.probe_profile ?? "unknown"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.probe_healthy ? "success" : "warning"}>
+                  runtime: {analysisCapabilities?.runtime_supported ? "supported" : "unsupported"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.endpoint_configured ? "success" : "warning"}>
+                  endpoint: {analysisCapabilities?.endpoint_configured ? "configured" : "missing"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.model_whitelisted ? "success" : "warning"}>
+                  model: {analysisCapabilities?.model_whitelisted ? "whitelisted" : "blocked"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.probe_enabled ? "success" : "warning"}>
+                  probe: {analysisCapabilities?.probe_enabled ? "enabled" : "disabled"}
+                </Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge tone="neutral">{probeLimitsLabel}</Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {internalsCapabilityRows.map((row) => (
+                  <Badge key={row.label} tone={row.available ? "success" : "warning"}>
+                    {row.label}: {row.reason}
+                  </Badge>
+                ))}
+              </div>
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setAdvancedInternalsOpen((current) => !current)}
+                >
+                  {advancedInternalsOpen ? "Ukryj advanced internals" : "Pokaż advanced internals"}
+                </Button>
+              </div>
+            </div>
           </div>
+          {advancedInternalsOpen && (
+            <>
+              <div className="mb-4">
+                <AttentionPanel
+                  attention={attention}
+                  title="Attention Head View"
+                  emptyLabel="Brak danych attention dla bieżącej analizy."
+                  unavailableLabel="Attention probe niedostępny dla bieżącego runu."
+                />
+              </div>
+              <div className="mb-4">
+                <SaliencyPanel
+                  saliency={saliency}
+                  title="Saliency / Attribution"
+                  emptyLabel="Brak danych saliency dla bieżącej analizy."
+                  unavailableLabel="Saliency probe niedostępny dla bieżącego runu."
+                />
+              </div>
+              <div className="mb-4">
+                <LogitLensPanel
+                  logitLens={logitLens}
+                  title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
+                  emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
+                  unavailableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
+                  )}
+                  signalsLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.confidence")}
+                  tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
+                  checkpointsLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
+                  )}
+                  signalEarlyUnstableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
+                  )}
+                  signalLateStabilizedLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
+                  )}
+                  signalLowConfidenceLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
+                  )}
+                  signalStableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
+                  )}
+                  changedLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.changed")}
+                  stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
+                  sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
+                  sourceRuntimeLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
+                  )}
+                  sourceUnavailableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
+                  )}
+                  sourceFallbackWarning={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
+                  )}
+                />
+              </div>
+            </>
+          )}
           <AnalysisResultsPanel
             analysisResponse={analysisResponse}
             analysisHighlights={analysisHighlights}
@@ -768,6 +924,7 @@ export function ModelIntrospectionDashboard() {
             generationProfile={generationProfile}
             runTrends={runTrends}
             operatorChecklist={operatorChecklist}
+            internalsVerdict={internalsVerdict}
           />
         </Panel>
       )}

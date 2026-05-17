@@ -6,10 +6,25 @@
 
 ## 0. Wprowadzenie – Wizja Docelowa (Venom v2.0)
 > [!NOTE]
-> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.8.0) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji, **zarządzania workflow**, uwierzytelniania, pamięci i uczenia się.
+> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.8.x) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji, **zarządzania workflow**, uwierzytelniania, pamięci i uczenia się.
 Venom to projekt stworzenia organizmu sztucznej inteligencji, który rozwija, nadzoruje i projektuje inne systemy AI.
 To warstwa meta-inteligencji działająca nad Rider-PC (logika, kod, AI) oraz Rider-Pi (świat fizyczny, sensory, ruch).
 Venom może w przyszłości objąć każdym innym modułem Twojego ekosystemu.
+
+## 0A. Stan aktualny (2026-05)
+To, co jest realnie dostarczone w obecnym stacku:
+- orchestrator i Workflow Control Plane,
+- lokalny 3-stack modeli z profilami zaleznymi od instalacji,
+- dashboard i panel konfiguracji,
+- request tracing i audyt decyzji,
+- model introspection z rozdzieleniem `answer verdict` oraz `internals verdict`,
+- gates jakości, testy i pre-commit.
+
+To, co pozostaje celem i nie jest jeszcze pelnym stanem produkcyjnym:
+- pelna petla self-improvement end-to-end,
+- w pelni konfigurowalne procesy wewnetrzne po stronie uzytkownika,
+- pelna integracja Rider-Pi / Google Home,
+- pelna unifikacja tylko w ONNX bez hybrydowych fallbackow.
 
 Venom to inteligentny, adaptacyjny, uczący się organizm, który:
 - rozumie intencje użytkownika,
@@ -31,7 +46,7 @@ Venom traktuje:
 Venom to meta-mózg, organizm sztucznej inteligencji, architekt kodu, orkiestrator agentów, menedżer wiedzy, strażnik zasad oraz AI, która tworzy AI.
 
 > [!NOTE]
-> **Ewolucja Procesowa:** W v1.5 organizm działa w oparciu o *wbudowane* autonomiczne procesy (Internal Processes) z wizualnym **Workflow Control Plane** do zarządzania stosem. W v2.0 użytkownik uzyska narzędzia do *jawnego modelowania* tych procesów (User-Configurable Processes), przejmując rolę inżyniera przepływu.
+> **Ewolucja Procesowa:** W v1.5 organizm działa w oparciu o *wbudowane* autonomiczne procesy (Internal Processes) z wizualnym **Workflow Control Plane** do zarządzania stosem. W v2.0 użytkownik uzyska narzędzia do *jawnego modelowania* tych procesów (User-Configurable Processes), przejmując rolę inżyniera przepływu. W obecnym stacku część tej wizji jest wdrożona jako kontrolowany, ale nadal ograniczony control-plane.
 
 ## 1. Definicja techniczna – czym jest Venom jako system
 Venom to warstwa meta-inteligencji lokalnej, która przyjmuje intencję użytkownika i przekształca ją w działające rozwiązanie poprzez:
@@ -44,19 +59,19 @@ Venom to warstwa meta-inteligencji lokalnej, która przyjmuje intencję użytkow
 - mechanizmy samodoskonalenia.
 
 Venom dąży do unifikacji technologicznej w oparciu o standard **ONNX Runtime**.
-W praktyce warstwa LLM działa dziś na lokalnym 3-stacku (Ollama/vLLM/ONNX) oraz chmurze (OpenAI/Gemini/Claude).
+W praktyce warstwa LLM działa na lokalnym 3-stacku (Ollama/vLLM/ONNX) oraz chmurze (OpenAI/Gemini/Claude), ale dostepnosc kazdego runtime zalezy od profilu instalacji i hosta.
 Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykach.
 
 ## 2. Model biologiczny Venoma – organizm sztucznej inteligencji
 <table>
 <tr><th>Organ</th><th>Funkcja</th><th>Rola w organizmie</th><th>Technologia</th><th>Wersja wizji</th><th>Wersja stosu w środowisku (2026-04-11)</th></tr>
 <tr><td>System nerwowy</td><td>Orkiestracja</td><td>Dialog, pętle decyzyjne</td><td>AutoGen + Orchestrator (FastAPI)</td><td>v1.0</td><td>Python `3.12.3`; `pyautogen>=0.2.0`; FastAPI `0.128.0` (pin)</td></tr>
-<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td><td>Ollama `0.17.4` (lokalnie); `vllm==0.11.0` (pin profilu); pakiety ONNX Runtime aktywne (bez pina)</td></tr>
+<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generowanie i refaktoring kodu</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td><td>Ollama `0.17.4` (lokalnie); `vllm==0.11.0` (pin profilu); pakiety ONNX Runtime aktywne (bez pina)</td></tr>
 <tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td><td>`openai>=1.98.0,<2`; `anthropic` (bez pina); Gemini przez API providera</td></tr>
 <tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td><td>Warstwa integracyjna w repo; brak jednej pinowanej wersji binarnej na hoście</td></tr>
 <tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td><td>`graphrag==2.7.2`; `lancedb==0.25.3`</td></tr>
 <tr><td>Móżdżek (Cerebellum)</td><td>Uczenie (Fine-tuning)</td><td>Pamięć mięśniowa, odruchy</td><td>The Academy (LoRA/QLoRA)</td><td>v1.5</td><td>Pipeline Academy w repo (brak jednej pinowanej zewnętrznej wersji runtime)</td></tr>
-<tr><td>Kora przedczołowa (Prefrontal Cortex)</td><td>Kontrola</td><td>Świadome planowanie</td><td>Workflow Control Plane</td><td>v1.5</td><td>Linia aplikacji Venom `v1.8.0` (wersja pakietu `web-next`)</td></tr>
+<tr><td>Kora przedczołowa (Prefrontal Cortex)</td><td>Kontrola</td><td>Świadome planowanie</td><td>Workflow Control Plane</td><td>v1.5</td><td>Linia aplikacji Venom `v1.8.x` (wersja pakietu `web-next`)</td></tr>
 <tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td><td>`semantic-kernel==1.39.4` (pin CI/minimal); Git `2.43.0`</td></tr>
 <tr><td>Synapsy narzędziowe (MCP)</td><td>Rozszerzenia narzędzi</td><td>Import narzędzi z Git, standaryzacja integracji</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td><td>Integracja MCP zaimplementowana w repo (brak dedykowanej pinowanej wersji serwera MCP)</td></tr>
 <tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td><td>Ollama `0.17.4`; `openai>=1.98.0,<2`</td></tr>
@@ -86,6 +101,7 @@ W praktyce, inżynieria modeli językowych (LLM) wymusiła podejście hybrydowe.
 > **Decyzja Architektoniczna: Experimental Triple-Stack (Ollama vs vLLM vs ONNX)**
 > Utrzymywanie równoległego wsparcia dla trzech lokalnych technologii serwowania (Ollama, vLLM, ONNX) jest na obecnym etapie **świadomym wyborem projektowym**.
 > Pozwala to na elastyczne testowanie różnych rodzin modeli i metod kwantyzacji w celu empirycznego wyłonienia najwydajniejszego rozwiązania docelowego dla specyficznych warunków sprzętowych.
+> Operacyjnie nie zakładamy, że wszystkie trzy runtime sa zawsze dostepne na kazdym hoście.
 > **Stabilizacja (v1.0.x):** Wprowadzono hybrydową orkiestrację umożliwiającą płynne przełączanie między aktywnym serwerem a modelem bezpośrednio z poziomu Cockpitu (Hybrid Model Orchestration).
 
 
@@ -165,7 +181,7 @@ Ulepsza:
 - polityki.
 
 > [!NOTE]
-> Zestaw narzędzi self-improvement jest zaimplementowany, ale pełna automatyczna pętla end-to-end (`task -> code -> test -> PR -> memory -> policy`) pozostaje celem v2.0.
+> Zestaw narzędzi self-improvement jest zaimplementowany częściowo, ale pełna automatyczna pętla end-to-end (`task -> code -> test -> PR -> memory -> policy`) pozostaje celem v2.0.
 
 ## 6. Pipeline Venoma
 1. Intencja użytkownika
@@ -192,9 +208,11 @@ Ulepsza:
 
 Wymuszanie policy obejmuje granice route/skill oraz centralny, globalny pre-execution gate na poziomie orkiestratora; warstwy route/skill pozostają aktywne jako defense-in-depth.
 
-## 8. Integracja Rider-Pi i Google Home (IoT)- Venom 2.0
+## 8. Integracja Rider-Pi i Google Home (IoT) - Venom 2.0
 Rider-Pi – ciało fizyczne.
 Google Home - internet rzeczy
+
+Stan aktualny: integracja jest kierunkiem docelowym, a nie pełnym zakresem dostarczonym w bieżącym stacku.
 
 Venom koordynuje cały ekosystem.
 
@@ -209,7 +227,7 @@ Venom to:
 - strażnik zasad,
 - AI tworząca AI.
 
-Warstwa LLM działa w podejściu **3-stack (Ollama/vLLM/ONNX + chmura)**, a ONNX pokrywa również wybrane obszary percepcji/audio.
+Warstwa LLM działa w podejściu **3-stack (Ollama/vLLM/ONNX + chmura)**, a ONNX pokrywa również wybrane obszary percepcji/audio. To jest obecny kompromis operacyjny, nie finalna redukcja do jednego runtime.
 ### Szczegoly roadmapy v2.0 (chat)
 - **Multi‑chat:** wiele nazwanych sesji, szybkie przełączanie i zachowana historia.
 - **Powrot do sesji:** wznawianie dawnych sesji i kontynuacja z ich kontekstem.

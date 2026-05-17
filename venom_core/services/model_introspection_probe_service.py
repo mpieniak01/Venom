@@ -16,6 +16,7 @@ _PROBE_TIMEOUT_SECONDS = 20.0
 _PROBE_MAX_ATTEMPTS = 2
 _PROBE_MAX_TOP_K = 32
 _PROBE_MAX_LAYER_COUNT = 8
+_PROBE_MAX_HEAD_COUNT = 32
 _PROBE_MAX_PROMPT_TOKENS = 1024
 _PROBE_UNAVAILABLE = "probe_unavailable"
 _PROBE_OK = "ok"
@@ -30,6 +31,7 @@ _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
         "max_attempts": _PROBE_MAX_ATTEMPTS,
         "max_top_k": _PROBE_MAX_TOP_K,
         "max_layer_count": _PROBE_MAX_LAYER_COUNT,
+        "max_head_count": _PROBE_MAX_HEAD_COUNT,
         "max_prompt_tokens": _PROBE_MAX_PROMPT_TOKENS,
     },
     "stage": {
@@ -37,6 +39,7 @@ _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
         "max_attempts": 2,
         "max_top_k": 24,
         "max_layer_count": 6,
+        "max_head_count": 24,
         "max_prompt_tokens": 768,
     },
     "prod": {
@@ -44,9 +47,38 @@ _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
         "max_attempts": 1,
         "max_top_k": 16,
         "max_layer_count": 4,
+        "max_head_count": 16,
         "max_prompt_tokens": 512,
     },
 }
+_PROBE_MODEL_WHITELIST_DEFAULT = (
+    "google/gemma-4-e2b-it,google/gemma-4-e2b-it:latest,openclaw-qwen3vl-8b-opt:latest"
+)
+
+
+def _parse_csv_env(raw_value: str | None) -> list[str]:
+    if raw_value is None:
+        return []
+    values: list[str] = []
+    for part in raw_value.split(","):
+        normalized = part.strip().lower()
+        if normalized:
+            values.append(normalized)
+    return values
+
+
+def get_probe_model_whitelist() -> list[str]:
+    configured = os.getenv(
+        "VENOM_INTROSPECTION_PROBE_MODEL_WHITELIST",
+        _PROBE_MODEL_WHITELIST_DEFAULT,
+    )
+    return _parse_csv_env(configured)
+
+
+def _is_probe_model_whitelisted(model_name: str) -> bool:
+    model = str(model_name or "").strip().lower()
+    whitelist = get_probe_model_whitelist()
+    return bool(model and whitelist and model in whitelist)
 
 
 def _parse_bool_env(raw_value: str | None, *, default: bool) -> bool:
@@ -120,6 +152,10 @@ def get_probe_runtime_config() -> dict[str, Any]:
         "VENOM_INTROSPECTION_PROBE_MAX_PROMPT_TOKENS",
         int(profile_limits["max_prompt_tokens"]),
     )
+    max_head_count = _read_int_env(
+        "VENOM_INTROSPECTION_PROBE_MAX_HEAD_COUNT",
+        int(profile_limits["max_head_count"]),
+    )
     enabled = _parse_bool_env(
         os.getenv("GEMMA4_AUDIO_PROBE_ENABLED"),
         default=False,
@@ -131,6 +167,7 @@ def get_probe_runtime_config() -> dict[str, Any]:
         "max_attempts": max(1, int(max_attempts)),
         "max_top_k": max(1, int(max_top_k)),
         "max_layer_count": max(1, int(max_layer_count)),
+        "max_head_count": max(1, int(max_head_count)),
         "max_prompt_tokens": max(1, int(max_prompt_tokens)),
     }
 
@@ -141,11 +178,15 @@ def build_probe_health_payload(runtime: Any) -> dict[str, Any]:
     endpoint = str(getattr(runtime, "endpoint", "") or "")
     runtime_supported = is_multi_runtime(provider)
     endpoint_configured = bool(endpoint)
+    model_name = str(getattr(runtime, "model_name", "") or "")
+    model_whitelisted = _is_probe_model_whitelisted(model_name)
     enabled = bool(config["enabled"])
     if not enabled:
         status = "disabled"
     elif not runtime_supported:
         status = "unsupported_runtime"
+    elif not model_whitelisted:
+        status = "model_not_whitelisted"
     elif not endpoint_configured:
         status = "endpoint_missing"
     else:
@@ -156,12 +197,15 @@ def build_probe_health_payload(runtime: Any) -> dict[str, Any]:
         "healthy": status == "ready",
         "runtime_supported": runtime_supported,
         "endpoint_configured": endpoint_configured,
+        "model_whitelisted": model_whitelisted,
+        "model_name": model_name,
         "profile": str(config["profile"]),
         "limits": {
             "timeout_seconds": float(config["timeout_seconds"]),
             "max_attempts": int(config["max_attempts"]),
             "max_top_k": int(config["max_top_k"]),
             "max_layer_count": int(config["max_layer_count"]),
+            "max_head_count": int(config["max_head_count"]),
             "max_prompt_tokens": int(config["max_prompt_tokens"]),
         },
     }
@@ -190,6 +234,18 @@ def _sanitize_layer_selection(layers: list[int]) -> list[int]:
             deduplicated.append(layer)
     if len(deduplicated) > _PROBE_MAX_LAYER_COUNT:
         raise ValueError(f"layer_selection exceeds limit ({_PROBE_MAX_LAYER_COUNT})")
+    return sorted(deduplicated)
+
+
+def _sanitize_head_selection(heads: list[int]) -> list[int]:
+    deduplicated: list[int] = []
+    for head in heads:
+        if head < 0:
+            raise ValueError("head_selection must contain non-negative integers")
+        if head not in deduplicated:
+            deduplicated.append(head)
+    if len(deduplicated) > _PROBE_MAX_HEAD_COUNT:
+        raise ValueError(f"head_selection exceeds limit ({_PROBE_MAX_HEAD_COUNT})")
     return sorted(deduplicated)
 
 
@@ -306,6 +362,13 @@ def _validate_probe_runtime_preconditions(
             runtime_label=runtime_label,
             flow_started_at=flow_started_at,
         )
+    if not _is_probe_model_whitelisted(getattr(runtime, "model_name", "")):
+        return _probe_unavailable(
+            code="model_not_whitelisted",
+            message="Probe is disabled for active model (not in whitelist)",
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+        )
     if not runtime.endpoint:
         return _probe_unavailable(
             code="endpoint_missing",
@@ -321,8 +384,9 @@ def _validate_probe_request_limits(
     prompt: str,
     top_k: int,
     layer_selection: list[int],
+    head_selection: list[int],
     config: dict[str, Any],
-) -> list[int]:
+) -> tuple[list[int], list[int]]:
     estimated_tokens = _estimate_prompt_tokens(prompt)
     max_prompt_tokens = int(config["max_prompt_tokens"])
     if estimated_tokens > max_prompt_tokens:
@@ -336,19 +400,33 @@ def _validate_probe_request_limits(
     max_layer_count = int(config["max_layer_count"])
     if len(sanitized_layers) > max_layer_count:
         raise ValueError(f"layer_selection exceeds limit ({max_layer_count})")
-    return sanitized_layers
+    sanitized_heads = _sanitize_head_selection(head_selection)
+    max_head_count = int(config["max_head_count"])
+    if len(sanitized_heads) > max_head_count:
+        raise ValueError(f"head_selection exceeds limit ({max_head_count})")
+    return sanitized_layers, sanitized_heads
+
+
+def _build_unavailable_code_for_mode(mode: str) -> str:
+    normalized_mode = str(mode or "").strip().lower()
+    if normalized_mode == "attention":
+        return "attention_unavailable"
+    if normalized_mode == "saliency":
+        return "saliency_unavailable"
+    return "probe_unavailable"
 
 
 def _handle_probe_http_response(
     *,
     response: httpx.Response,
+    mode: str,
     runtime_label: str,
     flow_started_at: float,
 ) -> dict[str, Any] | None:
     elapsed_ms = _elapsed_ms(flow_started_at)
     if response.status_code in {404, 501, 503}:
         return _build_unavailable_response(
-            code="probe_unavailable",
+            code=_build_unavailable_code_for_mode(mode),
             message="Probe endpoint is unavailable on active runtime",
             runtime_label=runtime_label,
             elapsed_ms=elapsed_ms,
@@ -405,6 +483,7 @@ def _build_retry_exhausted_response(
 def _handle_probe_response_attempt(
     *,
     response: httpx.Response,
+    mode: str,
     attempt: int,
     max_attempts: int,
     runtime_label: str,
@@ -425,6 +504,7 @@ def _handle_probe_response_attempt(
 
     handled = _handle_probe_http_response(
         response=response,
+        mode=mode,
         runtime_label=runtime_label,
         flow_started_at=flow_started_at,
     )
@@ -470,25 +550,33 @@ async def _run_single_probe_attempt(
     *,
     probe_url: str,
     probe_payload: dict[str, Any],
+    mode: str,
     timeout_seconds: float,
     attempt: int,
     max_attempts: int,
     runtime_label: str,
     flow_started_at: float,
-) -> tuple[dict[str, Any] | None, bool]:
+) -> tuple[dict[str, Any] | None, bool, str | None]:
     try:
         response = await _post_probe_request(
             url=probe_url,
             payload=probe_payload,
             timeout_seconds=timeout_seconds,
         )
-        return _handle_probe_response_attempt(
+        result, should_retry = _handle_probe_response_attempt(
             response=response,
+            mode=mode,
             attempt=attempt,
             max_attempts=max_attempts,
             runtime_label=runtime_label,
             flow_started_at=flow_started_at,
         )
+        retry_reason = (
+            "transient_http"
+            if should_retry and response.status_code in _PROBE_TRANSIENT_STATUS_CODES
+            else None
+        )
+        return result, should_retry, retry_reason
     except ValueError:
         raise
     except httpx.TimeoutException:
@@ -500,8 +588,8 @@ async def _run_single_probe_attempt(
             timeout=True,
         )
         if failure is not None:
-            return failure, False
-        return None, True
+            return failure, False, None
+        return None, True, "timeout"
     except httpx.ConnectError:
         failure = _handle_probe_retry_exception(
             attempt=attempt,
@@ -511,8 +599,8 @@ async def _run_single_probe_attempt(
             timeout=False,
         )
         if failure is not None:
-            return failure, False
-        return None, True
+            return failure, False, None
+        return None, True, "transport"
     except httpx.HTTPError:
         failure = _handle_probe_retry_exception(
             attempt=attempt,
@@ -522,31 +610,43 @@ async def _run_single_probe_attempt(
             timeout=False,
         )
         if failure is not None:
-            return failure, False
-        return None, True
+            return failure, False, None
+        return None, True, "transport"
 
 
 async def _execute_probe_with_retry(
     *,
     probe_url: str,
     probe_payload: dict[str, Any],
+    mode: str,
     timeout_seconds: float,
     max_attempts: int,
     runtime_label: str,
     flow_started_at: float,
 ) -> dict[str, Any]:
     attempt = 0
+    timeout_attempts = 0
+    transient_http_attempts = 0
+    transport_attempts = 0
     while attempt < max_attempts:
         attempt += 1
-        result, should_retry = await _run_single_probe_attempt(
+        result, should_retry, retry_reason = await _run_single_probe_attempt(
             probe_url=probe_url,
             probe_payload=probe_payload,
+            mode=mode,
             timeout_seconds=timeout_seconds,
             attempt=attempt,
             max_attempts=max_attempts,
             runtime_label=runtime_label,
             flow_started_at=flow_started_at,
         )
+        if result is None and should_retry:
+            if retry_reason == "timeout":
+                timeout_attempts += 1
+            elif retry_reason == "transient_http":
+                transient_http_attempts += 1
+            else:
+                transport_attempts += 1
         if should_retry:
             continue
         if result is None:
@@ -556,6 +656,30 @@ async def _execute_probe_with_retry(
                 runtime_label=runtime_label,
                 flow_started_at=flow_started_at,
             )
+        diagnostics = result.get("diagnostics")
+        if isinstance(diagnostics, dict):
+            diagnostics["attempts_used"] = attempt
+            diagnostics["attempts_max"] = max_attempts
+            diagnostics["retry_count"] = max(0, attempt - 1)
+            diagnostics["timeout_attempts"] = timeout_attempts
+            diagnostics["transient_http_attempts"] = transient_http_attempts
+            diagnostics["transport_attempts"] = transport_attempts
+            if result.get("status") == _PROBE_OK and attempt > 1:
+                diagnostics["retry_class"] = (
+                    "soft_timeout_recovered"
+                    if timeout_attempts > 0
+                    else "soft_retry_recovered"
+                )
+            elif result.get("status") == _PROBE_UNAVAILABLE:
+                code = str(result.get("code") or "")
+                if code == "probe_timeout":
+                    result["code"] = (
+                        "probe_timeout_hard"
+                        if max_attempts > 1
+                        else "probe_timeout_soft"
+                    )
+                elif code in {"runtime_error", "probe_transport_error"} and attempt > 1:
+                    diagnostics["retry_class"] = "hard_retry_exhausted"
         return result
     return _build_retry_exhausted_response(
         code="probe_transport_error",
@@ -570,6 +694,8 @@ async def run_model_introspection_probe(
     prompt: str,
     mode: str,
     layer_selection: list[int],
+    head_selection: list[int] | None = None,
+    target_output_token_index: int | None = None,
     top_k: int,
 ) -> dict[str, Any]:
     runtime = get_active_llm_runtime()
@@ -585,10 +711,11 @@ async def run_model_introspection_probe(
     if precondition_error is not None:
         return precondition_error
 
-    sanitized_layers = _validate_probe_request_limits(
+    sanitized_layers, sanitized_heads = _validate_probe_request_limits(
         prompt=prompt,
         top_k=top_k,
         layer_selection=layer_selection,
+        head_selection=head_selection or [],
         config=config,
     )
     endpoint = str(runtime.endpoint)
@@ -597,11 +724,15 @@ async def run_model_introspection_probe(
         "prompt": prompt,
         "mode": mode,
         "layer_selection": sanitized_layers,
+        "head_selection": sanitized_heads,
         "top_k": top_k,
     }
+    if target_output_token_index is not None:
+        probe_payload["target_output_token_index"] = int(target_output_token_index)
     return await _execute_probe_with_retry(
         probe_url=probe_url,
         probe_payload=probe_payload,
+        mode=mode,
         timeout_seconds=float(config["timeout_seconds"]),
         max_attempts=int(config["max_attempts"]),
         runtime_label=runtime_label,

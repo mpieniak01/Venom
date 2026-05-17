@@ -47,13 +47,15 @@ if [[ "${#changed_files[@]}" -gt 0 ]]; then
     if [[ "${file_path}" == venom_core/* || "${file_path}" == scripts/* || "${file_path}" == make/* || "${file_path}" == config/testing/* || "${file_path}" == config/pytest-groups/* ]]; then
       has_backend_change=1
     fi
+    if [[ "${file_path}" == "pyproject.toml" || "${file_path}" == "requirements.txt" || "${file_path}" == "requirements-full.txt" || "${file_path}" == "requirements-dev.txt" || "${file_path}" == "requirements-ci-lite.txt" || "${file_path}" == "pytest.ini" || "${file_path}" == ".pre-commit-config.yaml" ]]; then
+      has_backend_change=1
+    fi
     if [[ "${file_path}" == tests/* && "${file_path}" == *.py ]]; then
       has_python_tests_change=1
       has_backend_change=1
     fi
     if [[ "${file_path}" != *.md ]]; then
       markdown_only=0
-      break
     fi
   done
   if [[ "${markdown_only}" -eq 1 ]]; then

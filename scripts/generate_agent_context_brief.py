@@ -119,6 +119,16 @@ def _infer_scope(changed_files: list[str]) -> dict[str, bool]:
     for path in changed_files:
         if path.startswith("venom_core/") or path.startswith("scripts/"):
             scope["backend"] = True
+        if path in {
+            "pyproject.toml",
+            "requirements.txt",
+            "requirements-full.txt",
+            "requirements-dev.txt",
+            "requirements-ci-lite.txt",
+            "pytest.ini",
+            ".pre-commit-config.yaml",
+        }:
+            scope["backend"] = True
         if path.startswith("web-next/"):
             scope["frontend"] = True
         if path.startswith("tests/"):

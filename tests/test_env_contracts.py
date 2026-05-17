@@ -59,6 +59,10 @@ def _assert_profile_contract(dev: dict, profile: str) -> None:
     raise AssertionError(f"Unsupported runtime profile: {profile}")
 
 
+def _normalize_runtime_profile(value: str) -> str:
+    return value.strip().lower().replace("-", "_")
+
+
 def test_gemma4_keys_present_in_env_dev():
     example = _read_env_keys(".env.dev.example")
     dev = _apply_env_overrides(_read_env_keys(_env_contract_source_path()))
@@ -81,13 +85,13 @@ def test_active_local_runtime_matches_endpoint_contract():
 @pytest.mark.parametrize("profile", ["ollama", "vllm", "multi_runtime"])
 def test_runtime_profile_endpoint_contracts(profile: str):
     dev = _apply_env_overrides(_read_env_keys(_env_contract_source_path()))
-    selected_profile = os.getenv("ENV_CONTRACT_PROFILE", "").strip().lower()
-    normalized = profile.strip().lower()
+    selected_profile = _normalize_runtime_profile(os.getenv("ENV_CONTRACT_PROFILE", ""))
+    normalized = _normalize_runtime_profile(profile)
     if selected_profile:
         if normalized != selected_profile:
             pytest.skip(f"Profile {normalized} not selected by ENV_CONTRACT_PROFILE.")
     else:
-        active = dev.get("ACTIVE_LLM_SERVER", "").strip().lower()
+        active = _normalize_runtime_profile(dev.get("ACTIVE_LLM_SERVER", ""))
         if normalized != active:
             pytest.skip(
                 f"Profile {normalized} is not active ({active or 'unset'}). "

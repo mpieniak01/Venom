@@ -77,6 +77,31 @@ type OperatorChecklistItem = {
   detail: string;
 };
 
+type InternalsVerdictValue = "full" | "partial" | "fallback_only";
+
+function resolveInternalsVerdictPresentation(
+  verdict: string | undefined,
+): { label: string; tone: BadgeTone } {
+  const normalized: InternalsVerdictValue =
+    verdict === "full" || verdict === "partial" || verdict === "fallback_only"
+      ? verdict
+      : "fallback_only";
+  if (normalized === "full") {
+    return { label: "internals full", tone: "success" };
+  }
+  if (normalized === "partial") {
+    return { label: "internals partial", tone: "warning" };
+  }
+  return { label: "internals fallback", tone: "neutral" };
+}
+
+function resolveProbeBudgetLabel(internalsProbeElapsedMs: number | null): string {
+  if (internalsProbeElapsedMs == null) {
+    return "probe budget unknown";
+  }
+  return `probe budget ~${internalsProbeElapsedMs.toFixed(1)} ms`;
+}
+
 function buildOperatorChecklist(args: {
   ragSource: string;
   probeSource: string;
@@ -399,7 +424,7 @@ export function ModelIntrospectionDashboard() {
       saliency?.diagnostics?.elapsed_ms,
     ]
       .filter((value): value is number => typeof value === "number")
-      .map((value) => Number(value));
+      .map(Number);
     if (values.length === 0) {
       return null;
     }
@@ -429,18 +454,11 @@ export function ModelIntrospectionDashboard() {
       buildRow("logit lens", payload?.logit_lens),
     ];
   }, [analysisCapabilities]);
-  const internalsVerdictLabel =
-    analysisCapabilities?.internals_verdict === "full"
-      ? "internals full"
-      : analysisCapabilities?.internals_verdict === "partial"
-      ? "internals partial"
-      : "internals fallback";
-  const internalsVerdictTone: BadgeTone =
-    analysisCapabilities?.internals_verdict === "full"
-      ? "success"
-      : analysisCapabilities?.internals_verdict === "partial"
-      ? "warning"
-      : "neutral";
+  const internalsVerdictPresentation = resolveInternalsVerdictPresentation(
+    analysisCapabilities?.internals_verdict,
+  );
+  const internalsVerdictLabel = internalsVerdictPresentation.label;
+  const internalsVerdictTone = internalsVerdictPresentation.tone;
   const probeLimitsLabel = useMemo(() => {
     const limits = analysisCapabilities?.limits;
     if (!limits) {
@@ -777,11 +795,7 @@ export function ModelIntrospectionDashboard() {
                 <p className="text-xs uppercase tracking-wide text-amber-100">Advanced internals</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
-                  <Badge tone="warning">
-                    {internalsProbeElapsedMs != null
-                      ? `probe budget ~${internalsProbeElapsedMs.toFixed(1)} ms`
-                      : "probe budget unknown"}
-                  </Badge>
+                  <Badge tone="warning">{resolveProbeBudgetLabel(internalsProbeElapsedMs)}</Badge>
                 </div>
               </div>
               <p className="mt-2 text-sm text-amber-50/90">

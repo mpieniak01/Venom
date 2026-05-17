@@ -28,6 +28,18 @@ def _normalize_token(token: Any) -> str:
     return value or "?"
 
 
+def _resolve_target_token(
+    *,
+    probe_target_token: Any,
+    requested_target_token: str | None,
+) -> str | None:
+    if probe_target_token is not None:
+        return _normalize_token(probe_target_token)
+    if requested_target_token:
+        return _normalize_token(requested_target_token)
+    return None
+
+
 def _normalize_token_weights(items: Any) -> list[dict[str, Any]]:
     if not isinstance(items, list):
         return []
@@ -127,12 +139,9 @@ async def build_saliency_payload(
         else _SALIENCY_TARGET_OUTPUT_TOKEN_INDEX
     )
     target_token = probe.get("target_output_token")
-    target_token_str = (
-        _normalize_token(target_token)
-        if target_token is not None
-        else _normalize_token(target_output_token)
-        if target_output_token
-        else None
+    target_token_str = _resolve_target_token(
+        probe_target_token=target_token,
+        requested_target_token=target_output_token,
     )
 
     return {

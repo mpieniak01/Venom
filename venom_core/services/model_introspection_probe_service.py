@@ -641,12 +641,14 @@ async def _execute_probe_with_retry(
             flow_started_at=flow_started_at,
         )
         if result is None and should_retry:
-            if retry_reason == "timeout":
-                timeout_attempts += 1
-            elif retry_reason == "transient_http":
-                transient_http_attempts += 1
-            else:
-                transport_attempts += 1
+            timeout_attempts, transient_http_attempts, transport_attempts = (
+                _increment_retry_counters(
+                    retry_reason=retry_reason,
+                    timeout_attempts=timeout_attempts,
+                    transient_http_attempts=transient_http_attempts,
+                    transport_attempts=transport_attempts,
+                )
+            )
         if should_retry:
             continue
         if result is None:
@@ -656,30 +658,14 @@ async def _execute_probe_with_retry(
                 runtime_label=runtime_label,
                 flow_started_at=flow_started_at,
             )
-        diagnostics = result.get("diagnostics")
-        if isinstance(diagnostics, dict):
-            diagnostics["attempts_used"] = attempt
-            diagnostics["attempts_max"] = max_attempts
-            diagnostics["retry_count"] = max(0, attempt - 1)
-            diagnostics["timeout_attempts"] = timeout_attempts
-            diagnostics["transient_http_attempts"] = transient_http_attempts
-            diagnostics["transport_attempts"] = transport_attempts
-            if result.get("status") == _PROBE_OK and attempt > 1:
-                diagnostics["retry_class"] = (
-                    "soft_timeout_recovered"
-                    if timeout_attempts > 0
-                    else "soft_retry_recovered"
-                )
-            elif result.get("status") == _PROBE_UNAVAILABLE:
-                code = str(result.get("code") or "")
-                if code == "probe_timeout":
-                    result["code"] = (
-                        "probe_timeout_hard"
-                        if max_attempts > 1
-                        else "probe_timeout_soft"
-                    )
-                elif code in {"runtime_error", "probe_transport_error"} and attempt > 1:
-                    diagnostics["retry_class"] = "hard_retry_exhausted"
+        _enrich_retry_diagnostics(
+            result=result,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            timeout_attempts=timeout_attempts,
+            transient_http_attempts=transient_http_attempts,
+            transport_attempts=transport_attempts,
+        )
         return result
     return _build_retry_exhausted_response(
         code="probe_transport_error",
@@ -687,6 +673,57 @@ async def _execute_probe_with_retry(
         runtime_label=runtime_label,
         flow_started_at=flow_started_at,
     )
+
+
+def _increment_retry_counters(
+    *,
+    retry_reason: str | None,
+    timeout_attempts: int,
+    transient_http_attempts: int,
+    transport_attempts: int,
+) -> tuple[int, int, int]:
+    if retry_reason == "timeout":
+        return timeout_attempts + 1, transient_http_attempts, transport_attempts
+    if retry_reason == "transient_http":
+        return timeout_attempts, transient_http_attempts + 1, transport_attempts
+    return timeout_attempts, transient_http_attempts, transport_attempts + 1
+
+
+def _enrich_retry_diagnostics(
+    *,
+    result: dict[str, Any],
+    attempt: int,
+    max_attempts: int,
+    timeout_attempts: int,
+    transient_http_attempts: int,
+    transport_attempts: int,
+) -> None:
+    diagnostics = result.get("diagnostics")
+    if not isinstance(diagnostics, dict):
+        return
+    diagnostics["attempts_used"] = attempt
+    diagnostics["attempts_max"] = max_attempts
+    diagnostics["retry_count"] = max(0, attempt - 1)
+    diagnostics["timeout_attempts"] = timeout_attempts
+    diagnostics["transient_http_attempts"] = transient_http_attempts
+    diagnostics["transport_attempts"] = transport_attempts
+
+    status = result.get("status")
+    if status == _PROBE_OK and attempt > 1:
+        diagnostics["retry_class"] = (
+            "soft_timeout_recovered" if timeout_attempts > 0 else "soft_retry_recovered"
+        )
+        return
+    if status != _PROBE_UNAVAILABLE:
+        return
+    code = str(result.get("code") or "")
+    if code == "probe_timeout":
+        result["code"] = (
+            "probe_timeout_hard" if max_attempts > 1 else "probe_timeout_soft"
+        )
+        return
+    if code in {"runtime_error", "probe_transport_error"} and attempt > 1:
+        diagnostics["retry_class"] = "hard_retry_exhausted"
 
 
 async def run_model_introspection_probe(

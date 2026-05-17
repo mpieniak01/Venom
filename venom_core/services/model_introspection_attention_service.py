@@ -88,22 +88,29 @@ def _normalize_layers(
         raw_heads = raw_layer.get("heads")
         if not isinstance(layer_id, int) or not isinstance(raw_heads, list):
             continue
-        heads: list[dict[str, Any]] = []
-        for raw_head in raw_heads:
-            if not isinstance(raw_head, dict):
-                continue
-            head_id = raw_head.get("head")
-            if not isinstance(head_id, int):
-                continue
-            links = _normalize_head_links(links=raw_head.get("links"), tokens=tokens)
-            if not links:
-                continue
-            heads.append({"head": head_id, "top_links": links})
+        heads = _normalize_heads(raw_heads=raw_heads, tokens=tokens)
         if heads:
             heads.sort(key=lambda item: item["head"])
             normalized_layers.append({"layer": layer_id, "heads": heads})
     normalized_layers.sort(key=lambda item: item["layer"])
     return normalized_layers
+
+
+def _normalize_heads(
+    *, raw_heads: list[Any], tokens: list[str]
+) -> list[dict[str, Any]]:
+    heads: list[dict[str, Any]] = []
+    for raw_head in raw_heads:
+        if not isinstance(raw_head, dict):
+            continue
+        head_id = raw_head.get("head")
+        if not isinstance(head_id, int):
+            continue
+        links = _normalize_head_links(links=raw_head.get("links"), tokens=tokens)
+        if not links:
+            continue
+        heads.append({"head": head_id, "top_links": links})
+    return heads
 
 
 def _build_unavailable_attention_payload(

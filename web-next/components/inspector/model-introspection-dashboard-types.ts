@@ -117,7 +117,7 @@ export type AnalysisTimelineEntry = {
   label: string;
   status: string;
   detail: string;
-  path?: "answer_path" | "internals_path" | string;
+  path?: string;
   at_ms: number;
   progress?: number;
 };

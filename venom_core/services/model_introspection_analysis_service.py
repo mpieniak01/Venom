@@ -641,6 +641,39 @@ def _build_operator_conclusion_payload(
     }
 
 
+def _capability_from_probe_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    source = str((payload or {}).get("source") or "probe_unavailable")
+    status = str((payload or {}).get("status") or "probe_unavailable")
+    code = str((payload or {}).get("code") or "probe_unavailable")
+    available = source == "probe_runtime" and status == "ok"
+    reason = "ok" if available else code
+    return {
+        "available": available,
+        "source": source,
+        "status": status,
+        "reason": reason,
+    }
+
+
+def _build_probe_limits_payload(limits: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "timeout_seconds": float(limits.get("timeout_seconds") or 0.0),
+        "max_attempts": int(limits.get("max_attempts") or 0),
+        "max_top_k": int(limits.get("max_top_k") or 0),
+        "max_layer_count": int(limits.get("max_layer_count") or 0),
+        "max_head_count": int(limits.get("max_head_count") or 0),
+        "max_prompt_tokens": int(limits.get("max_prompt_tokens") or 0),
+    }
+
+
+def _resolve_internals_verdict(*, available_count: int, total_count: int) -> str:
+    if available_count == total_count:
+        return "full"
+    if available_count > 0:
+        return "partial"
+    return "fallback_only"
+
+
 def _build_analysis_capabilities_payload(
     *,
     attention: dict[str, Any] | None,
@@ -648,22 +681,9 @@ def _build_analysis_capabilities_payload(
     logit_lens: dict[str, Any] | None,
     probe_health: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    def _capability_from_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
-        source = str((payload or {}).get("source") or "probe_unavailable")
-        status = str((payload or {}).get("status") or "probe_unavailable")
-        code = str((payload or {}).get("code") or "probe_unavailable")
-        available = source == "probe_runtime" and status == "ok"
-        reason = "ok" if available else code
-        return {
-            "available": available,
-            "source": source,
-            "status": status,
-            "reason": reason,
-        }
-
-    attention_capability = _capability_from_payload(attention)
-    saliency_capability = _capability_from_payload(saliency)
-    logit_lens_capability = _capability_from_payload(logit_lens)
+    attention_capability = _capability_from_probe_payload(attention)
+    saliency_capability = _capability_from_probe_payload(saliency)
+    logit_lens_capability = _capability_from_probe_payload(logit_lens)
     available_count = sum(
         1
         for capability in (
@@ -677,6 +697,10 @@ def _build_analysis_capabilities_payload(
     probe_health_dict = probe_health if isinstance(probe_health, dict) else {}
     limits = probe_health_dict.get("limits")
     limits_dict = limits if isinstance(limits, dict) else {}
+    internals_verdict = _resolve_internals_verdict(
+        available_count=available_count,
+        total_count=total_count,
+    )
     return {
         "attention": attention_capability,
         "saliency": saliency_capability,
@@ -689,21 +713,8 @@ def _build_analysis_capabilities_payload(
         "runtime_supported": bool(probe_health_dict.get("runtime_supported")),
         "endpoint_configured": bool(probe_health_dict.get("endpoint_configured")),
         "model_whitelisted": bool(probe_health_dict.get("model_whitelisted")),
-        "limits": {
-            "timeout_seconds": float(limits_dict.get("timeout_seconds") or 0.0),
-            "max_attempts": int(limits_dict.get("max_attempts") or 0),
-            "max_top_k": int(limits_dict.get("max_top_k") or 0),
-            "max_layer_count": int(limits_dict.get("max_layer_count") or 0),
-            "max_head_count": int(limits_dict.get("max_head_count") or 0),
-            "max_prompt_tokens": int(limits_dict.get("max_prompt_tokens") or 0),
-        },
-        "internals_verdict": (
-            "full"
-            if available_count == total_count
-            else "partial"
-            if available_count > 0
-            else "fallback_only"
-        ),
+        "limits": _build_probe_limits_payload(limits_dict),
+        "internals_verdict": internals_verdict,
     }
 
 

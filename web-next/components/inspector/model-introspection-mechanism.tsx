@@ -59,24 +59,24 @@ function writeEnabledToStorage(enabled: boolean) {
 export function ModelIntrospectionMechanismProvider({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  const [enabled, setEnabledState] = useState(false);
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
     const syncFromStorage = () => {
-      setEnabledState(readEnabledFromStorage());
+      setEnabled(readEnabledFromStorage());
     };
 
     syncFromStorage();
     return subscribe(syncFromStorage);
   }, []);
 
-  const setEnabled = useCallback((nextEnabled: boolean) => {
-    setEnabledState(nextEnabled);
+  const setMechanismEnabled = useCallback((nextEnabled: boolean) => {
+    setEnabled(nextEnabled);
     writeEnabledToStorage(nextEnabled);
   }, []);
 
   const toggle = useCallback(() => {
-    setEnabledState((currentEnabled) => {
+    setEnabled((currentEnabled) => {
       const nextEnabled = !currentEnabled;
       writeEnabledToStorage(nextEnabled);
       return nextEnabled;
@@ -86,10 +86,10 @@ export function ModelIntrospectionMechanismProvider({
   const value = useMemo(
     () => ({
       enabled,
-      setEnabled,
+      setEnabled: setMechanismEnabled,
       toggle,
     }),
-    [enabled, setEnabled, toggle],
+    [enabled, setMechanismEnabled, toggle],
   );
 
   return (

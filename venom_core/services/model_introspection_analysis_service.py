@@ -1143,6 +1143,45 @@ def _build_stream_bootstrap_exception_result(
     )
 
 
+def _build_stream_consumption_exception_result(
+    *,
+    exc: Exception,
+    prompt: str,
+    runtime: dict[str, Any],
+    request_ready_at_ms: float,
+    response_received_at_ms: float,
+    elapsed_ms: float,
+    events: list[str],
+    chunk_count: int,
+    response_text: str,
+) -> tuple[str | None, dict[str, Any]]:
+    degraded_details = _resolve_degraded_error_details(exc)
+    if degraded_details is not None:
+        error_code, detail = degraded_details
+        return None, _build_degraded_mode_skipped_result(
+            prompt=prompt,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            elapsed_ms=elapsed_ms,
+            error_code=error_code,
+            detail=detail,
+        )
+
+    logger.exception("Model introspection analysis stream failed")
+    error_message = str(exc) or _ANALYSIS_STREAM_FAILED
+    return error_message, _build_failed_analysis_result(
+        prompt=prompt,
+        runtime=runtime,
+        events=events + ["error"],
+        chunk_count=chunk_count,
+        response_text=response_text,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        elapsed_ms=elapsed_ms,
+        error_message=error_message,
+    )
+
+
 async def _collect_streaming_response(response: Any) -> dict[str, Any]:
     content_parts: list[str] = []
     events: list[str] = []
@@ -1850,41 +1889,26 @@ async def stream_model_introspection_analysis(
                 content_event_times_ms=content_event_times_ms,
             )
     except Exception as exc:
-        degraded_details = _resolve_degraded_error_details(exc)
-        if degraded_details is not None:
-            error_code, detail = degraded_details
-            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
-            skipped_result = _build_degraded_mode_skipped_result(
-                prompt=prompt,
-                runtime=runtime,
-                request_ready_at_ms=request_ready_at_ms,
-                elapsed_ms=elapsed_ms,
-                error_code=error_code,
-                detail=detail,
-            )
-            yield _serialize_sse_event("analysis_done", skipped_result)
-            return
-        logger.exception("Model introspection analysis stream failed")
         elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
-        error_message = str(exc) or _ANALYSIS_STREAM_FAILED
-        yield _serialize_sse_event(
-            "error",
-            {"code": "analysis_stream_failed", "message": error_message},
+        error_message, done_payload = _build_stream_consumption_exception_result(
+            exc=exc,
+            prompt=prompt,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            response_received_at_ms=response_received_at_ms,
+            elapsed_ms=elapsed_ms,
+            events=events,
+            chunk_count=chunk_count,
+            response_text="".join(content_parts),
         )
-        yield _serialize_sse_event(
-            "analysis_done",
-            _build_failed_analysis_result(
-                prompt=prompt,
-                runtime=runtime,
-                events=events + ["error"],
-                chunk_count=chunk_count,
-                response_text="".join(content_parts),
-                request_ready_at_ms=request_ready_at_ms,
-                response_received_at_ms=response_received_at_ms,
-                elapsed_ms=elapsed_ms,
-                error_message=error_message,
-            ),
-        )
+        if error_message is not None:
+            yield (
+                _serialize_sse_event(
+                    "error",
+                    {"code": "analysis_stream_failed", "message": error_message},
+                ),
+            )
+        yield _serialize_sse_event("analysis_done", done_payload)
         return
 
     response_text = "".join(content_parts)

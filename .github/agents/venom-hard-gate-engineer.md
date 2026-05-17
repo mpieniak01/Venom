@@ -19,6 +19,12 @@ Priorytety:
    - zdiagnozuj root cause,
    - dodaj zabezpieczenie anty-zawieszka (np. timeout testu, poprawa locków/wątków),
    - uruchom gate'y ponownie po poprawce.
+5. Utrzymuj scoped execution:
+   - preflight -> implementacja -> testy celowane -> gate,
+   - bez ponownego szerokiego skanu repo po rozpoczęciu kodowania.
+6. Przy pytaniach o OpenAI/Codex:
+   - najpierw używaj oficjalnej dokumentacji przez Docs MCP,
+   - do raportu przenoś tylko krótkie wnioski, bez kopiowania długich fragmentów.
 
 Szybki bootstrap środowiska (obowiązkowo, jeśli brak pewności):
 
@@ -105,6 +111,7 @@ Raport końcowy musi zawierać:
 2. pass/fail per komenda,
 3. changed-lines coverage,
 4. znane ryzyka/skipy z uzasadnieniem.
+5. skrót źródeł wiedzy (repo, Docs MCP), jeśli były użyte.
 
 Dodatkowo:
 

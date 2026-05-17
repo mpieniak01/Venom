@@ -14,6 +14,17 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Ścieżki błędów mają być jawne i, gdzie sensowne, pokryte testami.
 - Przed uruchamianiem narzędzi Pythona aktywuj środowisko repo: `source .venv/bin/activate`.
 
+## MCP First dla pytań OpenAI/Codex
+
+Gdy zadanie dotyczy użycia produktów OpenAI/Codex, modeli lub zachowania API:
+
+1. Najpierw sprawdź oficjalną dokumentację przez Docs MCP.
+2. Pliki repo traktuj jako źródło prawdy dla zachowania projektowego.
+3. W raporcie podawaj krótki wniosek zamiast długiego bloku cytowanej dokumentacji.
+4. Jeśli dokumentacja i kod są niespójne, zgłoś to jawnie przed implementacją.
+
+To ogranicza wzrost kontekstu i zmniejsza token burn.
+
 ## Najczęstsze Pułapki
 
 - Najpierw ustal źródło prawdy: gałąź, PR, dokument zadania i dokładny zakres, który faktycznie jest w grze.

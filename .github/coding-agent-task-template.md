@@ -18,6 +18,7 @@ Use this template for coding-agent implementation tasks.
 4. Keep output compact: no raw full logs unless explicitly requested.
 5. For OpenAI/Codex API/product questions, use Docs MCP first.
 6. Prefer lightweight context artifacts `test-results/agent-context/preflight-brief.json` and `brief.json` before manual exploration.
+7. For code edits, return patch blocks first (Search/Replace or unified diff); avoid full-file rewrites unless required.
 
 ## Mandatory Work Sequence
 
@@ -85,3 +86,11 @@ Markdown-only exception:
 - Pass/fail per command
 - Changed-lines coverage (or `N/A` for markdown-only)
 - Known blockers/risks and exact failure output
+
+## Output Contract (mandatory)
+
+1. For straightforward fixes:
+   - provide only file path(s) + patch block(s) + commands/tests.
+2. Do not include unchanged file content.
+3. Do not paste raw long logs in the final handoff.
+4. Keep rationale to decision-level notes only.

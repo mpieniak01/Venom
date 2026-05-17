@@ -25,6 +25,10 @@ Priorytety:
 6. Przy pytaniach o OpenAI/Codex:
    - najpierw używaj oficjalnej dokumentacji przez Docs MCP,
    - do raportu przenoś tylko krótkie wnioski, bez kopiowania długich fragmentów.
+7. Kontrakt edycji (twardy):
+   - dla zmian kodu najpierw zwracaj patch (Search/Replace albo unified diff),
+   - nie regeneruj całych plików ani niezmienionych sekcji, jeśli nie ma takiego wymagania,
+   - przy prostych poprawkach ogranicz raport do: plik(i), patch, komendy testowe.
 
 Szybki bootstrap środowiska (obowiązkowo, jeśli brak pewności):
 
@@ -112,6 +116,7 @@ Raport końcowy musi zawierać:
 3. changed-lines coverage,
 4. znane ryzyka/skipy z uzasadnieniem.
 5. skrót źródeł wiedzy (repo, Docs MCP), jeśli były użyte.
+6. format zmian: patch-first (potwierdzenie spełnienia kontraktu edycji).
 
 Dodatkowo:
 

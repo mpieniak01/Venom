@@ -20,8 +20,13 @@ Context and token discipline:
 
 Editing/output contract:
 1) Return concrete file edits and concise rationale.
-2) Prefer Search/Replace or unified diff style where practical.
-3) Do not regenerate unchanged code blocks.
+2) For code changes, output patch-style edits first (Search/Replace or unified diff).
+3) Do not regenerate unchanged code blocks or whole files unless explicitly requested.
+4) For simple fixes, return only:
+   - file path(s),
+   - patch block(s),
+   - minimal command/test list.
+5) If change is complex, keep explanation short and separate from patch.
 
 Quality contract:
 1) If frontend scope exists, run `npm --prefix web-next ci` before frontend tests.

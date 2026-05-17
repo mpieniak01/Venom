@@ -14,6 +14,17 @@ If you are looking for the list of Venom system agents, use:
 - Make error paths explicit and covered by tests where practical.
 - Before running Python tooling, activate the repository virtualenv with `source .venv/bin/activate`.
 
+## Recent Failure Modes To Avoid
+
+- Start by identifying the source of truth: branch, PR, task doc, and the exact scope that is in play.
+- Do not mix feature work and remediation work in one mental model; if a branch supersedes another, call that out explicitly.
+- Verify live data paths before changing UI text or docs. Placeholder-looking output is not evidence by itself.
+- Treat runtime artifacts as first-class hygiene work. If a task generates local files, add them to `.gitignore` early.
+- Prefer allowlisted paths, explicit namespaces, and linear parsers over dynamic path construction or regex-heavy extraction when Sonar or security hotspots point there.
+- When a gate fails, fix the root cause and rerun the smallest relevant test first, then `make pr-fast`.
+- If the same gate fails twice without a code or environment change, stop and report the blocker instead of looping.
+- Keep documentation updates concise and actionable. Capture the rule that will prevent the next mistake, not the whole debugging story.
+
 ## Default Test Command (Use First)
 
 When test scope is unclear, start from this baseline:

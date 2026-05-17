@@ -5,6 +5,9 @@ on:
   # gdy zestaw testów będzie znów stabilny (CI psuło się na push/pr).
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   backend:
     name: Backend (pytest + lint)

@@ -519,3 +519,121 @@ async def test_warmup_local_runtime_status_paths(monkeypatch):
         )
         is False
     )
+
+
+def test_runtime_drift_helper_branches(monkeypatch):
+    assert (
+        llm_runtime._build_multi_runtime_daemon_status_url(  # noqa: SLF001
+            DummySettings(endpoint="", gemma4_endpoint="")
+        )
+        is None
+    )
+    assert (
+        llm_runtime._build_inferred_provider(  # noqa: SLF001
+            service_type="openai",
+            endpoint="http://ignored",
+        )
+        == "openai"
+    )
+
+    assert (
+        llm_runtime._collect_endpoint_provider_issue(  # noqa: SLF001
+            service_type="local",
+            active_server="onnx",
+            endpoint="http://localhost:8001/v1",
+            inferred_provider="vllm",
+        )
+        is None
+    )
+    assert (
+        llm_runtime._collect_endpoint_provider_issue(  # noqa: SLF001
+            service_type="local",
+            active_server="ollama",
+            endpoint="http://custom.local",
+            inferred_provider="local",
+        )
+        is None
+    )
+    assert (
+        llm_runtime._collect_runtime_provider_issue(  # noqa: SLF001
+            service_type="local",
+            active_server="local",
+            runtime_provider="vllm",
+        )
+        is None
+    )
+    assert (
+        llm_runtime._collect_runtime_provider_issue(  # noqa: SLF001
+            service_type="local",
+            active_server="vllm",
+            runtime_provider="ollama",
+        )
+        is not None
+    )
+
+
+def test_reconcile_runtime_model_with_daemon_target_preserves_runtime_on_mismatch():
+    issues: list[str] = []
+    resolved = llm_runtime._reconcile_runtime_model_with_daemon_target(  # noqa: SLF001
+        runtime_active_model_id="runtime-model",
+        daemon_target_model="daemon-model",
+        issues=issues,
+    )
+    assert resolved == "runtime-model"
+    assert len(issues) == 1
+
+
+def test_resolve_multi_runtime_target_model_edges(monkeypatch):
+    class DummyBadJsonResponse:
+        status_code = 200
+
+        def json(self):
+            return []
+
+    class DummyErrResponse:
+        status_code = 500
+
+        def json(self):
+            return {"target_model": "x"}
+
+    class DummyClient:
+        def __init__(self, response):
+            self._response = response
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def get(self, _url):
+            return self._response
+
+    settings = DummySettings(active_server="gemma4_audio")
+    monkeypatch.setattr(
+        llm_runtime.httpx,
+        "Client",
+        lambda timeout=0.4: DummyClient(DummyBadJsonResponse()),
+    )
+    assert (
+        llm_runtime._resolve_multi_runtime_target_model(  # noqa: SLF001
+            active_server="gemma4_audio",
+            runtime_provider="multi_runtime",
+            settings=settings,
+        )
+        is None
+    )
+
+    monkeypatch.setattr(
+        llm_runtime.httpx,
+        "Client",
+        lambda timeout=0.4: DummyClient(DummyErrResponse()),
+    )
+    assert (
+        llm_runtime._resolve_multi_runtime_target_model(  # noqa: SLF001
+            active_server="gemma4_audio",
+            runtime_provider="multi_runtime",
+            settings=settings,
+        )
+        is None
+    )

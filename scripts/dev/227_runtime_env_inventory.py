@@ -75,7 +75,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    scope = ["venom_core", "scripts", "make", "web-next", "Makefile"]
+    scope_candidates = ["venom_core", "scripts", "make", "web-next", "Makefile"]
+    scope = [path for path in scope_candidates if (REPO_ROOT / path).exists()]
 
     sections: dict[str, dict[str, object]] = {
         "runtime_live_reads": {

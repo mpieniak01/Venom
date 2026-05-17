@@ -662,6 +662,29 @@ export const en = {
             partialWarn: "Analysis contains fallback/partial signals.",
             partialOk: "Full signal set captured.",
           },
+          runbook: {
+            title: "Operator runbook",
+            modelDrift: {
+              step1: "Refresh runtime snapshot and verify active_model == daemon_target_model.",
+              step2: "If the model is drifted, switch model from UI (single controlled switch).",
+              step3: "Run analysis again only after drift status is clean.",
+            },
+            degradedEndpoint: {
+              step1: "Verify runtime endpoint and model service health.",
+              step2: "Restore runtime connectivity (host/port) and refresh snapshot.",
+              step3: "Repeat analysis after healthy status is confirmed.",
+            },
+            degradedCircuit: {
+              step1: "Check whether circuit breaker is blocking traffic after repeated failures.",
+              step2: "Remove upstream failure cause and wait for circuit to close.",
+              step3: "Run analysis again after traffic recovery.",
+            },
+            degradedPolicy: {
+              step1: "Check traffic-control/probe policy for current runtime.",
+              step2: "Confirm model whitelist and probe profile limits.",
+              step3: "Run analysis again after policy correction.",
+            },
+          },
           telemetry: {
             unknown: "unknown",
             trace: "trace",

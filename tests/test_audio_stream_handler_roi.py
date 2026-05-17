@@ -966,7 +966,7 @@ def test_get_latest_voice_session_falls_back_to_filesystem(monkeypatch, tmp_path
     assert latest["session_id"] == "from_fs"
 
 
-def test_build_runtime_metadata_and_tts_sample_rate():
+def test_build_runtime_metadata_and_tts_sample_rate(monkeypatch):
     """Runtime snapshot should surface STT/TTS model fields and sample rate."""
     handler = _make_handler()
 
@@ -986,7 +986,6 @@ def test_build_runtime_metadata_and_tts_sample_rate():
 
     operator_agent = MagicMock()
     operator_agent._resolve_chat_service_id.return_value = "local"
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
         audio_stream_mod,
         "get_active_llm_runtime",
@@ -1006,7 +1005,6 @@ def test_build_runtime_metadata_and_tts_sample_rate():
 
     handler.audio_engine.voice.output_sample_rate = None
     assert handler._get_tts_sample_rate() == 22050
-    monkeypatch.undo()
 
 
 def test_gemma4_audio_helper_urls_and_selection(monkeypatch):

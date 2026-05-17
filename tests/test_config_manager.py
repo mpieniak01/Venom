@@ -86,6 +86,26 @@ def test_get_runtime_snapshot_merges_live_runtime_and_persisted_config(
     assert snapshot["config"]["ACTIVE_LLM_SERVER"] == "vllm"
 
 
+def test_get_runtime_snapshot_respects_secret_masking(config_manager: ConfigManager):
+    config_manager.env_file.write_text(
+        "OPENAI_API_KEY=super-secret-key\nLLM_MODEL_NAME=persisted-model\n",
+        encoding="utf-8",
+    )
+    runtime = SimpleNamespace(
+        provider="vllm",
+        model_name="live-model",
+        endpoint="http://localhost:8001/v1",
+        runtime_id="vllm@http://localhost:8001/v1",
+        config_hash="abc123",
+        to_payload=lambda: {"provider": "vllm", "model": "live-model"},
+    )
+    with patch(
+        "venom_core.utils.llm_runtime.get_active_llm_runtime", return_value=runtime
+    ):
+        snapshot = config_manager.get_runtime_snapshot(mask_secrets=True)
+    assert snapshot["config"]["OPENAI_API_KEY"].startswith("supe**")
+
+
 def test_get_config_reflects_env_file_updates(config_manager: ConfigManager):
     config_manager.env_file.write_text("LLM_MODEL_NAME=old-model\n", encoding="utf-8")
     assert (

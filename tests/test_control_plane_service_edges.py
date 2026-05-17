@@ -750,3 +750,26 @@ def test_resolve_model_for_state_prefers_runtime_snapshot(monkeypatch):
         )
         == "runtime-model"
     )
+
+
+def test_resolve_model_for_state_falls_back_to_config_on_runtime_errors(monkeypatch):
+    service = ControlPlaneService()
+
+    def _broken_snapshot(mask_secrets=False):  # noqa: ARG001
+        raise RuntimeError("snapshot-unavailable")
+
+    monkeypatch.setattr(
+        "venom_core.services.control_plane.config_manager.get_runtime_snapshot",
+        _broken_snapshot,
+    )
+    monkeypatch.setattr(
+        "venom_core.services.control_plane.get_active_llm_runtime",
+        lambda: (_ for _ in ()).throw(RuntimeError("runtime-unavailable")),
+    )
+
+    assert (
+        service._resolve_model_for_state(  # noqa: SLF001
+            {"LLM_MODEL_NAME": "config-fallback-model"}, "openai"
+        )
+        == "config-fallback-model"
+    )

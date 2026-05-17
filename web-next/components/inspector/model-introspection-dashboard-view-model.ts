@@ -1045,72 +1045,10 @@ export function buildOperatorConclusion(args: {
   }
 
   if (analysisStatus === "skipped") {
-    if (
-      skippedReason === "model_drift_detected" ||
-      analysisErrorCode === "MODEL_DRIFT_DETECTED"
-    ) {
-      return {
-        verdict: "ungrounded",
-        confidenceTier: "low",
-        tone: "warning",
-        reasons: ["model drift detected"],
-        reasonCodes: ["R0_MODEL_DRIFT"],
-        partial: true,
-        coveragePercent: null,
-        streamQuality: null,
-        internalsQuality: null,
-      };
-    }
-    if (analysisErrorCode === "DEGRADED_CIRCUIT_OPEN") {
-      return {
-        verdict: "ungrounded",
-        confidenceTier: "low",
-        tone: "warning",
-        reasons: ["degraded mode: circuit breaker open"],
-        reasonCodes: ["R0_DEGRADED_CIRCUIT"],
-        partial: true,
-        coveragePercent: null,
-        streamQuality: null,
-        internalsQuality: null,
-      };
-    }
-    if (analysisErrorCode === "DEGRADED_ENDPOINT_UNREACHABLE") {
-      return {
-        verdict: "ungrounded",
-        confidenceTier: "low",
-        tone: "warning",
-        reasons: ["degraded mode: endpoint unreachable"],
-        reasonCodes: ["R0_DEGRADED_ENDPOINT"],
-        partial: true,
-        coveragePercent: null,
-        streamQuality: null,
-        internalsQuality: null,
-      };
-    }
-    if (analysisErrorCode === "DEGRADED_POLICY_BLOCK") {
-      return {
-        verdict: "ungrounded",
-        confidenceTier: "low",
-        tone: "warning",
-        reasons: ["degraded mode: policy block"],
-        reasonCodes: ["R0_DEGRADED_POLICY"],
-        partial: true,
-        coveragePercent: null,
-        streamQuality: null,
-        internalsQuality: null,
-      };
-    }
-    return {
-      verdict: "ungrounded",
-      confidenceTier: "low",
-      tone: "warning",
-      reasons: ["analysis skipped"],
-      reasonCodes: ["R0_SKIPPED"],
-      partial: true,
-      coveragePercent: null,
-      streamQuality: null,
-      internalsQuality: null,
-    };
+    return buildSkippedOperatorConclusion({
+      skippedReason,
+      analysisErrorCode,
+    });
   }
 
   if (analysisStatus !== "completed") {
@@ -1143,6 +1081,60 @@ export function buildOperatorConclusion(args: {
   return buildUngroundedOperatorConclusion(logitRuntime);
 }
 
+function buildSkippedOperatorConclusion(args: {
+  skippedReason?: string | null;
+  analysisErrorCode?: string | null;
+}): OperatorConclusionModel {
+  const { skippedReason, analysisErrorCode } = args;
+  const defaults = {
+    verdict: "ungrounded" as const,
+    confidenceTier: "low" as const,
+    tone: "warning" as const,
+    partial: true,
+    coveragePercent: null,
+    streamQuality: null,
+    internalsQuality: null,
+  };
+  if (
+    skippedReason === "model_drift_detected" ||
+    analysisErrorCode === "MODEL_DRIFT_DETECTED"
+  ) {
+    return {
+      ...defaults,
+      reasons: ["model drift detected"],
+      reasonCodes: ["R0_MODEL_DRIFT"],
+    };
+  }
+  const degradedReasonMap: Record<string, { reason: string; code: string }> = {
+    DEGRADED_CIRCUIT_OPEN: {
+      reason: "degraded mode: circuit breaker open",
+      code: "R0_DEGRADED_CIRCUIT",
+    },
+    DEGRADED_ENDPOINT_UNREACHABLE: {
+      reason: "degraded mode: endpoint unreachable",
+      code: "R0_DEGRADED_ENDPOINT",
+    },
+    DEGRADED_POLICY_BLOCK: {
+      reason: "degraded mode: policy block",
+      code: "R0_DEGRADED_POLICY",
+    },
+  };
+  const degradedReason =
+    (analysisErrorCode && degradedReasonMap[analysisErrorCode]) || null;
+  if (degradedReason) {
+    return {
+      ...defaults,
+      reasons: [degradedReason.reason],
+      reasonCodes: [degradedReason.code],
+    };
+  }
+  return {
+    ...defaults,
+    reasons: ["analysis skipped"],
+    reasonCodes: ["R0_SKIPPED"],
+  };
+}
+
 export function buildOperatorRunbookSteps(
   reasonCodes: readonly string[] | null | undefined,
 ): string[] {
@@ -1151,30 +1143,30 @@ export function buildOperatorRunbookSteps(
   }
   if (reasonCodes.includes("R0_MODEL_DRIFT")) {
     return [
-      "Odśwież snapshot runtime i sprawdź, czy active_model == daemon_target_model.",
-      "Jeśli model jest rozjechany, przełącz model z UI (jeden kontrolowany switch).",
-      "Uruchom analizę ponownie dopiero po statusie drift clean.",
+      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step3",
     ];
   }
   if (reasonCodes.includes("R0_DEGRADED_ENDPOINT")) {
     return [
-      "Zweryfikuj endpoint runtime i health usługi modelu.",
-      "Przywróć połączenie do runtime (host/port) i odśwież snapshot.",
-      "Powtórz analizę po potwierdzeniu statusu healthy.",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step3",
     ];
   }
   if (reasonCodes.includes("R0_DEGRADED_CIRCUIT")) {
     return [
-      "Sprawdź, czy circuit breaker nie blokuje ruchu po serii błędów.",
-      "Usuń przyczynę błędów upstream i poczekaj na zamknięcie obwodu.",
-      "Po odzyskaniu ruchu uruchom analizę ponownie.",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedCircuit.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedCircuit.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedCircuit.step3",
     ];
   }
   if (reasonCodes.includes("R0_DEGRADED_POLICY")) {
     return [
-      "Sprawdź politykę traffic control/probe dla bieżącego runtime.",
-      "Potwierdź whitelistę modelu i limity profilu probe.",
-      "Po korekcie polityki uruchom analizę ponownie.",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedPolicy.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedPolicy.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedPolicy.step3",
     ];
   }
   return [];

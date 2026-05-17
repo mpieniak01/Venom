@@ -318,12 +318,18 @@ describe("model introspection dashboard view-model", () => {
   it("builds runbook steps for model drift", () => {
     const steps = buildOperatorRunbookSteps(["R0_MODEL_DRIFT"]);
     assert.equal(steps.length, 3);
-    assert.match(steps[0] ?? "", /active_model/);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step1",
+    );
   });
 
   it("builds runbook steps for degraded endpoint", () => {
     const steps = buildOperatorRunbookSteps(["R0_DEGRADED_ENDPOINT"]);
     assert.equal(steps.length, 3);
-    assert.match(steps[0] ?? "", /endpoint runtime/i);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step1",
+    );
   });
 });

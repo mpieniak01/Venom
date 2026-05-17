@@ -1626,11 +1626,11 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
         {(operatorRunbookSteps ?? []).length > 0 && (
           <div className="rounded-2xl border border-amber-300/20 bg-amber-500/5 p-4">
             <p className="text-xs uppercase tracking-wide text-amber-200/90">
-              Runbook operatora
+              {t("inspector.modelIntrospection.dashboard.results.runbook.title")}
             </p>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-200">
-              {operatorRunbookSteps?.map((step, index) => (
-                <li key={`runbook-${index}`}>{step}</li>
+              {operatorRunbookSteps?.map((step) => (
+                <li key={step}>{t(step)}</li>
               ))}
             </ol>
           </div>

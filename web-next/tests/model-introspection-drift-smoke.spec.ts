@@ -231,15 +231,11 @@ test.describe("Model introspection drift smoke", () => {
       window.localStorage.setItem(storageKey, "true");
       window.dispatchEvent(new Event("venom:model-introspection-mechanism-change"));
     }, MECHANISM_STORAGE_KEY);
-    const switches = page.getByRole("switch");
-    const switchCount = await switches.count();
-    for (let i = 0; i < switchCount; i += 1) {
-      const sw = switches.nth(i);
-      if (await sw.isVisible()) {
-        const checked = await sw.getAttribute("aria-checked");
-        if (checked !== "true") {
-          await sw.click();
-        }
+    const analysisSwitch = page.getByRole("switch", { name: /analiza|analysis/i });
+    if (await analysisSwitch.count()) {
+      const checked = await analysisSwitch.first().getAttribute("aria-checked");
+      if (checked !== "true") {
+        await analysisSwitch.first().click();
       }
     }
     const runButton = page.getByRole("button", { name: /Uruchom analizę/i });

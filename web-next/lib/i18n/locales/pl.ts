@@ -663,6 +663,29 @@ export const pl = {
             partialWarn: "Analiza zawiera sygnały fallback/partial.",
             partialOk: "Zebrano pełny zestaw sygnałów.",
           },
+          runbook: {
+            title: "Runbook operatora",
+            modelDrift: {
+              step1: "Odśwież snapshot runtime i sprawdź, czy active_model == daemon_target_model.",
+              step2: "Jeśli model jest rozjechany, przełącz model z UI (jeden kontrolowany switch).",
+              step3: "Uruchom analizę ponownie dopiero po statusie drift clean.",
+            },
+            degradedEndpoint: {
+              step1: "Zweryfikuj endpoint runtime i health usługi modelu.",
+              step2: "Przywróć połączenie do runtime (host/port) i odśwież snapshot.",
+              step3: "Powtórz analizę po potwierdzeniu statusu healthy.",
+            },
+            degradedCircuit: {
+              step1: "Sprawdź, czy circuit breaker nie blokuje ruchu po serii błędów.",
+              step2: "Usuń przyczynę błędów upstream i poczekaj na zamknięcie obwodu.",
+              step3: "Po odzyskaniu ruchu uruchom analizę ponownie.",
+            },
+            degradedPolicy: {
+              step1: "Sprawdź politykę traffic control/probe dla bieżącego runtime.",
+              step2: "Potwierdź whitelistę modelu i limity profilu probe.",
+              step3: "Po korekcie polityki uruchom analizę ponownie.",
+            },
+          },
           telemetry: {
             unknown: "nieznane",
             trace: "trace",

@@ -449,70 +449,30 @@ async def _synchronize_startup_local_model(runtime) -> None:
         from venom_core.services.config_manager import config_manager
         from venom_core.utils.llm_runtime import compute_llm_config_hash
 
-        runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
-        if callable(runtime_snapshot_getter):
-            runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
-            config = runtime_snapshot["config"]
-            server_name = (
-                runtime_snapshot["active_server"] or runtime.provider or ""
-            ).lower()
-            active_model = runtime_snapshot["active_model_id"] or ""
-            daemon_target_model = str(
-                runtime_snapshot.get("daemon_target_model") or ""
-            ).strip()
-        else:
-            config = config_manager.get_config(mask_secrets=False)
-            server_name = (runtime.provider or "").lower()
-            active_model = str(getattr(runtime, "model_name", "") or "").strip()
-            daemon_target_model = ""
+        config, server_name, active_model, daemon_target_model = (
+            _resolve_startup_runtime_context(
+                config_manager=config_manager, runtime=runtime
+            )
+        )
         models = await model_manager.list_local_models()
         available = _extract_available_local_models(models, server_name)
         if not available or active_model in available:
             return
 
-        last_model_key = (
-            "LAST_MODEL_OLLAMA" if server_name == "ollama" else "LAST_MODEL_VLLM"
+        selected_model, updates = _build_startup_model_updates(
+            config=config,
+            server_name=server_name,
+            available=available,
+            daemon_target_model=daemon_target_model,
         )
-        prev_model_key = (
-            "PREVIOUS_MODEL_OLLAMA"
-            if server_name == "ollama"
-            else "PREVIOUS_MODEL_VLLM"
-        )
-        # Bootstrap-only fallback from persisted env/config.
-        # Runtime truth comes from live runtime snapshot (`active_model` above).
-        bootstrap_model = str(config.get("LLM_MODEL_NAME", "") or "")
-        desired_model = (
-            daemon_target_model
-            or str(config.get(last_model_key) or "").strip()
-            or str(config.get("HYBRID_LOCAL_MODEL") or "").strip()
-            or bootstrap_model
-        )
-        previous_model = config.get(prev_model_key) or ""
-        selected_model = _select_startup_model(available, desired_model, previous_model)
-        updates = {
-            "LLM_MODEL_NAME": selected_model,
-            "HYBRID_LOCAL_MODEL": selected_model,
-            last_model_key: selected_model,
-        }
-        old_last = config.get(last_model_key) or ""
-        if old_last and old_last != selected_model:
-            updates[prev_model_key] = old_last
         config_manager.update_config(updates)
-        try:
-            SETTINGS.LLM_MODEL_NAME = selected_model
-            SETTINGS.HYBRID_LOCAL_MODEL = selected_model
-        except Exception:
-            logger.warning("Nie udało się zaktualizować SETTINGS dla modelu LLM.")
+        _sync_startup_model_settings(selected_model)
 
         config_hash = compute_llm_config_hash(
             server_name, runtime.endpoint, selected_model
         )
         config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
-        try:
-            SETTINGS.LLM_CONFIG_HASH = config_hash
-            SETTINGS.ACTIVE_LLM_SERVER = server_name
-        except Exception:
-            logger.warning("Nie udało się zaktualizować SETTINGS dla hash LLM.")
+        _sync_startup_hash_settings(config_hash=config_hash, server_name=server_name)
         logger.warning(
             "Skorygowano model LLM na starcie: runtime_active=%s daemon_target=%s selected=%s",
             active_model or "n/a",
@@ -521,6 +481,81 @@ async def _synchronize_startup_local_model(runtime) -> None:
         )
     except Exception as exc:
         logger.warning("Nie udało się zweryfikować modelu LLM: %s", exc)
+
+
+def _resolve_startup_runtime_context(
+    *,
+    config_manager,
+    runtime,
+) -> tuple[dict[str, object], str, str, str]:
+    runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
+    if callable(runtime_snapshot_getter):
+        runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
+        config = runtime_snapshot["config"]
+        server_name = (
+            runtime_snapshot["active_server"] or runtime.provider or ""
+        ).lower()
+        active_model = runtime_snapshot["active_model_id"] or ""
+        daemon_target_model = str(
+            runtime_snapshot.get("daemon_target_model") or ""
+        ).strip()
+        return config, server_name, active_model, daemon_target_model
+
+    config = config_manager.get_config(mask_secrets=False)
+    server_name = (runtime.provider or "").lower()
+    active_model = str(getattr(runtime, "model_name", "") or "").strip()
+    return config, server_name, active_model, ""
+
+
+def _build_startup_model_updates(
+    *,
+    config: dict[str, object],
+    server_name: str,
+    available: set[str],
+    daemon_target_model: str,
+) -> tuple[str, dict[str, str]]:
+    last_model_key = (
+        "LAST_MODEL_OLLAMA" if server_name == "ollama" else "LAST_MODEL_VLLM"
+    )
+    prev_model_key = (
+        "PREVIOUS_MODEL_OLLAMA" if server_name == "ollama" else "PREVIOUS_MODEL_VLLM"
+    )
+    # Bootstrap-only fallback from persisted env/config.
+    # Runtime truth comes from live runtime snapshot (`active_model` above).
+    bootstrap_model = str(config.get("LLM_MODEL_NAME", "") or "")
+    desired_model = (
+        daemon_target_model
+        or str(config.get(last_model_key) or "").strip()
+        or str(config.get("HYBRID_LOCAL_MODEL") or "").strip()
+        or bootstrap_model
+    )
+    previous_model = str(config.get(prev_model_key) or "")
+    selected_model = _select_startup_model(available, desired_model, previous_model)
+    updates: dict[str, str] = {
+        "LLM_MODEL_NAME": selected_model,
+        "HYBRID_LOCAL_MODEL": selected_model,
+        last_model_key: selected_model,
+    }
+    old_last = str(config.get(last_model_key) or "")
+    if old_last and old_last != selected_model:
+        updates[prev_model_key] = old_last
+    return selected_model, updates
+
+
+def _sync_startup_model_settings(selected_model: str) -> None:
+    try:
+        SETTINGS.LLM_MODEL_NAME = selected_model
+        SETTINGS.HYBRID_LOCAL_MODEL = selected_model
+    except Exception:
+        logger.warning("Nie udało się zaktualizować SETTINGS dla modelu LLM.")
+
+
+def _sync_startup_hash_settings(*, config_hash: str, server_name: str) -> None:
+    try:
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+        SETTINGS.ACTIVE_LLM_SERVER = server_name
+    except Exception:
+        logger.warning("Nie udało się zaktualizować SETTINGS dla hash LLM.")
 
 
 async def _start_configured_local_server(active_server: str) -> None:

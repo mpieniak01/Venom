@@ -968,16 +968,6 @@ def _build_model_drift_skipped_result(
     }
 
 
-def _is_traffic_control_degraded_error(error: Exception) -> bool:
-    message = str(error or "").strip().lower()
-    if not message:
-        return False
-    return (
-        "traffic control is in degraded mode" in message
-        or "degraded mode active" in message
-    )
-
-
 def _resolve_degraded_error_details(error: Exception) -> tuple[str, str] | None:
     message = str(error or "").strip()
     normalized = message.lower()
@@ -1116,6 +1106,41 @@ def _build_failed_analysis_result(
             "error": error_message,
         },
     }
+
+
+def _build_stream_bootstrap_exception_result(
+    *,
+    exc: Exception,
+    prompt: str,
+    runtime: dict[str, Any],
+    request_ready_at_ms: float,
+    elapsed_ms: float,
+) -> tuple[str | None, dict[str, Any]]:
+    degraded_details = _resolve_degraded_error_details(exc)
+    if degraded_details is not None:
+        error_code, detail = degraded_details
+        return None, _build_degraded_mode_skipped_result(
+            prompt=prompt,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            elapsed_ms=elapsed_ms,
+            error_code=error_code,
+            detail=detail,
+        )
+
+    logger.exception("Model introspection analysis stream bootstrap failed")
+    error_message = str(exc) or _ANALYSIS_STREAM_FAILED
+    return error_message, _build_failed_analysis_result(
+        prompt=prompt,
+        runtime=runtime,
+        events=["error"],
+        chunk_count=0,
+        response_text="",
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=request_ready_at_ms,
+        elapsed_ms=elapsed_ms,
+        error_message=error_message,
+    )
 
 
 async def _collect_streaming_response(response: Any) -> dict[str, Any]:
@@ -1739,42 +1764,25 @@ async def stream_model_introspection_analysis(
         request_id = _parse_request_id(_get_response_header(response, "X-Request-Id"))
         response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     except Exception as exc:
-        degraded_details = _resolve_degraded_error_details(exc)
-        if degraded_details is not None:
-            error_code, detail = degraded_details
-            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
-            skipped_result = _build_degraded_mode_skipped_result(
-                prompt=prompt,
-                runtime=runtime,
-                request_ready_at_ms=request_ready_at_ms,
-                elapsed_ms=elapsed_ms,
-                error_code=error_code,
-                detail=detail,
-            )
-            yield _serialize_sse_event("analysis_start", running_result)
-            yield _serialize_sse_event("analysis_done", skipped_result)
-            return
-        logger.exception("Model introspection analysis stream bootstrap failed")
         elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
-        error_message = str(exc) or _ANALYSIS_STREAM_FAILED
-        yield _serialize_sse_event(
-            "error",
-            {"code": "analysis_stream_failed", "message": error_message},
+        error_message, done_payload = _build_stream_bootstrap_exception_result(
+            exc=exc,
+            prompt=prompt,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            elapsed_ms=elapsed_ms,
         )
-        yield _serialize_sse_event(
-            "analysis_done",
-            _build_failed_analysis_result(
-                prompt=prompt,
-                runtime=runtime,
-                events=["error"],
-                chunk_count=0,
-                response_text="",
-                request_ready_at_ms=request_ready_at_ms,
-                response_received_at_ms=request_ready_at_ms,
-                elapsed_ms=elapsed_ms,
-                error_message=error_message,
-            ),
-        )
+        if error_message is not None:
+            yield _serialize_sse_event(
+                "error",
+                {"code": "analysis_stream_failed", "message": error_message},
+            )
+        else:
+            yield _serialize_sse_event(
+                "analysis_start",
+                running_result,
+            )
+        yield _serialize_sse_event("analysis_done", done_payload)
         return
 
     yield _serialize_sse_event("analysis_start", running_result)

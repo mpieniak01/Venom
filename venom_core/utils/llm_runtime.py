@@ -407,15 +407,11 @@ def detect_runtime_drift(settings=None) -> dict:
         runtime_provider=(runtime.provider or "").strip().lower(),
         settings=settings,
     )
-    if daemon_target_model and runtime_active_model_id:
-        if daemon_target_model != runtime_active_model_id:
-            issues.append(
-                "Configured/runtime model differs from multi_runtime daemon "
-                f"target model ('{runtime_active_model_id}' vs '{daemon_target_model}')."
-            )
-            runtime_active_model_id = daemon_target_model
-    elif daemon_target_model:
-        runtime_active_model_id = daemon_target_model
+    runtime_active_model_id = _reconcile_runtime_model_with_daemon_target(
+        runtime_active_model_id=runtime_active_model_id,
+        daemon_target_model=daemon_target_model,
+        issues=issues,
+    )
 
     return {
         "drift_detected": len(issues) > 0,
@@ -427,6 +423,23 @@ def detect_runtime_drift(settings=None) -> dict:
         "endpoint": endpoint,
         "issues": issues,
     }
+
+
+def _reconcile_runtime_model_with_daemon_target(
+    *,
+    runtime_active_model_id: str,
+    daemon_target_model: str | None,
+    issues: list[str],
+) -> str:
+    if not daemon_target_model:
+        return runtime_active_model_id
+    if runtime_active_model_id and daemon_target_model != runtime_active_model_id:
+        issues.append(
+            "Configured/runtime model differs from multi_runtime daemon "
+            f"target model ('{runtime_active_model_id}' vs '{daemon_target_model}')."
+        )
+        return runtime_active_model_id
+    return daemon_target_model
 
 
 def _resolve_multi_runtime_target_model(

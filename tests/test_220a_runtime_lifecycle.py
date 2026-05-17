@@ -563,7 +563,9 @@ def test_detect_runtime_drift_multi_runtime_detects_model_mismatch():
         result = detect_runtime_drift(settings)
     assert result["drift_detected"] is True
     assert result["daemon_target_model"] == "google/gemma-4-E2B-it"
-    assert result["runtime_active_model_id"] == "google/gemma-4-E2B-it"
+    assert (
+        result["runtime_active_model_id"] == "voytas26/openclaw-qwen3vl-8b-opt:latest"
+    )
     assert any("daemon target model" in issue for issue in result["issues"])
 
 

@@ -38,6 +38,13 @@ class ModelSwitchRequest(BaseModel):
     def validate_name(cls, v):
         return validate_model_name_basic(v, max_length=100)
 
+    @field_validator("ownership_token", mode="before")
+    def normalize_ownership_token(cls, v):
+        if v is None:
+            return None
+        token = str(v).strip()
+        return token or None
+
 
 class ModelRegistryInstallRequest(BaseModel):
     """Request do instalacji modelu przez ModelRegistry."""
@@ -86,6 +93,13 @@ class ModelActivateRequest(BaseModel):
     @field_validator("runtime")
     def validate_runtime(cls, v):
         return validate_runtime(v)
+
+    @field_validator("ownership_token", mode="before")
+    def normalize_ownership_token(cls, v):
+        if v is None:
+            return None
+        token = str(v).strip()
+        return token or None
 
 
 class TranslationRequest(BaseModel):

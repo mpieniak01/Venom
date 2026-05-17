@@ -2569,6 +2569,13 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         switch_state.mark_done(LifecycleStep.ENDPOINT_SWITCHED)
         switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
         response = _activate_onnx_server_switch(stop_results=stop_results)
+        emit_runtime_model_event(
+            "runtime_model_selected",
+            source=switch_source,
+            runtime=server_name,
+            model=response.get("active_model"),
+            from_runtime=from_server or "unknown",
+        )
         response["shutdown_results"] = shutdown_results
         response["lifecycle_state"] = switch_state.to_payload()
         return response

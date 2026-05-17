@@ -162,3 +162,4 @@ def test_activate_model_rejects_unmanaged_switch_source():
         },
     )
     assert response.status_code == 403
+    assert registry.calls == []

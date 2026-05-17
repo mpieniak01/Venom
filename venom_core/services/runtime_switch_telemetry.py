@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import os
 from typing import Any
 
@@ -13,6 +14,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 ALLOWED_RUNTIME_SWITCH_SOURCES = {"ui", "make_start"}
+_missing_runtime_switch_token_warned = False
 
 
 def normalize_runtime_switch_source(raw_source: str | None) -> str:
@@ -34,11 +36,18 @@ def assert_runtime_switch_source_allowed(raw_source: str | None) -> str:
 
 
 def assert_runtime_switch_ownership_token(request_token: str | None) -> None:
+    global _missing_runtime_switch_token_warned
     required = str(os.getenv("VENOM_RUNTIME_SWITCH_TOKEN", "")).strip()
     if not required:
+        if not _missing_runtime_switch_token_warned:
+            logger.warning(
+                "VENOM_RUNTIME_SWITCH_TOKEN is not configured; runtime switch "
+                "ownership checks are disabled."
+            )
+            _missing_runtime_switch_token_warned = True
         return
     provided = str(request_token or "").strip()
-    if provided != required:
+    if not hmac.compare_digest(provided, required):
         raise HTTPException(
             status_code=403,
             detail="Brak poprawnego ownership_token dla przełączenia runtime.",

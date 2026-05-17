@@ -287,76 +287,14 @@ def _generate_external_map() -> List[ApiConnection]:
     runtime_provider = str(getattr(runtime, "provider", "") or "").strip().lower()
     runtime_endpoint = str(getattr(runtime, "endpoint", "") or "").strip()
 
-    # Local LLM
     if SETTINGS.LLM_SERVICE_TYPE == "local":
-        local_runtime_label = runtime_provider or "auto"
-        local_runtime_endpoint = runtime_endpoint or SETTINGS.LLM_LOCAL_ENDPOINT
-        external.append(
-            ApiConnection(
-                source_component=MODEL_ROUTER_LABEL,
-                target_component=f"Local LLM ({local_runtime_label})",
-                protocol=ConnectionProtocol.HTTP,
-                direction=ConnectionDirection.BIDIRECTIONAL,
-                auth_type=AuthType.NONE,
-                source_type=SourceType.LOCAL,
-                status=ConnectionStatus.OK,
-                description=f"Lokalny model językowy ({local_runtime_endpoint})",
-                is_critical=True,
-                methods=["POST /api/generate", "POST /api/chat", "GET /api/tags"],
-            )
-        )
+        external.append(_build_local_llm_connection(runtime_provider, runtime_endpoint))
 
-    # Cloud Providers
     if SETTINGS.AI_MODE in ["HYBRID", "CLOUD"]:
-        provider = SETTINGS.HYBRID_CLOUD_PROVIDER
-        external.append(
-            ApiConnection(
-                source_component=MODEL_ROUTER_LABEL,
-                target_component=f"Cloud LLM ({provider.upper()})",
-                protocol=ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.OUTBOUND,
-                auth_type=AuthType.API_KEY,
-                source_type=SourceType.CLOUD,
-                status=ConnectionStatus.OK,
-                description="Zewnętrzny model dla zadań złożonych",
-                is_critical=True if SETTINGS.AI_MODE == "CLOUD" else False,
-                methods=["POST /v1/chat/completions", "POST /v1/embeddings"],
-            )
-        )
+        external.append(_build_cloud_llm_connection())
 
-    # Search
-    if SETTINGS.TAVILY_API_KEY.get_secret_value():
-        external.append(
-            ApiConnection(
-                source_component="Researcher",
-                target_component="Tavily AI Search",
-                protocol=ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.OUTBOUND,
-                auth_type=AuthType.API_KEY,
-                source_type=SourceType.CLOUD,
-                status=ConnectionStatus.OK,
-                description="Silnik wyszukiwania AI",
-                is_critical=False,
-                methods=["POST /search", "POST /extract"],
-            )
-        )
-    else:
-        external.append(
-            ApiConnection(
-                source_component="Researcher",
-                target_component="DuckDuckGo",
-                protocol=ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.OUTBOUND,
-                auth_type=AuthType.NONE,
-                source_type=SourceType.CLOUD,
-                status=ConnectionStatus.OK,
-                description="Publiczny silnik wyszukiwania (Privacy-First)",
-                is_critical=False,
-                methods=["GET /search?q=..."],
-            )
-        )
+    external.append(_build_search_connection())
 
-    # Google Calendar
     if SETTINGS.ENABLE_GOOGLE_CALENDAR:
         external.append(
             ApiConnection(
@@ -451,6 +389,70 @@ def _generate_external_map() -> List[ApiConnection]:
     )
 
     return external
+
+
+def _build_local_llm_connection(
+    runtime_provider: str,
+    runtime_endpoint: str,
+) -> ApiConnection:
+    local_runtime_label = runtime_provider or "auto"
+    local_runtime_endpoint = runtime_endpoint or SETTINGS.LLM_LOCAL_ENDPOINT
+    return ApiConnection(
+        source_component=MODEL_ROUTER_LABEL,
+        target_component=f"Local LLM ({local_runtime_label})",
+        protocol=ConnectionProtocol.HTTP,
+        direction=ConnectionDirection.BIDIRECTIONAL,
+        auth_type=AuthType.NONE,
+        source_type=SourceType.LOCAL,
+        status=ConnectionStatus.OK,
+        description=f"Lokalny model językowy ({local_runtime_endpoint})",
+        is_critical=True,
+        methods=["POST /api/generate", "POST /api/chat", "GET /api/tags"],
+    )
+
+
+def _build_cloud_llm_connection() -> ApiConnection:
+    provider = SETTINGS.HYBRID_CLOUD_PROVIDER
+    return ApiConnection(
+        source_component=MODEL_ROUTER_LABEL,
+        target_component=f"Cloud LLM ({provider.upper()})",
+        protocol=ConnectionProtocol.HTTPS,
+        direction=ConnectionDirection.OUTBOUND,
+        auth_type=AuthType.API_KEY,
+        source_type=SourceType.CLOUD,
+        status=ConnectionStatus.OK,
+        description="Zewnętrzny model dla zadań złożonych",
+        is_critical=SETTINGS.AI_MODE == "CLOUD",
+        methods=["POST /v1/chat/completions", "POST /v1/embeddings"],
+    )
+
+
+def _build_search_connection() -> ApiConnection:
+    if SETTINGS.TAVILY_API_KEY.get_secret_value():
+        return ApiConnection(
+            source_component="Researcher",
+            target_component="Tavily AI Search",
+            protocol=ConnectionProtocol.HTTPS,
+            direction=ConnectionDirection.OUTBOUND,
+            auth_type=AuthType.API_KEY,
+            source_type=SourceType.CLOUD,
+            status=ConnectionStatus.OK,
+            description="Silnik wyszukiwania AI",
+            is_critical=False,
+            methods=["POST /search", "POST /extract"],
+        )
+    return ApiConnection(
+        source_component="Researcher",
+        target_component="DuckDuckGo",
+        protocol=ConnectionProtocol.HTTPS,
+        direction=ConnectionDirection.OUTBOUND,
+        auth_type=AuthType.NONE,
+        source_type=SourceType.CLOUD,
+        status=ConnectionStatus.OK,
+        description="Publiczny silnik wyszukiwania (Privacy-First)",
+        is_critical=False,
+        methods=["GET /search?q=..."],
+    )
 
 
 def _update_runtime_statuses(connections: List[ApiConnection], service_monitor) -> None:

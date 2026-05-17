@@ -22,6 +22,7 @@ _PROBE_OK = "ok"
 _PROBE_FAILED = "failed"
 _PROBE_TRANSIENT_STATUS_CODES = {502, 503, 504}
 _PROBE_DEFAULT_PROFILE = "dev"
+_PROBE_TRANSPORT_ERROR_MESSAGE = "Probe transport error on active runtime"
 _PROBE_HTTP_CLIENT: httpx.AsyncClient | None = None
 _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
     "dev": {
@@ -459,10 +460,59 @@ def _handle_probe_retry_exception(
         )
     return _build_retry_exhausted_response(
         code="probe_transport_error",
-        message="Probe transport error on active runtime",
+        message=_PROBE_TRANSPORT_ERROR_MESSAGE,
         runtime_label=runtime_label,
         flow_started_at=flow_started_at,
     )
+
+
+async def _run_single_probe_attempt(
+    *,
+    probe_url: str,
+    probe_payload: dict[str, Any],
+    timeout_seconds: float,
+    attempt: int,
+    max_attempts: int,
+    runtime_label: str,
+    flow_started_at: float,
+) -> tuple[dict[str, Any] | None, bool]:
+    try:
+        response = await _post_probe_request(
+            url=probe_url,
+            payload=probe_payload,
+            timeout_seconds=timeout_seconds,
+        )
+        return _handle_probe_response_attempt(
+            response=response,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+        )
+    except ValueError:
+        raise
+    except (httpx.TimeoutException, httpx.ConnectError):
+        failure = _handle_probe_retry_exception(
+            attempt=attempt,
+            max_attempts=max_attempts,
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+            timeout=True,
+        )
+        if failure is not None:
+            return failure, False
+        return None, True
+    except httpx.HTTPError:
+        failure = _handle_probe_retry_exception(
+            attempt=attempt,
+            max_attempts=max_attempts,
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+            timeout=False,
+        )
+        if failure is not None:
+            return failure, False
+        return None, True
 
 
 async def _execute_probe_with_retry(
@@ -477,54 +527,28 @@ async def _execute_probe_with_retry(
     attempt = 0
     while attempt < max_attempts:
         attempt += 1
-        try:
-            response = await _post_probe_request(
-                url=probe_url,
-                payload=probe_payload,
-                timeout_seconds=timeout_seconds,
-            )
-            result, should_retry = _handle_probe_response_attempt(
-                response=response,
-                attempt=attempt,
-                max_attempts=max_attempts,
-                runtime_label=runtime_label,
-                flow_started_at=flow_started_at,
-            )
-            if should_retry:
-                continue
-            if result is not None:
-                return result
-            return _build_retry_exhausted_response(
-                code="probe_transport_error",
-                message="Probe transport error on active runtime",
-                runtime_label=runtime_label,
-                flow_started_at=flow_started_at,
-            )
-        except ValueError:
-            raise
-        except (httpx.TimeoutException, httpx.ConnectError):
-            failure = _handle_probe_retry_exception(
-                attempt=attempt,
-                max_attempts=max_attempts,
-                runtime_label=runtime_label,
-                flow_started_at=flow_started_at,
-                timeout=True,
-            )
-            if failure is not None:
-                return failure
-        except httpx.HTTPError:
-            failure = _handle_probe_retry_exception(
-                attempt=attempt,
-                max_attempts=max_attempts,
-                runtime_label=runtime_label,
-                flow_started_at=flow_started_at,
-                timeout=False,
-            )
-            if failure is not None:
-                return failure
+        result, should_retry = await _run_single_probe_attempt(
+            probe_url=probe_url,
+            probe_payload=probe_payload,
+            timeout_seconds=timeout_seconds,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+        )
+        if should_retry:
+            continue
+        if result is not None:
+            return result
+        return _build_retry_exhausted_response(
+            code="probe_transport_error",
+            message=_PROBE_TRANSPORT_ERROR_MESSAGE,
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+        )
     return _build_retry_exhausted_response(
         code="probe_transport_error",
-        message="Probe transport error on active runtime",
+        message=_PROBE_TRANSPORT_ERROR_MESSAGE,
         runtime_label=runtime_label,
         flow_started_at=flow_started_at,
     )

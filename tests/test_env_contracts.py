@@ -42,7 +42,9 @@ def _assert_profile_contract(dev: dict, profile: str) -> None:
     normalized = profile.strip().lower()
     if normalized == "ollama":
         endpoint = dev.get("LLM_LOCAL_ENDPOINT", "").strip()
-        assert endpoint.startswith("http://localhost:11434"), endpoint
+        ollama_direct = endpoint.startswith("http://localhost:11434")
+        ollama_via_multi_runtime = endpoint.startswith("http://localhost:8014")
+        assert ollama_direct or ollama_via_multi_runtime, endpoint
         return
     if normalized == "vllm":
         endpoint = dev.get("VLLM_ENDPOINT", "").strip()

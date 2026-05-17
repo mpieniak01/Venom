@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import torch
+import pytest
 
 from services.multi_runtime.main import _extract_logits_top
 
@@ -13,6 +13,7 @@ class _FakeTokenizer:
 
 
 def test_extract_logits_top_decodes_vocab_token_ids() -> None:
+    torch = pytest.importorskip("torch")
     logits = torch.tensor([0.1, 2.0, 1.5, -0.4], dtype=torch.float32)
     result = _extract_logits_top(
         logits_vector=logits,

@@ -43,6 +43,7 @@ from venom_core.services.control_plane_audit import get_control_plane_audit_trai
 from venom_core.services.control_plane_compatibility import get_compatibility_validator
 from venom_core.services.runtime_controller import runtime_controller
 from venom_core.services.runtime_dependencies import get_request_tracer
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -640,7 +641,7 @@ class ControlPlaneService:
         # Build state
         derived_runtime = self._resolve_runtime_from_config(config)
         derived_provider = self._resolve_provider_from_config(config)
-        derived_model = self._resolve_model_from_config(config, derived_provider)
+        derived_model = self._resolve_model_for_state(config, derived_provider)
         embedding_model = config.get(
             "EMBEDDING_MODEL",
             config.get("INTENT_EMBED_MODEL_NAME", "sentence-transformers"),
@@ -1600,6 +1601,34 @@ class ControlPlaneService:
             provider, []
         )
         return fallback_models[0] if fallback_models else "llama2"
+
+    def _resolve_model_for_state(self, config: dict[str, Any], provider: str) -> str:
+        """Resolve model for control-plane state with runtime truth precedence."""
+        runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
+        if callable(runtime_snapshot_getter):
+            try:
+                runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
+                runtime_active_model = str(
+                    runtime_snapshot.get("active_model_id") or ""
+                ).strip()
+                if runtime_active_model:
+                    return runtime_active_model
+            except Exception as exc:
+                logger.debug(
+                    "Runtime snapshot unavailable while resolving control-plane model: %s",
+                    exc,
+                )
+        try:
+            runtime = get_active_llm_runtime()
+            runtime_model = str(getattr(runtime, "model_name", "") or "").strip()
+            if runtime_model:
+                return runtime_model
+        except Exception as exc:
+            logger.debug(
+                "Live runtime unavailable while resolving control-plane model: %s",
+                exc,
+            )
+        return self._resolve_model_from_config(config, provider)
 
     def _classify_provider_source(self, provider: str) -> str:
         normalized = (provider or "").strip().lower()

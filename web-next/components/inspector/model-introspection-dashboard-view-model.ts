@@ -997,6 +997,8 @@ export function buildRagFocusModel(args: {
 export function buildOperatorConclusion(args: {
   analysisVisible: boolean;
   analysisStatus: string | undefined;
+  skippedReason?: string | null;
+  analysisErrorCode?: string | null;
   ragFocus: RagFocusModel | null;
   logitLens: LogitLensModel | null;
   operatorConclusionPayload?:
@@ -1014,6 +1016,8 @@ export function buildOperatorConclusion(args: {
   const {
     analysisVisible,
     analysisStatus,
+    skippedReason,
+    analysisErrorCode,
     ragFocus,
     logitLens,
     operatorConclusionPayload,
@@ -1041,6 +1045,61 @@ export function buildOperatorConclusion(args: {
   }
 
   if (analysisStatus === "skipped") {
+    if (
+      skippedReason === "model_drift_detected" ||
+      analysisErrorCode === "MODEL_DRIFT_DETECTED"
+    ) {
+      return {
+        verdict: "ungrounded",
+        confidenceTier: "low",
+        tone: "warning",
+        reasons: ["model drift detected"],
+        reasonCodes: ["R0_MODEL_DRIFT"],
+        partial: true,
+        coveragePercent: null,
+        streamQuality: null,
+        internalsQuality: null,
+      };
+    }
+    if (analysisErrorCode === "DEGRADED_CIRCUIT_OPEN") {
+      return {
+        verdict: "ungrounded",
+        confidenceTier: "low",
+        tone: "warning",
+        reasons: ["degraded mode: circuit breaker open"],
+        reasonCodes: ["R0_DEGRADED_CIRCUIT"],
+        partial: true,
+        coveragePercent: null,
+        streamQuality: null,
+        internalsQuality: null,
+      };
+    }
+    if (analysisErrorCode === "DEGRADED_ENDPOINT_UNREACHABLE") {
+      return {
+        verdict: "ungrounded",
+        confidenceTier: "low",
+        tone: "warning",
+        reasons: ["degraded mode: endpoint unreachable"],
+        reasonCodes: ["R0_DEGRADED_ENDPOINT"],
+        partial: true,
+        coveragePercent: null,
+        streamQuality: null,
+        internalsQuality: null,
+      };
+    }
+    if (analysisErrorCode === "DEGRADED_POLICY_BLOCK") {
+      return {
+        verdict: "ungrounded",
+        confidenceTier: "low",
+        tone: "warning",
+        reasons: ["degraded mode: policy block"],
+        reasonCodes: ["R0_DEGRADED_POLICY"],
+        partial: true,
+        coveragePercent: null,
+        streamQuality: null,
+        internalsQuality: null,
+      };
+    }
     return {
       verdict: "ungrounded",
       confidenceTier: "low",
@@ -1082,6 +1141,43 @@ export function buildOperatorConclusion(args: {
   }
 
   return buildUngroundedOperatorConclusion(logitRuntime);
+}
+
+export function buildOperatorRunbookSteps(
+  reasonCodes: readonly string[] | null | undefined,
+): string[] {
+  if (!Array.isArray(reasonCodes) || reasonCodes.length === 0) {
+    return [];
+  }
+  if (reasonCodes.includes("R0_MODEL_DRIFT")) {
+    return [
+      "Odśwież snapshot runtime i sprawdź, czy active_model == daemon_target_model.",
+      "Jeśli model jest rozjechany, przełącz model z UI (jeden kontrolowany switch).",
+      "Uruchom analizę ponownie dopiero po statusie drift clean.",
+    ];
+  }
+  if (reasonCodes.includes("R0_DEGRADED_ENDPOINT")) {
+    return [
+      "Zweryfikuj endpoint runtime i health usługi modelu.",
+      "Przywróć połączenie do runtime (host/port) i odśwież snapshot.",
+      "Powtórz analizę po potwierdzeniu statusu healthy.",
+    ];
+  }
+  if (reasonCodes.includes("R0_DEGRADED_CIRCUIT")) {
+    return [
+      "Sprawdź, czy circuit breaker nie blokuje ruchu po serii błędów.",
+      "Usuń przyczynę błędów upstream i poczekaj na zamknięcie obwodu.",
+      "Po odzyskaniu ruchu uruchom analizę ponownie.",
+    ];
+  }
+  if (reasonCodes.includes("R0_DEGRADED_POLICY")) {
+    return [
+      "Sprawdź politykę traffic control/probe dla bieżącego runtime.",
+      "Potwierdź whitelistę modelu i limity profilu probe.",
+      "Po korekcie polityki uruchom analizę ponownie.",
+    ];
+  }
+  return [];
 }
 
 function resolveOperatorConclusionFromPayload(

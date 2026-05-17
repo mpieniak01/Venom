@@ -986,6 +986,12 @@ def test_build_runtime_metadata_and_tts_sample_rate():
 
     operator_agent = MagicMock()
     operator_agent._resolve_chat_service_id.return_value = "local"
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        audio_stream_mod,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(model_name="live-runtime-model"),
+    )
 
     runtime = handler._build_runtime_metadata(operator_agent)
 
@@ -993,12 +999,14 @@ def test_build_runtime_metadata_and_tts_sample_rate():
     assert runtime["stt_device"] == "cpu"
     assert runtime["stt_compute_type"] == "int8"
     assert runtime["llm_service_id"] == "local"
+    assert runtime["llm_model"] == "live-runtime-model"
     assert runtime["tts_model_path"] == "/tmp/voice.onnx"
     assert runtime["tts_fallback"] is False
     assert runtime["tts_sample_rate"] == 24000
 
     handler.audio_engine.voice.output_sample_rate = None
     assert handler._get_tts_sample_rate() == 22050
+    monkeypatch.undo()
 
 
 def test_gemma4_audio_helper_urls_and_selection(monkeypatch):

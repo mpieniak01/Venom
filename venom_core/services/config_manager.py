@@ -11,6 +11,7 @@ Odpowiada za:
 import os
 import re
 import shutil
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -459,10 +460,64 @@ class ConfigManager:
         )
         self.env_history_dir = self.project_root / "config" / "env-history"
         self.env_history_dir.mkdir(parents=True, exist_ok=True)
+        self._env_cache: Dict[str, str] | None = None
+        self._env_cache_mtime_ns: int | None = None
+        self._env_cache_size: int | None = None
+        self._env_cache_path: Path | None = None
 
     def _backup_prefix(self) -> str:
         """Zwraca prefiks nazwy backupu dla aktywnego pliku env."""
         return f"{self.env_file.name}-"
+
+    def _invalidate_env_cache(self) -> None:
+        self._env_cache = None
+        self._env_cache_mtime_ns = None
+        self._env_cache_size = None
+        self._env_cache_path = None
+
+    def _load_env_values(self) -> Dict[str, str]:
+        """Wczytuje aktywny plik env z lekkim cache opartym o mtime."""
+        if not self.env_file.exists():
+            self._invalidate_env_cache()
+            logger.warning(f"Plik env nie istnieje: {self.env_file}")
+            return {}
+
+        try:
+            mtime_ns = self.env_file.stat().st_mtime_ns
+            size = self.env_file.stat().st_size
+        except Exception:
+            mtime_ns = None
+            size = None
+
+        if (
+            self._env_cache is not None
+            and self._env_cache_path == self.env_file
+            and self._env_cache_mtime_ns == mtime_ns
+            and self._env_cache_size == size
+        ):
+            return deepcopy(self._env_cache)
+
+        env_values: Dict[str, str] = {}
+        try:
+            with open(self.env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+
+                    match = re.match(r"^([A-Z_][A-Z0-9_]*)=(.*)$", line)
+                    if match:
+                        key, value = match.groups()
+                        value = value.strip().strip('"').strip("'")
+                        env_values[key] = value
+        except Exception:
+            logger.exception("Błąd wczytywania pliku env")
+
+        self._env_cache = deepcopy(env_values)
+        self._env_cache_mtime_ns = mtime_ns
+        self._env_cache_size = size
+        self._env_cache_path = self.env_file
+        return env_values
 
     def get_config(self, mask_secrets: bool = True) -> Dict[str, Any]:
         """
@@ -476,8 +531,7 @@ class ConfigManager:
         """
         config: Dict[str, Any] = {}
 
-        # Wczytaj aktywny plik env
-        env_values = self._read_env_file()
+        env_values = self._load_env_values()
 
         # Zwróć tylko parametry z whitelisty
         for key in CONFIG_WHITELIST:
@@ -505,7 +559,7 @@ class ConfigManager:
         """
         config: Dict[str, Any] = {}
         sources: Dict[str, str] = {}
-        env_values = self._read_env_file()
+        env_values = self._load_env_values()
 
         for key in CONFIG_WHITELIST:
             raw_value = env_values.get(key)
@@ -522,6 +576,30 @@ class ConfigManager:
                 config[key] = value
 
         return config, sources
+
+    def get_runtime_snapshot(self, mask_secrets: bool = True) -> Dict[str, Any]:
+        """
+        Zwraca snapshot runtime: live runtime + persisted config.
+
+        To jest preferowany interfejs dla miejsc, które muszą znać aktualny model
+        i jednocześnie odczytać zapisany stan konfiguracji.
+        """
+        from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+        runtime = get_active_llm_runtime()
+        config, sources = self.get_effective_config_with_sources(
+            mask_secrets=mask_secrets
+        )
+        return {
+            "runtime": runtime.to_payload(),
+            "runtime_live": runtime,
+            "active_model_id": runtime.model_name,
+            "active_server": runtime.provider,
+            "runtime_id": runtime.runtime_id,
+            "config_hash": runtime.config_hash,
+            "config": config,
+            "config_sources": sources,
+        }
 
     def update_config(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -555,7 +633,7 @@ class ConfigManager:
             }
 
         # Wczytaj aktualny plik env
-        env_values = self._read_env_file()
+        env_values = self._load_env_values()
 
         # Zastosuj zmiany
         changed_keys: List[str] = []
@@ -594,6 +672,15 @@ class ConfigManager:
         # Zapisz aktywny plik env
         try:
             self._write_env_file(env_values)
+            self._env_cache = deepcopy(env_values)
+            try:
+                stat_result = self.env_file.stat()
+                self._env_cache_mtime_ns = stat_result.st_mtime_ns
+                self._env_cache_size = stat_result.st_size
+            except Exception:
+                self._env_cache_mtime_ns = None
+                self._env_cache_size = None
+            self._env_cache_path = self.env_file
         except Exception as e:
             logger.exception("Błąd zapisu pliku env")
             return {
@@ -620,31 +707,7 @@ class ConfigManager:
 
     def _read_env_file(self) -> Dict[str, str]:
         """Wczytuje aktywny plik env do słownika."""
-        env_values: Dict[str, str] = {}
-
-        if not self.env_file.exists():
-            logger.warning(f"Plik env nie istnieje: {self.env_file}")
-            return env_values
-
-        try:
-            with open(self.env_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-
-                    # Parsuj linie KEY=VALUE
-                    match = re.match(r"^([A-Z_][A-Z0-9_]*)=(.*)$", line)
-                    if match:
-                        key, value = match.groups()
-                        # Usuń cudzysłowy jeśli są
-                        value = value.strip().strip('"').strip("'")
-                        env_values[key] = value
-
-        except Exception:
-            logger.exception("Błąd wczytywania pliku env")
-
-        return env_values
+        return self._load_env_values()
 
     @staticmethod
     def _default_value_as_string(key: str) -> str:
@@ -706,6 +769,7 @@ class ConfigManager:
         # Zapisz
         with open(self.env_file, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
+        self._invalidate_env_cache()
 
     def _backup_env_file(self) -> Optional[Path]:
         """Tworzy backup aktywnego pliku env do config/env-history/."""
@@ -819,6 +883,7 @@ class ConfigManager:
 
             # Przywróć z backupu
             shutil.copy2(backup_path, self.env_file)
+            self._invalidate_env_cache()
 
             logger.info(
                 f"Przywrócono {self.env_file.name} z backupu: {backup_filename}"

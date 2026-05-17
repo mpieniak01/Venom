@@ -31,6 +31,7 @@ from venom_core.services.model_introspection_service import (
     build_model_introspection_snapshot,
 )
 from venom_core.services.runtime_dependencies import get_request_tracer
+from venom_core.services.runtime_switch_telemetry import emit_runtime_model_event
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -44,6 +45,10 @@ _TIMELINE_LABEL_SALIENCY = "Saliency probe"
 _STREAM_DELAYED_THRESHOLD_MS = 1000.0
 _STREAM_BUFFERED_WINDOW_MS = 250.0
 _TRAFFIC_CONTROL_DEGRADED_ERROR = "Traffic control is in degraded mode"
+_MODEL_DRIFT_DETECTED_ERROR = "MODEL_DRIFT_DETECTED"
+_DEGRADED_POLICY_BLOCK = "DEGRADED_POLICY_BLOCK"
+_DEGRADED_CIRCUIT_OPEN = "DEGRADED_CIRCUIT_OPEN"
+_DEGRADED_ENDPOINT_UNREACHABLE = "DEGRADED_ENDPOINT_UNREACHABLE"
 
 
 def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
@@ -816,6 +821,8 @@ def _build_degraded_mode_skipped_result(
     runtime: dict[str, Any],
     request_ready_at_ms: float,
     elapsed_ms: float,
+    error_code: str = _DEGRADED_POLICY_BLOCK,
+    detail: str = "Traffic control degraded mode active",
 ) -> dict[str, Any]:
     timeline: list[dict[str, Any]] = [
         {
@@ -836,7 +843,7 @@ def _build_degraded_mode_skipped_result(
             "id": "analysis_skipped",
             "label": "Analysis skipped",
             "status": "skipped",
-            "detail": "Traffic control degraded mode active",
+            "detail": detail,
             "at_ms": elapsed_ms,
         },
     ]
@@ -861,6 +868,102 @@ def _build_degraded_mode_skipped_result(
             "snapshot_after_ms": None,
             "process": None,
             "error": _TRAFFIC_CONTROL_DEGRADED_ERROR,
+            "error_code": error_code,
+        },
+    }
+
+
+def _extract_model_drift_issue(snapshot: dict[str, Any]) -> dict[str, Any] | None:
+    runtime_drift = snapshot.get("runtime_drift")
+    if not isinstance(runtime_drift, dict):
+        return None
+    issues = runtime_drift.get("issues")
+    if not isinstance(issues, list) or not issues:
+        return None
+    for issue in issues:
+        if not isinstance(issue, str):
+            continue
+        normalized = issue.lower()
+        if "target model" in normalized or "model drift" in normalized:
+            return {
+                "issue": issue,
+                "runtime_active_model_id": runtime_drift.get("runtime_active_model_id"),
+                "daemon_target_model": runtime_drift.get("daemon_target_model"),
+            }
+    return None
+
+
+def _build_model_drift_skipped_result(
+    *,
+    prompt: str,
+    runtime: dict[str, Any],
+    request_ready_at_ms: float,
+    drift_issue: dict[str, Any],
+) -> dict[str, Any]:
+    issue_text = str(drift_issue.get("issue") or "Model drift detected").strip()
+    runtime_active_model_id = drift_issue.get("runtime_active_model_id")
+    daemon_target_model = drift_issue.get("daemon_target_model")
+    detail_suffix = ""
+    if runtime_active_model_id or daemon_target_model:
+        detail_suffix = (
+            f" (runtime_active_model_id={runtime_active_model_id or 'n/a'}, "
+            f"daemon_target_model={daemon_target_model or 'n/a'})"
+        )
+    emit_runtime_model_event(
+        "runtime_model_mismatch_detected",
+        source="introspection_preflight",
+        runtime=str(runtime.get("provider") or ""),
+        runtime_active_model_id=runtime_active_model_id or "n/a",
+        daemon_target_model=daemon_target_model or "n/a",
+    )
+    detail = f"{issue_text}{detail_suffix}"
+    timeline: list[dict[str, Any]] = [
+        {
+            "id": "snapshot_before",
+            "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
+            "status": "done",
+            "detail": runtime["label"],
+            "at_ms": 0.0,
+        },
+        {
+            "id": "request_ready",
+            "label": _TIMELINE_LABEL_PROMPT_PREPARED,
+            "status": "done",
+            "detail": prompt,
+            "at_ms": request_ready_at_ms,
+        },
+        {
+            "id": "analysis_skipped_model_drift",
+            "label": "Analysis skipped",
+            "status": "skipped",
+            "detail": detail,
+            "at_ms": request_ready_at_ms,
+        },
+    ]
+    return {
+        "analysis_enabled": True,
+        "status": "skipped",
+        "skipped_reason": "model_drift_detected",
+        "snapshot_after": None,
+        "analysis": {
+            "prompt": prompt,
+            "response": "",
+            "chunk_count": 0,
+            "events": ["skipped"],
+            "timeline_step_count": len(timeline),
+            "timeline": timeline,
+            "elapsed_ms": request_ready_at_ms,
+            "provider": runtime["provider"],
+            "model": runtime["model"],
+            "runtime_label": runtime["label"],
+            "request_ready_ms": request_ready_at_ms,
+            "response_received_ms": request_ready_at_ms,
+            "snapshot_after_ms": None,
+            "process": None,
+            "error": _MODEL_DRIFT_DETECTED_ERROR,
+            "error_code": _MODEL_DRIFT_DETECTED_ERROR,
+            "runtime_active_model_id": runtime_active_model_id,
+            "daemon_target_model": daemon_target_model,
         },
     }
 
@@ -873,6 +976,30 @@ def _is_traffic_control_degraded_error(error: Exception) -> bool:
         "traffic control is in degraded mode" in message
         or "degraded mode active" in message
     )
+
+
+def _resolve_degraded_error_details(error: Exception) -> tuple[str, str] | None:
+    message = str(error or "").strip()
+    normalized = message.lower()
+    if not normalized:
+        return None
+    if "circuit breaker open" in normalized:
+        return _DEGRADED_CIRCUIT_OPEN, message
+    if (
+        "traffic control is in degraded mode" in normalized
+        or "degraded mode active" in normalized
+        or "global outbound request cap exceeded" in normalized
+        or "rate limit exceeded" in normalized
+    ):
+        return _DEGRADED_POLICY_BLOCK, message
+    if (
+        "connect error" in normalized
+        or "connection refused" in normalized
+        or "name or service not known" in normalized
+        or "timed out" in normalized
+    ):
+        return _DEGRADED_ENDPOINT_UNREACHABLE, message
+    return None
 
 
 def _build_running_analysis_result(
@@ -1355,6 +1482,26 @@ class _CompletedAnalysisPayloadContext:
     run_trends: dict[str, Any] | None
 
 
+@dataclass(slots=True)
+class _FinalizeCompletedAnalysisArgs:
+    prompt: str
+    snapshot: dict[str, Any]
+    runtime: dict[str, Any]
+    stream_payload: dict[str, Any]
+    request_id: UUID | None
+    flow_started_at: float
+    request_ready_at_ms: float
+    response_received_at_ms: float
+    max_tokens: int | None
+    temperature: float | None
+    top_p: float | None
+    logit_lens: dict[str, Any]
+    attention: dict[str, Any]
+    saliency: dict[str, Any]
+    model_manager: Any = None
+    settings: Any = None
+
+
 def _build_completed_analysis_payload(
     context: _CompletedAnalysisPayloadContext,
 ) -> dict[str, Any]:
@@ -1390,78 +1537,66 @@ def _build_completed_analysis_payload(
 
 
 async def _finalize_completed_analysis(
-    *,
-    prompt: str,
-    snapshot: dict[str, Any],
-    runtime: dict[str, Any],
-    stream_payload: dict[str, Any],
-    request_id: UUID | None,
-    flow_started_at: float,
-    request_ready_at_ms: float,
-    response_received_at_ms: float,
-    max_tokens: int | None,
-    temperature: float | None,
-    top_p: float | None,
-    logit_lens: dict[str, Any],
-    attention: dict[str, Any],
-    saliency: dict[str, Any],
-    model_manager: Any = None,
-    settings: Any = None,
+    args: _FinalizeCompletedAnalysisArgs,
 ) -> tuple[dict[str, Any], dict[str, Any], float]:
-    elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    elapsed_ms = (time.perf_counter() - args.flow_started_at) * 1000.0
     probe_steps_at_ms = elapsed_ms
     logit_lens_step = _build_logit_lens_timeline_step(
-        logit_lens=logit_lens,
+        logit_lens=args.logit_lens,
         at_ms=probe_steps_at_ms,
     )
     attention_step = _build_probe_timeline_step(
         step_id="attention_probe",
         step_label=_TIMELINE_LABEL_ATTENTION,
-        payload=attention,
+        payload=args.attention,
         at_ms=probe_steps_at_ms,
     )
     saliency_step = _build_probe_timeline_step(
         step_id="saliency_probe",
         step_label=_TIMELINE_LABEL_SALIENCY,
-        payload=saliency,
+        payload=args.saliency,
         at_ms=probe_steps_at_ms,
     )
     try:
         refreshed_snapshot = await build_model_introspection_snapshot(
-            model_manager=model_manager, settings=settings
+            model_manager=args.model_manager, settings=args.settings
         )
-        snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        snapshot_after_at_ms = (time.perf_counter() - args.flow_started_at) * 1000.0
     except Exception:
         logger.exception("Model introspection snapshot refresh failed")
-        refreshed_snapshot = snapshot
+        refreshed_snapshot = args.snapshot
         snapshot_after_at_ms = None
-    process_trace = _summarize_request_trace(request_id)
-    response_text = str(stream_payload.get("response_text") or "")
+    process_trace = _summarize_request_trace(args.request_id)
+    response_text = str(args.stream_payload.get("response_text") or "")
     rag_focus = _collect_rag_focus_payload_safe(
-        prompt=prompt,
-        snapshot=snapshot,
+        prompt=args.prompt,
+        snapshot=args.snapshot,
         process_trace=process_trace,
         response_text=response_text,
     )
-    input_profile = _build_input_profile(prompt=prompt, process_trace=process_trace)
+    input_profile = _build_input_profile(
+        prompt=args.prompt, process_trace=process_trace
+    )
     generation_profile = _build_generation_profile(
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        top_p=args.top_p,
         process_trace=process_trace,
     )
     stream_profile = _build_stream_profile(
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
+        request_ready_at_ms=args.request_ready_at_ms,
+        response_received_at_ms=args.response_received_at_ms,
         elapsed_ms=elapsed_ms,
-        chunk_count=int(stream_payload.get("chunk_count") or 0),
-        events=list(stream_payload.get("events") or []),
+        chunk_count=int(args.stream_payload.get("chunk_count") or 0),
+        events=list(args.stream_payload.get("events") or []),
         first_content_at_ms=(
-            float(stream_payload["first_content_at_ms"])
-            if isinstance(stream_payload.get("first_content_at_ms"), (int, float))
+            float(args.stream_payload["first_content_at_ms"])
+            if isinstance(args.stream_payload.get("first_content_at_ms"), (int, float))
             else None
         ),
-        content_event_times_ms=list(stream_payload.get("content_event_times_ms") or []),
+        content_event_times_ms=list(
+            args.stream_payload.get("content_event_times_ms") or []
+        ),
         response_text=response_text,
     )
     evidence_coverage = _build_evidence_coverage_profile(
@@ -1469,17 +1604,17 @@ async def _finalize_completed_analysis(
         rag_focus=rag_focus,
     )
     rag_profile = _build_rag_profile(rag_focus=rag_focus)
-    logit_profile = _build_logit_profile(logit_lens=logit_lens)
+    logit_profile = _build_logit_profile(logit_lens=args.logit_lens)
     operator_conclusion = _build_operator_conclusion_payload(
         rag_focus=rag_focus,
-        logit_lens=logit_lens,
+        logit_lens=args.logit_lens,
         evidence_coverage=evidence_coverage,
         stream_profile=stream_profile,
     )
     analysis_capabilities = _build_analysis_capabilities_payload(
-        attention=attention,
-        saliency=saliency,
-        logit_lens=logit_lens,
+        attention=args.attention,
+        saliency=args.saliency,
+        logit_lens=args.logit_lens,
         probe_health=refreshed_snapshot.get("probe"),
     )
     try:
@@ -1489,18 +1624,18 @@ async def _finalize_completed_analysis(
             logit_profile=logit_profile,
             stream_profile=stream_profile,
             evidence_coverage=evidence_coverage,
-            settings=settings,
+            settings=args.settings,
         )
     except Exception:
         logger.exception("Model introspection run trends persistence failed")
         run_trends = None
     analysis_timeline = _build_analysis_timeline(
-        prompt=prompt,
-        runtime=runtime,
-        stream_payload=stream_payload,
+        prompt=args.prompt,
+        runtime=args.runtime,
+        stream_payload=args.stream_payload,
         elapsed_ms=elapsed_ms,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
+        request_ready_at_ms=args.request_ready_at_ms,
+        response_received_at_ms=args.response_received_at_ms,
         snapshot_after_at_ms=snapshot_after_at_ms,
         logit_lens_step=logit_lens_step,
         attention_step=attention_step,
@@ -1509,15 +1644,15 @@ async def _finalize_completed_analysis(
     )
     payload = _build_completed_analysis_payload(
         _CompletedAnalysisPayloadContext(
-            prompt=prompt,
-            stream_payload=stream_payload,
-            chunk_count=int(stream_payload.get("chunk_count") or 0),
-            events=list(stream_payload.get("events") or []),
+            prompt=args.prompt,
+            stream_payload=args.stream_payload,
+            chunk_count=int(args.stream_payload.get("chunk_count") or 0),
+            events=list(args.stream_payload.get("events") or []),
             analysis_timeline=analysis_timeline,
             elapsed_ms=elapsed_ms,
-            runtime=runtime,
-            request_ready_at_ms=request_ready_at_ms,
-            response_received_at_ms=response_received_at_ms,
+            runtime=args.runtime,
+            request_ready_at_ms=args.request_ready_at_ms,
+            response_received_at_ms=args.response_received_at_ms,
             snapshot_after_at_ms=(
                 snapshot_after_at_ms
                 if isinstance(snapshot_after_at_ms, (int, float))
@@ -1525,10 +1660,10 @@ async def _finalize_completed_analysis(
             ),
             process_trace=process_trace,
             rag_focus=rag_focus,
-            attention=attention,
-            saliency=saliency,
+            attention=args.attention,
+            saliency=args.saliency,
             rag_profile=rag_profile,
-            logit_lens=logit_lens,
+            logit_lens=args.logit_lens,
             logit_profile=logit_profile,
             input_profile=input_profile,
             generation_profile=generation_profile,
@@ -1573,6 +1708,19 @@ async def stream_model_introspection_analysis(
     if not prompt.strip():
         raise ValueError("prompt cannot be empty")
 
+    drift_issue = _extract_model_drift_issue(snapshot)
+    if drift_issue is not None:
+        request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        skipped_result = _build_model_drift_skipped_result(
+            prompt=prompt,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            drift_issue=drift_issue,
+        )
+        yield _serialize_sse_event("analysis_start", skipped_result)
+        yield _serialize_sse_event("analysis_done", skipped_result)
+        return
+
     request = SimpleChatRequest(
         content=prompt,
         model=runtime["model"],
@@ -1591,13 +1739,17 @@ async def stream_model_introspection_analysis(
         request_id = _parse_request_id(_get_response_header(response, "X-Request-Id"))
         response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     except Exception as exc:
-        if _is_traffic_control_degraded_error(exc):
+        degraded_details = _resolve_degraded_error_details(exc)
+        if degraded_details is not None:
+            error_code, detail = degraded_details
             elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
             skipped_result = _build_degraded_mode_skipped_result(
                 prompt=prompt,
                 runtime=runtime,
                 request_ready_at_ms=request_ready_at_ms,
                 elapsed_ms=elapsed_ms,
+                error_code=error_code,
+                detail=detail,
             )
             yield _serialize_sse_event("analysis_start", running_result)
             yield _serialize_sse_event("analysis_done", skipped_result)
@@ -1690,13 +1842,17 @@ async def stream_model_introspection_analysis(
                 content_event_times_ms=content_event_times_ms,
             )
     except Exception as exc:
-        if _is_traffic_control_degraded_error(exc):
+        degraded_details = _resolve_degraded_error_details(exc)
+        if degraded_details is not None:
+            error_code, detail = degraded_details
             elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
             skipped_result = _build_degraded_mode_skipped_result(
                 prompt=prompt,
                 runtime=runtime,
                 request_ready_at_ms=request_ready_at_ms,
                 elapsed_ms=elapsed_ms,
+                error_code=error_code,
+                detail=detail,
             )
             yield _serialize_sse_event("analysis_done", skipped_result)
             return
@@ -1747,22 +1903,24 @@ async def stream_model_introspection_analysis(
         refreshed_snapshot,
         _snapshot_after_at_ms,
     ) = await _finalize_completed_analysis(
-        prompt=prompt,
-        snapshot=snapshot,
-        runtime=runtime,
-        stream_payload=stream_payload,
-        request_id=request_id,
-        flow_started_at=flow_started_at,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        logit_lens=logit_lens,
-        attention=attention,
-        saliency=saliency,
-        model_manager=model_manager,
-        settings=settings,
+        _FinalizeCompletedAnalysisArgs(
+            prompt=prompt,
+            snapshot=snapshot,
+            runtime=runtime,
+            stream_payload=stream_payload,
+            request_id=request_id,
+            flow_started_at=flow_started_at,
+            request_ready_at_ms=request_ready_at_ms,
+            response_received_at_ms=response_received_at_ms,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            logit_lens=logit_lens,
+            attention=attention,
+            saliency=saliency,
+            model_manager=model_manager,
+            settings=settings,
+        )
     )
     final_result = {
         "analysis_enabled": True,
@@ -1799,6 +1957,18 @@ async def analyze_model_with_optional_live_run(
     if not prompt.strip():
         raise ValueError("prompt cannot be empty")
 
+    drift_issue = _extract_model_drift_issue(snapshot)
+    if drift_issue is not None:
+        request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        skipped_result = _build_model_drift_skipped_result(
+            prompt=prompt,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            drift_issue=drift_issue,
+        )
+        skipped_result["snapshot"] = snapshot
+        return skipped_result
+
     request = SimpleChatRequest(
         content=prompt,
         model=runtime["model"],
@@ -1816,13 +1986,17 @@ async def analyze_model_with_optional_live_run(
     try:
         response = await stream_simple_chat(request)
     except Exception as exc:
-        if _is_traffic_control_degraded_error(exc):
+        degraded_details = _resolve_degraded_error_details(exc)
+        if degraded_details is not None:
+            error_code, detail = degraded_details
             elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
             skipped_result = _build_degraded_mode_skipped_result(
                 prompt=prompt,
                 runtime=runtime,
                 request_ready_at_ms=request_ready_at_ms,
                 elapsed_ms=elapsed_ms,
+                error_code=error_code,
+                detail=detail,
             )
             skipped_result["snapshot"] = snapshot
             return skipped_result
@@ -1832,13 +2006,17 @@ async def analyze_model_with_optional_live_run(
     try:
         stream_payload = await _collect_streaming_response(response)
     except Exception as exc:
-        if _is_traffic_control_degraded_error(exc):
+        degraded_details = _resolve_degraded_error_details(exc)
+        if degraded_details is not None:
+            error_code, detail = degraded_details
             elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
             skipped_result = _build_degraded_mode_skipped_result(
                 prompt=prompt,
                 runtime=runtime,
                 request_ready_at_ms=request_ready_at_ms,
                 elapsed_ms=elapsed_ms,
+                error_code=error_code,
+                detail=detail,
             )
             skipped_result["snapshot"] = snapshot
             return skipped_result
@@ -1861,22 +2039,24 @@ async def analyze_model_with_optional_live_run(
         refreshed_snapshot,
         _snapshot_after_at_ms,
     ) = await _finalize_completed_analysis(
-        prompt=prompt,
-        snapshot=snapshot,
-        runtime=runtime,
-        stream_payload=stream_payload,
-        request_id=request_id,
-        flow_started_at=flow_started_at,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        logit_lens=logit_lens,
-        attention=attention,
-        saliency=saliency,
-        model_manager=model_manager,
-        settings=settings,
+        _FinalizeCompletedAnalysisArgs(
+            prompt=prompt,
+            snapshot=snapshot,
+            runtime=runtime,
+            stream_payload=stream_payload,
+            request_id=request_id,
+            flow_started_at=flow_started_at,
+            request_ready_at_ms=request_ready_at_ms,
+            response_received_at_ms=response_received_at_ms,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            logit_lens=logit_lens,
+            attention=attention,
+            saliency=saliency,
+            model_manager=model_manager,
+            settings=settings,
+        )
     )
     result.update(
         {

@@ -736,6 +736,54 @@ async def test_synchronize_startup_local_model_updates_config(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_synchronize_startup_local_model_prefers_daemon_target(monkeypatch):
+    fake_model_manager = SimpleNamespace(
+        list_local_models=AsyncMock(
+            return_value=[
+                {"provider": "ollama", "name": "model-a"},
+                {"provider": "ollama", "name": "model-b"},
+            ]
+        )
+    )
+    monkeypatch.setattr(main_module, "model_manager", fake_model_manager)
+
+    updates_calls = []
+
+    def _update_config(payload):
+        updates_calls.append(payload)
+
+    fake_config_manager = SimpleNamespace(
+        get_runtime_snapshot=lambda mask_secrets=False: {
+            "config": {
+                "LLM_MODEL_NAME": "legacy-model",
+                "LAST_MODEL_OLLAMA": "model-a",
+                "PREVIOUS_MODEL_OLLAMA": "",
+                "HYBRID_LOCAL_MODEL": "model-a",
+            },
+            "active_server": "ollama",
+            "active_model_id": "legacy-model",
+            "daemon_target_model": "model-b",
+        },
+        update_config=_update_config,
+    )
+
+    import venom_core.services.config_manager as config_manager_module
+    import venom_core.utils.llm_runtime as llm_runtime_module
+
+    monkeypatch.setattr(config_manager_module, "config_manager", fake_config_manager)
+    monkeypatch.setattr(
+        llm_runtime_module,
+        "compute_llm_config_hash",
+        lambda server, endpoint, model: f"{server}:{endpoint}:{model}",
+    )
+
+    runtime = SimpleNamespace(provider="ollama", endpoint="http://localhost:11434")
+    await main_module._synchronize_startup_local_model(runtime)
+
+    assert any(call.get("LLM_MODEL_NAME") == "model-b" for call in updates_calls)
+
+
+@pytest.mark.asyncio
 async def test_start_configured_local_server_runs_stop_and_start(monkeypatch):
     calls = []
 

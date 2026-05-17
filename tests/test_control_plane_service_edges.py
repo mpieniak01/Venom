@@ -392,6 +392,22 @@ def test_validate_full_stack_and_mapping_helpers_cover_branches(monkeypatch):
         service._resolve_model_from_config({"HYBRID_LOCAL_MODEL": "llama3"}, "openai")
         == "llama3"
     )
+    monkeypatch.setattr(
+        control_plane_module.config_manager,
+        "get_runtime_snapshot",
+        lambda mask_secrets=False: {"active_model_id": ""},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "venom_core.services.control_plane.get_active_llm_runtime",
+        lambda: SimpleNamespace(model_name=""),
+    )
+    assert (
+        service._resolve_model_for_state(  # noqa: SLF001
+            {"LLM_MODEL_NAME": "config-model"}, "openai"
+        )
+        == "config-model"
+    )
     assert service._resolve_model_from_config({}, "openai") == "gpt-4o"
     service._compatibility_validator.matrix.provider_models = {}
     assert service._resolve_model_from_config({}, "unknown") == "llama2"
@@ -418,6 +434,7 @@ def test_apply_single_change_rollback_and_health_branches(monkeypatch):
     monkeypatch.setattr(service, "_resource_change_to_config_updates", lambda _c: {})
     with pytest.raises(ValueError, match="No supported config updates"):
         service._apply_single_change(requested_change=requested, rollback_snapshot={})
+
     monkeypatch.setattr(service, "_resource_change_to_config_updates", original_mapper)
 
     monkeypatch.setattr(
@@ -719,3 +736,17 @@ def test_infer_step_actions_stage_related_service_and_severity_branches():
 
     assert service._infer_step_severity(status="failed", details=None) == "error"
     assert service._infer_step_severity(status="blocked", details=None) == "warning"
+
+
+def test_resolve_model_for_state_prefers_runtime_snapshot(monkeypatch):
+    service = ControlPlaneService()
+    monkeypatch.setattr(
+        "venom_core.services.control_plane.config_manager.get_runtime_snapshot",
+        lambda mask_secrets=False: {"active_model_id": "runtime-model"},
+    )
+    assert (
+        service._resolve_model_for_state(  # noqa: SLF001
+            {"LLM_MODEL_NAME": "config-model"}, "openai"
+        )
+        == "runtime-model"
+    )

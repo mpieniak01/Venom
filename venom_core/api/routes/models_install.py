@@ -31,6 +31,11 @@ from venom_core.services.feedback_loop_policy import (
     is_feedback_loop_alias,
     resolve_feedback_loop_model,
 )
+from venom_core.services.runtime_switch_telemetry import (
+    assert_runtime_switch_ownership_token,
+    assert_runtime_switch_source_allowed,
+    emit_runtime_model_event,
+)
 from venom_core.utils.llm_runtime import (
     compute_llm_config_hash,
     get_active_llm_runtime,
@@ -347,9 +352,8 @@ def _update_config_for_active_model(
     else:
         updates["LLM_SERVICE_TYPE"] = "local"
     config_manager.update_config(updates)
-    endpoint_for_hash = (
-        None if active_provider == "onnx" else SETTINGS.LLM_LOCAL_ENDPOINT
-    )
+    runtime_info = get_active_llm_runtime()
+    endpoint_for_hash = None if active_provider == "onnx" else runtime_info.endpoint
     config_hash = compute_llm_config_hash(
         active_provider, endpoint_for_hash, model_name
     )
@@ -514,20 +518,22 @@ async def list_models():
     try:
         models = await model_manager.list_local_models()
         runtime_info = get_active_llm_runtime()
+        runtime_snapshot = config_manager.get_runtime_snapshot(mask_secrets=False)
+        runtime_config = runtime_snapshot["config"]
         runtime_status, runtime_error = await probe_runtime_status(runtime_info)
         runtime_payload = runtime_info.to_payload()
         runtime_payload["status"] = runtime_status
         if runtime_error:
             runtime_payload["error"] = runtime_error
         runtime_payload["configured_models"] = {
-            "local": SETTINGS.LLM_MODEL_NAME,
-            "hybrid_local": getattr(SETTINGS, "HYBRID_LOCAL_MODEL", None),
-            "cloud": getattr(SETTINGS, "HYBRID_CLOUD_MODEL", None),
+            "local": runtime_snapshot["active_model_id"],
+            "hybrid_local": runtime_config.get("HYBRID_LOCAL_MODEL") or None,
+            "cloud": runtime_config.get("HYBRID_CLOUD_MODEL") or None,
         }
 
         active_names = {
-            SETTINGS.LLM_MODEL_NAME,
-            getattr(SETTINGS, "HYBRID_LOCAL_MODEL", None),
+            runtime_snapshot["active_model_id"],
+            runtime_config.get("HYBRID_LOCAL_MODEL"),
         }
         active_names = {name for name in active_names if name}
         active_names.update({Path(name).name for name in active_names})
@@ -665,6 +671,9 @@ async def switch_model(request: ModelSwitchRequest):
     if model_manager is None:
         raise HTTPException(status_code=503, detail=MODEL_MANAGER_UNAVAILABLE_DETAIL)
 
+    switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+    assert_runtime_switch_ownership_token(request.ownership_token)
+
     try:
         models = await model_manager.list_local_models()
         _ensure_model_exists(models, request.name)
@@ -709,6 +718,12 @@ async def switch_model(request: ModelSwitchRequest):
             )
             if model_provider:
                 update_last_model(model_provider, request.name)
+            emit_runtime_model_event(
+                "runtime_model_selected",
+                source=switch_source,
+                runtime=active_provider,
+                model=request.name,
+            )
             return {
                 "success": True,
                 "message": f"Model {request.name} został aktywowany",

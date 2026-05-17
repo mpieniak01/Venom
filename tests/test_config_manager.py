@@ -1,6 +1,8 @@
 """Tests for config_manager service."""
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -47,6 +49,56 @@ def test_get_effective_config_with_sources_uses_defaults(config_manager: ConfigM
     assert sources["ENABLE_ACADEMY"] == "default"
     assert config["UI_THEME_DEFAULT"] in VALID_THEME_IDS
     assert sources["UI_THEME_DEFAULT"] == "default"
+
+
+def test_get_runtime_snapshot_merges_live_runtime_and_persisted_config(
+    config_manager: ConfigManager,
+):
+    config_manager.env_file.write_text(
+        "LLM_MODEL_NAME=persisted-model\nACTIVE_LLM_SERVER=vllm\n",
+        encoding="utf-8",
+    )
+
+    runtime = SimpleNamespace(
+        provider="vllm",
+        model_name="live-model",
+        endpoint="http://localhost:8001/v1",
+        runtime_id="vllm@http://localhost:8001/v1",
+        config_hash="abc123",
+        to_payload=lambda: {
+            "provider": "vllm",
+            "model": "live-model",
+            "endpoint": "http://localhost:8001/v1",
+            "runtime_id": "vllm@http://localhost:8001/v1",
+            "config_hash": "abc123",
+        },
+    )
+
+    with patch(
+        "venom_core.utils.llm_runtime.get_active_llm_runtime", return_value=runtime
+    ):
+        snapshot = config_manager.get_runtime_snapshot(mask_secrets=False)
+
+    assert snapshot["active_model_id"] == "live-model"
+    assert snapshot["active_server"] == "vllm"
+    assert snapshot["runtime"]["provider"] == "vllm"
+    assert snapshot["config"]["LLM_MODEL_NAME"] == "persisted-model"
+    assert snapshot["config"]["ACTIVE_LLM_SERVER"] == "vllm"
+
+
+def test_get_config_reflects_env_file_updates(config_manager: ConfigManager):
+    config_manager.env_file.write_text("LLM_MODEL_NAME=old-model\n", encoding="utf-8")
+    assert (
+        config_manager.get_config(mask_secrets=False)["LLM_MODEL_NAME"] == "old-model"
+    )
+
+    config_manager.env_file.write_text(
+        "LLM_MODEL_NAME=new-model-updated\n", encoding="utf-8"
+    )
+    assert (
+        config_manager.get_config(mask_secrets=False)["LLM_MODEL_NAME"]
+        == "new-model-updated"
+    )
 
 
 def test_update_config_writes_and_backs_up(config_manager: ConfigManager):

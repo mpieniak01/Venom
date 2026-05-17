@@ -31,6 +31,8 @@ class ModelSwitchRequest(BaseModel):
     role: Optional[str] = (
         None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
     )
+    switch_source: Optional[str] = "ui"
+    ownership_token: Optional[str] = None
 
     @field_validator("name")
     def validate_name(cls, v):
@@ -74,6 +76,8 @@ class ModelActivateRequest(BaseModel):
 
     name: str
     runtime: str
+    switch_source: Optional[str] = "ui"
+    ownership_token: Optional[str] = None
 
     @field_validator("name")
     def validate_name(cls, v):

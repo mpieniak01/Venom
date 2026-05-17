@@ -393,6 +393,7 @@ def detect_runtime_drift(settings=None) -> dict:
         issues.append(endpoint_issue)
 
     runtime = get_active_llm_runtime(settings)
+    runtime_active_model_id = (runtime.model_name or "").strip()
     runtime_issue = _collect_runtime_provider_issue(
         service_type=service_type,
         active_server=active_server,
@@ -401,14 +402,70 @@ def detect_runtime_drift(settings=None) -> dict:
     if runtime_issue:
         issues.append(runtime_issue)
 
+    daemon_target_model = _resolve_multi_runtime_target_model(
+        active_server=active_server,
+        runtime_provider=(runtime.provider or "").strip().lower(),
+        settings=settings,
+    )
+    if daemon_target_model and runtime_active_model_id:
+        if daemon_target_model != runtime_active_model_id:
+            issues.append(
+                "Configured/runtime model differs from multi_runtime daemon "
+                f"target model ('{runtime_active_model_id}' vs '{daemon_target_model}')."
+            )
+            runtime_active_model_id = daemon_target_model
+    elif daemon_target_model:
+        runtime_active_model_id = daemon_target_model
+
     return {
         "drift_detected": len(issues) > 0,
         "active_server": active_server,
         "inferred_provider": inferred if service_type == "local" else service_type,
         "model_name": model_name,
+        "runtime_active_model_id": runtime_active_model_id,
+        "daemon_target_model": daemon_target_model,
         "endpoint": endpoint,
         "issues": issues,
     }
+
+
+def _resolve_multi_runtime_target_model(
+    *, active_server: str, runtime_provider: str, settings
+) -> str | None:
+    if not is_multi_runtime(active_server) and not is_multi_runtime(runtime_provider):
+        return None
+    daemon_status_url = _build_multi_runtime_daemon_status_url(settings)
+    if not daemon_status_url:
+        return None
+    try:
+        with httpx.Client(timeout=0.4) as client:
+            response = client.get(daemon_status_url)
+        if response.status_code >= 400:
+            return None
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return None
+        target_model = str(payload.get("target_model") or "").strip()
+        return target_model or None
+    except Exception:
+        return None
+
+
+def _build_multi_runtime_daemon_status_url(settings) -> str | None:
+    endpoint = _apply_http_policy_if_present(
+        getattr(settings, "GEMMA4_AUDIO_ENDPOINT", None)
+    )
+    if not endpoint:
+        endpoint = _apply_http_policy_if_present(
+            getattr(settings, "LLM_LOCAL_ENDPOINT", None)
+        )
+    if not endpoint:
+        return None
+    parsed = urlparse(endpoint)
+    base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+    if not base:
+        return None
+    return f"{base}/daemon/status"
 
 
 def _build_inferred_provider(*, service_type: str, endpoint: str) -> str:

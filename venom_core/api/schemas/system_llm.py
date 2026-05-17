@@ -25,6 +25,14 @@ class ActiveLlmServerRequest(BaseModel):
         default=False,
         description="Gdy true, blokuje fallback przy rozwiązywaniu aliasu modelu",
     )
+    switch_source: Optional[str] = Field(
+        default="ui",
+        description="Źródło przełączenia runtime/modelu (np. ui, make_start).",
+    )
+    ownership_token: Optional[str] = Field(
+        default=None,
+        description="Opcjonalny token ownership operatora dla przełączeń runtime.",
+    )
 
 
 class LlmRuntimeActivateRequest(BaseModel):
@@ -34,3 +42,11 @@ class LlmRuntimeActivateRequest(BaseModel):
         ..., description="Docelowy provider runtime (openai/google/onnx)"
     )
     model: Optional[str] = Field(default=None, description="Opcjonalny model LLM")
+    switch_source: Optional[str] = Field(
+        default="ui",
+        description="Źródło przełączenia runtime/modelu (np. ui, make_start).",
+    )
+    ownership_token: Optional[str] = Field(
+        default=None,
+        description="Opcjonalny token ownership operatora dla przełączeń runtime.",
+    )

@@ -13,6 +13,7 @@ from venom_core.api.schemas.system import (
     SourceType,
 )
 from venom_core.config import SETTINGS
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
@@ -282,19 +283,24 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
 def _generate_external_map() -> List[ApiConnection]:
     """Generates external API connections based on configuration settings."""
     external = []
+    runtime = get_active_llm_runtime()
+    runtime_provider = str(getattr(runtime, "provider", "") or "").strip().lower()
+    runtime_endpoint = str(getattr(runtime, "endpoint", "") or "").strip()
 
     # Local LLM
     if SETTINGS.LLM_SERVICE_TYPE == "local":
+        local_runtime_label = runtime_provider or "auto"
+        local_runtime_endpoint = runtime_endpoint or SETTINGS.LLM_LOCAL_ENDPOINT
         external.append(
             ApiConnection(
                 source_component=MODEL_ROUTER_LABEL,
-                target_component=f"Local LLM ({SETTINGS.ACTIVE_LLM_SERVER or 'auto'})",
+                target_component=f"Local LLM ({local_runtime_label})",
                 protocol=ConnectionProtocol.HTTP,
                 direction=ConnectionDirection.BIDIRECTIONAL,
                 auth_type=AuthType.NONE,
                 source_type=SourceType.LOCAL,
                 status=ConnectionStatus.OK,
-                description=f"Lokalny model językowy ({SETTINGS.LLM_LOCAL_ENDPOINT})",
+                description=f"Lokalny model językowy ({local_runtime_endpoint})",
                 is_critical=True,
                 methods=["POST /api/generate", "POST /api/chat", "GET /api/tags"],
             )

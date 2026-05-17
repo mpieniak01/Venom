@@ -449,13 +449,27 @@ async def _synchronize_startup_local_model(runtime) -> None:
         from venom_core.services.config_manager import config_manager
         from venom_core.utils.llm_runtime import compute_llm_config_hash
 
-        server_name = (SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or "").lower()
+        runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
+        if callable(runtime_snapshot_getter):
+            runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
+            config = runtime_snapshot["config"]
+            server_name = (
+                runtime_snapshot["active_server"] or runtime.provider or ""
+            ).lower()
+            active_model = runtime_snapshot["active_model_id"] or ""
+            daemon_target_model = str(
+                runtime_snapshot.get("daemon_target_model") or ""
+            ).strip()
+        else:
+            config = config_manager.get_config(mask_secrets=False)
+            server_name = (runtime.provider or "").lower()
+            active_model = str(getattr(runtime, "model_name", "") or "").strip()
+            daemon_target_model = ""
         models = await model_manager.list_local_models()
         available = _extract_available_local_models(models, server_name)
-        if not available or SETTINGS.LLM_MODEL_NAME in available:
+        if not available or active_model in available:
             return
 
-        config = config_manager.get_config(mask_secrets=False)
         last_model_key = (
             "LAST_MODEL_OLLAMA" if server_name == "ollama" else "LAST_MODEL_VLLM"
         )
@@ -464,10 +478,14 @@ async def _synchronize_startup_local_model(runtime) -> None:
             if server_name == "ollama"
             else "PREVIOUS_MODEL_VLLM"
         )
+        # Bootstrap-only fallback from persisted env/config.
+        # Runtime truth comes from live runtime snapshot (`active_model` above).
+        bootstrap_model = str(config.get("LLM_MODEL_NAME", "") or "")
         desired_model = (
-            config.get(last_model_key)
-            or config.get("HYBRID_LOCAL_MODEL")
-            or config.get("LLM_MODEL_NAME", "")
+            daemon_target_model
+            or str(config.get(last_model_key) or "").strip()
+            or str(config.get("HYBRID_LOCAL_MODEL") or "").strip()
+            or bootstrap_model
         )
         previous_model = config.get(prev_model_key) or ""
         selected_model = _select_startup_model(available, desired_model, previous_model)
@@ -496,8 +514,9 @@ async def _synchronize_startup_local_model(runtime) -> None:
         except Exception:
             logger.warning("Nie udało się zaktualizować SETTINGS dla hash LLM.")
         logger.warning(
-            "Skorygowano model LLM na starcie: %s -> %s",
-            config.get("LLM_MODEL_NAME", ""),
+            "Skorygowano model LLM na starcie: runtime_active=%s daemon_target=%s selected=%s",
+            active_model or "n/a",
+            daemon_target_model or "n/a",
             selected_model,
         )
     except Exception as exc:
@@ -540,7 +559,7 @@ async def _start_local_runtime_if_needed(runtime) -> str:
     if status == "online":
         return status
 
-    active_server = (SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or "").lower()
+    active_server = (runtime.provider or "").lower()
     await _start_configured_local_server(active_server)
     status = await _wait_for_runtime_online(runtime)
     if status == "online":

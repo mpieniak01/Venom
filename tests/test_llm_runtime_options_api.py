@@ -393,7 +393,16 @@ def test_apply_vllm_runtime_autofix_updates_invalid_config(tmp_path: Path) -> No
     with (
         patch.object(system_llm, "SETTINGS", settings),
         patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
-        patch.object(system_llm.config_manager, "get_config", return_value=config),
+        patch.object(
+            system_llm.config_manager,
+            "get_runtime_snapshot",
+            return_value={
+                "config": config,
+                "runtime_live": active_runtime,
+                "active_server": "vllm",
+                "active_model_id": "broken-model",
+            },
+        ),
         patch.object(system_llm.config_manager, "update_config") as update_cfg,
         patch.object(system_llm, "compute_llm_config_hash", return_value="cfg-healed"),
     ):

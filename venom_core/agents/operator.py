@@ -11,6 +11,7 @@ from semantic_kernel.contents import ChatHistory
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.hardware_pi import HardwareBridge
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -113,7 +114,16 @@ async def _ollama_native_call(
     returns an empty `content` with the answer placed in `reasoning`/`thinking`.
     The native endpoint reliably respects `think: false`.
     """
-    base_url = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
+    runtime = get_active_llm_runtime()
+    runtime_provider = str(getattr(runtime, "provider", "") or "").strip().lower()
+    runtime_endpoint = str(getattr(runtime, "endpoint", "") or "").strip()
+    runtime_model = str(getattr(runtime, "model_name", "") or "").strip()
+    use_runtime_identity = runtime_provider == "ollama"
+    base_url = (
+        runtime_endpoint
+        if use_runtime_identity and runtime_endpoint
+        else SETTINGS.LLM_LOCAL_ENDPOINT
+    ).rstrip("/")
     if base_url.endswith("/v1"):
         base_url = base_url[:-3]
     native_url = f"{base_url}/api/chat"
@@ -130,7 +140,9 @@ async def _ollama_native_call(
         messages.append({"role": role, "content": str(msg.content or "")})
 
     payload: dict[str, Any] = {
-        "model": SETTINGS.LLM_MODEL_NAME,
+        "model": runtime_model
+        if use_runtime_identity and runtime_model
+        else SETTINGS.LLM_MODEL_NAME,
         "messages": messages,
         "stream": False,
         "think": False,

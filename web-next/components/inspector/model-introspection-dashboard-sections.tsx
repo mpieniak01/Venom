@@ -153,6 +153,7 @@ type AnalysisResultsPanelProps = Readonly<{
       }>
     | null
     | undefined;
+  operatorRunbookSteps: string[] | null | undefined;
   internalsVerdict:
     | {
         verdict: string;
@@ -1269,8 +1270,9 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
     inputProfile,
     generationProfile,
     runTrends,
-    operatorChecklist,
-    internalsVerdict,
+  operatorChecklist,
+  operatorRunbookSteps,
+  internalsVerdict,
   } = props;
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -1621,6 +1623,18 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
             )}
           </div>
         </div>
+        {(operatorRunbookSteps ?? []).length > 0 && (
+          <div className="rounded-2xl border border-amber-300/20 bg-amber-500/5 p-4">
+            <p className="text-xs uppercase tracking-wide text-amber-200/90">
+              Runbook operatora
+            </p>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-200">
+              {operatorRunbookSteps?.map((step, index) => (
+                <li key={`runbook-${index}`}>{step}</li>
+              ))}
+            </ol>
+          </div>
+        )}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <p className="text-xs uppercase tracking-wide text-zinc-500">
             {t("inspector.modelIntrospection.dashboard.results.runTrends.title")}

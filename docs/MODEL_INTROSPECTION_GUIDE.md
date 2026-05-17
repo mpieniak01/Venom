@@ -130,3 +130,4 @@ This is an expected transitional state. The answer may be correct even while int
 - [README](../README.md)
 - [Frontend Next.js](./FRONTEND_NEXT_GUIDE.md)
 - [Dashboard Guide](./DASHBOARD_GUIDE.md)
+- [Runtime drift runbook (EN)](./runbooks/model-introspection-runtime-drift.md)

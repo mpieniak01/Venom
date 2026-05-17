@@ -85,7 +85,7 @@ def test_translation_endpoint_and_model_helpers_cover_branches(monkeypatch):
     monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
-        lambda: SimpleNamespace(service_type="local"),
+        lambda: SimpleNamespace(service_type="local", model_name="test-model"),
     )
     monkeypatch.setattr(
         translation_module.SETTINGS,

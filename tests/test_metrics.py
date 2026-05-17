@@ -100,6 +100,24 @@ class TestMetricsCollector:
         assert collector.metrics["policy_blocked_count"] == 2
         assert collector.policy_reason_codes["POLICY_TOOL_RESTRICTED"] == 2
 
+    def test_runtime_switch_metrics_are_recorded(self):
+        collector = MetricsCollector()
+        collector.record_runtime_switch_event(
+            event_name="runtime_model_selected",
+            source="ui",
+            runtime="vllm",
+        )
+        collector.record_runtime_switch_event(
+            event_name="runtime_model_mismatch_detected",
+            source="introspection_preflight",
+            runtime="multi_runtime",
+        )
+        payload = collector.get_metrics()["runtime_switch"]
+        assert payload["model_selected_total"] == 1
+        assert payload["model_mismatch_detected_total"] == 1
+        assert payload["by_source"]["ui"] == 1
+        assert payload["by_runtime"]["vllm"] == 1
+
     def test_increment_policy_blocked_tracks_review_candidates(self):
         collector = MetricsCollector()
 

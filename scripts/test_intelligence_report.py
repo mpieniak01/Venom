@@ -9,6 +9,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+DEFAULT_KNOWLEDGE_SOURCES = [
+    "docs/AGENTS.md",
+    "docs/PL/AGENTS.md",
+    "config/testing/test_catalog.json",
+    "config/pytest-groups/ci-lite.txt",
+    "config/pytest-groups/sonar-new-code.txt",
+]
+
+DEFAULT_GATE_COMMANDS = [
+    "make test-catalog-check",
+    "make test-groups-check",
+    "make check-new-code-coverage-diagnostics",
+    "make pr-fast",
+]
+
 
 @dataclass(frozen=True)
 class FileRuntime:
@@ -233,6 +248,10 @@ def build_report(
         ),
         "top_impact_files": [asdict(item) for item in runtimes[:top_n]],
         "recommendations": recommendations,
+        "report_context": {
+            "knowledge_sources": DEFAULT_KNOWLEDGE_SOURCES,
+            "gate_commands": DEFAULT_GATE_COMMANDS,
+        },
     }
 
 

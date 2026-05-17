@@ -10,14 +10,19 @@ Zakres:
 1. Triage i naprawa failujących gate'ów jakości.
 2. Domknięcie kontraktu test/coverage.
 3. Redukcja regresji i błędów w review.
+4. Pilnowanie scoped execution i niskiego szumu kontekstowego.
 
 Proces:
 
 1. Zidentyfikuj root cause faila.
 2. Wprowadź minimalną poprawkę.
-3. Uruchom:
+3. Uruchom testy celowane dla dotkniętego zakresu.
+4. Uruchom:
    - `make pr-fast`
-4. Powtarzaj do pełnej zieleni.
+5. Powtarzaj do pełnej zieleni.
+6. Jeśli problem dotyczy OpenAI/Codex API/produktu:
+   - najpierw zweryfikuj przez Docs MCP,
+   - raportuj krótki wniosek zamiast surowego dumpu dokumentacji.
 
 Szybki bootstrap (gdy fail wynika z setupu, nie z kodu):
 

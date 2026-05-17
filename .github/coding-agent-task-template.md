@@ -1,29 +1,32 @@
-# Coding Agent Task Template (Anti-Loop)
+# Coding Agent Task Template (Scoped Execution)
 
-Use this template for any coding-agent implementation task.
+Use this template for coding-agent implementation tasks.
 
 ## Task Scope (fill before assigning)
 
 - Goal:
-- In scope files/modules:
-- Out of scope (explicit):
+- Source of truth (branch / PR / task doc):
+- In-scope files/modules:
+- Out-of-scope (explicit):
 - Done definition (single sentence):
 
 ## Hard Constraints
 
-1. Do not re-explore repository after implementation starts.
-2. Maximum one sub-agent call per phase (`explore`, `implement`, `verify`).
-3. First commit must be created within 30 minutes.
-4. If no code change for 15 minutes, stop and report blocker.
-5. If the same gate fails twice without code/environment changes, stop and report blocker.
+1. Preflight before coding: confirm scope, files, env/tooling.
+2. Avoid broad repository re-exploration after implementation starts.
+3. If the same gate fails twice without code/environment changes, stop and report blocker.
+4. Keep output compact: no raw full logs unless explicitly requested.
+5. For OpenAI/Codex API/product questions, use Docs MCP first.
+6. Prefer lightweight context artifacts `test-results/agent-context/preflight-brief.json` and `brief.json` before manual exploration.
+7. For code edits, return patch blocks first (Search/Replace or unified diff); avoid full-file rewrites unless required.
 
-## Mandatory Session Plan (1 hour)
+## Mandatory Work Sequence
 
-1. `0-5 min`: preflight only.
-2. `5-25 min`: minimal end-to-end implementation slice.
-3. `<=30 min`: first commit (WIP allowed).
-4. `30-50 min`: finish scope + targeted tests.
-5. `50-60 min`: handoff report + final checks.
+1. Preflight.
+2. Implement minimal end-to-end slice.
+3. Run targeted tests.
+4. Run quality gates.
+5. Publish concise handoff report.
 
 ## Mandatory Preflight Commands
 
@@ -33,8 +36,13 @@ source .venv/bin/activate || true
 python3 --version
 node --version
 npm --version
-npm --prefix web-next ci
 make ci-lite-preflight
+```
+
+If frontend scope exists, run:
+
+```bash
+npm --prefix web-next ci
 ```
 
 ## Mandatory Test Registration (when new tests are added)
@@ -43,37 +51,34 @@ make ci-lite-preflight
 2. Register in `config/testing/test_catalog.json` with:
    - `primary_lane: "new-code"`
    - `allowed_lanes: ["new-code", "ci-lite", "release"]`
-3. Use neutral test filename/path (required for new-code coverage selection), e.g.:
+3. Use neutral test filename/path (required for changed-code coverage selection), for example:
    - `tests/test_coding_run_service.py`
 4. Do not use blocked slow-pattern tokens in test path/name:
    - `benchmark`
    - `integration`
 5. If a new test was already added with a blocked token, rename it in the same PR.
-6. Run the full validation checklist (in order):
+6. Run checklist in order:
    - `make test-groups-sync`
    - `make test-groups-check`
    - `rg "tests/test_<new_name>\\.py" config/pytest-groups/sonar-new-code.txt`
    - `make check-new-code-coverage-diagnostics`
-   - `make pr-fast`
 
 Interpretation rule:
-1. If the test is missing in `config/pytest-groups/sonar-new-code.txt`, do not continue to `make pr-fast`.
-2. Fix naming/catalog/lane first, then rerun the checklist.
+1. If the test is missing in `config/pytest-groups/sonar-new-code.txt`, do not continue to full gate.
+2. Fix naming/catalog/lane first, then rerun checklist.
 
-## Handoff Gate (for GitHub Coding Agent)
+## Completion Gate
 
-Run and report status:
+Run and report:
 
 ```bash
 make test-groups-check
 make check-new-code-coverage-diagnostics
-```
-
-Final merge gate is executed by supervisor/owner:
-
-```bash
 make pr-fast
 ```
+
+Markdown-only exception:
+1. If all changed files are `*.md`, `make pr-fast` may be skipped.
 
 ## Final Report Format (mandatory)
 
@@ -81,3 +86,11 @@ make pr-fast
 - Pass/fail per command
 - Changed-lines coverage (or `N/A` for markdown-only)
 - Known blockers/risks and exact failure output
+
+## Output Contract (mandatory)
+
+1. For straightforward fixes:
+   - provide only file path(s) + patch block(s) + commands/tests.
+2. Do not include unchanged file content.
+3. Do not paste raw long logs in the final handoff.
+4. Keep rationale to decision-level notes only.

@@ -171,6 +171,8 @@ background_scheduler = None
 file_watcher = None
 documenter_agent = None
 startup_runtime_retention_task: asyncio.Task[None] | None = None
+startup_audio_task: asyncio.Task[object] | None = None
+startup_llm_task: asyncio.Task[object] | None = None
 
 # Inicjalizacja Audio i IoT (THE_AVATAR)
 audio_engine = None
@@ -947,16 +949,16 @@ def _clear_startup_runtime_retention_task() -> None:
     startup_runtime_retention_task = None
 
 
-async def _shutdown_runtime_components() -> None:
-    global startup_runtime_retention_task
-    logger.info("Zamykanie aplikacji...")
+async def _cancel_and_await_task(task: asyncio.Task[object] | None) -> None:
+    if task is None:
+        return
+    if not task.done():
+        task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
 
-    if startup_runtime_retention_task and not startup_runtime_retention_task.done():
-        startup_runtime_retention_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await startup_runtime_retention_task
-    startup_runtime_retention_task = None
 
+def _release_onnx_runtime_resources() -> None:
     # Release in-process ONNX caches/pools early to free VRAM/RAM on shutdown.
     try:
         llm_simple_routes.release_onnx_simple_client()
@@ -967,30 +969,40 @@ async def _shutdown_runtime_components() -> None:
     except Exception:
         logger.warning("Nie udało się zwolnić runtime ONNX (tasks mode).")
 
-    if request_tracer:
-        await request_tracer.stop_watchdog()
-        logger.info("RequestTracer watchdog zatrzymany")
-    if desktop_sensor:
-        await desktop_sensor.stop()
-        logger.info("DesktopSensor zatrzymany")
-    if shadow_agent:
-        await shadow_agent.stop()
-        logger.info("ShadowAgent zatrzymany")
-    if node_manager:
-        await node_manager.stop()
-        logger.info("NodeManager zatrzymany")
-    if background_scheduler:
-        await background_scheduler.stop()
-        logger.info("BackgroundScheduler zatrzymany")
-    if file_watcher:
-        await file_watcher.stop()
-        logger.info("FileWatcher zatrzymany")
-    if gardener_agent:
-        await gardener_agent.stop()
-        logger.info("GardenerAgent zatrzymany")
-    if hardware_bridge:
-        await hardware_bridge.disconnect()
-        logger.info("HardwareBridge rozłączony")
+
+async def _shutdown_optional_runtime_components() -> None:
+    components: tuple[tuple[object | None, str, str], ...] = (
+        (request_tracer, "stop_watchdog", "RequestTracer watchdog zatrzymany"),
+        (desktop_sensor, "stop", "DesktopSensor zatrzymany"),
+        (shadow_agent, "stop", "ShadowAgent zatrzymany"),
+        (node_manager, "stop", "NodeManager zatrzymany"),
+        (background_scheduler, "stop", "BackgroundScheduler zatrzymany"),
+        (file_watcher, "stop", "FileWatcher zatrzymany"),
+        (gardener_agent, "stop", "GardenerAgent zatrzymany"),
+        (hardware_bridge, "disconnect", "HardwareBridge rozłączony"),
+    )
+    for component, method_name, log_message in components:
+        if component is None:
+            continue
+        await getattr(component, method_name)()
+        logger.info(log_message)
+
+
+async def _shutdown_runtime_components() -> None:
+    global startup_runtime_retention_task, startup_audio_task, startup_llm_task
+    logger.info("Zamykanie aplikacji...")
+
+    await _cancel_and_await_task(startup_audio_task)
+    startup_audio_task = None
+
+    await _cancel_and_await_task(startup_llm_task)
+    startup_llm_task = None
+
+    await _cancel_and_await_task(startup_runtime_retention_task)
+    startup_runtime_retention_task = None
+
+    _release_onnx_runtime_resources()
+    await _shutdown_optional_runtime_components()
 
     await state_manager.shutdown()
     logger.info("Aplikacja zamknięta")
@@ -999,6 +1011,7 @@ async def _shutdown_runtime_components() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
+    global startup_audio_task, startup_llm_task
     validate_environment_policy()
     await _initialize_observability()
     _initialize_model_services()
@@ -1014,14 +1027,16 @@ async def lifespan(app: FastAPI):
     await _initialize_documenter_and_watcher(workspace_path)
     await _initialize_avatar_stack()
     if audio_engine is not None:
-        app.state.startup_audio_task = asyncio.create_task(
+        startup_audio_task = asyncio.create_task(
             rt_warmup_audio_engine_if_enabled(audio_engine=audio_engine, logger=logger)
         )
+        app.state.startup_audio_task = startup_audio_task
     await _initialize_shadow_stack()
     _initialize_ghost_agent_if_enabled()
     setup_router_dependencies()
     logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
-    app.state.startup_llm_task = asyncio.create_task(_ensure_local_llm_ready())
+    startup_llm_task = asyncio.create_task(_ensure_local_llm_ready())
+    app.state.startup_llm_task = startup_llm_task
 
     yield
 

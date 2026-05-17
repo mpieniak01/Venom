@@ -14,6 +14,28 @@ If you are looking for the list of Venom system agents, use:
 - Make error paths explicit and covered by tests where practical.
 - Before running Python tooling, activate the repository virtualenv with `source .venv/bin/activate`.
 
+## MCP First For OpenAI/Codex Questions
+
+When the task is about OpenAI/Codex product usage, models, or API behavior:
+
+1. Query official OpenAI docs through Docs MCP first.
+2. Use repository files as source of truth for project-specific behavior.
+3. Keep summaries compact; do not paste large documentation blocks into the handoff.
+4. If docs and code differ, report the mismatch explicitly before implementing.
+
+This reduces unnecessary context growth and avoids repeated manual doc copying.
+
+## Lightweight Context Brief (CI Artifact)
+
+When available, start from `test-results/agent-context/preflight-brief.json` (or `preflight-brief.md`), then `brief.json`, before reading large parts of the repository.
+Treat it as a compact entrypoint for:
+
+1. gate command order,
+2. lane/test metadata summary,
+3. MCP usage rule for OpenAI/Codex topics.
+
+If brief and code diverge, code remains source of truth.
+
 ## Recent Failure Modes To Avoid
 
 - Start by identifying the source of truth: branch, PR, task doc, and the exact scope that is in play.

@@ -52,7 +52,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-prod start-prod-confirm start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-lite test-fast-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
-		ci-lite-preflight ci-lite-bootstrap audit-ci-lite \
+		ci-lite-preflight ci-lite-bootstrap audit-ci-lite agent-prep \
 		test-intelligence-report \
 		runtime-maintenance-cleanup \
 		runtime-log-policy-audit runtime-logrotate-install-help \
@@ -70,7 +70,8 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		test-202c2-parity-judge test-202c2-perf-tuning test-202c2-all \
 		test-202c3-perf-profile test-202c3-all \
 		test-202c4-automation-matrix test-202c4-decision-refined test-202c4-all \
-		test-202c5-lora-runtime-gap test-202c6-signature-contract-smoke test-202c7-signed-activation-success
+		test-202c5-lora-runtime-gap test-202c6-signature-contract-smoke test-202c7-signed-activation-success \
+		test-env-contracts-ollama test-env-contracts-vllm test-env-contracts-multi-runtime
 
 lint:
 	pre-commit run --all-files

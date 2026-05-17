@@ -1237,7 +1237,7 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
               {t("inspector.modelIntrospection.dashboard.results.telemetry.processSteps")}{" "}
               {formatCount(analysisTimelineStepCount)}
             </Badge>
-            <Badge tone={analysisProcess?.first_chunk_ms ? "warning" : "neutral"}>
+            <Badge tone={typeof analysisProcess?.first_chunk_ms === "number" ? "success" : "neutral"}>
               {t("inspector.modelIntrospection.dashboard.analysis.firstChunk")}{" "}
               {renderProcessFirstChunkLabel(analysisProcess?.first_chunk_ms)}
             </Badge>

@@ -18,7 +18,9 @@ export type OperatorFinalStatus = "idle" | "running" | "completed" | "failed" | 
 export type OperatorStreamMode =
   | "pending"
   | "live_streaming"
+  | "single_chunk"
   | "single_chunk_delayed"
+  | "buffered_delivery"
   | "no_content";
 
 export function formatCount(value: number): string {
@@ -663,7 +665,8 @@ export function buildRagFocusModel(args: {
     | {
         source?: string;
         query?: string;
-      entities?: Array<{ id?: string; label?: string; kind?: string; active?: boolean }>;
+        grounding_score?: number | null;
+        entities?: Array<{ id?: string; label?: string; kind?: string; active?: boolean }>;
         evidence_edges?: Array<{ id?: string; from?: string; to?: string; label?: string; active?: boolean }>;
         active_entity_ids?: string[];
         answer_evidence_links?: Array<{
@@ -790,6 +793,10 @@ export function buildRagFocusModel(args: {
       }),
     },
   ];
+  const groundingFromPayload =
+    typeof ragFocusPayload?.grounding_score === "number"
+      ? resolveGroundingFromScore(ragFocusPayload.grounding_score)
+      : null;
 
   return {
     source,
@@ -804,12 +811,14 @@ export function buildRagFocusModel(args: {
     })),
     answerEvidenceLinks,
     activeEntityIds,
-    grounding: resolveRagFocusGrounding({
-      entitiesCount: entities.length,
-      evidenceCount: evidenceEdges.length,
-      analysisStatus,
-      analysisProcess,
-    }),
+    grounding:
+      groundingFromPayload ??
+      resolveRagFocusGrounding({
+        entitiesCount: entities.length,
+        evidenceCount: evidenceEdges.length,
+        analysisStatus,
+        analysisProcess,
+      }),
     steps,
   };
 }
@@ -844,6 +853,34 @@ export function buildOperatorConclusion(args: {
   const payloadConclusion = resolveOperatorConclusionFromPayload(operatorConclusionPayload);
   if (analysisStatus === "completed" && payloadConclusion) {
     return payloadConclusion;
+  }
+
+  if (analysisStatus === "failed") {
+    return {
+      verdict: "ungrounded",
+      confidenceTier: "low",
+      tone: "warning",
+      reasons: ["analysis failed"],
+      reasonCodes: ["R0_FAILED"],
+      partial: true,
+      coveragePercent: null,
+      streamQuality: null,
+      internalsQuality: null,
+    };
+  }
+
+  if (analysisStatus === "skipped") {
+    return {
+      verdict: "ungrounded",
+      confidenceTier: "low",
+      tone: "warning",
+      reasons: ["analysis skipped"],
+      reasonCodes: ["R0_SKIPPED"],
+      partial: true,
+      coveragePercent: null,
+      streamQuality: null,
+      internalsQuality: null,
+    };
   }
 
   if (analysisStatus !== "completed") {

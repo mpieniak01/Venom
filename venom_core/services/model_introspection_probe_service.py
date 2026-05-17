@@ -21,6 +21,7 @@ _PROBE_UNAVAILABLE = "probe_unavailable"
 _PROBE_OK = "ok"
 _PROBE_FAILED = "failed"
 _PROBE_DEFAULT_PROFILE = "dev"
+_PROBE_HTTP_CLIENT: httpx.AsyncClient | None = None
 _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
     "dev": {
         "timeout_seconds": _PROBE_TIMEOUT_SECONDS,
@@ -119,7 +120,7 @@ def get_probe_runtime_config() -> dict[str, Any]:
     )
     enabled = _parse_bool_env(
         os.getenv("GEMMA4_AUDIO_PROBE_ENABLED"),
-        default=True,
+        default=False,
     )
     return {
         "profile": profile,
@@ -190,6 +191,13 @@ def _sanitize_layer_selection(layers: list[int]) -> list[int]:
     return sorted(deduplicated)
 
 
+def _get_probe_http_client() -> httpx.AsyncClient:
+    global _PROBE_HTTP_CLIENT
+    if _PROBE_HTTP_CLIENT is None:
+        _PROBE_HTTP_CLIENT = httpx.AsyncClient()
+    return _PROBE_HTTP_CLIENT
+
+
 async def _post_probe_request(
     *,
     url: str,
@@ -201,8 +209,8 @@ async def _post_probe_request(
         "X-Request-Id": str(uuid4()),
     }
     timeout = httpx.Timeout(timeout_seconds, connect=5.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        return await client.post(url, json=payload, headers=headers)
+    client = _get_probe_http_client()
+    return await client.post(url, json=payload, headers=headers, timeout=timeout)
 
 
 def _build_unavailable_response(
@@ -369,7 +377,7 @@ def _normalize_success_probe_response(
     if normalized.get("runtime_label") in (None, ""):
         normalized["runtime_label"] = runtime_label
     if normalized.get("status") not in {_PROBE_OK, _PROBE_UNAVAILABLE, _PROBE_FAILED}:
-        normalized["status"] = _PROBE_OK
+        normalized["status"] = _PROBE_FAILED
     return normalized
 
 

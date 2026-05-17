@@ -759,7 +759,7 @@ export const de = {
         },
         runtimeContext: {
           title: "Runtime-Kontext",
-          description: "Unterstuetzende Telemetrie aus Runtime-Snapshot und Paket-Sonden.",
+          description: "Unterstützende Telemetrie aus Runtime-Snapshot und Paket-Sonden.",
           clean: "clean",
           manager: "ModelManager",
           connected: "connected",

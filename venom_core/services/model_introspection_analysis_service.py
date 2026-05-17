@@ -6,7 +6,7 @@ import json
 import re
 import time
 from typing import Any, AsyncIterator
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services.llm_simple_service import stream_simple_chat
@@ -283,7 +283,10 @@ def _extract_context_preview_text(process_trace: dict[str, Any] | None) -> str:
 def _extract_system_prompt_text(context_preview: str) -> str:
     if not context_preview:
         return ""
-    match = re.search(r"SYSTEM:\n(.*?)\n\nUSER:", context_preview, flags=re.DOTALL)
+    match = re.search(
+        r"(?is)\bSYSTEM\s*:\s*(.*?)\s*\bUSER\s*:",
+        context_preview,
+    )
     if match is None:
         return ""
     return str(match.group(1) or "").strip()
@@ -636,7 +639,7 @@ def _record_run_trends(
     if isinstance(process_trace, dict):
         request_id = str(process_trace.get("request_id") or "").strip()
     if not request_id:
-        request_id = f"run-{int(time.time() * 1000)}"
+        request_id = f"run-{int(time.time() * 1000)}-{uuid4().hex[:8]}"
     coverage_raw = evidence_coverage.get("coverage_percent")
     first_content_raw = stream_profile.get("time_to_first_content_ms")
     token_noise_raw = logit_profile.get("token_noise_ratio")

@@ -82,7 +82,15 @@ function buildOperatorChecklist(args: {
 }): OperatorChecklistItem[] {
   const { ragSource, probeSource, coveragePercent, streamQuality, partial, t } = args;
   const streamQualityLabel =
-    streamQuality && ["pending", "live_streaming", "single_chunk_delayed", "no_content"].includes(streamQuality)
+    streamQuality &&
+    [
+      "pending",
+      "live_streaming",
+      "single_chunk",
+      "single_chunk_delayed",
+      "buffered_delivery",
+      "no_content",
+    ].includes(streamQuality)
       ? t(`inspector.modelIntrospection.dashboard.analysis.streamMode.${streamQuality}`)
       : streamQuality ?? t("inspector.modelIntrospection.dashboard.results.telemetry.unknown");
   return [

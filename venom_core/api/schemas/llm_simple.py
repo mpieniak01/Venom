@@ -12,7 +12,7 @@ class SimpleChatRequest(BaseModel):
     model: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
-    top_p: Optional[float] = None
+    top_p: Optional[float] = Field(default=None, gt=0.0, le=1.0)
     response_format: Optional[dict[str, Any] | str] = None
     format: Optional[dict[str, Any] | str] = None
     tools: Optional[list[dict[str, Any]]] = None

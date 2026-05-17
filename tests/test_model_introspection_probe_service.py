@@ -198,10 +198,33 @@ def test_probe_runtime_config_normalizes_invalid_values(
 
     cfg = probe_service.get_probe_runtime_config()
     assert cfg["profile"] == "dev"
-    assert cfg["enabled"] is True
+    assert cfg["enabled"] is False
     assert cfg["max_top_k"] == 1
     assert cfg["max_layer_count"] == 1
     assert cfg["max_prompt_tokens"] == 1
+
+
+@pytest.mark.asyncio
+async def test_probe_service_maps_unknown_runtime_status_to_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: _runtime("multi_runtime", "http://localhost:8014/v1"),
+    )
+
+    async def _returns_error_status(**_kwargs):
+        return httpx.Response(status_code=200, json={"status": "error", "probe": None})
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _returns_error_status)
+    result = await probe_service.run_model_introspection_probe(
+        prompt="q",
+        mode="hidden",
+        layer_selection=[1],
+        top_k=1,
+    )
+    assert result["status"] == "failed"
 
 
 @pytest.mark.asyncio

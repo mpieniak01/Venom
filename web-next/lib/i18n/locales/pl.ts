@@ -760,7 +760,7 @@ export const pl = {
         },
         runtimeContext: {
           title: "Kontekst runtime",
-          description: "Wspierajaca telemetria ze snapshotu runtime i sond pakietow.",
+          description: "Wspierająca telemetria ze snapshotu runtime i sond pakietów.",
           clean: "clean",
           manager: "ModelManager",
           connected: "connected",

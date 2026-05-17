@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from tempfile import NamedTemporaryFile
+from typing import Any, Iterator
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-Unix fallback
+    fcntl = None  # type: ignore[assignment]
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -19,6 +27,7 @@ _MAX_STORED_RUNS = 200
 _DEFAULT_WINDOW = 20
 _STORE_LOCK = threading.Lock()
 _SAFE_STORAGE_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
+_DEFAULT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "data" / "introspection"
 
 
 def _sanitize_storage_prefix(storage_prefix: str) -> str:
@@ -44,7 +53,7 @@ def _resolve_storage_path(settings: Any | None = None) -> Path:
     storage_prefix = _sanitize_storage_prefix(
         str(getattr(cfg, "STORAGE_PREFIX", "") or "")
     )
-    root = Path("./data/introspection").resolve()
+    root = _DEFAULT_STORAGE_ROOT.resolve()
     base = root
     if storage_prefix:
         candidate = (root / storage_prefix).resolve()
@@ -108,7 +117,30 @@ def _read_records(path: Path) -> list[dict[str, Any]]:
 def _write_records(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(records, ensure_ascii=False, separators=(",", ":"))
-    path.write_text(payload, encoding="utf-8")
+    with NamedTemporaryFile(
+        mode="w",
+        dir=path.parent,
+        delete=False,
+        encoding="utf-8",
+    ) as tmp_file:
+        tmp_file.write(payload)
+        temp_name = tmp_file.name
+    os.replace(temp_name, path)
+
+
+@contextmanager
+def _file_lock(path: Path) -> Iterator[None]:
+    if fcntl is None:
+        yield
+        return
+    lock_path = path.with_suffix(f"{path.suffix}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _upsert_record(
@@ -212,10 +244,11 @@ def record_operator_run(
     if record is None:
         return None
     with _STORE_LOCK:
-        records = _read_records(path)
-        next_records = _upsert_record(records, record)
-        try:
-            _write_records(path, next_records)
-        except OSError:
-            logger.warning("Failed to persist operator trends store", exc_info=True)
-        return compute_run_trends(next_records)
+        with _file_lock(path):
+            records = _read_records(path)
+            next_records = _upsert_record(records, record)
+            try:
+                _write_records(path, next_records)
+            except OSError:
+                logger.warning("Failed to persist operator trends store", exc_info=True)
+            return compute_run_trends(next_records)

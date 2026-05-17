@@ -8,8 +8,11 @@ import ipaddress
 import logging
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from functools import partial
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -71,6 +74,22 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _read_positive_int_env(*names: str, default: int) -> int:
+    for name in names:
+        raw = os.getenv(name)
+        if raw is None:
+            continue
+        try:
+            parsed = int(raw)
+        except ValueError:
+            continue
+        if parsed > 0:
+            return parsed
+    return default
+
+
 _PROBE_TIMEOUT_SECONDS = float(os.getenv("GEMMA4_AUDIO_PROBE_TIMEOUT_SECONDS", "20"))
 _PROBE_MAX_PROMPT_TOKENS = int(
     os.getenv("GEMMA4_AUDIO_PROBE_MAX_PROMPT_TOKENS", "1024")
@@ -84,6 +103,21 @@ _PROBE_ENABLED = str(os.getenv("GEMMA4_AUDIO_PROBE_ENABLED", "0")).strip().lower
     "yes",
     "on",
 }
+_PROBE_MAX_CONCURRENCY = _read_positive_int_env(
+    "VENOM_INTROSPECTION_PROBE_MAX_CONCURRENCY",
+    "GEMMA4_AUDIO_PROBE_MAX_CONCURRENCY",
+    default=2,
+)
+_PROBE_EXECUTOR_WORKERS = _read_positive_int_env(
+    "VENOM_INTROSPECTION_PROBE_EXECUTOR_WORKERS",
+    "GEMMA4_AUDIO_PROBE_EXECUTOR_WORKERS",
+    default=_PROBE_MAX_CONCURRENCY,
+)
+_PROBE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_PROBE_EXECUTOR_WORKERS,
+    thread_name_prefix="introspection-probe",
+)
+_PROBE_SEMAPHORE = asyncio.Semaphore(_PROBE_MAX_CONCURRENCY)
 
 
 # Global daemon instance
@@ -238,6 +272,7 @@ async def lifespan(app: FastAPI):
     if _daemon is not None:
         _daemon.unload_all()
         logger.info("Daemon unloaded")
+    _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
 
 
 async def _parse_respond_request(
@@ -1128,6 +1163,7 @@ def _run_probe_sync(
     mode: Literal["hidden", "attention", "logits"],
     layer_selection: list[int],
     top_k: int,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[dict[str, object], list[str], bool]:
     import torch
 
@@ -1138,6 +1174,8 @@ def _run_probe_sync(
     tokenizer = getattr(processor, "tokenizer", None)
     if tokenizer is None:
         raise RuntimeError("tokenizer_unavailable")
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("probe_cancelled")
 
     tokenized, token_strings, truncated = _tokenize_probe_prompt(
         tokenizer=tokenizer,
@@ -1160,6 +1198,8 @@ def _run_probe_sync(
             use_cache=False,
             return_dict=True,
         )
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("probe_cancelled")
 
     hidden_states = getattr(outputs, "hidden_states", None)
     attentions = getattr(outputs, "attentions", None)
@@ -1176,6 +1216,8 @@ def _run_probe_sync(
         if hidden_states is None:
             raise RuntimeError("hidden_states_unavailable")
         for layer_idx in selected_layers:
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("probe_cancelled")
             layers_payload.append(
                 {
                     "layer": layer_idx,
@@ -1191,6 +1233,8 @@ def _run_probe_sync(
         )
         limits_hit.extend(attention_limits)
         for layer_idx in attention_layers:
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("probe_cancelled")
             layers_payload.append(
                 {
                     "layer": layer_idx,
@@ -1208,6 +1252,8 @@ def _run_probe_sync(
         if not callable(lm_head):
             raise RuntimeError("lm_head_unavailable")
         for layer_idx in selected_layers:
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("probe_cancelled")
             hidden_last = hidden_states[layer_idx][0, -1, :]
             logits_vec = lm_head(hidden_last)
             layers_payload.append(
@@ -1300,19 +1346,31 @@ async def introspection_probe(payload: IntrospectionProbeRequest) -> dict[str, o
             detail=f"layer_selection exceeds runtime limit ({_PROBE_MAX_LAYERS})",
         )
 
+    cancel_event = threading.Event()
+    probe_task = None
     try:
-        probe_result, limits_hit, truncated = await asyncio.wait_for(
-            asyncio.to_thread(
-                _run_probe_sync,
-                engine=engine,
-                prompt=payload.prompt,
-                mode=payload.mode,
-                layer_selection=payload.layer_selection,
-                top_k=payload.top_k,
-            ),
-            timeout=_PROBE_TIMEOUT_SECONDS,
-        )
+        async with _PROBE_SEMAPHORE:
+            loop = asyncio.get_running_loop()
+            probe_task = loop.run_in_executor(
+                _PROBE_EXECUTOR,
+                partial(
+                    _run_probe_sync,
+                    engine=engine,
+                    prompt=payload.prompt,
+                    mode=payload.mode,
+                    layer_selection=payload.layer_selection,
+                    top_k=payload.top_k,
+                    cancel_event=cancel_event,
+                ),
+            )
+            probe_result, limits_hit, truncated = await asyncio.wait_for(
+                probe_task,
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
     except asyncio.TimeoutError:
+        cancel_event.set()
+        if probe_task is not None:
+            probe_task.cancel()
         return {
             "status": "error",
             "code": "probe_timeout",

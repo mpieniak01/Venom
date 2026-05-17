@@ -25,6 +25,17 @@ Gdy zadanie dotyczy użycia produktów OpenAI/Codex, modeli lub zachowania API:
 
 To ogranicza wzrost kontekstu i zmniejsza token burn.
 
+## Lekki Brief Kontekstowy (artefakt CI)
+
+Jeśli jest dostępny, zaczynaj od `test-results/agent-context/brief.json` (lub `brief.md`) zanim wejdziesz w szerokie czytanie repo.
+Traktuj go jako krótki punkt startowy dla:
+
+1. kolejności bramek,
+2. skrótu metadanych lane/testów,
+3. reguły użycia Docs MCP dla tematów OpenAI/Codex.
+
+Jeśli brief i kod są niespójne, źródłem prawdy pozostaje kod.
+
 ## Najczęstsze Pułapki
 
 - Najpierw ustal źródło prawdy: gałąź, PR, dokument zadania i dokładny zakres, który faktycznie jest w grze.

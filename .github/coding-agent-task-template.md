@@ -17,6 +17,7 @@ Use this template for coding-agent implementation tasks.
 3. If the same gate fails twice without code/environment changes, stop and report blocker.
 4. Keep output compact: no raw full logs unless explicitly requested.
 5. For OpenAI/Codex API/product questions, use Docs MCP first.
+6. Prefer lightweight context artifact `test-results/agent-context/brief.json` before manual exploration.
 
 ## Mandatory Work Sequence
 

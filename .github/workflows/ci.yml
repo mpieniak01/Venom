@@ -68,6 +68,17 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Generate coding-agent context brief artifact
+        run: |
+          python3 scripts/generate_agent_context_brief.py
+
+      - name: Upload coding-agent context brief
+        uses: actions/upload-artifact@v6
+        with:
+          name: coding-agent-context-brief
+          path: test-results/agent-context/**
+          if-no-files-found: error
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

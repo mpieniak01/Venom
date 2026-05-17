@@ -3671,6 +3671,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_model_introspection_attention_service.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_model_introspection_logit_lens_service.py",
       "domain": "models",
       "test_type": "service_contract",
@@ -3714,6 +3728,20 @@
     },
     {
       "path": "tests/test_model_introspection_rag_focus_service.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_model_introspection_saliency_service.py",
       "domain": "models",
       "test_type": "service_contract",
       "intent": "contract",

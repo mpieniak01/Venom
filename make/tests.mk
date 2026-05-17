@@ -581,6 +581,24 @@ test-dynamic-preview:
 		--debug-json test-results/sonar/dynamic-selection-preview.json >/dev/null
 	@echo "✅ Dynamic preview saved: test-results/sonar/dynamic-selection-preview.json"
 
+test-env-contracts-ollama:
+	@ENV_CONTRACT_PROFILE=ollama \
+	ENV_CONTRACT_ACTIVE_LLM_SERVER=ollama \
+	ENV_CONTRACT_LLM_LOCAL_ENDPOINT=http://localhost:11434/v1 \
+	$(PYTEST_BIN) -q tests/test_env_contracts.py::test_runtime_profile_endpoint_contracts[ollama]
+
+test-env-contracts-vllm:
+	@ENV_CONTRACT_PROFILE=vllm \
+	ENV_CONTRACT_VLLM_ENDPOINT=http://localhost:8001/v1 \
+	$(PYTEST_BIN) -q tests/test_env_contracts.py::test_runtime_profile_endpoint_contracts[vllm]
+
+test-env-contracts-multi-runtime:
+	@ENV_CONTRACT_PROFILE=multi_runtime \
+	ENV_CONTRACT_ACTIVE_LLM_SERVER=multi_runtime \
+	ENV_CONTRACT_LLM_LOCAL_ENDPOINT=http://localhost:8014/v1 \
+	ENV_CONTRACT_GEMMA4_AUDIO_ENDPOINT=http://localhost:8014/v1 \
+	$(PYTEST_BIN) -q tests/test_env_contracts.py::test_runtime_profile_endpoint_contracts[multi_runtime]
+
 ci-lite-preflight:
 	@if ! command -v "$(PYTHON_BIN)" >/dev/null 2>&1; then \
 		echo "❌ Nie znaleziono interpretera Pythona: $(PYTHON_BIN)"; \

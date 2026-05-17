@@ -291,6 +291,42 @@ def test_model_introspection_probe_endpoint_returns_payload() -> None:
     assert payload["probe"]["probe"]["mode"] == "hidden"
 
 
+def test_model_introspection_probe_endpoint_forwards_saliency_fields() -> None:
+    captured: dict[str, object] = {}
+
+    async def _fake_probe(**kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "ok",
+            "runtime_label": "gemma · multi_runtime @ localhost:8014",
+            "probe": {"mode": "saliency"},
+            "diagnostics": {"elapsed_ms": 11.0},
+        }
+
+    original = models_introspection.run_model_introspection_probe
+    models_introspection.run_model_introspection_probe = _fake_probe
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/probe",
+            json={
+                "prompt": "Co to jest słońce?",
+                "mode": "saliency",
+                "layer_selection": [1, 2],
+                "head_selection": [0, 3],
+                "target_output_token_index": 4,
+                "top_k": 6,
+            },
+        )
+    finally:
+        models_introspection.run_model_introspection_probe = original
+
+    assert response.status_code == 200
+    assert captured["mode"] == "saliency"
+    assert captured["head_selection"] == [0, 3]
+    assert captured["target_output_token_index"] == 4
+
+
 def test_model_introspection_probe_endpoint_maps_value_error_to_safe_400() -> None:
     async def _bad_probe(**_kwargs):
         raise ValueError("sensitive validation details")

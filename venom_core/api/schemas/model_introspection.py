@@ -24,6 +24,8 @@ class ModelIntrospectionProbeRequest(BaseModel):
     """Request for probe-level model internals through active multi_runtime."""
 
     prompt: str = Field(..., min_length=1, max_length=50000)
-    mode: Literal["hidden", "attention", "logits"] = Field(default="hidden")
+    mode: Literal["hidden", "attention", "logits", "saliency"] = Field(default="hidden")
     layer_selection: list[int] = Field(default_factory=list, max_length=64)
+    head_selection: list[int] = Field(default_factory=list, max_length=128)
+    target_output_token_index: int | None = Field(default=None, ge=0, le=8192)
     top_k: int = Field(default=8, ge=1, le=256)

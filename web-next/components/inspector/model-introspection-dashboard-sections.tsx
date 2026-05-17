@@ -21,13 +21,16 @@ import {
 import type {
   AnalysisPhase,
   AnalysisProcessTrace,
+  AnalysisTimelinePath,
   AnalysisTimelineEntry,
+  AttentionModel,
   BadgeTone,
   GraphNodeDetails,
   IntrospectionSnapshot,
   LogitLensModel,
   OperatorConclusionModel,
   RagFocusModel,
+  SaliencyModel,
   SnapshotComparison,
 } from "@/components/inspector/model-introspection-dashboard-types";
 
@@ -150,6 +153,16 @@ type AnalysisResultsPanelProps = Readonly<{
       }>
     | null
     | undefined;
+  internalsVerdict:
+    | {
+        verdict: string;
+        tone: BadgeTone;
+        availableCount: number;
+        totalCount: number;
+        details: string[];
+      }
+    | null
+    | undefined;
 }>;
 
 type AnalysisLiveResponsePanelProps = Readonly<{
@@ -205,6 +218,20 @@ type LogitLensPanelProps = Readonly<{
   sourceRuntimeLabel: string;
   sourceUnavailableLabel: string;
   sourceFallbackWarning: string;
+}>;
+
+type AttentionPanelProps = Readonly<{
+  attention: AttentionModel | null;
+  title: string;
+  emptyLabel: string;
+  unavailableLabel: string;
+}>;
+
+type SaliencyPanelProps = Readonly<{
+  saliency: SaliencyModel | null;
+  title: string;
+  emptyLabel: string;
+  unavailableLabel: string;
 }>;
 
 function getGraphNodeClassName(selected: boolean): string {
@@ -578,6 +605,16 @@ function getRagStepTone(status: "done" | "running" | "pending"): BadgeTone {
   return "neutral";
 }
 
+function getTimelinePathTone(path: AnalysisTimelinePath | undefined): BadgeTone {
+  if (path === "internals_path") {
+    return "warning";
+  }
+  if (path === "answer_path") {
+    return "success";
+  }
+  return "neutral";
+}
+
 function resolveGroundingLabel(args: {
   ragFocus: RagFocusModel;
   groundingStrongLabel: string;
@@ -911,6 +948,143 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
   );
 }
 
+export function AttentionPanel(props: AttentionPanelProps) {
+  const { attention, title, emptyLabel, unavailableLabel } = props;
+
+  if (!attention) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+        <p className="mt-3 text-sm text-zinc-400">{emptyLabel}</p>
+      </div>
+    );
+  }
+
+  const available = attention.status === "ok" && attention.layers.length > 0;
+  if (!available) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge tone="warning">{attention.status}</Badge>
+          {attention.code && <Badge tone="neutral">{attention.code}</Badge>}
+        </div>
+        <p className="mt-3 text-sm text-zinc-400">{attention.message || unavailableLabel}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Badge tone={getDataSourceTone(attention.source)}>
+          source {attention.source === "probe_runtime" ? "runtime probe" : "fallback"}
+        </Badge>
+        <Badge tone="neutral">layers {attention.layers.length}</Badge>
+      </div>
+      <div className="mt-3 space-y-3">
+        {attention.layers.slice(0, 3).map((layer) => (
+          <div
+            key={`layer-${layer.layer}`}
+            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+          >
+            <p className="font-mono text-xs text-zinc-100">layer {layer.layer}</p>
+            <div className="mt-2 grid gap-2 lg:grid-cols-2">
+              {layer.heads.slice(0, 2).map((head) => (
+                <div
+                  key={`head-${layer.layer}-${head.head}`}
+                  className="rounded-lg border border-white/10 bg-black/30 px-3 py-2"
+                >
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">head {head.head}</p>
+                  <div className="mt-2 space-y-1">
+                    {head.top_links.slice(0, 3).map((link, index) => (
+                      <p
+                        key={`link-${layer.layer}-${head.head}-${index}`}
+                        className="text-xs text-zinc-300"
+                      >
+                        {index + 1}. {link.from_token} → {link.to_token} ({link.weight.toFixed(3)})
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function SaliencyPanel(props: SaliencyPanelProps) {
+  const { saliency, title, emptyLabel, unavailableLabel } = props;
+
+  if (!saliency) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+        <p className="mt-3 text-sm text-zinc-400">{emptyLabel}</p>
+      </div>
+    );
+  }
+
+  const available = saliency.status === "ok" && saliency.token_weights.length > 0;
+  if (!available) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge tone="warning">{saliency.status}</Badge>
+          {saliency.code && <Badge tone="neutral">{saliency.code}</Badge>}
+        </div>
+        <p className="mt-3 text-sm text-zinc-400">{saliency.message || unavailableLabel}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Badge tone={getDataSourceTone(saliency.source)}>
+          source {saliency.source === "probe_runtime" ? "runtime probe" : "fallback"}
+        </Badge>
+        <Badge tone="neutral">method {saliency.method ?? "n/a"}</Badge>
+        {saliency.target_output_token && (
+          <Badge tone="neutral">
+            target {saliency.target_output_token}
+          </Badge>
+        )}
+      </div>
+      <div className="mt-3 grid gap-2 lg:grid-cols-2">
+        {saliency.token_weights.slice(0, 8).map((item, index) => {
+          const magnitude = Math.min(100, Math.max(0, Math.abs(item.weight) * 100));
+          return (
+            <div
+              key={`saliency-${item.token_index}-${index}`}
+              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-mono text-xs text-zinc-100">{item.token}</p>
+                <Badge tone={item.weight >= 0 ? "success" : "warning"}>
+                  {item.weight.toFixed(3)}
+                </Badge>
+              </div>
+              <div className="mt-2 h-1.5 rounded bg-zinc-800">
+                <div
+                  className="h-1.5 rounded bg-cyan-400"
+                  style={{ width: `${magnitude}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function renderProcessFirstChunkLabel(firstChunkMs: number | null | undefined): string {
   if (firstChunkMs != null) {
     return `${firstChunkMs.toFixed(1)} ms`;
@@ -1096,6 +1270,7 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
     generationProfile,
     runTrends,
     operatorChecklist,
+    internalsVerdict,
   } = props;
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -1186,6 +1361,25 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
               )}
             </div>
           )}
+          {internalsVerdict && (
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={internalsVerdict.tone}>
+                  internals verdict {internalsVerdict.verdict}
+                </Badge>
+                <Badge tone="neutral">
+                  coverage {internalsVerdict.availableCount}/{internalsVerdict.totalCount}
+                </Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {internalsVerdict.details.map((detail) => (
+                  <Badge key={detail} tone="neutral">
+                    {detail}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="space-y-4">
@@ -1209,6 +1403,9 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
                     <p className="mt-1 text-xs text-zinc-400">{step.detail}</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {step.path && (
+                      <Badge tone={getTimelinePathTone(step.path)}>{step.path}</Badge>
+                    )}
                     {typeof step.progress === "number" && (
                       <Badge tone="neutral">{formatCount(Math.round(step.progress))}%</Badge>
                     )}
@@ -1679,10 +1876,7 @@ function GraphRelationsCard(props: GraphRelationsCardProps) {
       <div className="mt-3 flex flex-wrap gap-2">
         {edges.map((edge, index) => (
           <Badge
-            key={
-              (typeof edge.id === "string" && edge.id) ||
-              `${edge.from}-${edge.to}-${edge.label}-${index}`
-            }
+            key={`${edge.from}-${edge.to}-${edge.label}-${index}`}
             tone="neutral"
           >
             {edge.from} → {edge.to} ({edge.label})

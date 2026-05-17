@@ -6,10 +6,25 @@
 
 ## 0. Introduction – Target Vision (Venom v2.0)
 > [!NOTE]
-> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.8.0) serves as the foundation (Foundation Layer) implementing key orchestration, **workflow management**, authentication, memory, and learning functions.
+> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.8.x) serves as the foundation (Foundation Layer) implementing key orchestration, **workflow management**, authentication, memory, and learning functions.
 Venom is a project to create an artificial intelligence organism that develops, supervises, and designs other AI systems.
 It's a meta-intelligence layer operating above Rider-PC (logic, code, AI) and Rider-Pi (physical world, sensors, movement).
 Venom can in the future encompass any other module in your ecosystem.
+
+## 0A. Current state (2026-05)
+What is actually delivered in the current stack:
+- orchestrator and Workflow Control Plane,
+- local model 3-stack with profile-dependent installation,
+- dashboard and configuration panel,
+- request tracing and decision audit,
+- model introspection with separate `answer verdict` and `internals verdict`,
+- quality gates, tests, and pre-commit.
+
+What remains a target and is not yet a full production state:
+- fully automated end-to-end self-improvement loop,
+- fully user-configurable internal processes,
+- complete Rider-Pi / Google Home integration,
+- full ONNX-only unification without hybrid fallbacks.
 
 Venom is an intelligent, adaptive, learning organism that:
 - understands user intent,
@@ -31,7 +46,7 @@ Venom treats:
 Venom is a meta-brain, artificial intelligence organism, code architect, agent orchestrator, knowledge manager, policy guardian, and AI that creates AI.
 
 > [!NOTE]
-> **Process Evolution:** In v1.5, the organism operates based on *built-in* autonomous processes (Internal Processes) with a visual **Workflow Control Plane** for stack management. In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer.
+> **Process Evolution:** In v1.5, the organism operates based on *built-in* autonomous processes (Internal Processes) with a visual **Workflow Control Plane** for stack management. In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer. In the current stack, part of that vision is already implemented as a controlled but still limited control plane.
 
 ## 1. Technical definition – what is Venom as a system
 Venom is a local meta-intelligence layer that takes user intent and transforms it into a working solution through:
@@ -44,19 +59,19 @@ Venom is a local meta-intelligence layer that takes user intent and transforms i
 - self-improvement mechanisms.
 
 Venom strives for technological unification based on the **ONNX Runtime** standard.
-In practice, the LLM layer runs on a local 3-stack (Ollama/vLLM/ONNX) and cloud providers (OpenAI/Gemini/Claude).
+In practice, the LLM layer runs on a local 3-stack (Ollama/vLLM/ONNX) and cloud providers (OpenAI/Gemini/Claude), but the availability of each runtime depends on the installation profile and host.
 Oracle Models (cloud) are optional and work only in selected policies.
 
 ## 2. Venom's biological model – artificial intelligence organism
 <table>
 <tr><th>Organ</th><th>Function</th><th>Role in organism</th><th>Technology</th><th>Vision version</th><th>Stack version in environment (2026-04-11)</th></tr>
 <tr><td>Nervous system</td><td>Orchestration</td><td>Dialog, decision loops</td><td>AutoGen + Orchestrator (FastAPI)</td><td>v1.0</td><td>Python `3.12.3`; `pyautogen>=0.2.0`; FastAPI `0.128.0` (pin)</td></tr>
-<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Generates 90% of code</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td><td>Ollama `0.17.4` (local); `vllm==0.11.0` (profile pin); ONNX Runtime packages enabled (unpinned)</td></tr>
+<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Code generation and refactoring</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td><td>Ollama `0.17.4` (local); `vllm==0.11.0` (profile pin); ONNX Runtime packages enabled (unpinned)</td></tr>
 <tr><td>Oracle</td><td>Deep thinking</td><td>Difficult problems</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td><td>`openai>=1.98.0,<2`; `anthropic` (unpinned); Gemini via provider API</td></tr>
 <tr><td>Extended intelligence</td><td>External sense</td><td>Internet knowledge</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td><td>Service integration layer in repo; no fixed external binary version in local host</td></tr>
 <tr><td>Hippocampus</td><td>Memory</td><td>Knowledge map</td><td>GraphRAG + LanceDB</td><td>v1.0</td><td>`graphrag==2.7.2`; `lancedb==0.25.3`</td></tr>
 <tr><td>Cerebellum</td><td>Learning (Fine-tuning)</td><td>Muscle memory, reflexes</td><td>The Academy (LoRA/QLoRA)</td><td>v1.5</td><td>Academy pipeline in repo (no single pinned external runtime version)</td></tr>
-<tr><td>Prefrontal Cortex</td><td>Control</td><td>Conscious planning</td><td>Workflow Control Plane</td><td>v1.5</td><td>Venom app line `v1.8.0` (`web-next` package version)</td></tr>
+<tr><td>Prefrontal Cortex</td><td>Control</td><td>Conscious planning</td><td>Workflow Control Plane</td><td>v1.5</td><td>Venom app line `v1.8.x` (`web-next` package version)</td></tr>
 <tr><td>Hands</td><td>Action</td><td>Files, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td><td>`semantic-kernel==1.39.4` (CI/minimal pin); Git `2.43.0`</td></tr>
 <tr><td>Tool synapses (MCP)</td><td>Tool extensions</td><td>Git tool import, integration standardization</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td><td>MCP integration implemented in repo (no dedicated pinned external MCP server version here)</td></tr>
 <tr><td>Eyes (digital)</td><td>UI perception</td><td>Screenshot analysis (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td><td>Ollama `0.17.4`; `openai>=1.98.0,<2`</td></tr>
@@ -86,6 +101,7 @@ In practice, Large Language Model (LLM) engineering necessitated a hybrid approa
 > **Architectural Decision: Experimental Triple-Stack (Ollama vs vLLM vs ONNX)**
 > Maintaining parallel support for all three local serving technologies (Ollama, vLLM, ONNX) is currently a **conscious design choice**.
 > It allows for flexible testing of different model families and quantization methods to empirically select the most efficient target solution for specific hardware conditions.
+> Operationally, we do not assume all three runtimes are always available on every host.
 > **Stabilization (v1.0.x):** Introduced hybrid orchestration enabling seamless switching between the active server and model directly from the Cockpit (Hybrid Model Orchestration).
 
 
@@ -165,7 +181,7 @@ Improves:
 - policies.
 
 > [!NOTE]
-> The self-improvement toolset is implemented, but the fully automated end-to-end loop (`task -> code -> test -> PR -> memory -> policy`) remains a v2.0 completion target.
+> The self-improvement toolset is partially implemented, but the fully automated end-to-end loop (`task -> code -> test -> PR -> memory -> policy`) remains a v2.0 completion target.
 
 ## 6. Venom pipeline
 1. User intent
@@ -196,6 +212,8 @@ Policy enforcement now covers route/skill boundaries and a central orchestrator-
 Rider-Pi – physical body.
 Google Home - Internet of Things
 
+Current status: this integration is a target direction, not a fully delivered scope in the current stack.
+
 Venom coordinates the entire ecosystem.
 
 ## 9. Final definition
@@ -209,7 +227,7 @@ Venom is:
 - policy guardian,
 - AI creating AI.
 
-The LLM layer follows a **3-stack approach (Ollama/vLLM/ONNX + cloud)**, while ONNX also covers selected perception/audio paths.
+The LLM layer follows a **3-stack approach (Ollama/vLLM/ONNX + cloud)**, while ONNX also covers selected perception/audio paths. This is the current operational compromise, not a final reduction to one runtime.
 ### v2.0 roadmap detail (chat experience)
 - **Multi-chat sessions:** multiple named sessions with quick switching and preserved history.
 - **Session recall:** reopen past sessions and continue with their context.

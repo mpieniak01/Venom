@@ -1,8 +1,14 @@
 import "./component-test-setup";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ModelIntrospectionMechanismProvider, ModelIntrospectionMechanismControl } from "../components/inspector/model-introspection-mechanism";
+
+const mechanismStorageKey = "venom.modelIntrospection.liveAnalysisEnabled";
+
+beforeEach(() => {
+  globalThis.window.localStorage.removeItem(mechanismStorageKey);
+});
 
 afterEach(() => cleanup());
 
@@ -28,6 +34,21 @@ describe("ModelIntrospectionMechanismControl", () => {
       const updatedSwitches = screen.getAllByRole("switch");
       assert.equal(updatedSwitches[0].getAttribute("aria-checked"), "true");
       assert.equal(updatedSwitches[1].getAttribute("aria-checked"), "true");
+    });
+  });
+
+  it("reads persisted state after mount without hydrating to a mismatch", async () => {
+    globalThis.window.localStorage.setItem(mechanismStorageKey, "true");
+
+    render(
+      <ModelIntrospectionMechanismProvider>
+        <ModelIntrospectionMechanismControl variant="compact" />
+      </ModelIntrospectionMechanismProvider>,
+    );
+
+    await waitFor(() => {
+      const switchEl = screen.getByRole("switch");
+      assert.equal(switchEl.getAttribute("aria-checked"), "true");
     });
   });
 });

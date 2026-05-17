@@ -26,6 +26,9 @@ _MAX_STORED_RUNS = 200
 _DEFAULT_WINDOW = 20
 _STORE_LOCK = threading.Lock()
 _DEFAULT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "data" / "introspection"
+_DEFAULT_PROBE_SUCCESS_RATE_MIN = 90.0
+_DEFAULT_FIRST_CHUNK_P95_MS_MAX = 2500.0
+_DEFAULT_FALLBACK_RATE_MAX = 25.0
 
 
 def _resolve_storage_namespace(cfg: Any) -> str:
@@ -143,6 +146,21 @@ def _compute_rate(
     return round((matches / len(records)) * 100.0, 1)
 
 
+def _compute_percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return round(ordered[0], 1)
+    bounded = max(0.0, min(100.0, percentile))
+    raw_index = (len(ordered) - 1) * (bounded / 100.0)
+    lower = int(raw_index)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = raw_index - lower
+    value = ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+    return round(value, 1)
+
+
 def compute_run_trends(
     records: list[dict[str, Any]],
     *,
@@ -170,6 +188,12 @@ def compute_run_trends(
     avg_noise_ratio = (
         round(sum(noise_values) / len(noise_values), 4) if noise_values else None
     )
+    probe_runtime_rate = _compute_rate(
+        sample,
+        lambda entry: entry.get("probe_source") == "probe_runtime",
+    )
+    fallback_rate = round(100.0 - probe_runtime_rate, 1)
+    first_chunk_p95_ms = _compute_percentile(first_content_values, 95.0)
     return {
         "runs": len(sample),
         "window": bounded_window,
@@ -177,10 +201,9 @@ def compute_run_trends(
             sample,
             lambda entry: entry.get("rag_source") == "runtime_trace",
         ),
-        "probe_runtime_rate": _compute_rate(
-            sample,
-            lambda entry: entry.get("probe_source") == "probe_runtime",
-        ),
+        "probe_runtime_rate": probe_runtime_rate,
+        "probe_success_rate": probe_runtime_rate,
+        "fallback_rate": fallback_rate,
         "high_coverage_rate": _compute_rate(
             sample,
             lambda entry: isinstance(entry.get("coverage_percent"), (int, float))
@@ -191,8 +214,154 @@ def compute_run_trends(
             lambda entry: entry.get("stream_quality") == "live_streaming",
         ),
         "avg_first_content_ms": avg_first_content_ms,
+        "first_chunk_p95_ms": first_chunk_p95_ms,
         "avg_noise_ratio": avg_noise_ratio,
     }
+
+
+def evaluate_slo_gate(
+    trends: dict[str, Any] | None,
+    *,
+    min_runs: int = _DEFAULT_WINDOW,
+    probe_success_rate_min: float = _DEFAULT_PROBE_SUCCESS_RATE_MIN,
+    first_chunk_p95_ms_max: float = _DEFAULT_FIRST_CHUNK_P95_MS_MAX,
+    fallback_rate_max: float = _DEFAULT_FALLBACK_RATE_MAX,
+) -> dict[str, Any]:
+    if not trends:
+        return {
+            "ok": False,
+            "reason": "no_trends",
+            "min_runs": min_runs,
+            "runs": 0,
+            "checks": [],
+        }
+    runs = int(trends.get("runs") or 0)
+    probe_success_raw = trends.get("probe_success_rate")
+    fallback_raw = trends.get("fallback_rate")
+    probe_success_rate = (
+        float(probe_success_raw) if isinstance(probe_success_raw, (int, float)) else 0.0
+    )
+    fallback_rate = (
+        float(fallback_raw) if isinstance(fallback_raw, (int, float)) else 100.0
+    )
+    first_chunk_p95_ms = trends.get("first_chunk_p95_ms")
+    has_min_runs = runs >= min_runs
+    probe_ok = probe_success_rate >= probe_success_rate_min
+    fallback_ok = fallback_rate <= fallback_rate_max
+    p95_ok = (
+        isinstance(first_chunk_p95_ms, (int, float))
+        and float(first_chunk_p95_ms) <= first_chunk_p95_ms_max
+    )
+    checks = [
+        {
+            "id": "min_runs",
+            "ok": has_min_runs,
+            "actual": runs,
+            "expected_min": min_runs,
+        },
+        {
+            "id": "probe_success_rate",
+            "ok": probe_ok,
+            "actual": probe_success_rate,
+            "expected_min": probe_success_rate_min,
+        },
+        {
+            "id": "fallback_rate",
+            "ok": fallback_ok,
+            "actual": fallback_rate,
+            "expected_max": fallback_rate_max,
+        },
+        {
+            "id": "first_chunk_p95_ms",
+            "ok": p95_ok,
+            "actual": first_chunk_p95_ms,
+            "expected_max": first_chunk_p95_ms_max,
+        },
+    ]
+    ok = has_min_runs and probe_ok and fallback_ok and p95_ok
+    return {
+        "ok": ok,
+        "reason": "ok" if ok else "threshold_failed",
+        "runs": runs,
+        "min_runs": min_runs,
+        "probe_success_rate": probe_success_rate,
+        "fallback_rate": fallback_rate,
+        "first_chunk_p95_ms": first_chunk_p95_ms,
+        "checks": checks,
+    }
+
+
+def evaluate_consecutive_slo_windows(
+    records: list[dict[str, Any]],
+    *,
+    window: int = _DEFAULT_WINDOW,
+    required_consecutive: int = 3,
+    probe_success_rate_min: float = _DEFAULT_PROBE_SUCCESS_RATE_MIN,
+    first_chunk_p95_ms_max: float = _DEFAULT_FIRST_CHUNK_P95_MS_MAX,
+    fallback_rate_max: float = _DEFAULT_FALLBACK_RATE_MAX,
+) -> dict[str, Any]:
+    if required_consecutive < 1:
+        required_consecutive = 1
+    if not records:
+        return {
+            "ok": False,
+            "reason": "no_records",
+            "required_consecutive": required_consecutive,
+            "passed_consecutive": 0,
+            "windows": [],
+        }
+    windows: list[dict[str, Any]] = []
+    passed_consecutive = 0
+    max_windows = min(len(records), window + required_consecutive + 8)
+    for offset in range(0, max_windows):
+        sample = records[offset:]
+        trends = compute_run_trends(sample, window=window)
+        gate = evaluate_slo_gate(
+            trends,
+            min_runs=window,
+            probe_success_rate_min=probe_success_rate_min,
+            first_chunk_p95_ms_max=first_chunk_p95_ms_max,
+            fallback_rate_max=fallback_rate_max,
+        )
+        gate["offset"] = offset
+        windows.append(gate)
+        if gate["ok"]:
+            passed_consecutive += 1
+            if passed_consecutive >= required_consecutive:
+                break
+        else:
+            passed_consecutive = 0
+    ok = passed_consecutive >= required_consecutive
+    return {
+        "ok": ok,
+        "reason": "ok" if ok else "consecutive_windows_failed",
+        "required_consecutive": required_consecutive,
+        "passed_consecutive": passed_consecutive,
+        "windows": windows,
+    }
+
+
+def evaluate_persisted_slo_windows(
+    *,
+    settings: Any = None,
+    window: int = _DEFAULT_WINDOW,
+    required_consecutive: int = 3,
+    probe_success_rate_min: float = _DEFAULT_PROBE_SUCCESS_RATE_MIN,
+    first_chunk_p95_ms_max: float = _DEFAULT_FIRST_CHUNK_P95_MS_MAX,
+    fallback_rate_max: float = _DEFAULT_FALLBACK_RATE_MAX,
+) -> dict[str, Any]:
+    path = _resolve_storage_path(settings=settings)
+    with _STORE_LOCK:
+        with _file_lock(path):
+            records = _read_records(path)
+    return evaluate_consecutive_slo_windows(
+        records,
+        window=window,
+        required_consecutive=required_consecutive,
+        probe_success_rate_min=probe_success_rate_min,
+        first_chunk_p95_ms_max=first_chunk_p95_ms_max,
+        fallback_rate_max=fallback_rate_max,
+    )
 
 
 def record_operator_run(

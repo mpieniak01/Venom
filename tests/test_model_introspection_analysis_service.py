@@ -45,6 +45,22 @@ def _build_snapshot() -> dict[str, object]:
         "available_packages": [],
         "missing_packages": [],
         "model_manager": {"available": False, "usage_metrics": None, "error": None},
+        "probe": {
+            "enabled": True,
+            "status": "ready",
+            "healthy": True,
+            "runtime_supported": True,
+            "endpoint_configured": True,
+            "profile": "dev",
+            "limits": {
+                "timeout_seconds": 20.0,
+                "max_attempts": 2,
+                "max_top_k": 32,
+                "max_layer_count": 8,
+                "max_head_count": 32,
+                "max_prompt_tokens": 1024,
+            },
+        },
         "reuse": {
             "brain": {"path": "/brain", "available": True, "purpose": "rag"},
             "diagnostics": [],
@@ -167,10 +183,13 @@ async def test_analysis_collects_streamed_answer(
     assert result["analysis"]["chunk_count"] == 1
     assert result["analysis"]["provider"] == "multi_runtime"
     assert result["analysis"]["events"] == ["start", "content", "done"]
-    assert result["analysis"]["timeline_step_count"] == 7
+    assert result["analysis"]["timeline_step_count"] == 9
     assert result["analysis"]["timeline"][0]["label"] == "Snapshot captured"
-    assert result["analysis"]["timeline"][-2]["label"] == "Logit lens probe"
-    assert result["analysis"]["timeline"][-1]["label"] == "Snapshot refreshed"
+    timeline_labels = [step["label"] for step in result["analysis"]["timeline"]]
+    assert "Logit lens probe" in timeline_labels
+    assert "Attention probe" in timeline_labels
+    assert "Saliency probe" in timeline_labels
+    assert timeline_labels[-1] == "Snapshot refreshed"
     assert result["analysis"]["logit_lens"]["status"] == "ok"
     assert result["analysis"]["rag_focus"]["source"] == "graph_fallback"
     assert "answer_evidence_links" in result["analysis"]["rag_focus"]
@@ -196,6 +215,10 @@ async def test_analysis_collects_streamed_answer(
     assert result["analysis"]["operator_conclusion"]["reason_codes"]
     assert "rag_profile" in result["analysis"]
     assert "logit_profile" in result["analysis"]
+    assert "analysis_capabilities" in result["analysis"]
+    assert result["analysis"]["analysis_capabilities"]["total_count"] == 3
+    assert result["analysis"]["analysis_capabilities"]["probe_profile"] == "dev"
+    assert result["analysis"]["analysis_capabilities"]["limits"]["max_head_count"] == 32
     assert "run_trends" in result["analysis"]
 
 
@@ -371,7 +394,11 @@ async def test_analysis_stream_emits_progressive_events(
     assert analysis_start["analysis"]["timeline"][0]["label"] == "Snapshot captured"
     assert analysis_done["status"] == "completed"
     assert analysis_done["analysis"]["response"] == "Slonce to gwiazda."
-    assert analysis_done["analysis"]["timeline_step_count"] == 7
+    assert analysis_done["analysis"]["timeline_step_count"] == 9
+    timeline_labels = [step["label"] for step in analysis_done["analysis"]["timeline"]]
+    assert "Logit lens probe" in timeline_labels
+    assert "Attention probe" in timeline_labels
+    assert "Saliency probe" in timeline_labels
     assert analysis_done["analysis"]["logit_lens"]["status"] == "ok"
     assert "interpretability" in analysis_done["analysis"]["logit_lens"]
     assert analysis_done["analysis"]["rag_focus"]["source"] == "graph_fallback"
@@ -459,6 +486,139 @@ async def test_analysis_stream_emits_failed_result_when_response_has_no_body_ite
     done_payload = json.loads(events[-1][1])
     assert done_payload["status"] == "failed"
     assert "body iterator" in done_payload["analysis"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_analysis_stream_maps_traffic_control_degraded_to_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        raise RuntimeError("Traffic control is in degraded mode")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events: list[tuple[str, str]] = []
+    for chunk in chunks:
+        events.extend(analysis_service.parse_sse_events(chunk))
+
+    event_names = [name for name, _ in events]
+    assert event_names[0] == "analysis_start"
+    assert event_names[-1] == "analysis_done"
+    done_payload = json.loads(events[-1][1])
+    assert done_payload["status"] == "skipped"
+    assert done_payload["skipped_reason"] == "traffic_control_degraded_mode"
+    assert done_payload["analysis"]["timeline"][-1]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_analysis_maps_traffic_control_degraded_to_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        raise RuntimeError("Traffic control is in degraded mode")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    )
+
+    assert result["status"] == "skipped"
+    assert result["skipped_reason"] == "traffic_control_degraded_mode"
+    assert result["analysis"]["timeline"][-1]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_analysis_stream_maps_degraded_error_event_to_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: error\ndata: {"message":"Traffic control is in degraded mode"}\n\n',
+            ]
+        )
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events: list[tuple[str, str]] = []
+    for chunk in chunks:
+        events.extend(analysis_service.parse_sse_events(chunk))
+
+    done_payload = json.loads(events[-1][1])
+    assert done_payload["status"] == "skipped"
+    assert done_payload["skipped_reason"] == "traffic_control_degraded_mode"
+
+
+@pytest.mark.asyncio
+async def test_analysis_maps_degraded_error_event_to_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: error\ndata: {"message":"Traffic control is in degraded mode"}\n\n',
+            ]
+        )
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    )
+
+    assert result["status"] == "skipped"
+    assert result["skipped_reason"] == "traffic_control_degraded_mode"
 
 
 def test_classify_stream_quality_variants() -> None:

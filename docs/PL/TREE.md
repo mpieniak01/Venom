@@ -1,4 +1,4 @@
-## Aktualna struktura platformy (v1.8.0+)
+## Aktualna struktura platformy (v1.8.x)
 
 ```text
 ~/venom
@@ -16,6 +16,7 @@
 
 Referencyjne drzewo szczegółowe (widok rozszerzony):
 
+```text
 ~/venom                          # ROOT projektu Venom (repo)
 ├── .venv/                       # środowisko wirtualne Pythona
 ├── .env                         # konfiguracja / sekrety (poza Gitem)
@@ -129,3 +130,4 @@ Referencyjne drzewo szczegółowe (widok rozszerzony):
         ├── __init__.py
         ├── logger.py            # konfiguracja Loguru/Rich
         └── helpers.py           # drobne helpery (ID, czas, konwersje, itd.)
+```

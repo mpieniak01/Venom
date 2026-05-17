@@ -10,13 +10,17 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { useTranslation } from "@/lib/i18n";
 import { useModelIntrospectionMechanism } from "@/components/inspector/model-introspection-mechanism";
 import type {
+  AnalysisTimelineEntry,
+  BadgeTone,
   GraphNodeDetails,
   IntrospectionSnapshot,
   SnapshotComparison,
 } from "@/components/inspector/model-introspection-dashboard-types";
 import {
+  buildAttentionModel,
   buildOperatorConclusion,
   buildLogitLensModel,
+  buildSaliencyModel,
   buildRagFocusModel,
   computeAnalysisProgress,
   formatCount,
@@ -40,7 +44,9 @@ import {
   AnalysisInputPanel,
   AnalysisLiveResponsePanel,
   AnalysisOrbPanel,
+  AttentionPanel,
   LogitLensPanel,
+  SaliencyPanel,
   RagFocusPanel,
   AnalysisResultsPanel,
   GraphPanel,
@@ -71,6 +77,172 @@ type OperatorChecklistItem = {
   status: "ok" | "warn";
   detail: string;
 };
+
+type InternalsVerdictValue = "full" | "partial" | "fallback_only";
+type ProbeCapability = {
+  available?: boolean;
+  reason?: string;
+};
+type InternalsCapabilityRow = {
+  label: string;
+  available: boolean;
+  reason: string;
+};
+
+function resolveInternalsVerdictPresentation(
+  verdict: string | undefined,
+): { label: string; tone: BadgeTone } {
+  const normalized: InternalsVerdictValue =
+    verdict === "full" || verdict === "partial" || verdict === "fallback_only"
+      ? verdict
+      : "fallback_only";
+  if (normalized === "full") {
+    return { label: "internals full", tone: "success" };
+  }
+  if (normalized === "partial") {
+    return { label: "internals partial", tone: "warning" };
+  }
+  return { label: "internals fallback", tone: "neutral" };
+}
+
+function resolveProbeBudgetLabel(internalsProbeElapsedMs: number | null): string {
+  if (internalsProbeElapsedMs == null) {
+    return "probe budget unknown";
+  }
+  return `probe budget ~${internalsProbeElapsedMs.toFixed(1)} ms`;
+}
+
+function sumProbeElapsedMs(values: Array<number | null | undefined>): number | null {
+  const numericValues = values.filter(
+    (value): value is number => typeof value === "number",
+  );
+  if (numericValues.length === 0) {
+    return null;
+  }
+  return numericValues.reduce((sum, value) => sum + value, 0);
+}
+
+function buildInternalsCapabilityRow(
+  label: string,
+  capability: ProbeCapability | undefined,
+): InternalsCapabilityRow {
+  const available = Boolean(capability?.available);
+  return {
+    label,
+    available,
+    reason: available ? "ok" : String(capability?.reason || "unknown"),
+  };
+}
+
+function buildProbeLimitsLabel(limits: {
+  timeout_seconds?: number;
+  max_attempts?: number;
+  max_top_k?: number;
+  max_layer_count?: number;
+  max_head_count?: number;
+  max_prompt_tokens?: number;
+} | null | undefined): string {
+  if (!limits) {
+    return "limits: n/a";
+  }
+  return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
+}
+
+function buildRunTrends(payload: unknown): RunTrends | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const candidate = payload as Record<string, unknown>;
+  const runs = typeof candidate.runs === "number" ? candidate.runs : 0;
+  if (runs <= 0) {
+    return null;
+  }
+  return {
+    runs,
+    window: typeof candidate.window === "number" ? candidate.window : runs,
+    runtimeTraceRate:
+      typeof candidate.runtime_trace_rate === "number"
+        ? candidate.runtime_trace_rate
+        : 0,
+    probeRuntimeRate:
+      typeof candidate.probe_runtime_rate === "number"
+        ? candidate.probe_runtime_rate
+        : 0,
+    highCoverageRate:
+      typeof candidate.high_coverage_rate === "number"
+        ? candidate.high_coverage_rate
+        : 0,
+    liveStreamingRate:
+      typeof candidate.live_streaming_rate === "number"
+        ? candidate.live_streaming_rate
+        : 0,
+    avgFirstContentMs:
+      typeof candidate.avg_first_content_ms === "number"
+        ? candidate.avg_first_content_ms
+        : null,
+    avgNoiseRatio:
+      typeof candidate.avg_noise_ratio === "number"
+        ? candidate.avg_noise_ratio
+        : null,
+  };
+}
+
+function resolveSummaryStats(
+  snapshot: IntrospectionSnapshot | null,
+  t: (key: string) => string,
+): SummaryCard[] {
+  if (!snapshot) {
+    return [];
+  }
+  return buildSummaryCards({ snapshot, t });
+}
+
+function resolveAnalysisTimeline(
+  analysisVisible: boolean,
+  timeline: AnalysisTimelineEntry[] | undefined,
+): AnalysisTimelineEntry[] {
+  if (!analysisVisible) {
+    return [];
+  }
+  return timeline ?? [];
+}
+
+function resolveSelectedGraphNodeIdEffective(args: {
+  nodes: Array<{ id: string }>;
+  selectedGraphNodeId: string | null;
+}): string | null {
+  const { nodes, selectedGraphNodeId } = args;
+  if (nodes.length === 0) {
+    return null;
+  }
+  const selectedExists = Boolean(
+    selectedGraphNodeId && nodes.some((node) => node.id === selectedGraphNodeId),
+  );
+  if (selectedExists) {
+    return selectedGraphNodeId;
+  }
+  return nodes[0]?.id ?? null;
+}
+
+function resolveSelectedGraphNode(args: {
+  nodes: Array<{ id: string; label: string; kind: string; status: string }>;
+  selectedGraphNodeIdEffective: string | null;
+}): { id: string; label: string; kind: string; status: string } | null {
+  const { nodes, selectedGraphNodeIdEffective } = args;
+  if (nodes.length === 0 || !selectedGraphNodeIdEffective) {
+    return null;
+  }
+  return nodes.find((node) => node.id === selectedGraphNodeIdEffective) ?? null;
+}
+
+function resolveSelectedGraphTypeHint(
+  selectedGraphNode: { kind: string } | null,
+): string {
+  if (!selectedGraphNode) {
+    return "";
+  }
+  return getTypeHintText(selectedGraphNode.kind);
+}
 
 function buildOperatorChecklist(args: {
   ragSource: string;
@@ -284,13 +456,9 @@ export function ModelIntrospectionDashboard() {
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [graphLayerOpen, setGraphLayerOpen] = useState(false);
   const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
+  const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
 
-  const stats = useMemo(() => {
-    if (!snapshot) {
-      return [] as SummaryCard[];
-    }
-    return buildSummaryCards({ snapshot, t });
-  }, [snapshot, t]);
+  const stats = useMemo(() => resolveSummaryStats(snapshot, t), [snapshot, t]);
 
   const analysisVisible = Boolean(analysisResult?.analysis);
   const analysisRunning = analysisResult?.status === "running";
@@ -312,7 +480,11 @@ export function ModelIntrospectionDashboard() {
     [analysisSourceResponse],
   );
   const analysisTimeline = useMemo(
-    () => (analysisVisible ? analysisResult?.analysis?.timeline ?? [] : []),
+    () =>
+      resolveAnalysisTimeline(
+        analysisVisible,
+        analysisResult?.analysis?.timeline,
+      ),
     [analysisVisible, analysisResult?.analysis?.timeline],
   );
   const analysisProcess = analysisResult?.analysis?.process ?? null;
@@ -379,6 +551,57 @@ export function ModelIntrospectionDashboard() {
   const logitLens = buildLogitLensModel(
     analysisResult?.analysis?.logit_lens ?? null,
   );
+  const attention = buildAttentionModel(
+    analysisResult?.analysis?.attention ?? null,
+  );
+  const saliency = buildSaliencyModel(
+    analysisResult?.analysis?.saliency ?? null,
+  );
+  const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
+  const internalsProbeElapsedMs = useMemo(
+    () =>
+      sumProbeElapsedMs([
+        logitLens?.diagnostics?.elapsed_ms as number | null | undefined,
+        attention?.diagnostics?.elapsed_ms as number | null | undefined,
+        saliency?.diagnostics?.elapsed_ms as number | null | undefined,
+      ]),
+    [
+      attention?.diagnostics?.elapsed_ms,
+      logitLens?.diagnostics?.elapsed_ms,
+      saliency?.diagnostics?.elapsed_ms,
+    ],
+  );
+  const internalsCapabilityRows = useMemo(() => {
+    const payload = analysisCapabilities;
+    return [
+      buildInternalsCapabilityRow("attention", payload?.attention),
+      buildInternalsCapabilityRow("saliency", payload?.saliency),
+      buildInternalsCapabilityRow("logit lens", payload?.logit_lens),
+    ];
+  }, [analysisCapabilities]);
+  const internalsVerdictPresentation = resolveInternalsVerdictPresentation(
+    analysisCapabilities?.internals_verdict,
+  );
+  const internalsVerdictLabel = internalsVerdictPresentation.label;
+  const internalsVerdictTone = internalsVerdictPresentation.tone;
+  const probeLimitsLabel = useMemo(
+    () => buildProbeLimitsLabel(analysisCapabilities?.limits),
+    [analysisCapabilities?.limits],
+  );
+  const internalsVerdict = useMemo(() => {
+    if (!analysisCapabilities) {
+      return null;
+    }
+    const availableCount = Number(analysisCapabilities.available_count ?? 0);
+    const totalCount = Number(analysisCapabilities.total_count ?? 3);
+    return {
+      verdict: internalsVerdictLabel,
+      tone: internalsVerdictTone,
+      availableCount,
+      totalCount,
+      details: internalsCapabilityRows.map((row) => `${row.label}:${row.reason}`),
+    };
+  }, [analysisCapabilities, internalsCapabilityRows, internalsVerdictLabel, internalsVerdictTone]);
   const operatorConclusion = buildOperatorConclusion({
     analysisVisible,
     analysisStatus: analysisResult?.status,
@@ -391,34 +614,10 @@ export function ModelIntrospectionDashboard() {
   const inputProfile = analysisResult?.analysis?.input_profile ?? null;
   const generationProfile = analysisResult?.analysis?.generation_profile ?? null;
 
-  const runTrends = useMemo<RunTrends | null>(() => {
-    const payload = analysisResult?.analysis?.run_trends;
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-    const runs = typeof payload.runs === "number" ? payload.runs : 0;
-    if (runs <= 0) {
-      return null;
-    }
-    return {
-      runs,
-      window: typeof payload.window === "number" ? payload.window : runs,
-      runtimeTraceRate:
-        typeof payload.runtime_trace_rate === "number" ? payload.runtime_trace_rate : 0,
-      probeRuntimeRate:
-        typeof payload.probe_runtime_rate === "number" ? payload.probe_runtime_rate : 0,
-      highCoverageRate:
-        typeof payload.high_coverage_rate === "number" ? payload.high_coverage_rate : 0,
-      liveStreamingRate:
-        typeof payload.live_streaming_rate === "number" ? payload.live_streaming_rate : 0,
-      avgFirstContentMs:
-        typeof payload.avg_first_content_ms === "number"
-          ? payload.avg_first_content_ms
-          : null,
-      avgNoiseRatio:
-        typeof payload.avg_noise_ratio === "number" ? payload.avg_noise_ratio : null,
-    };
-  }, [analysisResult?.analysis?.run_trends]);
+  const runTrends = useMemo<RunTrends | null>(
+    () => buildRunTrends(analysisResult?.analysis?.run_trends),
+    [analysisResult?.analysis?.run_trends],
+  );
   const operatorChecklist = buildOperatorChecklist({
     ragSource: String(analysisResult?.analysis?.rag_focus?.source || "graph_fallback"),
     probeSource: String(analysisResult?.analysis?.logit_lens?.source || "probe_unavailable"),
@@ -449,27 +648,23 @@ export function ModelIntrospectionDashboard() {
     analysisProgress,
   };
 
-  const selectedGraphNodeIdEffective = useMemo(() => {
-    const nodes = snapshot?.graph?.nodes ?? [];
-    if (nodes.length === 0) {
-      return null;
-    }
-    const currentExists = Boolean(
-      selectedGraphNodeId && nodes.some((node) => node.id === selectedGraphNodeId),
-    );
-    if (currentExists) {
-      return selectedGraphNodeId;
-    }
-    return nodes[0]?.id ?? null;
-  }, [selectedGraphNodeId, snapshot?.graph?.nodes]);
+  const selectedGraphNodeIdEffective = useMemo(
+    () =>
+      resolveSelectedGraphNodeIdEffective({
+        nodes: snapshot?.graph?.nodes ?? [],
+        selectedGraphNodeId,
+      }),
+    [selectedGraphNodeId, snapshot?.graph?.nodes],
+  );
 
-  const selectedGraphNode = useMemo(() => {
-    const nodes = snapshot?.graph?.nodes ?? [];
-    if (nodes.length === 0 || !selectedGraphNodeIdEffective) {
-      return null;
-    }
-    return nodes.find((node) => node.id === selectedGraphNodeIdEffective) ?? null;
-  }, [selectedGraphNodeIdEffective, snapshot?.graph?.nodes]);
+  const selectedGraphNode = useMemo(
+    () =>
+      resolveSelectedGraphNode({
+        nodes: snapshot?.graph?.nodes ?? [],
+        selectedGraphNodeIdEffective,
+      }),
+    [selectedGraphNodeIdEffective, snapshot?.graph?.nodes],
+  );
 
   const selectedGraphNodeDetails = useMemo(
     () =>
@@ -493,12 +688,10 @@ export function ModelIntrospectionDashboard() {
     ],
   );
 
-  const selectedGraphTypeHint = useMemo(() => {
-    if (!selectedGraphNode) {
-      return "";
-    }
-    return getTypeHintText(selectedGraphNode.kind);
-  }, [selectedGraphNode]);
+  const selectedGraphTypeHint = useMemo(
+    () => resolveSelectedGraphTypeHint(selectedGraphNode),
+    [selectedGraphNode],
+  );
 
   const handleRefreshSnapshot = useCallback(() => {
     loadSnapshot().catch(() => undefined);
@@ -689,44 +882,113 @@ export function ModelIntrospectionDashboard() {
             />
           </div>
           <div className="mb-4">
-            <LogitLensPanel
-              logitLens={logitLens}
-              title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
-              emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
-              unavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
-              )}
-              signalsLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.confidence")}
-              tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
-              checkpointsLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
-              )}
-              signalEarlyUnstableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
-              )}
-              signalLateStabilizedLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
-              )}
-              signalLowConfidenceLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
-              )}
-              signalStableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
-              )}
-              changedLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.changed")}
-              stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
-              sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
-              sourceRuntimeLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
-              )}
-              sourceUnavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
-              )}
-              sourceFallbackWarning={t(
-                "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
-              )}
-            />
+            <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-wide text-amber-100">Advanced internals</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
+                  <Badge tone="warning">{resolveProbeBudgetLabel(internalsProbeElapsedMs)}</Badge>
+                </div>
+              </div>
+              <p className="mt-2 text-sm text-amber-50/90">
+                Attention i Saliency to kosztowna analiza opt-in. Może wydłużać odpowiedź i podlega limitom runtime/probe.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge tone="neutral">
+                  profile: {analysisCapabilities?.probe_profile ?? "unknown"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.probe_healthy ? "success" : "warning"}>
+                  runtime: {analysisCapabilities?.runtime_supported ? "supported" : "unsupported"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.endpoint_configured ? "success" : "warning"}>
+                  endpoint: {analysisCapabilities?.endpoint_configured ? "configured" : "missing"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.model_whitelisted ? "success" : "warning"}>
+                  model: {analysisCapabilities?.model_whitelisted ? "whitelisted" : "blocked"}
+                </Badge>
+                <Badge tone={analysisCapabilities?.probe_enabled ? "success" : "warning"}>
+                  probe: {analysisCapabilities?.probe_enabled ? "enabled" : "disabled"}
+                </Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge tone="neutral">{probeLimitsLabel}</Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {internalsCapabilityRows.map((row) => (
+                  <Badge key={row.label} tone={row.available ? "success" : "warning"}>
+                    {row.label}: {row.reason}
+                  </Badge>
+                ))}
+              </div>
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setAdvancedInternalsOpen((current) => !current)}
+                >
+                  {advancedInternalsOpen ? "Ukryj advanced internals" : "Pokaż advanced internals"}
+                </Button>
+              </div>
+            </div>
           </div>
+          {advancedInternalsOpen && (
+            <>
+              <div className="mb-4">
+                <AttentionPanel
+                  attention={attention}
+                  title="Attention Head View"
+                  emptyLabel="Brak danych attention dla bieżącej analizy."
+                  unavailableLabel="Attention probe niedostępny dla bieżącego runu."
+                />
+              </div>
+              <div className="mb-4">
+                <SaliencyPanel
+                  saliency={saliency}
+                  title="Saliency / Attribution"
+                  emptyLabel="Brak danych saliency dla bieżącej analizy."
+                  unavailableLabel="Saliency probe niedostępny dla bieżącego runu."
+                />
+              </div>
+              <div className="mb-4">
+                <LogitLensPanel
+                  logitLens={logitLens}
+                  title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
+                  emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
+                  unavailableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
+                  )}
+                  signalsLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.confidence")}
+                  tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
+                  checkpointsLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
+                  )}
+                  signalEarlyUnstableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
+                  )}
+                  signalLateStabilizedLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
+                  )}
+                  signalLowConfidenceLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
+                  )}
+                  signalStableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
+                  )}
+                  changedLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.changed")}
+                  stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
+                  sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
+                  sourceRuntimeLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
+                  )}
+                  sourceUnavailableLabel={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
+                  )}
+                  sourceFallbackWarning={t(
+                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
+                  )}
+                />
+              </div>
+            </>
+          )}
           <AnalysisResultsPanel
             analysisResponse={analysisResponse}
             analysisHighlights={analysisHighlights}
@@ -768,6 +1030,7 @@ export function ModelIntrospectionDashboard() {
             generationProfile={generationProfile}
             runTrends={runTrends}
             operatorChecklist={operatorChecklist}
+            internalsVerdict={internalsVerdict}
           />
         </Panel>
       )}

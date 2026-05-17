@@ -6,11 +6,15 @@ import asyncio
 import json
 import re
 import time
+from dataclasses import dataclass
 from typing import Any, AsyncIterator
 from uuid import UUID, uuid4
 
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services.llm_simple_service import stream_simple_chat
+from venom_core.services.model_introspection_attention_service import (
+    build_attention_payload,
+)
 from venom_core.services.model_introspection_logit_lens_service import (
     build_logit_lens_payload,
 )
@@ -19,6 +23,9 @@ from venom_core.services.model_introspection_operator_trends_service import (
 )
 from venom_core.services.model_introspection_rag_focus_service import (
     build_rag_focus_payload,
+)
+from venom_core.services.model_introspection_saliency_service import (
+    build_saliency_payload,
 )
 from venom_core.services.model_introspection_service import (
     build_model_introspection_snapshot,
@@ -32,8 +39,11 @@ _TIMELINE_LABEL_SNAPSHOT_CAPTURED = "Snapshot captured"
 _TIMELINE_LABEL_PROMPT_PREPARED = "Prompt prepared"
 _TIMELINE_LABEL_STREAM_OPENED = "Stream opened"
 _TIMELINE_LABEL_LOGIT_LENS = "Logit lens probe"
+_TIMELINE_LABEL_ATTENTION = "Attention probe"
+_TIMELINE_LABEL_SALIENCY = "Saliency probe"
 _STREAM_DELAYED_THRESHOLD_MS = 1000.0
 _STREAM_BUFFERED_WINDOW_MS = 250.0
+_TRAFFIC_CONTROL_DEGRADED_ERROR = "Traffic control is in degraded mode"
 
 
 def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
@@ -632,6 +642,83 @@ def _build_operator_conclusion_payload(
     }
 
 
+def _capability_from_probe_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    source = str((payload or {}).get("source") or "probe_unavailable")
+    status = str((payload or {}).get("status") or "probe_unavailable")
+    code = str((payload or {}).get("code") or "probe_unavailable")
+    available = source == "probe_runtime" and status == "ok"
+    reason = "ok" if available else code
+    return {
+        "available": available,
+        "source": source,
+        "status": status,
+        "reason": reason,
+    }
+
+
+def _build_probe_limits_payload(limits: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "timeout_seconds": float(limits.get("timeout_seconds") or 0.0),
+        "max_attempts": int(limits.get("max_attempts") or 0),
+        "max_top_k": int(limits.get("max_top_k") or 0),
+        "max_layer_count": int(limits.get("max_layer_count") or 0),
+        "max_head_count": int(limits.get("max_head_count") or 0),
+        "max_prompt_tokens": int(limits.get("max_prompt_tokens") or 0),
+    }
+
+
+def _resolve_internals_verdict(*, available_count: int, total_count: int) -> str:
+    if available_count == total_count:
+        return "full"
+    if available_count > 0:
+        return "partial"
+    return "fallback_only"
+
+
+def _build_analysis_capabilities_payload(
+    *,
+    attention: dict[str, Any] | None,
+    saliency: dict[str, Any] | None,
+    logit_lens: dict[str, Any] | None,
+    probe_health: dict[str, Any] | None,
+) -> dict[str, Any]:
+    attention_capability = _capability_from_probe_payload(attention)
+    saliency_capability = _capability_from_probe_payload(saliency)
+    logit_lens_capability = _capability_from_probe_payload(logit_lens)
+    available_count = sum(
+        1
+        for capability in (
+            attention_capability,
+            saliency_capability,
+            logit_lens_capability,
+        )
+        if capability["available"]
+    )
+    total_count = 3
+    probe_health_dict = probe_health if isinstance(probe_health, dict) else {}
+    limits = probe_health_dict.get("limits")
+    limits_dict = limits if isinstance(limits, dict) else {}
+    internals_verdict = _resolve_internals_verdict(
+        available_count=available_count,
+        total_count=total_count,
+    )
+    return {
+        "attention": attention_capability,
+        "saliency": saliency_capability,
+        "logit_lens": logit_lens_capability,
+        "available_count": available_count,
+        "total_count": total_count,
+        "probe_profile": str(probe_health_dict.get("profile") or "unknown"),
+        "probe_enabled": bool(probe_health_dict.get("enabled")),
+        "probe_healthy": bool(probe_health_dict.get("healthy")),
+        "runtime_supported": bool(probe_health_dict.get("runtime_supported")),
+        "endpoint_configured": bool(probe_health_dict.get("endpoint_configured")),
+        "model_whitelisted": bool(probe_health_dict.get("model_whitelisted")),
+        "limits": _build_probe_limits_payload(limits_dict),
+        "internals_verdict": internals_verdict,
+    }
+
+
 def _record_run_trends(
     *,
     process_trace: dict[str, Any] | None,
@@ -721,6 +808,71 @@ def _build_skipped_analysis_result(
             "runtime_label": runtime["label"],
         },
     }
+
+
+def _build_degraded_mode_skipped_result(
+    *,
+    prompt: str,
+    runtime: dict[str, Any],
+    request_ready_at_ms: float,
+    elapsed_ms: float,
+) -> dict[str, Any]:
+    timeline: list[dict[str, Any]] = [
+        {
+            "id": "snapshot_before",
+            "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
+            "status": "done",
+            "detail": runtime["label"],
+            "at_ms": 0.0,
+        },
+        {
+            "id": "request_ready",
+            "label": _TIMELINE_LABEL_PROMPT_PREPARED,
+            "status": "done",
+            "detail": prompt,
+            "at_ms": request_ready_at_ms,
+        },
+        {
+            "id": "analysis_skipped",
+            "label": "Analysis skipped",
+            "status": "skipped",
+            "detail": "Traffic control degraded mode active",
+            "at_ms": elapsed_ms,
+        },
+    ]
+    return {
+        "analysis_enabled": True,
+        "status": "skipped",
+        "skipped_reason": "traffic_control_degraded_mode",
+        "snapshot_after": None,
+        "analysis": {
+            "prompt": prompt,
+            "response": "",
+            "chunk_count": 0,
+            "events": ["skipped"],
+            "timeline_step_count": len(timeline),
+            "timeline": timeline,
+            "elapsed_ms": elapsed_ms,
+            "provider": runtime["provider"],
+            "model": runtime["model"],
+            "runtime_label": runtime["label"],
+            "request_ready_ms": request_ready_at_ms,
+            "response_received_ms": request_ready_at_ms,
+            "snapshot_after_ms": None,
+            "process": None,
+            "error": _TRAFFIC_CONTROL_DEGRADED_ERROR,
+        },
+    }
+
+
+def _is_traffic_control_degraded_error(error: Exception) -> bool:
+    message = str(error or "").strip().lower()
+    if not message:
+        return False
+    return (
+        "traffic control is in degraded mode" in message
+        or "degraded mode active" in message
+    )
 
 
 def _build_running_analysis_result(
@@ -924,8 +1076,43 @@ def _build_logit_lens_timeline_step(
         "label": _TIMELINE_LABEL_LOGIT_LENS,
         "status": step_status,
         "detail": detail,
+        "path": "internals_path",
         "at_ms": at_ms,
         "progress": 95,
+    }
+
+
+def _build_probe_timeline_step(
+    *,
+    step_id: str,
+    step_label: str,
+    payload: dict[str, Any],
+    at_ms: float,
+    progress: int = 95,
+) -> dict[str, Any]:
+    diagnostics = payload.get("diagnostics")
+    diagnostics_dict = diagnostics if isinstance(diagnostics, dict) else {}
+    elapsed_ms = diagnostics_dict.get("elapsed_ms")
+    status = str(payload.get("status") or "probe_unavailable")
+    if status == "ok":
+        detail = (
+            f"ok · {elapsed_ms:.1f} ms"
+            if isinstance(elapsed_ms, (int, float))
+            else "ok"
+        )
+        step_status = "done"
+    else:
+        code = str(payload.get("code") or "probe_unavailable")
+        detail = code
+        step_status = "skipped"
+    return {
+        "id": step_id,
+        "label": step_label,
+        "status": step_status,
+        "detail": detail,
+        "path": "internals_path",
+        "at_ms": at_ms,
+        "progress": progress,
     }
 
 
@@ -1002,6 +1189,52 @@ def _collect_rag_focus_payload_safe(
         )
 
 
+async def _collect_attention_payload_safe(
+    *,
+    prompt: str,
+) -> dict[str, Any]:
+    try:
+        return await build_attention_payload(prompt=prompt)
+    except (RuntimeError, ValueError, TypeError):
+        logger.exception("Model introspection attention probe failed")
+        return {
+            "source": "probe_unavailable",
+            "status": "probe_unavailable",
+            "code": "attention_unavailable",
+            "message": "Attention probe unavailable",
+            "runtime_label": None,
+            "tokens": [],
+            "layers": [],
+            "diagnostics": {},
+        }
+
+
+async def _collect_saliency_payload_safe(
+    *,
+    prompt: str,
+    response_text: str,
+) -> dict[str, Any]:
+    try:
+        return await build_saliency_payload(
+            prompt=prompt,
+            response_text=response_text,
+        )
+    except (RuntimeError, ValueError, TypeError):
+        logger.exception("Model introspection saliency probe failed")
+        return {
+            "source": "probe_unavailable",
+            "status": "probe_unavailable",
+            "code": "saliency_unavailable",
+            "message": "Saliency probe unavailable",
+            "runtime_label": None,
+            "method": None,
+            "target_output_token_index": None,
+            "target_output_token": None,
+            "token_weights": [],
+            "diagnostics": {},
+        }
+
+
 def _build_analysis_timeline(
     *,
     prompt: str,
@@ -1012,6 +1245,8 @@ def _build_analysis_timeline(
     response_received_at_ms: float,
     snapshot_after_at_ms: float | None,
     logit_lens_step: dict[str, Any] | None = None,
+    attention_step: dict[str, Any] | None = None,
+    saliency_step: dict[str, Any] | None = None,
     refreshed_snapshot: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     timeline: list[dict[str, Any]] = [
@@ -1020,6 +1255,7 @@ def _build_analysis_timeline(
             "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
             "status": "done",
             "detail": runtime["label"],
+            "path": "answer_path",
             "at_ms": 0.0,
             "progress": 0,
         },
@@ -1028,6 +1264,7 @@ def _build_analysis_timeline(
             "label": _TIMELINE_LABEL_PROMPT_PREPARED,
             "status": "done",
             "detail": prompt,
+            "path": "answer_path",
             "at_ms": request_ready_at_ms,
             "progress": 10,
         },
@@ -1036,6 +1273,7 @@ def _build_analysis_timeline(
             "label": _TIMELINE_LABEL_STREAM_OPENED,
             "status": "done",
             "detail": f"{len(stream_payload.get('events', []))} event(s) observed",
+            "path": "answer_path",
             "at_ms": response_received_at_ms,
             "progress": 20,
         },
@@ -1048,6 +1286,7 @@ def _build_analysis_timeline(
                 "label": "First content chunk",
                 "status": "done",
                 "detail": f"{stream_payload.get('chunk_count', 0)} chunk(s) total",
+                "path": "answer_path",
                 "at_ms": float(stream_payload.get("first_content_at_ms") or 0.0),
                 "progress": 40,
             }
@@ -1059,6 +1298,7 @@ def _build_analysis_timeline(
             "label": "Response assembled",
             "status": "done",
             "detail": f"{len(stream_payload.get('response_text', ''))} chars",
+            "path": "answer_path",
             "at_ms": elapsed_ms,
             "progress": 90,
         }
@@ -1066,6 +1306,10 @@ def _build_analysis_timeline(
 
     if logit_lens_step is not None:
         timeline.append(logit_lens_step)
+    if attention_step is not None:
+        timeline.append(attention_step)
+    if saliency_step is not None:
+        timeline.append(saliency_step)
 
     if refreshed_snapshot is not None:
         timeline.append(
@@ -1074,12 +1318,233 @@ def _build_analysis_timeline(
                 "label": "Snapshot refreshed",
                 "status": "done",
                 "detail": f"{len(refreshed_snapshot.get('available_packages', []))} packages available",
+                "path": "answer_path",
                 "at_ms": float(snapshot_after_at_ms or elapsed_ms),
                 "progress": 100,
             }
         )
 
     return timeline
+
+
+@dataclass(slots=True)
+class _CompletedAnalysisPayloadContext:
+    prompt: str
+    stream_payload: dict[str, Any]
+    chunk_count: int
+    events: list[str]
+    analysis_timeline: list[dict[str, Any]]
+    elapsed_ms: float
+    runtime: dict[str, Any]
+    request_ready_at_ms: float
+    response_received_at_ms: float
+    snapshot_after_at_ms: float
+    process_trace: dict[str, Any] | None
+    rag_focus: dict[str, Any]
+    attention: dict[str, Any]
+    saliency: dict[str, Any]
+    rag_profile: dict[str, Any]
+    logit_lens: dict[str, Any]
+    logit_profile: dict[str, Any]
+    input_profile: dict[str, Any]
+    generation_profile: dict[str, Any]
+    stream_profile: dict[str, Any]
+    evidence_coverage: dict[str, Any]
+    operator_conclusion: dict[str, Any]
+    analysis_capabilities: dict[str, Any]
+    run_trends: dict[str, Any] | None
+
+
+def _build_completed_analysis_payload(
+    context: _CompletedAnalysisPayloadContext,
+) -> dict[str, Any]:
+    return {
+        "prompt": context.prompt,
+        "response": context.stream_payload["response_text"],
+        "chunk_count": context.chunk_count,
+        "events": context.events,
+        "timeline_step_count": len(context.analysis_timeline),
+        "timeline": context.analysis_timeline,
+        "elapsed_ms": context.elapsed_ms,
+        "provider": context.runtime["provider"],
+        "model": context.runtime["model"],
+        "runtime_label": context.runtime["label"],
+        "request_ready_ms": context.request_ready_at_ms,
+        "response_received_ms": context.response_received_at_ms,
+        "snapshot_after_ms": context.snapshot_after_at_ms,
+        "process": context.process_trace,
+        "rag_focus": context.rag_focus,
+        "attention": context.attention,
+        "saliency": context.saliency,
+        "rag_profile": context.rag_profile,
+        "logit_lens": context.logit_lens,
+        "logit_profile": context.logit_profile,
+        "input_profile": context.input_profile,
+        "generation_profile": context.generation_profile,
+        "stream_profile": context.stream_profile,
+        "evidence_coverage": context.evidence_coverage,
+        "operator_conclusion": context.operator_conclusion,
+        "analysis_capabilities": context.analysis_capabilities,
+        "run_trends": context.run_trends,
+    }
+
+
+async def _finalize_completed_analysis(
+    *,
+    prompt: str,
+    snapshot: dict[str, Any],
+    runtime: dict[str, Any],
+    stream_payload: dict[str, Any],
+    request_id: UUID | None,
+    flow_started_at: float,
+    request_ready_at_ms: float,
+    response_received_at_ms: float,
+    max_tokens: int | None,
+    temperature: float | None,
+    top_p: float | None,
+    logit_lens: dict[str, Any],
+    attention: dict[str, Any],
+    saliency: dict[str, Any],
+    model_manager: Any = None,
+    settings: Any = None,
+) -> tuple[dict[str, Any], dict[str, Any], float]:
+    elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    probe_steps_at_ms = elapsed_ms
+    logit_lens_step = _build_logit_lens_timeline_step(
+        logit_lens=logit_lens,
+        at_ms=probe_steps_at_ms,
+    )
+    attention_step = _build_probe_timeline_step(
+        step_id="attention_probe",
+        step_label=_TIMELINE_LABEL_ATTENTION,
+        payload=attention,
+        at_ms=probe_steps_at_ms,
+    )
+    saliency_step = _build_probe_timeline_step(
+        step_id="saliency_probe",
+        step_label=_TIMELINE_LABEL_SALIENCY,
+        payload=saliency,
+        at_ms=probe_steps_at_ms,
+    )
+    try:
+        refreshed_snapshot = await build_model_introspection_snapshot(
+            model_manager=model_manager, settings=settings
+        )
+        snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    except Exception:
+        logger.exception("Model introspection snapshot refresh failed")
+        refreshed_snapshot = snapshot
+        snapshot_after_at_ms = None
+    process_trace = _summarize_request_trace(request_id)
+    response_text = str(stream_payload.get("response_text") or "")
+    rag_focus = _collect_rag_focus_payload_safe(
+        prompt=prompt,
+        snapshot=snapshot,
+        process_trace=process_trace,
+        response_text=response_text,
+    )
+    input_profile = _build_input_profile(prompt=prompt, process_trace=process_trace)
+    generation_profile = _build_generation_profile(
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        process_trace=process_trace,
+    )
+    stream_profile = _build_stream_profile(
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        elapsed_ms=elapsed_ms,
+        chunk_count=int(stream_payload.get("chunk_count") or 0),
+        events=list(stream_payload.get("events") or []),
+        first_content_at_ms=(
+            float(stream_payload["first_content_at_ms"])
+            if isinstance(stream_payload.get("first_content_at_ms"), (int, float))
+            else None
+        ),
+        content_event_times_ms=list(stream_payload.get("content_event_times_ms") or []),
+        response_text=response_text,
+    )
+    evidence_coverage = _build_evidence_coverage_profile(
+        response_text=response_text,
+        rag_focus=rag_focus,
+    )
+    rag_profile = _build_rag_profile(rag_focus=rag_focus)
+    logit_profile = _build_logit_profile(logit_lens=logit_lens)
+    operator_conclusion = _build_operator_conclusion_payload(
+        rag_focus=rag_focus,
+        logit_lens=logit_lens,
+        evidence_coverage=evidence_coverage,
+        stream_profile=stream_profile,
+    )
+    analysis_capabilities = _build_analysis_capabilities_payload(
+        attention=attention,
+        saliency=saliency,
+        logit_lens=logit_lens,
+        probe_health=refreshed_snapshot.get("probe"),
+    )
+    try:
+        run_trends = await _record_run_trends_async(
+            process_trace=process_trace,
+            rag_profile=rag_profile,
+            logit_profile=logit_profile,
+            stream_profile=stream_profile,
+            evidence_coverage=evidence_coverage,
+            settings=settings,
+        )
+    except Exception:
+        logger.exception("Model introspection run trends persistence failed")
+        run_trends = None
+    analysis_timeline = _build_analysis_timeline(
+        prompt=prompt,
+        runtime=runtime,
+        stream_payload=stream_payload,
+        elapsed_ms=elapsed_ms,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        snapshot_after_at_ms=snapshot_after_at_ms,
+        logit_lens_step=logit_lens_step,
+        attention_step=attention_step,
+        saliency_step=saliency_step,
+        refreshed_snapshot=refreshed_snapshot,
+    )
+    payload = _build_completed_analysis_payload(
+        _CompletedAnalysisPayloadContext(
+            prompt=prompt,
+            stream_payload=stream_payload,
+            chunk_count=int(stream_payload.get("chunk_count") or 0),
+            events=list(stream_payload.get("events") or []),
+            analysis_timeline=analysis_timeline,
+            elapsed_ms=elapsed_ms,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            response_received_at_ms=response_received_at_ms,
+            snapshot_after_at_ms=(
+                snapshot_after_at_ms
+                if isinstance(snapshot_after_at_ms, (int, float))
+                else elapsed_ms
+            ),
+            process_trace=process_trace,
+            rag_focus=rag_focus,
+            attention=attention,
+            saliency=saliency,
+            rag_profile=rag_profile,
+            logit_lens=logit_lens,
+            logit_profile=logit_profile,
+            input_profile=input_profile,
+            generation_profile=generation_profile,
+            stream_profile=stream_profile,
+            evidence_coverage=evidence_coverage,
+            operator_conclusion=operator_conclusion,
+            analysis_capabilities=analysis_capabilities,
+            run_trends=run_trends,
+        )
+    )
+    effective_snapshot_after_at_ms = (
+        float(snapshot_after_at_ms)
+        if isinstance(snapshot_after_at_ms, (int, float))
+        else elapsed_ms
+    )
+    return payload, refreshed_snapshot, effective_snapshot_after_at_ms
 
 
 async def stream_model_introspection_analysis(
@@ -1126,6 +1591,17 @@ async def stream_model_introspection_analysis(
         request_id = _parse_request_id(_get_response_header(response, "X-Request-Id"))
         response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     except Exception as exc:
+        if _is_traffic_control_degraded_error(exc):
+            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+            skipped_result = _build_degraded_mode_skipped_result(
+                prompt=prompt,
+                runtime=runtime,
+                request_ready_at_ms=request_ready_at_ms,
+                elapsed_ms=elapsed_ms,
+            )
+            yield _serialize_sse_event("analysis_start", running_result)
+            yield _serialize_sse_event("analysis_done", skipped_result)
+            return
         logger.exception("Model introspection analysis stream bootstrap failed")
         elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
         error_message = str(exc) or _ANALYSIS_STREAM_FAILED
@@ -1214,6 +1690,16 @@ async def stream_model_introspection_analysis(
                 content_event_times_ms=content_event_times_ms,
             )
     except Exception as exc:
+        if _is_traffic_control_degraded_error(exc):
+            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+            skipped_result = _build_degraded_mode_skipped_result(
+                prompt=prompt,
+                runtime=runtime,
+                request_ready_at_ms=request_ready_at_ms,
+                elapsed_ms=elapsed_ms,
+            )
+            yield _serialize_sse_event("analysis_done", skipped_result)
+            return
         logger.exception("Model introspection analysis stream failed")
         elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
         error_message = str(exc) or _ANALYSIS_STREAM_FAILED
@@ -1237,20 +1723,18 @@ async def stream_model_introspection_analysis(
         )
         return
 
-    elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    logit_lens = await _collect_logit_lens_payload_safe(
-        prompt=prompt,
-        response_text="".join(content_parts),
+    response_text = "".join(content_parts)
+    logit_lens, attention, saliency = await asyncio.gather(
+        _collect_logit_lens_payload_safe(
+            prompt=prompt,
+            response_text=response_text,
+        ),
+        _collect_attention_payload_safe(prompt=prompt),
+        _collect_saliency_payload_safe(
+            prompt=prompt,
+            response_text=response_text,
+        ),
     )
-    logit_lens_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    logit_lens_step = _build_logit_lens_timeline_step(
-        logit_lens=logit_lens,
-        at_ms=logit_lens_at_ms,
-    )
-    refreshed_snapshot = await build_model_introspection_snapshot(
-        model_manager=model_manager, settings=settings
-    )
-    snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     stream_payload = {
         "response_text": "".join(content_parts),
         "chunk_count": chunk_count,
@@ -1258,96 +1742,34 @@ async def stream_model_introspection_analysis(
         "first_content_at_ms": first_content_at_ms,
         "content_event_times_ms": content_event_times_ms,
     }
-    process_trace = _summarize_request_trace(request_id)
-    response_text = str(stream_payload["response_text"])
-    rag_focus = _collect_rag_focus_payload_safe(
+    (
+        analysis_payload,
+        refreshed_snapshot,
+        _snapshot_after_at_ms,
+    ) = await _finalize_completed_analysis(
         prompt=prompt,
         snapshot=snapshot,
-        process_trace=process_trace,
-        response_text=response_text,
-    )
-    input_profile = _build_input_profile(
-        prompt=prompt,
-        process_trace=process_trace,
-    )
-    generation_profile = _build_generation_profile(
+        runtime=runtime,
+        stream_payload=stream_payload,
+        request_id=request_id,
+        flow_started_at=flow_started_at,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
-        process_trace=process_trace,
-    )
-    stream_profile = _build_stream_profile(
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        elapsed_ms=elapsed_ms,
-        chunk_count=chunk_count,
-        events=events,
-        first_content_at_ms=first_content_at_ms,
-        content_event_times_ms=content_event_times_ms,
-        response_text=response_text,
-    )
-    evidence_coverage = _build_evidence_coverage_profile(
-        response_text=response_text,
-        rag_focus=rag_focus,
-    )
-    rag_profile = _build_rag_profile(rag_focus=rag_focus)
-    logit_profile = _build_logit_profile(logit_lens=logit_lens)
-    operator_conclusion = _build_operator_conclusion_payload(
-        rag_focus=rag_focus,
         logit_lens=logit_lens,
-        evidence_coverage=evidence_coverage,
-        stream_profile=stream_profile,
-    )
-    run_trends = await _record_run_trends_async(
-        process_trace=process_trace,
-        rag_profile=rag_profile,
-        logit_profile=logit_profile,
-        stream_profile=stream_profile,
-        evidence_coverage=evidence_coverage,
+        attention=attention,
+        saliency=saliency,
+        model_manager=model_manager,
         settings=settings,
-    )
-    analysis_timeline = _build_analysis_timeline(
-        prompt=prompt,
-        runtime=runtime,
-        stream_payload=stream_payload,
-        elapsed_ms=elapsed_ms,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        snapshot_after_at_ms=snapshot_after_at_ms,
-        logit_lens_step=logit_lens_step,
-        refreshed_snapshot=refreshed_snapshot,
     )
     final_result = {
         "analysis_enabled": True,
         "status": "completed",
         "snapshot": snapshot,
         "snapshot_after": refreshed_snapshot,
-        "analysis": {
-            "prompt": prompt,
-            "response": stream_payload["response_text"],
-            "chunk_count": chunk_count,
-            "events": events,
-            "timeline_step_count": len(analysis_timeline),
-            "timeline": analysis_timeline,
-            "elapsed_ms": elapsed_ms,
-            "provider": runtime["provider"],
-            "model": runtime["model"],
-            "runtime_label": runtime["label"],
-            "request_ready_ms": request_ready_at_ms,
-            "response_received_ms": response_received_at_ms,
-            "snapshot_after_ms": snapshot_after_at_ms,
-            "process": process_trace,
-            "rag_focus": rag_focus,
-            "rag_profile": rag_profile,
-            "logit_lens": logit_lens,
-            "logit_profile": logit_profile,
-            "input_profile": input_profile,
-            "generation_profile": generation_profile,
-            "stream_profile": stream_profile,
-            "evidence_coverage": evidence_coverage,
-            "operator_conclusion": operator_conclusion,
-            "run_trends": run_trends,
-        },
+        "analysis": analysis_payload,
     }
     yield _serialize_sse_event("analysis_done", final_result)
 
@@ -1391,118 +1813,76 @@ async def analyze_model_with_optional_live_run(
         "snapshot": snapshot,
         "analysis": None,
     }
-    response = await stream_simple_chat(request)
+    try:
+        response = await stream_simple_chat(request)
+    except Exception as exc:
+        if _is_traffic_control_degraded_error(exc):
+            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+            skipped_result = _build_degraded_mode_skipped_result(
+                prompt=prompt,
+                runtime=runtime,
+                request_ready_at_ms=request_ready_at_ms,
+                elapsed_ms=elapsed_ms,
+            )
+            skipped_result["snapshot"] = snapshot
+            return skipped_result
+        raise
     request_id = _parse_request_id(_get_response_header(response, "X-Request-Id"))
     response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    stream_payload = await _collect_streaming_response(response)
+    try:
+        stream_payload = await _collect_streaming_response(response)
+    except Exception as exc:
+        if _is_traffic_control_degraded_error(exc):
+            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+            skipped_result = _build_degraded_mode_skipped_result(
+                prompt=prompt,
+                runtime=runtime,
+                request_ready_at_ms=request_ready_at_ms,
+                elapsed_ms=elapsed_ms,
+            )
+            skipped_result["snapshot"] = snapshot
+            return skipped_result
+        raise
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    logit_lens = await _collect_logit_lens_payload_safe(
-        prompt=prompt,
-        response_text=str(stream_payload.get("response_text") or ""),
-    )
-    logit_lens_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    logit_lens_step = _build_logit_lens_timeline_step(
-        logit_lens=logit_lens,
-        at_ms=logit_lens_at_ms,
-    )
-    refreshed_snapshot = await build_model_introspection_snapshot(
-        model_manager=model_manager, settings=settings
-    )
-    snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    process_trace = _summarize_request_trace(request_id)
     response_text = str(stream_payload.get("response_text") or "")
-    rag_focus = _collect_rag_focus_payload_safe(
+    logit_lens, attention, saliency = await asyncio.gather(
+        _collect_logit_lens_payload_safe(
+            prompt=prompt,
+            response_text=response_text,
+        ),
+        _collect_attention_payload_safe(prompt=prompt),
+        _collect_saliency_payload_safe(
+            prompt=prompt,
+            response_text=response_text,
+        ),
+    )
+    (
+        analysis_payload,
+        refreshed_snapshot,
+        _snapshot_after_at_ms,
+    ) = await _finalize_completed_analysis(
         prompt=prompt,
         snapshot=snapshot,
-        process_trace=process_trace,
-        response_text=response_text,
-    )
-    input_profile = _build_input_profile(
-        prompt=prompt,
-        process_trace=process_trace,
-    )
-    generation_profile = _build_generation_profile(
+        runtime=runtime,
+        stream_payload=stream_payload,
+        request_id=request_id,
+        flow_started_at=flow_started_at,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
-        process_trace=process_trace,
-    )
-    stream_profile = _build_stream_profile(
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        elapsed_ms=elapsed_ms,
-        chunk_count=int(stream_payload.get("chunk_count") or 0),
-        events=list(stream_payload.get("events") or []),
-        first_content_at_ms=(
-            float(stream_payload["first_content_at_ms"])
-            if isinstance(stream_payload.get("first_content_at_ms"), (int, float))
-            else None
-        ),
-        content_event_times_ms=list(stream_payload.get("content_event_times_ms") or []),
-        response_text=response_text,
-    )
-    evidence_coverage = _build_evidence_coverage_profile(
-        response_text=response_text,
-        rag_focus=rag_focus,
-    )
-    rag_profile = _build_rag_profile(rag_focus=rag_focus)
-    logit_profile = _build_logit_profile(logit_lens=logit_lens)
-    operator_conclusion = _build_operator_conclusion_payload(
-        rag_focus=rag_focus,
         logit_lens=logit_lens,
-        evidence_coverage=evidence_coverage,
-        stream_profile=stream_profile,
-    )
-    run_trends = await _record_run_trends_async(
-        process_trace=process_trace,
-        rag_profile=rag_profile,
-        logit_profile=logit_profile,
-        stream_profile=stream_profile,
-        evidence_coverage=evidence_coverage,
+        attention=attention,
+        saliency=saliency,
+        model_manager=model_manager,
         settings=settings,
     )
-    analysis_timeline = _build_analysis_timeline(
-        prompt=prompt,
-        runtime=runtime,
-        stream_payload=stream_payload,
-        elapsed_ms=elapsed_ms,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        snapshot_after_at_ms=snapshot_after_at_ms,
-        logit_lens_step=logit_lens_step,
-        refreshed_snapshot=refreshed_snapshot,
-    )
-
     result.update(
         {
             "status": "completed",
             "snapshot_after": refreshed_snapshot,
-            "analysis": {
-                "prompt": prompt,
-                "response": stream_payload["response_text"],
-                "chunk_count": stream_payload["chunk_count"],
-                "events": stream_payload["events"],
-                "timeline_step_count": len(analysis_timeline),
-                "timeline": analysis_timeline,
-                "elapsed_ms": elapsed_ms,
-                "provider": runtime["provider"],
-                "model": runtime["model"],
-                "runtime_label": runtime["label"],
-                "request_ready_ms": request_ready_at_ms,
-                "response_received_ms": response_received_at_ms,
-                "snapshot_after_ms": snapshot_after_at_ms,
-                "process": process_trace,
-                "rag_focus": rag_focus,
-                "rag_profile": rag_profile,
-                "logit_lens": logit_lens,
-                "logit_profile": logit_profile,
-                "input_profile": input_profile,
-                "generation_profile": generation_profile,
-                "stream_profile": stream_profile,
-                "evidence_coverage": evidence_coverage,
-                "operator_conclusion": operator_conclusion,
-                "run_trends": run_trends,
-            },
+            "analysis": analysis_payload,
         }
     )
     return result

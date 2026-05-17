@@ -3,6 +3,10 @@
 Dokument opisuje dashboard Next.js (`web-next`).
 
 Szczegółowe źródła danych, testy i zasady SCC znajdziesz również w `docs/PL/FRONTEND_NEXT_GUIDE.md`.
+Inspector ma dwie odrebne sciezki:
+- Flow Inspector: `/inspector`
+- Model Introspection: `/inspector/model-introspection`
+Szczegoly operacyjne: `docs/PL/MODEL_INTROSPECTION_GUIDE.md`.
 
 ---
 
@@ -87,7 +91,7 @@ web-next/
 - Aktualizacje w czasie rzeczywistym realizuje `usePolling` (fetch + odświeżanie) oraz WebSocket (`useTelemetryFeed`).
 - Dolna belka statusu i overlaye TopBaru mają `data-testid`, co umożliwia stabilne testy E2E.
 - Build generuje `public/meta.json` (wersja + commit) – wykorzystywany do weryfikacji środowiska w UI.
-- Inspector dostępny jest w `web-next` (`/inspector`) i renderuje przepływy Mermaid z zoom/pan.
+- Inspector dostępny jest w `web-next` (`/inspector`) i renderuje przepływy Mermaid z zoom/pan. Osobny ekran introspekcji modelu jest pod `/inspector/model-introspection`.
 
 ### 1.7 Cockpit – panel operacyjny
 Najważniejsze bloki w Cockpicie (web-next):

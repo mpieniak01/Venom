@@ -30,11 +30,19 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 ## Kluczowe możliwości
 - 🤖 **Orkiestracja agentów** - planowanie i wykonanie zadań przez wyspecjalizowane role.
 - 🧭 **Hybrydowy runtime modeli (3-stack)** - przełączanie Ollama / vLLM / ONNX + cloud z podejściem local-first.
+- 🔎 **Introspekcja modelu** - osobny ekran dla odpowiedzi, internals, `analysis_capabilities` i gates gotowosci probe.
 - 💾 **Pamięć i wiedza** - utrwalanie kontekstu, lessons learned i ponowne użycie wiedzy.
 - 🎓 **Uczenie workflow** - budowa automatyzacji przez demonstrację działań użytkownika.
 - 🛠️ **Operacje i governance** - panel usług, policy gate i kontrola kosztów providerów.
 - 🔍 **Transparentność i pełna audytowalność** - śledzenie end-to-end decyzji, działań i wyników dla zaufania operacyjnego, compliance oraz szybszej analizy incydentów.
 - 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
+
+## Ostatnie zmiany (2026-05)
+- Dodano osobny ekran introspekcji modelu pod `/inspector/model-introspection`.
+- Rozdzielono `answer verdict` i `internals verdict`, tak aby jakosc odpowiedzi nie mieszała sie ze stanem probe.
+- Wprowadzono `analysis_capabilities` dla runtime/probe, w tym `model_whitelisted` i limity probe.
+- Timeline pokazuje osobne sciezki `answer_path` i `internals_path`.
+- Dodano progi gotowosci i gates SLO dla probe oraz dokumentacje operacyjna w `docs/PL/MODEL_INTROSPECTION_GUIDE.md`.
 
 ## Ostatnie wdrożenia (2026-03, v1.8)
 - Global Policy Gate działa jako jeden centralny checkpoint runtime w przepływie orchestratora (`global_pre_execution`).
@@ -53,6 +61,7 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - [Deployment + uruchamianie](docs/PL/DEPLOYMENT_NEXT.md) - Kroki startu środowiska dev/prod oraz wymagania runtime.
 - [Macierz wsparcia środowisk](docs/PL/ENVIRONMENTS_SUPPORT.md) - Aktualny status wsparcia `dev`/`preprod`/`prod` oraz wymagany model konfiguracji.
 - [Przewodnik Dashboard](docs/PL/DASHBOARD_GUIDE.md) - Uruchamianie panelu web, skrypty i przegląd cockpitu operacyjnego.
+- [Przewodnik introspekcji modelu](docs/PL/MODEL_INTROSPECTION_GUIDE.md) - Stan przejsciowy vs docelowy, `analysis_capabilities`, verdicty i gates SLO.
 - [Przewodnik użycia tooli](docs/PL/TOOLS_USAGE_GUIDE.md) - Routing slash tooli, zachowanie `forced_tool` i wymagania web-search w `.venv`.
 - [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) - Zakres ustawień dostępnych w UI i zasady bezpiecznej edycji.
 - [Frontend Next.js](docs/PL/FRONTEND_NEXT_GUIDE.md) - Struktura aplikacji `web-next`, widoki i standardy implementacyjne.

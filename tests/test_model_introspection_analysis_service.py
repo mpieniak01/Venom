@@ -540,3 +540,15 @@ def test_build_payload_sets_top_p_for_simple_chat_request() -> None:
         messages=[{"role": "user", "content": "hello"}],
     )
     assert payload["top_p"] == 0.85
+
+
+def test_extract_system_prompt_text_handles_multiline_markers() -> None:
+    context_preview = "SYSTEM:\nRules line 1\nRules line 2\n\nUSER: Co to jest slonce?"
+    extracted = analysis_service._extract_system_prompt_text(context_preview)
+    assert extracted == "Rules line 1\nRules line 2"
+
+
+def test_extract_system_prompt_text_handles_missing_user_marker() -> None:
+    context_preview = "SYSTEM: Rules only"
+    extracted = analysis_service._extract_system_prompt_text(context_preview)
+    assert extracted == "Rules only"

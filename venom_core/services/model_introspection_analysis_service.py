@@ -283,13 +283,18 @@ def _extract_context_preview_text(process_trace: dict[str, Any] | None) -> str:
 def _extract_system_prompt_text(context_preview: str) -> str:
     if not context_preview:
         return ""
-    match = re.search(
-        r"(?is)\bSYSTEM\s*:\s*(.*?)\s*\bUSER\s*:",
-        context_preview,
-    )
-    if match is None:
+    normalized = context_preview.strip()
+    if not normalized:
         return ""
-    return str(match.group(1) or "").strip()
+    upper_preview = normalized.upper()
+    system_index = upper_preview.find("SYSTEM:")
+    if system_index < 0:
+        return ""
+    after_system = normalized[system_index + len("SYSTEM:") :]
+    user_index = after_system.upper().find("USER:")
+    if user_index >= 0:
+        return after_system[:user_index].strip()
+    return after_system.strip()
 
 
 def _split_answer_fragments(answer_text: str) -> list[str]:

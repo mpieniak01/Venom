@@ -382,6 +382,89 @@ def _normalize_success_probe_response(
     return normalized
 
 
+def _is_last_probe_attempt(attempt: int, max_attempts: int) -> bool:
+    return attempt >= max_attempts
+
+
+def _build_retry_exhausted_response(
+    *,
+    code: str,
+    message: str,
+    runtime_label: str,
+    flow_started_at: float,
+) -> dict[str, Any]:
+    return _probe_unavailable(
+        code=code,
+        message=message,
+        runtime_label=runtime_label,
+        flow_started_at=flow_started_at,
+    )
+
+
+def _handle_probe_response_attempt(
+    *,
+    response: httpx.Response,
+    attempt: int,
+    max_attempts: int,
+    runtime_label: str,
+    flow_started_at: float,
+) -> tuple[dict[str, Any] | None, bool]:
+    if response.status_code in _PROBE_TRANSIENT_STATUS_CODES:
+        if _is_last_probe_attempt(attempt, max_attempts):
+            return (
+                _build_retry_exhausted_response(
+                    code="runtime_error",
+                    message="Runtime probe is temporarily unavailable",
+                    runtime_label=runtime_label,
+                    flow_started_at=flow_started_at,
+                ),
+                False,
+            )
+        return None, True
+
+    handled = _handle_probe_http_response(
+        response=response,
+        runtime_label=runtime_label,
+        flow_started_at=flow_started_at,
+    )
+    if handled is not None:
+        return handled, False
+
+    return (
+        _normalize_success_probe_response(
+            response=response,
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+        ),
+        False,
+    )
+
+
+def _handle_probe_retry_exception(
+    *,
+    attempt: int,
+    max_attempts: int,
+    runtime_label: str,
+    flow_started_at: float,
+    timeout: bool,
+) -> dict[str, Any] | None:
+    if not _is_last_probe_attempt(attempt, max_attempts):
+        return None
+    if timeout:
+        return _build_retry_exhausted_response(
+            code="probe_timeout",
+            message="Probe request timed out on active runtime",
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+        )
+    return _build_retry_exhausted_response(
+        code="probe_transport_error",
+        message="Probe transport error on active runtime",
+        runtime_label=runtime_label,
+        flow_started_at=flow_started_at,
+    )
+
+
 async def _execute_probe_with_retry(
     *,
     probe_url: str,
@@ -400,46 +483,46 @@ async def _execute_probe_with_retry(
                 payload=probe_payload,
                 timeout_seconds=timeout_seconds,
             )
-            if response.status_code in _PROBE_TRANSIENT_STATUS_CODES:
-                if attempt >= max_attempts:
-                    return _probe_unavailable(
-                        code="runtime_error",
-                        message="Runtime probe is temporarily unavailable",
-                        runtime_label=runtime_label,
-                        flow_started_at=flow_started_at,
-                    )
-                continue
-            handled = _handle_probe_http_response(
+            result, should_retry = _handle_probe_response_attempt(
                 response=response,
+                attempt=attempt,
+                max_attempts=max_attempts,
                 runtime_label=runtime_label,
                 flow_started_at=flow_started_at,
             )
-            if handled is not None:
-                return handled
-            return _normalize_success_probe_response(
-                response=response,
+            if should_retry:
+                continue
+            if result is not None:
+                return result
+            return _build_retry_exhausted_response(
+                code="probe_transport_error",
+                message="Probe transport error on active runtime",
                 runtime_label=runtime_label,
                 flow_started_at=flow_started_at,
             )
         except ValueError:
             raise
         except (httpx.TimeoutException, httpx.ConnectError):
-            if attempt >= max_attempts:
-                return _probe_unavailable(
-                    code="probe_timeout",
-                    message="Probe request timed out on active runtime",
-                    runtime_label=runtime_label,
-                    flow_started_at=flow_started_at,
-                )
+            failure = _handle_probe_retry_exception(
+                attempt=attempt,
+                max_attempts=max_attempts,
+                runtime_label=runtime_label,
+                flow_started_at=flow_started_at,
+                timeout=True,
+            )
+            if failure is not None:
+                return failure
         except httpx.HTTPError:
-            if attempt >= max_attempts:
-                return _probe_unavailable(
-                    code="probe_transport_error",
-                    message="Probe transport error on active runtime",
-                    runtime_label=runtime_label,
-                    flow_started_at=flow_started_at,
-                )
-    return _probe_unavailable(
+            failure = _handle_probe_retry_exception(
+                attempt=attempt,
+                max_attempts=max_attempts,
+                runtime_label=runtime_label,
+                flow_started_at=flow_started_at,
+                timeout=False,
+            )
+            if failure is not None:
+                return failure
+    return _build_retry_exhausted_response(
         code="probe_transport_error",
         message="Probe transport error on active runtime",
         runtime_label=runtime_label,

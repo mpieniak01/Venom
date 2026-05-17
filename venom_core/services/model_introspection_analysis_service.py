@@ -1426,10 +1426,15 @@ async def _finalize_completed_analysis(
         payload=saliency,
         at_ms=probe_steps_at_ms,
     )
-    refreshed_snapshot = await build_model_introspection_snapshot(
-        model_manager=model_manager, settings=settings
-    )
-    snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    try:
+        refreshed_snapshot = await build_model_introspection_snapshot(
+            model_manager=model_manager, settings=settings
+        )
+        snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    except Exception:
+        logger.exception("Model introspection snapshot refresh failed")
+        refreshed_snapshot = snapshot
+        snapshot_after_at_ms = None
     process_trace = _summarize_request_trace(request_id)
     response_text = str(stream_payload.get("response_text") or "")
     rag_focus = _collect_rag_focus_payload_safe(
@@ -1475,16 +1480,20 @@ async def _finalize_completed_analysis(
         attention=attention,
         saliency=saliency,
         logit_lens=logit_lens,
-        probe_health=snapshot.get("probe"),
+        probe_health=refreshed_snapshot.get("probe"),
     )
-    run_trends = await _record_run_trends_async(
-        process_trace=process_trace,
-        rag_profile=rag_profile,
-        logit_profile=logit_profile,
-        stream_profile=stream_profile,
-        evidence_coverage=evidence_coverage,
-        settings=settings,
-    )
+    try:
+        run_trends = await _record_run_trends_async(
+            process_trace=process_trace,
+            rag_profile=rag_profile,
+            logit_profile=logit_profile,
+            stream_profile=stream_profile,
+            evidence_coverage=evidence_coverage,
+            settings=settings,
+        )
+    except Exception:
+        logger.exception("Model introspection run trends persistence failed")
+        run_trends = None
     analysis_timeline = _build_analysis_timeline(
         prompt=prompt,
         runtime=runtime,
@@ -1509,7 +1518,11 @@ async def _finalize_completed_analysis(
             runtime=runtime,
             request_ready_at_ms=request_ready_at_ms,
             response_received_at_ms=response_received_at_ms,
-            snapshot_after_at_ms=snapshot_after_at_ms,
+            snapshot_after_at_ms=(
+                snapshot_after_at_ms
+                if isinstance(snapshot_after_at_ms, (int, float))
+                else elapsed_ms
+            ),
             process_trace=process_trace,
             rag_focus=rag_focus,
             attention=attention,
@@ -1526,7 +1539,12 @@ async def _finalize_completed_analysis(
             run_trends=run_trends,
         )
     )
-    return payload, refreshed_snapshot, snapshot_after_at_ms
+    effective_snapshot_after_at_ms = (
+        float(snapshot_after_at_ms)
+        if isinstance(snapshot_after_at_ms, (int, float))
+        else elapsed_ms
+    )
+    return payload, refreshed_snapshot, effective_snapshot_after_at_ms
 
 
 async def stream_model_introspection_analysis(
@@ -1727,7 +1745,7 @@ async def stream_model_introspection_analysis(
     (
         analysis_payload,
         refreshed_snapshot,
-        snapshot_after_at_ms,
+        _snapshot_after_at_ms,
     ) = await _finalize_completed_analysis(
         prompt=prompt,
         snapshot=snapshot,
@@ -1841,7 +1859,7 @@ async def analyze_model_with_optional_live_run(
     (
         analysis_payload,
         refreshed_snapshot,
-        snapshot_after_at_ms,
+        _snapshot_after_at_ms,
     ) = await _finalize_completed_analysis(
         prompt=prompt,
         snapshot=snapshot,

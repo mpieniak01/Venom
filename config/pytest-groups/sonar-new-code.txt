@@ -1,6 +1,7 @@
 # AUTO-GENERATED from config/testing/test_catalog.json
 # Do not edit manually. Run: make test-groups-sync
 
+tests/api/test_academy_openapi_contract.py
 tests/ollama_bench/test_common_and_scoreboard.py
 tests/ollama_bench/test_scheduler.py
 tests/test_204a_canonical_control_state.py
@@ -245,6 +246,7 @@ tests/test_runtime_registry_contracts.py
 tests/test_runtime_registry_translation_contracts.py
 tests/test_runtime_service_helpers.py
 tests/test_runtime_switch_service_branches.py
+tests/test_runtime_switch_telemetry.py
 tests/test_scheduler.py
 tests/test_scheduler_swarm_flow_streaming.py
 tests/test_service_monitor.py

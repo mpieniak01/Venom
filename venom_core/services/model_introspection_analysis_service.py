@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 import time
+from dataclasses import dataclass
 from typing import Any, AsyncIterator
 from uuid import UUID, uuid4
 
@@ -1326,62 +1327,206 @@ def _build_analysis_timeline(
     return timeline
 
 
+@dataclass(slots=True)
+class _CompletedAnalysisPayloadContext:
+    prompt: str
+    stream_payload: dict[str, Any]
+    chunk_count: int
+    events: list[str]
+    analysis_timeline: list[dict[str, Any]]
+    elapsed_ms: float
+    runtime: dict[str, Any]
+    request_ready_at_ms: float
+    response_received_at_ms: float
+    snapshot_after_at_ms: float
+    process_trace: dict[str, Any] | None
+    rag_focus: dict[str, Any]
+    attention: dict[str, Any]
+    saliency: dict[str, Any]
+    rag_profile: dict[str, Any]
+    logit_lens: dict[str, Any]
+    logit_profile: dict[str, Any]
+    input_profile: dict[str, Any]
+    generation_profile: dict[str, Any]
+    stream_profile: dict[str, Any]
+    evidence_coverage: dict[str, Any]
+    operator_conclusion: dict[str, Any]
+    analysis_capabilities: dict[str, Any]
+    run_trends: dict[str, Any] | None
+
+
 def _build_completed_analysis_payload(
-    *,
-    prompt: str,
-    stream_payload: dict[str, Any],
-    chunk_count: int,
-    events: list[str],
-    analysis_timeline: list[dict[str, Any]],
-    elapsed_ms: float,
-    runtime: dict[str, Any],
-    request_ready_at_ms: float,
-    response_received_at_ms: float,
-    snapshot_after_at_ms: float,
-    process_trace: dict[str, Any] | None,
-    rag_focus: dict[str, Any],
-    attention: dict[str, Any],
-    saliency: dict[str, Any],
-    rag_profile: dict[str, Any],
-    logit_lens: dict[str, Any],
-    logit_profile: dict[str, Any],
-    input_profile: dict[str, Any],
-    generation_profile: dict[str, Any],
-    stream_profile: dict[str, Any],
-    evidence_coverage: dict[str, Any],
-    operator_conclusion: dict[str, Any],
-    analysis_capabilities: dict[str, Any],
-    run_trends: dict[str, Any] | None,
+    context: _CompletedAnalysisPayloadContext,
 ) -> dict[str, Any]:
     return {
-        "prompt": prompt,
-        "response": stream_payload["response_text"],
-        "chunk_count": chunk_count,
-        "events": events,
-        "timeline_step_count": len(analysis_timeline),
-        "timeline": analysis_timeline,
-        "elapsed_ms": elapsed_ms,
-        "provider": runtime["provider"],
-        "model": runtime["model"],
-        "runtime_label": runtime["label"],
-        "request_ready_ms": request_ready_at_ms,
-        "response_received_ms": response_received_at_ms,
-        "snapshot_after_ms": snapshot_after_at_ms,
-        "process": process_trace,
-        "rag_focus": rag_focus,
-        "attention": attention,
-        "saliency": saliency,
-        "rag_profile": rag_profile,
-        "logit_lens": logit_lens,
-        "logit_profile": logit_profile,
-        "input_profile": input_profile,
-        "generation_profile": generation_profile,
-        "stream_profile": stream_profile,
-        "evidence_coverage": evidence_coverage,
-        "operator_conclusion": operator_conclusion,
-        "analysis_capabilities": analysis_capabilities,
-        "run_trends": run_trends,
+        "prompt": context.prompt,
+        "response": context.stream_payload["response_text"],
+        "chunk_count": context.chunk_count,
+        "events": context.events,
+        "timeline_step_count": len(context.analysis_timeline),
+        "timeline": context.analysis_timeline,
+        "elapsed_ms": context.elapsed_ms,
+        "provider": context.runtime["provider"],
+        "model": context.runtime["model"],
+        "runtime_label": context.runtime["label"],
+        "request_ready_ms": context.request_ready_at_ms,
+        "response_received_ms": context.response_received_at_ms,
+        "snapshot_after_ms": context.snapshot_after_at_ms,
+        "process": context.process_trace,
+        "rag_focus": context.rag_focus,
+        "attention": context.attention,
+        "saliency": context.saliency,
+        "rag_profile": context.rag_profile,
+        "logit_lens": context.logit_lens,
+        "logit_profile": context.logit_profile,
+        "input_profile": context.input_profile,
+        "generation_profile": context.generation_profile,
+        "stream_profile": context.stream_profile,
+        "evidence_coverage": context.evidence_coverage,
+        "operator_conclusion": context.operator_conclusion,
+        "analysis_capabilities": context.analysis_capabilities,
+        "run_trends": context.run_trends,
     }
+
+
+async def _finalize_completed_analysis(
+    *,
+    prompt: str,
+    snapshot: dict[str, Any],
+    runtime: dict[str, Any],
+    stream_payload: dict[str, Any],
+    request_id: UUID | None,
+    flow_started_at: float,
+    request_ready_at_ms: float,
+    response_received_at_ms: float,
+    max_tokens: int | None,
+    temperature: float | None,
+    top_p: float | None,
+    logit_lens: dict[str, Any],
+    attention: dict[str, Any],
+    saliency: dict[str, Any],
+    model_manager: Any = None,
+    settings: Any = None,
+) -> tuple[dict[str, Any], dict[str, Any], float]:
+    elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    probe_steps_at_ms = elapsed_ms
+    logit_lens_step = _build_logit_lens_timeline_step(
+        logit_lens=logit_lens,
+        at_ms=probe_steps_at_ms,
+    )
+    attention_step = _build_probe_timeline_step(
+        step_id="attention_probe",
+        step_label=_TIMELINE_LABEL_ATTENTION,
+        payload=attention,
+        at_ms=probe_steps_at_ms,
+    )
+    saliency_step = _build_probe_timeline_step(
+        step_id="saliency_probe",
+        step_label=_TIMELINE_LABEL_SALIENCY,
+        payload=saliency,
+        at_ms=probe_steps_at_ms,
+    )
+    refreshed_snapshot = await build_model_introspection_snapshot(
+        model_manager=model_manager, settings=settings
+    )
+    snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    process_trace = _summarize_request_trace(request_id)
+    response_text = str(stream_payload.get("response_text") or "")
+    rag_focus = _collect_rag_focus_payload_safe(
+        prompt=prompt,
+        snapshot=snapshot,
+        process_trace=process_trace,
+        response_text=response_text,
+    )
+    input_profile = _build_input_profile(prompt=prompt, process_trace=process_trace)
+    generation_profile = _build_generation_profile(
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        process_trace=process_trace,
+    )
+    stream_profile = _build_stream_profile(
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        elapsed_ms=elapsed_ms,
+        chunk_count=int(stream_payload.get("chunk_count") or 0),
+        events=list(stream_payload.get("events") or []),
+        first_content_at_ms=(
+            float(stream_payload["first_content_at_ms"])
+            if isinstance(stream_payload.get("first_content_at_ms"), (int, float))
+            else None
+        ),
+        content_event_times_ms=list(stream_payload.get("content_event_times_ms") or []),
+        response_text=response_text,
+    )
+    evidence_coverage = _build_evidence_coverage_profile(
+        response_text=response_text,
+        rag_focus=rag_focus,
+    )
+    rag_profile = _build_rag_profile(rag_focus=rag_focus)
+    logit_profile = _build_logit_profile(logit_lens=logit_lens)
+    operator_conclusion = _build_operator_conclusion_payload(
+        rag_focus=rag_focus,
+        logit_lens=logit_lens,
+        evidence_coverage=evidence_coverage,
+        stream_profile=stream_profile,
+    )
+    analysis_capabilities = _build_analysis_capabilities_payload(
+        attention=attention,
+        saliency=saliency,
+        logit_lens=logit_lens,
+        probe_health=snapshot.get("probe"),
+    )
+    run_trends = await _record_run_trends_async(
+        process_trace=process_trace,
+        rag_profile=rag_profile,
+        logit_profile=logit_profile,
+        stream_profile=stream_profile,
+        evidence_coverage=evidence_coverage,
+        settings=settings,
+    )
+    analysis_timeline = _build_analysis_timeline(
+        prompt=prompt,
+        runtime=runtime,
+        stream_payload=stream_payload,
+        elapsed_ms=elapsed_ms,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        snapshot_after_at_ms=snapshot_after_at_ms,
+        logit_lens_step=logit_lens_step,
+        attention_step=attention_step,
+        saliency_step=saliency_step,
+        refreshed_snapshot=refreshed_snapshot,
+    )
+    payload = _build_completed_analysis_payload(
+        _CompletedAnalysisPayloadContext(
+            prompt=prompt,
+            stream_payload=stream_payload,
+            chunk_count=int(stream_payload.get("chunk_count") or 0),
+            events=list(stream_payload.get("events") or []),
+            analysis_timeline=analysis_timeline,
+            elapsed_ms=elapsed_ms,
+            runtime=runtime,
+            request_ready_at_ms=request_ready_at_ms,
+            response_received_at_ms=response_received_at_ms,
+            snapshot_after_at_ms=snapshot_after_at_ms,
+            process_trace=process_trace,
+            rag_focus=rag_focus,
+            attention=attention,
+            saliency=saliency,
+            rag_profile=rag_profile,
+            logit_lens=logit_lens,
+            logit_profile=logit_profile,
+            input_profile=input_profile,
+            generation_profile=generation_profile,
+            stream_profile=stream_profile,
+            evidence_coverage=evidence_coverage,
+            operator_conclusion=operator_conclusion,
+            analysis_capabilities=analysis_capabilities,
+            run_trends=run_trends,
+        )
+    )
+    return payload, refreshed_snapshot, snapshot_after_at_ms
 
 
 async def stream_model_introspection_analysis(
@@ -1560,7 +1705,6 @@ async def stream_model_introspection_analysis(
         )
         return
 
-    elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
     response_text = "".join(content_parts)
     logit_lens, attention, saliency = await asyncio.gather(
         _collect_logit_lens_payload_safe(
@@ -1573,27 +1717,6 @@ async def stream_model_introspection_analysis(
             response_text=response_text,
         ),
     )
-    probe_steps_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    logit_lens_step = _build_logit_lens_timeline_step(
-        logit_lens=logit_lens,
-        at_ms=probe_steps_at_ms,
-    )
-    attention_step = _build_probe_timeline_step(
-        step_id="attention_probe",
-        step_label=_TIMELINE_LABEL_ATTENTION,
-        payload=attention,
-        at_ms=probe_steps_at_ms,
-    )
-    saliency_step = _build_probe_timeline_step(
-        step_id="saliency_probe",
-        step_label=_TIMELINE_LABEL_SALIENCY,
-        payload=saliency,
-        at_ms=probe_steps_at_ms,
-    )
-    refreshed_snapshot = await build_model_introspection_snapshot(
-        model_manager=model_manager, settings=settings
-    )
-    snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     stream_payload = {
         "response_text": "".join(content_parts),
         "chunk_count": chunk_count,
@@ -1601,98 +1724,27 @@ async def stream_model_introspection_analysis(
         "first_content_at_ms": first_content_at_ms,
         "content_event_times_ms": content_event_times_ms,
     }
-    process_trace = _summarize_request_trace(request_id)
-    response_text = str(stream_payload["response_text"])
-    rag_focus = _collect_rag_focus_payload_safe(
+    (
+        analysis_payload,
+        refreshed_snapshot,
+        snapshot_after_at_ms,
+    ) = await _finalize_completed_analysis(
         prompt=prompt,
         snapshot=snapshot,
-        process_trace=process_trace,
-        response_text=response_text,
-    )
-    input_profile = _build_input_profile(
-        prompt=prompt,
-        process_trace=process_trace,
-    )
-    generation_profile = _build_generation_profile(
+        runtime=runtime,
+        stream_payload=stream_payload,
+        request_id=request_id,
+        flow_started_at=flow_started_at,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
-        process_trace=process_trace,
-    )
-    stream_profile = _build_stream_profile(
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        elapsed_ms=elapsed_ms,
-        chunk_count=chunk_count,
-        events=events,
-        first_content_at_ms=first_content_at_ms,
-        content_event_times_ms=content_event_times_ms,
-        response_text=response_text,
-    )
-    evidence_coverage = _build_evidence_coverage_profile(
-        response_text=response_text,
-        rag_focus=rag_focus,
-    )
-    rag_profile = _build_rag_profile(rag_focus=rag_focus)
-    logit_profile = _build_logit_profile(logit_lens=logit_lens)
-    operator_conclusion = _build_operator_conclusion_payload(
-        rag_focus=rag_focus,
         logit_lens=logit_lens,
-        evidence_coverage=evidence_coverage,
-        stream_profile=stream_profile,
-    )
-    analysis_capabilities = _build_analysis_capabilities_payload(
         attention=attention,
         saliency=saliency,
-        logit_lens=logit_lens,
-        probe_health=snapshot.get("probe"),
-    )
-    run_trends = await _record_run_trends_async(
-        process_trace=process_trace,
-        rag_profile=rag_profile,
-        logit_profile=logit_profile,
-        stream_profile=stream_profile,
-        evidence_coverage=evidence_coverage,
+        model_manager=model_manager,
         settings=settings,
-    )
-    analysis_timeline = _build_analysis_timeline(
-        prompt=prompt,
-        runtime=runtime,
-        stream_payload=stream_payload,
-        elapsed_ms=elapsed_ms,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        snapshot_after_at_ms=snapshot_after_at_ms,
-        logit_lens_step=logit_lens_step,
-        attention_step=attention_step,
-        saliency_step=saliency_step,
-        refreshed_snapshot=refreshed_snapshot,
-    )
-    analysis_payload = _build_completed_analysis_payload(
-        prompt=prompt,
-        stream_payload=stream_payload,
-        chunk_count=chunk_count,
-        events=events,
-        analysis_timeline=analysis_timeline,
-        elapsed_ms=elapsed_ms,
-        runtime=runtime,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        snapshot_after_at_ms=snapshot_after_at_ms,
-        process_trace=process_trace,
-        rag_focus=rag_focus,
-        attention=attention,
-        saliency=saliency,
-        rag_profile=rag_profile,
-        logit_lens=logit_lens,
-        logit_profile=logit_profile,
-        input_profile=input_profile,
-        generation_profile=generation_profile,
-        stream_profile=stream_profile,
-        evidence_coverage=evidence_coverage,
-        operator_conclusion=operator_conclusion,
-        analysis_capabilities=analysis_capabilities,
-        run_trends=run_trends,
     )
     final_result = {
         "analysis_enabled": True,
@@ -1786,123 +1838,27 @@ async def analyze_model_with_optional_live_run(
             response_text=response_text,
         ),
     )
-    probe_steps_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    logit_lens_step = _build_logit_lens_timeline_step(
-        logit_lens=logit_lens,
-        at_ms=probe_steps_at_ms,
-    )
-    attention_step = _build_probe_timeline_step(
-        step_id="attention_probe",
-        step_label=_TIMELINE_LABEL_ATTENTION,
-        payload=attention,
-        at_ms=probe_steps_at_ms,
-    )
-    saliency_step = _build_probe_timeline_step(
-        step_id="saliency_probe",
-        step_label=_TIMELINE_LABEL_SALIENCY,
-        payload=saliency,
-        at_ms=probe_steps_at_ms,
-    )
-    refreshed_snapshot = await build_model_introspection_snapshot(
-        model_manager=model_manager, settings=settings
-    )
-    snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    process_trace = _summarize_request_trace(request_id)
-    rag_focus = _collect_rag_focus_payload_safe(
+    (
+        analysis_payload,
+        refreshed_snapshot,
+        snapshot_after_at_ms,
+    ) = await _finalize_completed_analysis(
         prompt=prompt,
         snapshot=snapshot,
-        process_trace=process_trace,
-        response_text=response_text,
-    )
-    input_profile = _build_input_profile(
-        prompt=prompt,
-        process_trace=process_trace,
-    )
-    generation_profile = _build_generation_profile(
+        runtime=runtime,
+        stream_payload=stream_payload,
+        request_id=request_id,
+        flow_started_at=flow_started_at,
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
-        process_trace=process_trace,
-    )
-    stream_profile = _build_stream_profile(
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        elapsed_ms=elapsed_ms,
-        chunk_count=int(stream_payload.get("chunk_count") or 0),
-        events=list(stream_payload.get("events") or []),
-        first_content_at_ms=(
-            float(stream_payload["first_content_at_ms"])
-            if isinstance(stream_payload.get("first_content_at_ms"), (int, float))
-            else None
-        ),
-        content_event_times_ms=list(stream_payload.get("content_event_times_ms") or []),
-        response_text=response_text,
-    )
-    evidence_coverage = _build_evidence_coverage_profile(
-        response_text=response_text,
-        rag_focus=rag_focus,
-    )
-    rag_profile = _build_rag_profile(rag_focus=rag_focus)
-    logit_profile = _build_logit_profile(logit_lens=logit_lens)
-    operator_conclusion = _build_operator_conclusion_payload(
-        rag_focus=rag_focus,
         logit_lens=logit_lens,
-        evidence_coverage=evidence_coverage,
-        stream_profile=stream_profile,
-    )
-    analysis_capabilities = _build_analysis_capabilities_payload(
         attention=attention,
         saliency=saliency,
-        logit_lens=logit_lens,
-        probe_health=snapshot.get("probe"),
-    )
-    run_trends = await _record_run_trends_async(
-        process_trace=process_trace,
-        rag_profile=rag_profile,
-        logit_profile=logit_profile,
-        stream_profile=stream_profile,
-        evidence_coverage=evidence_coverage,
+        model_manager=model_manager,
         settings=settings,
-    )
-    analysis_timeline = _build_analysis_timeline(
-        prompt=prompt,
-        runtime=runtime,
-        stream_payload=stream_payload,
-        elapsed_ms=elapsed_ms,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        snapshot_after_at_ms=snapshot_after_at_ms,
-        logit_lens_step=logit_lens_step,
-        attention_step=attention_step,
-        saliency_step=saliency_step,
-        refreshed_snapshot=refreshed_snapshot,
-    )
-
-    analysis_payload = _build_completed_analysis_payload(
-        prompt=prompt,
-        stream_payload=stream_payload,
-        chunk_count=int(stream_payload["chunk_count"]),
-        events=list(stream_payload["events"]),
-        analysis_timeline=analysis_timeline,
-        elapsed_ms=elapsed_ms,
-        runtime=runtime,
-        request_ready_at_ms=request_ready_at_ms,
-        response_received_at_ms=response_received_at_ms,
-        snapshot_after_at_ms=snapshot_after_at_ms,
-        process_trace=process_trace,
-        rag_focus=rag_focus,
-        attention=attention,
-        saliency=saliency,
-        rag_profile=rag_profile,
-        logit_lens=logit_lens,
-        logit_profile=logit_profile,
-        input_profile=input_profile,
-        generation_profile=generation_profile,
-        stream_profile=stream_profile,
-        evidence_coverage=evidence_coverage,
-        operator_conclusion=operator_conclusion,
-        analysis_capabilities=analysis_capabilities,
-        run_trends=run_trends,
     )
     result.update(
         {

@@ -10,6 +10,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { useTranslation } from "@/lib/i18n";
 import { useModelIntrospectionMechanism } from "@/components/inspector/model-introspection-mechanism";
 import type {
+  AnalysisTimelineEntry,
   BadgeTone,
   GraphNodeDetails,
   IntrospectionSnapshot,
@@ -184,6 +185,63 @@ function buildRunTrends(payload: unknown): RunTrends | null {
         ? candidate.avg_noise_ratio
         : null,
   };
+}
+
+function resolveSummaryStats(
+  snapshot: IntrospectionSnapshot | null,
+  t: (key: string) => string,
+): SummaryCard[] {
+  if (!snapshot) {
+    return [];
+  }
+  return buildSummaryCards({ snapshot, t });
+}
+
+function resolveAnalysisTimeline(
+  analysisVisible: boolean,
+  timeline: AnalysisTimelineEntry[] | undefined,
+): AnalysisTimelineEntry[] {
+  if (!analysisVisible) {
+    return [];
+  }
+  return timeline ?? [];
+}
+
+function resolveSelectedGraphNodeIdEffective(args: {
+  nodes: Array<{ id: string }>;
+  selectedGraphNodeId: string | null;
+}): string | null {
+  const { nodes, selectedGraphNodeId } = args;
+  if (nodes.length === 0) {
+    return null;
+  }
+  const selectedExists = Boolean(
+    selectedGraphNodeId && nodes.some((node) => node.id === selectedGraphNodeId),
+  );
+  if (selectedExists) {
+    return selectedGraphNodeId;
+  }
+  return nodes[0]?.id ?? null;
+}
+
+function resolveSelectedGraphNode(args: {
+  nodes: Array<{ id: string; label: string; kind: string; status: string }>;
+  selectedGraphNodeIdEffective: string | null;
+}): { id: string; label: string; kind: string; status: string } | null {
+  const { nodes, selectedGraphNodeIdEffective } = args;
+  if (nodes.length === 0 || !selectedGraphNodeIdEffective) {
+    return null;
+  }
+  return nodes.find((node) => node.id === selectedGraphNodeIdEffective) ?? null;
+}
+
+function resolveSelectedGraphTypeHint(
+  selectedGraphNode: { kind: string } | null,
+): string {
+  if (!selectedGraphNode) {
+    return "";
+  }
+  return getTypeHintText(selectedGraphNode.kind);
 }
 
 function buildOperatorChecklist(args: {
@@ -400,12 +458,7 @@ export function ModelIntrospectionDashboard() {
   const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
   const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
 
-  const stats = useMemo(() => {
-    if (!snapshot) {
-      return [] as SummaryCard[];
-    }
-    return buildSummaryCards({ snapshot, t });
-  }, [snapshot, t]);
+  const stats = useMemo(() => resolveSummaryStats(snapshot, t), [snapshot, t]);
 
   const analysisVisible = Boolean(analysisResult?.analysis);
   const analysisRunning = analysisResult?.status === "running";
@@ -427,7 +480,11 @@ export function ModelIntrospectionDashboard() {
     [analysisSourceResponse],
   );
   const analysisTimeline = useMemo(
-    () => (analysisVisible ? analysisResult?.analysis?.timeline ?? [] : []),
+    () =>
+      resolveAnalysisTimeline(
+        analysisVisible,
+        analysisResult?.analysis?.timeline,
+      ),
     [analysisVisible, analysisResult?.analysis?.timeline],
   );
   const analysisProcess = analysisResult?.analysis?.process ?? null;
@@ -591,27 +648,23 @@ export function ModelIntrospectionDashboard() {
     analysisProgress,
   };
 
-  const selectedGraphNodeIdEffective = useMemo(() => {
-    const nodes = snapshot?.graph?.nodes ?? [];
-    if (nodes.length === 0) {
-      return null;
-    }
-    const currentExists = Boolean(
-      selectedGraphNodeId && nodes.some((node) => node.id === selectedGraphNodeId),
-    );
-    if (currentExists) {
-      return selectedGraphNodeId;
-    }
-    return nodes[0]?.id ?? null;
-  }, [selectedGraphNodeId, snapshot?.graph?.nodes]);
+  const selectedGraphNodeIdEffective = useMemo(
+    () =>
+      resolveSelectedGraphNodeIdEffective({
+        nodes: snapshot?.graph?.nodes ?? [],
+        selectedGraphNodeId,
+      }),
+    [selectedGraphNodeId, snapshot?.graph?.nodes],
+  );
 
-  const selectedGraphNode = useMemo(() => {
-    const nodes = snapshot?.graph?.nodes ?? [];
-    if (nodes.length === 0 || !selectedGraphNodeIdEffective) {
-      return null;
-    }
-    return nodes.find((node) => node.id === selectedGraphNodeIdEffective) ?? null;
-  }, [selectedGraphNodeIdEffective, snapshot?.graph?.nodes]);
+  const selectedGraphNode = useMemo(
+    () =>
+      resolveSelectedGraphNode({
+        nodes: snapshot?.graph?.nodes ?? [],
+        selectedGraphNodeIdEffective,
+      }),
+    [selectedGraphNodeIdEffective, snapshot?.graph?.nodes],
+  );
 
   const selectedGraphNodeDetails = useMemo(
     () =>
@@ -635,12 +688,10 @@ export function ModelIntrospectionDashboard() {
     ],
   );
 
-  const selectedGraphTypeHint = useMemo(() => {
-    if (!selectedGraphNode) {
-      return "";
-    }
-    return getTypeHintText(selectedGraphNode.kind);
-  }, [selectedGraphNode]);
+  const selectedGraphTypeHint = useMemo(
+    () => resolveSelectedGraphTypeHint(selectedGraphNode),
+    [selectedGraphNode],
+  );
 
   const handleRefreshSnapshot = useCallback(() => {
     loadSnapshot().catch(() => undefined);

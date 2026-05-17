@@ -112,12 +112,14 @@ export type SnapshotComparison = {
   };
 };
 
+export type AnalysisTimelinePath = "answer_path" | "internals_path";
+
 export type AnalysisTimelineEntry = {
   id: string;
   label: string;
   status: string;
   detail: string;
-  path?: string;
+  path?: AnalysisTimelinePath;
   at_ms: number;
   progress?: number;
 };

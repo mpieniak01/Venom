@@ -21,6 +21,7 @@ import {
 import type {
   AnalysisPhase,
   AnalysisProcessTrace,
+  AnalysisTimelinePath,
   AnalysisTimelineEntry,
   AttentionModel,
   BadgeTone,
@@ -604,7 +605,7 @@ function getRagStepTone(status: "done" | "running" | "pending"): BadgeTone {
   return "neutral";
 }
 
-function getTimelinePathTone(path: string | undefined): BadgeTone {
+function getTimelinePathTone(path: AnalysisTimelinePath | undefined): BadgeTone {
   if (path === "internals_path") {
     return "warning";
   }

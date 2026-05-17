@@ -7,6 +7,8 @@ import types
 
 import pytest
 
+from venom_core.api.schemas.llm_simple import SimpleChatRequest
+from venom_core.services import llm_simple_service
 from venom_core.services import model_introspection_analysis_service as analysis_service
 
 
@@ -457,3 +459,84 @@ async def test_analysis_stream_emits_failed_result_when_response_has_no_body_ite
     done_payload = json.loads(events[-1][1])
     assert done_payload["status"] == "failed"
     assert "body iterator" in done_payload["analysis"]["error"]
+
+
+def test_classify_stream_quality_variants() -> None:
+    assert (
+        analysis_service._classify_stream_quality(
+            chunk_count=0,
+            first_content_at_ms=None,
+            elapsed_ms=10.0,
+        )
+        == "no_content"
+    )
+    assert (
+        analysis_service._classify_stream_quality(
+            chunk_count=2,
+            first_content_at_ms=5.0,
+            elapsed_ms=12.0,
+        )
+        == "live_streaming"
+    )
+    assert (
+        analysis_service._classify_stream_quality(
+            chunk_count=1,
+            first_content_at_ms=1500.0,
+            elapsed_ms=1600.0,
+        )
+        == "single_chunk_delayed"
+    )
+
+
+def test_build_logit_lens_timeline_step_for_unavailable_probe() -> None:
+    step = analysis_service._build_logit_lens_timeline_step(
+        logit_lens={"status": "probe_unavailable", "code": "probe_timeout"},
+        at_ms=100.0,
+    )
+    assert step["status"] == "skipped"
+    assert step["detail"] == "probe_timeout"
+
+
+@pytest.mark.asyncio
+async def test_collect_logit_lens_payload_safe_returns_fallback_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _raise(*_args, **_kwargs):
+        raise RuntimeError("probe failed")
+
+    monkeypatch.setattr(analysis_service, "build_logit_lens_payload", _raise)
+    payload = await analysis_service._collect_logit_lens_payload_safe(
+        prompt="q",
+        response_text="a",
+    )
+    assert payload["status"] == "probe_unavailable"
+    assert payload["source"] == "probe_unavailable"
+
+
+def test_collect_rag_focus_payload_safe_returns_fallback_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(*_args, **_kwargs):
+        raise ValueError("bad trace")
+
+    monkeypatch.setattr(analysis_service, "build_rag_focus_payload", _raise)
+    payload = analysis_service._collect_rag_focus_payload_safe(
+        prompt="q",
+        snapshot={},
+        process_trace=None,
+        response_text="a",
+    )
+    assert payload["source"] == "graph_fallback"
+
+
+def test_build_payload_sets_top_p_for_simple_chat_request() -> None:
+    class _Runtime:
+        provider = "openai"
+
+    payload = llm_simple_service._build_payload(
+        request=SimpleChatRequest(content="hello", top_p=0.85),
+        runtime=_Runtime(),
+        model_name="m",
+        messages=[{"role": "user", "content": "hello"}],
+    )
+    assert payload["top_p"] == 0.85

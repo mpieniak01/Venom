@@ -89,3 +89,49 @@ def test_build_rag_focus_payload_prefers_runtime_trace_for_request_response_step
     assert payload["query"] == "Co to jest słońce?"
     assert len(payload["entities"]) >= 1
     assert len(payload["evidence_edges"]) >= 1
+
+
+def test_build_rag_focus_payload_filters_invalid_trace_shapes() -> None:
+    payload = build_rag_focus_payload(
+        prompt="Co to jest słońce?",
+        snapshot=_snapshot_with_graph(),
+        process_trace={
+            "steps": [
+                {
+                    "action": "retrieval",
+                    "details": (
+                        '{"entities":[{"id":"ok","label":"Słońce"}, {"id":"x"}],'
+                        '"evidence_edges":[{"from":"query","to":"ok"}, {"from":"query"}],'
+                        '"active_entity_ids":["ok", null]}'
+                    ),
+                }
+            ]
+        },
+    )
+    assert payload["source"] == "runtime_trace"
+    assert [entity["id"] for entity in payload["entities"]] == ["ok"]
+    assert len(payload["evidence_edges"]) == 1
+    assert payload["active_entity_ids"] == ["ok"]
+
+
+def test_build_rag_focus_payload_extracts_query_from_context_preview() -> None:
+    payload = build_rag_focus_payload(
+        prompt="fallback prompt",
+        snapshot=_snapshot_with_graph(),
+        process_trace={
+            "steps": [
+                {
+                    "action": "context_preview",
+                    "details": (
+                        '{"prompt_context_preview":"SYSTEM:\\nRules\\n\\nUSER: Co to jest Księżyc?"}'
+                    ),
+                },
+                {
+                    "action": "response",
+                    "details": '{"response":"Księżyc to naturalny satelita."}',
+                },
+            ]
+        },
+    )
+    assert payload["source"] == "runtime_trace"
+    assert payload["query"] == "Co to jest Księżyc?"

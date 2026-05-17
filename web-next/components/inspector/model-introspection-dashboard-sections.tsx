@@ -979,6 +979,90 @@ function renderStreamOpenSourceBadge(
   return { tone: "neutral", key: "inspector.modelIntrospection.dashboard.results.telemetry.statusUnavailable" };
 }
 
+type AnalysisRunTrendsCardProps = Readonly<{
+  runTrends:
+    | {
+        runs: number;
+        window: number;
+        runtimeTraceRate: number;
+        probeRuntimeRate: number;
+        highCoverageRate: number;
+        liveStreamingRate: number;
+        avgFirstContentMs: number | null;
+        avgNoiseRatio: number | null;
+      }
+    | null
+    | undefined;
+}>;
+
+function formatAvgFirstContentMs(value: number | null, naLabel: string, msLabel: string): string {
+  if (value === null) {
+    return naLabel;
+  }
+  return `${value.toFixed(1)} ${msLabel}`;
+}
+
+function formatAvgNoiseRatio(value: number | null, naLabel: string): string {
+  if (value === null) {
+    return naLabel;
+  }
+  return `${(value * 100).toFixed(0)}%`;
+}
+
+function AnalysisRunTrendsCard(props: AnalysisRunTrendsCardProps) {
+  const { runTrends } = props;
+  const t = useTranslation();
+  if (!runTrends) {
+    return (
+      <p className="mt-3 text-sm text-zinc-400">
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.empty")}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      <Badge tone="neutral">
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.runs")} {runTrends.runs}
+      </Badge>
+      <Badge tone={runTrends.runtimeTraceRate >= 80 ? "success" : "warning"}>
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.runtimeTrace")}{" "}
+        {runTrends.runtimeTraceRate.toFixed(0)}%
+      </Badge>
+      <Badge tone={runTrends.probeRuntimeRate >= 80 ? "success" : "warning"}>
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.probeRuntime")}{" "}
+        {runTrends.probeRuntimeRate.toFixed(0)}%
+      </Badge>
+      <Badge tone={runTrends.highCoverageRate >= 80 ? "success" : "warning"}>
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.highCoverage")}{" "}
+        {runTrends.highCoverageRate.toFixed(0)}%
+      </Badge>
+      <Badge tone={runTrends.liveStreamingRate >= 50 ? "success" : "warning"}>
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.liveStreaming")}{" "}
+        {runTrends.liveStreamingRate.toFixed(0)}%
+      </Badge>
+      <Badge tone="neutral">
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.avgFirstChunk")}{" "}
+        {formatAvgFirstContentMs(
+          runTrends.avgFirstContentMs,
+          t("inspector.modelIntrospection.common.na"),
+          t("inspector.modelIntrospection.common.ms"),
+        )}
+      </Badge>
+      <Badge tone="neutral">
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.avgNoise")}{" "}
+        {formatAvgNoiseRatio(
+          runTrends.avgNoiseRatio,
+          t("inspector.modelIntrospection.common.na"),
+        )}
+      </Badge>
+      <Badge tone="neutral">
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.window")}{" "}
+        {runTrends.window}
+      </Badge>
+    </div>
+  );
+}
+
 export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
   const t = useTranslation();
   const {
@@ -1344,49 +1428,7 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
           <p className="text-xs uppercase tracking-wide text-zinc-500">
             {t("inspector.modelIntrospection.dashboard.results.runTrends.title")}
           </p>
-          {runTrends ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge tone="neutral">
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.runs")} {runTrends.runs}
-              </Badge>
-              <Badge tone={runTrends.runtimeTraceRate >= 80 ? "success" : "warning"}>
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.runtimeTrace")}{" "}
-                {runTrends.runtimeTraceRate.toFixed(0)}%
-              </Badge>
-              <Badge tone={runTrends.probeRuntimeRate >= 80 ? "success" : "warning"}>
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.probeRuntime")}{" "}
-                {runTrends.probeRuntimeRate.toFixed(0)}%
-              </Badge>
-              <Badge tone={runTrends.highCoverageRate >= 80 ? "success" : "warning"}>
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.highCoverage")}{" "}
-                {runTrends.highCoverageRate.toFixed(0)}%
-              </Badge>
-              <Badge tone={runTrends.liveStreamingRate >= 50 ? "success" : "warning"}>
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.liveStreaming")}{" "}
-                {runTrends.liveStreamingRate.toFixed(0)}%
-              </Badge>
-              <Badge tone="neutral">
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.avgFirstChunk")}{" "}
-                {runTrends.avgFirstContentMs != null
-                  ? `${runTrends.avgFirstContentMs.toFixed(1)} ${t("inspector.modelIntrospection.common.ms")}`
-                  : t("inspector.modelIntrospection.common.na")}
-              </Badge>
-              <Badge tone="neutral">
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.avgNoise")}{" "}
-                {runTrends.avgNoiseRatio != null
-                  ? `${(runTrends.avgNoiseRatio * 100).toFixed(0)}%`
-                  : t("inspector.modelIntrospection.common.na")}
-              </Badge>
-              <Badge tone="neutral">
-                {t("inspector.modelIntrospection.dashboard.results.runTrends.window")}{" "}
-                {runTrends.window}
-              </Badge>
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-zinc-400">
-              {t("inspector.modelIntrospection.dashboard.results.runTrends.empty")}
-            </p>
-          )}
+          <AnalysisRunTrendsCard runTrends={runTrends} />
         </div>
       </div>
     </div>
@@ -1518,6 +1560,33 @@ type GraphPanelProps = Readonly<{
 type GraphNodeItem = NonNullable<IntrospectionSnapshot["graph"]>["nodes"][number];
 type GraphEdgeItem = NonNullable<IntrospectionSnapshot["graph"]>["edges"][number];
 
+type GraphOverviewBadgesProps = Readonly<{ snapshot: IntrospectionSnapshot }>;
+type GraphDrilldownToggleProps = Readonly<{
+  graphViewOpen: boolean;
+  onToggleGraphView: () => void;
+  drilldownTitle: string;
+  hideLabel: string;
+  openLabel: string;
+  stateOpenLabel: string;
+  stateCollapsedLabel: string;
+}>;
+type GraphNodesGridProps = Readonly<{
+  nodes: GraphNodeItem[];
+  selectedGraphNodeId: string | null;
+  onSelectGraphNode: (id: string) => void;
+}>;
+type GraphRelationsCardProps = Readonly<{ edges: GraphEdgeItem[] }>;
+type GraphSelectedNodeCardProps = Readonly<{
+  selectedGraphNode: GraphNodeItem | null;
+  selectedGraphNodeDetails: GraphNodeDetails | null;
+  typeHintText: string;
+}>;
+type GraphContextSummaryProps = Readonly<{
+  snapshot: IntrospectionSnapshot;
+  analysisActive: boolean;
+  nodeCount: number;
+}>;
+
 function getGraphNodes(snapshot: IntrospectionSnapshot): GraphNodeItem[] {
   return snapshot.graph?.nodes ?? [];
 }
@@ -1540,7 +1609,7 @@ function getGraphSummary(
   );
 }
 
-function GraphOverviewBadges(props: { snapshot: IntrospectionSnapshot }) {
+function GraphOverviewBadges(props: GraphOverviewBadgesProps) {
   const { snapshot } = props;
   const summary = getGraphSummary(snapshot);
   return (
@@ -1556,15 +1625,7 @@ function GraphOverviewBadges(props: { snapshot: IntrospectionSnapshot }) {
   );
 }
 
-function GraphDrilldownToggle(props: {
-  graphViewOpen: boolean;
-  onToggleGraphView: () => void;
-  drilldownTitle: string;
-  hideLabel: string;
-  openLabel: string;
-  stateOpenLabel: string;
-  stateCollapsedLabel: string;
-}) {
+function GraphDrilldownToggle(props: GraphDrilldownToggleProps) {
   const {
     graphViewOpen,
     onToggleGraphView,
@@ -1592,11 +1653,7 @@ function GraphDrilldownToggle(props: {
   );
 }
 
-function GraphNodesGrid(props: {
-  nodes: GraphNodeItem[];
-  selectedGraphNodeId: string | null;
-  onSelectGraphNode: (id: string) => void;
-}) {
+function GraphNodesGrid(props: GraphNodesGridProps) {
   const { nodes, selectedGraphNodeId, onSelectGraphNode } = props;
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1614,7 +1671,7 @@ function GraphNodesGrid(props: {
   );
 }
 
-function GraphRelationsCard(props: { edges: GraphEdgeItem[] }) {
+function GraphRelationsCard(props: GraphRelationsCardProps) {
   const { edges } = props;
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -1634,11 +1691,7 @@ function GraphRelationsCard(props: { edges: GraphEdgeItem[] }) {
   );
 }
 
-function GraphSelectedNodeCard(props: {
-  selectedGraphNode: GraphNodeItem | null;
-  selectedGraphNodeDetails: GraphNodeDetails | null;
-  typeHintText: string;
-}) {
+function GraphSelectedNodeCard(props: GraphSelectedNodeCardProps) {
   const { selectedGraphNode, selectedGraphNodeDetails, typeHintText } = props;
   return (
     <div className="rounded-2xl border border-violet-400/20 bg-white/5 p-4 xl:sticky xl:top-6">
@@ -1682,11 +1735,7 @@ function GraphSelectedNodeCard(props: {
   );
 }
 
-function GraphContextSummary(props: {
-  snapshot: IntrospectionSnapshot;
-  analysisActive: boolean;
-  nodeCount: number;
-}) {
+function GraphContextSummary(props: GraphContextSummaryProps) {
   const { snapshot, analysisActive, nodeCount } = props;
   const summary = getGraphSummary(snapshot);
   const totalPackages =

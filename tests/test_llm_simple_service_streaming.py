@@ -110,6 +110,24 @@ def test_helper_model_resolution_and_content_extractors():
     )
 
 
+def test_build_payload_includes_top_p_when_provided():
+    request = SimpleChatRequest(
+        content="hello",
+        max_tokens=64,
+        temperature=0.2,
+        top_p=0.9,
+    )
+    runtime = _Runtime("openai")
+    payload = llm_simple_service._build_payload(
+        request=request,
+        runtime=runtime,
+        model_name="model-x",
+        messages=[{"role": "user", "content": "hello"}],
+        stream=True,
+    )
+    assert payload["top_p"] == 0.9
+
+
 @pytest.mark.asyncio
 async def test_get_active_adapter_id_variants(monkeypatch):
     monkeypatch.setattr(llm_simple_service, "get_model_manager", lambda: None)

@@ -517,6 +517,66 @@ def _build_logit_profile(
     }
 
 
+def _build_operator_reason_codes(
+    *,
+    rag_source: str,
+    coverage_percent: float,
+    logit_source: str,
+    stream_quality: str,
+    token_noise_ratio: float,
+) -> list[str]:
+    coverage_code = "R2_COVERAGE_LOW"
+    if coverage_percent >= 70.0:
+        coverage_code = "R2_COVERAGE_HIGH"
+    elif coverage_percent >= 40.0:
+        coverage_code = "R2_COVERAGE_MEDIUM"
+
+    stream_code = "R4_STREAM_DEGRADED"
+    if stream_quality in {"live_streaming", "single_chunk"}:
+        stream_code = "R4_STREAM_OK"
+    elif stream_quality == "single_chunk_delayed":
+        stream_code = "R4_STREAM_DELAYED"
+
+    noise_code = "R5_LOGIT_NOISE_LOW"
+    if token_noise_ratio >= 0.7:
+        noise_code = "R5_LOGIT_NOISE_HIGH"
+    elif token_noise_ratio >= 0.35:
+        noise_code = "R5_LOGIT_NOISE_MEDIUM"
+
+    return [
+        "R1_RUNTIME_TRACE" if rag_source == "runtime_trace" else "R1_GRAPH_FALLBACK",
+        coverage_code,
+        "R3_PROBE_RUNTIME" if logit_source == "probe_runtime" else "R3_PROBE_FALLBACK",
+        stream_code,
+        noise_code,
+    ]
+
+
+def _resolve_operator_verdict(
+    *,
+    rag_source: str,
+    coverage_percent: float,
+    grounding_score: Any,
+    logit_source: str,
+) -> tuple[str, str]:
+    grounded = (
+        rag_source == "runtime_trace"
+        and coverage_percent >= 60.0
+        and isinstance(grounding_score, (int, float))
+        and float(grounding_score) >= 0.55
+    )
+    weakly_grounded = (
+        rag_source == "runtime_trace"
+        or coverage_percent >= 35.0
+        or logit_source == "probe_runtime"
+    )
+    if grounded:
+        return ("grounded", "high" if coverage_percent >= 75 else "medium")
+    if weakly_grounded:
+        return ("weakly_grounded", "medium")
+    return ("ungrounded", "low")
+
+
 def _build_operator_conclusion_payload(
     *,
     rag_focus: dict[str, Any],
@@ -534,59 +594,19 @@ def _build_operator_conclusion_payload(
         interpretability if isinstance(interpretability, dict) else {}
     )
     token_noise_ratio = float(interpretability_dict.get("token_noise_ratio") or 0.0)
-
-    reason_codes: list[str] = []
-    if rag_source == "runtime_trace":
-        reason_codes.append("R1_RUNTIME_TRACE")
-    else:
-        reason_codes.append("R1_GRAPH_FALLBACK")
-
-    if coverage_percent >= 70.0:
-        reason_codes.append("R2_COVERAGE_HIGH")
-    elif coverage_percent >= 40.0:
-        reason_codes.append("R2_COVERAGE_MEDIUM")
-    else:
-        reason_codes.append("R2_COVERAGE_LOW")
-
-    if logit_source == "probe_runtime":
-        reason_codes.append("R3_PROBE_RUNTIME")
-    else:
-        reason_codes.append("R3_PROBE_FALLBACK")
-
-    if stream_quality in {"live_streaming", "single_chunk"}:
-        reason_codes.append("R4_STREAM_OK")
-    elif stream_quality == "single_chunk_delayed":
-        reason_codes.append("R4_STREAM_DELAYED")
-    else:
-        reason_codes.append("R4_STREAM_DEGRADED")
-
-    if token_noise_ratio >= 0.7:
-        reason_codes.append("R5_LOGIT_NOISE_HIGH")
-    elif token_noise_ratio >= 0.35:
-        reason_codes.append("R5_LOGIT_NOISE_MEDIUM")
-    else:
-        reason_codes.append("R5_LOGIT_NOISE_LOW")
-
-    grounded = (
-        rag_source == "runtime_trace"
-        and coverage_percent >= 60.0
-        and isinstance(grounding_score, (int, float))
-        and float(grounding_score) >= 0.55
+    reason_codes = _build_operator_reason_codes(
+        rag_source=rag_source,
+        coverage_percent=coverage_percent,
+        logit_source=logit_source,
+        stream_quality=stream_quality,
+        token_noise_ratio=token_noise_ratio,
     )
-    weakly_grounded = (
-        rag_source == "runtime_trace"
-        or coverage_percent >= 35.0
-        or logit_source == "probe_runtime"
+    verdict, confidence = _resolve_operator_verdict(
+        rag_source=rag_source,
+        coverage_percent=coverage_percent,
+        grounding_score=grounding_score,
+        logit_source=logit_source,
     )
-    if grounded:
-        verdict = "grounded"
-        confidence = "high" if coverage_percent >= 75 else "medium"
-    elif weakly_grounded:
-        verdict = "weakly_grounded"
-        confidence = "medium"
-    else:
-        verdict = "ungrounded"
-        confidence = "low"
 
     partial = rag_source != "runtime_trace" or logit_source != "probe_runtime"
     return {
@@ -920,7 +940,6 @@ async def _collect_logit_lens_payload_safe(
 def _build_rag_focus_fallback(
     *,
     prompt: str,
-    snapshot: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "source": "graph_fallback",
@@ -951,7 +970,6 @@ def _collect_rag_focus_payload_safe(
         logger.exception("Model introspection rag focus extraction failed")
         return _build_rag_focus_fallback(
             prompt=prompt,
-            snapshot=snapshot,
         )
 
 

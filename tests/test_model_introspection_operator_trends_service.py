@@ -81,3 +81,42 @@ def test_record_operator_run_upserts_by_request_id(
     assert trends["probe_runtime_rate"] == 100.0
     assert trends["high_coverage_rate"] == 100.0
     assert trends["avg_first_content_ms"] == 90.0
+
+
+def test_trends_helpers_handle_invalid_store_payload(
+    monkeypatch, tmp_path: Path
+) -> None:
+    store_path = tmp_path / "operator_run_trends.json"
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    store_path.write_text("{not-json", encoding="utf-8")
+    monkeypatch.setattr(
+        service, "_resolve_storage_path", lambda settings=None: store_path
+    )
+
+    trends = service.record_operator_run(
+        request_id="req-x",
+        rag_source="graph_fallback",
+        probe_source="probe_unavailable",
+        stream_quality="single_chunk",
+        coverage_percent=None,
+        first_content_ms=None,
+        token_noise_ratio=None,
+    )
+    assert trends is not None
+    assert trends["runs"] == 1
+    assert trends["avg_first_content_ms"] is None
+
+
+def test_record_operator_run_rejects_empty_request_id() -> None:
+    assert (
+        service.record_operator_run(
+            request_id="   ",
+            rag_source="graph_fallback",
+            probe_source="probe_unavailable",
+            stream_quality="single_chunk",
+            coverage_percent=None,
+            first_content_ms=None,
+            token_noise_ratio=None,
+        )
+        is None
+    )

@@ -249,56 +249,24 @@ def _build_unavailable_logit_lens(
     }
 
 
-async def build_logit_lens_payload(
-    *,
-    prompt: str,
-    response_text: str,
-) -> dict[str, Any]:
-    probe_payload = await run_model_introspection_probe(
-        prompt=prompt,
-        mode="logits",
-        layer_selection=_LOGIT_LENS_LAYER_SELECTION,
-        top_k=_LOGIT_LENS_TOP_K,
-    )
-    status = str(probe_payload.get("status") or "probe_unavailable")
-    diagnostics_raw = probe_payload.get("diagnostics")
-    diagnostics = diagnostics_raw if isinstance(diagnostics_raw, dict) else {}
+def _runtime_label_from_probe_payload(probe_payload: dict[str, Any]) -> str | None:
+    raw_runtime_label = probe_payload.get("runtime_label")
+    if raw_runtime_label:
+        return str(raw_runtime_label)
+    return None
 
-    if status != "ok":
-        return _build_unavailable_logit_lens(
-            status=status,
-            code=str(probe_payload.get("code") or "probe_unavailable"),
-            message=str(probe_payload.get("message") or "Probe unavailable"),
-            runtime_label=(
-                str(probe_payload.get("runtime_label"))
-                if probe_payload.get("runtime_label")
-                else None
-            ),
-            diagnostics=diagnostics,
-        )
 
-    probe = probe_payload.get("probe")
-    if not isinstance(probe, dict):
-        return _build_unavailable_logit_lens(
-            status="failed",
-            code="invalid_probe_shape",
-            message="Probe payload has invalid shape",
-            runtime_label=(
-                str(probe_payload.get("runtime_label"))
-                if probe_payload.get("runtime_label")
-                else None
-            ),
-            diagnostics=diagnostics,
-        )
-
+def _extract_token_preview(probe: dict[str, Any]) -> list[str]:
     tokenization = probe.get("tokenization")
-    token_preview = []
-    if isinstance(tokenization, dict):
-        raw_tokens = tokenization.get("tokens_preview")
-        if isinstance(raw_tokens, list):
-            token_preview = [_normalize_token(token) for token in raw_tokens][:32]
+    if not isinstance(tokenization, dict):
+        return []
+    raw_tokens = tokenization.get("tokens_preview")
+    if not isinstance(raw_tokens, list):
+        return []
+    return [_normalize_token(token) for token in raw_tokens][:32]
 
-    layers = _normalize_layers(probe.get("layers"))
+
+def _build_checkpoints(layers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     checkpoints: list[dict[str, Any]] = []
     previous_token: str | None = None
     for percent in _CHECKPOINT_PERCENTS:
@@ -319,17 +287,54 @@ async def build_logit_lens_payload(
             }
         )
         previous_token = top_token
+    return checkpoints
+
+
+async def build_logit_lens_payload(
+    *,
+    prompt: str,
+    response_text: str,
+) -> dict[str, Any]:
+    probe_payload = await run_model_introspection_probe(
+        prompt=prompt,
+        mode="logits",
+        layer_selection=_LOGIT_LENS_LAYER_SELECTION,
+        top_k=_LOGIT_LENS_TOP_K,
+    )
+    status = str(probe_payload.get("status") or "probe_unavailable")
+    diagnostics_raw = probe_payload.get("diagnostics")
+    diagnostics = diagnostics_raw if isinstance(diagnostics_raw, dict) else {}
+    runtime_label = _runtime_label_from_probe_payload(probe_payload)
+
+    if status != "ok":
+        return _build_unavailable_logit_lens(
+            status=status,
+            code=str(probe_payload.get("code") or "probe_unavailable"),
+            message=str(probe_payload.get("message") or "Probe unavailable"),
+            runtime_label=runtime_label,
+            diagnostics=diagnostics,
+        )
+
+    probe = probe_payload.get("probe")
+    if not isinstance(probe, dict):
+        return _build_unavailable_logit_lens(
+            status="failed",
+            code="invalid_probe_shape",
+            message="Probe payload has invalid shape",
+            runtime_label=runtime_label,
+            diagnostics=diagnostics,
+        )
+
+    token_preview = _extract_token_preview(probe)
+    layers = _normalize_layers(probe.get("layers"))
+    checkpoints = _build_checkpoints(layers)
 
     return {
         "source": "probe_runtime",
         "status": "ok",
         "code": None,
         "message": "Logit lens ready",
-        "runtime_label": (
-            str(probe_payload.get("runtime_label"))
-            if probe_payload.get("runtime_label")
-            else None
-        ),
+        "runtime_label": runtime_label,
         "input_tokens": token_preview,
         "output_tokens": _tokenize_output_preview(response_text),
         "checkpoints": checkpoints,

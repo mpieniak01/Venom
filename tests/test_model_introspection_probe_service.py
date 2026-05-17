@@ -183,3 +183,100 @@ def test_probe_health_payload_contains_profile_and_limits(
     assert payload["profile"] == "stage"
     assert payload["healthy"] is True
     assert payload["limits"]["max_top_k"] <= 32
+
+
+def test_probe_runtime_config_normalizes_invalid_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_PROFILE", "unknown-profile")
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_TIMEOUT_SECONDS", "bad")
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_ATTEMPTS", "bad")
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_TOP_K", "-5")
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_LAYER_COUNT", "0")
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_PROMPT_TOKENS", "-1")
+    monkeypatch.setenv("GEMMA4_AUDIO_PROBE_ENABLED", "weird")
+
+    cfg = probe_service.get_probe_runtime_config()
+    assert cfg["profile"] == "dev"
+    assert cfg["enabled"] is True
+    assert cfg["max_top_k"] == 1
+    assert cfg["max_layer_count"] == 1
+    assert cfg["max_prompt_tokens"] == 1
+
+
+@pytest.mark.asyncio
+async def test_probe_service_handles_422_and_5xx(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: _runtime("multi_runtime", "http://localhost:8014/v1"),
+    )
+
+    async def _raise_422(**_kwargs):
+        return httpx.Response(status_code=422, json={"detail": "invalid"})
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _raise_422)
+    with pytest.raises(ValueError):
+        await probe_service.run_model_introspection_probe(
+            prompt="q",
+            mode="hidden",
+            layer_selection=[1],
+            top_k=1,
+        )
+
+    async def _raise_500(**_kwargs):
+        return httpx.Response(status_code=500, json={"detail": "boom"})
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _raise_500)
+    result = await probe_service.run_model_introspection_probe(
+        prompt="q",
+        mode="hidden",
+        layer_selection=[1],
+        top_k=1,
+    )
+    assert result["status"] == "probe_unavailable"
+    assert result["code"] == "runtime_error"
+
+
+@pytest.mark.asyncio
+async def test_probe_service_timeout_and_transport_retry_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: _runtime("multi_runtime", "http://localhost:8014/v1"),
+    )
+    monkeypatch.setenv("VENOM_INTROSPECTION_PROBE_MAX_ATTEMPTS", "2")
+    calls = {"count": 0}
+
+    async def _timeout_then_ok(**_kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise httpx.TimeoutException("timeout")
+        return httpx.Response(status_code=200, json={"status": "ok", "probe": {}})
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _timeout_then_ok)
+    result = await probe_service.run_model_introspection_probe(
+        prompt="q",
+        mode="hidden",
+        layer_selection=[1],
+        top_k=1,
+    )
+    assert result["status"] == "ok"
+    assert calls["count"] == 2
+
+    async def _transport_error(**_kwargs):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _transport_error)
+    result = await probe_service.run_model_introspection_probe(
+        prompt="q",
+        mode="hidden",
+        layer_selection=[1],
+        top_k=1,
+    )
+    assert result["status"] == "probe_unavailable"
+    assert result["code"] == "probe_timeout"

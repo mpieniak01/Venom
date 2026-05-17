@@ -492,7 +492,10 @@ export function getRagGroundingTone(grounding: RagFocusGrounding): BadgeTone {
 }
 
 function normalizeLensToken(token: unknown): string {
-  const raw = String(token || "");
+  const raw =
+    typeof token === "string" || typeof token === "number"
+      ? String(token)
+      : "";
   const noMarker = raw.startsWith("▁") ? raw.slice(1) : raw;
   const trimmed = noMarker.trim();
   return trimmed || "?";
@@ -731,12 +734,12 @@ export function buildRagFocusModel(args: {
         fragment: String(link.fragment || ""),
         edgeIds: Array.isArray(link.edge_ids)
           ? link.edge_ids
-              .map((edgeId) => String(edgeId))
+              .map(String)
               .filter((edgeId) => evidenceEdges.some((edge) => edge.id === edgeId))
           : [],
         entityIds: Array.isArray(link.entity_ids)
           ? link.entity_ids
-              .map((entityId) => String(entityId))
+              .map(String)
               .filter((entityId) => entityIds.includes(entityId))
           : [],
       }))
@@ -826,8 +829,7 @@ export function buildOperatorConclusion(args: {
         internals_quality?: string;
         evidence_coverage_percent?: number;
       }
-    | null
-    | undefined;
+    | null;
 }): OperatorConclusionModel | null {
   const {
     analysisVisible,
@@ -839,54 +841,13 @@ export function buildOperatorConclusion(args: {
   if (!analysisVisible) {
     return null;
   }
-  if (analysisStatus === "completed") {
-    const verdict = operatorConclusionPayload?.verdict;
-    if (
-      verdict === "grounded" ||
-      verdict === "weakly_grounded" ||
-      verdict === "ungrounded"
-    ) {
-      const confidenceRaw = operatorConclusionPayload?.confidence_tier;
-      const confidenceTier =
-        confidenceRaw === "high" || confidenceRaw === "low"
-          ? confidenceRaw
-          : "medium";
-      const reasonCodes = Array.isArray(operatorConclusionPayload?.reason_codes)
-        ? operatorConclusionPayload.reason_codes.map((code) => String(code))
-        : [];
-      const reasons =
-        reasonCodes.length > 0
-          ? reasonCodes.map((code) => code.toLowerCase().replaceAll("_", " "))
-          : ["operator signals ready"];
-      return {
-        verdict,
-        confidenceTier,
-        tone: verdict === "grounded" ? "success" : "warning",
-        reasons,
-        reasonCodes,
-        partial: Boolean(operatorConclusionPayload?.partial),
-        coveragePercent:
-          typeof operatorConclusionPayload?.evidence_coverage_percent === "number"
-            ? operatorConclusionPayload.evidence_coverage_percent
-            : null,
-        streamQuality: operatorConclusionPayload?.stream_quality ?? null,
-        internalsQuality: operatorConclusionPayload?.internals_quality ?? null,
-      };
-    }
+  const payloadConclusion = resolveOperatorConclusionFromPayload(operatorConclusionPayload);
+  if (analysisStatus === "completed" && payloadConclusion) {
+    return payloadConclusion;
   }
 
   if (analysisStatus !== "completed") {
-    return {
-      verdict: "weakly_grounded",
-      confidenceTier: "low",
-      tone: "neutral",
-      reasons: ["analysis in progress"],
-      reasonCodes: ["R0_IN_PROGRESS"],
-      partial: true,
-      coveragePercent: null,
-      streamQuality: null,
-      internalsQuality: null,
-    };
+    return buildInProgressOperatorConclusion();
   }
 
   const ragRuntime = ragFocus?.source === "runtime_trace";
@@ -895,50 +856,149 @@ export function buildOperatorConclusion(args: {
   const hasAnswerLinks = (ragFocus?.answerEvidenceLinks.length ?? 0) > 0;
   const grounding = ragFocus?.grounding ?? "unknown";
 
-  if (ragRuntime && hasEvidence && hasAnswerLinks && (grounding === "strong" || grounding === "medium")) {
-    return {
-      verdict: "grounded",
-      confidenceTier: logitRuntime ? "high" : "medium",
-      tone: "success",
-      reasons: [
-        "runtime trace evidence available",
-        "answer fragments linked to evidence",
-        logitRuntime ? "runtime probe active" : "probe fallback",
-      ],
-      reasonCodes: [
-        "R1_RUNTIME_TRACE",
-        "R2_COVERAGE_HIGH",
-        logitRuntime ? "R3_PROBE_RUNTIME" : "R3_PROBE_FALLBACK",
-      ],
-      partial: !logitRuntime,
-      coveragePercent: null,
-      streamQuality: null,
-      internalsQuality: logitRuntime ? "runtime_probe" : "fallback_probe",
-    };
+  if (
+    ragRuntime &&
+    hasEvidence &&
+    hasAnswerLinks &&
+    (grounding === "strong" || grounding === "medium")
+  ) {
+    return buildGroundedOperatorConclusion(logitRuntime);
   }
 
   if (hasEvidence || ragRuntime) {
-    return {
-      verdict: "weakly_grounded",
-      confidenceTier: "medium",
-      tone: "warning",
-      reasons: [
-        ragRuntime ? "runtime trace partial" : "graph fallback evidence",
-        hasAnswerLinks ? "limited answer-to-evidence links" : "missing answer links",
-        logitRuntime ? "runtime probe active" : "probe unavailable",
-      ],
-      reasonCodes: [
-        ragRuntime ? "R1_RUNTIME_TRACE" : "R1_GRAPH_FALLBACK",
-        "R2_COVERAGE_MEDIUM",
-        logitRuntime ? "R3_PROBE_RUNTIME" : "R3_PROBE_FALLBACK",
-      ],
-      partial: true,
-      coveragePercent: null,
-      streamQuality: null,
-      internalsQuality: logitRuntime ? "runtime_probe" : "fallback_probe",
-    };
+    return buildWeaklyGroundedOperatorConclusion({
+      ragRuntime,
+      hasAnswerLinks,
+      logitRuntime,
+    });
   }
 
+  return buildUngroundedOperatorConclusion(logitRuntime);
+}
+
+function resolveOperatorConclusionFromPayload(
+  payload:
+    | {
+        verdict?: string;
+        confidence_tier?: string;
+        partial?: boolean;
+        reason_codes?: string[];
+        stream_quality?: string;
+        internals_quality?: string;
+        evidence_coverage_percent?: number;
+      }
+    | null
+    | undefined,
+): OperatorConclusionModel | null {
+  const verdict = payload?.verdict;
+  if (
+    verdict !== "grounded" &&
+    verdict !== "weakly_grounded" &&
+    verdict !== "ungrounded"
+  ) {
+    return null;
+  }
+  const confidenceRaw = payload?.confidence_tier;
+  const confidenceTier =
+    confidenceRaw === "high" || confidenceRaw === "low"
+      ? confidenceRaw
+      : "medium";
+  const reasonCodes = Array.isArray(payload?.reason_codes)
+    ? payload.reason_codes.map(String)
+    : [];
+  const reasons =
+    reasonCodes.length > 0
+      ? reasonCodes.map((code) => code.toLowerCase().replaceAll("_", " "))
+      : ["operator signals ready"];
+
+  return {
+    verdict,
+    confidenceTier,
+    tone: verdict === "grounded" ? "success" : "warning",
+    reasons,
+    reasonCodes,
+    partial: Boolean(payload?.partial),
+    coveragePercent:
+      typeof payload?.evidence_coverage_percent === "number"
+        ? payload.evidence_coverage_percent
+        : null,
+    streamQuality: payload?.stream_quality ?? null,
+    internalsQuality: payload?.internals_quality ?? null,
+  };
+}
+
+function resolveInternalsQuality(logitRuntime: boolean): "runtime_probe" | "fallback_probe" {
+  return logitRuntime ? "runtime_probe" : "fallback_probe";
+}
+
+function resolveProbeReasonCode(logitRuntime: boolean): "R3_PROBE_RUNTIME" | "R3_PROBE_FALLBACK" {
+  return logitRuntime ? "R3_PROBE_RUNTIME" : "R3_PROBE_FALLBACK";
+}
+
+function resolveProbeReasonLabel(logitRuntime: boolean): string {
+  return logitRuntime ? "runtime probe active" : "probe unavailable";
+}
+
+function buildInProgressOperatorConclusion(): OperatorConclusionModel {
+  return {
+    verdict: "weakly_grounded",
+    confidenceTier: "low",
+    tone: "neutral",
+    reasons: ["analysis in progress"],
+    reasonCodes: ["R0_IN_PROGRESS"],
+    partial: true,
+    coveragePercent: null,
+    streamQuality: null,
+    internalsQuality: null,
+  };
+}
+
+function buildGroundedOperatorConclusion(logitRuntime: boolean): OperatorConclusionModel {
+  return {
+    verdict: "grounded",
+    confidenceTier: logitRuntime ? "high" : "medium",
+    tone: "success",
+    reasons: [
+      "runtime trace evidence available",
+      "answer fragments linked to evidence",
+      logitRuntime ? "runtime probe active" : "probe fallback",
+    ],
+    reasonCodes: ["R1_RUNTIME_TRACE", "R2_COVERAGE_HIGH", resolveProbeReasonCode(logitRuntime)],
+    partial: !logitRuntime,
+    coveragePercent: null,
+    streamQuality: null,
+    internalsQuality: resolveInternalsQuality(logitRuntime),
+  };
+}
+
+function buildWeaklyGroundedOperatorConclusion(args: {
+  ragRuntime: boolean;
+  hasAnswerLinks: boolean;
+  logitRuntime: boolean;
+}): OperatorConclusionModel {
+  const { ragRuntime, hasAnswerLinks, logitRuntime } = args;
+  return {
+    verdict: "weakly_grounded",
+    confidenceTier: "medium",
+    tone: "warning",
+    reasons: [
+      ragRuntime ? "runtime trace partial" : "graph fallback evidence",
+      hasAnswerLinks ? "limited answer-to-evidence links" : "missing answer links",
+      resolveProbeReasonLabel(logitRuntime),
+    ],
+    reasonCodes: [
+      ragRuntime ? "R1_RUNTIME_TRACE" : "R1_GRAPH_FALLBACK",
+      "R2_COVERAGE_MEDIUM",
+      resolveProbeReasonCode(logitRuntime),
+    ],
+    partial: true,
+    coveragePercent: null,
+    streamQuality: null,
+    internalsQuality: resolveInternalsQuality(logitRuntime),
+  };
+}
+
+function buildUngroundedOperatorConclusion(logitRuntime: boolean): OperatorConclusionModel {
   return {
     verdict: "ungrounded",
     confidenceTier: "low",
@@ -946,17 +1006,13 @@ export function buildOperatorConclusion(args: {
     reasons: [
       "no evidence edges",
       "no answer-to-evidence links",
-      logitRuntime ? "runtime probe active" : "probe unavailable",
+      resolveProbeReasonLabel(logitRuntime),
     ],
-    reasonCodes: [
-      "R1_NO_EVIDENCE",
-      "R2_COVERAGE_LOW",
-      logitRuntime ? "R3_PROBE_RUNTIME" : "R3_PROBE_FALLBACK",
-    ],
+    reasonCodes: ["R1_NO_EVIDENCE", "R2_COVERAGE_LOW", resolveProbeReasonCode(logitRuntime)],
     partial: true,
     coveragePercent: null,
     streamQuality: null,
-    internalsQuality: logitRuntime ? "runtime_probe" : "fallback_probe",
+    internalsQuality: resolveInternalsQuality(logitRuntime),
   };
 }
 

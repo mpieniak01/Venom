@@ -24,6 +24,7 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 _ERROR_INTERNAL_SERVER = "Internal server error"
+_ERROR_INVALID_REQUEST_PARAMETERS = "Invalid request parameters"
 _SSE_MEDIA_TYPE = "text/event-stream"
 
 router = APIRouter(prefix="/api/v1/models", tags=["models"])
@@ -75,7 +76,7 @@ async def analyze_model_introspection(
         )
         raise HTTPException(
             status_code=400,
-            detail="Invalid request parameters",
+            detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
     except Exception as exc:
         logger.exception("Błąd podczas analizy modelu")
@@ -118,7 +119,7 @@ async def stream_model_introspection_analysis_endpoint(
         )
         raise HTTPException(
             status_code=400,
-            detail="Invalid request parameters",
+            detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
     except Exception as exc:
         logger.exception("Błąd podczas streamowanej analizy modelu")
@@ -154,7 +155,7 @@ async def probe_model_introspection(
         )
         raise HTTPException(
             status_code=400,
-            detail="Invalid request parameters",
+            detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
     except Exception as exc:
         logger.exception("Błąd podczas wykonania probe model introspection")

@@ -78,6 +78,15 @@ type OperatorChecklistItem = {
 };
 
 type InternalsVerdictValue = "full" | "partial" | "fallback_only";
+type ProbeCapability = {
+  available?: boolean;
+  reason?: string;
+};
+type InternalsCapabilityRow = {
+  label: string;
+  available: boolean;
+  reason: string;
+};
 
 function resolveInternalsVerdictPresentation(
   verdict: string | undefined,
@@ -100,6 +109,81 @@ function resolveProbeBudgetLabel(internalsProbeElapsedMs: number | null): string
     return "probe budget unknown";
   }
   return `probe budget ~${internalsProbeElapsedMs.toFixed(1)} ms`;
+}
+
+function sumProbeElapsedMs(values: Array<number | null | undefined>): number | null {
+  const numericValues = values.filter(
+    (value): value is number => typeof value === "number",
+  );
+  if (numericValues.length === 0) {
+    return null;
+  }
+  return numericValues.reduce((sum, value) => sum + value, 0);
+}
+
+function buildInternalsCapabilityRow(
+  label: string,
+  capability: ProbeCapability | undefined,
+): InternalsCapabilityRow {
+  const available = Boolean(capability?.available);
+  return {
+    label,
+    available,
+    reason: available ? "ok" : String(capability?.reason || "unknown"),
+  };
+}
+
+function buildProbeLimitsLabel(limits: {
+  timeout_seconds?: number;
+  max_attempts?: number;
+  max_top_k?: number;
+  max_layer_count?: number;
+  max_head_count?: number;
+  max_prompt_tokens?: number;
+} | null | undefined): string {
+  if (!limits) {
+    return "limits: n/a";
+  }
+  return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
+}
+
+function buildRunTrends(payload: unknown): RunTrends | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const candidate = payload as Record<string, unknown>;
+  const runs = typeof candidate.runs === "number" ? candidate.runs : 0;
+  if (runs <= 0) {
+    return null;
+  }
+  return {
+    runs,
+    window: typeof candidate.window === "number" ? candidate.window : runs,
+    runtimeTraceRate:
+      typeof candidate.runtime_trace_rate === "number"
+        ? candidate.runtime_trace_rate
+        : 0,
+    probeRuntimeRate:
+      typeof candidate.probe_runtime_rate === "number"
+        ? candidate.probe_runtime_rate
+        : 0,
+    highCoverageRate:
+      typeof candidate.high_coverage_rate === "number"
+        ? candidate.high_coverage_rate
+        : 0,
+    liveStreamingRate:
+      typeof candidate.live_streaming_rate === "number"
+        ? candidate.live_streaming_rate
+        : 0,
+    avgFirstContentMs:
+      typeof candidate.avg_first_content_ms === "number"
+        ? candidate.avg_first_content_ms
+        : null,
+    avgNoiseRatio:
+      typeof candidate.avg_noise_ratio === "number"
+        ? candidate.avg_noise_ratio
+        : null,
+  };
 }
 
 function buildOperatorChecklist(args: {
@@ -417,41 +501,25 @@ export function ModelIntrospectionDashboard() {
     analysisResult?.analysis?.saliency ?? null,
   );
   const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
-  const internalsProbeElapsedMs = useMemo(() => {
-    const values = [
-      logitLens?.diagnostics?.elapsed_ms,
+  const internalsProbeElapsedMs = useMemo(
+    () =>
+      sumProbeElapsedMs([
+        logitLens?.diagnostics?.elapsed_ms as number | null | undefined,
+        attention?.diagnostics?.elapsed_ms as number | null | undefined,
+        saliency?.diagnostics?.elapsed_ms as number | null | undefined,
+      ]),
+    [
       attention?.diagnostics?.elapsed_ms,
+      logitLens?.diagnostics?.elapsed_ms,
       saliency?.diagnostics?.elapsed_ms,
-    ]
-      .filter((value): value is number => typeof value === "number")
-      .map(Number);
-    if (values.length === 0) {
-      return null;
-    }
-    return values.reduce((sum, value) => sum + value, 0);
-  }, [attention?.diagnostics?.elapsed_ms, logitLens?.diagnostics?.elapsed_ms, saliency?.diagnostics?.elapsed_ms]);
+    ],
+  );
   const internalsCapabilityRows = useMemo(() => {
     const payload = analysisCapabilities;
-    const buildRow = (
-      label: string,
-      capability:
-        | {
-            available?: boolean;
-            reason?: string;
-          }
-        | undefined,
-    ) => {
-      const available = Boolean(capability?.available);
-      return {
-        label,
-        available,
-        reason: available ? "ok" : String(capability?.reason || "unknown"),
-      };
-    };
     return [
-      buildRow("attention", payload?.attention),
-      buildRow("saliency", payload?.saliency),
-      buildRow("logit lens", payload?.logit_lens),
+      buildInternalsCapabilityRow("attention", payload?.attention),
+      buildInternalsCapabilityRow("saliency", payload?.saliency),
+      buildInternalsCapabilityRow("logit lens", payload?.logit_lens),
     ];
   }, [analysisCapabilities]);
   const internalsVerdictPresentation = resolveInternalsVerdictPresentation(
@@ -459,13 +527,10 @@ export function ModelIntrospectionDashboard() {
   );
   const internalsVerdictLabel = internalsVerdictPresentation.label;
   const internalsVerdictTone = internalsVerdictPresentation.tone;
-  const probeLimitsLabel = useMemo(() => {
-    const limits = analysisCapabilities?.limits;
-    if (!limits) {
-      return "limits: n/a";
-    }
-    return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
-  }, [analysisCapabilities?.limits]);
+  const probeLimitsLabel = useMemo(
+    () => buildProbeLimitsLabel(analysisCapabilities?.limits),
+    [analysisCapabilities?.limits],
+  );
   const internalsVerdict = useMemo(() => {
     if (!analysisCapabilities) {
       return null;
@@ -492,34 +557,10 @@ export function ModelIntrospectionDashboard() {
   const inputProfile = analysisResult?.analysis?.input_profile ?? null;
   const generationProfile = analysisResult?.analysis?.generation_profile ?? null;
 
-  const runTrends = useMemo<RunTrends | null>(() => {
-    const payload = analysisResult?.analysis?.run_trends;
-    if (!payload || typeof payload !== "object") {
-      return null;
-    }
-    const runs = typeof payload.runs === "number" ? payload.runs : 0;
-    if (runs <= 0) {
-      return null;
-    }
-    return {
-      runs,
-      window: typeof payload.window === "number" ? payload.window : runs,
-      runtimeTraceRate:
-        typeof payload.runtime_trace_rate === "number" ? payload.runtime_trace_rate : 0,
-      probeRuntimeRate:
-        typeof payload.probe_runtime_rate === "number" ? payload.probe_runtime_rate : 0,
-      highCoverageRate:
-        typeof payload.high_coverage_rate === "number" ? payload.high_coverage_rate : 0,
-      liveStreamingRate:
-        typeof payload.live_streaming_rate === "number" ? payload.live_streaming_rate : 0,
-      avgFirstContentMs:
-        typeof payload.avg_first_content_ms === "number"
-          ? payload.avg_first_content_ms
-          : null,
-      avgNoiseRatio:
-        typeof payload.avg_noise_ratio === "number" ? payload.avg_noise_ratio : null,
-    };
-  }, [analysisResult?.analysis?.run_trends]);
+  const runTrends = useMemo<RunTrends | null>(
+    () => buildRunTrends(analysisResult?.analysis?.run_trends),
+    [analysisResult?.analysis?.run_trends],
+  );
   const operatorChecklist = buildOperatorChecklist({
     ragSource: String(analysisResult?.analysis?.rag_focus?.source || "graph_fallback"),
     probeSource: String(analysisResult?.analysis?.logit_lens?.source || "probe_unavailable"),

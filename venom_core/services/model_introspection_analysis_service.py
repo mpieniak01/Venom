@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any, AsyncIterator
 from uuid import UUID
 
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services.llm_simple_service import stream_simple_chat
+from venom_core.services.model_introspection_logit_lens_service import (
+    build_logit_lens_payload,
+)
+from venom_core.services.model_introspection_operator_trends_service import (
+    record_operator_run,
+)
+from venom_core.services.model_introspection_rag_focus_service import (
+    build_rag_focus_payload,
+)
 from venom_core.services.model_introspection_service import (
     build_model_introspection_snapshot,
 )
@@ -20,6 +30,9 @@ _ANALYSIS_STREAM_FAILED = "analysis stream failed"
 _TIMELINE_LABEL_SNAPSHOT_CAPTURED = "Snapshot captured"
 _TIMELINE_LABEL_PROMPT_PREPARED = "Prompt prepared"
 _TIMELINE_LABEL_STREAM_OPENED = "Stream opened"
+_TIMELINE_LABEL_LOGIT_LENS = "Logit lens probe"
+_STREAM_DELAYED_THRESHOLD_MS = 1000.0
+_STREAM_BUFFERED_WINDOW_MS = 250.0
 
 
 def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
@@ -77,6 +90,13 @@ def _extract_content_text(payload: str) -> str:
     return str(parsed.get("text") or "")
 
 
+def _estimate_text_tokens(text: str) -> int:
+    stripped = text.strip()
+    if not stripped:
+        return 0
+    return max(len(stripped.split()), len(stripped) // 4)
+
+
 def _consume_sse_events(
     *,
     drained_events: list[tuple[str, str]],
@@ -85,6 +105,7 @@ def _consume_sse_events(
     chunk_count: int,
     first_content_at_ms: float | None,
     chunk_at_ms: float,
+    content_event_times_ms: list[float] | None = None,
 ) -> tuple[int, float | None]:
     for event_name, payload in drained_events:
         events.append(event_name)
@@ -104,6 +125,8 @@ def _consume_sse_events(
             continue
         content_parts.append(text)
         chunk_count += 1
+        if content_event_times_ms is not None:
+            content_event_times_ms.append(chunk_at_ms)
         if first_content_at_ms is None:
             first_content_at_ms = chunk_at_ms
     return chunk_count, first_content_at_ms
@@ -230,9 +253,395 @@ def _summarize_request_trace(request_id: UUID | None) -> dict[str, Any] | None:
         "context_preview_truncated": context_preview_step.get(
             "prompt_context_truncated"
         ),
+        "hidden_prompts_count": context_preview_step.get("hidden_prompts_count"),
         "adapter_applied": trace.adapter_applied,
         "adapter_id": trace.adapter_id,
     }
+
+
+def _extract_context_preview_text(process_trace: dict[str, Any] | None) -> str:
+    if not isinstance(process_trace, dict):
+        return ""
+    steps = process_trace.get("steps")
+    if not isinstance(steps, list):
+        return ""
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if str(step.get("action") or "") != "context_preview":
+            continue
+        details = step.get("details")
+        if not isinstance(details, str):
+            continue
+        parsed = _parse_json_dict(details)
+        preview = parsed.get("prompt_context_preview")
+        if isinstance(preview, str):
+            return preview
+    return ""
+
+
+def _extract_system_prompt_text(context_preview: str) -> str:
+    if not context_preview:
+        return ""
+    match = re.search(r"SYSTEM:\n(.*?)\n\nUSER:", context_preview, flags=re.DOTALL)
+    if match is None:
+        return ""
+    return str(match.group(1) or "").strip()
+
+
+def _split_answer_fragments(answer_text: str) -> list[str]:
+    normalized = answer_text.strip()
+    if not normalized:
+        return []
+    fragments = [
+        part.strip() for part in re.split(r"(?<=[.!?])\s+", normalized) if part.strip()
+    ]
+    return fragments
+
+
+def _compute_percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return round(ordered[0], 2)
+    bounded = max(0.0, min(100.0, percentile))
+    raw_index = (len(ordered) - 1) * (bounded / 100.0)
+    lower = int(raw_index)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = raw_index - lower
+    value = ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+    return round(value, 2)
+
+
+def _classify_stream_quality(
+    *,
+    chunk_count: int,
+    first_content_at_ms: float | None,
+    elapsed_ms: float,
+) -> str:
+    if chunk_count <= 0:
+        return "no_content"
+    if chunk_count > 1:
+        return "live_streaming"
+    if (
+        first_content_at_ms is not None
+        and first_content_at_ms >= _STREAM_DELAYED_THRESHOLD_MS
+    ):
+        return "single_chunk_delayed"
+    if (
+        first_content_at_ms is not None
+        and (elapsed_ms - first_content_at_ms) <= _STREAM_BUFFERED_WINDOW_MS
+    ):
+        return "buffered_delivery"
+    return "single_chunk"
+
+
+def _build_stream_profile(
+    *,
+    request_ready_at_ms: float,
+    response_received_at_ms: float,
+    elapsed_ms: float,
+    chunk_count: int,
+    events: list[str],
+    first_content_at_ms: float | None,
+    content_event_times_ms: list[float],
+    response_text: str,
+) -> dict[str, Any]:
+    intervals_ms: list[float] = []
+    for previous, current in zip(content_event_times_ms, content_event_times_ms[1:]):
+        intervals_ms.append(round(current - previous, 2))
+    chars = len(response_text)
+    chars_per_second = (
+        round((chars / elapsed_ms) * 1000.0, 2) if elapsed_ms > 0 else None
+    )
+    return {
+        "time_to_stream_open_ms": round(
+            response_received_at_ms - request_ready_at_ms, 2
+        ),
+        "time_to_first_byte_ms": round(
+            response_received_at_ms - request_ready_at_ms, 2
+        ),
+        "time_to_first_byte_estimated": True,
+        "time_to_first_byte_source": "estimated_stream_open",
+        "time_to_first_content_ms": (
+            round(first_content_at_ms, 2)
+            if isinstance(first_content_at_ms, (int, float))
+            else None
+        ),
+        "time_to_response_done_ms": round(elapsed_ms, 2),
+        "chunk_count": chunk_count,
+        "event_count": len(events),
+        "chunk_intervals_ms": intervals_ms,
+        "chunk_interval_p50_ms": _compute_percentile(intervals_ms, 50.0),
+        "chunk_interval_p95_ms": _compute_percentile(intervals_ms, 95.0),
+        "chars_per_second": chars_per_second,
+        "stream_quality": _classify_stream_quality(
+            chunk_count=chunk_count,
+            first_content_at_ms=first_content_at_ms,
+            elapsed_ms=elapsed_ms,
+        ),
+    }
+
+
+def _build_input_profile(
+    *,
+    prompt: str,
+    process_trace: dict[str, Any] | None,
+) -> dict[str, Any]:
+    context_preview = _extract_context_preview_text(process_trace)
+    system_prompt = _extract_system_prompt_text(context_preview)
+    return {
+        "prompt_chars": len(prompt),
+        "prompt_tokens_est": _estimate_text_tokens(prompt),
+        "context_tokens_est": _estimate_text_tokens(context_preview),
+        "system_tokens_est": _estimate_text_tokens(system_prompt),
+        "context_preview_available": bool(context_preview),
+        "prompt_trimmed": bool(process_trace.get("prompt_trimmed"))
+        if isinstance(process_trace, dict)
+        else False,
+        "context_preview_truncated": (
+            bool(process_trace.get("context_preview_truncated"))
+            if isinstance(process_trace, dict)
+            else False
+        ),
+        "hidden_prompts_count": (
+            int(process_trace.get("hidden_prompts_count") or 0)
+            if isinstance(process_trace, dict)
+            else 0
+        ),
+    }
+
+
+def _build_generation_profile(
+    *,
+    max_tokens: int | None,
+    temperature: float | None,
+    top_p: float | None,
+    process_trace: dict[str, Any] | None,
+) -> dict[str, Any]:
+    adapter_applied = (
+        process_trace.get("adapter_applied")
+        if isinstance(process_trace, dict)
+        else None
+    )
+    adapter_id = (
+        process_trace.get("adapter_id") if isinstance(process_trace, dict) else None
+    )
+    if adapter_applied is True or adapter_id:
+        fallback_signal = "used"
+    elif adapter_applied is False:
+        fallback_signal = "none"
+    else:
+        fallback_signal = "unknown"
+    return {
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_p_requested": top_p,
+        "top_p_applied": None,
+        "top_p_source": "request",
+        "top_p_status": "requested_only"
+        if isinstance(top_p, (int, float))
+        else "unavailable",
+        "adapter_applied": adapter_applied,
+        "adapter_id": adapter_id,
+        "fallback_signal": fallback_signal,
+    }
+
+
+def _build_evidence_coverage_profile(
+    *,
+    response_text: str,
+    rag_focus: dict[str, Any],
+) -> dict[str, Any]:
+    fragments = _split_answer_fragments(response_text)
+    links = rag_focus.get("answer_evidence_links")
+    links_list = links if isinstance(links, list) else []
+    linked_fragments = len(links_list)
+    fragments_total = len(fragments)
+    coverage_percent = (
+        round((linked_fragments / fragments_total) * 100.0, 2)
+        if fragments_total > 0
+        else 0.0
+    )
+    orphan_fragments = max(0, fragments_total - linked_fragments)
+    return {
+        "fragments_total": fragments_total,
+        "fragments_linked": linked_fragments,
+        "coverage_percent": coverage_percent,
+        "orphan_fragments": orphan_fragments,
+    }
+
+
+def _build_rag_profile(
+    *,
+    rag_focus: dict[str, Any],
+) -> dict[str, Any]:
+    entities = rag_focus.get("entities")
+    evidence_edges = rag_focus.get("evidence_edges")
+    active_entity_ids = rag_focus.get("active_entity_ids")
+    return {
+        "source": str(rag_focus.get("source") or "graph_fallback"),
+        "entities_count": len(entities) if isinstance(entities, list) else 0,
+        "evidence_edges_count": (
+            len(evidence_edges) if isinstance(evidence_edges, list) else 0
+        ),
+        "active_entities_count": (
+            len(active_entity_ids) if isinstance(active_entity_ids, list) else 0
+        ),
+        "grounding_score": rag_focus.get("grounding_score"),
+    }
+
+
+def _build_logit_profile(
+    *,
+    logit_lens: dict[str, Any],
+) -> dict[str, Any]:
+    checkpoints = logit_lens.get("checkpoints")
+    interpretability = logit_lens.get("interpretability")
+    interpretability_dict = (
+        interpretability if isinstance(interpretability, dict) else {}
+    )
+    return {
+        "source": str(logit_lens.get("source") or "probe_unavailable"),
+        "status": str(logit_lens.get("status") or "probe_unavailable"),
+        "checkpoints_count": len(checkpoints) if isinstance(checkpoints, list) else 0,
+        "interpretable": bool(interpretability_dict.get("interpretable")),
+        "confidence_band": str(
+            interpretability_dict.get("confidence_band") or "unknown"
+        ),
+        "token_noise_ratio": float(
+            interpretability_dict.get("token_noise_ratio") or 0.0
+        ),
+    }
+
+
+def _build_operator_conclusion_payload(
+    *,
+    rag_focus: dict[str, Any],
+    logit_lens: dict[str, Any],
+    evidence_coverage: dict[str, Any],
+    stream_profile: dict[str, Any],
+) -> dict[str, Any]:
+    rag_source = str(rag_focus.get("source") or "graph_fallback")
+    logit_source = str(logit_lens.get("source") or "probe_unavailable")
+    grounding_score = rag_focus.get("grounding_score")
+    coverage_percent = float(evidence_coverage.get("coverage_percent") or 0.0)
+    stream_quality = str(stream_profile.get("stream_quality") or "no_content")
+    interpretability = logit_lens.get("interpretability")
+    interpretability_dict = (
+        interpretability if isinstance(interpretability, dict) else {}
+    )
+    token_noise_ratio = float(interpretability_dict.get("token_noise_ratio") or 0.0)
+
+    reason_codes: list[str] = []
+    if rag_source == "runtime_trace":
+        reason_codes.append("R1_RUNTIME_TRACE")
+    else:
+        reason_codes.append("R1_GRAPH_FALLBACK")
+
+    if coverage_percent >= 70.0:
+        reason_codes.append("R2_COVERAGE_HIGH")
+    elif coverage_percent >= 40.0:
+        reason_codes.append("R2_COVERAGE_MEDIUM")
+    else:
+        reason_codes.append("R2_COVERAGE_LOW")
+
+    if logit_source == "probe_runtime":
+        reason_codes.append("R3_PROBE_RUNTIME")
+    else:
+        reason_codes.append("R3_PROBE_FALLBACK")
+
+    if stream_quality in {"live_streaming", "single_chunk"}:
+        reason_codes.append("R4_STREAM_OK")
+    elif stream_quality == "single_chunk_delayed":
+        reason_codes.append("R4_STREAM_DELAYED")
+    else:
+        reason_codes.append("R4_STREAM_DEGRADED")
+
+    if token_noise_ratio >= 0.7:
+        reason_codes.append("R5_LOGIT_NOISE_HIGH")
+    elif token_noise_ratio >= 0.35:
+        reason_codes.append("R5_LOGIT_NOISE_MEDIUM")
+    else:
+        reason_codes.append("R5_LOGIT_NOISE_LOW")
+
+    grounded = (
+        rag_source == "runtime_trace"
+        and coverage_percent >= 60.0
+        and isinstance(grounding_score, (int, float))
+        and float(grounding_score) >= 0.55
+    )
+    weakly_grounded = (
+        rag_source == "runtime_trace"
+        or coverage_percent >= 35.0
+        or logit_source == "probe_runtime"
+    )
+    if grounded:
+        verdict = "grounded"
+        confidence = "high" if coverage_percent >= 75 else "medium"
+    elif weakly_grounded:
+        verdict = "weakly_grounded"
+        confidence = "medium"
+    else:
+        verdict = "ungrounded"
+        confidence = "low"
+
+    partial = rag_source != "runtime_trace" or logit_source != "probe_runtime"
+    return {
+        "verdict": verdict,
+        "confidence_tier": confidence,
+        "partial": partial,
+        "reason_codes": reason_codes,
+        "stream_quality": stream_quality,
+        "internals_quality": "runtime_probe"
+        if logit_source == "probe_runtime"
+        else "fallback_probe",
+        "evidence_coverage_percent": coverage_percent,
+        "token_noise_ratio": round(token_noise_ratio, 4),
+    }
+
+
+def _record_run_trends(
+    *,
+    process_trace: dict[str, Any] | None,
+    rag_profile: dict[str, Any],
+    logit_profile: dict[str, Any],
+    stream_profile: dict[str, Any],
+    evidence_coverage: dict[str, Any],
+    settings: Any = None,
+) -> dict[str, Any] | None:
+    request_id = ""
+    if isinstance(process_trace, dict):
+        request_id = str(process_trace.get("request_id") or "").strip()
+    if not request_id:
+        request_id = f"run-{int(time.time() * 1000)}"
+    coverage_raw = evidence_coverage.get("coverage_percent")
+    first_content_raw = stream_profile.get("time_to_first_content_ms")
+    token_noise_raw = logit_profile.get("token_noise_ratio")
+    coverage_percent = (
+        float(coverage_raw) if isinstance(coverage_raw, (int, float)) else None
+    )
+    first_content_ms = (
+        float(first_content_raw)
+        if isinstance(first_content_raw, (int, float))
+        else None
+    )
+    token_noise_ratio = (
+        float(token_noise_raw) if isinstance(token_noise_raw, (int, float)) else None
+    )
+
+    return record_operator_run(
+        request_id=request_id,
+        rag_source=str(rag_profile.get("source") or "graph_fallback"),
+        probe_source=str(logit_profile.get("source") or "probe_unavailable"),
+        stream_quality=str(stream_profile.get("stream_quality") or "unknown"),
+        coverage_percent=coverage_percent,
+        first_content_ms=first_content_ms,
+        token_noise_ratio=token_noise_ratio,
+        settings=settings,
+    )
 
 
 def _build_skipped_analysis_result(
@@ -386,6 +795,7 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
     events: list[str] = []
     chunk_count = 0
     first_content_at_ms: float | None = None
+    content_event_times_ms: list[float] = []
     stream_started_at = time.perf_counter()
 
     body_iterator = getattr(response, "body_iterator", None)
@@ -413,6 +823,7 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
             chunk_count=chunk_count,
             first_content_at_ms=first_content_at_ms,
             chunk_at_ms=chunk_at_ms,
+            content_event_times_ms=content_event_times_ms,
         )
 
     if sse_tail.strip():
@@ -424,6 +835,7 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
             chunk_count=chunk_count,
             first_content_at_ms=first_content_at_ms,
             chunk_at_ms=(time.perf_counter() - stream_started_at) * 1000.0,
+            content_event_times_ms=content_event_times_ms,
         )
 
     return {
@@ -432,7 +844,115 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
         "events": events,
         "raw_chunks": raw_chunks,
         "first_content_at_ms": first_content_at_ms,
+        "content_event_times_ms": content_event_times_ms,
     }
+
+
+def _build_logit_lens_timeline_step(
+    *,
+    logit_lens: dict[str, Any],
+    at_ms: float,
+) -> dict[str, Any]:
+    diagnostics = logit_lens.get("diagnostics")
+    diagnostics_dict = diagnostics if isinstance(diagnostics, dict) else {}
+    elapsed_ms = diagnostics_dict.get("elapsed_ms")
+    status = str(logit_lens.get("status") or "probe_unavailable")
+    checkpoints = logit_lens.get("checkpoints")
+    checkpoint_count = len(checkpoints) if isinstance(checkpoints, list) else 0
+    if status == "ok":
+        detail = (
+            f"{checkpoint_count} checkpoint(s) · {elapsed_ms:.1f} ms"
+            if isinstance(elapsed_ms, (int, float))
+            else f"{checkpoint_count} checkpoint(s)"
+        )
+        step_status = "done"
+    else:
+        code = str(logit_lens.get("code") or "probe_unavailable")
+        detail = code
+        step_status = "skipped"
+    return {
+        "id": "logit_lens_probe",
+        "label": _TIMELINE_LABEL_LOGIT_LENS,
+        "status": step_status,
+        "detail": detail,
+        "at_ms": at_ms,
+        "progress": 95,
+    }
+
+
+async def _collect_logit_lens_payload_safe(
+    *,
+    prompt: str,
+    response_text: str,
+) -> dict[str, Any]:
+    try:
+        return await build_logit_lens_payload(
+            prompt=prompt,
+            response_text=response_text,
+        )
+    except (RuntimeError, ValueError, TypeError):
+        logger.exception("Model introspection logit lens probe failed")
+        return {
+            "source": "probe_unavailable",
+            "status": "probe_unavailable",
+            "code": "probe_failed",
+            "message": "Probe is unavailable for this run",
+            "runtime_label": None,
+            "input_tokens": [],
+            "output_tokens": [],
+            "checkpoints": [],
+            "signals": {
+                "early_unstable": False,
+                "late_stabilized": False,
+                "low_confidence_path": False,
+            },
+            "interpretability": {
+                "interpretable": False,
+                "confidence_band": "unknown",
+                "token_noise_ratio": 1.0,
+                "readable_top_tokens": 0,
+                "total_top_tokens": 0,
+            },
+            "diagnostics": {},
+        }
+
+
+def _build_rag_focus_fallback(
+    *,
+    prompt: str,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "source": "graph_fallback",
+        "query": prompt,
+        "entities": [],
+        "evidence_edges": [],
+        "active_entity_ids": [],
+        "grounding_score": None,
+        "answer_evidence_links": [],
+    }
+
+
+def _collect_rag_focus_payload_safe(
+    *,
+    prompt: str,
+    snapshot: dict[str, Any],
+    process_trace: dict[str, Any] | None,
+    response_text: str,
+) -> dict[str, Any]:
+    try:
+        return build_rag_focus_payload(
+            prompt=prompt,
+            snapshot=snapshot,
+            process_trace=process_trace,
+            response_text=response_text,
+        )
+    except (RuntimeError, ValueError, TypeError):
+        logger.exception("Model introspection rag focus extraction failed")
+        return _build_rag_focus_fallback(
+            prompt=prompt,
+            snapshot=snapshot,
+        )
 
 
 def _build_analysis_timeline(
@@ -444,6 +964,7 @@ def _build_analysis_timeline(
     request_ready_at_ms: float,
     response_received_at_ms: float,
     snapshot_after_at_ms: float | None,
+    logit_lens_step: dict[str, Any] | None = None,
     refreshed_snapshot: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     timeline: list[dict[str, Any]] = [
@@ -496,6 +1017,9 @@ def _build_analysis_timeline(
         }
     )
 
+    if logit_lens_step is not None:
+        timeline.append(logit_lens_step)
+
     if refreshed_snapshot is not None:
         timeline.append(
             {
@@ -517,6 +1041,7 @@ async def stream_model_introspection_analysis(
     live_analysis_enabled: bool = False,
     max_tokens: int | None = 128,
     temperature: float | None = 0.2,
+    top_p: float | None = None,
     model_manager: Any = None,
     settings: Any = None,
 ) -> AsyncIterator[str]:
@@ -541,6 +1066,7 @@ async def stream_model_introspection_analysis(
         model=runtime["model"],
         max_tokens=max_tokens,
         temperature=temperature,
+        top_p=top_p,
     )
     request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     running_result = _build_running_analysis_result(
@@ -558,6 +1084,7 @@ async def stream_model_introspection_analysis(
     events: list[str] = []
     chunk_count = 0
     first_content_at_ms: float | None = None
+    content_event_times_ms: list[float] = []
     sse_tail = ""
 
     body_iterator = getattr(response, "body_iterator", None)
@@ -600,6 +1127,7 @@ async def stream_model_introspection_analysis(
                 chunk_count=chunk_count,
                 first_content_at_ms=first_content_at_ms,
                 chunk_at_ms=chunk_at_ms,
+                content_event_times_ms=content_event_times_ms,
             )
             yield chunk_text
 
@@ -612,6 +1140,7 @@ async def stream_model_introspection_analysis(
                 chunk_count=chunk_count,
                 first_content_at_ms=first_content_at_ms,
                 chunk_at_ms=(time.perf_counter() - flow_started_at) * 1000.0,
+                content_event_times_ms=content_event_times_ms,
             )
     except Exception as exc:
         logger.exception("Model introspection analysis stream failed")
@@ -638,17 +1167,74 @@ async def stream_model_introspection_analysis(
         return
 
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    logit_lens = await _collect_logit_lens_payload_safe(
+        prompt=prompt,
+        response_text="".join(content_parts),
+    )
+    logit_lens_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    logit_lens_step = _build_logit_lens_timeline_step(
+        logit_lens=logit_lens,
+        at_ms=logit_lens_at_ms,
+    )
     refreshed_snapshot = await build_model_introspection_snapshot(
         model_manager=model_manager, settings=settings
     )
     snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-    process_trace = _summarize_request_trace(request_id)
     stream_payload = {
         "response_text": "".join(content_parts),
         "chunk_count": chunk_count,
         "events": events,
         "first_content_at_ms": first_content_at_ms,
+        "content_event_times_ms": content_event_times_ms,
     }
+    process_trace = _summarize_request_trace(request_id)
+    response_text = str(stream_payload["response_text"])
+    rag_focus = _collect_rag_focus_payload_safe(
+        prompt=prompt,
+        snapshot=snapshot,
+        process_trace=process_trace,
+        response_text=response_text,
+    )
+    input_profile = _build_input_profile(
+        prompt=prompt,
+        process_trace=process_trace,
+    )
+    generation_profile = _build_generation_profile(
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        process_trace=process_trace,
+    )
+    stream_profile = _build_stream_profile(
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        elapsed_ms=elapsed_ms,
+        chunk_count=chunk_count,
+        events=events,
+        first_content_at_ms=first_content_at_ms,
+        content_event_times_ms=content_event_times_ms,
+        response_text=response_text,
+    )
+    evidence_coverage = _build_evidence_coverage_profile(
+        response_text=response_text,
+        rag_focus=rag_focus,
+    )
+    rag_profile = _build_rag_profile(rag_focus=rag_focus)
+    logit_profile = _build_logit_profile(logit_lens=logit_lens)
+    operator_conclusion = _build_operator_conclusion_payload(
+        rag_focus=rag_focus,
+        logit_lens=logit_lens,
+        evidence_coverage=evidence_coverage,
+        stream_profile=stream_profile,
+    )
+    run_trends = _record_run_trends(
+        process_trace=process_trace,
+        rag_profile=rag_profile,
+        logit_profile=logit_profile,
+        stream_profile=stream_profile,
+        evidence_coverage=evidence_coverage,
+        settings=settings,
+    )
     analysis_timeline = _build_analysis_timeline(
         prompt=prompt,
         runtime=runtime,
@@ -657,6 +1243,7 @@ async def stream_model_introspection_analysis(
         request_ready_at_ms=request_ready_at_ms,
         response_received_at_ms=response_received_at_ms,
         snapshot_after_at_ms=snapshot_after_at_ms,
+        logit_lens_step=logit_lens_step,
         refreshed_snapshot=refreshed_snapshot,
     )
     final_result = {
@@ -679,6 +1266,16 @@ async def stream_model_introspection_analysis(
             "response_received_ms": response_received_at_ms,
             "snapshot_after_ms": snapshot_after_at_ms,
             "process": process_trace,
+            "rag_focus": rag_focus,
+            "rag_profile": rag_profile,
+            "logit_lens": logit_lens,
+            "logit_profile": logit_profile,
+            "input_profile": input_profile,
+            "generation_profile": generation_profile,
+            "stream_profile": stream_profile,
+            "evidence_coverage": evidence_coverage,
+            "operator_conclusion": operator_conclusion,
+            "run_trends": run_trends,
         },
     }
     yield _serialize_sse_event("analysis_done", final_result)
@@ -690,6 +1287,7 @@ async def analyze_model_with_optional_live_run(
     live_analysis_enabled: bool = False,
     max_tokens: int | None = 128,
     temperature: float | None = 0.2,
+    top_p: float | None = None,
     model_manager: Any = None,
     settings: Any = None,
 ) -> dict[str, Any]:
@@ -713,6 +1311,7 @@ async def analyze_model_with_optional_live_run(
         model=runtime["model"],
         max_tokens=max_tokens,
         temperature=temperature,
+        top_p=top_p,
     )
     request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     result: dict[str, Any] = {
@@ -726,11 +1325,71 @@ async def analyze_model_with_optional_live_run(
     response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     stream_payload = await _collect_streaming_response(response)
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    logit_lens = await _collect_logit_lens_payload_safe(
+        prompt=prompt,
+        response_text=str(stream_payload.get("response_text") or ""),
+    )
+    logit_lens_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    logit_lens_step = _build_logit_lens_timeline_step(
+        logit_lens=logit_lens,
+        at_ms=logit_lens_at_ms,
+    )
     refreshed_snapshot = await build_model_introspection_snapshot(
         model_manager=model_manager, settings=settings
     )
     snapshot_after_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     process_trace = _summarize_request_trace(request_id)
+    response_text = str(stream_payload.get("response_text") or "")
+    rag_focus = _collect_rag_focus_payload_safe(
+        prompt=prompt,
+        snapshot=snapshot,
+        process_trace=process_trace,
+        response_text=response_text,
+    )
+    input_profile = _build_input_profile(
+        prompt=prompt,
+        process_trace=process_trace,
+    )
+    generation_profile = _build_generation_profile(
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        process_trace=process_trace,
+    )
+    stream_profile = _build_stream_profile(
+        request_ready_at_ms=request_ready_at_ms,
+        response_received_at_ms=response_received_at_ms,
+        elapsed_ms=elapsed_ms,
+        chunk_count=int(stream_payload.get("chunk_count") or 0),
+        events=list(stream_payload.get("events") or []),
+        first_content_at_ms=(
+            float(stream_payload["first_content_at_ms"])
+            if isinstance(stream_payload.get("first_content_at_ms"), (int, float))
+            else None
+        ),
+        content_event_times_ms=list(stream_payload.get("content_event_times_ms") or []),
+        response_text=response_text,
+    )
+    evidence_coverage = _build_evidence_coverage_profile(
+        response_text=response_text,
+        rag_focus=rag_focus,
+    )
+    rag_profile = _build_rag_profile(rag_focus=rag_focus)
+    logit_profile = _build_logit_profile(logit_lens=logit_lens)
+    operator_conclusion = _build_operator_conclusion_payload(
+        rag_focus=rag_focus,
+        logit_lens=logit_lens,
+        evidence_coverage=evidence_coverage,
+        stream_profile=stream_profile,
+    )
+    run_trends = _record_run_trends(
+        process_trace=process_trace,
+        rag_profile=rag_profile,
+        logit_profile=logit_profile,
+        stream_profile=stream_profile,
+        evidence_coverage=evidence_coverage,
+        settings=settings,
+    )
     analysis_timeline = _build_analysis_timeline(
         prompt=prompt,
         runtime=runtime,
@@ -739,6 +1398,7 @@ async def analyze_model_with_optional_live_run(
         request_ready_at_ms=request_ready_at_ms,
         response_received_at_ms=response_received_at_ms,
         snapshot_after_at_ms=snapshot_after_at_ms,
+        logit_lens_step=logit_lens_step,
         refreshed_snapshot=refreshed_snapshot,
     )
 
@@ -761,6 +1421,16 @@ async def analyze_model_with_optional_live_run(
                 "response_received_ms": response_received_at_ms,
                 "snapshot_after_ms": snapshot_after_at_ms,
                 "process": process_trace,
+                "rag_focus": rag_focus,
+                "rag_profile": rag_profile,
+                "logit_lens": logit_lens,
+                "logit_profile": logit_profile,
+                "input_profile": input_profile,
+                "generation_profile": generation_profile,
+                "stream_profile": stream_profile,
+                "evidence_coverage": evidence_coverage,
+                "operator_conclusion": operator_conclusion,
+                "run_trends": run_trends,
             },
         }
     )

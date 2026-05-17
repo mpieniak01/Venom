@@ -34,6 +34,21 @@ export type IntrospectionSnapshot = {
     usage_metrics: Record<string, unknown> | null;
     error: string | null;
   };
+  probe?: {
+    enabled: boolean;
+    status: string;
+    healthy: boolean;
+    runtime_supported: boolean;
+    endpoint_configured: boolean;
+    profile: string;
+    limits: {
+      timeout_seconds: number;
+      max_attempts: number;
+      max_top_k: number;
+      max_layer_count: number;
+      max_prompt_tokens: number;
+    };
+  };
   reuse: {
     brain: {
       path: string;
@@ -139,6 +154,102 @@ export type AnalysisProcessTrace = {
   adapter_id?: string | null;
 };
 
+export type RagFocusEntity = {
+  id: string;
+  label: string;
+  kind: string;
+  active: boolean;
+};
+
+export type RagFocusEvidenceEdge = {
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  active: boolean;
+};
+
+export type RagFocusGrounding = "strong" | "medium" | "weak" | "unknown";
+
+export type RagFocusStepStatus = "done" | "running" | "pending";
+
+export type RagFocusStep = {
+  id: "retrieval_started" | "entities_linked" | "context_packed" | "answer_grounded";
+  status: RagFocusStepStatus;
+};
+
+export type RagFocusModel = {
+  source: string;
+  query: string;
+  entities: RagFocusEntity[];
+  evidenceEdges: RagFocusEvidenceEdge[];
+  answerEvidenceLinks: Array<{
+    id: string;
+    fragment: string;
+    edgeIds: string[];
+    entityIds: string[];
+  }>;
+  activeEntityIds: string[];
+  grounding: RagFocusGrounding;
+  steps: RagFocusStep[];
+};
+
+export type OperatorConclusionVerdict = "grounded" | "weakly_grounded" | "ungrounded";
+
+export type OperatorConclusionModel = {
+  verdict: OperatorConclusionVerdict;
+  confidenceTier: "high" | "medium" | "low";
+  tone: BadgeTone;
+  reasons: string[];
+  reasonCodes: string[];
+  partial: boolean;
+  coveragePercent: number | null;
+  streamQuality: string | null;
+  internalsQuality: string | null;
+};
+
+export type LogitLensTopToken = {
+  token: string;
+  token_index: number;
+  score: number;
+};
+
+export type LogitLensCheckpoint = {
+  id: string;
+  percent: number;
+  layer: number;
+  top_k: LogitLensTopToken[];
+  top_token: string | null;
+  confidence: number | null;
+  changed: boolean;
+};
+
+export type LogitLensSignals = {
+  early_unstable: boolean;
+  late_stabilized: boolean;
+  low_confidence_path: boolean;
+};
+
+export type LogitLensModel = {
+  source: string;
+  status: string;
+  code: string | null;
+  message: string | null;
+  runtime_label: string | null;
+  input_tokens: string[];
+  output_tokens: string[];
+  checkpoints: LogitLensCheckpoint[];
+  signals: LogitLensSignals;
+  interpretability: {
+    interpretable: boolean;
+    confidence_band: string;
+    token_noise_ratio: number;
+    readable_top_tokens: number;
+    total_top_tokens: number;
+  };
+  diagnostics: Record<string, unknown>;
+};
+
 export type AnalysisPhase = "idle" | "requesting" | "streaming" | "first_chunk" | "completed";
 
 export type AnalysisResult = {
@@ -158,6 +269,139 @@ export type AnalysisResult = {
     response_received_ms?: number;
     snapshot_after_ms?: number;
     process?: AnalysisProcessTrace | null;
+    rag_focus?: {
+      source?: string;
+      query?: string;
+      entities?: Array<{ id?: string; label?: string; kind?: string; active?: boolean }>;
+      evidence_edges?: Array<{
+        id?: string;
+        from?: string;
+        to?: string;
+        label?: string;
+        active?: boolean;
+      }>;
+      active_entity_ids?: string[];
+      grounding_score?: number;
+      answer_evidence_links?: Array<{
+        id?: string;
+        fragment?: string;
+        edge_ids?: string[];
+        entity_ids?: string[];
+      }>;
+    } | null;
+    rag_profile?: {
+      source?: string;
+      entities_count?: number;
+      evidence_edges_count?: number;
+      active_entities_count?: number;
+      grounding_score?: number | null;
+    } | null;
+    logit_lens?: {
+      source?: string;
+      status?: string;
+      code?: string | null;
+      message?: string | null;
+      runtime_label?: string | null;
+      input_tokens?: string[];
+      output_tokens?: string[];
+      checkpoints?: Array<{
+        id?: string;
+        percent?: number;
+        layer?: number;
+        top_k?: Array<{
+          token?: string;
+          token_index?: number;
+          score?: number;
+        }>;
+        top_token?: string | null;
+        confidence?: number | null;
+        changed?: boolean;
+      }>;
+      signals?: {
+        early_unstable?: boolean;
+        late_stabilized?: boolean;
+        low_confidence_path?: boolean;
+      };
+      interpretability?: {
+        interpretable?: boolean;
+        confidence_band?: string;
+        token_noise_ratio?: number;
+        readable_top_tokens?: number;
+        total_top_tokens?: number;
+      };
+      diagnostics?: Record<string, unknown>;
+    } | null;
+    logit_profile?: {
+      source?: string;
+      status?: string;
+      checkpoints_count?: number;
+      interpretable?: boolean;
+      confidence_band?: string;
+      token_noise_ratio?: number;
+    } | null;
+    input_profile?: {
+      prompt_chars?: number;
+      prompt_tokens_est?: number;
+      context_tokens_est?: number;
+      system_tokens_est?: number;
+      context_preview_available?: boolean;
+      prompt_trimmed?: boolean;
+      context_preview_truncated?: boolean;
+      hidden_prompts_count?: number;
+    } | null;
+    generation_profile?: {
+      max_tokens?: number | null;
+      temperature?: number | null;
+      top_p?: number | null;
+      top_p_requested?: number | null;
+      top_p_applied?: number | null;
+      top_p_source?: string;
+      top_p_status?: string;
+      adapter_applied?: boolean | null;
+      adapter_id?: string | null;
+      fallback_signal?: string;
+    } | null;
+    stream_profile?: {
+      time_to_stream_open_ms?: number | null;
+      time_to_first_byte_ms?: number | null;
+      time_to_first_byte_estimated?: boolean;
+      time_to_first_byte_source?: string;
+      time_to_first_content_ms?: number | null;
+      time_to_response_done_ms?: number | null;
+      chunk_count?: number;
+      event_count?: number;
+      chunk_intervals_ms?: number[];
+      chunk_interval_p50_ms?: number | null;
+      chunk_interval_p95_ms?: number | null;
+      chars_per_second?: number | null;
+      stream_quality?: string;
+    } | null;
+    evidence_coverage?: {
+      fragments_total?: number;
+      fragments_linked?: number;
+      coverage_percent?: number;
+      orphan_fragments?: number;
+    } | null;
+    operator_conclusion?: {
+      verdict?: string;
+      confidence_tier?: string;
+      partial?: boolean;
+      reason_codes?: string[];
+      stream_quality?: string;
+      internals_quality?: string;
+      evidence_coverage_percent?: number;
+      token_noise_ratio?: number;
+    } | null;
+    run_trends?: {
+      runs?: number;
+      window?: number;
+      runtime_trace_rate?: number;
+      probe_runtime_rate?: number;
+      high_coverage_rate?: number;
+      live_streaming_rate?: number;
+      avg_first_content_ms?: number | null;
+      avg_noise_ratio?: number | null;
+    } | null;
   } | null;
   snapshot_after?: IntrospectionSnapshot;
   skipped_reason?: string;

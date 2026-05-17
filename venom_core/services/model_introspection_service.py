@@ -6,6 +6,9 @@ import importlib.metadata
 import importlib.util
 from typing import Any, Optional
 
+from venom_core.services.model_introspection_probe_service import (
+    build_probe_health_payload,
+)
 from venom_core.utils.llm_runtime import detect_runtime_drift, get_active_llm_runtime
 
 _INTROSPECTION_PACKAGES: tuple[tuple[str, str], ...] = (
@@ -145,7 +148,8 @@ async def build_model_introspection_snapshot(
 ) -> dict[str, Any]:
     """Build a read-only snapshot for model visualization and diagnostics."""
 
-    runtime = get_active_llm_runtime(settings).to_payload()
+    active_runtime = get_active_llm_runtime(settings)
+    runtime = active_runtime.to_payload()
     runtime_drift = detect_runtime_drift(settings)
     packages = {
         package_name: _probe_package(module_name, package_name)
@@ -162,6 +166,29 @@ async def build_model_introspection_snapshot(
         if not probe["available"]
     )
 
+    probe_health = build_probe_health_payload(active_runtime)
+
+    runtime_probe_node = {
+        "id": "probe",
+        "label": f"probe:{probe_health['status']}",
+        "kind": "probe",
+        "status": "ready" if probe_health["healthy"] else "degraded",
+    }
+
+    graph_snapshot = _build_graph_snapshot(
+        runtime=runtime,
+        runtime_drift=runtime_drift,
+        available_packages=available_packages,
+        missing_packages=missing_packages,
+        model_manager=model_manager_snapshot,
+    )
+    graph_snapshot["nodes"].append(runtime_probe_node)
+    graph_snapshot["edges"].append(
+        {"from": "analysis", "to": "probe", "label": "introspection probe"}
+    )
+    graph_snapshot["summary"]["nodes"] = len(graph_snapshot["nodes"])
+    graph_snapshot["summary"]["edges"] = len(graph_snapshot["edges"])
+
     return {
         "runtime": runtime,
         "runtime_drift": runtime_drift,
@@ -169,13 +196,8 @@ async def build_model_introspection_snapshot(
         "available_packages": available_packages,
         "missing_packages": missing_packages,
         "model_manager": model_manager_snapshot,
-        "graph": _build_graph_snapshot(
-            runtime=runtime,
-            runtime_drift=runtime_drift,
-            available_packages=available_packages,
-            missing_packages=missing_packages,
-            model_manager=model_manager_snapshot,
-        ),
+        "probe": probe_health,
+        "graph": graph_snapshot,
         "reuse": {
             "brain": {
                 "path": "/brain",

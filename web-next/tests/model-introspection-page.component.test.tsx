@@ -607,7 +607,10 @@ describe("ModelIntrospectionDashboard", () => {
     assert.ok(screen.getByRole("link", { name: "Open Knowledge Graph" }));
     assert.ok(screen.getByLabelText("Prompt"));
     fireEvent.click(
-      screen.getByRole("button", { name: /Open the technical graph layer on demand|Hide the technical graph layer/i }),
+      screen.getByRole("button", { name: /Show technical layer|Hide technical layer/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Graph drilldown/i }),
     );
     assert.ok(screen.getByRole("button", { name: "Select graph node gemma-4-E2B-it · multi_runtime @ localhost:8014" }));
 
@@ -635,6 +638,10 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText("Response assembled"));
       assert.ok(screen.getByText("2 chunk(s) · 6 step(s) · completed"));
       assert.ok(screen.getByText("Analysis results"));
+      assert.ok(screen.getByText("RAG focus"));
+      assert.ok(screen.getByText("Query node"));
+      assert.ok(screen.getByText("step retrieval_started · done"));
+      assert.ok(screen.getByText("step answer_grounded · done"));
       assert.ok(screen.getByText("Coverage / analysis orb"));
       assert.ok(screen.getByText("Presentation highlights"));
       assert.ok(screen.getByText("Model verdict"));

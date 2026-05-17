@@ -55,6 +55,9 @@ def test_model_introspection_includes_runtime_packages() -> None:
     assert snapshot["model_manager"]["usage_metrics"]["models_count"] == 2
     assert snapshot["graph"]["summary"]["nodes"] >= 1
     assert snapshot["graph"]["summary"]["edges"] >= 1
+    assert "probe" in snapshot
+    assert "status" in snapshot["probe"]
+    assert "profile" in snapshot["probe"]
     assert dummy_manager.calls == 1
     assert "transformer-lens" in snapshot["packages"]
     assert "captum" in snapshot["packages"]

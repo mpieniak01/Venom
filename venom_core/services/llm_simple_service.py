@@ -423,6 +423,8 @@ def _build_payload(
         payload["max_tokens"] = request.max_tokens
     if request.temperature is not None:
         payload["temperature"] = request.temperature
+    if request.top_p is not None:
+        payload["top_p"] = request.top_p
     return payload
 
 

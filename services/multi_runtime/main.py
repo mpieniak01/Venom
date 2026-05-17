@@ -12,8 +12,9 @@ import time
 from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Any, Literal, Optional
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import httpx
 import numpy as np
@@ -38,7 +39,13 @@ from venom_core.utils.voice_metadata import build_voice_session_insights
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
 from .components import build_component_snapshot
-from .engine import InferenceError, ModelLoadError, MultiRuntimeDaemon, ReloadSignal
+from .engine import (
+    InferenceError,
+    ModelLoadError,
+    MultiRuntimeDaemon,
+    MultiRuntimeEngine,
+    ReloadSignal,
+)
 from .pipeline import MultiRuntimePipeline, PipelineRequestData
 from .schemas import (
     AssistantAttachRequest,
@@ -64,6 +71,19 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+_PROBE_TIMEOUT_SECONDS = float(os.getenv("GEMMA4_AUDIO_PROBE_TIMEOUT_SECONDS", "20"))
+_PROBE_MAX_PROMPT_TOKENS = int(
+    os.getenv("GEMMA4_AUDIO_PROBE_MAX_PROMPT_TOKENS", "1024")
+)
+_PROBE_MAX_LAYERS = int(os.getenv("GEMMA4_AUDIO_PROBE_MAX_LAYERS", "8"))
+_PROBE_MAX_TOP_K = int(os.getenv("GEMMA4_AUDIO_PROBE_MAX_TOP_K", "32"))
+_PROBE_HIDDEN_SLICE = int(os.getenv("GEMMA4_AUDIO_PROBE_HIDDEN_SLICE", "16"))
+_PROBE_ENABLED = str(os.getenv("GEMMA4_AUDIO_PROBE_ENABLED", "0")).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 # Global daemon instance
@@ -985,6 +1005,372 @@ class ChatCompletionRequest(BaseModel):
     temperature: float | None = None
     top_p: float | None = None
     stream: bool = False
+
+
+class IntrospectionProbeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(..., min_length=1, max_length=50000)
+    mode: Literal["hidden", "attention", "logits"] = "hidden"
+    layer_selection: list[int] = Field(default_factory=list, max_length=64)
+    top_k: int = Field(default=8, ge=1, le=256)
+
+
+def _sanitize_probe_layers(
+    requested_layers: list[int],
+    *,
+    available_layers: int,
+) -> tuple[list[int], list[str]]:
+    limits_hit: list[str] = []
+    valid_layers = sorted({layer for layer in requested_layers if layer >= 0})
+    if len(valid_layers) > _PROBE_MAX_LAYERS:
+        valid_layers = valid_layers[:_PROBE_MAX_LAYERS]
+        limits_hit.append("max_layers")
+    if available_layers <= 0:
+        return [], limits_hit
+    filtered_layers = [layer for layer in valid_layers if layer < available_layers]
+    if not filtered_layers:
+        filtered_layers = [available_layers - 1]
+    return filtered_layers, limits_hit
+
+
+def _tokenize_probe_prompt(
+    *,
+    tokenizer: Any,
+    prompt: str,
+) -> tuple[Any, list[str], bool]:
+    tokenized = tokenizer(
+        prompt,
+        return_tensors="pt",
+        add_special_tokens=True,
+        truncation=True,
+        max_length=_PROBE_MAX_PROMPT_TOKENS,
+    )
+    input_ids = tokenized.get("input_ids")
+    if input_ids is None:
+        raise RuntimeError("probe_tokenization_failed")
+    token_ids = input_ids[0].tolist()
+    try:
+        token_strings = tokenizer.convert_ids_to_tokens(token_ids)
+    except Exception:
+        token_strings = [str(token_id) for token_id in token_ids]
+    truncated = len(token_ids) >= _PROBE_MAX_PROMPT_TOKENS
+    return tokenized, token_strings, truncated
+
+
+def _extract_attention_top(
+    *,
+    layer_attention: Any,
+    top_k: int,
+    token_strings: list[str],
+) -> list[dict[str, object]]:
+    import torch
+
+    # [batch, heads, query, key] -> mean over heads for the last query token.
+    scores = layer_attention[0, :, -1, :].mean(dim=0)
+    score_count = int(scores.shape[0])
+    k = max(1, min(top_k, score_count, _PROBE_MAX_TOP_K))
+    values, indices = torch.topk(scores, k=k)
+    entries: list[dict[str, object]] = []
+    for value, index in zip(values.tolist(), indices.tolist()):
+        token_index = int(index)
+        token = token_strings[token_index] if token_index < len(token_strings) else "?"
+        entries.append(
+            {
+                "token_index": token_index,
+                "token": token,
+                "score": round(float(value), 6),
+            }
+        )
+    return entries
+
+
+def _extract_hidden_slice(layer_hidden: Any) -> list[float]:
+    vector = layer_hidden[0, -1, :].detach().float().cpu().tolist()
+    return [round(float(value), 6) for value in vector[:_PROBE_HIDDEN_SLICE]]
+
+
+def _extract_logits_top(
+    *,
+    logits_vector: Any,
+    top_k: int,
+    tokenizer: Any,
+) -> list[dict[str, object]]:
+    import torch
+
+    score_count = int(logits_vector.shape[0])
+    k = max(1, min(top_k, score_count, _PROBE_MAX_TOP_K))
+    values, indices = torch.topk(logits_vector, k=k)
+    entries: list[dict[str, object]] = []
+    for value, index in zip(values.tolist(), indices.tolist()):
+        token_index = int(index)
+        token = str(token_index)
+        try:
+            decoded = tokenizer.convert_ids_to_tokens([token_index])
+            if isinstance(decoded, list) and decoded:
+                token = str(decoded[0])
+        except Exception:
+            pass
+        entries.append(
+            {
+                "token_index": token_index,
+                "token": token,
+                "score": round(float(value), 6),
+            }
+        )
+    return entries
+
+
+def _run_probe_sync(
+    *,
+    engine: MultiRuntimeEngine,
+    prompt: str,
+    mode: Literal["hidden", "attention", "logits"],
+    layer_selection: list[int],
+    top_k: int,
+) -> tuple[dict[str, object], list[str], bool]:
+    import torch
+
+    model = engine.model
+    processor = engine.processor
+    if model is None or processor is None:
+        raise RuntimeError("model_not_loaded")
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is None:
+        raise RuntimeError("tokenizer_unavailable")
+
+    tokenized, token_strings, truncated = _tokenize_probe_prompt(
+        tokenizer=tokenizer,
+        prompt=prompt,
+    )
+    input_ids = tokenized.get("input_ids")
+    attention_mask = tokenized.get("attention_mask")
+    if input_ids is None:
+        raise RuntimeError("probe_tokenization_failed")
+    input_ids = input_ids.to(model.device)
+    if attention_mask is not None:
+        attention_mask = attention_mask.to(model.device)
+
+    with torch.no_grad():
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            output_attentions=(mode == "attention"),
+            use_cache=False,
+            return_dict=True,
+        )
+
+    hidden_states = getattr(outputs, "hidden_states", None)
+    attentions = getattr(outputs, "attentions", None)
+    limits_hit: list[str] = []
+    layer_count = len(hidden_states) if hidden_states is not None else 0
+    selected_layers, layer_limits = _sanitize_probe_layers(
+        layer_selection,
+        available_layers=layer_count,
+    )
+    limits_hit.extend(layer_limits)
+
+    layers_payload: list[dict[str, object]] = []
+    if mode == "hidden":
+        if hidden_states is None:
+            raise RuntimeError("hidden_states_unavailable")
+        for layer_idx in selected_layers:
+            layers_payload.append(
+                {
+                    "layer": layer_idx,
+                    "hidden_slice": _extract_hidden_slice(hidden_states[layer_idx]),
+                }
+            )
+    elif mode == "attention":
+        if attentions is None:
+            raise RuntimeError("attentions_unavailable")
+        attention_layers, attention_limits = _sanitize_probe_layers(
+            layer_selection,
+            available_layers=len(attentions),
+        )
+        limits_hit.extend(attention_limits)
+        for layer_idx in attention_layers:
+            layers_payload.append(
+                {
+                    "layer": layer_idx,
+                    "attention_top": _extract_attention_top(
+                        layer_attention=attentions[layer_idx],
+                        top_k=top_k,
+                        token_strings=token_strings,
+                    ),
+                }
+            )
+    else:
+        if hidden_states is None:
+            raise RuntimeError("hidden_states_unavailable")
+        lm_head = getattr(model, "lm_head", None)
+        if not callable(lm_head):
+            raise RuntimeError("lm_head_unavailable")
+        for layer_idx in selected_layers:
+            hidden_last = hidden_states[layer_idx][0, -1, :]
+            logits_vec = lm_head(hidden_last)
+            layers_payload.append(
+                {
+                    "layer": layer_idx,
+                    "logits_top": _extract_logits_top(
+                        logits_vector=logits_vec,
+                        top_k=top_k,
+                        tokenizer=tokenizer,
+                    ),
+                }
+            )
+
+    token_metadata = {
+        "token_count": int(input_ids.shape[-1]),
+        "tokens_preview": token_strings[:64],
+        "truncated": truncated,
+    }
+    return (
+        {
+            "query": prompt,
+            "mode": mode,
+            "layers": layers_payload,
+            "tokenization": token_metadata,
+        },
+        limits_hit,
+        truncated,
+    )
+
+
+@app.post("/v1/introspection/probe")
+async def introspection_probe(payload: IntrospectionProbeRequest) -> dict[str, object]:
+    request_id = str(uuid4())
+    started_at = time.perf_counter()
+
+    if not _PROBE_ENABLED:
+        return {
+            "status": "probe_unavailable",
+            "code": "probe_disabled",
+            "message": "Probe mode is disabled on this runtime",
+            "runtime_label": "multi_runtime",
+            "probe": None,
+            "diagnostics": {
+                "request_id": request_id,
+                "elapsed_ms": round((time.perf_counter() - started_at) * 1000.0, 2),
+                "limits_hit": [],
+            },
+        }
+
+    try:
+        daemon = get_daemon()
+        engine = daemon.active_engine()
+    except RuntimeError as exc:
+        return {
+            "status": "probe_unavailable",
+            "code": "runtime_unavailable",
+            "message": str(exc),
+            "runtime_label": "multi_runtime",
+            "probe": None,
+            "diagnostics": {
+                "request_id": request_id,
+                "elapsed_ms": round((time.perf_counter() - started_at) * 1000.0, 2),
+                "limits_hit": [],
+            },
+        }
+
+    if not engine.is_loaded():
+        return {
+            "status": "probe_unavailable",
+            "code": "model_not_loaded",
+            "message": "Model not loaded",
+            "runtime_label": "multi_runtime",
+            "probe": None,
+            "diagnostics": {
+                "request_id": request_id,
+                "elapsed_ms": round((time.perf_counter() - started_at) * 1000.0, 2),
+                "limits_hit": [],
+            },
+        }
+
+    if payload.top_k > _PROBE_MAX_TOP_K:
+        raise HTTPException(
+            status_code=400,
+            detail=f"top_k exceeds runtime limit ({_PROBE_MAX_TOP_K})",
+        )
+
+    if len(payload.layer_selection) > _PROBE_MAX_LAYERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"layer_selection exceeds runtime limit ({_PROBE_MAX_LAYERS})",
+        )
+
+    try:
+        probe_result, limits_hit, truncated = await asyncio.wait_for(
+            asyncio.to_thread(
+                _run_probe_sync,
+                engine=engine,
+                prompt=payload.prompt,
+                mode=payload.mode,
+                layer_selection=payload.layer_selection,
+                top_k=payload.top_k,
+            ),
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        return {
+            "status": "error",
+            "code": "probe_timeout",
+            "message": "Probe execution timed out",
+            "runtime_label": daemon.status().get("target_model", "multi_runtime"),
+            "probe": None,
+            "diagnostics": {
+                "request_id": request_id,
+                "elapsed_ms": round((time.perf_counter() - started_at) * 1000.0, 2),
+                "limits_hit": ["timeout"],
+            },
+        }
+    except RuntimeError as exc:
+        return {
+            "status": "error",
+            "code": "probe_failed",
+            "message": str(exc),
+            "runtime_label": daemon.status().get("target_model", "multi_runtime"),
+            "probe": None,
+            "diagnostics": {
+                "request_id": request_id,
+                "elapsed_ms": round((time.perf_counter() - started_at) * 1000.0, 2),
+                "limits_hit": ["runtime_error"],
+            },
+        }
+    except Exception:
+        logger.exception("multi_runtime probe failed")
+        return {
+            "status": "error",
+            "code": "probe_failed",
+            "message": "Probe execution failed",
+            "runtime_label": daemon.status().get("target_model", "multi_runtime"),
+            "probe": None,
+            "diagnostics": {
+                "request_id": request_id,
+                "elapsed_ms": round((time.perf_counter() - started_at) * 1000.0, 2),
+                "limits_hit": ["runtime_error"],
+            },
+        }
+
+    if truncated:
+        limits_hit.append("prompt_tokens")
+
+    elapsed_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+    diagnostics = {
+        "request_id": request_id,
+        "elapsed_ms": elapsed_ms,
+        "limits_hit": sorted(set(limits_hit)),
+        "payload_bytes": len(str(probe_result)),
+    }
+    return {
+        "status": "ok",
+        "code": None,
+        "message": "Probe completed",
+        "runtime_label": daemon.status().get("target_model", "multi_runtime"),
+        "probe": probe_result,
+        "diagnostics": diagnostics,
+    }
 
 
 @app.post("/v1/chat/completions")

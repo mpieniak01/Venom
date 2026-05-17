@@ -15,13 +15,22 @@ import type {
   SnapshotComparison,
 } from "@/components/inspector/model-introspection-dashboard-types";
 import {
+  buildOperatorConclusion,
+  buildLogitLensModel,
+  buildRagFocusModel,
   computeAnalysisProgress,
   formatCount,
   getAnalysisPhase,
   getAnswerStatusLabel,
   getAnswerTone,
+  getFallbackSignalTone,
+  getOperatorFinalStatusTone,
+  getOperatorStreamModeTone,
   getOrbSubtitle,
   getTypeHintText,
+  resolveFallbackSignal,
+  resolveOperatorFinalStatus,
+  resolveOperatorStreamMode,
   resolveSelectedGraphNodeDetails,
   splitAnswerHighlights,
 } from "@/components/inspector/model-introspection-dashboard-view-model";
@@ -29,7 +38,10 @@ import { useModelIntrospectionSnapshot } from "@/components/inspector/use-model-
 import { useModelIntrospectionAnalysisStream } from "@/components/inspector/use-model-introspection-analysis-stream";
 import {
   AnalysisInputPanel,
+  AnalysisLiveResponsePanel,
   AnalysisOrbPanel,
+  LogitLensPanel,
+  RagFocusPanel,
   AnalysisResultsPanel,
   GraphPanel,
   SnapshotComparisonPanel,
@@ -42,6 +54,88 @@ type SummaryCard = {
   accent: "violet" | "green" | "blue" | "indigo";
 };
 
+type RunTrends = {
+  runs: number;
+  window: number;
+  runtimeTraceRate: number;
+  probeRuntimeRate: number;
+  highCoverageRate: number;
+  liveStreamingRate: number;
+  avgFirstContentMs: number | null;
+  avgNoiseRatio: number | null;
+};
+
+type OperatorChecklistItem = {
+  id: string;
+  label: string;
+  status: "ok" | "warn";
+  detail: string;
+};
+
+function buildOperatorChecklist(args: {
+  ragSource: string;
+  probeSource: string;
+  coveragePercent: number | null;
+  streamQuality: string | undefined;
+  partial: boolean | undefined;
+  t: (key: string, replacements?: Record<string, string | number>) => string;
+}): OperatorChecklistItem[] {
+  const { ragSource, probeSource, coveragePercent, streamQuality, partial, t } = args;
+  const streamQualityLabel =
+    streamQuality && ["pending", "live_streaming", "single_chunk_delayed", "no_content"].includes(streamQuality)
+      ? t(`inspector.modelIntrospection.dashboard.analysis.streamMode.${streamQuality}`)
+      : streamQuality ?? t("inspector.modelIntrospection.dashboard.results.telemetry.unknown");
+  return [
+    {
+      id: "trace",
+      label: t("inspector.modelIntrospection.dashboard.results.checklist.traceLabel"),
+      status: ragSource === "runtime_trace" ? "ok" : "warn",
+      detail:
+        ragSource === "runtime_trace"
+          ? t("inspector.modelIntrospection.dashboard.results.checklist.traceOk")
+          : t("inspector.modelIntrospection.dashboard.results.checklist.traceWarn"),
+    },
+    {
+      id: "probe",
+      label: t("inspector.modelIntrospection.dashboard.results.checklist.probeLabel"),
+      status: probeSource === "probe_runtime" ? "ok" : "warn",
+      detail:
+        probeSource === "probe_runtime"
+          ? t("inspector.modelIntrospection.dashboard.results.checklist.probeOk")
+          : t("inspector.modelIntrospection.dashboard.results.checklist.probeWarn"),
+    },
+    {
+      id: "coverage",
+      label: t("inspector.modelIntrospection.dashboard.results.checklist.coverageLabel"),
+      status: (coveragePercent ?? 0) >= 60 ? "ok" : "warn",
+      detail: t(
+        "inspector.modelIntrospection.dashboard.results.checklist.coverageDetail",
+        { value: (coveragePercent ?? 0).toFixed(1) },
+      ),
+    },
+    {
+      id: "stream",
+      label: t("inspector.modelIntrospection.dashboard.results.checklist.streamLabel"),
+      status:
+        streamQuality === "live_streaming" || streamQuality === "single_chunk"
+          ? "ok"
+          : "warn",
+      detail: t(
+        "inspector.modelIntrospection.dashboard.results.checklist.streamDetail",
+        { value: streamQualityLabel },
+      ),
+    },
+    {
+      id: "partial",
+      label: t("inspector.modelIntrospection.dashboard.results.checklist.partialLabel"),
+      status: partial ? "warn" : "ok",
+      detail: partial
+        ? t("inspector.modelIntrospection.dashboard.results.checklist.partialWarn")
+        : t("inspector.modelIntrospection.dashboard.results.checklist.partialOk"),
+    },
+  ];
+}
+
 function buildSummaryCards(args: {
   snapshot: IntrospectionSnapshot;
   t: (key: string) => string;
@@ -51,6 +145,8 @@ function buildSummaryCards(args: {
   const availableCount = snapshot.available_packages.length;
   const missingCount = snapshot.missing_packages.length;
   const driftCount = snapshot.runtime_drift.issues.length;
+  const probeStatus = snapshot.probe?.status ?? "n/a";
+  const probeProfile = snapshot.probe?.profile ?? "n/a";
   return [
     {
       label: t("inspector.modelIntrospection.summary.runtime"),
@@ -69,14 +165,24 @@ function buildSummaryCards(args: {
       value: formatCount(missingCount),
       hint: snapshot.runtime_drift.drift_detected
         ? `${driftCount} drift issue(s)`
-        : "clean",
+        : t("inspector.modelIntrospection.dashboard.runtimeContext.clean"),
       accent: "blue",
     },
     {
-      label: "ModelManager",
-      value: snapshot.model_manager.available ? "connected" : "offline",
-      hint: snapshot.model_manager.error ?? "read-only",
+      label: t("inspector.modelIntrospection.dashboard.runtimeContext.manager"),
+      value: snapshot.model_manager.available
+        ? t("inspector.modelIntrospection.dashboard.runtimeContext.connected")
+        : t("inspector.modelIntrospection.dashboard.runtimeContext.offline"),
+      hint:
+        snapshot.model_manager.error ??
+        t("inspector.modelIntrospection.dashboard.runtimeContext.readOnly"),
       accent: "indigo",
+    },
+    {
+      label: t("inspector.modelIntrospection.dashboard.runtimeContext.probe"),
+      value: probeStatus,
+      hint: `profile:${probeProfile}`,
+      accent: "blue",
     },
   ];
 }
@@ -168,7 +274,8 @@ export function ModelIntrospectionDashboard() {
     analysisPrompt,
   });
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
-  const [graphViewOpen, setGraphViewOpen] = useState(false);
+  const [graphLayerOpen, setGraphLayerOpen] = useState(false);
+  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
 
   const stats = useMemo(() => {
     if (!snapshot) {
@@ -179,8 +286,7 @@ export function ModelIntrospectionDashboard() {
 
   const analysisVisible = Boolean(analysisResult?.analysis);
   const analysisRunning = analysisResult?.status === "running";
-  const analysisActive =
-    analysisResult?.status === "running" || analysisResult?.status === "completed";
+  const analysisActive = analysisResult?.status === "running";
   const analysisCompleted = analysisResult?.status === "completed" && analysisVisible;
 
   const analysisComparison = useMemo(() => {
@@ -197,7 +303,10 @@ export function ModelIntrospectionDashboard() {
     () => splitAnswerHighlights(analysisSourceResponse),
     [analysisSourceResponse],
   );
-  const analysisTimeline = analysisVisible ? analysisResult?.analysis?.timeline ?? [] : [];
+  const analysisTimeline = useMemo(
+    () => (analysisVisible ? analysisResult?.analysis?.timeline ?? [] : []),
+    [analysisVisible, analysisResult?.analysis?.timeline],
+  );
   const analysisProcess = analysisResult?.analysis?.process ?? null;
   const analysisTimelineStepCount =
     analysisResult?.analysis?.timeline_step_count ?? analysisTimeline.length;
@@ -227,35 +336,110 @@ export function ModelIntrospectionDashboard() {
     chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
   });
   const analysisAnswerTone = getAnswerTone(analysisResponse, analysisVisible);
-
-  const visualMetrics = useMemo(() => {
-    const available = snapshot?.available_packages.length ?? 0;
-    const missing = snapshot?.missing_packages.length ?? 0;
-    const total = available + missing;
-    const packageCoverage = total > 0 ? (available / total) * 100 : 0;
-    const analysisProgress = computeAnalysisProgress({
-      analysisVisible,
-      analysisTimelineProgress,
-      analysisStepCount,
-      chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
-      firstChunkMs: analysisProcess?.first_chunk_ms,
-      elapsedMs: analysisResult?.analysis?.elapsed_ms ?? 0,
-      analysisStatus: analysisResult?.status,
-    });
-    return {
-      packageCoverage,
-      analysisProgress,
-    };
-  }, [
-    analysisProcess?.first_chunk_ms,
-    analysisResult?.analysis,
-    analysisResult?.status,
-    analysisStepCount,
-    analysisTimelineProgress,
+  const answerStatusLabel = getAnswerStatusLabel({
+    response: analysisResponse,
+    analysisRunning,
+    answeredLabel: t("inspector.modelIntrospection.dashboard.results.answerStatus.answered"),
+    streamingLabel: t("inspector.modelIntrospection.dashboard.results.answerStatus.streaming"),
+    awaitingLabel: t("inspector.modelIntrospection.dashboard.results.answerStatus.awaiting"),
+  });
+  const operatorFinalStatus = resolveOperatorFinalStatus({
+    analysisStatus: analysisResult?.status,
     analysisVisible,
-    snapshot?.available_packages.length,
-    snapshot?.missing_packages.length,
-  ]);
+  });
+  const operatorFinalStatusTone = getOperatorFinalStatusTone(operatorFinalStatus);
+  const operatorStreamMode = resolveOperatorStreamMode({
+    analysisVisible,
+    chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+    firstChunkMs: analysisFirstChunkMs,
+  });
+  const operatorStreamModeTone = getOperatorStreamModeTone(operatorStreamMode);
+  const fallbackSignal = resolveFallbackSignal({
+    adapterApplied: analysisProcess?.adapter_applied,
+    adapterId: analysisProcess?.adapter_id,
+  });
+  const fallbackSignalTone = getFallbackSignalTone(fallbackSignal);
+  const ragFocus = buildRagFocusModel({
+    analysisPrompt: analysisResult?.analysis?.prompt ?? analysisPrompt,
+    analysisStatus: analysisResult?.status,
+    chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+    analysisTimeline,
+    analysisProcess,
+    snapshot,
+    ragFocusPayload: analysisResult?.analysis?.rag_focus ?? null,
+  });
+  const logitLens = buildLogitLensModel(
+    analysisResult?.analysis?.logit_lens ?? null,
+  );
+  const operatorConclusion = buildOperatorConclusion({
+    analysisVisible,
+    analysisStatus: analysisResult?.status,
+    ragFocus,
+    logitLens,
+    operatorConclusionPayload: analysisResult?.analysis?.operator_conclusion ?? null,
+  });
+  const streamProfile = analysisResult?.analysis?.stream_profile ?? null;
+  const evidenceCoverage = analysisResult?.analysis?.evidence_coverage ?? null;
+  const inputProfile = analysisResult?.analysis?.input_profile ?? null;
+  const generationProfile = analysisResult?.analysis?.generation_profile ?? null;
+
+  const runTrends = useMemo<RunTrends | null>(() => {
+    const payload = analysisResult?.analysis?.run_trends;
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    const runs = typeof payload.runs === "number" ? payload.runs : 0;
+    if (runs <= 0) {
+      return null;
+    }
+    return {
+      runs,
+      window: typeof payload.window === "number" ? payload.window : runs,
+      runtimeTraceRate:
+        typeof payload.runtime_trace_rate === "number" ? payload.runtime_trace_rate : 0,
+      probeRuntimeRate:
+        typeof payload.probe_runtime_rate === "number" ? payload.probe_runtime_rate : 0,
+      highCoverageRate:
+        typeof payload.high_coverage_rate === "number" ? payload.high_coverage_rate : 0,
+      liveStreamingRate:
+        typeof payload.live_streaming_rate === "number" ? payload.live_streaming_rate : 0,
+      avgFirstContentMs:
+        typeof payload.avg_first_content_ms === "number"
+          ? payload.avg_first_content_ms
+          : null,
+      avgNoiseRatio:
+        typeof payload.avg_noise_ratio === "number" ? payload.avg_noise_ratio : null,
+    };
+  }, [analysisResult?.analysis?.run_trends]);
+  const operatorChecklist = buildOperatorChecklist({
+    ragSource: String(analysisResult?.analysis?.rag_focus?.source || "graph_fallback"),
+    probeSource: String(analysisResult?.analysis?.logit_lens?.source || "probe_unavailable"),
+    coveragePercent:
+      typeof evidenceCoverage?.coverage_percent === "number"
+        ? evidenceCoverage.coverage_percent
+        : null,
+    streamQuality: streamProfile?.stream_quality,
+    partial: operatorConclusion?.partial,
+    t,
+  });
+
+  const availablePackages = snapshot?.available_packages.length ?? 0;
+  const missingPackages = snapshot?.missing_packages.length ?? 0;
+  const totalPackages = availablePackages + missingPackages;
+  const packageCoverage = totalPackages > 0 ? (availablePackages / totalPackages) * 100 : 0;
+  const analysisProgress = computeAnalysisProgress({
+    analysisVisible,
+    analysisTimelineProgress,
+    analysisStepCount,
+    chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+    firstChunkMs: analysisProcess?.first_chunk_ms,
+    elapsedMs: analysisResult?.analysis?.elapsed_ms ?? 0,
+    analysisStatus: analysisResult?.status,
+  });
+  const visualMetrics = {
+    packageCoverage,
+    analysisProgress,
+  };
 
   const selectedGraphNodeIdEffective = useMemo(() => {
     const nodes = snapshot?.graph?.nodes ?? [];
@@ -317,8 +501,10 @@ export function ModelIntrospectionDashboard() {
   }, [runAnalysis]);
 
   const handleResetPrompt = useCallback(() => {
-    setAnalysisPrompt("Co to jest slonce?");
-  }, []);
+    setAnalysisPrompt(
+      t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder"),
+    );
+  }, [t]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -349,20 +535,6 @@ export function ModelIntrospectionDashboard() {
           </div>
         }
       />
-
-      {stats.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {stats.map((stat) => (
-            <StatCard
-              key={stat.label}
-              label={stat.label}
-              value={stat.value}
-              hint={stat.hint}
-              accent={stat.accent}
-            />
-          ))}
-        </div>
-      )}
 
       {!snapshot && loading && (
         <Panel
@@ -398,7 +570,7 @@ export function ModelIntrospectionDashboard() {
           title={t("inspector.modelIntrospection.dashboard.analysis.title")}
           description={t("inspector.modelIntrospection.dashboard.analysis.description")}
         >
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             <AnalysisInputPanel
               prompt={analysisPrompt}
               onPromptChange={setAnalysisPrompt}
@@ -435,7 +607,29 @@ export function ModelIntrospectionDashboard() {
                   chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
                   analysisStepCount,
                   idleLabel: t("inspector.modelIntrospection.dashboard.analysis.orbIdle"),
+                  chunksLabel: t("inspector.modelIntrospection.dashboard.analysis.chunksLabel"),
+                  stepsLabel: t("inspector.modelIntrospection.dashboard.analysis.stepsLabel"),
+                  completedLabel: t("inspector.modelIntrospection.dashboard.analysis.completedLabel"),
                 })}
+              />
+              <AnalysisLiveResponsePanel
+                analysisStreaming={analysisStreaming}
+                analysisResponse={analysisResponse}
+                answerStatusLabel={answerStatusLabel}
+                waitingTokenLabel={t("inspector.modelIntrospection.dashboard.results.waitingToken")}
+                streamingLabel={t("inspector.modelIntrospection.dashboard.results.streaming")}
+                statusBadgeLabel={t(
+                  `inspector.modelIntrospection.dashboard.analysis.status.${operatorFinalStatus}`,
+                )}
+                statusBadgeTone={operatorFinalStatusTone}
+                streamModeLabel={t(
+                  `inspector.modelIntrospection.dashboard.analysis.streamMode.${operatorStreamMode}`,
+                )}
+                streamModeTone={operatorStreamModeTone}
+                fallbackLabel={t(
+                  `inspector.modelIntrospection.dashboard.analysis.fallback.${fallbackSignal}`,
+                )}
+                fallbackTone={fallbackSignalTone}
               />
             </div>
           </div>
@@ -448,14 +642,87 @@ export function ModelIntrospectionDashboard() {
           title={t("inspector.modelIntrospection.dashboard.results.title")}
           description={t("inspector.modelIntrospection.dashboard.results.description")}
         >
+          <div className="mb-4">
+            <RagFocusPanel
+              ragFocus={ragFocus}
+              title={t("inspector.modelIntrospection.dashboard.results.ragFocus.title")}
+              queryLabel={t("inspector.modelIntrospection.dashboard.results.ragFocus.query")}
+              entitiesLabel={t("inspector.modelIntrospection.dashboard.results.ragFocus.entities")}
+              evidenceLabel={t("inspector.modelIntrospection.dashboard.results.ragFocus.evidence")}
+              groundingLabel={t("inspector.modelIntrospection.dashboard.results.ragFocus.grounding")}
+              activeLabel={t("inspector.modelIntrospection.dashboard.results.ragFocus.active")}
+              emptyLabel={t("inspector.modelIntrospection.dashboard.results.ragFocus.empty")}
+              stepLabelPrefix={t("inspector.modelIntrospection.dashboard.results.ragFocus.step")}
+              groundingStrongLabel={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.groundingStrong",
+              )}
+              groundingMediumLabel={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.groundingMedium",
+              )}
+              groundingWeakLabel={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.groundingWeak",
+              )}
+              groundingUnknownLabel={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.groundingUnknown",
+              )}
+              sourceLabel={t("inspector.modelIntrospection.dashboard.results.ragFocus.source")}
+              sourceRuntimeTraceLabel={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.sourceRuntimeTrace",
+              )}
+              sourceFallbackLabel={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.sourceFallback",
+              )}
+              answerLinksLabel={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.answerLinks",
+              )}
+              answerLinksEmpty={t(
+                "inspector.modelIntrospection.dashboard.results.ragFocus.answerLinksEmpty",
+              )}
+            />
+          </div>
+          <div className="mb-4">
+            <LogitLensPanel
+              logitLens={logitLens}
+              title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
+              emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
+              unavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
+              )}
+              signalsLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.confidence")}
+              tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
+              checkpointsLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
+              )}
+              signalEarlyUnstableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
+              )}
+              signalLateStabilizedLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
+              )}
+              signalLowConfidenceLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
+              )}
+              signalStableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
+              )}
+              changedLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.changed")}
+              stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
+              sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
+              sourceRuntimeLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
+              )}
+              sourceUnavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
+              )}
+              sourceFallbackWarning={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
+              )}
+            />
+          </div>
           <AnalysisResultsPanel
-            analysisStreaming={analysisStreaming}
             analysisResponse={analysisResponse}
             analysisHighlights={analysisHighlights}
-            answerStatusLabel={getAnswerStatusLabel({
-              response: analysisResponse,
-              analysisRunning,
-            })}
+            answerStatusLabel={answerStatusLabel}
             analysisAnswerTone={analysisAnswerTone}
             managerAvailable={snapshot.model_manager.available}
             eventsCount={analysisResult.analysis.events.length}
@@ -465,14 +732,34 @@ export function ModelIntrospectionDashboard() {
             analysisTimelineStepCount={analysisTimelineStepCount}
             responseChars={analysisResponse.length}
             chunkCount={analysisResult.analysis.chunk_count}
-            waitingTokenLabel={t("inspector.modelIntrospection.dashboard.results.waitingToken")}
-            streamingLabel={t("inspector.modelIntrospection.dashboard.results.streaming")}
-            resultsAnswerLabel={t("inspector.modelIntrospection.dashboard.results.answer")}
             resultsHighlightsLabel={t("inspector.modelIntrospection.dashboard.results.highlights")}
             highlightsEmptyLabel={t("inspector.modelIntrospection.dashboard.results.highlightsEmpty")}
             resultsVerdictLabel={t("inspector.modelIntrospection.dashboard.results.verdict")}
             resultsVerdictReady={t("inspector.modelIntrospection.dashboard.results.verdictReady")}
             resultsVerdictPending={t("inspector.modelIntrospection.dashboard.results.verdictPending")}
+            advancedShowLabel={t(
+              "inspector.modelIntrospection.dashboard.results.advancedShow",
+            )}
+            advancedHideLabel={t(
+              "inspector.modelIntrospection.dashboard.results.advancedHide",
+            )}
+            advancedTitle={t("inspector.modelIntrospection.dashboard.results.advancedTitle")}
+            operatorConclusion={operatorConclusion}
+            operatorConclusionLabel={t(
+              "inspector.modelIntrospection.dashboard.results.operatorConclusion",
+            )}
+            operatorConclusionConfidenceLabel={t(
+              "inspector.modelIntrospection.dashboard.results.operatorConfidence",
+            )}
+            operatorConclusionPartialLabel={t(
+              "inspector.modelIntrospection.dashboard.results.operatorPartial",
+            )}
+            streamProfile={analysisResult?.analysis?.stream_profile}
+            evidenceCoverage={evidenceCoverage}
+            inputProfile={inputProfile}
+            generationProfile={generationProfile}
+            runTrends={runTrends}
+            operatorChecklist={operatorChecklist}
           />
         </Panel>
       )}
@@ -490,25 +777,73 @@ export function ModelIntrospectionDashboard() {
         </div>
       )}
 
+      {stats.length > 0 && (
+        <Panel
+          eyebrow="// runtime context"
+          title={t("inspector.modelIntrospection.dashboard.runtimeContext.title")}
+          description={t("inspector.modelIntrospection.dashboard.runtimeContext.description")}
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {stats.map((stat) => (
+              <StatCard
+                key={stat.label}
+                label={stat.label}
+                value={stat.value}
+                hint={stat.hint}
+                accent={stat.accent}
+              />
+            ))}
+          </div>
+        </Panel>
+      )}
+
       {snapshot && (
-        <GraphPanel
-          snapshot={snapshot}
-          analysisActive={analysisActive}
-          graphViewOpen={graphViewOpen}
-          onToggleGraphView={() => setGraphViewOpen((current) => !current)}
-          selectedGraphNodeId={selectedGraphNodeIdEffective}
-          onSelectGraphNode={setSelectedGraphNodeId}
-          selectedGraphNode={selectedGraphNode}
-          selectedGraphNodeDetails={selectedGraphNodeDetails}
-          typeHintText={selectedGraphTypeHint}
-          title={t("inspector.modelIntrospection.dashboard.graph.title")}
-          description={t("inspector.modelIntrospection.dashboard.graph.description")}
-          drilldownTitle={t("inspector.modelIntrospection.dashboard.graph.drilldownTitle")}
-          hideLabel={t("inspector.modelIntrospection.dashboard.graph.hide")}
-          openLabel={t("inspector.modelIntrospection.dashboard.graph.open")}
-          stateOpenLabel={t("inspector.modelIntrospection.dashboard.graph.stateOpen")}
-          stateCollapsedLabel={t("inspector.modelIntrospection.dashboard.graph.stateCollapsed")}
-        />
+        <Panel
+          eyebrow="// technical"
+          title={t("inspector.modelIntrospection.dashboard.graph.layerTitle")}
+          description={t("inspector.modelIntrospection.dashboard.graph.layerDescription")}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="neutral">
+                nodes {formatCount(snapshot.graph?.summary.nodes ?? 0)}
+              </Badge>
+              <Badge tone="neutral">
+                edges {formatCount(snapshot.graph?.summary.edges ?? 0)}
+              </Badge>
+              <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
+                drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
+              </Badge>
+            </div>
+            <Button variant="ghost" onClick={() => setGraphLayerOpen((current) => !current)}>
+              {graphLayerOpen
+                ? t("inspector.modelIntrospection.dashboard.graph.hideLayer")
+                : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
+            </Button>
+          </div>
+          {graphLayerOpen && (
+            <div className="mt-4">
+              <GraphPanel
+                snapshot={snapshot}
+                analysisActive={analysisActive}
+                graphViewOpen={graphDrilldownOpen}
+                onToggleGraphView={() => setGraphDrilldownOpen((current) => !current)}
+                selectedGraphNodeId={selectedGraphNodeIdEffective}
+                onSelectGraphNode={setSelectedGraphNodeId}
+                selectedGraphNode={selectedGraphNode}
+                selectedGraphNodeDetails={selectedGraphNodeDetails}
+                typeHintText={selectedGraphTypeHint}
+                title={t("inspector.modelIntrospection.dashboard.graph.title")}
+                description={t("inspector.modelIntrospection.dashboard.graph.description")}
+                drilldownTitle={t("inspector.modelIntrospection.dashboard.graph.drilldownTitle")}
+                hideLabel={t("inspector.modelIntrospection.dashboard.graph.hide")}
+                openLabel={t("inspector.modelIntrospection.dashboard.graph.open")}
+                stateOpenLabel={t("inspector.modelIntrospection.dashboard.graph.stateOpen")}
+                stateCollapsedLabel={t("inspector.modelIntrospection.dashboard.graph.stateCollapsed")}
+              />
+            </div>
+          )}
+        </Panel>
       )}
     </div>
   );

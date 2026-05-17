@@ -3675,48 +3675,56 @@
       "domain": "models",
       "test_type": "service_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_model_introspection_operator_trends_service.py",
       "domain": "models",
       "test_type": "service_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_model_introspection_probe_service.py",
       "domain": "models",
       "test_type": "service_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_model_introspection_rag_focus_service.py",
       "domain": "models",
       "test_type": "service_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_model_manager.py",
@@ -4078,12 +4086,14 @@
       "domain": "runtime",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_multi_runtime_profile_service.py",

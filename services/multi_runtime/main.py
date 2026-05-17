@@ -91,13 +91,40 @@ def _read_positive_int_env(*names: str, default: int) -> int:
     return default
 
 
-_PROBE_TIMEOUT_SECONDS = float(os.getenv("GEMMA4_AUDIO_PROBE_TIMEOUT_SECONDS", "20"))
-_PROBE_MAX_PROMPT_TOKENS = int(
-    os.getenv("GEMMA4_AUDIO_PROBE_MAX_PROMPT_TOKENS", "1024")
+def _read_positive_float_env(*names: str, default: float) -> float:
+    for name in names:
+        raw = os.getenv(name)
+        if raw is None:
+            continue
+        try:
+            parsed = float(raw)
+        except ValueError:
+            continue
+        if parsed > 0:
+            return parsed
+    return default
+
+
+_PROBE_TIMEOUT_SECONDS = _read_positive_float_env(
+    "GEMMA4_AUDIO_PROBE_TIMEOUT_SECONDS",
+    default=20.0,
 )
-_PROBE_MAX_LAYERS = int(os.getenv("GEMMA4_AUDIO_PROBE_MAX_LAYERS", "8"))
-_PROBE_MAX_TOP_K = int(os.getenv("GEMMA4_AUDIO_PROBE_MAX_TOP_K", "32"))
-_PROBE_HIDDEN_SLICE = int(os.getenv("GEMMA4_AUDIO_PROBE_HIDDEN_SLICE", "16"))
+_PROBE_MAX_PROMPT_TOKENS = _read_positive_int_env(
+    "GEMMA4_AUDIO_PROBE_MAX_PROMPT_TOKENS",
+    default=1024,
+)
+_PROBE_MAX_LAYERS = _read_positive_int_env(
+    "GEMMA4_AUDIO_PROBE_MAX_LAYERS",
+    default=8,
+)
+_PROBE_MAX_TOP_K = _read_positive_int_env(
+    "GEMMA4_AUDIO_PROBE_MAX_TOP_K",
+    default=32,
+)
+_PROBE_HIDDEN_SLICE = _read_positive_int_env(
+    "GEMMA4_AUDIO_PROBE_HIDDEN_SLICE",
+    default=16,
+)
 _PROBE_ENABLED = str(os.getenv("GEMMA4_AUDIO_PROBE_ENABLED", "0")).strip().lower() in {
     "1",
     "true",

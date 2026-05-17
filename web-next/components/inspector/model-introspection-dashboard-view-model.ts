@@ -322,7 +322,7 @@ export function resolveOperatorStreamMode(args: {
   if ((firstChunkMs ?? 0) >= delayedThresholdMs) {
     return "single_chunk_delayed";
   }
-  return "live_streaming";
+  return "single_chunk";
 }
 
 export function getOperatorStreamModeTone(

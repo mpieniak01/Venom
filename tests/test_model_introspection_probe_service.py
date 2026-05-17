@@ -302,7 +302,7 @@ async def test_probe_service_timeout_and_transport_retry_paths(
         top_k=1,
     )
     assert result["status"] == "probe_unavailable"
-    assert result["code"] == "probe_timeout"
+    assert result["code"] == "probe_transport_error"
 
 
 @pytest.mark.asyncio

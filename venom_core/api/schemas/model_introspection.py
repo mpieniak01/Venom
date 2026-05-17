@@ -17,7 +17,7 @@ class ModelIntrospectionAnalyzeRequest(BaseModel):
     )
     max_tokens: int | None = Field(default=128, ge=1, le=8192)
     temperature: float | None = Field(default=0.2, ge=0.0, le=2.0)
-    top_p: float | None = Field(default=0.9, ge=0.0, le=1.0)
+    top_p: float | None = Field(default=0.9, gt=0.0, le=1.0)
 
 
 class ModelIntrospectionProbeRequest(BaseModel):

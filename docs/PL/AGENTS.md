@@ -34,6 +34,33 @@ source .venv/bin/activate
 pytest -q
 ```
 
+## Anty-Loop: „nie ten Python” (obowiązkowe)
+
+Jeśli w terminalu widzisz `(.venv)`, to lokalnie zwykle wszystko działa poprawnie (`python`, `python3`, `pytest`).
+Najczęstszy problem agentów: komendy lecą w **nowej powłoce**, która **nie dziedziczy** Twojego `source .venv/bin/activate`.
+
+Zasada bezpieczna (preferowana w automatyzacji):
+
+```bash
+/home/ubuntu/venom/.venv/bin/python -V
+/home/ubuntu/venom/.venv/bin/pytest -q
+```
+
+Alternatywa (w jednej komendzie, gdy używasz aktywacji):
+
+```bash
+cd /home/ubuntu/venom && source .venv/bin/activate && pytest -q
+```
+
+Szybka kontrola kontekstu:
+
+```bash
+which python
+which pytest
+```
+
+Obie ścieżki muszą wskazywać na `/home/ubuntu/venom/.venv/...`.
+
 ## Kontrakt Dostarczania Bez Limitów Czasu (obowiązkowy)
 
 To jest domyślny tryb pracy dla GitHub Coding Agent i ma pierwszeństwo przed długą eksploracją.

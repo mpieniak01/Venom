@@ -440,7 +440,7 @@ export function ModelIntrospectionDashboard() {
     analysisTimelineProgress,
     analysisStepCount,
     chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
-    firstChunkMs: analysisProcess?.first_chunk_ms,
+    firstChunkMs: analysisFirstChunkMs,
     elapsedMs: analysisResult?.analysis?.elapsed_ms ?? 0,
     analysisStatus: analysisResult?.status,
   });

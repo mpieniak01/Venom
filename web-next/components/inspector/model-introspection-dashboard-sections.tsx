@@ -1677,8 +1677,14 @@ function GraphRelationsCard(props: GraphRelationsCardProps) {
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <p className="text-xs uppercase tracking-wide text-zinc-500">Relations</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        {edges.map((edge) => (
-          <Badge key={`${edge.from}-${edge.to}-${edge.label}`} tone="neutral">
+        {edges.map((edge, index) => (
+          <Badge
+            key={
+              (typeof edge.id === "string" && edge.id) ||
+              `${edge.from}-${edge.to}-${edge.label}-${index}`
+            }
+            tone="neutral"
+          >
             {edge.from} → {edge.to} ({edge.label})
           </Badge>
         ))}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -672,6 +673,26 @@ def _record_run_trends(
     )
 
 
+async def _record_run_trends_async(
+    *,
+    process_trace: dict[str, Any] | None,
+    rag_profile: dict[str, Any],
+    logit_profile: dict[str, Any],
+    stream_profile: dict[str, Any],
+    evidence_coverage: dict[str, Any],
+    settings: Any = None,
+) -> dict[str, Any] | None:
+    return await asyncio.to_thread(
+        _record_run_trends,
+        process_trace=process_trace,
+        rag_profile=rag_profile,
+        logit_profile=logit_profile,
+        stream_profile=stream_profile,
+        evidence_coverage=evidence_coverage,
+        settings=settings,
+    )
+
+
 def _build_skipped_analysis_result(
     prompt: str, runtime: dict[str, Any]
 ) -> dict[str, Any]:
@@ -1100,11 +1121,35 @@ async def stream_model_introspection_analysis(
         runtime=runtime,
         request_ready_at_ms=request_ready_at_ms,
     )
-    yield _serialize_sse_event("analysis_start", running_result)
+    try:
+        response = await stream_simple_chat(request)
+        request_id = _parse_request_id(_get_response_header(response, "X-Request-Id"))
+        response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    except Exception as exc:
+        logger.exception("Model introspection analysis stream bootstrap failed")
+        elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        error_message = str(exc) or _ANALYSIS_STREAM_FAILED
+        yield _serialize_sse_event(
+            "error",
+            {"code": "analysis_stream_failed", "message": error_message},
+        )
+        yield _serialize_sse_event(
+            "analysis_done",
+            _build_failed_analysis_result(
+                prompt=prompt,
+                runtime=runtime,
+                events=["error"],
+                chunk_count=0,
+                response_text="",
+                request_ready_at_ms=request_ready_at_ms,
+                response_received_at_ms=request_ready_at_ms,
+                elapsed_ms=elapsed_ms,
+                error_message=error_message,
+            ),
+        )
+        return
 
-    response = await stream_simple_chat(request)
-    request_id = _parse_request_id(_get_response_header(response, "X-Request-Id"))
-    response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    yield _serialize_sse_event("analysis_start", running_result)
 
     content_parts: list[str] = []
     events: list[str] = []
@@ -1253,7 +1298,7 @@ async def stream_model_introspection_analysis(
         evidence_coverage=evidence_coverage,
         stream_profile=stream_profile,
     )
-    run_trends = _record_run_trends(
+    run_trends = await _record_run_trends_async(
         process_trace=process_trace,
         rag_profile=rag_profile,
         logit_profile=logit_profile,
@@ -1408,7 +1453,7 @@ async def analyze_model_with_optional_live_run(
         evidence_coverage=evidence_coverage,
         stream_profile=stream_profile,
     )
-    run_trends = _record_run_trends(
+    run_trends = await _record_run_trends_async(
         process_trace=process_trace,
         rag_profile=rag_profile,
         logit_profile=logit_profile,

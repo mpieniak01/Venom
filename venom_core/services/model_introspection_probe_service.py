@@ -491,13 +491,24 @@ async def _run_single_probe_attempt(
         )
     except ValueError:
         raise
-    except (httpx.TimeoutException, httpx.ConnectError):
+    except httpx.TimeoutException:
         failure = _handle_probe_retry_exception(
             attempt=attempt,
             max_attempts=max_attempts,
             runtime_label=runtime_label,
             flow_started_at=flow_started_at,
             timeout=True,
+        )
+        if failure is not None:
+            return failure, False
+        return None, True
+    except httpx.ConnectError:
+        failure = _handle_probe_retry_exception(
+            attempt=attempt,
+            max_attempts=max_attempts,
+            runtime_label=runtime_label,
+            flow_started_at=flow_started_at,
+            timeout=False,
         )
         if failure is not None:
             return failure, False
@@ -538,14 +549,14 @@ async def _execute_probe_with_retry(
         )
         if should_retry:
             continue
-        if result is not None:
-            return result
-        return _build_retry_exhausted_response(
-            code="probe_transport_error",
-            message=_PROBE_TRANSPORT_ERROR_MESSAGE,
-            runtime_label=runtime_label,
-            flow_started_at=flow_started_at,
-        )
+        if result is None:
+            return _build_retry_exhausted_response(
+                code="probe_transport_error",
+                message=_PROBE_TRANSPORT_ERROR_MESSAGE,
+                runtime_label=runtime_label,
+                flow_started_at=flow_started_at,
+            )
+        return result
     return _build_retry_exhausted_response(
         code="probe_transport_error",
         message=_PROBE_TRANSPORT_ERROR_MESSAGE,

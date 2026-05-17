@@ -7,6 +7,8 @@ import types
 
 import pytest
 
+from venom_core.api.schemas.llm_simple import SimpleChatRequest
+from venom_core.services import llm_simple_service
 from venom_core.services import model_introspection_analysis_service as analysis_service
 
 
@@ -20,6 +22,10 @@ class _FakeStreamingResponse:
     async def _iter(self, chunks: list[str]):
         for chunk in chunks:
             yield chunk
+
+
+async def _async_return(value):
+    return value
 
 
 def _build_snapshot() -> dict[str, object]:
@@ -49,6 +55,50 @@ def _build_snapshot() -> dict[str, object]:
             "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
             "introspection_ready": True,
         },
+    }
+
+
+def _build_logit_lens_stub() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "code": None,
+        "message": "Logit lens ready",
+        "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+        "input_tokens": ["Co", "to", "jest", "słońce", "?"],
+        "output_tokens": ["Słońce", "to", "gwiazda"],
+        "checkpoints": [
+            {
+                "id": "cp_25",
+                "percent": 25,
+                "layer": 8,
+                "top_k": [{"token": "planeta", "token_index": 1, "score": 1.0}],
+                "top_token": "planeta",
+                "confidence": 0.31,
+                "changed": False,
+            },
+            {
+                "id": "cp_100",
+                "percent": 100,
+                "layer": 31,
+                "top_k": [{"token": "gwiazda", "token_index": 2, "score": 2.2}],
+                "top_token": "gwiazda",
+                "confidence": 0.71,
+                "changed": True,
+            },
+        ],
+        "signals": {
+            "early_unstable": True,
+            "late_stabilized": True,
+            "low_confidence_path": False,
+        },
+        "interpretability": {
+            "interpretable": True,
+            "confidence_band": "medium",
+            "token_noise_ratio": 0.2,
+            "readable_top_tokens": 4,
+            "total_top_tokens": 5,
+        },
+        "diagnostics": {"elapsed_ms": 17.4},
     }
 
 
@@ -101,6 +151,11 @@ async def test_analysis_collects_streamed_answer(
         fake_snapshot,
     )
     monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_logit_lens_payload_safe",
+        lambda **_kwargs: _async_return(_build_logit_lens_stub()),
+    )
 
     result = await analysis_service.analyze_model_with_optional_live_run(
         prompt="Co to jest slonce?",
@@ -112,9 +167,36 @@ async def test_analysis_collects_streamed_answer(
     assert result["analysis"]["chunk_count"] == 1
     assert result["analysis"]["provider"] == "multi_runtime"
     assert result["analysis"]["events"] == ["start", "content", "done"]
-    assert result["analysis"]["timeline_step_count"] == 6
+    assert result["analysis"]["timeline_step_count"] == 7
     assert result["analysis"]["timeline"][0]["label"] == "Snapshot captured"
+    assert result["analysis"]["timeline"][-2]["label"] == "Logit lens probe"
     assert result["analysis"]["timeline"][-1]["label"] == "Snapshot refreshed"
+    assert result["analysis"]["logit_lens"]["status"] == "ok"
+    assert result["analysis"]["rag_focus"]["source"] == "graph_fallback"
+    assert "answer_evidence_links" in result["analysis"]["rag_focus"]
+    assert result["analysis"]["input_profile"]["prompt_tokens_est"] >= 1
+    assert "system_tokens_est" in result["analysis"]["input_profile"]
+    assert result["analysis"]["generation_profile"]["max_tokens"] == 128
+    assert result["analysis"]["generation_profile"]["top_p"] is None
+    assert result["analysis"]["generation_profile"]["top_p_status"] == "unavailable"
+    assert result["analysis"]["stream_profile"]["chunk_count"] == 1
+    assert "time_to_first_byte_ms" in result["analysis"]["stream_profile"]
+    assert (
+        result["analysis"]["stream_profile"]["time_to_first_byte_source"]
+        == "estimated_stream_open"
+    )
+    assert "chunk_interval_p50_ms" in result["analysis"]["stream_profile"]
+    assert "chunk_interval_p95_ms" in result["analysis"]["stream_profile"]
+    assert result["analysis"]["evidence_coverage"]["fragments_total"] >= 1
+    assert result["analysis"]["operator_conclusion"]["verdict"] in {
+        "grounded",
+        "weakly_grounded",
+        "ungrounded",
+    }
+    assert result["analysis"]["operator_conclusion"]["reason_codes"]
+    assert "rag_profile" in result["analysis"]
+    assert "logit_profile" in result["analysis"]
+    assert "run_trends" in result["analysis"]
 
 
 @pytest.mark.asyncio
@@ -157,6 +239,33 @@ async def test_analysis_includes_request_trace_summary(
                         }
                     ),
                 ),
+                types.SimpleNamespace(
+                    component="Retriever",
+                    action="rag_focus",
+                    status="ok",
+                    details=json.dumps(
+                        {
+                            "entities": [
+                                {
+                                    "id": "entity:sun",
+                                    "label": "Słońce",
+                                    "kind": "entity",
+                                    "active": True,
+                                }
+                            ],
+                            "evidence_edges": [
+                                {
+                                    "from": "query",
+                                    "to": "entity:sun",
+                                    "label": "retrieval",
+                                    "active": True,
+                                }
+                            ],
+                            "active_entity_ids": ["entity:sun"],
+                            "grounding_score": 0.88,
+                        }
+                    ),
+                ),
             ]
 
     class _FakeTracer:
@@ -186,6 +295,11 @@ async def test_analysis_includes_request_trace_summary(
     )
     monkeypatch.setattr(analysis_service, "get_request_tracer", lambda: _FakeTracer())
     monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_logit_lens_payload_safe",
+        lambda **_kwargs: _async_return(_build_logit_lens_stub()),
+    )
 
     result = await analysis_service.analyze_model_with_optional_live_run(
         prompt="Co to jest slonce?",
@@ -195,11 +309,13 @@ async def test_analysis_includes_request_trace_summary(
     process = result["analysis"]["process"]
     assert process["request_id"] == trace_id
     assert process["status"] == "COMPLETED"
-    assert process["trace_step_count"] == 3
+    assert process["trace_step_count"] == 4
     assert process["first_chunk_ms"] == 18
     assert process["response_chars"] == 18
     assert process["response_chunks"] == 2
     assert process["response_truncated"] is False
+    assert result["analysis"]["rag_focus"]["source"] == "runtime_trace"
+    assert "answer_evidence_links" in result["analysis"]["rag_focus"]
 
 
 @pytest.mark.asyncio
@@ -226,6 +342,11 @@ async def test_analysis_stream_emits_progressive_events(
         fake_snapshot,
     )
     monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_logit_lens_payload_safe",
+        lambda **_kwargs: _async_return(_build_logit_lens_stub()),
+    )
 
     chunks: list[str] = []
     async for chunk in analysis_service.stream_model_introspection_analysis(
@@ -250,7 +371,13 @@ async def test_analysis_stream_emits_progressive_events(
     assert analysis_start["analysis"]["timeline"][0]["label"] == "Snapshot captured"
     assert analysis_done["status"] == "completed"
     assert analysis_done["analysis"]["response"] == "Slonce to gwiazda."
-    assert analysis_done["analysis"]["timeline_step_count"] == 6
+    assert analysis_done["analysis"]["timeline_step_count"] == 7
+    assert analysis_done["analysis"]["logit_lens"]["status"] == "ok"
+    assert "interpretability" in analysis_done["analysis"]["logit_lens"]
+    assert analysis_done["analysis"]["rag_focus"]["source"] == "graph_fallback"
+    assert "answer_evidence_links" in analysis_done["analysis"]["rag_focus"]
+    assert analysis_done["analysis"]["stream_profile"]["chunk_count"] == 2
+    assert "run_trends" in analysis_done["analysis"]
 
 
 @pytest.mark.asyncio
@@ -275,6 +402,11 @@ async def test_analysis_stream_flushes_sse_tail_and_emits_done(
         fake_snapshot,
     )
     monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_logit_lens_payload_safe",
+        lambda **_kwargs: _async_return(_build_logit_lens_stub()),
+    )
 
     chunks: list[str] = []
     async for chunk in analysis_service.stream_model_introspection_analysis(
@@ -290,6 +422,7 @@ async def test_analysis_stream_flushes_sse_tail_and_emits_done(
     assert event_names[-1] == "analysis_done"
     done_payload = json.loads(events[-1][1])
     assert done_payload["analysis"]["response"] == "A"
+    assert done_payload["analysis"]["logit_lens"]["status"] == "ok"
 
 
 @pytest.mark.asyncio
@@ -326,3 +459,96 @@ async def test_analysis_stream_emits_failed_result_when_response_has_no_body_ite
     done_payload = json.loads(events[-1][1])
     assert done_payload["status"] == "failed"
     assert "body iterator" in done_payload["analysis"]["error"]
+
+
+def test_classify_stream_quality_variants() -> None:
+    assert (
+        analysis_service._classify_stream_quality(
+            chunk_count=0,
+            first_content_at_ms=None,
+            elapsed_ms=10.0,
+        )
+        == "no_content"
+    )
+    assert (
+        analysis_service._classify_stream_quality(
+            chunk_count=2,
+            first_content_at_ms=5.0,
+            elapsed_ms=12.0,
+        )
+        == "live_streaming"
+    )
+    assert (
+        analysis_service._classify_stream_quality(
+            chunk_count=1,
+            first_content_at_ms=1500.0,
+            elapsed_ms=1600.0,
+        )
+        == "single_chunk_delayed"
+    )
+
+
+def test_build_logit_lens_timeline_step_for_unavailable_probe() -> None:
+    step = analysis_service._build_logit_lens_timeline_step(
+        logit_lens={"status": "probe_unavailable", "code": "probe_timeout"},
+        at_ms=100.0,
+    )
+    assert step["status"] == "skipped"
+    assert step["detail"] == "probe_timeout"
+
+
+@pytest.mark.asyncio
+async def test_collect_logit_lens_payload_safe_returns_fallback_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _raise(*_args, **_kwargs):
+        raise RuntimeError("probe failed")
+
+    monkeypatch.setattr(analysis_service, "build_logit_lens_payload", _raise)
+    payload = await analysis_service._collect_logit_lens_payload_safe(
+        prompt="q",
+        response_text="a",
+    )
+    assert payload["status"] == "probe_unavailable"
+    assert payload["source"] == "probe_unavailable"
+
+
+def test_collect_rag_focus_payload_safe_returns_fallback_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(*_args, **_kwargs):
+        raise ValueError("bad trace")
+
+    monkeypatch.setattr(analysis_service, "build_rag_focus_payload", _raise)
+    payload = analysis_service._collect_rag_focus_payload_safe(
+        prompt="q",
+        snapshot={},
+        process_trace=None,
+        response_text="a",
+    )
+    assert payload["source"] == "graph_fallback"
+
+
+def test_build_payload_sets_top_p_for_simple_chat_request() -> None:
+    class _Runtime:
+        provider = "openai"
+
+    payload = llm_simple_service._build_payload(
+        request=SimpleChatRequest(content="hello", top_p=0.85),
+        runtime=_Runtime(),
+        model_name="m",
+        messages=[{"role": "user", "content": "hello"}],
+    )
+    assert payload["top_p"] == 0.85
+
+
+def test_extract_system_prompt_text_handles_multiline_markers() -> None:
+    context_preview = "SYSTEM:\nRules line 1\nRules line 2\n\nUSER: Co to jest slonce?"
+    extracted = analysis_service._extract_system_prompt_text(context_preview)
+    assert extracted == "Rules line 1\nRules line 2"
+
+
+def test_extract_system_prompt_text_handles_missing_user_marker() -> None:
+    context_preview = "SYSTEM: Rules only"
+    extracted = analysis_service._extract_system_prompt_text(context_preview)
+    assert extracted == "Rules only"

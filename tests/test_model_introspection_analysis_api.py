@@ -90,6 +90,66 @@ def test_model_introspection_stream_endpoint_forwards_sse() -> None:
     assert "event: analysis_done" in response.text
 
 
+def test_model_introspection_analyze_endpoint_forwards_top_p() -> None:
+    captured: dict[str, object] = {}
+
+    async def _fake_analyze(**kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "completed",
+            "analysis_enabled": True,
+            "analysis": {"prompt": kwargs["prompt"], "response": "", "timeline": []},
+        }
+
+    original = models_introspection.analyze_model_with_optional_live_run
+    models_introspection.analyze_model_with_optional_live_run = _fake_analyze
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/analyze",
+            json={
+                "prompt": "Co to jest slonce?",
+                "live_analysis_enabled": True,
+                "max_tokens": 32,
+                "temperature": 0.2,
+                "top_p": 0.91,
+            },
+        )
+    finally:
+        models_introspection.analyze_model_with_optional_live_run = original
+
+    assert response.status_code == 200
+    assert captured["top_p"] == 0.91
+
+
+def test_model_introspection_stream_endpoint_forwards_top_p() -> None:
+    captured: dict[str, object] = {}
+
+    async def _fake_stream(**kwargs):
+        captured.update(kwargs)
+        yield 'event: analysis_done\ndata: {"status":"completed"}\n\n'
+
+    original = models_introspection.stream_model_introspection_analysis
+    models_introspection.stream_model_introspection_analysis = _fake_stream
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/analyze/stream",
+            json={
+                "prompt": "Co to jest slonce?",
+                "live_analysis_enabled": True,
+                "max_tokens": 32,
+                "temperature": 0.2,
+                "top_p": 0.77,
+            },
+        )
+    finally:
+        models_introspection.stream_model_introspection_analysis = original
+
+    assert response.status_code == 200
+    assert captured["top_p"] == 0.77
+
+
 def test_model_introspection_snapshot_endpoint_returns_500_without_internal_detail() -> (
     None
 ):
@@ -197,3 +257,83 @@ def test_model_introspection_stream_endpoint_maps_value_error_to_safe_400() -> N
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid request parameters"
+
+
+def test_model_introspection_probe_endpoint_returns_payload() -> None:
+    async def _fake_probe(**_kwargs):
+        return {
+            "status": "ok",
+            "runtime_label": "gemma · multi_runtime @ localhost:8014",
+            "probe": {"mode": "hidden"},
+            "diagnostics": {"elapsed_ms": 10.0},
+        }
+
+    original = models_introspection.run_model_introspection_probe
+    models_introspection.run_model_introspection_probe = _fake_probe
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/probe",
+            json={
+                "prompt": "Co to jest słońce?",
+                "mode": "hidden",
+                "layer_selection": [1, 4],
+                "top_k": 8,
+            },
+        )
+    finally:
+        models_introspection.run_model_introspection_probe = original
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["probe"]["status"] == "ok"
+    assert payload["probe"]["probe"]["mode"] == "hidden"
+
+
+def test_model_introspection_probe_endpoint_maps_value_error_to_safe_400() -> None:
+    async def _bad_probe(**_kwargs):
+        raise ValueError("sensitive validation details")
+
+    original = models_introspection.run_model_introspection_probe
+    models_introspection.run_model_introspection_probe = _bad_probe
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/probe",
+            json={
+                "prompt": "Co to jest słońce?",
+                "mode": "hidden",
+                "layer_selection": [1],
+                "top_k": 8,
+            },
+        )
+    finally:
+        models_introspection.run_model_introspection_probe = original
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid request parameters"
+
+
+def test_model_introspection_probe_endpoint_maps_exception_to_safe_500() -> None:
+    async def _boom_probe(**_kwargs):
+        raise RuntimeError("internal probe stack detail")
+
+    original = models_introspection.run_model_introspection_probe
+    models_introspection.run_model_introspection_probe = _boom_probe
+    try:
+        client = _client()
+        response = client.post(
+            "/api/v1/models/introspection/probe",
+            json={
+                "prompt": "Co to jest słońce?",
+                "mode": "hidden",
+                "layer_selection": [1],
+                "top_k": 8,
+            },
+        )
+    finally:
+        models_introspection.run_model_introspection_probe = original
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"

@@ -3306,7 +3306,7 @@
     {
       "path": "tests/test_llm_simple_logic.py",
       "domain": "runtime",
-      "test_type": "route_contract",
+      "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
@@ -3334,8 +3334,8 @@
     {
       "path": "tests/test_llm_simple_route_model_resolution.py",
       "domain": "runtime",
-      "test_type": "route_contract",
-      "intent": "contract",
+      "test_type": "unit",
+      "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
@@ -3362,7 +3362,7 @@
     {
       "path": "tests/test_llm_simple_stream.py",
       "domain": "runtime",
-      "test_type": "route_contract",
+      "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
@@ -3658,6 +3658,62 @@
     },
     {
       "path": "tests/test_model_introspection_analysis_service.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_model_introspection_logit_lens_service.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_model_introspection_operator_trends_service.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_model_introspection_probe_service.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_model_introspection_rag_focus_service.py",
       "domain": "models",
       "test_type": "service_contract",
       "intent": "contract",
@@ -4024,6 +4080,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Integration-heavy behavior delegated to release lane."
+    },
+    {
+      "path": "tests/test_multi_runtime_probe_logits_tokens.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_multi_runtime_profile_service.py",

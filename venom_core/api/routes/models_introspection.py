@@ -6,10 +6,16 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from venom_core.api.routes.models_dependencies import get_model_manager
-from venom_core.api.schemas.model_introspection import ModelIntrospectionAnalyzeRequest
+from venom_core.api.schemas.model_introspection import (
+    ModelIntrospectionAnalyzeRequest,
+    ModelIntrospectionProbeRequest,
+)
 from venom_core.services.model_introspection_analysis_service import (
     analyze_model_with_optional_live_run,
     stream_model_introspection_analysis,
+)
+from venom_core.services.model_introspection_probe_service import (
+    run_model_introspection_probe,
 )
 from venom_core.services.model_introspection_service import (
     build_model_introspection_snapshot,
@@ -18,6 +24,7 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 _ERROR_INTERNAL_SERVER = "Internal server error"
+_ERROR_INVALID_REQUEST_PARAMETERS = "Invalid request parameters"
 _SSE_MEDIA_TYPE = "text/event-stream"
 
 router = APIRouter(prefix="/api/v1/models", tags=["models"])
@@ -58,6 +65,7 @@ async def analyze_model_introspection(
             live_analysis_enabled=request.live_analysis_enabled,
             max_tokens=request.max_tokens,
             temperature=request.temperature,
+            top_p=request.top_p,
             model_manager=get_model_manager(),
         )
         return {"success": True, "snapshot": payload}
@@ -68,7 +76,7 @@ async def analyze_model_introspection(
         )
         raise HTTPException(
             status_code=400,
-            detail="Invalid request parameters",
+            detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
     except Exception as exc:
         logger.exception("Błąd podczas analizy modelu")
@@ -95,6 +103,7 @@ async def stream_model_introspection_analysis_endpoint(
                 live_analysis_enabled=request.live_analysis_enabled,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
+                top_p=request.top_p,
                 model_manager=get_model_manager(),
             ),
             media_type=_SSE_MEDIA_TYPE,
@@ -110,8 +119,44 @@ async def stream_model_introspection_analysis_endpoint(
         )
         raise HTTPException(
             status_code=400,
-            detail="Invalid request parameters",
+            detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
     except Exception as exc:
         logger.exception("Błąd podczas streamowanej analizy modelu")
+        raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc
+
+
+@router.post(
+    "/introspection/probe",
+    responses={
+        400: {"description": "Nieprawidłowe parametry probe"},
+        500: {"description": "Błąd wewnętrzny podczas wykonania probe"},
+    },
+)
+async def probe_model_introspection(
+    request: ModelIntrospectionProbeRequest,
+) -> dict[str, object]:
+    """Proxy probe request to active multi_runtime endpoint with safe fallback."""
+    try:
+        probe_payload = await run_model_introspection_probe(
+            prompt=request.prompt,
+            mode=request.mode,
+            layer_selection=request.layer_selection,
+            top_k=request.top_k,
+        )
+        return {
+            "success": True,
+            "probe": probe_payload,
+        }
+    except ValueError as exc:
+        logger.warning(
+            "Nieprawidłowe parametry probe model introspection",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=_ERROR_INVALID_REQUEST_PARAMETERS,
+        ) from exc
+    except Exception as exc:
+        logger.exception("Błąd podczas wykonania probe model introspection")
         raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc

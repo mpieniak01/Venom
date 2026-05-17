@@ -14,6 +14,17 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Ścieżki błędów mają być jawne i, gdzie sensowne, pokryte testami.
 - Przed uruchamianiem narzędzi Pythona aktywuj środowisko repo: `source .venv/bin/activate`.
 
+## Najczęstsze Pułapki
+
+- Najpierw ustal źródło prawdy: gałąź, PR, dokument zadania i dokładny zakres, który faktycznie jest w grze.
+- Nie mieszaj w głowie pracy funkcjonalnej z naprawami jakościowymi; jeśli jedna gałąź zastępuje drugą, nazwij to wprost.
+- Zanim zmienisz UI albo dokumentację, potwierdź rzeczywisty przepływ danych. Tekst wyglądający jak placeholder nie jest jeszcze dowodem.
+- Artefakty runtime traktuj jak element higieny repo. Jeśli zadanie generuje pliki lokalne, dodaj je do `.gitignore` od razu.
+- Gdy Sonar lub hotspot bezpieczeństwa wskazuje problem, wybieraj dozwolone namespace, jawne ścieżki i liniowe parsowanie zamiast dynamicznego składania ścieżek lub ciężkich regexów.
+- Przy failu bramki najpierw napraw root cause i odpal najmniejszy celowany test, a dopiero potem `make pr-fast`.
+- Jeśli ten sam gate failuje dwa razy bez zmiany kodu albo środowiska, zatrzymaj się i zgłoś bloker zamiast kręcić pętlę.
+- Aktualizacje dokumentacji mają być krótkie i użyteczne: zapisz regułę, która zapobiegnie kolejnemu błędowi, nie cały przebieg debugowania.
+
 ## Domyślna Komenda Testów (zacznij od tego)
 
 Gdy zakres testów nie jest jeszcze doprecyzowany, zacznij od:
@@ -22,6 +33,33 @@ Gdy zakres testów nie jest jeszcze doprecyzowany, zacznij od:
 source .venv/bin/activate
 pytest -q
 ```
+
+## Anty-Loop: „nie ten Python” (obowiązkowe)
+
+Jeśli w terminalu widzisz `(.venv)`, to lokalnie zwykle wszystko działa poprawnie (`python`, `python3`, `pytest`).
+Najczęstszy problem agentów: komendy lecą w **nowej powłoce**, która **nie dziedziczy** Twojego `source .venv/bin/activate`.
+
+Zasada bezpieczna (preferowana w automatyzacji):
+
+```bash
+/home/ubuntu/venom/.venv/bin/python -V
+/home/ubuntu/venom/.venv/bin/pytest -q
+```
+
+Alternatywa (w jednej komendzie, gdy używasz aktywacji):
+
+```bash
+cd /home/ubuntu/venom && source .venv/bin/activate && pytest -q
+```
+
+Szybka kontrola kontekstu:
+
+```bash
+which python
+which pytest
+```
+
+Obie ścieżki muszą wskazywać na `/home/ubuntu/venom/.venv/...`.
 
 ## Kontrakt Dostarczania Bez Limitów Czasu (obowiązkowy)
 

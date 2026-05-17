@@ -103,6 +103,7 @@ export function useModelIntrospectionAnalysisStream(
             live_analysis_enabled: analysisMechanismEnabled,
             max_tokens: 128,
             temperature: 0.2,
+            top_p: 0.9,
           }),
         },
       );

@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildOperatorConclusion,
+  buildLogitLensModel,
+  buildRagFocusModel,
   computeAnalysisProgress,
+  getFallbackSignalTone,
+  getOperatorFinalStatusTone,
+  getOperatorStreamModeTone,
+  getRagGroundingTone,
   getAnalysisPhase,
   getAnswerStatusLabel,
   getAnswerTone,
+  resolveFallbackSignal,
+  resolveOperatorFinalStatus,
+  resolveOperatorStreamMode,
   splitAnswerHighlights,
 } from "../components/inspector/model-introspection-dashboard-view-model";
 
@@ -57,6 +67,9 @@ describe("model introspection dashboard view-model", () => {
     const label = getAnswerStatusLabel({
       response: "",
       analysisRunning: true,
+      answeredLabel: "model answered",
+      streamingLabel: "streaming answer",
+      awaitingLabel: "awaiting answer",
     });
     assert.equal(label, "streaming answer");
   });
@@ -66,5 +79,207 @@ describe("model introspection dashboard view-model", () => {
       "Pierwsze zdanie. Drugie zdanie. Trzecie zdanie. Czwarte zdanie. Piąte zdanie.",
     );
     assert.equal(highlights.length, 4);
+  });
+
+  it("maps completed analysis to operator final status", () => {
+    const status = resolveOperatorFinalStatus({
+      analysisStatus: "completed",
+      analysisVisible: true,
+    });
+    assert.equal(status, "completed");
+    assert.equal(getOperatorFinalStatusTone(status), "success");
+  });
+
+  it("detects delayed single chunk stream mode", () => {
+    const mode = resolveOperatorStreamMode({
+      analysisVisible: true,
+      chunkCount: 1,
+      firstChunkMs: 2500,
+    });
+    assert.equal(mode, "single_chunk_delayed");
+    assert.equal(getOperatorStreamModeTone(mode), "warning");
+  });
+
+  it("detects fallback usage from adapter metadata", () => {
+    const signal = resolveFallbackSignal({
+      adapterApplied: true,
+      adapterId: "demo-adapter",
+    });
+    assert.equal(signal, "used");
+    assert.equal(getFallbackSignalTone(signal), "warning");
+  });
+
+  it("builds rag focus model from fallback graph data", () => {
+    const ragFocus = buildRagFocusModel({
+      analysisPrompt: "Co to jest słońce?",
+      analysisStatus: "completed",
+      chunkCount: 1,
+      analysisTimeline: [
+        { id: "request_ready", label: "Prompt prepared", status: "done", detail: "", at_ms: 1 },
+        { id: "stream_opened", label: "Stream opened", status: "done", detail: "", at_ms: 2 },
+        { id: "response_finalized", label: "Response assembled", status: "done", detail: "", at_ms: 3 },
+      ],
+      analysisProcess: {
+        request_id: "req-1",
+        status: "COMPLETED",
+        step_count: 1,
+        steps: [{ component: "SimpleMode", action: "context_preview", status: "ok", details: "{}" }],
+        context_preview_truncated: false,
+      },
+      snapshot: {
+        runtime: {
+          provider: "multi_runtime",
+          model: "gemma",
+          endpoint: "http://localhost:8014/v1",
+          service_type: "local",
+          mode: "LOCAL",
+          label: "gemma · multi_runtime",
+          config_hash: "abc",
+          runtime_id: "runtime-1",
+        },
+        runtime_drift: {
+          drift_detected: false,
+          active_server: "multi_runtime",
+          inferred_provider: "multi_runtime",
+          model_name: "gemma",
+          endpoint: "http://localhost:8014/v1",
+          issues: [],
+        },
+        packages: {},
+        available_packages: [],
+        missing_packages: [],
+        model_manager: { available: true, usage_metrics: null, error: null },
+        reuse: {
+          brain: { path: "/brain", available: true, purpose: "graph" },
+          diagnostics: [],
+        },
+        summary: {
+          active_model: "gemma",
+          provider: "multi_runtime",
+          runtime_label: "gemma · multi_runtime",
+          introspection_ready: true,
+        },
+        graph: {
+          nodes: [
+            { id: "runtime", label: "runtime", kind: "runtime", status: "ok" },
+            { id: "analysis", label: "analysis", kind: "analysis", status: "ok" },
+            { id: "brain", label: "brain", kind: "reuse", status: "available" },
+          ],
+          edges: [{ from: "analysis", to: "brain", label: "uses" }],
+          summary: {
+            nodes: 3,
+            edges: 1,
+            available_packages: 0,
+            missing_packages: 0,
+            drift_issues: 0,
+          },
+        },
+      },
+      ragFocusPayload: null,
+    });
+    assert.ok(ragFocus);
+    assert.equal(ragFocus?.source, "graph_fallback");
+    assert.equal(ragFocus?.entities.length, 2);
+    assert.equal(ragFocus?.evidenceEdges.length, 1);
+    assert.ok((ragFocus?.evidenceEdges[0]?.id ?? "").startsWith("edge:"));
+    assert.equal(ragFocus?.answerEvidenceLinks.length, 0);
+    assert.equal(ragFocus?.steps.length, 4);
+    assert.equal(getRagGroundingTone(ragFocus?.grounding ?? "unknown"), "warning");
+  });
+
+  it("builds logit-lens model from payload", () => {
+    const logitLens = buildLogitLensModel({
+      status: "ok",
+      code: null,
+      message: null,
+      runtime_label: "gemma · multi_runtime",
+      input_tokens: ["▁Co", "▁to", "▁jest"],
+      output_tokens: ["▁Słońce", "▁to"],
+      checkpoints: [
+        {
+          id: "cp_25",
+          percent: 25,
+          layer: 8,
+          top_k: [
+            { token: "▁planeta", token_index: 1, score: 1.1 },
+            { token: "▁gwiazda", token_index: 2, score: 1.0 },
+          ],
+          top_token: "▁planeta",
+          confidence: 0.31,
+          changed: false,
+        },
+      ],
+      signals: {
+        early_unstable: true,
+        late_stabilized: false,
+        low_confidence_path: true,
+      },
+      interpretability: {
+        interpretable: false,
+        confidence_band: "low",
+        token_noise_ratio: 0.75,
+        readable_top_tokens: 1,
+        total_top_tokens: 4,
+      },
+      diagnostics: { elapsed_ms: 11.2 },
+    });
+
+    assert.ok(logitLens);
+    assert.equal(logitLens?.source, "probe_unavailable");
+    assert.equal(logitLens?.input_tokens[0], "Co");
+    assert.equal(logitLens?.checkpoints.length, 1);
+    assert.equal(logitLens?.checkpoints[0]?.top_k[0]?.token, "planeta");
+    assert.equal(logitLens?.signals.low_confidence_path, true);
+  });
+
+  it("builds operator conclusion for grounded runtime signal", () => {
+    const conclusion = buildOperatorConclusion({
+      analysisVisible: true,
+      analysisStatus: "completed",
+      ragFocus: {
+        source: "runtime_trace",
+        query: "Co to jest słońce?",
+        entities: [{ id: "e1", label: "Słońce", kind: "entity", active: true }],
+        evidenceEdges: [{ id: "edge:1", from: "query", to: "e1", label: "grounded", active: true }],
+        answerEvidenceLinks: [
+          { id: "link:1", fragment: "Słońce to gwiazda.", edgeIds: ["edge:1"], entityIds: ["e1"] },
+        ],
+        activeEntityIds: ["e1"],
+        grounding: "strong",
+        steps: [
+          { id: "retrieval_started", status: "done" },
+          { id: "entities_linked", status: "done" },
+          { id: "context_packed", status: "done" },
+          { id: "answer_grounded", status: "done" },
+        ],
+      },
+      logitLens: {
+        source: "probe_runtime",
+        status: "ok",
+        code: null,
+        message: null,
+        runtime_label: "gemma · multi_runtime",
+        input_tokens: [],
+        output_tokens: [],
+        checkpoints: [],
+        signals: {
+          early_unstable: false,
+          late_stabilized: true,
+          low_confidence_path: false,
+        },
+        interpretability: {
+          interpretable: true,
+          confidence_band: "high",
+          token_noise_ratio: 0.1,
+          readable_top_tokens: 4,
+          total_top_tokens: 4,
+        },
+        diagnostics: {},
+      },
+    });
+    assert.ok(conclusion);
+    assert.equal(conclusion?.verdict, "grounded");
+    assert.equal(conclusion?.tone, "success");
+    assert.equal(conclusion?.partial, false);
   });
 });

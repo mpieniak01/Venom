@@ -249,6 +249,10 @@ tests/test_model_config_api.py
 tests/test_model_discovery.py
 tests/test_model_introspection_analysis_api.py
 tests/test_model_introspection_analysis_service.py
+tests/test_model_introspection_logit_lens_service.py
+tests/test_model_introspection_operator_trends_service.py
+tests/test_model_introspection_probe_service.py
+tests/test_model_introspection_rag_focus_service.py
 tests/test_model_manager.py
 tests/test_model_manager_adapter_ops.py
 tests/test_model_manager_discovery.py
@@ -274,6 +278,7 @@ tests/test_models_utils_security.py
 tests/test_module_data_policy.py
 tests/test_module_example_data_policy_routes.py
 tests/test_module_registry.py
+tests/test_multi_runtime_probe_logits_tokens.py
 tests/test_multi_runtime_profile_service.py
 tests/test_new_chat_session_api.py
 tests/test_node_manager.py

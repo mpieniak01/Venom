@@ -522,6 +522,7 @@ async def test_analysis_stream_maps_traffic_control_degraded_to_skipped(
     done_payload = json.loads(events[-1][1])
     assert done_payload["status"] == "skipped"
     assert done_payload["skipped_reason"] == "traffic_control_degraded_mode"
+    assert done_payload["analysis"]["error_code"] == "DEGRADED_POLICY_BLOCK"
     assert done_payload["analysis"]["timeline"][-1]["status"] == "skipped"
 
 
@@ -549,7 +550,66 @@ async def test_analysis_maps_traffic_control_degraded_to_skipped(
 
     assert result["status"] == "skipped"
     assert result["skipped_reason"] == "traffic_control_degraded_mode"
+    assert result["analysis"]["error_code"] == "DEGRADED_POLICY_BLOCK"
     assert result["analysis"]["timeline"][-1]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_analysis_stream_maps_circuit_breaker_open_to_degraded_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        raise RuntimeError("Circuit breaker open for provider 'multi_runtime'")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events: list[tuple[str, str]] = []
+    for chunk in chunks:
+        events.extend(analysis_service.parse_sse_events(chunk))
+    done_payload = json.loads(events[-1][1])
+    assert done_payload["status"] == "skipped"
+    assert done_payload["analysis"]["error_code"] == "DEGRADED_CIRCUIT_OPEN"
+
+
+@pytest.mark.asyncio
+async def test_analysis_maps_endpoint_unreachable_to_degraded_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        raise RuntimeError("Connect error while contacting runtime endpoint")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    )
+
+    assert result["status"] == "skipped"
+    assert result["analysis"]["error_code"] == "DEGRADED_ENDPOINT_UNREACHABLE"
 
 
 @pytest.mark.asyncio
@@ -618,7 +678,82 @@ async def test_analysis_maps_degraded_error_event_to_skipped(
     )
 
     assert result["status"] == "skipped"
-    assert result["skipped_reason"] == "traffic_control_degraded_mode"
+
+
+@pytest.mark.asyncio
+async def test_analysis_stream_skips_when_model_drift_detected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _build_snapshot()
+    snapshot["runtime_drift"] = {
+        "issues": [
+            "Runtime provider 'multi_runtime' does not match daemon target model ('model-a' vs 'model-b')."
+        ],
+        "runtime_active_model_id": "model-a",
+        "daemon_target_model": "model-b",
+    }
+
+    async def fake_snapshot(**kwargs):
+        return snapshot
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events: list[tuple[str, str]] = []
+    for chunk in chunks:
+        events.extend(analysis_service.parse_sse_events(chunk))
+
+    assert [name for name, _ in events] == ["analysis_start", "analysis_done"]
+    done_payload = json.loads(events[-1][1])
+    assert done_payload["status"] == "skipped"
+    assert done_payload["skipped_reason"] == "model_drift_detected"
+    assert done_payload["analysis"]["error"] == "MODEL_DRIFT_DETECTED"
+    assert done_payload["analysis"]["runtime_active_model_id"] == "model-a"
+    assert done_payload["analysis"]["daemon_target_model"] == "model-b"
+
+
+@pytest.mark.asyncio
+async def test_analysis_skips_when_model_drift_detected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _build_snapshot()
+    snapshot["runtime_drift"] = {
+        "issues": [
+            "Runtime provider 'multi_runtime' does not match daemon target model ('model-a' vs 'model-b')."
+        ],
+        "runtime_active_model_id": "model-a",
+        "daemon_target_model": "model-b",
+    }
+
+    async def fake_snapshot(**kwargs):
+        return snapshot
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    )
+
+    assert result["status"] == "skipped"
+    assert result["skipped_reason"] == "model_drift_detected"
+    assert result["analysis"]["error_code"] == "MODEL_DRIFT_DETECTED"
+    assert result["analysis"]["runtime_active_model_id"] == "model-a"
+    assert result["analysis"]["daemon_target_model"] == "model-b"
 
 
 def test_classify_stream_quality_variants() -> None:

@@ -31,10 +31,19 @@ class ModelSwitchRequest(BaseModel):
     role: Optional[str] = (
         None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
     )
+    switch_source: Optional[str] = "ui"
+    ownership_token: Optional[str] = None
 
     @field_validator("name")
     def validate_name(cls, v):
         return validate_model_name_basic(v, max_length=100)
+
+    @field_validator("ownership_token", mode="before")
+    def normalize_ownership_token(cls, v):
+        if v is None:
+            return None
+        token = str(v).strip()
+        return token or None
 
 
 class ModelRegistryInstallRequest(BaseModel):
@@ -74,6 +83,8 @@ class ModelActivateRequest(BaseModel):
 
     name: str
     runtime: str
+    switch_source: Optional[str] = "ui"
+    ownership_token: Optional[str] = None
 
     @field_validator("name")
     def validate_name(cls, v):
@@ -82,6 +93,13 @@ class ModelActivateRequest(BaseModel):
     @field_validator("runtime")
     def validate_runtime(cls, v):
         return validate_runtime(v)
+
+    @field_validator("ownership_token", mode="before")
+    def normalize_ownership_token(cls, v):
+        if v is None:
+            return None
+        token = str(v).strip()
+        return token or None
 
 
 class TranslationRequest(BaseModel):

@@ -14,6 +14,11 @@ from venom_core.api.routes.models_dependencies import (
     get_model_registry,
 )
 from venom_core.api.routes.models_utils import infer_model_provider
+from venom_core.services.runtime_switch_telemetry import (
+    assert_runtime_switch_ownership_token,
+    assert_runtime_switch_source_allowed,
+    emit_runtime_model_event,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -155,6 +160,9 @@ async def activate_model_endpoint(request: ModelActivateRequest):
     """
     Aktywuje model dla danego runtime.
     """
+    switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+    assert_runtime_switch_ownership_token(request.ownership_token)
+
     model_registry = get_model_registry()
     if model_registry is None:
         raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
@@ -178,6 +186,12 @@ async def activate_model_endpoint(request: ModelActivateRequest):
 
             runtime_info = get_active_llm_runtime()
             runtime_status, runtime_error = await probe_runtime_status(runtime_info)
+            emit_runtime_model_event(
+                "runtime_model_selected",
+                source=switch_source,
+                runtime=request.runtime,
+                model=request.name,
+            )
             return {
                 "success": True,
                 "message": f"Model {request.name} aktywowany dla runtime {request.runtime}",

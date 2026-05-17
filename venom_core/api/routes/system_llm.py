@@ -43,6 +43,11 @@ from venom_core.services.runtime_switch_service import (
     probe_health_ready,
     probe_until_shutdown,
 )
+from venom_core.services.runtime_switch_telemetry import (
+    assert_runtime_switch_ownership_token,
+    assert_runtime_switch_source_allowed,
+    emit_runtime_model_event,
+)
 from venom_core.utils.llm_runtime import (
     LifecycleStep,
     compute_llm_config_hash,
@@ -371,7 +376,12 @@ def _select_model_for_server(
             if server_name == "ollama"
             else "PREVIOUS_MODEL_VLLM"
         )
-    desired_model = config.get(last_model_key) or config.get("LLM_MODEL_NAME", "")
+    runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
+    active_model_id = ""
+    if callable(runtime_snapshot_getter):
+        runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
+        active_model_id = str(runtime_snapshot.get("active_model_id") or "").strip()
+    desired_model = active_model_id or str(config.get(last_model_key) or "").strip()
     previous_model = config.get(prev_model_key) or ""
     available = {
         m["name"] for m in models if m.get("provider") == server_name and m.get("name")
@@ -660,10 +670,11 @@ def _assert_runtime_provider_supported(provider_raw: str) -> None:
 
 
 def _capture_runtime_settings_snapshot() -> tuple[str, str, str, str]:
+    runtime = get_active_llm_runtime()
     return (
         SETTINGS.LLM_SERVICE_TYPE,
-        SETTINGS.LLM_MODEL_NAME,
-        SETTINGS.ACTIVE_LLM_SERVER,
+        str(getattr(runtime, "model_name", "") or ""),
+        str(getattr(runtime, "provider", "") or ""),
         SETTINGS.LLM_CONFIG_HASH,
     )
 
@@ -1537,10 +1548,23 @@ def _apply_vllm_runtime_autofix(
 def _build_vllm_runtime_autofix_context(
     *, local_models: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
-    config = config_manager.get_config(mask_secrets=False)
-    active_runtime = get_active_llm_runtime()
+    runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
+    if callable(runtime_snapshot_getter):
+        runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
+        config = runtime_snapshot["config"]
+        active_runtime = runtime_snapshot["runtime_live"]
+        configured_runtime = (
+            str(runtime_snapshot["active_server"] or "").strip().lower()
+        )
+        active_model_value = runtime_snapshot["active_model_id"]
+    else:
+        config = config_manager.get_config(mask_secrets=False)
+        active_runtime = get_active_llm_runtime()
+        configured_runtime = (
+            str(getattr(active_runtime, "provider", "") or "").strip().lower()
+        )
+        active_model_value = getattr(active_runtime, "model_name", "")
     active_provider = str(getattr(active_runtime, "provider", "") or "").strip().lower()
-    configured_runtime = str(config.get("ACTIVE_LLM_SERVER") or "").strip().lower()
     if active_provider != "vllm" and configured_runtime != "vllm":
         return None
 
@@ -1554,7 +1578,7 @@ def _build_vllm_runtime_autofix_context(
         str(model.get("name") or "").strip().lower(): model for model in valid_models
     }
     active_model = str(
-        getattr(active_runtime, "model_name", "") or config.get("LLM_MODEL_NAME") or ""
+        active_model_value or getattr(active_runtime, "model_name", "") or ""
     ).strip()
     configured_model_path = str(config.get("VLLM_MODEL_PATH") or "").strip()
     active_valid = active_model.lower() in valid_by_name
@@ -2042,10 +2066,19 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     Przelacza runtime LLM na provider (openai/google/onnx).
     """
+    switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+    assert_runtime_switch_ownership_token(request.ownership_token)
     provider_raw = _normalize_runtime_provider(request.provider)
     _assert_runtime_provider_supported(provider_raw)
     if provider_raw == "onnx":
-        return _activate_onnx_runtime(request.model)
+        response = _activate_onnx_runtime(request.model)
+        emit_runtime_model_event(
+            "runtime_model_selected",
+            source=switch_source,
+            runtime=response.get("active_server", "onnx"),
+            model=response.get("active_model", ""),
+        )
+        return response
 
     _release_onnx_runtime_caches()
     _assert_cloud_provider_requirements(provider_raw)
@@ -2053,7 +2086,14 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
         provider_raw=provider_raw,
         requested_model=request.model,
     )
-    return _activate_cloud_runtime(provider_raw, validated_model)
+    response = _activate_cloud_runtime(provider_raw, validated_model)
+    emit_runtime_model_event(
+        "runtime_model_selected",
+        source=switch_source,
+        runtime=response.get("active_server", provider_raw),
+        model=response.get("active_model", validated_model or ""),
+    )
+    return response
 
 
 def _validate_feedback_alias_request(*, server_name: str, requested_alias: str) -> None:
@@ -2232,12 +2272,17 @@ def _fallback_model_selection(
         return None
     last_model_key = _last_model_key_for_server(server_name)
     previous_model_key = _previous_model_key_for_server(server_name)
-    candidates = [
-        str(request.model or "").strip(),
-        str(config.get(last_model_key) or "").strip(),
-        str(config.get(previous_model_key) or "").strip(),
-        str(config.get("LLM_MODEL_NAME") or "").strip(),
-    ]
+    candidates = [str(request.model or "").strip()]
+    runtime_snapshot_getter = getattr(config_manager, "get_runtime_snapshot", None)
+    if callable(runtime_snapshot_getter):
+        runtime_snapshot = runtime_snapshot_getter(mask_secrets=False)
+        candidates.append(str(runtime_snapshot.get("active_model_id") or "").strip())
+    candidates.extend(
+        [
+            str(config.get(last_model_key) or "").strip(),
+            str(config.get(previous_model_key) or "").strip(),
+        ]
+    )
     for candidate in candidates:
         if candidate and candidate in available_models:
             return candidate, last_model_key
@@ -2474,6 +2519,8 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     """
     Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
     """
+    switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+    assert_runtime_switch_ownership_token(request.ownership_token)
     _ensure_server_allowed(request.server_name)
     server_name = request.server_name
     requested_alias = str(request.model_alias or "").strip()
@@ -2491,17 +2538,18 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     if not llm_controller.has_server(server_name):
         raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
 
-    from_server = str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+    active_runtime = get_active_llm_runtime()
+    from_server = str(getattr(active_runtime, "provider", "") or "").strip().lower()
     _trace_switch(
         request_tracer,
         request.trace_id,
         "llm_switch_requested",
-        f"server={server_name}",
+        f"server={server_name}, source={switch_source}",
     )
 
     # Delegate full lifecycle (stop → release → flush → start → health) to orchestrator.
     # Config/endpoint are saved ONLY after orchestrator returns with confirmed health.
-    active_model = str(getattr(SETTINGS, "LLM_MODEL_NAME", "") or "").strip()
+    active_model = str(getattr(active_runtime, "model_name", "") or "").strip()
     orchestrator = RuntimeSwitchOrchestrator(llm_controller)
     (
         switch_state,
@@ -2521,6 +2569,13 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         switch_state.mark_done(LifecycleStep.ENDPOINT_SWITCHED)
         switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
         response = _activate_onnx_server_switch(stop_results=stop_results)
+        emit_runtime_model_event(
+            "runtime_model_selected",
+            source=switch_source,
+            runtime=server_name,
+            model=response.get("active_model"),
+            from_runtime=from_server or "unknown",
+        )
         response["shutdown_results"] = shutdown_results
         response["lifecycle_state"] = switch_state.to_payload()
         return response
@@ -2565,6 +2620,13 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         request.trace_id,
         "llm_switch_applied",
         f"server={server_name}, model={selected_model}, hash={config_hash}",
+    )
+    emit_runtime_model_event(
+        "runtime_model_selected",
+        source=switch_source,
+        runtime=server_name,
+        model=selected_model,
+        from_runtime=from_server or "unknown",
     )
     return {
         "status": "success",

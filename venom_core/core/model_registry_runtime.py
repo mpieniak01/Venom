@@ -96,19 +96,37 @@ def apply_model_activation_config(model_name: str, runtime: str, meta: ModelMeta
         updates["LLM_LOCAL_ENDPOINT"] = SETTINGS.GEMMA4_AUDIO_ENDPOINT
 
     config_manager.update_config(updates)
-    SETTINGS.LLM_MODEL_NAME = model_name
-    SETTINGS.ACTIVE_LLM_SERVER = canonical_runtime
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = updates.get(
-        "LLM_LOCAL_ENDPOINT", SETTINGS.LLM_LOCAL_ENDPOINT
+    _sync_runtime_settings_from_updates(
+        settings=SETTINGS,
+        updates=updates,
+        model_name=model_name,
+        canonical_runtime=canonical_runtime,
     )
-    if runtime == "ollama":
-        safe_setattr(SETTINGS, "LAST_MODEL_OLLAMA", model_name)
-    if runtime == "vllm":
-        safe_setattr(SETTINGS, "LAST_MODEL_VLLM", model_name)
-    if is_multi_runtime(runtime):
-        safe_setattr(SETTINGS, "LAST_MODEL_GEMMA4_AUDIO", model_name)
     return SETTINGS
+
+
+def _sync_runtime_settings_from_updates(
+    *,
+    settings: Any,
+    updates: dict[str, Any],
+    model_name: str,
+    canonical_runtime: str,
+) -> None:
+    """Write-through cache in process memory after persisted config update."""
+    settings.LLM_MODEL_NAME = model_name
+    settings.ACTIVE_LLM_SERVER = canonical_runtime
+    settings.LLM_SERVICE_TYPE = "local"
+    settings.LLM_LOCAL_ENDPOINT = updates.get(
+        "LLM_LOCAL_ENDPOINT", getattr(settings, "LLM_LOCAL_ENDPOINT", None)
+    )
+    if "LAST_MODEL_OLLAMA" in updates:
+        safe_setattr(settings, "LAST_MODEL_OLLAMA", updates["LAST_MODEL_OLLAMA"])
+    if "LAST_MODEL_VLLM" in updates:
+        safe_setattr(settings, "LAST_MODEL_VLLM", updates["LAST_MODEL_VLLM"])
+    if "LAST_MODEL_GEMMA4_AUDIO" in updates:
+        safe_setattr(
+            settings, "LAST_MODEL_GEMMA4_AUDIO", updates["LAST_MODEL_GEMMA4_AUDIO"]
+        )
 
 
 def apply_vllm_activation_updates(*args: Any) -> None:

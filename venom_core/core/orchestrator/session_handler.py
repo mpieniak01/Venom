@@ -471,7 +471,7 @@ class SessionHandler:
             if strategy == "heuristic_only":
                 return ""
             runtime = get_active_llm_runtime()
-            model_name = runtime.model_name or SETTINGS.LLM_MODEL_NAME
+            model_name = runtime.model_name
             if not model_name:
                 return ""
             endpoint = self._resolve_summary_endpoint(runtime)

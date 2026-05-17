@@ -22,6 +22,14 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: test-catalog-check-guard
+        name: Test Catalog Guard (staged tests/catalog only)
+        entry: make --no-print-directory test-catalog-check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^(tests(?:/[^/]+)*/test_.*\.py|config/testing/test_catalog\.json|config/pytest-groups/[^/]+\.txt|scripts/check_test_catalog\.py|scripts/generate_test_catalog\.py|scripts/sync_pytest_groups_from_catalog\.py)$
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:

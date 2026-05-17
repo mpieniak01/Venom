@@ -9,6 +9,10 @@ from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
 from venom_core.services import runtime_switch_service
+from venom_core.services.runtime_switch_telemetry import (
+    assert_runtime_switch_source_allowed,
+    normalize_runtime_switch_source,
+)
 
 
 class _FakeResponse:
@@ -998,3 +1002,83 @@ async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_gu
         assert response["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
     finally:
         _restore_settings(original)
+
+
+def test_switch_source_defaults_to_ui():
+    assert normalize_runtime_switch_source(None) == "ui"
+    assert normalize_runtime_switch_source("") == "ui"
+
+
+def test_switch_source_rejects_unmanaged():
+    with pytest.raises(system_routes.HTTPException) as exc:
+        assert_runtime_switch_source_allowed("manual_shell")
+    assert exc.value.status_code == 403
+
+
+def test_switch_source_allows_make_start():
+    assert assert_runtime_switch_source_allowed("make_start") == "make_start"
+
+
+def test_select_model_for_server_prefers_runtime_active_model(monkeypatch):
+    config = {
+        "LAST_MODEL_OLLAMA": "stale:model",
+        "PREVIOUS_MODEL_OLLAMA": "older:model",
+    }
+    models = [{"name": "live:model", "provider": "ollama"}]
+    monkeypatch.setattr(
+        system_routes.config_manager,
+        "get_runtime_snapshot",
+        lambda **_: {"active_model_id": "live:model"},
+    )
+    selected, _, _ = system_routes._select_model_for_server(  # noqa: SLF001
+        server_name="ollama",
+        config=config,
+        models=models,
+    )
+    assert selected == "live:model"
+
+
+def test_fallback_model_selection_prefers_runtime_model_over_config(monkeypatch):
+    config = {
+        "LAST_MODEL_OLLAMA": "config:model",
+        "PREVIOUS_MODEL_OLLAMA": "prev:model",
+    }
+    models = [
+        {"name": "runtime:model", "provider": "ollama"},
+        {"name": "config:model", "provider": "ollama"},
+    ]
+    monkeypatch.setattr(
+        system_routes.config_manager,
+        "get_runtime_snapshot",
+        lambda **_: {"active_model_id": "runtime:model"},
+    )
+    selected, _ = system_routes._fallback_model_selection(  # noqa: SLF001
+        request=system_routes.ActiveLlmServerRequest(server_name="ollama"),
+        server_name="ollama",
+        config=config,
+        models=models,
+    )
+    assert selected == "runtime:model"
+
+
+def test_vllm_autofix_context_uses_runtime_provider_not_config(monkeypatch):
+    monkeypatch.setattr(system_routes.config_manager, "get_runtime_snapshot", None)
+    monkeypatch.setattr(
+        system_routes.config_manager,
+        "get_config",
+        lambda **_: {"ACTIVE_LLM_SERVER": "ollama", "VLLM_MODEL_PATH": "/bad/path"},
+    )
+    monkeypatch.setattr(
+        system_routes,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(provider="vllm", model_name="live:model"),
+    )
+    monkeypatch.setattr(
+        system_routes,
+        "_is_vllm_runtime_model_entry",
+        lambda _model: True,
+    )
+    context = system_routes._build_vllm_runtime_autofix_context(  # noqa: SLF001
+        local_models=[{"name": "live:model", "path": "/valid/path"}]
+    )
+    assert context is not None

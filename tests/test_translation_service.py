@@ -11,10 +11,12 @@ from venom_core.services import translation_service as translation_module
 
 class DummyRuntime:
     service_type = "local"
+    model_name = "test-model"
 
 
 class DummyOpenAIRuntime:
     service_type = "openai"
+    model_name = "gpt-test"
 
 
 class DummyResponse:
@@ -458,7 +460,7 @@ def test_resolve_headers_runtime_without_keys_returns_empty(monkeypatch):
     monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
-        lambda: SimpleNamespace(service_type="local"),
+        lambda: SimpleNamespace(service_type="local", model_name="test-model"),
     )
     assert service._resolve_headers() == {}
 
@@ -515,7 +517,7 @@ async def test_translate_text_uses_llm_provider_when_runtime_has_no_markers(
     monkeypatch,
 ):
     _configure_settings(monkeypatch)
-    runtime = SimpleNamespace(provider=None, service_type=None)
+    runtime = SimpleNamespace(provider=None, service_type=None, model_name="test-model")
     monkeypatch.setattr(translation_module, "get_active_llm_runtime", lambda: runtime)
 
     observed_provider = {"value": None}
@@ -543,7 +545,9 @@ async def test_translate_text_uses_llm_provider_when_runtime_has_no_markers(
 @pytest.mark.asyncio
 async def test_translate_text_prefers_runtime_provider_for_http_client(monkeypatch):
     _configure_settings(monkeypatch)
-    runtime = SimpleNamespace(provider="custom-provider", service_type="local")
+    runtime = SimpleNamespace(
+        provider="custom-provider", service_type="local", model_name="test-model"
+    )
     monkeypatch.setattr(translation_module, "get_active_llm_runtime", lambda: runtime)
 
     observed_provider = {"value": None}
@@ -601,7 +605,9 @@ async def test_translate_text_uses_service_type_provider_and_skips_cache_write(
     monkeypatch,
 ):
     _configure_settings(monkeypatch)
-    runtime = SimpleNamespace(provider=None, service_type="local")
+    runtime = SimpleNamespace(
+        provider=None, service_type="local", model_name="test-model"
+    )
     monkeypatch.setattr(translation_module, "get_active_llm_runtime", lambda: runtime)
 
     observed_provider = {"value": None}

@@ -25,6 +25,7 @@ const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIM
 const SERVER_DATA_REVALIDATE_SECONDS = Number(
   process.env.NEXT_SERVER_DATA_REVALIDATE_SECONDS ?? "30",
 );
+const SSR_API_DISABLED_FOR_E2E = process.env.NEXT_PLAYWRIGHT_DISABLE_SSR_API === "1";
 
 const API_BASE = getServerApiBaseUrl();
 
@@ -37,6 +38,11 @@ const buildUrl = (path: string) => {
 };
 
 async function fetchJson<T>(path: string): Promise<T | null> {
+  // Playwright smoke tests may run without backend stack; disable SSR API hydration fetches
+  // to avoid noisy ECONNREFUSED logs from Next server process.
+  if (SSR_API_DISABLED_FOR_E2E) {
+    return null;
+  }
   try {
     const response = await fetch(buildUrl(path), {
       next: { revalidate: SERVER_DATA_REVALIDATE_SECONDS },

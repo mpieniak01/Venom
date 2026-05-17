@@ -140,3 +140,26 @@ def test_activate_model_returns_runtime_payload_when_successful():
     assert payload["success"] is True
     assert payload["runtime"]["status"] == "online"
     assert registry.calls == [("qwen2.5:7b", "vllm")]
+
+
+def test_activate_model_rejects_unmanaged_switch_source():
+    local_models = [
+        {
+            "name": "qwen2.5:7b",
+            "provider": "vllm",
+            "chat_compatible": True,
+        }
+    ]
+    manager = DummyRuntimeModelManager(local_models)
+    registry = DummyModelRegistry(activate_result=True)
+    client = _create_client(manager, registry)
+    response = client.post(
+        "/api/v1/models/activate",
+        json={
+            "name": "qwen2.5:7b",
+            "runtime": "vllm",
+            "switch_source": "manual_shell",
+        },
+    )
+    assert response.status_code == 403
+    assert registry.calls == []

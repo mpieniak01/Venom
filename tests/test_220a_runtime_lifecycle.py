@@ -540,8 +540,33 @@ def test_detect_runtime_drift_multi_runtime_no_drift():
         LLM_LOCAL_ENDPOINT="http://localhost:8014/v1",
         LLM_MODEL_NAME="gemma2:2b",
     )
-    result = detect_runtime_drift(settings)
+    with patch(
+        "venom_core.utils.llm_runtime._resolve_multi_runtime_target_model",
+        return_value="gemma2:2b",
+    ):
+        result = detect_runtime_drift(settings)
     assert result["drift_detected"] is False
+    assert result["runtime_active_model_id"] == "gemma2:2b"
+    assert result["daemon_target_model"] == "gemma2:2b"
+
+
+def test_detect_runtime_drift_multi_runtime_detects_model_mismatch():
+    settings = _fake_settings(
+        ACTIVE_LLM_SERVER="multi_runtime",
+        LLM_LOCAL_ENDPOINT="http://localhost:8014/v1",
+        LLM_MODEL_NAME="voytas26/openclaw-qwen3vl-8b-opt:latest",
+    )
+    with patch(
+        "venom_core.utils.llm_runtime._resolve_multi_runtime_target_model",
+        return_value="google/gemma-4-E2B-it",
+    ):
+        result = detect_runtime_drift(settings)
+    assert result["drift_detected"] is True
+    assert result["daemon_target_model"] == "google/gemma-4-E2B-it"
+    assert (
+        result["runtime_active_model_id"] == "voytas26/openclaw-qwen3vl-8b-opt:latest"
+    )
+    assert any("daemon target model" in issue for issue in result["issues"])
 
 
 def test_detect_runtime_drift_non_local_uses_service_type_as_inferred():

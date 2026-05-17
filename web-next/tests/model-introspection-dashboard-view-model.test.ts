@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildOperatorConclusion,
+  buildOperatorRunbookSteps,
   buildLogitLensModel,
   buildRagFocusModel,
   computeAnalysisProgress,
@@ -281,5 +282,54 @@ describe("model introspection dashboard view-model", () => {
     assert.equal(conclusion?.verdict, "grounded");
     assert.equal(conclusion?.tone, "success");
     assert.equal(conclusion?.partial, false);
+  });
+
+  it("maps skipped model drift to dedicated operator reason code", () => {
+    const conclusion = buildOperatorConclusion({
+      analysisVisible: true,
+      analysisStatus: "skipped",
+      skippedReason: "model_drift_detected",
+      analysisErrorCode: "MODEL_DRIFT_DETECTED",
+      ragFocus: null,
+      logitLens: null,
+    });
+
+    assert.ok(conclusion);
+    assert.equal(conclusion?.verdict, "ungrounded");
+    assert.equal(conclusion?.reasonCodes[0], "R0_MODEL_DRIFT");
+    assert.equal(conclusion?.reasons[0], "model drift detected");
+  });
+
+  it("maps degraded endpoint skip to dedicated operator reason code", () => {
+    const conclusion = buildOperatorConclusion({
+      analysisVisible: true,
+      analysisStatus: "skipped",
+      skippedReason: "traffic_control_degraded_mode",
+      analysisErrorCode: "DEGRADED_ENDPOINT_UNREACHABLE",
+      ragFocus: null,
+      logitLens: null,
+    });
+
+    assert.ok(conclusion);
+    assert.equal(conclusion?.reasonCodes[0], "R0_DEGRADED_ENDPOINT");
+    assert.equal(conclusion?.reasons[0], "degraded mode: endpoint unreachable");
+  });
+
+  it("builds runbook steps for model drift", () => {
+    const steps = buildOperatorRunbookSteps(["R0_MODEL_DRIFT"]);
+    assert.equal(steps.length, 3);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step1",
+    );
+  });
+
+  it("builds runbook steps for degraded endpoint", () => {
+    const steps = buildOperatorRunbookSteps(["R0_DEGRADED_ENDPOINT"]);
+    assert.equal(steps.length, 3);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step1",
+    );
   });
 });

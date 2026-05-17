@@ -566,7 +566,7 @@ async def test_translation_service_non_dict_payload_and_no_fallback(monkeypatch)
     monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
-        lambda: SimpleNamespace(service_type="local"),
+        lambda: SimpleNamespace(service_type="local", model_name="test-model"),
     )
 
     class _ClientNonDict:
@@ -711,7 +711,9 @@ async def test_translation_helpers_and_cache_paths(monkeypatch):
     monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
-        lambda: SimpleNamespace(service_type="local", provider="local"),
+        lambda: SimpleNamespace(
+            service_type="local", provider="local", model_name="test-model"
+        ),
     )
 
     service = translation_module.TranslationService(cache_ttl_seconds=3600)
@@ -953,7 +955,9 @@ async def test_translation_openai_endpoint_headers_and_http_error(monkeypatch):
     monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
-        lambda: SimpleNamespace(service_type="openai", provider="openai"),
+        lambda: SimpleNamespace(
+            service_type="openai", provider="openai", model_name="test-model"
+        ),
     )
 
     service = translation_module.TranslationService(cache_ttl_seconds=3600)
@@ -988,7 +992,9 @@ async def test_translation_cache_hit_skips_http_call(monkeypatch):
     monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
-        lambda: SimpleNamespace(service_type="local", provider="local"),
+        lambda: SimpleNamespace(
+            service_type="local", provider="local", model_name="cache-model"
+        ),
     )
     service = translation_module.TranslationService(cache_ttl_seconds=999)
 

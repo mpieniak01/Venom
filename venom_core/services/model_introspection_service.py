@@ -6,6 +6,8 @@ import importlib.metadata
 import importlib.util
 from typing import Any, Optional
 
+import anyio
+
 from venom_core.services.model_introspection_probe_service import (
     build_probe_health_payload,
 )
@@ -143,6 +145,11 @@ async def _collect_model_manager_usage(model_manager: Any) -> dict[str, Any]:
         }
 
 
+async def _collect_runtime_drift(settings: Any = None) -> dict[str, Any]:
+    """Run sync drift diagnostics off the event loop."""
+    return await anyio.to_thread.run_sync(detect_runtime_drift, settings)
+
+
 async def build_model_introspection_snapshot(
     *, model_manager: Any = None, settings: Any = None
 ) -> dict[str, Any]:
@@ -150,7 +157,7 @@ async def build_model_introspection_snapshot(
 
     active_runtime = get_active_llm_runtime(settings)
     runtime = active_runtime.to_payload()
-    runtime_drift = detect_runtime_drift(settings)
+    runtime_drift = await _collect_runtime_drift(settings)
     packages = {
         package_name: _probe_package(module_name, package_name)
         for module_name, package_name in _INTROSPECTION_PACKAGES

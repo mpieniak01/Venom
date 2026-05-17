@@ -130,3 +130,4 @@ To oczekiwany stan przejsciowy. Odpowiedz moze byc poprawna, ale internals sa je
 - [README](../../README_PL.md)
 - [Frontend Next.js](./FRONTEND_NEXT_GUIDE.md)
 - [Dashboard Guide](./DASHBOARD_GUIDE.md)
+- [Runbook rozjazdu runtime (PL)](./runbooks/model-introspection-runtime-drift.md)

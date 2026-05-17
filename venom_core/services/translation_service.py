@@ -73,7 +73,8 @@ class TranslationService:
 
     @staticmethod
     def _resolve_model_name() -> str:
-        model_name = SETTINGS.LLM_MODEL_NAME or ""
+        runtime = get_active_llm_runtime()
+        model_name = getattr(runtime, "model_name", "") or ""
         if not model_name:
             raise RuntimeError("Brak ustawionego modelu do tłumaczeń.")
         return model_name

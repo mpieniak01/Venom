@@ -19,6 +19,7 @@ import type {
 import {
   buildAttentionModel,
   buildOperatorConclusion,
+  buildOperatorRunbookSteps,
   buildLogitLensModel,
   buildSaliencyModel,
   buildRagFocusModel,
@@ -437,34 +438,29 @@ function resolveGraphDetails(args: {
   });
 }
 
-export function ModelIntrospectionDashboard() {
-  const t = useTranslation();
-  const { enabled: analysisMechanismEnabled } = useModelIntrospectionMechanism();
-  const { snapshot, loading, error, loadSnapshot } = useModelIntrospectionSnapshot();
-  const [analysisPrompt, setAnalysisPrompt] = useState(
-    t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder"),
-  );
+function useDashboardDerivedState(args: {
+  snapshot: IntrospectionSnapshot | null;
+  t: (key: string, replacements?: Record<string, string | number>) => string;
+  analysisResult: ReturnType<typeof useModelIntrospectionAnalysisStream>["analysisResult"];
+  analysisLoading: boolean;
+  analysisPrompt: string;
+  analysisMechanismEnabled: boolean;
+  selectedGraphNodeId: string | null;
+}) {
   const {
-    analysisLoading,
-    analysisError,
+    snapshot,
+    t,
     analysisResult,
-    runAnalysis,
-  } = useModelIntrospectionAnalysisStream({
-    analysisMechanismEnabled,
+    analysisLoading,
     analysisPrompt,
-  });
-  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
-  const [graphLayerOpen, setGraphLayerOpen] = useState(false);
-  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
-  const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
-
+    analysisMechanismEnabled,
+    selectedGraphNodeId,
+  } = args;
   const stats = useMemo(() => resolveSummaryStats(snapshot, t), [snapshot, t]);
-
   const analysisVisible = Boolean(analysisResult?.analysis);
   const analysisRunning = analysisResult?.status === "running";
   const analysisActive = analysisResult?.status === "running";
   const analysisCompleted = analysisResult?.status === "completed" && analysisVisible;
-
   const analysisComparison = useMemo(() => {
     return buildSnapshotComparison({
       snapshot,
@@ -472,7 +468,6 @@ export function ModelIntrospectionDashboard() {
       snapshotAfter: analysisResult?.snapshot_after,
     });
   }, [analysisCompleted, analysisResult?.snapshot_after, snapshot]);
-
   const analysisResponse = analysisResult?.analysis?.response ?? "";
   const analysisSourceResponse = analysisVisible ? analysisResponse : "";
   const analysisHighlights = useMemo(
@@ -480,11 +475,7 @@ export function ModelIntrospectionDashboard() {
     [analysisSourceResponse],
   );
   const analysisTimeline = useMemo(
-    () =>
-      resolveAnalysisTimeline(
-        analysisVisible,
-        analysisResult?.analysis?.timeline,
-      ),
+    () => resolveAnalysisTimeline(analysisVisible, analysisResult?.analysis?.timeline),
     [analysisVisible, analysisResult?.analysis?.timeline],
   );
   const analysisProcess = analysisResult?.analysis?.process ?? null;
@@ -548,15 +539,9 @@ export function ModelIntrospectionDashboard() {
     snapshot,
     ragFocusPayload: analysisResult?.analysis?.rag_focus ?? null,
   });
-  const logitLens = buildLogitLensModel(
-    analysisResult?.analysis?.logit_lens ?? null,
-  );
-  const attention = buildAttentionModel(
-    analysisResult?.analysis?.attention ?? null,
-  );
-  const saliency = buildSaliencyModel(
-    analysisResult?.analysis?.saliency ?? null,
-  );
+  const logitLens = buildLogitLensModel(analysisResult?.analysis?.logit_lens ?? null);
+  const attention = buildAttentionModel(analysisResult?.analysis?.attention ?? null);
+  const saliency = buildSaliencyModel(analysisResult?.analysis?.saliency ?? null);
   const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
   const internalsProbeElapsedMs = useMemo(
     () =>
@@ -605,6 +590,8 @@ export function ModelIntrospectionDashboard() {
   const operatorConclusion = buildOperatorConclusion({
     analysisVisible,
     analysisStatus: analysisResult?.status,
+    skippedReason: analysisResult?.skipped_reason ?? null,
+    analysisErrorCode: analysisResult?.analysis?.error_code ?? analysisResult?.analysis?.error ?? null,
     ragFocus,
     logitLens,
     operatorConclusionPayload: analysisResult?.analysis?.operator_conclusion ?? null,
@@ -613,7 +600,6 @@ export function ModelIntrospectionDashboard() {
   const evidenceCoverage = analysisResult?.analysis?.evidence_coverage ?? null;
   const inputProfile = analysisResult?.analysis?.input_profile ?? null;
   const generationProfile = analysisResult?.analysis?.generation_profile ?? null;
-
   const runTrends = useMemo<RunTrends | null>(
     () => buildRunTrends(analysisResult?.analysis?.run_trends),
     [analysisResult?.analysis?.run_trends],
@@ -629,7 +615,9 @@ export function ModelIntrospectionDashboard() {
     partial: operatorConclusion?.partial,
     t,
   });
-
+  const operatorRunbookSteps = buildOperatorRunbookSteps(
+    operatorConclusion?.reasonCodes ?? null,
+  );
   const availablePackages = snapshot?.available_packages.length ?? 0;
   const missingPackages = snapshot?.missing_packages.length ?? 0;
   const totalPackages = availablePackages + missingPackages;
@@ -643,11 +631,7 @@ export function ModelIntrospectionDashboard() {
     elapsedMs: analysisResult?.analysis?.elapsed_ms ?? 0,
     analysisStatus: analysisResult?.status,
   });
-  const visualMetrics = {
-    packageCoverage,
-    analysisProgress,
-  };
-
+  const visualMetrics = { packageCoverage, analysisProgress };
   const selectedGraphNodeIdEffective = useMemo(
     () =>
       resolveSelectedGraphNodeIdEffective({
@@ -656,7 +640,6 @@ export function ModelIntrospectionDashboard() {
       }),
     [selectedGraphNodeId, snapshot?.graph?.nodes],
   );
-
   const selectedGraphNode = useMemo(
     () =>
       resolveSelectedGraphNode({
@@ -665,7 +648,6 @@ export function ModelIntrospectionDashboard() {
       }),
     [selectedGraphNodeIdEffective, snapshot?.graph?.nodes],
   );
-
   const selectedGraphNodeDetails = useMemo(
     () =>
       resolveGraphDetails({
@@ -687,11 +669,135 @@ export function ModelIntrospectionDashboard() {
       snapshot,
     ],
   );
-
   const selectedGraphTypeHint = useMemo(
     () => resolveSelectedGraphTypeHint(selectedGraphNode),
     [selectedGraphNode],
   );
+  return {
+    stats,
+    analysisVisible,
+    analysisActive,
+    analysisComparison,
+    analysisResponse,
+    analysisHighlights,
+    analysisTimeline,
+    analysisProcess,
+    analysisTraceStepCount,
+    analysisFirstChunkMs,
+    analysisStepCount,
+    analysisTraceId,
+    analysisStreaming,
+    analysisPhase,
+    analysisAnswerTone,
+    answerStatusLabel,
+    operatorFinalStatus,
+    operatorFinalStatusTone,
+    operatorStreamMode,
+    operatorStreamModeTone,
+    fallbackSignal,
+    fallbackSignalTone,
+    ragFocus,
+    logitLens,
+    attention,
+    saliency,
+    analysisCapabilities,
+    internalsProbeElapsedMs,
+    internalsCapabilityRows,
+    internalsVerdictLabel,
+    internalsVerdictTone,
+    probeLimitsLabel,
+    internalsVerdict,
+    operatorConclusion,
+    evidenceCoverage,
+    inputProfile,
+    generationProfile,
+    runTrends,
+    operatorChecklist,
+    operatorRunbookSteps,
+    visualMetrics,
+    selectedGraphNodeIdEffective,
+    selectedGraphNode,
+    selectedGraphNodeDetails,
+    selectedGraphTypeHint,
+  };
+}
+
+export function ModelIntrospectionDashboard() {
+  const t = useTranslation();
+  const { enabled: analysisMechanismEnabled } = useModelIntrospectionMechanism();
+  const { snapshot, loading, error, loadSnapshot } = useModelIntrospectionSnapshot();
+  const [analysisPrompt, setAnalysisPrompt] = useState(
+    t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder"),
+  );
+  const {
+    analysisLoading,
+    analysisError,
+    analysisResult,
+    runAnalysis,
+  } = useModelIntrospectionAnalysisStream({
+    analysisMechanismEnabled,
+    analysisPrompt,
+  });
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [graphLayerOpen, setGraphLayerOpen] = useState(false);
+  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
+  const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
+
+  const {
+    stats,
+    analysisVisible,
+    analysisActive,
+    analysisComparison,
+    analysisResponse,
+    analysisHighlights,
+    analysisTimeline,
+    analysisProcess,
+    analysisTraceStepCount,
+    analysisFirstChunkMs,
+    analysisStepCount,
+    analysisTraceId,
+    analysisStreaming,
+    analysisPhase,
+    analysisAnswerTone,
+    answerStatusLabel,
+    operatorFinalStatus,
+    operatorFinalStatusTone,
+    operatorStreamMode,
+    operatorStreamModeTone,
+    fallbackSignal,
+    fallbackSignalTone,
+    ragFocus,
+    logitLens,
+    attention,
+    saliency,
+    analysisCapabilities,
+    internalsProbeElapsedMs,
+    internalsCapabilityRows,
+    internalsVerdictLabel,
+    internalsVerdictTone,
+    probeLimitsLabel,
+    internalsVerdict,
+    operatorConclusion,
+    evidenceCoverage,
+    inputProfile,
+    generationProfile,
+    runTrends,
+    operatorChecklist,
+    operatorRunbookSteps,
+    visualMetrics,
+    selectedGraphNodeIdEffective,
+    selectedGraphNode,
+    selectedGraphNodeDetails,
+    selectedGraphTypeHint,
+  } = useDashboardDerivedState({
+    snapshot,
+    t,
+    analysisResult,
+    analysisLoading,
+    analysisPrompt,
+    analysisMechanismEnabled,
+    selectedGraphNodeId,
+  });
 
   const handleRefreshSnapshot = useCallback(() => {
     loadSnapshot().catch(() => undefined);
@@ -999,7 +1105,7 @@ export function ModelIntrospectionDashboard() {
             analysisTimeline={analysisTimeline}
             analysisProcess={analysisProcess}
             analysisTraceStepCount={analysisTraceStepCount}
-            analysisTimelineStepCount={analysisTimelineStepCount}
+            analysisTimelineStepCount={analysisStepCount}
             responseChars={analysisResponse.length}
             chunkCount={analysisResult.analysis.chunk_count}
             resultsHighlightsLabel={t("inspector.modelIntrospection.dashboard.results.highlights")}
@@ -1030,6 +1136,7 @@ export function ModelIntrospectionDashboard() {
             generationProfile={generationProfile}
             runTrends={runTrends}
             operatorChecklist={operatorChecklist}
+            operatorRunbookSteps={operatorRunbookSteps}
             internalsVerdict={internalsVerdict}
           />
         </Panel>

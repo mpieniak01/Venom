@@ -966,7 +966,7 @@ def test_get_latest_voice_session_falls_back_to_filesystem(monkeypatch, tmp_path
     assert latest["session_id"] == "from_fs"
 
 
-def test_build_runtime_metadata_and_tts_sample_rate():
+def test_build_runtime_metadata_and_tts_sample_rate(monkeypatch):
     """Runtime snapshot should surface STT/TTS model fields and sample rate."""
     handler = _make_handler()
 
@@ -986,6 +986,11 @@ def test_build_runtime_metadata_and_tts_sample_rate():
 
     operator_agent = MagicMock()
     operator_agent._resolve_chat_service_id.return_value = "local"
+    monkeypatch.setattr(
+        audio_stream_mod,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(model_name="live-runtime-model"),
+    )
 
     runtime = handler._build_runtime_metadata(operator_agent)
 
@@ -993,6 +998,7 @@ def test_build_runtime_metadata_and_tts_sample_rate():
     assert runtime["stt_device"] == "cpu"
     assert runtime["stt_compute_type"] == "int8"
     assert runtime["llm_service_id"] == "local"
+    assert runtime["llm_model"] == "live-runtime-model"
     assert runtime["tts_model_path"] == "/tmp/voice.onnx"
     assert runtime["tts_fallback"] is False
     assert runtime["tts_sample_rate"] == 24000

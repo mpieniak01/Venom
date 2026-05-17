@@ -311,6 +311,8 @@ export type AnalysisResult = {
     request_ready_ms?: number;
     response_received_ms?: number;
     snapshot_after_ms?: number;
+    error?: string;
+    error_code?: string;
     process?: AnalysisProcessTrace | null;
     rag_focus?: {
       source?: string;

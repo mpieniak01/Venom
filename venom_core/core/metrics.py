@@ -56,7 +56,11 @@ class MetricsCollector:
             "ollama_prompt_eval_duration_ms_total": 0,
             "ollama_eval_duration_ms_total": 0,
             "ollama_runtime_samples": 0,
+            "runtime_model_selected_total": 0,
+            "runtime_model_mismatch_detected_total": 0,
         }
+        self.runtime_switch_sources: Dict[str, int] = {}
+        self.runtime_switch_runtimes: Dict[str, int] = {}
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
         self.execution_mode_usage: Dict[str, int] = {
@@ -254,6 +258,33 @@ class MetricsCollector:
         """Inkrementuje licznik wykrytych retry-loop dla ścieżek wykonania."""
         with self._lock:
             self.execution_mode_retry_loop_count += 1
+
+    def record_runtime_switch_event(
+        self,
+        *,
+        event_name: str,
+        source: str | None = None,
+        runtime: str | None = None,
+    ) -> None:
+        """Record runtime switch/drift telemetry event for dashboard metrics."""
+        normalized_event = str(event_name or "").strip().lower()
+        if not normalized_event:
+            return
+        with self._lock:
+            if normalized_event == "runtime_model_selected":
+                self.metrics["runtime_model_selected_total"] += 1
+            elif normalized_event == "runtime_model_mismatch_detected":
+                self.metrics["runtime_model_mismatch_detected_total"] += 1
+            normalized_source = str(source or "").strip().lower()
+            if normalized_source:
+                self.runtime_switch_sources[normalized_source] = (
+                    self.runtime_switch_sources.get(normalized_source, 0) + 1
+                )
+            normalized_runtime = str(runtime or "").strip().lower()
+            if normalized_runtime:
+                self.runtime_switch_runtimes[normalized_runtime] = (
+                    self.runtime_switch_runtimes.get(normalized_runtime, 0) + 1
+                )
 
     def add_network_bytes_sent(self, bytes_count: int):
         """
@@ -633,6 +664,16 @@ class MetricsCollector:
                         "prompt_eval_duration_avg_ms": avg_ollama_prompt_eval_duration,
                         "eval_duration_avg_ms": avg_ollama_eval_duration,
                     },
+                },
+                "runtime_switch": {
+                    "model_selected_total": self.metrics[
+                        "runtime_model_selected_total"
+                    ],
+                    "model_mismatch_detected_total": self.metrics[
+                        "runtime_model_mismatch_detected_total"
+                    ],
+                    "by_source": self.runtime_switch_sources.copy(),
+                    "by_runtime": self.runtime_switch_runtimes.copy(),
                 },
                 "tokens_used_session": self.metrics["tokens_used_session"],
                 "network": {

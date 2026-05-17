@@ -231,6 +231,7 @@ async def test_model_registry_providers_branches(
 class _DummyRuntime:
     service_type = "local"
     provider = "local"
+    model_name = "model-x"
 
 
 @pytest.mark.asyncio

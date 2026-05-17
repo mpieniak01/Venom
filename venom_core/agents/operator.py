@@ -11,6 +11,7 @@ from semantic_kernel.contents import ChatHistory
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.hardware_pi import HardwareBridge
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -101,6 +102,53 @@ def _ollama_extra_body() -> dict[str, Any] | None:
     return None
 
 
+def _resolve_ollama_runtime_identity() -> tuple[str, str, str]:
+    runtime_provider = ""
+    runtime_endpoint = ""
+    runtime_model = ""
+    try:
+        runtime = get_active_llm_runtime()
+        runtime_provider = str(getattr(runtime, "provider", "") or "").strip().lower()
+        runtime_endpoint = str(getattr(runtime, "endpoint", "") or "").strip()
+        runtime_model = str(getattr(runtime, "model_name", "") or "").strip()
+    except Exception as exc:
+        logger.debug(
+            "Nie udało się pobrać aktywnego runtime dla fallbacku Ollama: %s", exc
+        )
+    return runtime_provider, runtime_endpoint, runtime_model
+
+
+def _normalize_ollama_native_base_url(
+    runtime_provider: str, runtime_endpoint: str
+) -> str:
+    use_runtime_identity = runtime_provider == "ollama"
+    configured_endpoint = str(getattr(SETTINGS, "LLM_LOCAL_ENDPOINT", "") or "").strip()
+    base_url = (
+        runtime_endpoint
+        if use_runtime_identity and runtime_endpoint
+        else configured_endpoint
+    ).rstrip("/")
+    if not base_url:
+        return ""
+    if base_url.endswith("/v1"):
+        return base_url[:-3]
+    return base_url
+
+
+def _chat_history_to_ollama_messages(chat_history: ChatHistory) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    for msg in chat_history.messages:
+        role_raw = str(getattr(msg, "role", "user")).lower()
+        if "system" in role_raw:
+            role = "system"
+        elif "assistant" in role_raw:
+            role = "assistant"
+        else:
+            role = "user"
+        messages.append({"role": role, "content": str(msg.content or "")})
+    return messages
+
+
 async def _ollama_native_call(
     chat_history: ChatHistory,
     max_tokens: int,
@@ -113,24 +161,23 @@ async def _ollama_native_call(
     returns an empty `content` with the answer placed in `reasoning`/`thinking`.
     The native endpoint reliably respects `think: false`.
     """
-    base_url = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
-    if base_url.endswith("/v1"):
-        base_url = base_url[:-3]
+    runtime_provider, runtime_endpoint, runtime_model = (
+        _resolve_ollama_runtime_identity()
+    )
+    use_runtime_identity = runtime_provider == "ollama"
+    base_url = _normalize_ollama_native_base_url(
+        runtime_provider=runtime_provider,
+        runtime_endpoint=runtime_endpoint,
+    )
+    if not base_url:
+        return ""
     native_url = f"{base_url}/api/chat"
-
-    messages = []
-    for msg in chat_history.messages:
-        role_raw = str(getattr(msg, "role", "user")).lower()
-        if "system" in role_raw:
-            role = "system"
-        elif "assistant" in role_raw:
-            role = "assistant"
-        else:
-            role = "user"
-        messages.append({"role": role, "content": str(msg.content or "")})
+    messages = _chat_history_to_ollama_messages(chat_history)
 
     payload: dict[str, Any] = {
-        "model": SETTINGS.LLM_MODEL_NAME,
+        "model": runtime_model
+        if use_runtime_identity and runtime_model
+        else SETTINGS.LLM_MODEL_NAME,
         "messages": messages,
         "stream": False,
         "think": False,

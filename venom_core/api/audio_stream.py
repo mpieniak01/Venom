@@ -22,6 +22,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.runtime_names import is_multi_runtime
 from venom_core.utils.voice_metadata import build_voice_session_insights
@@ -1475,12 +1476,21 @@ class AudioStreamHandler:
                 service_id = operator_agent._resolve_chat_service_id()
             except Exception:
                 service_id = None
+        runtime_model = getattr(SETTINGS, "LLM_MODEL_NAME", None)
+        try:
+            runtime = get_active_llm_runtime()
+            runtime_model = getattr(runtime, "model_name", runtime_model)
+        except Exception as exc:
+            logger.debug(
+                "Nie udało się pobrać live runtime dla metadata audio: %s",
+                exc,
+            )
         return {
             "stt_model": getattr(whisper, "model_size", None),
             "stt_device": getattr(whisper, "device", None),
             "stt_compute_type": getattr(whisper, "compute_type", None),
             "llm_service_id": service_id,
-            "llm_model": getattr(SETTINGS, "LLM_MODEL_NAME", None),
+            "llm_model": runtime_model,
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "tts_sample_rate": self._get_tts_sample_rate(),

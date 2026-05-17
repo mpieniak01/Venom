@@ -68,6 +68,7 @@ htmlcov/
 perf-artifacts/
 perf-results/
 data/audio/
+data/introspection/
 data/test_*.json
 models/
 !web-next/components/models/

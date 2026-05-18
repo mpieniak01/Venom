@@ -753,7 +753,7 @@ async def run_model_introspection_probe(
             f"mode must be one of: {', '.join(sorted(_PROBE_RUNTIME_SUPPORTED_MODES))}"
         )
 
-    sanitized_layers, sanitized_heads = _validate_probe_request_limits(
+    sanitized_layers, _sanitized_heads = _validate_probe_request_limits(
         prompt=prompt,
         top_k=top_k,
         layer_selection=layer_selection,
@@ -770,11 +770,6 @@ async def run_model_introspection_probe(
     }
     if normalized_mode == "saliency" and isinstance(target_output_token_index, int):
         probe_payload["target_output_token_index"] = max(0, target_output_token_index)
-    # Keep request-level validation for compatibility with callers that still pass
-    # legacy fields, but do not forward unsupported keys to multi_runtime.
-    _ = sanitized_heads
-    if normalized_mode != "saliency":
-        _ = target_output_token_index
     return await _execute_probe_with_retry(
         probe_url=probe_url,
         probe_payload=probe_payload,

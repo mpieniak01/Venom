@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class TokenBucketConfig(BaseModel):
@@ -152,6 +152,16 @@ class TrafficControlConfig(BaseModel):
             "(np. krytyczna ścieżka runtime introspekcji)"
         ),
     )
+    _degraded_mode_exempt_providers_normalized: frozenset[str] = PrivateAttr(
+        default_factory=frozenset
+    )
+
+    def model_post_init(self, __context: object) -> None:
+        self._degraded_mode_exempt_providers_normalized = frozenset(
+            entry.strip().lower()
+            for entry in self.degraded_mode_exempt_providers
+            if entry.strip()
+        )
 
     def is_under_global_request_cap(self, requests_last_minute: int) -> bool:
         """
@@ -206,11 +216,7 @@ class TrafficControlConfig(BaseModel):
         normalized = provider.strip().lower()
         if not normalized:
             return False
-        return normalized in {
-            entry.strip().lower()
-            for entry in self.degraded_mode_exempt_providers
-            if entry.strip()
-        }
+        return normalized in self._degraded_mode_exempt_providers_normalized
 
     @classmethod
     def from_env(cls) -> TrafficControlConfig:

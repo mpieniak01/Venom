@@ -146,6 +146,8 @@ _PROBE_EXECUTOR = ThreadPoolExecutor(
     thread_name_prefix="introspection-probe",
 )
 _PROBE_SEMAPHORE = asyncio.Semaphore(_PROBE_MAX_CONCURRENCY)
+# Gradient-based saliency uses model-global grads; serialize that path.
+_PROBE_SALIENCY_LOCK = threading.Lock()
 
 
 def _estimate_payload_bytes(payload: Any) -> int:
@@ -1181,8 +1183,9 @@ def _extract_logits_top(
             decoded = tokenizer.convert_ids_to_tokens([token_index])
             if isinstance(decoded, list) and decoded:
                 token = str(decoded[0])
-        except Exception:
-            pass
+        except (AttributeError, TypeError, ValueError, KeyError, IndexError):
+            # Token decode is best-effort for diagnostics only.
+            token = str(token_index)
         entries.append(
             {
                 "token_index": token_index,
@@ -1214,8 +1217,8 @@ def _resolve_saliency_target_token(
         decoded = tokenizer.convert_ids_to_tokens([token_id])
         if isinstance(decoded, list) and decoded:
             token = str(decoded[0])
-    except Exception:
-        pass
+    except (AttributeError, TypeError, ValueError, KeyError, IndexError):
+        token = str(token_id)
     return token_id, token
 
 
@@ -1282,41 +1285,42 @@ def _run_probe_sync(
         attention_mask = attention_mask.to(model.device)
 
     if mode == "saliency":
-        embedding_layer = getattr(model, "get_input_embeddings", None)
-        if not callable(embedding_layer):
-            raise RuntimeError("input_embeddings_unavailable")
-        input_embeddings = embedding_layer()(input_ids).detach()
-        input_embeddings.requires_grad_(True)
-        if cancel_event is not None and cancel_event.is_set():
-            raise RuntimeError("probe_cancelled")
-        model.zero_grad(set_to_none=True)
-        outputs = model(
-            inputs_embeds=input_embeddings,
-            attention_mask=attention_mask,
-            output_hidden_states=False,
-            output_attentions=False,
-            use_cache=False,
-            return_dict=True,
-        )
-        logits = getattr(outputs, "logits", None)
-        if logits is None:
-            raise RuntimeError("logits_unavailable")
-        next_token_logits = logits[0, -1, :]
-        target_token_id, target_token = _resolve_saliency_target_token(
-            logits_vector=next_token_logits,
-            tokenizer=tokenizer,
-            target_output_token_index=target_output_token_index,
-        )
-        target_logit = next_token_logits[target_token_id]
-        target_logit.backward()
-        gradients = input_embeddings.grad
-        if gradients is None:
-            raise RuntimeError("saliency_gradients_unavailable")
-        token_weights = _extract_saliency_token_weights(
-            grad_matrix=gradients[0],
-            token_strings=token_strings,
-            top_k=top_k,
-        )
+        with _PROBE_SALIENCY_LOCK:
+            embedding_layer = getattr(model, "get_input_embeddings", None)
+            if not callable(embedding_layer):
+                raise RuntimeError("input_embeddings_unavailable")
+            input_embeddings = embedding_layer()(input_ids).detach()
+            input_embeddings.requires_grad_(True)
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("probe_cancelled")
+            model.zero_grad(set_to_none=True)
+            outputs = model(
+                inputs_embeds=input_embeddings,
+                attention_mask=attention_mask,
+                output_hidden_states=False,
+                output_attentions=False,
+                use_cache=False,
+                return_dict=True,
+            )
+            logits = getattr(outputs, "logits", None)
+            if logits is None:
+                raise RuntimeError("logits_unavailable")
+            next_token_logits = logits[0, -1, :]
+            target_token_id, target_token = _resolve_saliency_target_token(
+                logits_vector=next_token_logits,
+                tokenizer=tokenizer,
+                target_output_token_index=target_output_token_index,
+            )
+            target_logit = next_token_logits[target_token_id]
+            target_logit.backward()
+            gradients = input_embeddings.grad
+            if gradients is None:
+                raise RuntimeError("saliency_gradients_unavailable")
+            token_weights = _extract_saliency_token_weights(
+                grad_matrix=gradients[0],
+                token_strings=token_strings,
+                top_k=top_k,
+            )
         probe_payload = {
             "query": prompt,
             "mode": mode,

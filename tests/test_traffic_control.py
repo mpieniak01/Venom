@@ -307,6 +307,23 @@ class TestTrafficController:
         assert allowed is True
         assert reason is None
 
+    def test_traffic_controller_degraded_mode_allows_exempt_provider(self):
+        """Provider z exempt listy nie powinien być blokowany globalnym degraded mode."""
+        config = TrafficControlConfig()
+        config.degraded_mode_enabled = True
+        config.degraded_mode_failure_threshold = 1
+        config.degraded_mode_exempt_providers = ["multi_runtime"]
+        controller = TrafficController(config)
+
+        # Trigger degraded mode globalnie przez failure na innym providerze.
+        controller.check_outbound_request("other_provider")
+        controller.record_outbound_response("other_provider", 500)
+
+        allowed, reason, wait = controller.check_outbound_request("multi_runtime")
+        assert allowed is True
+        assert reason is None
+        assert wait is None
+
     def test_traffic_controller_check_outbound_rate_limit(self):
         """Test że rate limit blokuje requesty."""
         config = TrafficControlConfig()
@@ -642,3 +659,12 @@ class TestAntiLoopProtection:
 
         # Jeden poniżej granic (should not trigger)
         assert config.should_enter_degraded_state(999, 9) is False
+
+    def test_is_provider_exempt_from_degraded_mode(self):
+        """Lista exempt providerów powinna działać case-insensitive i trimować wpisy."""
+        config = TrafficControlConfig()
+        config.degraded_mode_exempt_providers = [" multi_runtime ", "OLLAMA"]
+
+        assert config.is_provider_exempt_from_degraded_mode("multi_runtime") is True
+        assert config.is_provider_exempt_from_degraded_mode("ollama") is True
+        assert config.is_provider_exempt_from_degraded_mode("openai") is False

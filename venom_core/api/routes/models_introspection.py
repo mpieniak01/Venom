@@ -142,9 +142,8 @@ async def probe_model_introspection(
             prompt=request.prompt,
             mode=request.mode,
             layer_selection=request.layer_selection,
-            head_selection=request.head_selection,
-            target_output_token_index=request.target_output_token_index,
             top_k=request.top_k,
+            target_output_token_index=request.target_output_token_index,
         )
         return {
             "success": True,

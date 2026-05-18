@@ -47,6 +47,8 @@ from venom_core.services.runtime_switch_telemetry import (
     assert_runtime_switch_ownership_token,
     assert_runtime_switch_source_allowed,
     emit_runtime_model_event,
+    get_last_runtime_switch_event,
+    get_runtime_switch_guard_status,
 )
 from venom_core.utils.llm_runtime import (
     LifecycleStep,
@@ -2034,6 +2036,8 @@ def get_active_llm_server():
             "previous_vllm": config.get("PREVIOUS_MODEL_VLLM", ""),
             "previous_onnx": config.get("PREVIOUS_MODEL_ONNX", ""),
         },
+        "runtime_switch_policy": get_runtime_switch_guard_status(),
+        "last_runtime_switch": get_last_runtime_switch_event(),
     }
 
 
@@ -2046,6 +2050,8 @@ def get_active_llm_runtime_info():
         "status": "success",
         "runtime": runtime.to_payload(),
         "drift": drift,
+        "runtime_switch_policy": get_runtime_switch_guard_status(),
+        "last_runtime_switch": get_last_runtime_switch_event(),
     }
 
 

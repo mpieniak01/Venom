@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "@/lib/i18n";
 import { Switch } from "@/components/ui/switch";
@@ -8,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "venom.modelIntrospection.liveAnalysisEnabled";
 const STORE_EVENT = "venom:model-introspection-mechanism-change";
+let memoryEnabledFallback = true;
 
 type ModelIntrospectionMechanismContextValue = {
   enabled: boolean;
@@ -18,12 +26,18 @@ type ModelIntrospectionMechanismContextValue = {
 const ModelIntrospectionMechanismContext = createContext<ModelIntrospectionMechanismContextValue | null>(null);
 
 function readEnabledFromStorage(): boolean {
-  const localStorage = globalThis.window?.localStorage;
-  if (!localStorage) return false;
   try {
-    return localStorage.getItem(STORAGE_KEY) === "true";
+    const localStorage = globalThis.window?.localStorage;
+    if (!localStorage) return memoryEnabledFallback;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === null) {
+      return memoryEnabledFallback;
+    }
+    const nextEnabled = raw === "true";
+    memoryEnabledFallback = nextEnabled;
+    return nextEnabled;
   } catch {
-    return false;
+    return memoryEnabledFallback;
   }
 }
 
@@ -47,41 +61,36 @@ function subscribe(listener: () => void): () => void {
 function writeEnabledToStorage(enabled: boolean) {
   const windowRef = globalThis.window;
   const localStorage = windowRef?.localStorage;
-  if (!windowRef || !localStorage) return;
+  memoryEnabledFallback = enabled;
+  if (!windowRef) return;
+  if (!localStorage) {
+    windowRef.dispatchEvent(new Event(STORE_EVENT));
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
-    windowRef.dispatchEvent(new Event(STORE_EVENT));
   } catch {
     // Storage may be blocked (privacy mode); keep UI responsive.
   }
+  windowRef.dispatchEvent(new Event(STORE_EVENT));
 }
 
 export function ModelIntrospectionMechanismProvider({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    const syncFromStorage = () => {
-      setEnabled(readEnabledFromStorage());
-    };
-
-    syncFromStorage();
-    return subscribe(syncFromStorage);
-  }, []);
+  const enabled = useSyncExternalStore(
+    subscribe,
+    readEnabledFromStorage,
+    () => false,
+  );
 
   const setMechanismEnabled = useCallback((nextEnabled: boolean) => {
-    setEnabled(nextEnabled);
     writeEnabledToStorage(nextEnabled);
   }, []);
 
   const toggle = useCallback(() => {
-    setEnabled((currentEnabled) => {
-      const nextEnabled = !currentEnabled;
-      writeEnabledToStorage(nextEnabled);
-      return nextEnabled;
-    });
-  }, []);
+    writeEnabledToStorage(!enabled);
+  }, [enabled]);
 
   const value = useMemo(
     () => ({

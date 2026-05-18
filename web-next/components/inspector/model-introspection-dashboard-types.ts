@@ -119,6 +119,7 @@ export type AnalysisTimelineEntry = {
   label: string;
   status: string;
   detail: string;
+  reason_code?: string | null;
   path?: AnalysisTimelinePath;
   at_ms: number;
   progress?: number;
@@ -213,6 +214,7 @@ export type OperatorConclusionModel = {
 
 export type LogitLensTopToken = {
   token: string;
+  raw_token?: string | null;
   token_index: number;
   score: number;
 };
@@ -241,6 +243,8 @@ export type LogitLensModel = {
   runtime_label: string | null;
   input_tokens: string[];
   output_tokens: string[];
+  raw_input_tokens: string[];
+  raw_output_tokens: string[];
   checkpoints: LogitLensCheckpoint[];
   signals: LogitLensSignals;
   interpretability: {
@@ -294,6 +298,13 @@ export type SaliencyModel = {
 };
 
 export type AnalysisPhase = "idle" | "requesting" | "streaming" | "first_chunk" | "completed";
+
+type AnalysisCapabilityPayload = {
+  available?: boolean;
+  source?: string;
+  status?: string;
+  reason?: string;
+};
 
 export type AnalysisResult = {
   status: string;
@@ -349,12 +360,15 @@ export type AnalysisResult = {
       runtime_label?: string | null;
       input_tokens?: string[];
       output_tokens?: string[];
+      raw_input_tokens?: string[];
+      raw_output_tokens?: string[];
       checkpoints?: Array<{
         id?: string;
         percent?: number;
         layer?: number;
         top_k?: Array<{
           token?: string;
+          raw_token?: string;
           token_index?: number;
           score?: number;
         }>;
@@ -476,24 +490,9 @@ export type AnalysisResult = {
       token_noise_ratio?: number;
     } | null;
     analysis_capabilities?: {
-      attention?: {
-        available?: boolean;
-        source?: string;
-        status?: string;
-        reason?: string;
-      };
-      saliency?: {
-        available?: boolean;
-        source?: string;
-        status?: string;
-        reason?: string;
-      };
-      logit_lens?: {
-        available?: boolean;
-        source?: string;
-        status?: string;
-        reason?: string;
-      };
+      attention?: AnalysisCapabilityPayload;
+      saliency?: AnalysisCapabilityPayload;
+      logit_lens?: AnalysisCapabilityPayload;
       available_count?: number;
       total_count?: number;
       probe_profile?: string;
@@ -527,7 +526,7 @@ export type AnalysisResult = {
   skipped_reason?: string;
 };
 
-export type BadgeTone = "success" | "warning" | "neutral";
+export type BadgeTone = "success" | "warning" | "neutral" | "danger";
 
 export type AnalysisUpdateFn = (
   analysis: NonNullable<AnalysisResult["analysis"]>,

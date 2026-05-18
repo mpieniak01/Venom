@@ -219,6 +219,9 @@ type LogitLensPanelProps = Readonly<{
   sourceRuntimeLabel: string;
   sourceUnavailableLabel: string;
   sourceFallbackWarning: string;
+  normalizedAriaLabel: string;
+  rawAriaLabel: string;
+  rawTokensUnavailableLabel: string;
 }>;
 
 type AttentionPanelProps = Readonly<{
@@ -830,7 +833,11 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
     sourceRuntimeLabel,
     sourceUnavailableLabel,
     sourceFallbackWarning,
+    normalizedAriaLabel,
+    rawAriaLabel,
+    rawTokensUnavailableLabel,
   } = props;
+  const [tokenViewMode, setTokenViewMode] = useState<"normalized" | "raw">("normalized");
 
   if (!logitLens) {
     return (
@@ -841,7 +848,9 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
     );
   }
 
-  const available = logitLens.status === "ok" && logitLens.checkpoints.length > 0;
+  const hasCheckpointData = logitLens.checkpoints.length > 0;
+  const hasTokenData = logitLens.raw_input_tokens.length > 0 || logitLens.raw_output_tokens.length > 0;
+  const available = hasCheckpointData || hasTokenData;
   if (!available) {
     return (
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -858,8 +867,13 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
   }
 
   const signals = logitLens.signals;
-  const inputPreview = logitLens.input_tokens.slice(0, 6).join(" · ");
-  const outputPreview = logitLens.output_tokens.slice(0, 6).join(" · ");
+  const showRaw = tokenViewMode === "raw";
+  const inputPreview = showRaw
+    ? logitLens.raw_input_tokens.join(" · ")
+    : logitLens.input_tokens.join(" · ");
+  const outputPreview = showRaw
+    ? logitLens.raw_output_tokens.join(" · ")
+    : logitLens.output_tokens.join(" · ");
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -904,20 +918,39 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
             stableLabel: signalStableLabel,
           })}
         </Badge>
+        <Button
+          variant={showRaw ? "ghost" : "outline"}
+          size="sm"
+          onClick={() => setTokenViewMode("normalized")}
+          aria-label={normalizedAriaLabel}
+        >
+          normalized
+        </Button>
+        <Button
+          variant={showRaw ? "outline" : "ghost"}
+          size="sm"
+          onClick={() => setTokenViewMode("raw")}
+          aria-label={rawAriaLabel}
+        >
+          raw
+        </Button>
       </div>
       {logitLens.source !== "probe_runtime" && (
         <p className="mt-2 text-xs text-amber-200/90">{sourceFallbackWarning}</p>
       )}
       <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-300">
         <p className="uppercase tracking-wide text-zinc-500">{tokensLabel}</p>
-        <p className="mt-1">{inputPreview || "—"}</p>
+        <p className="mt-1 break-words">{inputPreview || "—"}</p>
         <p className="mt-1 text-zinc-500">→</p>
-        <p className="mt-1">{outputPreview || "—"}</p>
+        <p className="mt-1 break-words">{outputPreview || "—"}</p>
+        {showRaw && logitLens.raw_output_tokens.length === 0 && (
+          <p className="mt-2 text-[11px] text-amber-200/90">{rawTokensUnavailableLabel}</p>
+        )}
       </div>
       <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">{checkpointsLabel}</p>
       <div className="mt-2 grid gap-2 lg:grid-cols-2">
         {logitLens.checkpoints.map((checkpoint) => {
-          const topCandidates = checkpoint.top_k.slice(0, 3);
+          const topCandidates = checkpoint.top_k;
           return (
             <div
               key={checkpoint.id}
@@ -934,7 +967,9 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
               <div className="mt-2 space-y-1">
                 {topCandidates.map((candidate, index) => (
                   <p key={`${checkpoint.id}-${candidate.token}-${index}`} className="text-xs text-zinc-300">
-                    {index + 1}. {candidate.token} ({formatCheckpointScore(candidate.score)})
+                    {index + 1}.{" "}
+                    {showRaw ? (candidate.raw_token ?? candidate.token) : candidate.token} (
+                    {formatCheckpointScore(candidate.score)})
                   </p>
                 ))}
               </div>
@@ -1410,6 +1445,9 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
                     )}
                     {typeof step.progress === "number" && (
                       <Badge tone="neutral">{formatCount(Math.round(step.progress))}%</Badge>
+                    )}
+                    {step.reason_code && step.status !== "done" && (
+                      <Badge tone="danger">{step.reason_code}</Badge>
                     )}
                     <Badge tone={timelineBadgeTone(step.status)}>{step.status}</Badge>
                     <span className="font-mono text-xs text-zinc-400">{step.at_ms.toFixed(1)} ms</span>

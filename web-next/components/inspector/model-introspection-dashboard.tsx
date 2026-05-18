@@ -89,6 +89,204 @@ type InternalsCapabilityRow = {
   available: boolean;
   reason: string;
 };
+type InternalsNoticeProps = {
+  title: string;
+  message: string;
+  tone: BadgeTone;
+  badgeLabel?: string;
+  rows: InternalsCapabilityRow[];
+  rowsTone: BadgeTone;
+  rowKeyPrefix: string;
+  extraBadge?: string;
+};
+
+type SnapshotLoadingPanelProps = Readonly<{
+  snapshot: IntrospectionSnapshot | null;
+  loading: boolean;
+  t: (key: string) => string;
+}>;
+
+type SnapshotErrorPanelProps = Readonly<{
+  error: string | null;
+  t: (key: string) => string;
+}>;
+
+function SnapshotLoadingPanel({
+  snapshot,
+  loading,
+  t,
+}: SnapshotLoadingPanelProps) {
+  if (snapshot || !loading) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// loading"
+      title={t("inspector.modelIntrospection.dashboard.loading.title")}
+      description={t("inspector.modelIntrospection.dashboard.loading.description")}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">read-only</Badge>
+        <Badge tone="neutral">brain reuse</Badge>
+        <Badge tone="neutral">diagnostics reuse</Badge>
+        <Badge tone="neutral">packages probe</Badge>
+      </div>
+    </Panel>
+  );
+}
+
+function SnapshotErrorPanel({ error, t }: SnapshotErrorPanelProps) {
+  if (!error) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// error"
+      title={t("inspector.modelIntrospection.dashboard.error.title")}
+      description={error}
+      className="border border-amber-400/30"
+    >
+      <p className="text-sm text-zinc-300">{t("inspector.modelIntrospection.dashboard.error.note")}</p>
+    </Panel>
+  );
+}
+
+function InternalsNoticeCard({
+  title,
+  message,
+  tone,
+  badgeLabel,
+  rows,
+  rowsTone,
+  rowKeyPrefix,
+  extraBadge,
+}: Readonly<InternalsNoticeProps>) {
+  return (
+    <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+        <Badge tone={tone}>{badgeLabel ?? title}</Badge>
+      </div>
+      <p className="mt-2 text-sm text-zinc-300">{message}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {rows.map((row) => (
+          <Badge key={`${rowKeyPrefix}-${row.label}`} tone={rowsTone}>
+            {row.label}: {row.reason}
+          </Badge>
+        ))}
+        {extraBadge ? <Badge tone="neutral">{extraBadge}</Badge> : null}
+      </div>
+    </div>
+  );
+}
+
+type RuntimeContextPanelProps = Readonly<{
+  stats: SummaryCard[];
+  t: (key: string) => string;
+}>;
+
+function RuntimeContextPanel({ stats, t }: RuntimeContextPanelProps) {
+  if (stats.length === 0) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// runtime context"
+      title={t("inspector.modelIntrospection.dashboard.runtimeContext.title")}
+      description={t("inspector.modelIntrospection.dashboard.runtimeContext.description")}
+    >
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => (
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            hint={stat.hint}
+            accent={stat.accent}
+          />
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+type TechnicalLayerPanelProps = Readonly<{
+  snapshot: IntrospectionSnapshot | null;
+  graphLayerOpen: boolean;
+  analysisActive: boolean;
+  graphDrilldownOpen: boolean;
+  selectedGraphNodeIdEffective: string | null;
+  selectedGraphNode: { id: string; label: string; kind: string; status: string } | null;
+  selectedGraphNodeDetails: GraphNodeDetails;
+  selectedGraphTypeHint: string;
+  onToggleGraphLayer: () => void;
+  onToggleGraphView: () => void;
+  onSelectGraphNode: (id: string | null) => void;
+  t: (key: string) => string;
+}>;
+
+function TechnicalLayerPanel({
+  snapshot,
+  graphLayerOpen,
+  analysisActive,
+  graphDrilldownOpen,
+  selectedGraphNodeIdEffective,
+  selectedGraphNode,
+  selectedGraphNodeDetails,
+  selectedGraphTypeHint,
+  onToggleGraphLayer,
+  onToggleGraphView,
+  onSelectGraphNode,
+  t,
+}: TechnicalLayerPanelProps) {
+  if (!snapshot) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// technical"
+      title={t("inspector.modelIntrospection.dashboard.graph.layerTitle")}
+      description={t("inspector.modelIntrospection.dashboard.graph.layerDescription")}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="neutral">nodes {formatCount(snapshot.graph?.summary.nodes ?? 0)}</Badge>
+          <Badge tone="neutral">edges {formatCount(snapshot.graph?.summary.edges ?? 0)}</Badge>
+          <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
+            drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
+          </Badge>
+        </div>
+        <Button variant="ghost" onClick={onToggleGraphLayer}>
+          {graphLayerOpen
+            ? t("inspector.modelIntrospection.dashboard.graph.hideLayer")
+            : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
+        </Button>
+      </div>
+      {graphLayerOpen ? (
+        <div className="mt-4">
+          <GraphPanel
+            snapshot={snapshot}
+            analysisActive={analysisActive}
+            graphViewOpen={graphDrilldownOpen}
+            onToggleGraphView={onToggleGraphView}
+            selectedGraphNodeId={selectedGraphNodeIdEffective}
+            onSelectGraphNode={onSelectGraphNode}
+            selectedGraphNode={selectedGraphNode}
+            selectedGraphNodeDetails={selectedGraphNodeDetails}
+            typeHintText={selectedGraphTypeHint}
+            title={t("inspector.modelIntrospection.dashboard.graph.title")}
+            description={t("inspector.modelIntrospection.dashboard.graph.description")}
+            drilldownTitle={t("inspector.modelIntrospection.dashboard.graph.drilldownTitle")}
+            hideLabel={t("inspector.modelIntrospection.dashboard.graph.hide")}
+            openLabel={t("inspector.modelIntrospection.dashboard.graph.open")}
+            stateOpenLabel={t("inspector.modelIntrospection.dashboard.graph.stateOpen")}
+            stateCollapsedLabel={t("inspector.modelIntrospection.dashboard.graph.stateCollapsed")}
+          />
+        </div>
+      ) : null}
+    </Panel>
+  );
+}
 
 function resolveInternalsVerdictPresentation(
   verdict: string | undefined,
@@ -128,10 +326,23 @@ function buildInternalsCapabilityRow(
   capability: ProbeCapability | undefined,
 ): InternalsCapabilityRow {
   const available = Boolean(capability?.available);
+  const rawReason = String(capability?.reason || "unknown");
+  const reasonMap: Record<string, string> = {
+    ok: "ok",
+    probe_unavailable: "probe unavailable",
+    probe_failed: "probe failed",
+    attention_unavailable: "attention unavailable",
+    saliency_unavailable: "saliency unavailable",
+    logit_lens_unavailable: "logit lens unavailable",
+    attention_proxy_logits: "recovered via logits proxy",
+    saliency_proxy_attention: "recovered via attention proxy",
+    saliency_proxy_logits: "recovered via logits proxy",
+  };
+  const mappedReason = reasonMap[rawReason] ?? rawReason.replaceAll("_", " ");
   return {
     label,
     available,
-    reason: available ? "ok" : String(capability?.reason || "unknown"),
+    reason: available && mappedReason === "ok" ? "ok" : mappedReason,
   };
 }
 
@@ -147,6 +358,35 @@ function buildProbeLimitsLabel(limits: {
     return "limits: n/a";
   }
   return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
+}
+
+function resolveInternalsAvailability(
+  attention: ReturnType<typeof buildAttentionModel> | null,
+  saliency: ReturnType<typeof buildSaliencyModel> | null,
+  logitLens: ReturnType<typeof buildLogitLensModel> | null,
+): {
+  attentionAvailable: boolean;
+  saliencyAvailable: boolean;
+  logitLensAvailable: boolean;
+  allInternalsUnavailable: boolean;
+  anyInternalsAvailable: boolean;
+} {
+  const attentionAvailable = Boolean(attention?.status === "ok" && attention.layers.length > 0);
+  const saliencyAvailable = Boolean(
+    saliency?.status === "ok" && saliency.token_weights.length > 0,
+  );
+  const logitLensAvailable = Boolean(
+    (logitLens?.status === "ok" && logitLens.checkpoints.length > 0) ||
+      ((logitLens?.raw_input_tokens.length ?? 0) > 0) ||
+      ((logitLens?.raw_output_tokens.length ?? 0) > 0),
+  );
+  return {
+    attentionAvailable,
+    saliencyAvailable,
+    logitLensAvailable,
+    allInternalsUnavailable: !attentionAvailable && !saliencyAvailable && !logitLensAvailable,
+    anyInternalsAvailable: attentionAvailable || saliencyAvailable || logitLensAvailable,
+  };
 }
 
 function buildRunTrends(payload: unknown): RunTrends | null {
@@ -592,6 +832,7 @@ function useDashboardDerivedState(args: {
     analysisStatus: analysisResult?.status,
     skippedReason: analysisResult?.skipped_reason ?? null,
     analysisErrorCode: analysisResult?.analysis?.error_code ?? analysisResult?.analysis?.error ?? null,
+    analysisTimeline,
     ragFocus,
     logitLens,
     operatorConclusionPayload: analysisResult?.analysis?.operator_conclusion ?? null,
@@ -740,7 +981,7 @@ export function ModelIntrospectionDashboard() {
   });
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [graphLayerOpen, setGraphLayerOpen] = useState(false);
-  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
+  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(true);
   const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
 
   const {
@@ -804,6 +1045,7 @@ export function ModelIntrospectionDashboard() {
   }, [loadSnapshot]);
 
   const handleRunAnalysis = useCallback(() => {
+    setAdvancedInternalsOpen(true);
     runAnalysis().catch(() => undefined);
   }, [runAnalysis]);
 
@@ -812,6 +1054,16 @@ export function ModelIntrospectionDashboard() {
       t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder"),
     );
   }, [t]);
+
+  const {
+    allInternalsUnavailable,
+    anyInternalsAvailable,
+  } = resolveInternalsAvailability(attention, saliency, logitLens);
+  const unavailableInternalsRows = internalsCapabilityRows.filter((row) => !row.available);
+  const proxyInternalsRows = internalsCapabilityRows.filter(
+    (row) => row.available && row.reason !== "ok",
+  );
+  const availableInternalsCount = internalsCapabilityRows.length - unavailableInternalsRows.length;
 
   return (
     <div className="space-y-6 pb-10">
@@ -843,33 +1095,8 @@ export function ModelIntrospectionDashboard() {
         }
       />
 
-      {!snapshot && loading && (
-        <Panel
-          eyebrow="// loading"
-          title={t("inspector.modelIntrospection.dashboard.loading.title")}
-          description={t("inspector.modelIntrospection.dashboard.loading.description")}
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="neutral">read-only</Badge>
-            <Badge tone="neutral">brain reuse</Badge>
-            <Badge tone="neutral">diagnostics reuse</Badge>
-            <Badge tone="neutral">packages probe</Badge>
-          </div>
-        </Panel>
-      )}
-
-      {error && (
-        <Panel
-          eyebrow="// error"
-          title={t("inspector.modelIntrospection.dashboard.error.title")}
-          description={error}
-          className="border border-amber-400/30"
-        >
-          <p className="text-sm text-zinc-300">
-            {t("inspector.modelIntrospection.dashboard.error.note")}
-          </p>
-        </Panel>
-      )}
+      <SnapshotLoadingPanel snapshot={snapshot} loading={loading} t={t} />
+      <SnapshotErrorPanel error={error} t={t} />
 
       {snapshot && (
         <Panel
@@ -1017,11 +1244,19 @@ export function ModelIntrospectionDashboard() {
                 </Badge>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge tone={availableInternalsCount === internalsCapabilityRows.length ? "success" : "warning"}>
+                  coverage {availableInternalsCount}/{internalsCapabilityRows.length}
+                </Badge>
                 <Badge tone="neutral">{probeLimitsLabel}</Badge>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {internalsCapabilityRows.map((row) => (
-                  <Badge key={row.label} tone={row.available ? "success" : "warning"}>
+                {unavailableInternalsRows.map((row) => (
+                  <Badge key={row.label} tone="warning">
+                    {row.label}: {row.reason}
+                  </Badge>
+                ))}
+                {proxyInternalsRows.map((row) => (
+                  <Badge key={`proxy-${row.label}`} tone="neutral">
                     {row.label}: {row.reason}
                   </Badge>
                 ))}
@@ -1036,8 +1271,95 @@ export function ModelIntrospectionDashboard() {
               </div>
             </div>
           </div>
+          <div className="mb-4">
+            <LogitLensPanel
+              logitLens={logitLens}
+              title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
+              emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
+              unavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
+              )}
+              signalsLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.confidence",
+              )}
+              tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
+              checkpointsLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
+              )}
+              signalEarlyUnstableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
+              )}
+              signalLateStabilizedLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
+              )}
+              signalLowConfidenceLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
+              )}
+              signalStableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
+              )}
+              changedLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.changed",
+              )}
+              stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
+              sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
+              sourceRuntimeLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
+              )}
+              sourceUnavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
+              )}
+              sourceFallbackWarning={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
+              )}
+              normalizedAriaLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.normalizedAria",
+              )}
+              rawAriaLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.rawAria",
+              )}
+              rawTokensUnavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.rawTokensUnavailable",
+              )}
+            />
+          </div>
           {advancedInternalsOpen && (
             <>
+              {proxyInternalsRows.length > 0 && (
+                <InternalsNoticeCard
+                  title={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredTitle")}
+                  badgeLabel={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredBadge")}
+                  message={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredMessage")}
+                  tone="neutral"
+                  rows={proxyInternalsRows}
+                  rowsTone="neutral"
+                  rowKeyPrefix="proxy-open"
+                />
+              )}
+              {anyInternalsAvailable && unavailableInternalsRows.length > 0 && (
+                <InternalsNoticeCard
+                  title={t("inspector.modelIntrospection.dashboard.results.internalsPartialTitle")}
+                  message={t("inspector.modelIntrospection.dashboard.results.internalsPartialMessage")}
+                  tone={internalsVerdictTone}
+                  badgeLabel={internalsVerdictLabel}
+                  rows={unavailableInternalsRows}
+                  rowsTone="warning"
+                  rowKeyPrefix="partial"
+                  extraBadge={probeLimitsLabel}
+                />
+              )}
+              {allInternalsUnavailable && (
+                <InternalsNoticeCard
+                  title={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableTitle")}
+                  message={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableMessage")}
+                  tone={internalsVerdictTone}
+                  badgeLabel={internalsVerdictLabel}
+                  rows={unavailableInternalsRows}
+                  rowsTone="warning"
+                  rowKeyPrefix="unavailable"
+                  extraBadge={probeLimitsLabel}
+                />
+              )}
               <div className="mb-4">
                 <AttentionPanel
                   attention={attention}
@@ -1052,45 +1374,6 @@ export function ModelIntrospectionDashboard() {
                   title="Saliency / Attribution"
                   emptyLabel="Brak danych saliency dla bieżącej analizy."
                   unavailableLabel="Saliency probe niedostępny dla bieżącego runu."
-                />
-              </div>
-              <div className="mb-4">
-                <LogitLensPanel
-                  logitLens={logitLens}
-                  title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
-                  emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
-                  unavailableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
-                  )}
-                  signalsLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.confidence")}
-                  tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
-                  checkpointsLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
-                  )}
-                  signalEarlyUnstableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
-                  )}
-                  signalLateStabilizedLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
-                  )}
-                  signalLowConfidenceLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
-                  )}
-                  signalStableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
-                  )}
-                  changedLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.changed")}
-                  stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
-                  sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
-                  sourceRuntimeLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
-                  )}
-                  sourceUnavailableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
-                  )}
-                  sourceFallbackWarning={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
-                  )}
                 />
               </div>
             </>
@@ -1155,74 +1438,21 @@ export function ModelIntrospectionDashboard() {
         </div>
       )}
 
-      {stats.length > 0 && (
-        <Panel
-          eyebrow="// runtime context"
-          title={t("inspector.modelIntrospection.dashboard.runtimeContext.title")}
-          description={t("inspector.modelIntrospection.dashboard.runtimeContext.description")}
-        >
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {stats.map((stat) => (
-              <StatCard
-                key={stat.label}
-                label={stat.label}
-                value={stat.value}
-                hint={stat.hint}
-                accent={stat.accent}
-              />
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {snapshot && (
-        <Panel
-          eyebrow="// technical"
-          title={t("inspector.modelIntrospection.dashboard.graph.layerTitle")}
-          description={t("inspector.modelIntrospection.dashboard.graph.layerDescription")}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="neutral">
-                nodes {formatCount(snapshot.graph?.summary.nodes ?? 0)}
-              </Badge>
-              <Badge tone="neutral">
-                edges {formatCount(snapshot.graph?.summary.edges ?? 0)}
-              </Badge>
-              <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
-                drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
-              </Badge>
-            </div>
-            <Button variant="ghost" onClick={() => setGraphLayerOpen((current) => !current)}>
-              {graphLayerOpen
-                ? t("inspector.modelIntrospection.dashboard.graph.hideLayer")
-                : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
-            </Button>
-          </div>
-          {graphLayerOpen && (
-            <div className="mt-4">
-              <GraphPanel
-                snapshot={snapshot}
-                analysisActive={analysisActive}
-                graphViewOpen={graphDrilldownOpen}
-                onToggleGraphView={() => setGraphDrilldownOpen((current) => !current)}
-                selectedGraphNodeId={selectedGraphNodeIdEffective}
-                onSelectGraphNode={setSelectedGraphNodeId}
-                selectedGraphNode={selectedGraphNode}
-                selectedGraphNodeDetails={selectedGraphNodeDetails}
-                typeHintText={selectedGraphTypeHint}
-                title={t("inspector.modelIntrospection.dashboard.graph.title")}
-                description={t("inspector.modelIntrospection.dashboard.graph.description")}
-                drilldownTitle={t("inspector.modelIntrospection.dashboard.graph.drilldownTitle")}
-                hideLabel={t("inspector.modelIntrospection.dashboard.graph.hide")}
-                openLabel={t("inspector.modelIntrospection.dashboard.graph.open")}
-                stateOpenLabel={t("inspector.modelIntrospection.dashboard.graph.stateOpen")}
-                stateCollapsedLabel={t("inspector.modelIntrospection.dashboard.graph.stateCollapsed")}
-              />
-            </div>
-          )}
-        </Panel>
-      )}
+      <RuntimeContextPanel stats={stats} t={t} />
+      <TechnicalLayerPanel
+        snapshot={snapshot}
+        graphLayerOpen={graphLayerOpen}
+        analysisActive={analysisActive}
+        graphDrilldownOpen={graphDrilldownOpen}
+        selectedGraphNodeIdEffective={selectedGraphNodeIdEffective}
+        selectedGraphNode={selectedGraphNode}
+        selectedGraphNodeDetails={selectedGraphNodeDetails}
+        selectedGraphTypeHint={selectedGraphTypeHint}
+        onToggleGraphLayer={() => setGraphLayerOpen((current) => !current)}
+        onToggleGraphView={() => setGraphDrilldownOpen((current) => !current)}
+        onSelectGraphNode={setSelectedGraphNodeId}
+        t={t}
+      />
     </div>
   );
 }

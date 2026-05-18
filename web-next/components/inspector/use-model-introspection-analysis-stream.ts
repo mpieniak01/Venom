@@ -143,8 +143,8 @@ export function useModelIntrospectionAnalysisStream(
         analysisRunError instanceof Error
           ? analysisRunError.message
           : "Analysis failed";
-      setAnalysisError(message);
       setAnalysisResult(null);
+      setAnalysisError(message);
     } finally {
       setAnalysisLoading(false);
     }

@@ -285,6 +285,16 @@ function makeAnalysisCompletedPayload() {
           at_ms: 61.7,
         },
         {
+          id: "attention_probe",
+          label: "Attention probe",
+          status: "failed",
+          detail: "probe_transport_error",
+          reason_code: "probe_transport_error",
+          path: "internals_path",
+          at_ms: 61.7,
+          progress: 93,
+        },
+        {
           id: "snapshot_after",
           label: "Snapshot refreshed",
           status: "done",
@@ -292,7 +302,7 @@ function makeAnalysisCompletedPayload() {
           at_ms: 61.7,
         },
       ],
-      timeline_step_count: 6,
+      timeline_step_count: 7,
       elapsed_ms: 61.7,
       provider: snapshot.runtime.provider,
       model: snapshot.runtime.model,
@@ -357,6 +367,79 @@ function makeAnalysisCompletedPayload() {
         context_preview_truncated: false,
         adapter_applied: false,
         adapter_id: null,
+      },
+      logit_lens: {
+        source: "probe_runtime",
+        status: "ok",
+        code: null,
+        message: null,
+        runtime_label: snapshot.runtime.label,
+        input_tokens: ["▁Co", "▁to", "▁jest"],
+        output_tokens: ["▁Słońce", "▁to", "▁gwiazda"],
+        checkpoints: [
+          {
+            id: "cp_25",
+            percent: 25,
+            layer: 4,
+            top_k: [
+              { token: "▁Słońce", token_index: 0, score: 8.125 },
+              { token: "▁gwiazda", token_index: 1, score: 7.75 },
+            ],
+            top_token: "▁Słońce",
+            confidence: 0.42,
+            changed: false,
+          },
+        ],
+        signals: {
+          early_unstable: false,
+          late_stabilized: true,
+          low_confidence_path: false,
+        },
+        interpretability: {
+          interpretable: true,
+          confidence_band: "high",
+          token_noise_ratio: 0.18,
+          readable_top_tokens: 2,
+          total_top_tokens: 2,
+        },
+        diagnostics: { elapsed_ms: 12.4 },
+      },
+      analysis_capabilities: {
+        attention: {
+          available: true,
+          source: "probe_runtime",
+          status: "ok",
+          reason: "attention_proxy_logits",
+        },
+        saliency: {
+          available: true,
+          source: "probe_runtime",
+          status: "ok",
+          reason: "saliency_proxy_attention",
+        },
+        logit_lens: {
+          available: true,
+          source: "probe_runtime",
+          status: "ok",
+          reason: "ok",
+        },
+        available_count: 3,
+        total_count: 3,
+        probe_profile: "dev",
+        probe_enabled: true,
+        probe_healthy: true,
+        runtime_supported: true,
+        endpoint_configured: true,
+        model_whitelisted: true,
+        limits: {
+          timeout_seconds: 25,
+          max_attempts: 2,
+          max_top_k: 32,
+          max_layer_count: 8,
+          max_head_count: 32,
+          max_prompt_tokens: 1024,
+        },
+        internals_verdict: "full",
       },
     },
   };
@@ -603,18 +686,20 @@ describe("ModelIntrospectionDashboard", () => {
         ),
       );
     });
-    assert.ok(screen.getByText("gemma-4-E2B-it · multi_runtime @ localhost:8014"));
+    assert.ok(
+      screen.getAllByText("gemma-4-E2B-it · multi_runtime @ localhost:8014").length >= 1,
+    );
     assert.ok(screen.getByRole("link", { name: "Open Knowledge Graph" }));
     assert.ok(screen.getByLabelText("Prompt"));
-    fireEvent.click(
-      screen.getByRole("button", { name: /Show technical layer|Hide technical layer/i }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: /Graph drilldown/i }),
-    );
+    const technicalLayerToggle = screen.getByRole("button", {
+      name: /Show technical layer|Hide technical layer/i,
+    });
+    assert.ok(technicalLayerToggle);
+    fireEvent.click(technicalLayerToggle);
+    assert.ok(screen.getByText("Graph view"));
+    assert.ok(screen.getAllByText("Graph drilldown").length >= 1);
     assert.ok(screen.getByRole("button", { name: "Select graph node gemma-4-E2B-it · multi_runtime @ localhost:8014" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Select graph node gemma-4-E2B-it · multi_runtime @ localhost:8014" }));
     assert.ok(screen.getByText("Runtime details"));
     assert.ok(screen.getByText("Provider: multi_runtime"));
 
@@ -636,7 +721,8 @@ describe("ModelIntrospectionDashboard", () => {
 
     await waitFor(() => {
       assert.ok(screen.getByText("Response assembled"));
-      assert.ok(screen.getByText("2 chunk(s) · 6 step(s) · completed"));
+      assert.ok(screen.getByText("2 chunk(s) · 7 step(s) · completed"));
+      assert.ok(screen.getAllByText("probe_transport_error").length >= 1);
       assert.ok(screen.getByText("Analysis results"));
       assert.ok(screen.getByText("RAG focus"));
       assert.ok(screen.getByText("Query node"));
@@ -647,7 +733,7 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText("Model verdict"));
       assert.ok(screen.getByText("Process telemetry"));
       assert.ok(screen.getByText("trace steps 4"));
-      assert.ok(screen.getByText("process steps 6"));
+      assert.ok(screen.getByText("process steps 7"));
       assert.ok(screen.getByText("Snapshot comparison"));
       assert.ok(screen.getByText("Before"));
       assert.ok(screen.getByText("After"));
@@ -660,6 +746,37 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getAllByText("Graph drilldown").length >= 2);
       assert.ok(screen.getAllByText("Relations").length >= 2);
       assert.ok(screen.getAllByText("captum").length >= 2);
+    });
+  });
+
+  it("toggles normalized and raw token views in logit-lens panel", async () => {
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByText(/Co · to · jest/));
+    });
+    assert.ok(screen.getAllByText(/attention: recovered via logits proxy/i).length >= 1);
+    assert.ok(screen.getAllByText(/saliency: recovered via attention proxy/i).length >= 1);
+    assert.equal(screen.queryByText(/▁Co · ▁to · ▁jest/), null);
+
+    fireEvent.click(
+      screen.getByLabelText(
+        /Przełącz na widok surowy tokenów|Switch to raw token view/i,
+      ),
+    );
+    await waitFor(() => {
+      assert.ok(screen.getByText(/▁Co · ▁to · ▁jest/));
     });
   });
 });

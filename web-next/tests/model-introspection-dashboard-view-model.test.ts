@@ -13,6 +13,7 @@ import {
   getAnalysisPhase,
   getAnswerStatusLabel,
   getAnswerTone,
+  timelineBadgeTone,
   resolveFallbackSignal,
   resolveOperatorFinalStatus,
   resolveOperatorStreamMode,
@@ -228,8 +229,10 @@ describe("model introspection dashboard view-model", () => {
     assert.ok(logitLens);
     assert.equal(logitLens?.source, "probe_unavailable");
     assert.equal(logitLens?.input_tokens[0], "Co");
+    assert.equal(logitLens?.raw_input_tokens[0], "▁Co");
     assert.equal(logitLens?.checkpoints.length, 1);
     assert.equal(logitLens?.checkpoints[0]?.top_k[0]?.token, "planeta");
+    assert.equal(logitLens?.checkpoints[0]?.top_k[0]?.raw_token, "▁planeta");
     assert.equal(logitLens?.signals.low_confidence_path, true);
   });
 
@@ -262,6 +265,8 @@ describe("model introspection dashboard view-model", () => {
         runtime_label: "gemma · multi_runtime",
         input_tokens: [],
         output_tokens: [],
+        raw_input_tokens: [],
+        raw_output_tokens: [],
         checkpoints: [],
         signals: {
           early_unstable: false,
@@ -331,5 +336,116 @@ describe("model introspection dashboard view-model", () => {
       steps[0],
       "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step1",
     );
+  });
+
+  it("builds runbook steps for probe fallback", () => {
+    const steps = buildOperatorRunbookSteps(["R3_PROBE_FALLBACK"]);
+    assert.equal(steps.length, 3);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
+    );
+  });
+
+  it("builds runbook steps for probe proxy", () => {
+    const steps = buildOperatorRunbookSteps(["R3_PROBE_PROXY"]);
+    assert.equal(steps.length, 3);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
+    );
+  });
+
+  it("builds runbook steps for probe failed", () => {
+    const steps = buildOperatorRunbookSteps(["R3_PROBE_FAILED"]);
+    assert.equal(steps.length, 3);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
+    );
+  });
+
+  it("builds runbook steps for delayed stream", () => {
+    const steps = buildOperatorRunbookSteps(["R4_STREAM_DELAYED"]);
+    assert.equal(steps.length, 3);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.streamDelayed.step1",
+    );
+  });
+
+  it("builds runbook steps for high logit noise", () => {
+    const steps = buildOperatorRunbookSteps(["R5_LOGIT_NOISE_HIGH"]);
+    assert.equal(steps.length, 3);
+    assert.equal(
+      steps[0],
+      "inspector.modelIntrospection.dashboard.results.runbook.logitNoiseHigh.step1",
+    );
+  });
+
+  it("maps failed timeline status to danger tone", () => {
+    assert.equal(timelineBadgeTone("failed"), "danger");
+  });
+
+  it("maps failed internals timeline to probe failed operator reason", () => {
+    const conclusion = buildOperatorConclusion({
+      analysisVisible: true,
+      analysisStatus: "completed",
+      analysisTimeline: [
+        {
+          id: "internals:logit_lens_probe",
+          label: "Logit lens probe",
+          progress: 90,
+          status: "failed",
+          at_ms: 120,
+          detail: "probe_failed",
+          reason_code: "probe_failed",
+        },
+      ],
+      ragFocus: {
+        source: "runtime_trace",
+        query: "Co to jest słońce?",
+        entities: [{ id: "e1", label: "Słońce", kind: "entity", active: true }],
+        evidenceEdges: [{ id: "edge:1", from: "query", to: "e1", label: "grounded", active: true }],
+        answerEvidenceLinks: [
+          { id: "link:1", fragment: "Słońce to gwiazda.", edgeIds: ["edge:1"], entityIds: ["e1"] },
+        ],
+        activeEntityIds: ["e1"],
+        grounding: "strong",
+        steps: [
+          { id: "retrieval_started", status: "done" },
+          { id: "entities_linked", status: "done" },
+          { id: "context_packed", status: "done" },
+          { id: "answer_grounded", status: "done" },
+        ],
+      },
+      logitLens: {
+        source: "probe_unavailable",
+        status: "probe_unavailable",
+        code: "probe_failed",
+        message: null,
+        runtime_label: "gemma · multi_runtime",
+        input_tokens: [],
+        output_tokens: [],
+        raw_input_tokens: [],
+        raw_output_tokens: [],
+        checkpoints: [],
+        signals: {
+          early_unstable: false,
+          late_stabilized: false,
+          low_confidence_path: true,
+        },
+        interpretability: {
+          interpretable: false,
+          confidence_band: "low",
+          token_noise_ratio: 0.9,
+          readable_top_tokens: 0,
+          total_top_tokens: 0,
+        },
+        diagnostics: {},
+      },
+    });
+    assert.ok(conclusion);
+    assert.equal(conclusion?.reasonCodes.includes("R3_PROBE_FAILED"), true);
   });
 });

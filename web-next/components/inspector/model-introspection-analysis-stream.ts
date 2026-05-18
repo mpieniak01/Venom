@@ -122,7 +122,7 @@ function applyDoneEvent(
       status: "done",
       detail: `${analysis.response.length} chars`,
       at_ms: performance.now() - state.streamStartedAt,
-      progress: 90,
+      progress: 85,
     });
   }
   return {

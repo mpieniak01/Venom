@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class TokenBucketConfig(BaseModel):
@@ -145,6 +145,31 @@ class TrafficControlConfig(BaseModel):
         default=60.0,
         description="Czas trwania degraded mode po triggerze (sekundy)",
     )
+    degraded_mode_exempt_providers: List[str] = Field(
+        default_factory=lambda: ["multi_runtime"],
+        description=(
+            "Providerzy outbound wyłączeni z globalnej blokady degraded mode "
+            "(np. krytyczna ścieżka runtime introspekcji)"
+        ),
+    )
+    _degraded_mode_exempt_providers_normalized: frozenset[str] = PrivateAttr(
+        default_factory=frozenset
+    )
+    _degraded_mode_exempt_providers_cache_source: tuple[str, ...] = PrivateAttr(
+        default_factory=tuple
+    )
+
+    def model_post_init(self, __context: object) -> None:
+        self._refresh_degraded_mode_exempt_providers_cache()
+
+    def _refresh_degraded_mode_exempt_providers_cache(self) -> None:
+        normalized_entries = tuple(
+            entry.strip().lower()
+            for entry in self.degraded_mode_exempt_providers
+            if entry.strip()
+        )
+        self._degraded_mode_exempt_providers_cache_source = normalized_entries
+        self._degraded_mode_exempt_providers_normalized = frozenset(normalized_entries)
 
     def is_under_global_request_cap(self, requests_last_minute: int) -> bool:
         """
@@ -193,6 +218,20 @@ class TrafficControlConfig(BaseModel):
             return True
 
         return False
+
+    def is_provider_exempt_from_degraded_mode(self, provider: str) -> bool:
+        """Sprawdza, czy provider ma bypass globalnego degraded mode."""
+        current_source = tuple(
+            entry.strip().lower()
+            for entry in self.degraded_mode_exempt_providers
+            if entry.strip()
+        )
+        if current_source != self._degraded_mode_exempt_providers_cache_source:
+            self._refresh_degraded_mode_exempt_providers_cache()
+        normalized = provider.strip().lower()
+        if not normalized:
+            return False
+        return normalized in self._degraded_mode_exempt_providers_normalized
 
     @classmethod
     def from_env(cls) -> TrafficControlConfig:

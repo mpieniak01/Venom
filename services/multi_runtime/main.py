@@ -146,6 +146,9 @@ _PROBE_EXECUTOR = ThreadPoolExecutor(
     thread_name_prefix="introspection-probe",
 )
 _PROBE_SEMAPHORE = asyncio.Semaphore(_PROBE_MAX_CONCURRENCY)
+# Gradient-based saliency uses model-global grads; serialize that path.
+_PROBE_SALIENCY_LOCK = threading.Lock()
+_PROBE_SALIENCY_LOCK_WAIT_SECONDS = 0.05
 
 
 def _estimate_payload_bytes(payload: Any) -> int:
@@ -1082,9 +1085,18 @@ class IntrospectionProbeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str = Field(..., min_length=1, max_length=50000)
-    mode: Literal["hidden", "attention", "logits"] = "hidden"
+    mode: Literal["hidden", "attention", "logits", "saliency"] = "hidden"
     layer_selection: list[int] = Field(default_factory=list, max_length=64)
     top_k: int = Field(default=8, ge=1, le=256)
+    target_output_token_index: int | None = Field(
+        default=0,
+        ge=0,
+        le=255,
+        description=(
+            "For saliency mode: rank index in next-token logits "
+            "(0 = top-1, 1 = top-2, ...), not generated sequence position."
+        ),
+    )
 
 
 def _sanitize_probe_layers(
@@ -1180,8 +1192,9 @@ def _extract_logits_top(
             decoded = tokenizer.convert_ids_to_tokens([token_index])
             if isinstance(decoded, list) and decoded:
                 token = str(decoded[0])
-        except Exception:
-            pass
+        except (AttributeError, TypeError, ValueError, KeyError, IndexError):
+            # Token decode is best-effort for diagnostics only.
+            token = str(token_index)
         entries.append(
             {
                 "token_index": token_index,
@@ -1192,13 +1205,77 @@ def _extract_logits_top(
     return entries
 
 
+def _resolve_saliency_target_token(
+    *,
+    logits_vector: Any,
+    tokenizer: Any,
+    target_output_token_index: int | None,
+) -> tuple[int, str, int]:
+    import torch
+
+    vocab_size = int(logits_vector.shape[0])
+    rank_index = (
+        target_output_token_index if isinstance(target_output_token_index, int) else 0
+    )
+    rank_index = max(0, rank_index)
+    top_k = min(vocab_size, max(1, rank_index + 1))
+    _values, indices = torch.topk(logits_vector, k=top_k)
+    selected_rank_index = rank_index if rank_index < top_k else 0
+    token_id = int(indices[selected_rank_index])
+    token = str(token_id)
+    try:
+        decoded = tokenizer.convert_ids_to_tokens([token_id])
+        if isinstance(decoded, list) and decoded:
+            token = str(decoded[0])
+    except (AttributeError, TypeError, ValueError, KeyError, IndexError):
+        token = str(token_id)
+    return token_id, token, int(selected_rank_index)
+
+
+def _extract_saliency_token_weights(
+    *,
+    grad_matrix: Any,
+    token_strings: list[str],
+    top_k: int,
+) -> list[dict[str, object]]:
+    import torch
+
+    if grad_matrix is None:
+        return []
+    scores = torch.linalg.vector_norm(grad_matrix, dim=-1)
+    score_count = int(scores.shape[0])
+    k = max(1, min(top_k, score_count, _PROBE_MAX_TOP_K))
+    values, indices = torch.topk(scores, k=k)
+    entries: list[dict[str, object]] = []
+    for value, index in zip(values.tolist(), indices.tolist()):
+        token_index = int(index)
+        token = token_strings[token_index] if token_index < len(token_strings) else "?"
+        entries.append(
+            {
+                "token_index": token_index,
+                "token": token,
+                "weight": round(float(value), 6),
+            }
+        )
+    return entries
+
+
+def _acquire_saliency_lock_with_cancel(cancel_event: threading.Event | None) -> bool:
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
+        if _PROBE_SALIENCY_LOCK.acquire(timeout=_PROBE_SALIENCY_LOCK_WAIT_SECONDS):
+            return True
+
+
 def _run_probe_sync(
     *,
     engine: MultiRuntimeEngine,
     prompt: str,
-    mode: Literal["hidden", "attention", "logits"],
+    mode: Literal["hidden", "attention", "logits", "saliency"],
     layer_selection: list[int],
     top_k: int,
+    target_output_token_index: int | None = None,
     cancel_event: threading.Event | None = None,
 ) -> tuple[dict[str, object], list[str], bool]:
     import torch
@@ -1224,6 +1301,71 @@ def _run_probe_sync(
     input_ids = input_ids.to(model.device)
     if attention_mask is not None:
         attention_mask = attention_mask.to(model.device)
+
+    if mode == "saliency":
+        if not _acquire_saliency_lock_with_cancel(cancel_event):
+            raise RuntimeError("probe_cancelled")
+        try:
+            embedding_layer = getattr(model, "get_input_embeddings", None)
+            if not callable(embedding_layer):
+                raise RuntimeError("input_embeddings_unavailable")
+            input_embeddings = embedding_layer()(input_ids).detach()
+            input_embeddings.requires_grad_(True)
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("probe_cancelled")
+            outputs = model(
+                inputs_embeds=input_embeddings,
+                attention_mask=attention_mask,
+                output_hidden_states=False,
+                output_attentions=False,
+                use_cache=False,
+                return_dict=True,
+            )
+            logits = getattr(outputs, "logits", None)
+            if logits is None:
+                raise RuntimeError("logits_unavailable")
+            next_token_logits = logits[0, -1, :]
+            target_token_id, target_token, selected_rank_index = (
+                _resolve_saliency_target_token(
+                    logits_vector=next_token_logits,
+                    tokenizer=tokenizer,
+                    target_output_token_index=target_output_token_index,
+                )
+            )
+            target_logit = next_token_logits[target_token_id]
+            gradients = torch.autograd.grad(
+                target_logit,
+                input_embeddings,
+                retain_graph=False,
+                create_graph=False,
+                allow_unused=False,
+            )[0]
+            if gradients is None:
+                raise RuntimeError("saliency_gradients_unavailable")
+            token_weights = _extract_saliency_token_weights(
+                grad_matrix=gradients[0],
+                token_strings=token_strings,
+                top_k=top_k,
+            )
+        finally:
+            _PROBE_SALIENCY_LOCK.release()
+        probe_payload = {
+            "query": prompt,
+            "mode": mode,
+            "layers": [],
+            "target_output_token_index": int(target_output_token_index or 0),
+            "target_output_token_rank_index": int(selected_rank_index),
+            "target_output_token": target_token,
+            "target_selection_mode": "next_token_rank",
+            "method": "gradient_norm",
+            "token_weights": token_weights,
+            "tokenization": {
+                "token_count": int(input_ids.shape[-1]),
+                "tokens_preview": token_strings[:64],
+                "truncated": truncated,
+            },
+        }
+        return probe_payload, [], truncated
 
     with torch.no_grad():
         outputs = model(
@@ -1396,6 +1538,7 @@ async def introspection_probe(payload: IntrospectionProbeRequest) -> dict[str, o
                     mode=payload.mode,
                     layer_selection=payload.layer_selection,
                     top_k=payload.top_k,
+                    target_output_token_index=payload.target_output_token_index,
                     cancel_event=cancel_event,
                 ),
             )

@@ -64,9 +64,9 @@ tests/test_test_catalog_tools.py
 tests/test_test_intelligence_report.py
 tests/test_test_lane_contracts_guard.py
 tests/test_text_utils.py
-tests/test_toolmaker_agent.py
 tests/test_tracer.py
 tests/test_tracer_persistence.py
+tests/test_traffic_control.py
 tests/test_url_policy.py
 tests/test_ux_analyst.py
 tests/test_workflow_operations.py

@@ -141,6 +141,90 @@ class TestLlmRuntimeActivationAPI:
             assert response.status_code == 400
             assert "boom" in response.json()["detail"]
 
+    def test_get_active_server_includes_switch_policy_and_last_event(self, client):
+        with (
+            patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
+            patch.object(system_llm, "config_manager") as mock_manager,
+            patch.object(
+                system_llm,
+                "get_runtime_switch_guard_status",
+                return_value={
+                    "allowed_sources": ["make_start", "ui"],
+                    "ownership_token_configured": True,
+                },
+            ),
+            patch.object(
+                system_llm,
+                "get_last_runtime_switch_event",
+                return_value={
+                    "event": "runtime_model_selected",
+                    "source": "ui",
+                    "runtime": "multi_runtime",
+                    "model": "google/gemma-4-E2B-it",
+                    "at_utc": "2026-05-18T10:00:00+00:00",
+                },
+            ),
+        ):
+            mock_runtime.return_value = type(
+                "Runtime",
+                (),
+                {
+                    "provider": "multi_runtime",
+                    "endpoint": "http://127.0.0.1:8014/v1",
+                    "model_name": "google/gemma-4-E2B-it",
+                    "config_hash": "hash-1",
+                    "runtime_id": "multi_runtime@local",
+                },
+            )()
+            mock_manager.get_config.return_value = {}
+
+            response = client.get("/api/v1/system/llm-servers/active")
+            assert response.status_code == 200
+            payload = response.json()
+            assert (
+                payload["runtime_switch_policy"]["ownership_token_configured"] is True
+            )
+            assert payload["last_runtime_switch"]["runtime"] == "multi_runtime"
+
+    def test_get_active_runtime_info_includes_switch_policy_and_last_event(
+        self, client
+    ):
+        with (
+            patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
+            patch.object(
+                system_llm, "detect_runtime_drift", return_value={"drift": "no"}
+            ),
+            patch.object(
+                system_llm,
+                "get_runtime_switch_guard_status",
+                return_value={
+                    "allowed_sources": ["make_start", "ui"],
+                    "ownership_token_configured": False,
+                },
+            ),
+            patch.object(
+                system_llm,
+                "get_last_runtime_switch_event",
+                return_value=None,
+            ),
+        ):
+            mock_runtime.return_value = type(
+                "Runtime",
+                (),
+                {
+                    "to_payload": lambda self: {"runtime_id": "multi_runtime@local"},
+                },
+            )()
+
+            response = client.get("/api/v1/system/llm-runtime/active")
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["runtime_switch_policy"]["allowed_sources"] == [
+                "make_start",
+                "ui",
+            ]
+            assert payload["last_runtime_switch"] is None
+
 
 def test_previous_model_key_for_server():
     assert (

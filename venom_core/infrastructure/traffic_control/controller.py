@@ -275,7 +275,10 @@ class TrafficController:
         tokens: int = 1,
         method: Optional[str] = None,
     ) -> tuple[bool, Optional[str], Optional[float]]:
-        if self._is_degraded_mode_active():
+        if (
+            self._is_degraded_mode_active()
+            and not self.config.is_provider_exempt_from_degraded_mode(provider)
+        ):
             return False, "degraded_mode_active", None
         if not self._track_outbound_request_and_check_global_cap():
             return False, "global_request_cap_exceeded", 60.0

@@ -662,6 +662,44 @@ export const de = {
             partialWarn: "Analyse enthält Fallback-/Partial-Signale.",
             partialOk: "Vollständiger Signalsatz erfasst.",
           },
+          runbook: {
+            title: "Operator-Runbook",
+            modelDrift: {
+              step1: "Runtime-Snapshot aktualisieren und prüfen, ob active_model == daemon_target_model.",
+              step2: "Bei Drift das Modell im UI kontrolliert umschalten.",
+              step3: "Analyse erst erneut starten, wenn der Drift-Status bereinigt ist.",
+            },
+            degradedEndpoint: {
+              step1: "Runtime-Endpoint und Modellservice-Health prüfen.",
+              step2: "Runtime-Konnektivität (Host/Port) wiederherstellen und Snapshot aktualisieren.",
+              step3: "Analyse nach bestätigtem Healthy-Status erneut starten.",
+            },
+            degradedCircuit: {
+              step1: "Prüfen, ob der Circuit Breaker nach Fehlern den Traffic blockiert.",
+              step2: "Upstream-Fehlerursache entfernen und auf Schließen des Circuits warten.",
+              step3: "Analyse nach Wiederherstellung des Traffics erneut starten.",
+            },
+            degradedPolicy: {
+              step1: "Traffic-control/Probe-Policy für aktuelle Runtime prüfen.",
+              step2: "Modell-Whitelist und Probe-Profil-Limits bestätigen.",
+              step3: "Analyse nach Policy-Korrektur erneut starten.",
+            },
+            probeFallback: {
+              step1: "Probe-Bereitschaft prüfen: runtime supported, endpoint configured, model whitelisted.",
+              step2: "Prüfen, ob der aktive Runtime-Vertrag die angeforderten Internals-Modi unterstützt.",
+              step3: "Analyse erneut starten und Internals-Capability-Badges mit dem letzten Lauf vergleichen.",
+            },
+            streamDelayed: {
+              step1: "First-chunk-Latenz und stream-open Timing in der Prozess-Telemetrie prüfen.",
+              step2: "Runtime-Last und Netzwerkpfad vor erneuter probe-heavy Analyse prüfen.",
+              step3: "Nach Laststabilisierung erneut analysieren und Stream-Qualität verifizieren.",
+            },
+            logitNoiseHigh: {
+              step1: "Logit-lens Tokens in diesem Lauf als Low-Confidence-Signal behandeln.",
+              step2: "Runtime-Trace + Evidence-Links höher gewichten als verrauschte top-k Logits.",
+              step3: "Mit kürzerem/klarerem Prompt erneut laufen und noise ratio sowie confidence path vergleichen.",
+            },
+          },
           telemetry: {
             unknown: "unknown",
             trace: "trace",
@@ -748,7 +786,21 @@ export const de = {
             signalStable: "stable path",
             changed: "changed",
             stable: "stable",
+            normalizedAria: "Zur normalisierten Token-Ansicht wechseln",
+            rawAria: "Zur rohen Token-Ansicht wechseln",
+            rawTokensUnavailable:
+              "Rohe Ausgabetoken sind im Runtime-Vertrag nicht verfügbar.",
           },
+          internalsRecoveredTitle: "Probe internals recovered",
+          internalsRecoveredBadge: "proxy path active",
+          internalsRecoveredMessage:
+            "Ein Teil der Internals-Signale wurde über einen Proxy-Pfad statt über native Probe-Payload wiederhergestellt.",
+          internalsPartialTitle: "Probe internals partial",
+          internalsPartialMessage:
+            "Ein Teil der Internals ist verfügbar. Nicht verfügbare Mechanismen bleiben für diesen Lauf im Fallback und blockieren die übrige Datenansicht nicht.",
+          internalsUnavailableTitle: "Probe internals unavailable",
+          internalsUnavailableMessage:
+            "Für diesen Lauf hat die Probe weder Attention, Saliency noch Logit Lens geliefert. Das Hauptsignal kommt jetzt aus RAG, Evidence und dem Antwort-Verdict.",
         },
         snapshotComparison: {
           title: "Snapshot-Vergleich",

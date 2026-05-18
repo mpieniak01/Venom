@@ -685,6 +685,21 @@ export const pl = {
               step2: "Potwierdź whitelistę modelu i limity profilu probe.",
               step3: "Po korekcie polityki uruchom analizę ponownie.",
             },
+            probeFallback: {
+              step1: "Sprawdź gotowość probe: runtime supported, endpoint configured i model whitelisted.",
+              step2: "Zweryfikuj, czy aktywny kontrakt runtime wspiera żądane tryby internals dla tego runu.",
+              step3: "Uruchom analizę ponownie i porównaj badge capability internals z poprzednim runem.",
+            },
+            streamDelayed: {
+              step1: "Sprawdź first chunk latency i czas stream-open w telemetrii procesu.",
+              step2: "Zweryfikuj obciążenie runtime i ścieżkę sieciową przed kolejną analizą probe-heavy.",
+              step3: "Powtórz analizę po stabilizacji obciążenia i potwierdź poprawę jakości streamu.",
+            },
+            logitNoiseHigh: {
+              step1: "Traktuj tokeny logit-lens jako sygnał niskiej pewności dla tego runu.",
+              step2: "Priorytetyzuj runtime trace + evidence links ponad zaszumione top-k logity.",
+              step3: "Uruchom ponownie z krótszym/jaśniejszym promptem i porównaj noise ratio oraz confidence path.",
+            },
           },
           telemetry: {
             unknown: "nieznane",
@@ -772,7 +787,20 @@ export const pl = {
             signalStable: "stable path",
             changed: "changed",
             stable: "stable",
+            normalizedAria: "Przełącz na widok znormalizowany tokenów",
+            rawAria: "Przełącz na widok surowy tokenów",
+            rawTokensUnavailable: "Surowe tokeny wyjścia są niedostępne w kontrakcie runtime.",
           },
+          internalsRecoveredTitle: "Probe internals recovered",
+          internalsRecoveredBadge: "proxy path active",
+          internalsRecoveredMessage:
+            "Część sygnałów internals została odzyskana ścieżką proxy zamiast natywnego payloadu probe.",
+          internalsPartialTitle: "Probe internals partial",
+          internalsPartialMessage:
+            "Część internals jest dostępna. Niedostępne mechanizmy pozostają w fallbacku dla tego runu i nie blokują widoku pozostałych danych.",
+          internalsUnavailableTitle: "Probe internals unavailable",
+          internalsUnavailableMessage:
+            "Dla tego runu probe nie zwrócił attention, saliency ani logit lens. Główny sygnał prowadzi teraz RAG, evidence i verdict odpowiedzi.",
         },
         snapshotComparison: {
           title: "Porównanie snapshotów",

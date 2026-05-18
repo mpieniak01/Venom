@@ -55,6 +55,11 @@ In practice the UI distinguishes:
 - `probe_failed`
 - `probe_unavailable`
 
+Current runtime contract note:
+
+- `multi_runtime` probe supports `hidden`, `attention`, `logits`, and `saliency`.
+- `saliency` can still return `saliency_unavailable` for specific runtimes/profiles when native saliency payload is not exposed and fallback/proxy path is used.
+
 ## 4. How to read the screen
 
 ### 4.1 Answer verdict
@@ -113,6 +118,7 @@ The UI does not yet have a full probe budget snapshot. This is informational, no
 ### 7.2 `attention_unavailable` / `saliency_unavailable`
 
 The mechanism is in fallback state or did not receive data for this run. Check probe readiness and runtime logs.
+For `saliency`, also verify whether the active runtime contract supports saliency payloads at all.
 
 ### 7.3 `probe_failed`
 

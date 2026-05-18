@@ -177,6 +177,36 @@ async def test_probe_service_maps_attention_and_saliency_to_mode_specific_unavai
 
 
 @pytest.mark.asyncio
+async def test_probe_service_forwards_saliency_target_output_token_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_service,
+        "get_active_llm_runtime",
+        lambda: _runtime("multi_runtime", "http://localhost:8014/v1"),
+    )
+    captured_payload: dict[str, object] = {}
+
+    async def _fake_post_probe_request(**_kwargs):
+        captured_payload.update(_kwargs.get("payload", {}))
+        return httpx.Response(status_code=404, json={"detail": "not found"})
+
+    monkeypatch.setattr(probe_service, "_post_probe_request", _fake_post_probe_request)
+    result = await probe_service.run_model_introspection_probe(
+        prompt="Co to jest słońce?",
+        mode="saliency",
+        layer_selection=[1],
+        target_output_token_index=3,
+        top_k=8,
+    )
+
+    assert result["status"] == "probe_unavailable"
+    assert result["code"] == "saliency_unavailable"
+    assert captured_payload["mode"] == "saliency"
+    assert captured_payload["target_output_token_index"] == 3
+
+
+@pytest.mark.asyncio
 async def test_probe_service_maps_timeout_to_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -270,8 +300,26 @@ def test_probe_runtime_config_normalizes_invalid_values(
     assert cfg["max_prompt_tokens"] == 1
 
 
+def test_probe_health_payload_reports_disabled_and_endpoint_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMMA4_AUDIO_PROBE_ENABLED", "false")
+    disabled = probe_service.build_probe_health_payload(
+        _runtime("multi_runtime", "http://localhost:8014/v1")
+    )
+    assert disabled["status"] == "disabled"
+    assert disabled["healthy"] is False
+
+    monkeypatch.setenv("GEMMA4_AUDIO_PROBE_ENABLED", "true")
+    endpoint_missing = probe_service.build_probe_health_payload(
+        _runtime("multi_runtime", None)
+    )
+    assert endpoint_missing["status"] == "endpoint_missing"
+    assert endpoint_missing["endpoint_configured"] is False
+
+
 @pytest.mark.asyncio
-async def test_probe_service_forwards_head_selection_and_target_output_token(
+async def test_probe_service_does_not_forward_legacy_probe_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -288,7 +336,7 @@ async def test_probe_service_forwards_head_selection_and_target_output_token(
     monkeypatch.setattr(probe_service, "_post_probe_request", _fake_post_probe_request)
     result = await probe_service.run_model_introspection_probe(
         prompt="q",
-        mode="saliency",
+        mode="attention",
         layer_selection=[1],
         head_selection=[2, 2, 5],
         target_output_token_index=3,
@@ -296,8 +344,9 @@ async def test_probe_service_forwards_head_selection_and_target_output_token(
     )
 
     assert result["status"] == "ok"
-    assert captured_payload["head_selection"] == [2, 5]
-    assert captured_payload["target_output_token_index"] == 3
+    assert captured_payload["mode"] == "attention"
+    assert "head_selection" not in captured_payload
+    assert "target_output_token_index" not in captured_payload
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -15,6 +16,7 @@ logger = get_logger(__name__)
 
 ALLOWED_RUNTIME_SWITCH_SOURCES = {"ui", "make_start"}
 _missing_runtime_switch_token_warned = False
+_last_runtime_switch_event: dict[str, Any] = {}
 
 
 def normalize_runtime_switch_source(raw_source: str | None) -> str:
@@ -54,12 +56,35 @@ def assert_runtime_switch_ownership_token(request_token: str | None) -> None:
         )
 
 
+def get_runtime_switch_guard_status() -> dict[str, Any]:
+    required = str(os.getenv("VENOM_RUNTIME_SWITCH_TOKEN", "")).strip()
+    return {
+        "allowed_sources": sorted(ALLOWED_RUNTIME_SWITCH_SOURCES),
+        "ownership_token_configured": bool(required),
+    }
+
+
+def get_last_runtime_switch_event() -> dict[str, Any] | None:
+    if not _last_runtime_switch_event:
+        return None
+    return dict(_last_runtime_switch_event)
+
+
 def emit_runtime_model_event(event_name: str, **payload: Any) -> None:
+    global _last_runtime_switch_event
     logger.info(
         "runtime_event={} {}",
         event_name,
         ", ".join(f"{key}={value}" for key, value in sorted(payload.items())),
     )
+    _last_runtime_switch_event = {
+        "event": str(event_name or "").strip(),
+        "source": str(payload.get("source") or "").strip(),
+        "runtime": str(payload.get("runtime") or "").strip(),
+        "model": str(payload.get("model") or "").strip(),
+        "from_runtime": str(payload.get("from_runtime") or "").strip(),
+        "at_utc": datetime.now(UTC).isoformat(),
+    }
     collector = metrics_module.get_metrics_collector()
     if collector is None:
         return

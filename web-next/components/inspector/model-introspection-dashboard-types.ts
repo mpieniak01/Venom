@@ -304,7 +304,7 @@ type AnalysisCapabilityPayload = {
   source?: string;
   status?: string;
   reason?: string;
-  availability_class?: "native_ok" | "proxy_ok" | "unavailable" | "failed" | string;
+  availability_class?: "native_ok" | "proxy_ok" | "unavailable" | "failed";
 };
 
 export type AnalysisResult = {

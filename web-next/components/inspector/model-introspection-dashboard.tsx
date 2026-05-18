@@ -394,6 +394,23 @@ function getStepTone(status: ResultStepStatus): ResultStepTone {
   return "neutral";
 }
 
+function resolveResultStepStatus(args: Readonly<{
+  hasFailed: boolean;
+  hasRunning: boolean;
+  hasDone: boolean;
+}>): ResultStepStatus {
+  if (args.hasFailed) {
+    return "failed";
+  }
+  if (args.hasRunning) {
+    return "running";
+  }
+  if (args.hasDone) {
+    return "done";
+  }
+  return "pending";
+}
+
 function resolveResultStepMarker(
   stepKey: string,
   timeline: AnalysisTimelineEntry[],
@@ -404,13 +421,7 @@ function resolveResultStepMarker(
   const hasFailed = matches.some((entry) => entry.status === "failed");
   const hasRunning = matches.some((entry) => entry.status === "running");
   const hasDone = matches.some((entry) => entry.status === "done");
-  const status: ResultStepStatus = hasFailed
-    ? "failed"
-    : hasRunning
-      ? "running"
-      : hasDone
-        ? "done"
-        : "pending";
+  const status = resolveResultStepStatus({ hasFailed, hasRunning, hasDone });
   return {
     number: def.number,
     key: def.key,
@@ -430,6 +441,19 @@ function formatStepLabel(
   return `${t("inspector.modelIntrospection.dashboard.results.stepPrefix")} ${marker.number} · ${t(marker.labelKey)}`;
 }
 
+function formatStepStatusLabel(
+  t: (key: string) => string,
+  status: ResultStepStatus,
+): string {
+  const statusKeyMap: Record<ResultStepStatus, string> = {
+    done: "inspector.modelIntrospection.dashboard.results.stepStatus.done",
+    running: "inspector.modelIntrospection.dashboard.results.stepStatus.running",
+    pending: "inspector.modelIntrospection.dashboard.results.stepStatus.pending",
+    failed: "inspector.modelIntrospection.dashboard.results.stepStatus.failed",
+  };
+  return t(statusKeyMap[status]);
+}
+
 function ResultStepHeader({
   marker,
   t,
@@ -442,7 +466,7 @@ function ResultStepHeader({
   return (
     <div className="mb-2 flex items-center gap-2">
       <Badge tone={marker.tone}>{formatStepLabel(t, marker)}</Badge>
-      <Badge tone="neutral">{marker.status}</Badge>
+      <Badge tone="neutral">{formatStepStatusLabel(t, marker.status)}</Badge>
       {materializing ? (
         <Badge tone="neutral">
           <Loader2 className="h-3 w-3 animate-spin" />

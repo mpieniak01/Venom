@@ -318,6 +318,35 @@ async def _retry_native_saliency_payload(
     )
 
 
+async def _recover_saliency_payload(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+    status: str,
+    code: str,
+    message: str,
+    requested_target_token: str | None,
+) -> dict[str, Any]:
+    native_retry_payload = await _retry_native_saliency_payload(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+        requested_target_token=requested_target_token,
+    )
+    if native_retry_payload is not None:
+        return native_retry_payload
+    return await _resolve_saliency_proxy_or_unavailable(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+        status=status,
+        code=code,
+        message=message,
+        requested_target_token=requested_target_token,
+    )
+
+
 async def build_saliency_payload(
     *,
     prompt: str,
@@ -337,15 +366,7 @@ async def build_saliency_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
-        native_retry_payload = await _retry_native_saliency_payload(
-            prompt=prompt,
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
-            requested_target_token=target_output_token,
-        )
-        if native_retry_payload is not None:
-            return native_retry_payload
-        return await _resolve_saliency_proxy_or_unavailable(
+        return await _recover_saliency_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
@@ -367,15 +388,7 @@ async def build_saliency_payload(
 
     token_weights = _normalize_token_weights(probe.get("token_weights"))
     if not token_weights:
-        native_retry_payload = await _retry_native_saliency_payload(
-            prompt=prompt,
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
-            requested_target_token=target_output_token,
-        )
-        if native_retry_payload is not None:
-            return native_retry_payload
-        return await _resolve_saliency_proxy_or_unavailable(
+        return await _recover_saliency_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,

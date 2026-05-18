@@ -620,6 +620,12 @@ export const en = {
           description: "Highlights, verdict and process telemetry are grouped here.",
           stepPrefix: "step",
           stepMaterializing: "step materialization",
+          stepStatus: {
+            done: "done",
+            running: "running",
+            pending: "pending",
+            failed: "failed",
+          },
           answer: "Answer",
           waitingToken: "Waiting for first streamed token...",
           streaming: "Streaming live from the model",

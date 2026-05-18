@@ -324,6 +324,26 @@ async def _retry_native_attention_payload(
     )
 
 
+async def _recover_attention_payload(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+) -> dict[str, Any] | None:
+    native_retry_payload = await _retry_native_attention_payload(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+    if native_retry_payload is not None:
+        return native_retry_payload
+    return await _build_attention_proxy_from_logits(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+
+
 async def build_attention_payload(
     *,
     prompt: str,
@@ -341,20 +361,13 @@ async def build_attention_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
-        native_retry_payload = await _retry_native_attention_payload(
+        recovered_payload = await _recover_attention_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
         )
-        if native_retry_payload is not None:
-            return native_retry_payload
-        proxy_payload = await _build_attention_proxy_from_logits(
-            prompt=prompt,
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
-        )
-        if proxy_payload is not None:
-            return proxy_payload
+        if recovered_payload is not None:
+            return recovered_payload
         return _build_unavailable_attention_payload(
             status=status,
             code=str(probe_payload.get("code") or "attention_unavailable"),
@@ -376,20 +389,13 @@ async def build_attention_payload(
     tokens = _extract_tokens(probe)
     layers = _normalize_layers(probe=probe, tokens=tokens)
     if not layers:
-        native_retry_payload = await _retry_native_attention_payload(
+        recovered_payload = await _recover_attention_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
         )
-        if native_retry_payload is not None:
-            return native_retry_payload
-        proxy_payload = await _build_attention_proxy_from_logits(
-            prompt=prompt,
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
-        )
-        if proxy_payload is not None:
-            return proxy_payload
+        if recovered_payload is not None:
+            return recovered_payload
         return _build_unavailable_attention_payload(
             status="probe_unavailable",
             code="attention_unavailable",

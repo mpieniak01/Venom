@@ -621,6 +621,12 @@ export const pl = {
           description: "Highlights, werdykt i telemetria procesu są zebrane w jednym miejscu.",
           stepPrefix: "krok",
           stepMaterializing: "materializacja kroku",
+          stepStatus: {
+            done: "done",
+            running: "running",
+            pending: "pending",
+            failed: "failed",
+          },
           answer: "Odpowiedź",
           waitingToken: "Oczekiwanie na pierwszy token strumienia...",
           streaming: "Strumień odpowiedzi na żywo",

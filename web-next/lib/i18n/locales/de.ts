@@ -620,6 +620,12 @@ export const de = {
           description: "Highlights, Fazit und Prozess-Telemetrie sind hier gebündelt.",
           stepPrefix: "Schritt",
           stepMaterializing: "Schrittmaterialisierung",
+          stepStatus: {
+            done: "done",
+            running: "running",
+            pending: "pending",
+            failed: "failed",
+          },
           answer: "Antwort",
           waitingToken: "Warte auf das erste Streaming-Token...",
           streaming: "Live-Streaming aus dem Modell",

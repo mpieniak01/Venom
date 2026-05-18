@@ -4,9 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -26,6 +24,10 @@ type ModelIntrospectionMechanismContextValue = {
 };
 
 const ModelIntrospectionMechanismContext = createContext<ModelIntrospectionMechanismContextValue | null>(null);
+
+function subscribeNoop(): () => void {
+  return () => undefined;
+}
 
 function readEnabledFromStorage(): boolean {
   try {
@@ -129,11 +131,7 @@ export function ModelIntrospectionMechanismControl({
 }: Readonly<ModelIntrospectionMechanismControlProps>) {
   const t = useTranslation();
   const { enabled, setEnabled } = useModelIntrospectionMechanism();
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
+  const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
 
   // Keep first client render identical to SSR output to avoid hydration mismatch.
   const displayEnabled = hydrated ? enabled : false;

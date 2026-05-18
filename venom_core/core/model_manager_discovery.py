@@ -436,8 +436,6 @@ class ModelManagerDiscoveryMixin:
                 models[f"ollama::{entry_name}"] = entry
 
     def _save_ollama_cache(self, entries: List[Dict[str, Any]]) -> None:
-        if not entries:
-            return
         try:
             self.ollama_cache_path.write_text(
                 json.dumps(entries, indent=2),
@@ -494,6 +492,10 @@ class ModelManagerDiscoveryMixin:
                         entries = self._collect_ollama_entries(
                             ollama_data.get("models", [])
                         )
+                        for key in [
+                            k for k in list(models.keys()) if k.startswith("ollama::")
+                        ]:
+                            models.pop(key, None)
                         self._register_ollama_entries(models, entries)
                         self._save_ollama_cache(entries)
                     else:

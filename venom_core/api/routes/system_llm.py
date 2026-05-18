@@ -1943,11 +1943,7 @@ async def _runtime_server_status_snapshot() -> dict[str, dict[str, Any]]:
     _merge_monitor_status_into_servers(servers, service_monitor)
     active_runtime = get_active_llm_runtime()
     active_server_name = str(getattr(active_runtime, "provider", "") or "").strip()
-    try:
-        await _probe_servers(servers, active_server_name)
-    except TypeError:
-        # Backward-compatible for monkeypatched tests using legacy one-arg probe.
-        await _probe_servers(servers)
+    await _probe_servers(servers, active_server_name)
 
     status_map: dict[str, dict[str, Any]] = {}
     for server in servers:
@@ -1990,11 +1986,7 @@ async def get_llm_servers():
     _merge_monitor_status_into_servers(servers, service_monitor)
     active_runtime = get_active_llm_runtime()
     active_server_name = str(getattr(active_runtime, "provider", "") or "").strip()
-    try:
-        await _probe_servers(servers, active_server_name)
-    except TypeError:
-        # Backward-compatible for monkeypatched tests using legacy one-arg probe.
-        await _probe_servers(servers)
+    await _probe_servers(servers, active_server_name)
 
     return {"status": "success", "servers": servers, "count": len(servers)}
 

@@ -176,7 +176,7 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
         <span className={`flex items-center gap-1 ${voiceProbeFailed ? "text-amber-400" : "text-emerald-400"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${voiceProbeFailed ? "bg-amber-400" : "bg-emerald-400"}`} />
           {" "}
-          {probeStatus ?? "verified"}
+          {probeStatus ?? "—"}
         </span>
       </span>
     </div>

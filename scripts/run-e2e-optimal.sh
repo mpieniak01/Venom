@@ -6,6 +6,10 @@ cd /home/ubuntu/venom
 # Optimized Playwright E2E sequence for this environment.
 PLAYWRIGHT_CACHE_DIR="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
 E2E_FUNCTIONAL_WORKERS="${E2E_FUNCTIONAL_WORKERS:-1}"
+if ! [[ "${E2E_FUNCTIONAL_WORKERS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "❌ E2E_FUNCTIONAL_WORKERS musi być dodatnią liczbą całkowitą (otrzymano: ${E2E_FUNCTIONAL_WORKERS})"
+  exit 2
+fi
 if ! compgen -G "${PLAYWRIGHT_CACHE_DIR}/chromium*" >/dev/null; then
   echo "⚙️  Brak przeglądarek Playwright w ${PLAYWRIGHT_CACHE_DIR}. Instaluję Chromium..."
   npm --prefix web-next exec playwright install chromium

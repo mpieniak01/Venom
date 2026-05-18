@@ -56,7 +56,7 @@ async def _release_multi_runtime_models(endpoint: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=_CLEANUP_TIMEOUT) as client:
             response = await client.post(unload_url)
-        if response.status_code >= 400:
+        if not (200 <= response.status_code < 300):
             logger.warning(
                 "Nie udało się wyładować modeli multi_runtime przed stop: HTTP {}",
                 response.status_code,

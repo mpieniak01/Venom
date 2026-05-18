@@ -8,6 +8,7 @@ import time
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 
 from venom_core.api.routes.models_dependencies import get_model_manager
 from venom_core.api.schemas.model_introspection import (
@@ -133,6 +134,8 @@ async def analyze_model_introspection(
             status_code=400,
             detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Błąd podczas analizy modelu")
         raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc
@@ -153,6 +156,15 @@ async def stream_model_introspection_analysis_endpoint(
         if not request.prompt.strip():
             raise ValueError("prompt cannot be empty")
         await _acquire_introspection_slot()
+        released = False
+
+        def release_slot_once() -> None:
+            nonlocal released
+            if released:
+                return
+            _INTROSPECTION_SEMAPHORE.release()
+            released = True
+
         try:
             stream = stream_model_introspection_analysis(
                 prompt=request.prompt,
@@ -163,7 +175,7 @@ async def stream_model_introspection_analysis_endpoint(
                 model_manager=get_model_manager(),
             )
         except Exception:
-            _INTROSPECTION_SEMAPHORE.release()
+            release_slot_once()
             raise
 
         async def guarded_stream():
@@ -171,7 +183,7 @@ async def stream_model_introspection_analysis_endpoint(
                 async for chunk in stream:
                     yield chunk
             finally:
-                _INTROSPECTION_SEMAPHORE.release()
+                release_slot_once()
 
         return StreamingResponse(
             guarded_stream(),
@@ -180,6 +192,7 @@ async def stream_model_introspection_analysis_endpoint(
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
             },
+            background=BackgroundTask(release_slot_once),
         )
     except ValueError as exc:
         logger.warning(
@@ -190,6 +203,8 @@ async def stream_model_introspection_analysis_endpoint(
             status_code=400,
             detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Błąd podczas streamowanej analizy modelu")
         raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc
@@ -228,6 +243,8 @@ async def probe_model_introspection(
             status_code=400,
             detail=_ERROR_INVALID_REQUEST_PARAMETERS,
         ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Błąd podczas wykonania probe model introspection")
         raise HTTPException(status_code=500, detail=_ERROR_INTERNAL_SERVER) from exc

@@ -308,7 +308,8 @@ function RuntimeOverviewCard({
   const probeStatus = runtime?.runtime_capabilities?.probe_status ?? null;
   const runtimeProvider = String(provider ?? "").trim().toLowerCase();
   const isNativeVoiceRuntime =
-    runtimeProvider === "multi_runtime" || runtimeProvider === "gemma4_audio";
+    runtimeProvider.startsWith("multi_runtime") ||
+    runtimeProvider.startsWith("gemma4_audio");
   const probeTone = (() => {
     if (!probeStatus) return "neutral" as const;
     if (probeStatus === "verified") return "success" as const;

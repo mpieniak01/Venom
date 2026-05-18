@@ -788,7 +788,7 @@ async def daemon_unload() -> dict[str, Any]:
     async with _lifecycle_lock:
         try:
             daemon = get_daemon()
-            daemon.unload_all()
+            await asyncio.to_thread(daemon.unload_all)
         except RuntimeError:
             raise HTTPException(status_code=503, detail="Daemon not initialized")
     return {"status": "ok", "message": "All models unloaded."}

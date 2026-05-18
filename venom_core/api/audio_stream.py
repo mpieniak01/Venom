@@ -95,6 +95,7 @@ def _build_voice_session_record(
         "timings_ms": metadata.get("timings_ms") or {},
         "runtime": metadata.get("runtime") or {},
         "pipeline_id": metadata.get("pipeline_id"),
+        "voice_pipeline_mode": metadata.get("voice_pipeline_mode"),
         "audio_runtime_provider": metadata.get("audio_runtime_provider"),
         "audio_runtime_model": metadata.get("audio_runtime_model"),
         "audio_input_status": metadata.get("audio_input_status"),
@@ -1096,7 +1097,6 @@ class AudioStreamHandler:
                     "voice_mode": self._connection_voice_mode(connection_id),
                     "audio_input_status": "verified",
                     "decoder_source": "faster_whisper",
-                    "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
                         _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
@@ -1210,7 +1210,6 @@ class AudioStreamHandler:
                     "timings_ms": timings_ms,
                     "audio_input_status": "verified",
                     "decoder_source": "faster_whisper",
-                    "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
                         _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),

@@ -25,15 +25,15 @@ describe("ModelIntrospectionMechanismControl", () => {
 
     const switches = screen.getAllByRole("switch");
     assert.equal(switches.length, 2);
-    assert.equal(switches[0].getAttribute("aria-checked"), "false");
-    assert.equal(switches[1].getAttribute("aria-checked"), "false");
+    assert.equal(switches[0].getAttribute("aria-checked"), "true");
+    assert.equal(switches[1].getAttribute("aria-checked"), "true");
 
     fireEvent.click(switches[0]);
 
     await waitFor(() => {
       const updatedSwitches = screen.getAllByRole("switch");
-      assert.equal(updatedSwitches[0].getAttribute("aria-checked"), "true");
-      assert.equal(updatedSwitches[1].getAttribute("aria-checked"), "true");
+      assert.equal(updatedSwitches[0].getAttribute("aria-checked"), "false");
+      assert.equal(updatedSwitches[1].getAttribute("aria-checked"), "false");
     });
   });
 

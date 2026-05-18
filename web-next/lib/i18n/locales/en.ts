@@ -684,6 +684,21 @@ export const en = {
               step2: "Confirm model whitelist and probe profile limits.",
               step3: "Run analysis again after policy correction.",
             },
+            probeFallback: {
+              step1: "Check probe readiness: runtime supported, endpoint configured and model whitelisted.",
+              step2: "Verify active runtime contract supports requested internals modes for this run.",
+              step3: "Re-run analysis and compare internals capability badges against the previous run.",
+            },
+            streamDelayed: {
+              step1: "Review first chunk latency and stream-open timing in process telemetry.",
+              step2: "Verify runtime load and network path before repeating probe-heavy analysis.",
+              step3: "Re-run analysis after load stabilizes and confirm stream quality improves.",
+            },
+            logitNoiseHigh: {
+              step1: "Treat logit-lens tokens as low-confidence signal for this run.",
+              step2: "Prioritize runtime trace + evidence links over noisy top-k logits.",
+              step3: "Re-run with a shorter/clearer prompt to compare noise ratio and confidence path.",
+            },
           },
           telemetry: {
             unknown: "unknown",

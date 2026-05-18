@@ -84,6 +84,114 @@ def _build_unavailable_saliency_payload(
     }
 
 
+async def _build_saliency_proxy_from_attention(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+) -> dict[str, Any] | None:
+    probe_payload = await run_model_introspection_probe(
+        prompt=prompt,
+        mode="attention",
+        layer_selection=_SALIENCY_LAYER_SELECTION,
+        top_k=_SALIENCY_TOP_K,
+    )
+    if str(probe_payload.get("status") or "probe_unavailable") != "ok":
+        return None
+    probe = probe_payload.get("probe")
+    if not isinstance(probe, dict):
+        return None
+    raw_layers = probe.get("layers")
+    if not isinstance(raw_layers, list) or not raw_layers:
+        return None
+    last_layer = raw_layers[-1]
+    if not isinstance(last_layer, dict):
+        return None
+    attention_top = last_layer.get("attention_top")
+    token_weights = _normalize_token_weights(
+        [
+            {
+                "token": item.get("token"),
+                "token_index": item.get("token_index"),
+                "weight": item.get("score"),
+            }
+            for item in attention_top
+        ]
+        if isinstance(attention_top, list)
+        else []
+    )
+    if not token_weights:
+        return None
+    proxy_diagnostics = dict(diagnostics)
+    proxy_diagnostics["proxy_from_mode"] = "attention"
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": "saliency_proxy_attention",
+        "message": "Saliency payload approximated from attention probe",
+        "runtime_label": runtime_label,
+        "method": "attention_proxy",
+        "target_output_token_index": _SALIENCY_TARGET_OUTPUT_TOKEN_INDEX,
+        "target_output_token": None,
+        "token_weights": token_weights,
+        "diagnostics": proxy_diagnostics,
+    }
+
+
+async def _build_saliency_proxy_from_logits(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+) -> dict[str, Any] | None:
+    probe_payload = await run_model_introspection_probe(
+        prompt=prompt,
+        mode="logits",
+        layer_selection=_SALIENCY_LAYER_SELECTION,
+        top_k=_SALIENCY_TOP_K,
+    )
+    if str(probe_payload.get("status") or "probe_unavailable") != "ok":
+        return None
+    probe = probe_payload.get("probe")
+    if not isinstance(probe, dict):
+        return None
+    raw_layers = probe.get("layers")
+    if not isinstance(raw_layers, list) or not raw_layers:
+        return None
+    last_layer = raw_layers[-1]
+    if not isinstance(last_layer, dict):
+        return None
+    logits_top = last_layer.get("logits_top")
+    token_weights = _normalize_token_weights(
+        [
+            {
+                "token": item.get("token"),
+                "token_index": item.get("token_index"),
+                "weight": item.get("score"),
+            }
+            for item in logits_top
+        ]
+        if isinstance(logits_top, list)
+        else []
+    )
+    if not token_weights:
+        return None
+    proxy_diagnostics = dict(diagnostics)
+    proxy_diagnostics["proxy_from_mode"] = "logits"
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": "saliency_proxy_logits",
+        "message": "Saliency payload approximated from logits probe",
+        "runtime_label": runtime_label,
+        "method": "logits_proxy",
+        "target_output_token_index": _SALIENCY_TARGET_OUTPUT_TOKEN_INDEX,
+        "target_output_token": None,
+        "token_weights": token_weights,
+        "diagnostics": proxy_diagnostics,
+    }
+
+
 async def build_saliency_payload(
     *,
     prompt: str,
@@ -94,7 +202,6 @@ async def build_saliency_payload(
         prompt=prompt,
         mode="saliency",
         layer_selection=_SALIENCY_LAYER_SELECTION,
-        target_output_token_index=_SALIENCY_TARGET_OUTPUT_TOKEN_INDEX,
         top_k=_SALIENCY_TOP_K,
     )
     status = str(probe_payload.get("status") or "probe_unavailable")
@@ -104,6 +211,20 @@ async def build_saliency_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
+        proxy_payload = await _build_saliency_proxy_from_attention(
+            prompt=prompt,
+            runtime_label=runtime_label_str,
+            diagnostics=diagnostics,
+        )
+        if proxy_payload is not None:
+            return proxy_payload
+        logits_proxy_payload = await _build_saliency_proxy_from_logits(
+            prompt=prompt,
+            runtime_label=runtime_label_str,
+            diagnostics=diagnostics,
+        )
+        if logits_proxy_payload is not None:
+            return logits_proxy_payload
         return _build_unavailable_saliency_payload(
             status=status,
             code=str(probe_payload.get("code") or "saliency_unavailable"),
@@ -124,6 +245,20 @@ async def build_saliency_payload(
 
     token_weights = _normalize_token_weights(probe.get("token_weights"))
     if not token_weights:
+        proxy_payload = await _build_saliency_proxy_from_attention(
+            prompt=prompt,
+            runtime_label=runtime_label_str,
+            diagnostics=diagnostics,
+        )
+        if proxy_payload is not None:
+            return proxy_payload
+        logits_proxy_payload = await _build_saliency_proxy_from_logits(
+            prompt=prompt,
+            runtime_label=runtime_label_str,
+            diagnostics=diagnostics,
+        )
+        if logits_proxy_payload is not None:
+            return logits_proxy_payload
         return _build_unavailable_saliency_payload(
             status="probe_unavailable",
             code="saliency_unavailable",

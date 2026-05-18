@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Brain, Radar, RefreshCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -128,10 +128,23 @@ function buildInternalsCapabilityRow(
   capability: ProbeCapability | undefined,
 ): InternalsCapabilityRow {
   const available = Boolean(capability?.available);
+  const rawReason = String(capability?.reason || "unknown");
+  const reasonMap: Record<string, string> = {
+    ok: "ok",
+    probe_unavailable: "probe unavailable",
+    probe_failed: "probe failed",
+    attention_unavailable: "attention unavailable",
+    saliency_unavailable: "saliency unavailable",
+    logit_lens_unavailable: "logit lens unavailable",
+    attention_proxy_logits: "recovered via logits proxy",
+    saliency_proxy_attention: "recovered via attention proxy",
+    saliency_proxy_logits: "recovered via logits proxy",
+  };
+  const mappedReason = reasonMap[rawReason] ?? rawReason.replaceAll("_", " ");
   return {
     label,
     available,
-    reason: available ? "ok" : String(capability?.reason || "unknown"),
+    reason: available && mappedReason === "ok" ? "ok" : mappedReason,
   };
 }
 
@@ -592,6 +605,7 @@ function useDashboardDerivedState(args: {
     analysisStatus: analysisResult?.status,
     skippedReason: analysisResult?.skipped_reason ?? null,
     analysisErrorCode: analysisResult?.analysis?.error_code ?? analysisResult?.analysis?.error ?? null,
+    analysisTimeline,
     ragFocus,
     logitLens,
     operatorConclusionPayload: analysisResult?.analysis?.operator_conclusion ?? null,
@@ -740,7 +754,7 @@ export function ModelIntrospectionDashboard() {
   });
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [graphLayerOpen, setGraphLayerOpen] = useState(false);
-  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(false);
+  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(true);
   const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
 
   const {
@@ -812,6 +826,30 @@ export function ModelIntrospectionDashboard() {
       t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder"),
     );
   }, [t]);
+
+  const attentionAvailable = Boolean(
+    attention && attention.status === "ok" && attention.layers.length > 0,
+  );
+  const saliencyAvailable = Boolean(
+    saliency && saliency.status === "ok" && saliency.token_weights.length > 0,
+  );
+  const logitLensAvailable = Boolean(
+    logitLens && logitLens.status === "ok" && logitLens.checkpoints.length > 0,
+  );
+  useEffect(() => {
+    if (logitLensAvailable) {
+      setAdvancedInternalsOpen(true);
+    }
+  }, [analysisTraceId, logitLensAvailable]);
+  const allInternalsUnavailable =
+    !attentionAvailable && !saliencyAvailable && !logitLensAvailable;
+  const anyInternalsAvailable =
+    attentionAvailable || saliencyAvailable || logitLensAvailable;
+  const unavailableInternalsRows = internalsCapabilityRows.filter((row) => !row.available);
+  const proxyInternalsRows = internalsCapabilityRows.filter(
+    (row) => row.available && row.reason !== "ok",
+  );
+  const availableInternalsCount = internalsCapabilityRows.length - unavailableInternalsRows.length;
 
   return (
     <div className="space-y-6 pb-10">
@@ -1017,11 +1055,19 @@ export function ModelIntrospectionDashboard() {
                 </Badge>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge tone={availableInternalsCount === internalsCapabilityRows.length ? "success" : "warning"}>
+                  coverage {availableInternalsCount}/{internalsCapabilityRows.length}
+                </Badge>
                 <Badge tone="neutral">{probeLimitsLabel}</Badge>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {internalsCapabilityRows.map((row) => (
-                  <Badge key={row.label} tone={row.available ? "success" : "warning"}>
+                {unavailableInternalsRows.map((row) => (
+                  <Badge key={row.label} tone="warning">
+                    {row.label}: {row.reason}
+                  </Badge>
+                ))}
+                {proxyInternalsRows.map((row) => (
+                  <Badge key={`proxy-${row.label}`} tone="neutral">
                     {row.label}: {row.reason}
                   </Badge>
                 ))}
@@ -1036,8 +1082,116 @@ export function ModelIntrospectionDashboard() {
               </div>
             </div>
           </div>
+          <div className="mb-4">
+            <LogitLensPanel
+              logitLens={logitLens}
+              title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
+              emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
+              unavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
+              )}
+              signalsLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.confidence",
+              )}
+              tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
+              checkpointsLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
+              )}
+              signalEarlyUnstableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
+              )}
+              signalLateStabilizedLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
+              )}
+              signalLowConfidenceLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
+              )}
+              signalStableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
+              )}
+              changedLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.changed",
+              )}
+              stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
+              sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
+              sourceRuntimeLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
+              )}
+              sourceUnavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
+              )}
+              sourceFallbackWarning={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
+              )}
+            />
+          </div>
           {advancedInternalsOpen && (
             <>
+              {proxyInternalsRows.length > 0 && (
+                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">
+                      Probe internals recovered
+                    </p>
+                    <Badge tone="neutral">proxy path active</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-300">
+                    Część sygnałów internals została odzyskana ścieżką proxy zamiast natywnego
+                    payloadu probe.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {proxyInternalsRows.map((row) => (
+                      <Badge key={`proxy-open-${row.label}`} tone="neutral">
+                        {row.label}: {row.reason}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {anyInternalsAvailable && unavailableInternalsRows.length > 0 && (
+                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">
+                      Probe internals partial
+                    </p>
+                    <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-300">
+                    Część internals jest dostępna. Niedostępne mechanizmy pozostają w fallbacku
+                    dla tego runu i nie blokują widoku pozostałych danych.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {unavailableInternalsRows.map((row) => (
+                      <Badge key={row.label} tone="warning">
+                        {row.label}: {row.reason}
+                      </Badge>
+                    ))}
+                    <Badge tone="neutral">{probeLimitsLabel}</Badge>
+                  </div>
+                </div>
+              )}
+              {allInternalsUnavailable && (
+                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">
+                      Probe internals unavailable
+                    </p>
+                    <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-300">
+                    Dla tego runu probe nie zwrocil attention, saliency ani logit lens. Glowny
+                    sygnal prowadzi teraz RAG, evidence i verdict odpowiedzi.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {unavailableInternalsRows.map((row) => (
+                      <Badge key={row.label} tone="warning">
+                        {row.label}: {row.reason}
+                      </Badge>
+                    ))}
+                    <Badge tone="neutral">{probeLimitsLabel}</Badge>
+                  </div>
+                </div>
+              )}
               <div className="mb-4">
                 <AttentionPanel
                   attention={attention}
@@ -1052,45 +1206,6 @@ export function ModelIntrospectionDashboard() {
                   title="Saliency / Attribution"
                   emptyLabel="Brak danych saliency dla bieżącej analizy."
                   unavailableLabel="Saliency probe niedostępny dla bieżącego runu."
-                />
-              </div>
-              <div className="mb-4">
-                <LogitLensPanel
-                  logitLens={logitLens}
-                  title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
-                  emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
-                  unavailableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
-                  )}
-                  signalsLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.confidence")}
-                  tokensLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.tokens")}
-                  checkpointsLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.checkpoints",
-                  )}
-                  signalEarlyUnstableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalEarlyUnstable",
-                  )}
-                  signalLateStabilizedLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLateStabilized",
-                  )}
-                  signalLowConfidenceLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalLowConfidence",
-                  )}
-                  signalStableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.signalStable",
-                  )}
-                  changedLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.changed")}
-                  stableLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.stable")}
-                  sourceLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.source")}
-                  sourceRuntimeLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceRuntime",
-                  )}
-                  sourceUnavailableLabel={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceUnavailable",
-                  )}
-                  sourceFallbackWarning={t(
-                    "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
-                  )}
                 />
               </div>
             </>

@@ -62,9 +62,15 @@ async def test_build_logit_lens_payload_maps_probe_logits(
     assert payload["source"] == "probe_runtime"
     assert payload["status"] == "ok"
     assert payload["input_tokens"][:2] == ["Co", "to"]
+    assert payload["raw_input_tokens"][:2] == ["▁Co", "▁to"]
     assert payload["output_tokens"][:2] == ["Słońce", "to"]
+    assert payload["raw_output_tokens"] == []
     assert len(payload["checkpoints"]) == 4
     assert payload["checkpoints"][0]["top_token"] in {"planeta", "gwiazda"}
+    assert payload["checkpoints"][0]["top_k"][0]["raw_token"] in {
+        "▁planeta",
+        "▁gwiazda",
+    }
     assert payload["signals"]["late_stabilized"] is True
     assert "interpretability" in payload
     assert "token_noise_ratio" in payload["interpretability"]
@@ -97,6 +103,8 @@ async def test_build_logit_lens_payload_returns_unavailable_payload(
     assert payload["source"] == "probe_unavailable"
     assert payload["status"] == "probe_unavailable"
     assert payload["checkpoints"] == []
+    assert payload["raw_input_tokens"] == []
+    assert payload["raw_output_tokens"] == []
     assert payload["signals"]["early_unstable"] is False
     assert payload["interpretability"]["interpretable"] is False
     assert payload["diagnostics"]["heuristic_version"] == "v1.1"

@@ -60,3 +60,94 @@ async def test_build_saliency_payload_maps_unavailable_status(
     assert payload["status"] == "probe_unavailable"
     assert payload["code"] == "saliency_unavailable"
     assert payload["token_weights"] == []
+
+
+@pytest.mark.asyncio
+async def test_build_saliency_payload_falls_back_to_attention_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_probe(**kwargs):
+        if kwargs.get("mode") == "saliency":
+            return {
+                "status": "probe_unavailable",
+                "code": "saliency_unavailable",
+                "message": "saliency unavailable",
+                "runtime_label": "runtime",
+                "diagnostics": {},
+            }
+        return {
+            "status": "ok",
+            "runtime_label": "runtime",
+            "probe": {
+                "layers": [
+                    {
+                        "layer": 31,
+                        "attention_top": [
+                            {"token": "▁Słońce", "token_index": 0, "score": 0.85},
+                            {"token": "▁to", "token_index": 1, "score": 0.41},
+                        ],
+                    }
+                ]
+            },
+            "diagnostics": {"elapsed_ms": 21.0},
+        }
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_saliency_payload(
+        prompt="q", response_text="Słońce to gwiazda."
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["code"] == "saliency_proxy_attention"
+    assert payload["method"] == "attention_proxy"
+    assert payload["token_weights"][0]["token"] == "Słońce"
+
+
+@pytest.mark.asyncio
+async def test_build_saliency_payload_falls_back_to_logits_proxy_when_attention_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_probe(**kwargs):
+        mode = kwargs.get("mode")
+        if mode == "saliency":
+            return {
+                "status": "probe_unavailable",
+                "code": "saliency_unavailable",
+                "message": "saliency unavailable",
+                "runtime_label": "runtime",
+                "diagnostics": {},
+            }
+        if mode == "attention":
+            return {
+                "status": "probe_unavailable",
+                "code": "attention_unavailable",
+                "message": "attention unavailable",
+                "runtime_label": "runtime",
+                "diagnostics": {},
+            }
+        return {
+            "status": "ok",
+            "runtime_label": "runtime",
+            "probe": {
+                "layers": [
+                    {
+                        "layer": 31,
+                        "logits_top": [
+                            {"token": "▁Słońce", "token_index": 0, "score": 0.85},
+                            {"token": "▁to", "token_index": 1, "score": 0.41},
+                        ],
+                    }
+                ]
+            },
+            "diagnostics": {"elapsed_ms": 13.0},
+        }
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_saliency_payload(
+        prompt="q", response_text="Słońce to gwiazda."
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["code"] == "saliency_proxy_logits"
+    assert payload["method"] == "logits_proxy"
+    assert payload["token_weights"][0]["token"] == "Słońce"

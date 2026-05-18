@@ -783,13 +783,36 @@ def test_classify_stream_quality_variants() -> None:
     )
 
 
+def test_build_logit_lens_timeline_step_for_failed_probe() -> None:
+    step = analysis_service._build_logit_lens_timeline_step(
+        logit_lens={"status": "failed", "code": "probe_timeout"},
+        at_ms=100.0,
+    )
+    assert step["status"] == "failed"
+    assert step["detail"] == "probe_timeout"
+    assert step["reason_code"] == "probe_timeout"
+
+
 def test_build_logit_lens_timeline_step_for_unavailable_probe() -> None:
     step = analysis_service._build_logit_lens_timeline_step(
-        logit_lens={"status": "probe_unavailable", "code": "probe_timeout"},
+        logit_lens={"status": "probe_unavailable", "code": "probe_disabled"},
         at_ms=100.0,
     )
     assert step["status"] == "skipped"
-    assert step["detail"] == "probe_timeout"
+    assert step["detail"] == "probe_disabled"
+    assert step["reason_code"] == "probe_disabled"
+
+
+def test_build_probe_timeline_step_for_failed_probe() -> None:
+    step = analysis_service._build_probe_timeline_step(
+        step_id="attention_probe",
+        step_label="Attention probe",
+        payload={"status": "failed", "code": "probe_transport_error"},
+        at_ms=42.0,
+    )
+    assert step["status"] == "failed"
+    assert step["detail"] == "probe_transport_error"
+    assert step["reason_code"] == "probe_transport_error"
 
 
 @pytest.mark.asyncio
@@ -847,3 +870,49 @@ def test_extract_system_prompt_text_handles_missing_user_marker() -> None:
     context_preview = "SYSTEM: Rules only"
     extracted = analysis_service._extract_system_prompt_text(context_preview)
     assert extracted == "Rules only"
+
+
+def test_analysis_capabilities_marks_proxy_as_partial_not_full() -> None:
+    payload = analysis_service._build_analysis_capabilities_payload(
+        attention={
+            "source": "probe_runtime",
+            "status": "ok",
+            "code": "attention_proxy_logits",
+        },
+        saliency={"source": "probe_runtime", "status": "ok"},
+        logit_lens={"source": "probe_runtime", "status": "ok"},
+        probe_health={"enabled": True, "healthy": True, "runtime_supported": True},
+    )
+    assert payload["available_count"] == 3
+    assert payload["native_available_count"] == 2
+    assert payload["proxy_active"] is True
+    assert payload["internals_verdict"] == "partial"
+
+
+def test_analysis_capabilities_marks_native_runtime_as_full() -> None:
+    payload = analysis_service._build_analysis_capabilities_payload(
+        attention={"source": "probe_runtime", "status": "ok"},
+        saliency={"source": "probe_runtime", "status": "ok"},
+        logit_lens={"source": "probe_runtime", "status": "ok"},
+        probe_health={"enabled": True, "healthy": True, "runtime_supported": True},
+    )
+    assert payload["available_count"] == 3
+    assert payload["native_available_count"] == 3
+    assert payload["proxy_active"] is False
+    assert payload["internals_verdict"] == "full"
+
+
+def test_operator_conclusion_uses_proxy_reason_code() -> None:
+    payload = analysis_service._build_operator_conclusion_payload(
+        rag_focus={"source": "runtime_trace", "grounding_score": 0.9},
+        logit_lens={
+            "source": "probe_runtime",
+            "interpretability": {"token_noise_ratio": 0.1},
+        },
+        evidence_coverage={"coverage_percent": 100.0},
+        stream_profile={"stream_quality": "single_chunk"},
+        analysis_capabilities={"proxy_active": True},
+    )
+    assert "R3_PROBE_PROXY" in payload["reason_codes"]
+    assert payload["partial"] is True
+    assert payload["internals_quality"] == "proxy_probe"

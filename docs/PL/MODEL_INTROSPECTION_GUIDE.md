@@ -55,6 +55,11 @@ W praktyce UI rozroznia:
 - `probe_failed`
 - `probe_unavailable`
 
+Uwaga o aktualnym kontrakcie runtime:
+
+- probe `multi_runtime` obsluguje `hidden`, `attention` i `logits`,
+- `saliency` moze zwracac `saliency_unavailable` zgodnie z kontraktem, jesli runtime nie wystawia payloadu saliency.
+
 ## 4. Jak czytac ekran
 
 ### 4.1 Answer verdict
@@ -113,6 +118,7 @@ UI nie ma jeszcze pelnego snapshotu budzetu probe. To sygnal informacyjny, nie k
 ### 7.2 `attention_unavailable` / `saliency_unavailable`
 
 Mechanizm jest w stanie fallback albo nie dostal danych dla tego runu. Sprawdz probe readiness i logi runtime.
+Dla `saliency` sprawdz dodatkowo, czy aktywny runtime kontraktowo wspiera payload saliency.
 
 ### 7.3 `probe_failed`
 

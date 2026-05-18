@@ -546,6 +546,7 @@ def _build_operator_reason_codes(
     rag_source: str,
     coverage_percent: float,
     logit_source: str,
+    proxy_active: bool,
     stream_quality: str,
     token_noise_ratio: float,
 ) -> list[str]:
@@ -567,10 +568,14 @@ def _build_operator_reason_codes(
     elif token_noise_ratio >= 0.35:
         noise_code = "R5_LOGIT_NOISE_MEDIUM"
 
+    probe_code = "R3_PROBE_FALLBACK"
+    if logit_source == "probe_runtime":
+        probe_code = "R3_PROBE_PROXY" if proxy_active else "R3_PROBE_RUNTIME"
+
     return [
         "R1_RUNTIME_TRACE" if rag_source == "runtime_trace" else "R1_GRAPH_FALLBACK",
         coverage_code,
-        "R3_PROBE_RUNTIME" if logit_source == "probe_runtime" else "R3_PROBE_FALLBACK",
+        probe_code,
         stream_code,
         noise_code,
     ]
@@ -607,6 +612,7 @@ def _build_operator_conclusion_payload(
     logit_lens: dict[str, Any],
     evidence_coverage: dict[str, Any],
     stream_profile: dict[str, Any],
+    analysis_capabilities: dict[str, Any],
 ) -> dict[str, Any]:
     rag_source = str(rag_focus.get("source") or "graph_fallback")
     logit_source = str(logit_lens.get("source") or "probe_unavailable")
@@ -618,10 +624,12 @@ def _build_operator_conclusion_payload(
         interpretability if isinstance(interpretability, dict) else {}
     )
     token_noise_ratio = float(interpretability_dict.get("token_noise_ratio") or 0.0)
+    proxy_active = bool(analysis_capabilities.get("proxy_active"))
     reason_codes = _build_operator_reason_codes(
         rag_source=rag_source,
         coverage_percent=coverage_percent,
         logit_source=logit_source,
+        proxy_active=proxy_active,
         stream_quality=stream_quality,
         token_noise_ratio=token_noise_ratio,
     )
@@ -632,16 +640,22 @@ def _build_operator_conclusion_payload(
         logit_source=logit_source,
     )
 
-    partial = rag_source != "runtime_trace" or logit_source != "probe_runtime"
+    partial = (
+        rag_source != "runtime_trace" or logit_source != "probe_runtime" or proxy_active
+    )
     return {
         "verdict": verdict,
         "confidence_tier": confidence,
         "partial": partial,
         "reason_codes": reason_codes,
         "stream_quality": stream_quality,
-        "internals_quality": "runtime_probe"
-        if logit_source == "probe_runtime"
-        else "fallback_probe",
+        "internals_quality": (
+            "proxy_probe"
+            if proxy_active and logit_source == "probe_runtime"
+            else (
+                "runtime_probe" if logit_source == "probe_runtime" else "fallback_probe"
+            )
+        ),
         "evidence_coverage_percent": coverage_percent,
         "token_noise_ratio": round(token_noise_ratio, 4),
     }
@@ -650,11 +664,19 @@ def _build_operator_conclusion_payload(
 def _capability_from_probe_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
     source = str((payload or {}).get("source") or "probe_unavailable")
     status = str((payload or {}).get("status") or "probe_unavailable")
-    code = str((payload or {}).get("code") or "probe_unavailable")
     available = source == "probe_runtime" and status == "ok"
-    reason = "ok" if available else code
+    raw_code = (payload or {}).get("code")
+    code = str(raw_code).strip() if isinstance(raw_code, str) else ""
+    proxy = bool(code and "_proxy_" in code)
+    native = bool(available and not proxy)
+    if available:
+        reason = code or "ok"
+    else:
+        reason = code or "probe_unavailable"
     return {
         "available": available,
+        "native": native,
+        "proxy": proxy,
         "source": source,
         "status": status,
         "reason": reason,
@@ -672,8 +694,13 @@ def _build_probe_limits_payload(limits: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _resolve_internals_verdict(*, available_count: int, total_count: int) -> str:
-    if available_count == total_count:
+def _resolve_internals_verdict(
+    *,
+    available_count: int,
+    native_available_count: int,
+    total_count: int,
+) -> str:
+    if native_available_count == total_count:
         return "full"
     if available_count > 0:
         return "partial"
@@ -699,12 +726,30 @@ def _build_analysis_capabilities_payload(
         )
         if capability["available"]
     )
+    native_available_count = sum(
+        1
+        for capability in (
+            attention_capability,
+            saliency_capability,
+            logit_lens_capability,
+        )
+        if capability.get("native")
+    )
+    proxy_active = any(
+        bool(capability.get("proxy"))
+        for capability in (
+            attention_capability,
+            saliency_capability,
+            logit_lens_capability,
+        )
+    )
     total_count = 3
     probe_health_dict = probe_health if isinstance(probe_health, dict) else {}
     limits = probe_health_dict.get("limits")
     limits_dict = limits if isinstance(limits, dict) else {}
     internals_verdict = _resolve_internals_verdict(
         available_count=available_count,
+        native_available_count=native_available_count,
         total_count=total_count,
     )
     return {
@@ -712,7 +757,9 @@ def _build_analysis_capabilities_payload(
         "saliency": saliency_capability,
         "logit_lens": logit_lens_capability,
         "available_count": available_count,
+        "native_available_count": native_available_count,
         "total_count": total_count,
+        "proxy_active": proxy_active,
         "probe_profile": str(probe_health_dict.get("profile") or "unknown"),
         "probe_enabled": bool(probe_health_dict.get("enabled")),
         "probe_healthy": bool(probe_health_dict.get("healthy")),
@@ -1249,6 +1296,7 @@ def _build_logit_lens_timeline_step(
     diagnostics_dict = diagnostics if isinstance(diagnostics, dict) else {}
     elapsed_ms = diagnostics_dict.get("elapsed_ms")
     status = str(logit_lens.get("status") or "probe_unavailable")
+    code = str(logit_lens.get("code") or "probe_unavailable")
     checkpoints = logit_lens.get("checkpoints")
     checkpoint_count = len(checkpoints) if isinstance(checkpoints, list) else 0
     if status == "ok":
@@ -1258,8 +1306,14 @@ def _build_logit_lens_timeline_step(
             else f"{checkpoint_count} checkpoint(s)"
         )
         step_status = "done"
+    elif status == "failed" or code in {
+        "probe_failed",
+        "runtime_error",
+        "probe_transport_error",
+    }:
+        detail = code
+        step_status = "failed"
     else:
-        code = str(logit_lens.get("code") or "probe_unavailable")
         detail = code
         step_status = "skipped"
     return {
@@ -1267,9 +1321,10 @@ def _build_logit_lens_timeline_step(
         "label": _TIMELINE_LABEL_LOGIT_LENS,
         "status": step_status,
         "detail": detail,
+        "reason_code": None if step_status == "done" else code,
         "path": "internals_path",
         "at_ms": at_ms,
-        "progress": 95,
+        "progress": 90,
     }
 
 
@@ -1292,6 +1347,10 @@ def _build_probe_timeline_step(
             else "ok"
         )
         step_status = "done"
+    elif status == "failed":
+        code = str(payload.get("code") or "probe_failed")
+        detail = code
+        step_status = "failed"
     else:
         code = str(payload.get("code") or "probe_unavailable")
         detail = code
@@ -1301,6 +1360,7 @@ def _build_probe_timeline_step(
         "label": step_label,
         "status": step_status,
         "detail": detail,
+        "reason_code": None if step_status == "done" else code,
         "path": "internals_path",
         "at_ms": at_ms,
         "progress": progress,
@@ -1491,7 +1551,7 @@ def _build_analysis_timeline(
             "detail": f"{len(stream_payload.get('response_text', ''))} chars",
             "path": "answer_path",
             "at_ms": elapsed_ms,
-            "progress": 90,
+            "progress": 85,
         }
     )
 
@@ -1614,12 +1674,14 @@ async def _finalize_completed_analysis(
         step_label=_TIMELINE_LABEL_ATTENTION,
         payload=args.attention,
         at_ms=probe_steps_at_ms,
+        progress=93,
     )
     saliency_step = _build_probe_timeline_step(
         step_id="saliency_probe",
         step_label=_TIMELINE_LABEL_SALIENCY,
         payload=args.saliency,
         at_ms=probe_steps_at_ms,
+        progress=96,
     )
     try:
         refreshed_snapshot = await build_model_introspection_snapshot(
@@ -1669,17 +1731,18 @@ async def _finalize_completed_analysis(
     )
     rag_profile = _build_rag_profile(rag_focus=rag_focus)
     logit_profile = _build_logit_profile(logit_lens=args.logit_lens)
-    operator_conclusion = _build_operator_conclusion_payload(
-        rag_focus=rag_focus,
-        logit_lens=args.logit_lens,
-        evidence_coverage=evidence_coverage,
-        stream_profile=stream_profile,
-    )
     analysis_capabilities = _build_analysis_capabilities_payload(
         attention=args.attention,
         saliency=args.saliency,
         logit_lens=args.logit_lens,
         probe_health=refreshed_snapshot.get("probe"),
+    )
+    operator_conclusion = _build_operator_conclusion_payload(
+        rag_focus=rag_focus,
+        logit_lens=args.logit_lens,
+        evidence_coverage=evidence_coverage,
+        stream_profile=stream_profile,
+        analysis_capabilities=analysis_capabilities,
     )
     try:
         run_trends = await _record_run_trends_async(

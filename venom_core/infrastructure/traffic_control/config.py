@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -145,6 +145,13 @@ class TrafficControlConfig(BaseModel):
         default=60.0,
         description="Czas trwania degraded mode po triggerze (sekundy)",
     )
+    degraded_mode_exempt_providers: List[str] = Field(
+        default_factory=lambda: ["multi_runtime", "ollama"],
+        description=(
+            "Providerzy outbound wyłączeni z globalnej blokady degraded mode "
+            "(np. krytyczna ścieżka runtime introspekcji)"
+        ),
+    )
 
     def is_under_global_request_cap(self, requests_last_minute: int) -> bool:
         """
@@ -193,6 +200,17 @@ class TrafficControlConfig(BaseModel):
             return True
 
         return False
+
+    def is_provider_exempt_from_degraded_mode(self, provider: str) -> bool:
+        """Sprawdza, czy provider ma bypass globalnego degraded mode."""
+        normalized = provider.strip().lower()
+        if not normalized:
+            return False
+        return normalized in {
+            entry.strip().lower()
+            for entry in self.degraded_mode_exempt_providers
+            if entry.strip()
+        }
 
     @classmethod
     def from_env(cls) -> TrafficControlConfig:

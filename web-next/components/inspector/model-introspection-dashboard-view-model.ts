@@ -50,6 +50,9 @@ export function timelineBadgeTone(status: string): BadgeTone {
   if (status === "done") {
     return "success";
   }
+  if (status === "failed") {
+    return "danger";
+  }
   if (status === "running") {
     return "warning";
   }
@@ -510,7 +513,7 @@ function normalizeLogitLensCheckpoint(
     id?: string;
     percent?: number;
     layer?: number;
-    top_k?: Array<{ token?: string; token_index?: number; score?: number }>;
+    top_k?: Array<{ token?: string; raw_token?: string; token_index?: number; score?: number }>;
     top_token?: string | null;
     confidence?: number | null;
     changed?: boolean;
@@ -521,11 +524,14 @@ function normalizeLogitLensCheckpoint(
     .filter((item) => typeof item?.score === "number")
     .map((item) => ({
       token: normalizeLensToken(item.token),
+      raw_token:
+        typeof item.raw_token === "string"
+          ? item.raw_token
+          : (typeof item.token === "string" ? item.token : null),
       token_index: typeof item.token_index === "number" ? item.token_index : -1,
       score: Number(item.score),
     }))
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 5);
+    .sort((left, right) => right.score - left.score);
   if (topK.length === 0) {
     return null;
   }
@@ -551,12 +557,15 @@ type LogitLensPayloadInput = {
   runtime_label?: string | null;
   input_tokens?: string[];
   output_tokens?: string[];
+  raw_input_tokens?: string[];
+  raw_output_tokens?: string[];
   checkpoints?: Array<{
     id?: string;
     percent?: number;
     layer?: number;
     top_k?: Array<{
       token?: string;
+      raw_token?: string;
       token_index?: number;
       score?: number;
     }>;
@@ -643,10 +652,20 @@ export function buildLogitLensModel(
     message: payload.message ?? null,
     runtime_label: payload.runtime_label ?? null,
     input_tokens: Array.isArray(payload.input_tokens)
-      ? payload.input_tokens.map((token) => normalizeLensToken(token)).slice(0, 32)
+      ? payload.input_tokens.map((token) => normalizeLensToken(token))
       : [],
     output_tokens: Array.isArray(payload.output_tokens)
-      ? payload.output_tokens.map((token) => normalizeLensToken(token)).slice(0, 16)
+      ? payload.output_tokens.map((token) => normalizeLensToken(token))
+      : [],
+    raw_input_tokens: Array.isArray(payload.raw_input_tokens)
+      ? payload.raw_input_tokens.map((token) => String(token ?? ""))
+      : Array.isArray(payload.input_tokens)
+      ? payload.input_tokens.map((token) => String(token ?? ""))
+      : [],
+    raw_output_tokens: Array.isArray(payload.raw_output_tokens)
+      ? payload.raw_output_tokens.map((token) => String(token ?? ""))
+      : Array.isArray(payload.output_tokens)
+      ? payload.output_tokens.map((token) => String(token ?? ""))
       : [],
     checkpoints,
     signals: {
@@ -999,6 +1018,7 @@ export function buildOperatorConclusion(args: {
   analysisStatus: string | undefined;
   skippedReason?: string | null;
   analysisErrorCode?: string | null;
+  analysisTimeline?: AnalysisTimelineEntry[] | null;
   ragFocus: RagFocusModel | null;
   logitLens: LogitLensModel | null;
   operatorConclusionPayload?:
@@ -1018,6 +1038,7 @@ export function buildOperatorConclusion(args: {
     analysisStatus,
     skippedReason,
     analysisErrorCode,
+    analysisTimeline,
     ragFocus,
     logitLens,
     operatorConclusionPayload,
@@ -1057,6 +1078,12 @@ export function buildOperatorConclusion(args: {
 
   const ragRuntime = ragFocus?.source === "runtime_trace";
   const logitRuntime = logitLens?.source === "probe_runtime";
+  const probeSignal = resolveProbeSignal({
+    logitRuntime,
+    analysisTimeline,
+    logitCode: logitLens?.code ?? null,
+    operatorReasonCodes: operatorConclusionPayload?.reason_codes ?? null,
+  });
   const hasEvidence = (ragFocus?.evidenceEdges.length ?? 0) > 0;
   const hasAnswerLinks = (ragFocus?.answerEvidenceLinks.length ?? 0) > 0;
   const grounding = ragFocus?.grounding ?? "unknown";
@@ -1067,18 +1094,18 @@ export function buildOperatorConclusion(args: {
     hasAnswerLinks &&
     (grounding === "strong" || grounding === "medium")
   ) {
-    return buildGroundedOperatorConclusion(logitRuntime);
+    return buildGroundedOperatorConclusion(probeSignal);
   }
 
   if (hasEvidence || ragRuntime) {
     return buildWeaklyGroundedOperatorConclusion({
       ragRuntime,
       hasAnswerLinks,
-      logitRuntime,
+      probeSignal,
     });
   }
 
-  return buildUngroundedOperatorConclusion(logitRuntime);
+  return buildUngroundedOperatorConclusion(probeSignal);
 }
 
 function buildSkippedOperatorConclusion(args: {
@@ -1169,6 +1196,41 @@ export function buildOperatorRunbookSteps(
       "inspector.modelIntrospection.dashboard.results.runbook.degradedPolicy.step3",
     ];
   }
+  if (reasonCodes.includes("R3_PROBE_FALLBACK")) {
+    return [
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step3",
+    ];
+  }
+  if (reasonCodes.includes("R3_PROBE_PROXY")) {
+    return [
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step3",
+    ];
+  }
+  if (reasonCodes.includes("R3_PROBE_FAILED")) {
+    return [
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step3",
+    ];
+  }
+  if (reasonCodes.includes("R4_STREAM_DELAYED")) {
+    return [
+      "inspector.modelIntrospection.dashboard.results.runbook.streamDelayed.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.streamDelayed.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.streamDelayed.step3",
+    ];
+  }
+  if (reasonCodes.includes("R5_LOGIT_NOISE_HIGH")) {
+    return [
+      "inspector.modelIntrospection.dashboard.results.runbook.logitNoiseHigh.step1",
+      "inspector.modelIntrospection.dashboard.results.runbook.logitNoiseHigh.step2",
+      "inspector.modelIntrospection.dashboard.results.runbook.logitNoiseHigh.step3",
+    ];
+  }
   return [];
 }
 
@@ -1227,12 +1289,66 @@ function resolveInternalsQuality(logitRuntime: boolean): "runtime_probe" | "fall
   return logitRuntime ? "runtime_probe" : "fallback_probe";
 }
 
-function resolveProbeReasonCode(logitRuntime: boolean): "R3_PROBE_RUNTIME" | "R3_PROBE_FALLBACK" {
-  return logitRuntime ? "R3_PROBE_RUNTIME" : "R3_PROBE_FALLBACK";
-}
+type ProbeSignal = {
+  logitRuntime: boolean;
+  code: "R3_PROBE_RUNTIME" | "R3_PROBE_PROXY" | "R3_PROBE_FALLBACK" | "R3_PROBE_FAILED";
+  label: string;
+};
 
-function resolveProbeReasonLabel(logitRuntime: boolean): string {
-  return logitRuntime ? "runtime probe active" : "probe unavailable";
+function resolveProbeSignal(args: {
+  logitRuntime: boolean;
+  analysisTimeline?: AnalysisTimelineEntry[] | null;
+  logitCode?: string | null;
+  operatorReasonCodes?: string[] | null;
+}): ProbeSignal {
+  const { logitRuntime, analysisTimeline, logitCode, operatorReasonCodes } = args;
+  if (Array.isArray(operatorReasonCodes) && operatorReasonCodes.includes("R3_PROBE_PROXY")) {
+    return {
+      logitRuntime: true,
+      code: "R3_PROBE_PROXY",
+      label: "runtime probe active (proxy path)",
+    };
+  }
+  if (typeof logitCode === "string" && logitCode.includes("_proxy_")) {
+    return {
+      logitRuntime: true,
+      code: "R3_PROBE_PROXY",
+      label: `runtime probe active (proxy: ${logitCode})`,
+    };
+  }
+  const internalsSteps = (analysisTimeline ?? []).filter((step) =>
+    step.id.startsWith("internals:"),
+  );
+  const failedStep = internalsSteps.find((step) => step.status === "failed");
+  if (failedStep) {
+    return {
+      logitRuntime: false,
+      code: "R3_PROBE_FAILED",
+      label: failedStep.reason_code ? `probe failed: ${failedStep.reason_code}` : "probe failed",
+    };
+  }
+  const skippedStep = internalsSteps.find((step) => step.status === "skipped");
+  if (skippedStep) {
+    return {
+      logitRuntime: false,
+      code: "R3_PROBE_FALLBACK",
+      label: skippedStep.reason_code
+        ? `probe unavailable: ${skippedStep.reason_code}`
+        : "probe unavailable",
+    };
+  }
+  if (logitRuntime) {
+    return {
+      logitRuntime: true,
+      code: "R3_PROBE_RUNTIME",
+      label: "runtime probe active",
+    };
+  }
+  return {
+    logitRuntime: false,
+    code: "R3_PROBE_FALLBACK",
+    label: "probe unavailable",
+  };
 }
 
 function buildInProgressOperatorConclusion(): OperatorConclusionModel {
@@ -1249,7 +1365,8 @@ function buildInProgressOperatorConclusion(): OperatorConclusionModel {
   };
 }
 
-function buildGroundedOperatorConclusion(logitRuntime: boolean): OperatorConclusionModel {
+function buildGroundedOperatorConclusion(probeSignal: ProbeSignal): OperatorConclusionModel {
+  const { logitRuntime, code, label } = probeSignal;
   return {
     verdict: "grounded",
     confidenceTier: logitRuntime ? "high" : "medium",
@@ -1257,9 +1374,9 @@ function buildGroundedOperatorConclusion(logitRuntime: boolean): OperatorConclus
     reasons: [
       "runtime trace evidence available",
       "answer fragments linked to evidence",
-      logitRuntime ? "runtime probe active" : "probe fallback",
+      label,
     ],
-    reasonCodes: ["R1_RUNTIME_TRACE", "R2_COVERAGE_HIGH", resolveProbeReasonCode(logitRuntime)],
+    reasonCodes: ["R1_RUNTIME_TRACE", "R2_COVERAGE_HIGH", code],
     partial: !logitRuntime,
     coveragePercent: null,
     streamQuality: null,
@@ -1270,9 +1387,9 @@ function buildGroundedOperatorConclusion(logitRuntime: boolean): OperatorConclus
 function buildWeaklyGroundedOperatorConclusion(args: {
   ragRuntime: boolean;
   hasAnswerLinks: boolean;
-  logitRuntime: boolean;
+  probeSignal: ProbeSignal;
 }): OperatorConclusionModel {
-  const { ragRuntime, hasAnswerLinks, logitRuntime } = args;
+  const { ragRuntime, hasAnswerLinks, probeSignal } = args;
   return {
     verdict: "weakly_grounded",
     confidenceTier: "medium",
@@ -1280,21 +1397,21 @@ function buildWeaklyGroundedOperatorConclusion(args: {
     reasons: [
       ragRuntime ? "runtime trace partial" : "graph fallback evidence",
       hasAnswerLinks ? "limited answer-to-evidence links" : "missing answer links",
-      resolveProbeReasonLabel(logitRuntime),
+      probeSignal.label,
     ],
     reasonCodes: [
       ragRuntime ? "R1_RUNTIME_TRACE" : "R1_GRAPH_FALLBACK",
       "R2_COVERAGE_MEDIUM",
-      resolveProbeReasonCode(logitRuntime),
+      probeSignal.code,
     ],
     partial: true,
     coveragePercent: null,
     streamQuality: null,
-    internalsQuality: resolveInternalsQuality(logitRuntime),
+    internalsQuality: resolveInternalsQuality(probeSignal.logitRuntime),
   };
 }
 
-function buildUngroundedOperatorConclusion(logitRuntime: boolean): OperatorConclusionModel {
+function buildUngroundedOperatorConclusion(probeSignal: ProbeSignal): OperatorConclusionModel {
   return {
     verdict: "ungrounded",
     confidenceTier: "low",
@@ -1302,13 +1419,13 @@ function buildUngroundedOperatorConclusion(logitRuntime: boolean): OperatorConcl
     reasons: [
       "no evidence edges",
       "no answer-to-evidence links",
-      resolveProbeReasonLabel(logitRuntime),
+      probeSignal.label,
     ],
-    reasonCodes: ["R1_NO_EVIDENCE", "R2_COVERAGE_LOW", resolveProbeReasonCode(logitRuntime)],
+    reasonCodes: ["R1_NO_EVIDENCE", "R2_COVERAGE_LOW", probeSignal.code],
     partial: true,
     coveragePercent: null,
     streamQuality: null,
-    internalsQuality: resolveInternalsQuality(logitRuntime),
+    internalsQuality: resolveInternalsQuality(probeSignal.logitRuntime),
   };
 }
 

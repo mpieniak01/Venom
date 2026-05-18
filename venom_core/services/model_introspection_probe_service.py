@@ -24,6 +24,7 @@ _PROBE_FAILED = "failed"
 _PROBE_TRANSIENT_STATUS_CODES = {502, 503, 504}
 _PROBE_DEFAULT_PROFILE = "dev"
 _PROBE_TRANSPORT_ERROR_MESSAGE = "Probe transport error on active runtime"
+_PROBE_RUNTIME_SUPPORTED_MODES = {"hidden", "attention", "logits", "saliency"}
 _PROBE_HTTP_CLIENT: httpx.AsyncClient | None = None
 _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
     "dev": {
@@ -51,9 +52,7 @@ _PROBE_PROFILE_LIMITS: dict[str, dict[str, float | int]] = {
         "max_prompt_tokens": 512,
     },
 }
-_PROBE_MODEL_WHITELIST_DEFAULT = (
-    "google/gemma-4-e2b-it,google/gemma-4-e2b-it:latest,openclaw-qwen3vl-8b-opt:latest"
-)
+_PROBE_MODEL_WHITELIST_DEFAULT = "google/gemma-4-e2b-it,google/gemma-4-e2b-it:latest,openclaw-qwen3vl-8b-opt:latest,qwen3.5:latest,qwen3.5"
 
 
 def _parse_csv_env(raw_value: str | None) -> list[str]:
@@ -748,6 +747,12 @@ async def run_model_introspection_probe(
     if precondition_error is not None:
         return precondition_error
 
+    normalized_mode = str(mode or "").strip().lower()
+    if normalized_mode not in _PROBE_RUNTIME_SUPPORTED_MODES:
+        raise ValueError(
+            f"mode must be one of: {', '.join(sorted(_PROBE_RUNTIME_SUPPORTED_MODES))}"
+        )
+
     sanitized_layers, sanitized_heads = _validate_probe_request_limits(
         prompt=prompt,
         top_k=top_k,
@@ -759,17 +764,21 @@ async def run_model_introspection_probe(
     probe_url = _build_probe_url(endpoint)
     probe_payload = {
         "prompt": prompt,
-        "mode": mode,
+        "mode": normalized_mode,
         "layer_selection": sanitized_layers,
-        "head_selection": sanitized_heads,
         "top_k": top_k,
     }
-    if target_output_token_index is not None:
-        probe_payload["target_output_token_index"] = int(target_output_token_index)
+    if normalized_mode == "saliency" and isinstance(target_output_token_index, int):
+        probe_payload["target_output_token_index"] = max(0, target_output_token_index)
+    # Keep request-level validation for compatibility with callers that still pass
+    # legacy fields, but do not forward unsupported keys to multi_runtime.
+    _ = sanitized_heads
+    if normalized_mode != "saliency":
+        _ = target_output_token_index
     return await _execute_probe_with_retry(
         probe_url=probe_url,
         probe_payload=probe_payload,
-        mode=mode,
+        mode=normalized_mode,
         timeout_seconds=float(config["timeout_seconds"]),
         max_attempts=int(config["max_attempts"]),
         runtime_label=runtime_label,

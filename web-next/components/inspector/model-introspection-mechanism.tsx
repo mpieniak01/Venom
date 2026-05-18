@@ -1,6 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "@/lib/i18n";
 import { Switch } from "@/components/ui/switch";
@@ -18,12 +27,16 @@ type ModelIntrospectionMechanismContextValue = {
 const ModelIntrospectionMechanismContext = createContext<ModelIntrospectionMechanismContextValue | null>(null);
 
 function readEnabledFromStorage(): boolean {
-  const localStorage = globalThis.window?.localStorage;
-  if (!localStorage) return false;
   try {
-    return localStorage.getItem(STORAGE_KEY) === "true";
+    const localStorage = globalThis.window?.localStorage;
+    if (!localStorage) return true;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === null) {
+      return true;
+    }
+    return raw === "true";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -59,29 +72,19 @@ function writeEnabledToStorage(enabled: boolean) {
 export function ModelIntrospectionMechanismProvider({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    const syncFromStorage = () => {
-      setEnabled(readEnabledFromStorage());
-    };
-
-    syncFromStorage();
-    return subscribe(syncFromStorage);
-  }, []);
+  const enabled = useSyncExternalStore(
+    subscribe,
+    readEnabledFromStorage,
+    () => false,
+  );
 
   const setMechanismEnabled = useCallback((nextEnabled: boolean) => {
-    setEnabled(nextEnabled);
     writeEnabledToStorage(nextEnabled);
   }, []);
 
   const toggle = useCallback(() => {
-    setEnabled((currentEnabled) => {
-      const nextEnabled = !currentEnabled;
-      writeEnabledToStorage(nextEnabled);
-      return nextEnabled;
-    });
-  }, []);
+    writeEnabledToStorage(!enabled);
+  }, [enabled]);
 
   const value = useMemo(
     () => ({
@@ -118,7 +121,13 @@ export function ModelIntrospectionMechanismControl({
 }: Readonly<ModelIntrospectionMechanismControlProps>) {
   const t = useTranslation();
   const { enabled, setEnabled } = useModelIntrospectionMechanism();
-  const displayEnabled = enabled;
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  const displayEnabled = hydrated ? enabled : false;
   const label = displayEnabled ? t("inspector.modelIntrospection.mechanism.enabled") : t("inspector.modelIntrospection.mechanism.disabled");
 
   if (variant === "compact") {

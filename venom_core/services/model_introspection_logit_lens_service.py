@@ -51,6 +51,7 @@ def _normalize_top_k(entries: Any) -> list[dict[str, Any]]:
         normalized.append(
             {
                 "token": _normalize_token(entry.get("token")),
+                "raw_token": str(entry.get("token") or ""),
                 "token_index": int(entry.get("token_index", -1)),
                 "score": round(score, 6),
             }
@@ -232,6 +233,8 @@ def _build_unavailable_logit_lens(
         "runtime_label": runtime_label,
         "input_tokens": [],
         "output_tokens": [],
+        "raw_input_tokens": [],
+        "raw_output_tokens": [],
         "checkpoints": [],
         "signals": {
             "early_unstable": False,
@@ -264,6 +267,16 @@ def _extract_token_preview(probe: dict[str, Any]) -> list[str]:
     if not isinstance(raw_tokens, list):
         return []
     return [_normalize_token(token) for token in raw_tokens][:32]
+
+
+def _extract_raw_token_preview(probe: dict[str, Any]) -> list[str]:
+    tokenization = probe.get("tokenization")
+    if not isinstance(tokenization, dict):
+        return []
+    raw_tokens = tokenization.get("tokens_preview")
+    if not isinstance(raw_tokens, list):
+        return []
+    return [str(token or "") for token in raw_tokens][:32]
 
 
 def _build_checkpoints(layers: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -325,7 +338,7 @@ async def build_logit_lens_payload(
             diagnostics=diagnostics,
         )
 
-    token_preview = _extract_token_preview(probe)
+    raw_token_preview = _extract_raw_token_preview(probe)
     layers = _normalize_layers(probe.get("layers"))
     checkpoints = _build_checkpoints(layers)
 
@@ -335,8 +348,10 @@ async def build_logit_lens_payload(
         "code": None,
         "message": "Logit lens ready",
         "runtime_label": runtime_label,
-        "input_tokens": token_preview,
+        "input_tokens": _tokenize_output_preview(prompt),
         "output_tokens": _tokenize_output_preview(response_text),
+        "raw_input_tokens": raw_token_preview,
+        "raw_output_tokens": [],
         "checkpoints": checkpoints,
         "signals": _build_logit_lens_signals(checkpoints),
         "interpretability": _build_interpretability(checkpoints),

@@ -119,6 +119,7 @@ export type AnalysisTimelineEntry = {
   label: string;
   status: string;
   detail: string;
+  reason_code?: string | null;
   path?: AnalysisTimelinePath;
   at_ms: number;
   progress?: number;
@@ -213,6 +214,7 @@ export type OperatorConclusionModel = {
 
 export type LogitLensTopToken = {
   token: string;
+  raw_token?: string | null;
   token_index: number;
   score: number;
 };
@@ -241,6 +243,8 @@ export type LogitLensModel = {
   runtime_label: string | null;
   input_tokens: string[];
   output_tokens: string[];
+  raw_input_tokens: string[];
+  raw_output_tokens: string[];
   checkpoints: LogitLensCheckpoint[];
   signals: LogitLensSignals;
   interpretability: {
@@ -349,12 +353,15 @@ export type AnalysisResult = {
       runtime_label?: string | null;
       input_tokens?: string[];
       output_tokens?: string[];
+      raw_input_tokens?: string[];
+      raw_output_tokens?: string[];
       checkpoints?: Array<{
         id?: string;
         percent?: number;
         layer?: number;
         top_k?: Array<{
           token?: string;
+          raw_token?: string;
           token_index?: number;
           score?: number;
         }>;

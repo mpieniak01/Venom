@@ -9,7 +9,6 @@ from venom_core.services.model_introspection_probe_service import (
 )
 
 _ATTENTION_LAYER_SELECTION = [0, 8, 16, 24, 31]
-_ATTENTION_HEAD_SELECTION = [0, 3, 7]
 _ATTENTION_TOP_K = 6
 _ATTENTION_TOP_LINKS_PER_HEAD = 6
 
@@ -85,10 +84,17 @@ def _normalize_layers(
         if not isinstance(raw_layer, dict):
             continue
         layer_id = raw_layer.get("layer")
-        raw_heads = raw_layer.get("heads")
-        if not isinstance(layer_id, int) or not isinstance(raw_heads, list):
+        if not isinstance(layer_id, int):
             continue
-        heads = _normalize_heads(raw_heads=raw_heads, tokens=tokens)
+        heads: list[dict[str, Any]] = []
+        raw_heads = raw_layer.get("heads")
+        if isinstance(raw_heads, list):
+            heads = _normalize_heads(raw_heads=raw_heads, tokens=tokens)
+        if not heads:
+            heads = _normalize_attention_top_fallback(
+                attention_top=raw_layer.get("attention_top"),
+                tokens=tokens,
+            )
         if heads:
             heads.sort(key=lambda item: item["head"])
             normalized_layers.append({"layer": layer_id, "heads": heads})
@@ -113,6 +119,41 @@ def _normalize_heads(
     return heads
 
 
+def _normalize_attention_top_fallback(
+    *,
+    attention_top: Any,
+    tokens: list[str],
+) -> list[dict[str, Any]]:
+    if not isinstance(attention_top, list):
+        return []
+    if not tokens:
+        return []
+    query_index = len(tokens) - 1
+    query_token = tokens[query_index]
+    links: list[dict[str, Any]] = []
+    for item in attention_top:
+        if not isinstance(item, dict):
+            continue
+        to_index = item.get("token_index")
+        weight = _safe_float(item.get("score"))
+        if not isinstance(to_index, int) or weight is None:
+            continue
+        to_token = tokens[to_index] if 0 <= to_index < len(tokens) else "?"
+        links.append(
+            {
+                "from_index": query_index,
+                "to_index": to_index,
+                "from_token": query_token,
+                "to_token": to_token,
+                "weight": round(weight, 6),
+            }
+        )
+    links.sort(key=lambda entry: entry["weight"], reverse=True)
+    if not links:
+        return []
+    return [{"head": 0, "top_links": links[:_ATTENTION_TOP_LINKS_PER_HEAD]}]
+
+
 def _build_unavailable_attention_payload(
     *,
     status: str,
@@ -133,6 +174,77 @@ def _build_unavailable_attention_payload(
     }
 
 
+async def _build_attention_proxy_from_logits(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+) -> dict[str, Any] | None:
+    probe_payload = await run_model_introspection_probe(
+        prompt=prompt,
+        mode="logits",
+        layer_selection=_ATTENTION_LAYER_SELECTION,
+        top_k=_ATTENTION_TOP_K,
+    )
+    if str(probe_payload.get("status") or "probe_unavailable") != "ok":
+        return None
+    probe = probe_payload.get("probe")
+    if not isinstance(probe, dict):
+        return None
+    tokens = _extract_tokens(probe)
+    if not tokens:
+        return None
+    query_index = len(tokens) - 1
+    query_token = tokens[query_index]
+    raw_layers = probe.get("layers")
+    if not isinstance(raw_layers, list):
+        return None
+    layers: list[dict[str, Any]] = []
+    for raw_layer in raw_layers:
+        if not isinstance(raw_layer, dict):
+            continue
+        layer_id = raw_layer.get("layer")
+        if not isinstance(layer_id, int):
+            continue
+        logits_top = raw_layer.get("logits_top")
+        if not isinstance(logits_top, list):
+            continue
+        top_links: list[dict[str, Any]] = []
+        for item in logits_top[:_ATTENTION_TOP_LINKS_PER_HEAD]:
+            if not isinstance(item, dict):
+                continue
+            score = _safe_float(item.get("score"))
+            if score is None:
+                continue
+            top_links.append(
+                {
+                    "from_index": query_index,
+                    "to_index": -1,
+                    "from_token": query_token,
+                    "to_token": _normalize_token(item.get("token")),
+                    "weight": round(score, 6),
+                }
+            )
+        if top_links:
+            layers.append(
+                {"layer": layer_id, "heads": [{"head": 0, "top_links": top_links}]}
+            )
+    if not layers:
+        return None
+    proxy_diagnostics = dict(diagnostics)
+    proxy_diagnostics["proxy_from_mode"] = "logits"
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": "attention_proxy_logits",
+        "message": "Attention payload approximated from logits probe",
+        "runtime_label": runtime_label,
+        "tokens": tokens,
+        "layers": layers,
+        "diagnostics": proxy_diagnostics,
+    }
+
+
 async def build_attention_payload(
     *,
     prompt: str,
@@ -141,7 +253,6 @@ async def build_attention_payload(
         prompt=prompt,
         mode="attention",
         layer_selection=_ATTENTION_LAYER_SELECTION,
-        head_selection=_ATTENTION_HEAD_SELECTION,
         top_k=_ATTENTION_TOP_K,
     )
     status = str(probe_payload.get("status") or "probe_unavailable")
@@ -151,6 +262,13 @@ async def build_attention_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
+        proxy_payload = await _build_attention_proxy_from_logits(
+            prompt=prompt,
+            runtime_label=runtime_label_str,
+            diagnostics=diagnostics,
+        )
+        if proxy_payload is not None:
+            return proxy_payload
         return _build_unavailable_attention_payload(
             status=status,
             code=str(probe_payload.get("code") or "attention_unavailable"),
@@ -172,6 +290,13 @@ async def build_attention_payload(
     tokens = _extract_tokens(probe)
     layers = _normalize_layers(probe=probe, tokens=tokens)
     if not layers:
+        proxy_payload = await _build_attention_proxy_from_logits(
+            prompt=prompt,
+            runtime_label=runtime_label_str,
+            diagnostics=diagnostics,
+        )
+        if proxy_payload is not None:
+            return proxy_payload
         return _build_unavailable_attention_payload(
             status="probe_unavailable",
             code="attention_unavailable",

@@ -76,3 +76,36 @@ def test_emit_runtime_model_event_without_collector(monkeypatch) -> None:
         source="ui",
         runtime="vllm",
     )
+
+
+def test_runtime_switch_guard_status(monkeypatch) -> None:
+    monkeypatch.setenv("VENOM_RUNTIME_SWITCH_TOKEN", "")
+    status = telemetry.get_runtime_switch_guard_status()
+    assert status["ownership_token_configured"] is False
+    assert status["allowed_sources"] == ["make_start", "ui"]
+
+    monkeypatch.setenv("VENOM_RUNTIME_SWITCH_TOKEN", "secret")
+    status = telemetry.get_runtime_switch_guard_status()
+    assert status["ownership_token_configured"] is True
+
+
+def test_emit_runtime_model_event_tracks_last_event(monkeypatch) -> None:
+    telemetry._last_runtime_switch_event = {}  # noqa: SLF001
+    monkeypatch.setattr(telemetry.metrics_module, "get_metrics_collector", lambda: None)
+
+    telemetry.emit_runtime_model_event(
+        "runtime_model_selected",
+        source="ui",
+        runtime="multi_runtime",
+        model="google/gemma-4-E2B-it",
+        from_runtime="ollama",
+    )
+
+    payload = telemetry.get_last_runtime_switch_event()
+    assert payload is not None
+    assert payload["event"] == "runtime_model_selected"
+    assert payload["source"] == "ui"
+    assert payload["runtime"] == "multi_runtime"
+    assert payload["model"] == "google/gemma-4-E2B-it"
+    assert payload["from_runtime"] == "ollama"
+    assert isinstance(payload["at_utc"], str)

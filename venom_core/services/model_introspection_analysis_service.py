@@ -643,19 +643,20 @@ def _build_operator_conclusion_payload(
     partial = (
         rag_source != "runtime_trace" or logit_source != "probe_runtime" or proxy_active
     )
+    if proxy_active and logit_source == "probe_runtime":
+        internals_quality = "proxy_probe"
+    elif logit_source == "probe_runtime":
+        internals_quality = "runtime_probe"
+    else:
+        internals_quality = "fallback_probe"
+
     return {
         "verdict": verdict,
         "confidence_tier": confidence,
         "partial": partial,
         "reason_codes": reason_codes,
         "stream_quality": stream_quality,
-        "internals_quality": (
-            "proxy_probe"
-            if proxy_active and logit_source == "probe_runtime"
-            else (
-                "runtime_probe" if logit_source == "probe_runtime" else "fallback_probe"
-            )
-        ),
+        "internals_quality": internals_quality,
         "evidence_coverage_percent": coverage_percent,
         "token_noise_ratio": round(token_noise_ratio, 4),
     }
@@ -1306,11 +1307,7 @@ def _build_logit_lens_timeline_step(
             else f"{checkpoint_count} checkpoint(s)"
         )
         step_status = "done"
-    elif status == "failed" or code in {
-        "probe_failed",
-        "runtime_error",
-        "probe_transport_error",
-    }:
+    elif _is_probe_failure_status_or_code(status=status, code=code):
         detail = code
         step_status = "failed"
     else:
@@ -1328,6 +1325,20 @@ def _build_logit_lens_timeline_step(
     }
 
 
+def _is_probe_failure_status_or_code(*, status: str, code: str) -> bool:
+    normalized_status = str(status or "").strip().lower()
+    normalized_code = str(code or "").strip().lower()
+    if normalized_status == "failed":
+        return True
+    if normalized_code in {
+        "probe_failed",
+        "runtime_error",
+        "probe_transport_error",
+    }:
+        return True
+    return normalized_code.startswith("probe_timeout")
+
+
 def _build_probe_timeline_step(
     *,
     step_id: str,
@@ -1340,6 +1351,7 @@ def _build_probe_timeline_step(
     diagnostics_dict = diagnostics if isinstance(diagnostics, dict) else {}
     elapsed_ms = diagnostics_dict.get("elapsed_ms")
     status = str(payload.get("status") or "probe_unavailable")
+    code = str(payload.get("code") or "probe_unavailable")
     if status == "ok":
         detail = (
             f"ok · {elapsed_ms:.1f} ms"
@@ -1347,12 +1359,10 @@ def _build_probe_timeline_step(
             else "ok"
         )
         step_status = "done"
-    elif status == "failed":
-        code = str(payload.get("code") or "probe_failed")
+    elif _is_probe_failure_status_or_code(status=status, code=code):
         detail = code
         step_status = "failed"
     else:
-        code = str(payload.get("code") or "probe_unavailable")
         detail = code
         step_status = "skipped"
     return {

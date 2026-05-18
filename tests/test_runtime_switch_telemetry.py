@@ -109,3 +109,8 @@ def test_emit_runtime_model_event_tracks_last_event(monkeypatch) -> None:
     assert payload["model"] == "google/gemma-4-E2B-it"
     assert payload["from_runtime"] == "ollama"
     assert isinstance(payload["at_utc"], str)
+
+
+def test_get_last_runtime_switch_event_returns_none_when_not_emitted() -> None:
+    telemetry._last_runtime_switch_event = {}  # noqa: SLF001
+    assert telemetry.get_last_runtime_switch_event() is None

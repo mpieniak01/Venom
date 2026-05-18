@@ -27,4 +27,12 @@ class ModelIntrospectionProbeRequest(BaseModel):
     mode: Literal["hidden", "attention", "logits", "saliency"] = Field(default="hidden")
     layer_selection: list[int] = Field(default_factory=list, max_length=64)
     top_k: int = Field(default=8, ge=1, le=256)
-    target_output_token_index: int | None = Field(default=0, ge=0, le=255)
+    target_output_token_index: int | None = Field(
+        default=0,
+        ge=0,
+        le=255,
+        description=(
+            "Dla trybu saliency: indeks rangi tokenu next-token logits "
+            "(0 = top-1, 1 = top-2, ...), nie pozycja tokenu w wygenerowanej sekwencji."
+        ),
+    )

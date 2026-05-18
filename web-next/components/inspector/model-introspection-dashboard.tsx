@@ -162,6 +162,33 @@ function buildProbeLimitsLabel(limits: {
   return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
 }
 
+function resolveInternalsAvailability(
+  attention: ReturnType<typeof buildAttentionModel> | null,
+  saliency: ReturnType<typeof buildSaliencyModel> | null,
+  logitLens: ReturnType<typeof buildLogitLensModel> | null,
+): {
+  attentionAvailable: boolean;
+  saliencyAvailable: boolean;
+  logitLensAvailable: boolean;
+  allInternalsUnavailable: boolean;
+  anyInternalsAvailable: boolean;
+} {
+  const attentionAvailable = Boolean(attention?.status === "ok" && attention.layers.length > 0);
+  const saliencyAvailable = Boolean(
+    saliency?.status === "ok" && saliency.token_weights.length > 0,
+  );
+  const logitLensAvailable = Boolean(
+    logitLens?.status === "ok" && logitLens.checkpoints.length > 0,
+  );
+  return {
+    attentionAvailable,
+    saliencyAvailable,
+    logitLensAvailable,
+    allInternalsUnavailable: !attentionAvailable && !saliencyAvailable && !logitLensAvailable,
+    anyInternalsAvailable: attentionAvailable || saliencyAvailable || logitLensAvailable,
+  };
+}
+
 function buildRunTrends(payload: unknown): RunTrends | null {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -828,19 +855,10 @@ export function ModelIntrospectionDashboard() {
     );
   }, [t]);
 
-  const attentionAvailable = Boolean(
-    attention && attention.status === "ok" && attention.layers.length > 0,
-  );
-  const saliencyAvailable = Boolean(
-    saliency && saliency.status === "ok" && saliency.token_weights.length > 0,
-  );
-  const logitLensAvailable = Boolean(
-    logitLens && logitLens.status === "ok" && logitLens.checkpoints.length > 0,
-  );
-  const allInternalsUnavailable =
-    !attentionAvailable && !saliencyAvailable && !logitLensAvailable;
-  const anyInternalsAvailable =
-    attentionAvailable || saliencyAvailable || logitLensAvailable;
+  const {
+    allInternalsUnavailable,
+    anyInternalsAvailable,
+  } = resolveInternalsAvailability(attention, saliency, logitLens);
   const unavailableInternalsRows = internalsCapabilityRows.filter((row) => !row.available);
   const proxyInternalsRows = internalsCapabilityRows.filter(
     (row) => row.available && row.reason !== "ok",
@@ -1119,6 +1137,15 @@ export function ModelIntrospectionDashboard() {
               sourceFallbackWarning={t(
                 "inspector.modelIntrospection.dashboard.results.logitLens.sourceFallbackWarning",
               )}
+              normalizedAriaLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.normalizedAria",
+              )}
+              rawAriaLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.rawAria",
+              )}
+              rawTokensUnavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.logitLens.rawTokensUnavailable",
+              )}
             />
           </div>
           {advancedInternalsOpen && (
@@ -1127,13 +1154,14 @@ export function ModelIntrospectionDashboard() {
                 <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs uppercase tracking-wide text-zinc-500">
-                      Probe internals recovered
+                      {t("inspector.modelIntrospection.dashboard.results.internalsRecoveredTitle")}
                     </p>
-                    <Badge tone="neutral">proxy path active</Badge>
+                    <Badge tone="neutral">
+                      {t("inspector.modelIntrospection.dashboard.results.internalsRecoveredBadge")}
+                    </Badge>
                   </div>
                   <p className="mt-2 text-sm text-zinc-300">
-                    Część sygnałów internals została odzyskana ścieżką proxy zamiast natywnego
-                    payloadu probe.
+                    {t("inspector.modelIntrospection.dashboard.results.internalsRecoveredMessage")}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {proxyInternalsRows.map((row) => (
@@ -1148,13 +1176,12 @@ export function ModelIntrospectionDashboard() {
                 <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs uppercase tracking-wide text-zinc-500">
-                      Probe internals partial
+                      {t("inspector.modelIntrospection.dashboard.results.internalsPartialTitle")}
                     </p>
                     <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
                   </div>
                   <p className="mt-2 text-sm text-zinc-300">
-                    Część internals jest dostępna. Niedostępne mechanizmy pozostają w fallbacku
-                    dla tego runu i nie blokują widoku pozostałych danych.
+                    {t("inspector.modelIntrospection.dashboard.results.internalsPartialMessage")}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {unavailableInternalsRows.map((row) => (
@@ -1170,13 +1197,12 @@ export function ModelIntrospectionDashboard() {
                 <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs uppercase tracking-wide text-zinc-500">
-                      Probe internals unavailable
+                      {t("inspector.modelIntrospection.dashboard.results.internalsUnavailableTitle")}
                     </p>
                     <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
                   </div>
                   <p className="mt-2 text-sm text-zinc-300">
-                    Dla tego runu probe nie zwrocil attention, saliency ani logit lens. Glowny
-                    sygnal prowadzi teraz RAG, evidence i verdict odpowiedzi.
+                    {t("inspector.modelIntrospection.dashboard.results.internalsUnavailableMessage")}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {unavailableInternalsRows.map((row) => (

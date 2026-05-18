@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "venom.modelIntrospection.liveAnalysisEnabled";
 const STORE_EVENT = "venom:model-introspection-mechanism-change";
+let memoryEnabledFallback = true;
 
 type ModelIntrospectionMechanismContextValue = {
   enabled: boolean;
@@ -27,14 +28,16 @@ const ModelIntrospectionMechanismContext = createContext<ModelIntrospectionMecha
 function readEnabledFromStorage(): boolean {
   try {
     const localStorage = globalThis.window?.localStorage;
-    if (!localStorage) return true;
+    if (!localStorage) return memoryEnabledFallback;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === null) {
-      return true;
+      return memoryEnabledFallback;
     }
-    return raw === "true";
+    const nextEnabled = raw === "true";
+    memoryEnabledFallback = nextEnabled;
+    return nextEnabled;
   } catch {
-    return true;
+    return memoryEnabledFallback;
   }
 }
 
@@ -58,13 +61,18 @@ function subscribe(listener: () => void): () => void {
 function writeEnabledToStorage(enabled: boolean) {
   const windowRef = globalThis.window;
   const localStorage = windowRef?.localStorage;
-  if (!windowRef || !localStorage) return;
+  memoryEnabledFallback = enabled;
+  if (!windowRef) return;
+  if (!localStorage) {
+    windowRef.dispatchEvent(new Event(STORE_EVENT));
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
-    windowRef.dispatchEvent(new Event(STORE_EVENT));
   } catch {
     // Storage may be blocked (privacy mode); keep UI responsive.
   }
+  windowRef.dispatchEvent(new Event(STORE_EVENT));
 }
 
 export function ModelIntrospectionMechanismProvider({

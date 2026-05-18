@@ -146,7 +146,7 @@ class TrafficControlConfig(BaseModel):
         description="Czas trwania degraded mode po triggerze (sekundy)",
     )
     degraded_mode_exempt_providers: List[str] = Field(
-        default_factory=lambda: ["multi_runtime", "ollama"],
+        default_factory=lambda: ["multi_runtime"],
         description=(
             "Providerzy outbound wyłączeni z globalnej blokady degraded mode "
             "(np. krytyczna ścieżka runtime introspekcji)"
@@ -155,13 +155,21 @@ class TrafficControlConfig(BaseModel):
     _degraded_mode_exempt_providers_normalized: frozenset[str] = PrivateAttr(
         default_factory=frozenset
     )
+    _degraded_mode_exempt_providers_cache_source: tuple[str, ...] = PrivateAttr(
+        default_factory=tuple
+    )
 
     def model_post_init(self, __context: object) -> None:
-        self._degraded_mode_exempt_providers_normalized = frozenset(
+        self._refresh_degraded_mode_exempt_providers_cache()
+
+    def _refresh_degraded_mode_exempt_providers_cache(self) -> None:
+        normalized_entries = tuple(
             entry.strip().lower()
             for entry in self.degraded_mode_exempt_providers
             if entry.strip()
         )
+        self._degraded_mode_exempt_providers_cache_source = normalized_entries
+        self._degraded_mode_exempt_providers_normalized = frozenset(normalized_entries)
 
     def is_under_global_request_cap(self, requests_last_minute: int) -> bool:
         """
@@ -213,6 +221,13 @@ class TrafficControlConfig(BaseModel):
 
     def is_provider_exempt_from_degraded_mode(self, provider: str) -> bool:
         """Sprawdza, czy provider ma bypass globalnego degraded mode."""
+        current_source = tuple(
+            entry.strip().lower()
+            for entry in self.degraded_mode_exempt_providers
+            if entry.strip()
+        )
+        if current_source != self._degraded_mode_exempt_providers_cache_source:
+            self._refresh_degraded_mode_exempt_providers_cache()
         normalized = provider.strip().lower()
         if not normalized:
             return False

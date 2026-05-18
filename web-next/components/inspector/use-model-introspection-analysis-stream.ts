@@ -88,6 +88,7 @@ export function useModelIntrospectionAnalysisStream(
     }
     setAnalysisLoading(true);
     setAnalysisError(null);
+    setAnalysisResult(null);
     try {
       const response = await fetch(
         `${getServerApiBaseUrl()}/api/v1/models/introspection/analyze/stream`,
@@ -142,6 +143,7 @@ export function useModelIntrospectionAnalysisStream(
         analysisRunError instanceof Error
           ? analysisRunError.message
           : "Analysis failed";
+      setAnalysisResult(null);
       setAnalysisError(message);
     } finally {
       setAnalysisLoading(false);

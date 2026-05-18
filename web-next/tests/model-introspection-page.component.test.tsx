@@ -770,7 +770,11 @@ describe("ModelIntrospectionDashboard", () => {
     assert.ok(screen.getAllByText(/saliency: recovered via attention proxy/i).length >= 1);
     assert.equal(screen.queryByText(/▁Co · ▁to · ▁jest/), null);
 
-    fireEvent.click(screen.getByLabelText("Przełącz na widok surowy tokenów"));
+    fireEvent.click(
+      screen.getByLabelText(
+        /Przełącz na widok surowy tokenów|Switch to raw token view/i,
+      ),
+    );
     await waitFor(() => {
       assert.ok(screen.getByText(/▁Co · ▁to · ▁jest/));
     });

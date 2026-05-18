@@ -57,8 +57,8 @@ In practice the UI distinguishes:
 
 Current runtime contract note:
 
-- `multi_runtime` probe supports `hidden`, `attention`, and `logits`.
-- `saliency` can return `saliency_unavailable` by design when runtime contract does not expose saliency payloads.
+- `multi_runtime` probe supports `hidden`, `attention`, `logits`, and `saliency`.
+- `saliency` can still return `saliency_unavailable` for specific runtimes/profiles when native saliency payload is not exposed and fallback/proxy path is used.
 
 ## 4. How to read the screen
 

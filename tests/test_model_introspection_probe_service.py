@@ -300,6 +300,24 @@ def test_probe_runtime_config_normalizes_invalid_values(
     assert cfg["max_prompt_tokens"] == 1
 
 
+def test_probe_health_payload_reports_disabled_and_endpoint_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMMA4_AUDIO_PROBE_ENABLED", "false")
+    disabled = probe_service.build_probe_health_payload(
+        _runtime("multi_runtime", "http://localhost:8014/v1")
+    )
+    assert disabled["status"] == "disabled"
+    assert disabled["healthy"] is False
+
+    monkeypatch.setenv("GEMMA4_AUDIO_PROBE_ENABLED", "true")
+    endpoint_missing = probe_service.build_probe_health_payload(
+        _runtime("multi_runtime", None)
+    )
+    assert endpoint_missing["status"] == "endpoint_missing"
+    assert endpoint_missing["endpoint_configured"] is False
+
+
 @pytest.mark.asyncio
 async def test_probe_service_does_not_forward_legacy_probe_fields(
     monkeypatch: pytest.MonkeyPatch,

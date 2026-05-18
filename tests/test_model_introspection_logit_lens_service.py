@@ -19,6 +19,20 @@ def _checkpoint(token: str, confidence: float) -> dict[str, object]:
     }
 
 
+def test_logit_lens_helpers_invalid_inputs() -> None:
+    assert service._safe_float("x") is None  # noqa: SLF001
+    assert service._normalize_top_k("bad") == []  # noqa: SLF001
+    assert service._normalize_layers("bad") == []  # noqa: SLF001
+    assert service._extract_token_preview({}) == []  # noqa: SLF001
+    assert service._extract_raw_token_preview({}) == []  # noqa: SLF001
+
+
+def test_select_layer_by_percent_empty_layers() -> None:
+    selected = service._select_layer_by_percent([], 25)  # noqa: SLF001
+    assert selected["layer"] == -1
+    assert selected["top_k"] == []
+
+
 @pytest.mark.asyncio
 async def test_build_logit_lens_payload_maps_probe_logits(
     monkeypatch: pytest.MonkeyPatch,
@@ -108,6 +122,37 @@ async def test_build_logit_lens_payload_returns_unavailable_payload(
     assert payload["signals"]["early_unstable"] is False
     assert payload["interpretability"]["interpretable"] is False
     assert payload["diagnostics"]["heuristic_version"] == "v1.1"
+
+
+@pytest.mark.asyncio
+async def test_build_logit_lens_payload_returns_invalid_probe_shape_when_probe_is_not_dict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_probe(**_kwargs):
+        return {
+            "status": "ok",
+            "runtime_label": "runtime",
+            "probe": "invalid",
+            "diagnostics": {},
+        }
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_logit_lens_payload(prompt="q", response_text="x")
+
+    assert payload["status"] == "failed"
+    assert payload["code"] == "invalid_probe_shape"
+
+
+def test_build_logit_lens_signals_defaults_with_missing_confidence() -> None:
+    signals = service._build_logit_lens_signals(  # noqa: SLF001
+        [
+            {"top_token": "A", "confidence": None},
+            {"top_token": "B"},
+        ]
+    )
+    assert signals["early_unstable"] is True
+    assert signals["late_stabilized"] is False
+    assert signals["low_confidence_path"] is True
 
 
 @pytest.mark.parametrize(

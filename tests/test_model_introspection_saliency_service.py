@@ -151,3 +151,84 @@ async def test_build_saliency_payload_falls_back_to_logits_proxy_when_attention_
     assert payload["code"] == "saliency_proxy_logits"
     assert payload["method"] == "logits_proxy"
     assert payload["token_weights"][0]["token"] == "Słońce"
+
+
+@pytest.mark.asyncio
+async def test_build_saliency_payload_returns_invalid_probe_shape_when_probe_is_not_dict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_probe(**_kwargs):
+        return {
+            "status": "ok",
+            "runtime_label": "runtime",
+            "probe": ["invalid-shape"],
+            "diagnostics": {"elapsed_ms": 5.0},
+        }
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_saliency_payload(prompt="q", response_text="Słońce")
+
+    assert payload["status"] == "failed"
+    assert payload["code"] == "invalid_probe_shape"
+
+
+@pytest.mark.asyncio
+async def test_build_saliency_payload_returns_unavailable_when_token_weights_and_proxies_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_probe(**kwargs):
+        mode = kwargs.get("mode")
+        if mode == "saliency":
+            return {
+                "status": "ok",
+                "runtime_label": "runtime",
+                "probe": {"token_weights": []},
+                "diagnostics": {"elapsed_ms": 5.0},
+            }
+        if mode == "attention":
+            return {
+                "status": "probe_unavailable",
+                "code": "attention_unavailable",
+                "probe": None,
+                "diagnostics": {},
+            }
+        return {
+            "status": "probe_unavailable",
+            "code": "probe_unavailable",
+            "probe": None,
+            "diagnostics": {},
+        }
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_saliency_payload(prompt="q", response_text="Słońce")
+
+    assert payload["status"] == "probe_unavailable"
+    assert payload["code"] == "saliency_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_build_saliency_payload_uses_requested_target_token_when_probe_missing_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_probe(**_kwargs):
+        return {
+            "status": "ok",
+            "runtime_label": "runtime",
+            "probe": {
+                "method": "integrated_gradients",
+                "target_output_token_index": -4,
+                "token_weights": [
+                    {"token": "▁Słońce", "token_index": 0, "weight": 0.9}
+                ],
+            },
+            "diagnostics": {},
+        }
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_saliency_payload(
+        prompt="q",
+        response_text="Słońce to gwiazda",
+    )
+
+    assert payload["target_output_token_index"] == 0
+    assert payload["target_output_token"] == "Słońce"

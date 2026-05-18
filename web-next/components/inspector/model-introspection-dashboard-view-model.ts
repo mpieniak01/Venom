@@ -524,10 +524,7 @@ function normalizeLogitLensCheckpoint(
     .filter((item) => typeof item?.score === "number")
     .map((item) => ({
       token: normalizeLensToken(item.token),
-      raw_token:
-        typeof item.raw_token === "string"
-          ? item.raw_token
-          : (typeof item.token === "string" ? item.token : null),
+      raw_token: resolveRawToken(item.raw_token, item.token),
       token_index: typeof item.token_index === "number" ? item.token_index : -1,
       score: Number(item.score),
     }))
@@ -547,6 +544,29 @@ function normalizeLogitLensCheckpoint(
       typeof checkpoint.confidence === "number" ? checkpoint.confidence : null,
     changed: Boolean(checkpoint.changed),
   };
+}
+
+function resolveRawToken(rawToken: unknown, token: unknown): string | null {
+  if (typeof rawToken === "string") {
+    return rawToken;
+  }
+  if (typeof token === "string") {
+    return token;
+  }
+  return null;
+}
+
+function resolveRawTokens(
+  rawTokens: unknown,
+  normalizedTokens: string[] | undefined,
+): string[] {
+  if (Array.isArray(rawTokens)) {
+    return rawTokens.map((token) => String(token ?? ""));
+  }
+  if (Array.isArray(normalizedTokens)) {
+    return normalizedTokens.map((token) => String(token ?? ""));
+  }
+  return [];
 }
 
 type LogitLensPayloadInput = {
@@ -657,16 +677,8 @@ export function buildLogitLensModel(
     output_tokens: Array.isArray(payload.output_tokens)
       ? payload.output_tokens.map((token) => normalizeLensToken(token))
       : [],
-    raw_input_tokens: Array.isArray(payload.raw_input_tokens)
-      ? payload.raw_input_tokens.map((token) => String(token ?? ""))
-      : Array.isArray(payload.input_tokens)
-      ? payload.input_tokens.map((token) => String(token ?? ""))
-      : [],
-    raw_output_tokens: Array.isArray(payload.raw_output_tokens)
-      ? payload.raw_output_tokens.map((token) => String(token ?? ""))
-      : Array.isArray(payload.output_tokens)
-      ? payload.output_tokens.map((token) => String(token ?? ""))
-      : [],
+    raw_input_tokens: resolveRawTokens(payload.raw_input_tokens, payload.input_tokens),
+    raw_output_tokens: resolveRawTokens(payload.raw_output_tokens, payload.output_tokens),
     checkpoints,
     signals: {
       early_unstable: Boolean(payload.signals?.early_unstable),

@@ -786,7 +786,21 @@ export const de = {
             signalStable: "stable path",
             changed: "changed",
             stable: "stable",
+            normalizedAria: "Zur normalisierten Token-Ansicht wechseln",
+            rawAria: "Zur rohen Token-Ansicht wechseln",
+            rawTokensUnavailable:
+              "Rohe Ausgabetoken sind im Runtime-Vertrag nicht verfügbar.",
           },
+          internalsRecoveredTitle: "Probe internals recovered",
+          internalsRecoveredBadge: "proxy path active",
+          internalsRecoveredMessage:
+            "Ein Teil der Internals-Signale wurde über einen Proxy-Pfad statt über native Probe-Payload wiederhergestellt.",
+          internalsPartialTitle: "Probe internals partial",
+          internalsPartialMessage:
+            "Ein Teil der Internals ist verfügbar. Nicht verfügbare Mechanismen bleiben für diesen Lauf im Fallback und blockieren die übrige Datenansicht nicht.",
+          internalsUnavailableTitle: "Probe internals unavailable",
+          internalsUnavailableMessage:
+            "Für diesen Lauf hat die Probe weder Attention, Saliency noch Logit Lens geliefert. Das Hauptsignal kommt jetzt aus RAG, Evidence und dem Antwort-Verdict.",
         },
         snapshotComparison: {
           title: "Snapshot-Vergleich",

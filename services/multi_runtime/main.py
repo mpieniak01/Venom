@@ -1087,7 +1087,15 @@ class IntrospectionProbeRequest(BaseModel):
     mode: Literal["hidden", "attention", "logits", "saliency"] = "hidden"
     layer_selection: list[int] = Field(default_factory=list, max_length=64)
     top_k: int = Field(default=8, ge=1, le=256)
-    target_output_token_index: int | None = Field(default=0, ge=0, le=255)
+    target_output_token_index: int | None = Field(
+        default=0,
+        ge=0,
+        le=255,
+        description=(
+            "For saliency mode: rank index in next-token logits "
+            "(0 = top-1, 1 = top-2, ...), not generated sequence position."
+        ),
+    )
 
 
 def _sanitize_probe_layers(
@@ -1201,7 +1209,7 @@ def _resolve_saliency_target_token(
     logits_vector: Any,
     tokenizer: Any,
     target_output_token_index: int | None,
-) -> tuple[int, str]:
+) -> tuple[int, str, int]:
     import torch
 
     vocab_size = int(logits_vector.shape[0])
@@ -1211,7 +1219,8 @@ def _resolve_saliency_target_token(
     rank_index = max(0, rank_index)
     top_k = min(vocab_size, max(1, rank_index + 1))
     _values, indices = torch.topk(logits_vector, k=top_k)
-    token_id = int(indices[rank_index] if rank_index < top_k else indices[0])
+    selected_rank_index = rank_index if rank_index < top_k else 0
+    token_id = int(indices[selected_rank_index])
     token = str(token_id)
     try:
         decoded = tokenizer.convert_ids_to_tokens([token_id])
@@ -1219,7 +1228,7 @@ def _resolve_saliency_target_token(
             token = str(decoded[0])
     except (AttributeError, TypeError, ValueError, KeyError, IndexError):
         token = str(token_id)
-    return token_id, token
+    return token_id, token, int(selected_rank_index)
 
 
 def _extract_saliency_token_weights(
@@ -1306,10 +1315,12 @@ def _run_probe_sync(
             if logits is None:
                 raise RuntimeError("logits_unavailable")
             next_token_logits = logits[0, -1, :]
-            target_token_id, target_token = _resolve_saliency_target_token(
-                logits_vector=next_token_logits,
-                tokenizer=tokenizer,
-                target_output_token_index=target_output_token_index,
+            target_token_id, target_token, selected_rank_index = (
+                _resolve_saliency_target_token(
+                    logits_vector=next_token_logits,
+                    tokenizer=tokenizer,
+                    target_output_token_index=target_output_token_index,
+                )
             )
             target_logit = next_token_logits[target_token_id]
             target_logit.backward()
@@ -1326,7 +1337,9 @@ def _run_probe_sync(
             "mode": mode,
             "layers": [],
             "target_output_token_index": int(target_output_token_index or 0),
+            "target_output_token_rank_index": int(selected_rank_index),
             "target_output_token": target_token,
+            "target_selection_mode": "next_token_rank",
             "method": "gradient_norm",
             "token_weights": token_weights,
             "tokenization": {

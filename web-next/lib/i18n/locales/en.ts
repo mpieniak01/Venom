@@ -786,7 +786,20 @@ export const en = {
             signalStable: "stable path",
             changed: "changed",
             stable: "stable",
+            normalizedAria: "Switch to normalized token view",
+            rawAria: "Switch to raw token view",
+            rawTokensUnavailable: "Raw output tokens are unavailable in the runtime contract.",
           },
+          internalsRecoveredTitle: "Probe internals recovered",
+          internalsRecoveredBadge: "proxy path active",
+          internalsRecoveredMessage:
+            "Part of internals signals was recovered through a proxy path instead of native probe payload.",
+          internalsPartialTitle: "Probe internals partial",
+          internalsPartialMessage:
+            "Some internals are available. Unavailable mechanisms stay in fallback for this run and do not block the rest of the data view.",
+          internalsUnavailableTitle: "Probe internals unavailable",
+          internalsUnavailableMessage:
+            "For this run, probe did not return attention, saliency or logit lens. Main signal now comes from RAG, evidence and answer verdict.",
         },
         snapshotComparison: {
           title: "Snapshot comparison",

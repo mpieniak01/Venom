@@ -192,6 +192,26 @@ async def _build_saliency_proxy_from_logits(
     }
 
 
+async def _resolve_saliency_proxy_payload(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+) -> dict[str, Any] | None:
+    proxy_payload = await _build_saliency_proxy_from_attention(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+    if proxy_payload is not None:
+        return proxy_payload
+    return await _build_saliency_proxy_from_logits(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+
+
 async def build_saliency_payload(
     *,
     prompt: str,
@@ -211,20 +231,13 @@ async def build_saliency_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
-        proxy_payload = await _build_saliency_proxy_from_attention(
+        proxy_payload = await _resolve_saliency_proxy_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
         )
         if proxy_payload is not None:
             return proxy_payload
-        logits_proxy_payload = await _build_saliency_proxy_from_logits(
-            prompt=prompt,
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
-        )
-        if logits_proxy_payload is not None:
-            return logits_proxy_payload
         return _build_unavailable_saliency_payload(
             status=status,
             code=str(probe_payload.get("code") or "saliency_unavailable"),
@@ -245,20 +258,13 @@ async def build_saliency_payload(
 
     token_weights = _normalize_token_weights(probe.get("token_weights"))
     if not token_weights:
-        proxy_payload = await _build_saliency_proxy_from_attention(
+        proxy_payload = await _resolve_saliency_proxy_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
         )
         if proxy_payload is not None:
             return proxy_payload
-        logits_proxy_payload = await _build_saliency_proxy_from_logits(
-            prompt=prompt,
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
-        )
-        if logits_proxy_payload is not None:
-            return logits_proxy_payload
         return _build_unavailable_saliency_payload(
             status="probe_unavailable",
             code="saliency_unavailable",

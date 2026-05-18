@@ -65,6 +65,40 @@ async def test_process_tool_generation(toolmaker):
 
 
 @pytest.mark.asyncio
+async def test_process_tool_generation_plain_code_block(toolmaker):
+    mock_response = "prefix\n```\ndef tool():\n    return 'ok'\n```\nsuffix"
+    with patch.object(
+        toolmaker, "_invoke_chat_with_fallbacks", new_callable=AsyncMock
+    ) as mock_chat:
+        mock_chat.return_value = mock_response
+        code = await toolmaker.process("x")
+    assert code == "def tool():\n    return 'ok'"
+
+
+@pytest.mark.asyncio
+async def test_process_tool_generation_without_code_fence_returns_raw(toolmaker):
+    mock_response = "def tool():\n    return 'ok'"
+    with patch.object(
+        toolmaker, "_invoke_chat_with_fallbacks", new_callable=AsyncMock
+    ) as mock_chat:
+        mock_chat.return_value = mock_response
+        code = await toolmaker.process("x")
+    assert code == mock_response
+
+
+@pytest.mark.asyncio
+async def test_process_handles_exception(toolmaker):
+    with patch.object(
+        toolmaker,
+        "_invoke_chat_with_fallbacks",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("boom"),
+    ):
+        result = await toolmaker.process("x")
+    assert result.startswith("❌ ToolmakerAgent napotkał błąd:")
+
+
+@pytest.mark.asyncio
 async def test_create_tool_success(toolmaker):
     """Test pomyślnego utworzenia i zapisania narzędzia."""
     mock_code = "class MyTool:\n    pass"
@@ -83,6 +117,31 @@ async def test_create_tool_success(toolmaker):
         toolmaker.file_skill.write_file.assert_called_once_with(
             "custom/my_tool.py", mock_code
         )
+
+
+@pytest.mark.asyncio
+async def test_create_tool_uses_output_dir_path(toolmaker):
+    with patch.object(toolmaker, "process", new_callable=AsyncMock) as mock_process:
+        mock_process.return_value = "class OutDirTool:\n    pass"
+        success, result = await toolmaker.create_tool(
+            specification="Tool spec", tool_name="my_tool", output_dir="plugins"
+        )
+
+    assert success is True
+    assert result.startswith("class OutDirTool")
+    toolmaker.file_skill.write_file.assert_called_once_with(
+        "plugins/my_tool.py", "class OutDirTool:\n    pass"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_tool_returns_false_for_model_error_payload(toolmaker):
+    with patch.object(toolmaker, "process", new_callable=AsyncMock) as mock_process:
+        mock_process.return_value = "❌ runtime error"
+        success, result = await toolmaker.create_tool("spec", "my_tool")
+
+    assert success is False
+    assert result == "❌ runtime error"
 
 
 @pytest.mark.asyncio
@@ -121,6 +180,40 @@ async def test_create_test_success(toolmaker):
         toolmaker.file_skill.write_file.assert_called_once_with(
             "custom/test_my_tool.py", mock_test_code
         )
+
+
+@pytest.mark.asyncio
+async def test_create_test_uses_output_dir_path(toolmaker):
+    with patch.object(toolmaker, "process", new_callable=AsyncMock) as mock_process:
+        mock_process.return_value = "def test_out_dir():\n    assert True"
+        success, result = await toolmaker.create_test(
+            "my_tool", "code...", output_dir="plugins"
+        )
+
+    assert success is True
+    assert "test_out_dir" in result
+    toolmaker.file_skill.write_file.assert_called_once_with(
+        "plugins/test_my_tool.py", "def test_out_dir():\n    assert True"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_test_returns_false_for_model_error_payload(toolmaker):
+    with patch.object(toolmaker, "process", new_callable=AsyncMock) as mock_process:
+        mock_process.return_value = "❌ tool generation failed"
+        success, result = await toolmaker.create_test("my_tool", "code...")
+
+    assert success is False
+    assert result == "❌ tool generation failed"
+
+
+@pytest.mark.asyncio
+async def test_create_test_handles_exception(toolmaker):
+    with patch.object(toolmaker, "process", side_effect=RuntimeError("boom")):
+        success, result = await toolmaker.create_test("my_tool", "code...")
+
+    assert success is False
+    assert "Błąd podczas tworzenia testu dla my_tool:" in result
 
 
 def test_create_tool_ui_card(toolmaker):

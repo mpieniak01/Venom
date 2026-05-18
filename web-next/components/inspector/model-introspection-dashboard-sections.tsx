@@ -219,6 +219,9 @@ type LogitLensPanelProps = Readonly<{
   sourceRuntimeLabel: string;
   sourceUnavailableLabel: string;
   sourceFallbackWarning: string;
+  normalizedAriaLabel: string;
+  rawAriaLabel: string;
+  rawTokensUnavailableLabel: string;
 }>;
 
 type AttentionPanelProps = Readonly<{
@@ -830,6 +833,9 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
     sourceRuntimeLabel,
     sourceUnavailableLabel,
     sourceFallbackWarning,
+    normalizedAriaLabel,
+    rawAriaLabel,
+    rawTokensUnavailableLabel,
   } = props;
   const [tokenViewMode, setTokenViewMode] = useState<"normalized" | "raw">("normalized");
 
@@ -916,7 +922,7 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
           variant={showRaw ? "ghost" : "outline"}
           size="sm"
           onClick={() => setTokenViewMode("normalized")}
-          aria-label="Przełącz na widok znormalizowany tokenów"
+          aria-label={normalizedAriaLabel}
         >
           normalized
         </Button>
@@ -924,7 +930,7 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
           variant={showRaw ? "outline" : "ghost"}
           size="sm"
           onClick={() => setTokenViewMode("raw")}
-          aria-label="Przełącz na widok surowy tokenów"
+          aria-label={rawAriaLabel}
         >
           raw
         </Button>
@@ -938,9 +944,7 @@ export function LogitLensPanel(props: LogitLensPanelProps) {
         <p className="mt-1 text-zinc-500">→</p>
         <p className="mt-1 break-words">{outputPreview || "—"}</p>
         {showRaw && logitLens.raw_output_tokens.length === 0 && (
-          <p className="mt-2 text-[11px] text-amber-200/90">
-            raw output tokens unavailable in runtime contract
-          </p>
+          <p className="mt-2 text-[11px] text-amber-200/90">{rawTokensUnavailableLabel}</p>
         )}
       </div>
       <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">{checkpointsLabel}</p>

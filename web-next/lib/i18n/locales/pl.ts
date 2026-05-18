@@ -787,7 +787,20 @@ export const pl = {
             signalStable: "stable path",
             changed: "changed",
             stable: "stable",
+            normalizedAria: "Przełącz na widok znormalizowany tokenów",
+            rawAria: "Przełącz na widok surowy tokenów",
+            rawTokensUnavailable: "Surowe tokeny wyjścia są niedostępne w kontrakcie runtime.",
           },
+          internalsRecoveredTitle: "Probe internals recovered",
+          internalsRecoveredBadge: "proxy path active",
+          internalsRecoveredMessage:
+            "Część sygnałów internals została odzyskana ścieżką proxy zamiast natywnego payloadu probe.",
+          internalsPartialTitle: "Probe internals partial",
+          internalsPartialMessage:
+            "Część internals jest dostępna. Niedostępne mechanizmy pozostają w fallbacku dla tego runu i nie blokują widoku pozostałych danych.",
+          internalsUnavailableTitle: "Probe internals unavailable",
+          internalsUnavailableMessage:
+            "Dla tego runu probe nie zwrócił attention, saliency ani logit lens. Główny sygnał prowadzi teraz RAG, evidence i verdict odpowiedzi.",
         },
         snapshotComparison: {
           title: "Porównanie snapshotów",

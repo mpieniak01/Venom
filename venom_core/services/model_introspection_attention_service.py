@@ -174,6 +174,59 @@ def _build_unavailable_attention_payload(
     }
 
 
+def _build_proxy_links_from_logits(
+    *,
+    logits_top: list[Any],
+    query_index: int,
+    query_token: str,
+) -> list[dict[str, Any]]:
+    top_links: list[dict[str, Any]] = []
+    for item in logits_top[:_ATTENTION_TOP_LINKS_PER_HEAD]:
+        if not isinstance(item, dict):
+            continue
+        score = _safe_float(item.get("score"))
+        if score is None:
+            continue
+        top_links.append(
+            {
+                "from_index": query_index,
+                "to_index": -1,
+                "from_token": query_token,
+                "to_token": _normalize_token(item.get("token")),
+                "weight": round(score, 6),
+            }
+        )
+    return top_links
+
+
+def _build_proxy_layers_from_logits(
+    *,
+    raw_layers: list[Any],
+    query_index: int,
+    query_token: str,
+) -> list[dict[str, Any]]:
+    layers: list[dict[str, Any]] = []
+    for raw_layer in raw_layers:
+        if not isinstance(raw_layer, dict):
+            continue
+        layer_id = raw_layer.get("layer")
+        if not isinstance(layer_id, int):
+            continue
+        logits_top = raw_layer.get("logits_top")
+        if not isinstance(logits_top, list):
+            continue
+        top_links = _build_proxy_links_from_logits(
+            logits_top=logits_top,
+            query_index=query_index,
+            query_token=query_token,
+        )
+        if top_links:
+            layers.append(
+                {"layer": layer_id, "heads": [{"head": 0, "top_links": top_links}]}
+            )
+    return layers
+
+
 async def _build_attention_proxy_from_logits(
     *,
     prompt: str,
@@ -199,36 +252,11 @@ async def _build_attention_proxy_from_logits(
     raw_layers = probe.get("layers")
     if not isinstance(raw_layers, list):
         return None
-    layers: list[dict[str, Any]] = []
-    for raw_layer in raw_layers:
-        if not isinstance(raw_layer, dict):
-            continue
-        layer_id = raw_layer.get("layer")
-        if not isinstance(layer_id, int):
-            continue
-        logits_top = raw_layer.get("logits_top")
-        if not isinstance(logits_top, list):
-            continue
-        top_links: list[dict[str, Any]] = []
-        for item in logits_top[:_ATTENTION_TOP_LINKS_PER_HEAD]:
-            if not isinstance(item, dict):
-                continue
-            score = _safe_float(item.get("score"))
-            if score is None:
-                continue
-            top_links.append(
-                {
-                    "from_index": query_index,
-                    "to_index": -1,
-                    "from_token": query_token,
-                    "to_token": _normalize_token(item.get("token")),
-                    "weight": round(score, 6),
-                }
-            )
-        if top_links:
-            layers.append(
-                {"layer": layer_id, "heads": [{"head": 0, "top_links": top_links}]}
-            )
+    layers = _build_proxy_layers_from_logits(
+        raw_layers=raw_layers,
+        query_index=query_index,
+        query_token=query_token,
+    )
     if not layers:
         return None
     proxy_diagnostics = dict(diagnostics)

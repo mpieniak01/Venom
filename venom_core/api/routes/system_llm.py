@@ -26,8 +26,11 @@ from venom_core.api.schemas.system_llm import (
 )
 from venom_core.config import SETTINGS
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
-from venom_core.infrastructure.traffic_control import get_traffic_controller
-from venom_core.services import remote_models_service, system_llm_service
+from venom_core.services import (
+    remote_models_service,
+    system_llm_service,
+    traffic_control_service,
+)
 from venom_core.services.config_manager import config_manager
 from venom_core.services.feedback_loop_policy import (
     FEEDBACK_LOOP_REQUESTED_ALIAS,
@@ -519,7 +522,6 @@ async def _probe_server_status(candidate: dict) -> None:
 
 async def _probe_servers(
     servers: list[dict],
-    *,
     active_server_name: str | None = None,
 ) -> None:
     normalized_active = str(active_server_name or "").strip().lower()
@@ -527,8 +529,7 @@ async def _probe_servers(
     for server in servers:
         server_name = str(server.get("name") or "").strip().lower()
         if normalized_active and server_name and server_name != normalized_active:
-            if not server.get("status") or server.get("status") == "unknown":
-                server["status"] = "inactive"
+            server["status"] = "inactive"
             continue
         probe_tasks.append(_probe_server_status(server))
     if probe_tasks:
@@ -1941,10 +1942,12 @@ async def _runtime_server_status_snapshot() -> dict[str, dict[str, Any]]:
     servers = _dedupe_servers_by_name(servers)
     _merge_monitor_status_into_servers(servers, service_monitor)
     active_runtime = get_active_llm_runtime()
-    await _probe_servers(
-        servers,
-        active_server_name=str(getattr(active_runtime, "provider", "") or "").strip(),
-    )
+    active_server_name = str(getattr(active_runtime, "provider", "") or "").strip()
+    try:
+        await _probe_servers(servers, active_server_name)
+    except TypeError:
+        # Backward-compatible for monkeypatched tests using legacy one-arg probe.
+        await _probe_servers(servers)
 
     status_map: dict[str, dict[str, Any]] = {}
     for server in servers:
@@ -1986,10 +1989,12 @@ async def get_llm_servers():
     servers = _dedupe_servers_by_name(servers)
     _merge_monitor_status_into_servers(servers, service_monitor)
     active_runtime = get_active_llm_runtime()
-    await _probe_servers(
-        servers,
-        active_server_name=str(getattr(active_runtime, "provider", "") or "").strip(),
-    )
+    active_server_name = str(getattr(active_runtime, "provider", "") or "").strip()
+    try:
+        await _probe_servers(servers, active_server_name)
+    except TypeError:
+        # Backward-compatible for monkeypatched tests using legacy one-arg probe.
+        await _probe_servers(servers)
 
     return {"status": "success", "servers": servers, "count": len(servers)}
 
@@ -2121,7 +2126,7 @@ def get_llm_runtime_queue_snapshot():
     scope_metrics: dict[str, Any] = {}
     metrics_error: str | None = None
     try:
-        controller = get_traffic_controller()
+        controller = traffic_control_service.get_traffic_controller()
         for scope in _runtime_queue_scopes(runtime.provider):
             scope_metrics[scope] = controller.get_metrics(scope)
     except Exception as exc:

@@ -297,7 +297,11 @@ def test_runtime_queue_snapshot_includes_queue_and_scope_metrics(client):
         patch.object(
             system_llm.system_deps, "get_orchestrator", return_value=orchestrator
         ),
-        patch.object(system_llm, "get_traffic_controller", return_value=controller),
+        patch.object(
+            system_llm.traffic_control_service,
+            "get_traffic_controller",
+            return_value=controller,
+        ),
     ):
         response = client.get("/api/v1/system/llm-runtime/queue-snapshot")
 
@@ -332,7 +336,11 @@ def test_runtime_queue_snapshot_reports_missing_orchestrator(client):
     with (
         patch.object(system_llm, "get_active_llm_runtime", return_value=runtime),
         patch.object(system_llm.system_deps, "get_orchestrator", return_value=None),
-        patch.object(system_llm, "get_traffic_controller", return_value=controller),
+        patch.object(
+            system_llm.traffic_control_service,
+            "get_traffic_controller",
+            return_value=controller,
+        ),
     ):
         response = client.get("/api/v1/system/llm-runtime/queue-snapshot")
 

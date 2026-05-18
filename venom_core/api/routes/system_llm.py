@@ -120,6 +120,7 @@ _CODING_MODEL_MARKERS: tuple[str, ...] = (
     "codeqwen",
     "opencoder",
 )
+_INBOUND_MODEL_OPS_SCOPE = "inbound:model_ops"
 
 
 def _runtime_adapter_deploy_capability(runtime_id: str) -> tuple[bool, str]:
@@ -2086,14 +2087,14 @@ async def get_llm_runtime_options():
 def _runtime_queue_scopes(runtime_name: str) -> list[str]:
     normalized = str(runtime_name or "").strip().lower()
     if normalized == "ollama":
-        return ["outbound:ollama", "inbound:model_ops"]
+        return ["outbound:ollama", _INBOUND_MODEL_OPS_SCOPE]
     if normalized == "vllm":
-        return ["outbound:vllm", "inbound:model_ops"]
+        return ["outbound:vllm", _INBOUND_MODEL_OPS_SCOPE]
     if normalized == "onnx":
-        return ["inbound:model_ops"]
+        return [_INBOUND_MODEL_OPS_SCOPE]
     if is_multi_runtime(normalized):
-        return ["inbound:model_ops"]
-    return ["inbound:model_ops"]
+        return [_INBOUND_MODEL_OPS_SCOPE]
+    return [_INBOUND_MODEL_OPS_SCOPE]
 
 
 @router.get("/system/llm-runtime/queue-snapshot")

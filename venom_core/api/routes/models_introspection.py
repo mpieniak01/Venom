@@ -32,6 +32,9 @@ _ERROR_INTERNAL_SERVER = "Internal server error"
 _ERROR_INVALID_REQUEST_PARAMETERS = "Invalid request parameters"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _ERROR_INTROSPECTION_BUSY = "Introspection queue is busy. Retry later."
+_RESPONSES_INTROSPECTION_BUSY = {
+    "description": "Introspection queue is busy. Retry later."
+}
 
 router = APIRouter(prefix="/api/v1/models", tags=["models"])
 
@@ -107,6 +110,7 @@ async def get_model_introspection() -> dict[str, object]:
     "/introspection/analyze",
     responses={
         400: {"description": "Nieprawidłowy prompt lub opcje analizy"},
+        429: _RESPONSES_INTROSPECTION_BUSY,
         500: {"description": "Błąd wewnętrzny podczas analizy modelu"},
     },
 )
@@ -145,6 +149,7 @@ async def analyze_model_introspection(
     "/introspection/analyze/stream",
     responses={
         400: {"description": "Nieprawidłowy prompt lub opcje analizy"},
+        429: _RESPONSES_INTROSPECTION_BUSY,
         500: {"description": "Błąd wewnętrzny podczas analizy modelu"},
     },
 )
@@ -214,6 +219,7 @@ async def stream_model_introspection_analysis_endpoint(
     "/introspection/probe",
     responses={
         400: {"description": "Nieprawidłowe parametry probe"},
+        429: _RESPONSES_INTROSPECTION_BUSY,
         500: {"description": "Błąd wewnętrzny podczas wykonania probe"},
     },
 )

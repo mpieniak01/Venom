@@ -15,6 +15,13 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: prepush-quality-gate
+        name: Pre-push quality gate (pr-fast)
+        entry: bash scripts/prepush_quality_gate.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: update-sonar-new-code-group
         name: Update Sonar New-Code Test Group
         entry: python3 scripts/update_sonar_new_code_group.py

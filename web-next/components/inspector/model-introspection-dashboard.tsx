@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Brain, Radar, RefreshCcw } from "lucide-react";
+import { Brain, Loader2, Radar, RefreshCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Panel, StatCard } from "@/components/ui/panel";
+import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import { useModelIntrospectionMechanism } from "@/components/inspector/model-introspection-mechanism";
 import type {
   AnalysisTimelineEntry,
@@ -19,7 +20,6 @@ import type {
 import {
   buildAttentionModel,
   buildOperatorConclusion,
-  buildOperatorRunbookSteps,
   buildLogitLensModel,
   buildSaliencyModel,
   buildRagFocusModel,
@@ -28,14 +28,8 @@ import {
   getAnalysisPhase,
   getAnswerStatusLabel,
   getAnswerTone,
-  getFallbackSignalTone,
-  getOperatorFinalStatusTone,
-  getOperatorStreamModeTone,
   getOrbSubtitle,
   getTypeHintText,
-  resolveFallbackSignal,
-  resolveOperatorFinalStatus,
-  resolveOperatorStreamMode,
   resolveSelectedGraphNodeDetails,
   splitAnswerHighlights,
 } from "@/components/inspector/model-introspection-dashboard-view-model";
@@ -43,7 +37,6 @@ import { useModelIntrospectionSnapshot } from "@/components/inspector/use-model-
 import { useModelIntrospectionAnalysisStream } from "@/components/inspector/use-model-introspection-analysis-stream";
 import {
   AnalysisInputPanel,
-  AnalysisLiveResponsePanel,
   AnalysisOrbPanel,
   AttentionPanel,
   LogitLensPanel,
@@ -53,13 +46,6 @@ import {
   GraphPanel,
   SnapshotComparisonPanel,
 } from "@/components/inspector/model-introspection-dashboard-sections";
-
-type SummaryCard = {
-  label: string;
-  value: string;
-  hint: string;
-  accent: "violet" | "green" | "blue" | "indigo";
-};
 
 type RunTrends = {
   runs: number;
@@ -83,11 +69,13 @@ type InternalsVerdictValue = "full" | "partial" | "fallback_only";
 type ProbeCapability = {
   available?: boolean;
   reason?: string;
+  availability_class?: string;
 };
 type InternalsCapabilityRow = {
   label: string;
   available: boolean;
   reason: string;
+  availabilityClass: "native_ok" | "proxy_ok" | "unavailable" | "failed";
 };
 type InternalsNoticeProps = {
   title: string;
@@ -98,6 +86,15 @@ type InternalsNoticeProps = {
   rowsTone: BadgeTone;
   rowKeyPrefix: string;
   extraBadge?: string;
+};
+type ResultStepTone = "success" | "warning" | "neutral" | "danger";
+type ResultStepStatus = "done" | "running" | "pending" | "failed";
+type ResultStepMarker = {
+  number: number;
+  key: string;
+  label: string;
+  status: ResultStepStatus;
+  tone: ResultStepTone;
 };
 
 type SnapshotLoadingPanelProps = Readonly<{
@@ -180,47 +177,15 @@ function InternalsNoticeCard({
   );
 }
 
-type RuntimeContextPanelProps = Readonly<{
-  stats: SummaryCard[];
-  t: (key: string) => string;
-}>;
-
-function RuntimeContextPanel({ stats, t }: RuntimeContextPanelProps) {
-  if (stats.length === 0) {
-    return null;
-  }
-  return (
-    <Panel
-      eyebrow="// runtime context"
-      title={t("inspector.modelIntrospection.dashboard.runtimeContext.title")}
-      description={t("inspector.modelIntrospection.dashboard.runtimeContext.description")}
-    >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <StatCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            hint={stat.hint}
-            accent={stat.accent}
-          />
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
 type TechnicalLayerPanelProps = Readonly<{
   snapshot: IntrospectionSnapshot | null;
   graphLayerOpen: boolean;
   analysisActive: boolean;
-  graphDrilldownOpen: boolean;
   selectedGraphNodeIdEffective: string | null;
   selectedGraphNode: { id: string; label: string; kind: string; status: string } | null;
   selectedGraphNodeDetails: GraphNodeDetails;
   selectedGraphTypeHint: string;
   onToggleGraphLayer: () => void;
-  onToggleGraphView: () => void;
   onSelectGraphNode: (id: string | null) => void;
   t: (key: string) => string;
 }>;
@@ -229,13 +194,11 @@ function TechnicalLayerPanel({
   snapshot,
   graphLayerOpen,
   analysisActive,
-  graphDrilldownOpen,
   selectedGraphNodeIdEffective,
   selectedGraphNode,
   selectedGraphNodeDetails,
   selectedGraphTypeHint,
   onToggleGraphLayer,
-  onToggleGraphView,
   onSelectGraphNode,
   t,
 }: TechnicalLayerPanelProps) {
@@ -267,8 +230,6 @@ function TechnicalLayerPanel({
           <GraphPanel
             snapshot={snapshot}
             analysisActive={analysisActive}
-            graphViewOpen={graphDrilldownOpen}
-            onToggleGraphView={onToggleGraphView}
             selectedGraphNodeId={selectedGraphNodeIdEffective}
             onSelectGraphNode={onSelectGraphNode}
             selectedGraphNode={selectedGraphNode}
@@ -276,11 +237,6 @@ function TechnicalLayerPanel({
             typeHintText={selectedGraphTypeHint}
             title={t("inspector.modelIntrospection.dashboard.graph.title")}
             description={t("inspector.modelIntrospection.dashboard.graph.description")}
-            drilldownTitle={t("inspector.modelIntrospection.dashboard.graph.drilldownTitle")}
-            hideLabel={t("inspector.modelIntrospection.dashboard.graph.hide")}
-            openLabel={t("inspector.modelIntrospection.dashboard.graph.open")}
-            stateOpenLabel={t("inspector.modelIntrospection.dashboard.graph.stateOpen")}
-            stateCollapsedLabel={t("inspector.modelIntrospection.dashboard.graph.stateCollapsed")}
           />
         </div>
       ) : null}
@@ -339,10 +295,24 @@ function buildInternalsCapabilityRow(
     saliency_proxy_logits: "recovered via logits proxy",
   };
   const mappedReason = reasonMap[rawReason] ?? rawReason.replaceAll("_", " ");
+  const rawClass = String(capability?.availability_class || "").trim();
+  let availabilityClass: InternalsCapabilityRow["availabilityClass"];
+  if (rawClass === "native_ok" || rawClass === "proxy_ok" || rawClass === "unavailable" || rawClass === "failed") {
+    availabilityClass = rawClass;
+  } else if (available && mappedReason === "ok") {
+    availabilityClass = "native_ok";
+  } else if (available) {
+    availabilityClass = "proxy_ok";
+  } else if (mappedReason === "probe failed") {
+    availabilityClass = "failed";
+  } else {
+    availabilityClass = "unavailable";
+  }
   return {
     label,
     available,
     reason: available && mappedReason === "ok" ? "ok" : mappedReason,
+    availabilityClass,
   };
 }
 
@@ -358,6 +328,113 @@ function buildProbeLimitsLabel(limits: {
     return "limits: n/a";
   }
   return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
+}
+
+const RESULT_STEP_DEFS = [
+  { number: 1, key: "snapshot_before", label: "Snapshot captured", timelineIds: ["snapshot_before"] },
+  { number: 2, key: "request_ready", label: "Prompt prepared", timelineIds: ["request_ready"] },
+  { number: 3, key: "stream_opened", label: "Stream opened", timelineIds: ["stream_opened"] },
+  { number: 4, key: "first_chunk", label: "First content chunk", timelineIds: ["first_chunk"] },
+  { number: 5, key: "response_finalized", label: "Response assembled", timelineIds: ["response_finalized"] },
+  { number: 6, key: "snapshot_after", label: "Snapshot refreshed", timelineIds: ["snapshot_after"] },
+  { number: 7, key: "logit_lens_probe", label: "Logit lens probe", timelineIds: ["logit_lens_probe", "internals:logit_lens_probe"] },
+  { number: 8, key: "attention_probe", label: "Attention probe", timelineIds: ["attention_probe", "internals:attention_probe"] },
+  { number: 9, key: "saliency_probe", label: "Saliency probe", timelineIds: ["saliency_probe", "internals:saliency_probe"] },
+] as const;
+
+function getStepTone(status: ResultStepStatus): ResultStepTone {
+  if (status === "done") return "success";
+  if (status === "running") return "warning";
+  if (status === "failed") return "danger";
+  return "neutral";
+}
+
+function resolveResultStepMarker(
+  stepKey: string,
+  timeline: AnalysisTimelineEntry[],
+): ResultStepMarker | null {
+  const def = RESULT_STEP_DEFS.find((item) => item.key === stepKey);
+  if (!def) return null;
+  const matches = timeline.filter((entry) => def.timelineIds.includes(entry.id));
+  const hasFailed = matches.some((entry) => entry.status === "failed");
+  const hasRunning = matches.some((entry) => entry.status === "running");
+  const hasDone = matches.some((entry) => entry.status === "done");
+  const status: ResultStepStatus = hasFailed
+    ? "failed"
+    : hasRunning
+      ? "running"
+      : hasDone
+        ? "done"
+        : "pending";
+  return {
+    number: def.number,
+    key: def.key,
+    label: def.label,
+    status,
+    tone: getStepTone(status),
+  };
+}
+
+function ResultStepHeader({ marker }: { marker: ResultStepMarker | null }) {
+  if (!marker) return null;
+  const materializing = marker.status === "pending" || marker.status === "running";
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <Badge tone={marker.tone}>
+        krok {marker.number} · {marker.label}
+      </Badge>
+      <Badge tone="neutral">{marker.status}</Badge>
+      {materializing ? (
+        <Badge tone="neutral">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          materializacja kroku
+        </Badge>
+      ) : null}
+    </div>
+  );
+}
+
+function getStepMaterializationClass(marker: ResultStepMarker | null): string {
+  if (!marker) {
+    return "transition-all duration-300";
+  }
+  if (marker.status === "pending" || marker.status === "running") {
+    return "transition-all duration-300 opacity-95";
+  }
+  return "transition-all duration-300";
+}
+
+function isStepMaterializing(marker: ResultStepMarker | null): boolean {
+  return marker?.status === "pending" || marker?.status === "running";
+}
+
+function ResultStepContainer({
+  marker,
+  className,
+  children,
+}: Readonly<{
+  marker: ResultStepMarker | null;
+  className?: string;
+  children: ReactNode;
+}>) {
+  const materializing = isStepMaterializing(marker);
+  return (
+    <div
+      className={cn("relative", className, getStepMaterializationClass(marker))}
+      aria-busy={materializing}
+      data-step-materializing={materializing ? "true" : "false"}
+    >
+      <div className={cn(materializing && "blur-[1.25px] saturate-75")}>{children}</div>
+      {materializing ? (
+        <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/10 bg-black/20">
+          <div className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-2 py-1 text-xs text-zinc-200">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            materializacja kroku
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function resolveInternalsAvailability(
@@ -426,16 +503,6 @@ function buildRunTrends(payload: unknown): RunTrends | null {
         ? candidate.avg_noise_ratio
         : null,
   };
-}
-
-function resolveSummaryStats(
-  snapshot: IntrospectionSnapshot | null,
-  t: (key: string) => string,
-): SummaryCard[] {
-  if (!snapshot) {
-    return [];
-  }
-  return buildSummaryCards({ snapshot, t });
 }
 
 function resolveAnalysisTimeline(
@@ -557,57 +624,6 @@ function buildOperatorChecklist(args: {
   ];
 }
 
-function buildSummaryCards(args: {
-  snapshot: IntrospectionSnapshot;
-  t: (key: string) => string;
-}): SummaryCard[] {
-  const { snapshot, t } = args;
-  const packages = snapshot.packages;
-  const availableCount = snapshot.available_packages.length;
-  const missingCount = snapshot.missing_packages.length;
-  const driftCount = snapshot.runtime_drift.issues.length;
-  const probeStatus = snapshot.probe?.status ?? "n/a";
-  const probeProfile = snapshot.probe?.profile ?? "n/a";
-  return [
-    {
-      label: t("inspector.modelIntrospection.summary.runtime"),
-      value: snapshot.summary.runtime_label,
-      hint: snapshot.summary.provider,
-      accent: "violet",
-    },
-    {
-      label: t("inspector.modelIntrospection.summary.packages"),
-      value: formatCount(availableCount),
-      hint: `${formatCount(Object.keys(packages).length)} total`,
-      accent: "green",
-    },
-    {
-      label: t("inspector.modelIntrospection.summary.missing"),
-      value: formatCount(missingCount),
-      hint: snapshot.runtime_drift.drift_detected
-        ? `${driftCount} drift issue(s)`
-        : t("inspector.modelIntrospection.dashboard.runtimeContext.clean"),
-      accent: "blue",
-    },
-    {
-      label: t("inspector.modelIntrospection.dashboard.runtimeContext.manager"),
-      value: snapshot.model_manager.available
-        ? t("inspector.modelIntrospection.dashboard.runtimeContext.connected")
-        : t("inspector.modelIntrospection.dashboard.runtimeContext.offline"),
-      hint:
-        snapshot.model_manager.error ??
-        t("inspector.modelIntrospection.dashboard.runtimeContext.readOnly"),
-      accent: "indigo",
-    },
-    {
-      label: t("inspector.modelIntrospection.dashboard.runtimeContext.probe"),
-      value: probeStatus,
-      hint: `profile:${probeProfile}`,
-      accent: "blue",
-    },
-  ];
-}
-
 function buildSnapshotComparison(args: {
   snapshot: IntrospectionSnapshot | null;
   analysisCompleted: boolean;
@@ -696,7 +712,6 @@ function useDashboardDerivedState(args: {
     analysisMechanismEnabled,
     selectedGraphNodeId,
   } = args;
-  const stats = useMemo(() => resolveSummaryStats(snapshot, t), [snapshot, t]);
   const analysisVisible = Boolean(analysisResult?.analysis);
   const analysisRunning = analysisResult?.status === "running";
   const analysisActive = analysisResult?.status === "running";
@@ -721,8 +736,6 @@ function useDashboardDerivedState(args: {
   const analysisProcess = analysisResult?.analysis?.process ?? null;
   const analysisTimelineStepCount =
     analysisResult?.analysis?.timeline_step_count ?? analysisTimeline.length;
-  const analysisTraceStepCount =
-    analysisProcess?.trace_step_count ?? analysisProcess?.step_count ?? 0;
   const analysisTimelineFirstChunk =
     analysisTimeline.find((entry) => entry.id === "first_chunk") ?? null;
   const analysisTimelineResponseFinalized =
@@ -754,22 +767,6 @@ function useDashboardDerivedState(args: {
     streamingLabel: t("inspector.modelIntrospection.dashboard.results.answerStatus.streaming"),
     awaitingLabel: t("inspector.modelIntrospection.dashboard.results.answerStatus.awaiting"),
   });
-  const operatorFinalStatus = resolveOperatorFinalStatus({
-    analysisStatus: analysisResult?.status,
-    analysisVisible,
-  });
-  const operatorFinalStatusTone = getOperatorFinalStatusTone(operatorFinalStatus);
-  const operatorStreamMode = resolveOperatorStreamMode({
-    analysisVisible,
-    chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
-    firstChunkMs: analysisFirstChunkMs,
-  });
-  const operatorStreamModeTone = getOperatorStreamModeTone(operatorStreamMode);
-  const fallbackSignal = resolveFallbackSignal({
-    adapterApplied: analysisProcess?.adapter_applied,
-    adapterId: analysisProcess?.adapter_id,
-  });
-  const fallbackSignalTone = getFallbackSignalTone(fallbackSignal);
   const ragFocus = buildRagFocusModel({
     analysisPrompt: analysisResult?.analysis?.prompt ?? analysisPrompt,
     analysisStatus: analysisResult?.status,
@@ -856,9 +853,6 @@ function useDashboardDerivedState(args: {
     partial: operatorConclusion?.partial,
     t,
   });
-  const operatorRunbookSteps = buildOperatorRunbookSteps(
-    operatorConclusion?.reasonCodes ?? null,
-  );
   const availablePackages = snapshot?.available_packages.length ?? 0;
   const missingPackages = snapshot?.missing_packages.length ?? 0;
   const totalPackages = availablePackages + missingPackages;
@@ -915,7 +909,6 @@ function useDashboardDerivedState(args: {
     [selectedGraphNode],
   );
   return {
-    stats,
     analysisVisible,
     analysisActive,
     analysisComparison,
@@ -923,7 +916,6 @@ function useDashboardDerivedState(args: {
     analysisHighlights,
     analysisTimeline,
     analysisProcess,
-    analysisTraceStepCount,
     analysisFirstChunkMs,
     analysisStepCount,
     analysisTraceId,
@@ -931,12 +923,6 @@ function useDashboardDerivedState(args: {
     analysisPhase,
     analysisAnswerTone,
     answerStatusLabel,
-    operatorFinalStatus,
-    operatorFinalStatusTone,
-    operatorStreamMode,
-    operatorStreamModeTone,
-    fallbackSignal,
-    fallbackSignalTone,
     ragFocus,
     logitLens,
     attention,
@@ -954,7 +940,6 @@ function useDashboardDerivedState(args: {
     generationProfile,
     runTrends,
     operatorChecklist,
-    operatorRunbookSteps,
     visualMetrics,
     selectedGraphNodeIdEffective,
     selectedGraphNode,
@@ -981,11 +966,8 @@ export function ModelIntrospectionDashboard() {
   });
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [graphLayerOpen, setGraphLayerOpen] = useState(false);
-  const [graphDrilldownOpen, setGraphDrilldownOpen] = useState(true);
-  const [advancedInternalsOpen, setAdvancedInternalsOpen] = useState(false);
 
   const {
-    stats,
     analysisVisible,
     analysisActive,
     analysisComparison,
@@ -993,7 +975,6 @@ export function ModelIntrospectionDashboard() {
     analysisHighlights,
     analysisTimeline,
     analysisProcess,
-    analysisTraceStepCount,
     analysisFirstChunkMs,
     analysisStepCount,
     analysisTraceId,
@@ -1001,12 +982,6 @@ export function ModelIntrospectionDashboard() {
     analysisPhase,
     analysisAnswerTone,
     answerStatusLabel,
-    operatorFinalStatus,
-    operatorFinalStatusTone,
-    operatorStreamMode,
-    operatorStreamModeTone,
-    fallbackSignal,
-    fallbackSignalTone,
     ragFocus,
     logitLens,
     attention,
@@ -1024,7 +999,6 @@ export function ModelIntrospectionDashboard() {
     generationProfile,
     runTrends,
     operatorChecklist,
-    operatorRunbookSteps,
     visualMetrics,
     selectedGraphNodeIdEffective,
     selectedGraphNode,
@@ -1045,7 +1019,6 @@ export function ModelIntrospectionDashboard() {
   }, [loadSnapshot]);
 
   const handleRunAnalysis = useCallback(() => {
-    setAdvancedInternalsOpen(true);
     runAnalysis().catch(() => undefined);
   }, [runAnalysis]);
 
@@ -1059,11 +1032,19 @@ export function ModelIntrospectionDashboard() {
     allInternalsUnavailable,
     anyInternalsAvailable,
   } = resolveInternalsAvailability(attention, saliency, logitLens);
-  const unavailableInternalsRows = internalsCapabilityRows.filter((row) => !row.available);
+  const unavailableInternalsRows = internalsCapabilityRows.filter(
+    (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
+  );
   const proxyInternalsRows = internalsCapabilityRows.filter(
-    (row) => row.available && row.reason !== "ok",
+    (row) => row.availabilityClass === "proxy_ok",
   );
   const availableInternalsCount = internalsCapabilityRows.length - unavailableInternalsRows.length;
+  const internalsProcessing = analysisLoading || analysisStreaming;
+  const responseStepMarker = resolveResultStepMarker("response_finalized", analysisTimeline);
+  const snapshotStepMarker = resolveResultStepMarker("snapshot_after", analysisTimeline);
+  const logitStepMarker = resolveResultStepMarker("logit_lens_probe", analysisTimeline);
+  const attentionStepMarker = resolveResultStepMarker("attention_probe", analysisTimeline);
+  const saliencyStepMarker = resolveResultStepMarker("saliency_probe", analysisTimeline);
 
   return (
     <div className="space-y-6 pb-10">
@@ -1146,37 +1127,24 @@ export function ModelIntrospectionDashboard() {
                   completedLabel: t("inspector.modelIntrospection.dashboard.analysis.completedLabel"),
                 })}
               />
-              <AnalysisLiveResponsePanel
-                analysisStreaming={analysisStreaming}
-                analysisResponse={analysisResponse}
-                answerStatusLabel={answerStatusLabel}
-                waitingTokenLabel={t("inspector.modelIntrospection.dashboard.results.waitingToken")}
-                streamingLabel={t("inspector.modelIntrospection.dashboard.results.streaming")}
-                statusBadgeLabel={t(
-                  `inspector.modelIntrospection.dashboard.analysis.status.${operatorFinalStatus}`,
-                )}
-                statusBadgeTone={operatorFinalStatusTone}
-                streamModeLabel={t(
-                  `inspector.modelIntrospection.dashboard.analysis.streamMode.${operatorStreamMode}`,
-                )}
-                streamModeTone={operatorStreamModeTone}
-                fallbackLabel={t(
-                  `inspector.modelIntrospection.dashboard.analysis.fallback.${fallbackSignal}`,
-                )}
-                fallbackTone={fallbackSignalTone}
-              />
             </div>
           </div>
         </Panel>
       )}
 
-      {analysisVisible && analysisResult?.analysis && snapshot && (
+      {snapshot && (
         <Panel
           eyebrow="// results"
           title={t("inspector.modelIntrospection.dashboard.results.title")}
           description={t("inspector.modelIntrospection.dashboard.results.description")}
         >
-          <div className="mb-4">
+          <div className="relative transition-all duration-300">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,1fr)]">
+          <div className="min-w-0">
+          <ResultStepContainer marker={responseStepMarker} className="mb-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Badge tone="neutral">krok 0 · RAG focus (pre-response)</Badge>
+            </div>
             <RagFocusPanel
               ragFocus={ragFocus}
               title={t("inspector.modelIntrospection.dashboard.results.ragFocus.title")}
@@ -1213,7 +1181,7 @@ export function ModelIntrospectionDashboard() {
                 "inspector.modelIntrospection.dashboard.results.ragFocus.answerLinksEmpty",
               )}
             />
-          </div>
+          </ResultStepContainer>
           <div className="mb-4">
             <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1248,6 +1216,12 @@ export function ModelIntrospectionDashboard() {
                   coverage {availableInternalsCount}/{internalsCapabilityRows.length}
                 </Badge>
                 <Badge tone="neutral">{probeLimitsLabel}</Badge>
+                {internalsProcessing && (
+                  <Badge tone="neutral">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    przetwarzanie internals
+                  </Badge>
+                )}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {unavailableInternalsRows.map((row) => (
@@ -1261,17 +1235,10 @@ export function ModelIntrospectionDashboard() {
                   </Badge>
                 ))}
               </div>
-              <div className="mt-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setAdvancedInternalsOpen((current) => !current)}
-                >
-                  {advancedInternalsOpen ? "Ukryj advanced internals" : "Pokaż advanced internals"}
-                </Button>
-              </div>
             </div>
           </div>
-          <div className="mb-4">
+          <ResultStepContainer marker={logitStepMarker} className="mb-4">
+            <ResultStepHeader marker={logitStepMarker} />
             <LogitLensPanel
               logitLens={logitLens}
               title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
@@ -1322,106 +1289,118 @@ export function ModelIntrospectionDashboard() {
                 "inspector.modelIntrospection.dashboard.results.logitLens.rawTokensUnavailable",
               )}
             />
-          </div>
-          {advancedInternalsOpen && (
-            <>
-              {proxyInternalsRows.length > 0 && (
-                <InternalsNoticeCard
-                  title={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredTitle")}
-                  badgeLabel={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredBadge")}
-                  message={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredMessage")}
-                  tone="neutral"
-                  rows={proxyInternalsRows}
-                  rowsTone="neutral"
-                  rowKeyPrefix="proxy-open"
-                />
-              )}
-              {anyInternalsAvailable && unavailableInternalsRows.length > 0 && (
-                <InternalsNoticeCard
-                  title={t("inspector.modelIntrospection.dashboard.results.internalsPartialTitle")}
-                  message={t("inspector.modelIntrospection.dashboard.results.internalsPartialMessage")}
-                  tone={internalsVerdictTone}
-                  badgeLabel={internalsVerdictLabel}
-                  rows={unavailableInternalsRows}
-                  rowsTone="warning"
-                  rowKeyPrefix="partial"
-                  extraBadge={probeLimitsLabel}
-                />
-              )}
-              {allInternalsUnavailable && (
-                <InternalsNoticeCard
-                  title={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableTitle")}
-                  message={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableMessage")}
-                  tone={internalsVerdictTone}
-                  badgeLabel={internalsVerdictLabel}
-                  rows={unavailableInternalsRows}
-                  rowsTone="warning"
-                  rowKeyPrefix="unavailable"
-                  extraBadge={probeLimitsLabel}
-                />
-              )}
-              <div className="mb-4">
-                <AttentionPanel
-                  attention={attention}
-                  title="Attention Head View"
-                  emptyLabel="Brak danych attention dla bieżącej analizy."
-                  unavailableLabel="Attention probe niedostępny dla bieżącego runu."
-                />
-              </div>
-              <div className="mb-4">
-                <SaliencyPanel
-                  saliency={saliency}
-                  title="Saliency / Attribution"
-                  emptyLabel="Brak danych saliency dla bieżącej analizy."
-                  unavailableLabel="Saliency probe niedostępny dla bieżącego runu."
-                />
-              </div>
-            </>
+          </ResultStepContainer>
+          {proxyInternalsRows.length > 0 && (
+            <InternalsNoticeCard
+              title={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredTitle")}
+              badgeLabel={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredBadge")}
+              message={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredMessage")}
+              tone="neutral"
+              rows={proxyInternalsRows}
+              rowsTone="neutral"
+              rowKeyPrefix="proxy-open"
+            />
           )}
-          <AnalysisResultsPanel
-            analysisResponse={analysisResponse}
-            analysisHighlights={analysisHighlights}
-            answerStatusLabel={answerStatusLabel}
-            analysisAnswerTone={analysisAnswerTone}
-            managerAvailable={snapshot.model_manager.available}
-            eventsCount={analysisResult.analysis.events.length}
-            analysisTimeline={analysisTimeline}
-            analysisProcess={analysisProcess}
-            analysisTraceStepCount={analysisTraceStepCount}
-            analysisTimelineStepCount={analysisStepCount}
-            responseChars={analysisResponse.length}
-            chunkCount={analysisResult.analysis.chunk_count}
-            resultsHighlightsLabel={t("inspector.modelIntrospection.dashboard.results.highlights")}
-            highlightsEmptyLabel={t("inspector.modelIntrospection.dashboard.results.highlightsEmpty")}
-            resultsVerdictLabel={t("inspector.modelIntrospection.dashboard.results.verdict")}
-            resultsVerdictReady={t("inspector.modelIntrospection.dashboard.results.verdictReady")}
-            resultsVerdictPending={t("inspector.modelIntrospection.dashboard.results.verdictPending")}
-            advancedShowLabel={t(
-              "inspector.modelIntrospection.dashboard.results.advancedShow",
-            )}
-            advancedHideLabel={t(
-              "inspector.modelIntrospection.dashboard.results.advancedHide",
-            )}
-            advancedTitle={t("inspector.modelIntrospection.dashboard.results.advancedTitle")}
-            operatorConclusion={operatorConclusion}
-            operatorConclusionLabel={t(
-              "inspector.modelIntrospection.dashboard.results.operatorConclusion",
-            )}
-            operatorConclusionConfidenceLabel={t(
-              "inspector.modelIntrospection.dashboard.results.operatorConfidence",
-            )}
-            operatorConclusionPartialLabel={t(
-              "inspector.modelIntrospection.dashboard.results.operatorPartial",
-            )}
-            streamProfile={analysisResult?.analysis?.stream_profile}
-            evidenceCoverage={evidenceCoverage}
-            inputProfile={inputProfile}
-            generationProfile={generationProfile}
-            runTrends={runTrends}
-            operatorChecklist={operatorChecklist}
-            operatorRunbookSteps={operatorRunbookSteps}
-            internalsVerdict={internalsVerdict}
-          />
+          {anyInternalsAvailable && unavailableInternalsRows.length > 0 && (
+            <InternalsNoticeCard
+              title={t("inspector.modelIntrospection.dashboard.results.internalsPartialTitle")}
+              message={t("inspector.modelIntrospection.dashboard.results.internalsPartialMessage")}
+              tone={internalsVerdictTone}
+              badgeLabel={internalsVerdictLabel}
+              rows={unavailableInternalsRows}
+              rowsTone="warning"
+              rowKeyPrefix="partial"
+              extraBadge={probeLimitsLabel}
+            />
+          )}
+          {allInternalsUnavailable && (
+            <InternalsNoticeCard
+              title={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableTitle")}
+              message={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableMessage")}
+              tone={internalsVerdictTone}
+              badgeLabel={internalsVerdictLabel}
+              rows={unavailableInternalsRows}
+              rowsTone="warning"
+              rowKeyPrefix="unavailable"
+              extraBadge={probeLimitsLabel}
+            />
+          )}
+          <ResultStepContainer marker={attentionStepMarker} className="mb-4">
+            <ResultStepHeader marker={attentionStepMarker} />
+            <AttentionPanel
+              attention={attention}
+              title="Attention Head View"
+              emptyLabel="Brak danych attention dla bieżącej analizy."
+              unavailableLabel="Attention probe niedostępny dla bieżącego runu."
+            />
+          </ResultStepContainer>
+          <ResultStepContainer marker={saliencyStepMarker} className="mb-4">
+            <ResultStepHeader marker={saliencyStepMarker} />
+            <SaliencyPanel
+              saliency={saliency}
+              title="Saliency / Attribution"
+              emptyLabel="Brak danych saliency dla bieżącej analizy."
+              unavailableLabel="Saliency probe niedostępny dla bieżącego runu."
+            />
+          </ResultStepContainer>
+          </div>
+          <div className="min-w-0 xl:sticky xl:top-6 xl:self-start">
+            <ResultStepContainer marker={responseStepMarker} className="mb-4">
+              <AnalysisResultsPanel
+                responseStepLabel={
+                  responseStepMarker
+                    ? `krok ${responseStepMarker.number} · ${responseStepMarker.label}`
+                    : undefined
+                }
+                responseStepStatus={responseStepMarker?.status}
+                snapshotStepLabel={snapshotStepMarker ? `krok ${snapshotStepMarker.number} · ${snapshotStepMarker.label}` : undefined}
+                snapshotStepStatus={snapshotStepMarker?.status}
+                analysisResponse={analysisResponse}
+                analysisHighlights={analysisHighlights}
+                answerStatusLabel={answerStatusLabel}
+                analysisAnswerTone={analysisAnswerTone}
+                managerAvailable={snapshot.model_manager.available}
+                eventsCount={analysisResult?.analysis?.events.length ?? 0}
+                analysisTimeline={analysisTimeline}
+                analysisProcess={analysisProcess}
+                analysisTraceStepCount={analysisStepCount}
+                analysisTimelineStepCount={analysisStepCount}
+                responseChars={analysisResponse.length}
+                chunkCount={analysisResult?.analysis?.chunk_count ?? 0}
+                resultsHighlightsLabel={t("inspector.modelIntrospection.dashboard.results.highlights")}
+                highlightsEmptyLabel={t("inspector.modelIntrospection.dashboard.results.highlightsEmpty")}
+                resultsVerdictLabel={t("inspector.modelIntrospection.dashboard.results.verdict")}
+                resultsVerdictReady={t("inspector.modelIntrospection.dashboard.results.verdictReady")}
+                resultsVerdictPending={t("inspector.modelIntrospection.dashboard.results.verdictPending")}
+                advancedShowLabel={t(
+                  "inspector.modelIntrospection.dashboard.results.advancedShow",
+                )}
+                advancedHideLabel={t(
+                  "inspector.modelIntrospection.dashboard.results.advancedHide",
+                )}
+                advancedTitle={t("inspector.modelIntrospection.dashboard.results.advancedTitle")}
+                operatorConclusion={operatorConclusion}
+                operatorConclusionLabel={t(
+                  "inspector.modelIntrospection.dashboard.results.operatorConclusion",
+                )}
+                operatorConclusionConfidenceLabel={t(
+                  "inspector.modelIntrospection.dashboard.results.operatorConfidence",
+                )}
+                operatorConclusionPartialLabel={t(
+                  "inspector.modelIntrospection.dashboard.results.operatorPartial",
+                )}
+                streamProfile={analysisResult?.analysis?.stream_profile ?? null}
+                evidenceCoverage={evidenceCoverage}
+                inputProfile={inputProfile}
+                generationProfile={generationProfile}
+                runTrends={runTrends}
+                operatorChecklist={operatorChecklist}
+                internalsVerdict={internalsVerdict}
+              />
+            </ResultStepContainer>
+          </div>
+          </div>
+          </div>
         </Panel>
       )}
 
@@ -1438,18 +1417,15 @@ export function ModelIntrospectionDashboard() {
         </div>
       )}
 
-      <RuntimeContextPanel stats={stats} t={t} />
       <TechnicalLayerPanel
         snapshot={snapshot}
         graphLayerOpen={graphLayerOpen}
         analysisActive={analysisActive}
-        graphDrilldownOpen={graphDrilldownOpen}
         selectedGraphNodeIdEffective={selectedGraphNodeIdEffective}
         selectedGraphNode={selectedGraphNode}
         selectedGraphNodeDetails={selectedGraphNodeDetails}
         selectedGraphTypeHint={selectedGraphTypeHint}
         onToggleGraphLayer={() => setGraphLayerOpen((current) => !current)}
-        onToggleGraphView={() => setGraphDrilldownOpen((current) => !current)}
         onSelectGraphNode={setSelectedGraphNodeId}
         t={t}
       />

@@ -34,7 +34,13 @@ def test_model_introspection_analysis_endpoint_skips_by_default() -> None:
     assert payload["success"] is True
     assert snapshot["status"] == "skipped"
     assert snapshot["skipped_reason"] == "live_analysis_disabled"
-    assert snapshot["analysis"]["timeline"][0]["label"] == "Live analysis disabled"
+    timeline = snapshot["analysis"]["timeline"]
+    assert timeline[0]["id"] == "snapshot_before"
+    assert timeline[0]["status"] == "done"
+    assert timeline[2]["id"] == "stream_opened"
+    assert timeline[2]["label"] == "Stream opened"
+    assert timeline[2]["status"] == "skipped"
+    assert timeline[2]["reason_code"] == "live_analysis_disabled"
 
 
 def test_model_introspection_analysis_endpoint_exposes_timeline() -> None:
@@ -53,8 +59,13 @@ def test_model_introspection_analysis_endpoint_exposes_timeline() -> None:
     assert response.status_code == 200
     payload = response.json()
     analysis = payload["snapshot"]["analysis"]
-    assert analysis["timeline"][0]["label"] == "Live analysis disabled"
-    assert analysis["timeline"][0]["status"] == "skipped"
+    timeline = analysis["timeline"]
+    assert timeline[0]["id"] == "snapshot_before"
+    assert timeline[0]["status"] == "done"
+    assert timeline[2]["id"] == "stream_opened"
+    assert timeline[2]["label"] == "Stream opened"
+    assert timeline[2]["status"] == "skipped"
+    assert timeline[2]["reason_code"] == "live_analysis_disabled"
 
 
 def test_model_introspection_stream_endpoint_forwards_sse() -> None:

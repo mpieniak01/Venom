@@ -480,6 +480,148 @@ function createStreamingAnalysisResponse() {
   );
 }
 
+function makeStableScreenCompletedPayload() {
+  const snapshot = makeSnapshotBeforeFixture();
+  const snapshotAfter = makeSnapshotAfterFixture();
+  return {
+    analysis_enabled: true,
+    status: "completed",
+    snapshot,
+    snapshot_after: snapshotAfter,
+    analysis: {
+      prompt: "Co to jest slonce?",
+      response:
+        "Slonce to gwiazda, ktora jest centrum naszego Ukladu Slonecznego i najwazniejszym punktem dla zycia na Ziemi.",
+      chunk_count: 1,
+      events: ["start", "content", "done"],
+      timeline_step_count: 9,
+      timeline: [
+        { id: "snapshot_before", label: "Snapshot captured", status: "done", detail: snapshot.runtime.label, at_ms: 0, path: "answer_path", progress: 0 },
+        { id: "request_ready", label: "Prompt prepared", status: "done", detail: "Co to jest slonce?", at_ms: 184.8, path: "answer_path", progress: 10 },
+        { id: "stream_opened", label: "Stream opened", status: "done", detail: "3 event(s) observed", at_ms: 185.5, path: "answer_path", progress: 20 },
+        { id: "first_chunk", label: "First content chunk", status: "done", detail: "1 chunk(s) total", at_ms: 12274.1, path: "answer_path", progress: 40 },
+        { id: "response_finalized", label: "Response assembled", status: "done", detail: "425 chars", at_ms: 13157.6, path: "answer_path", progress: 85 },
+        { id: "internals:logit_lens_probe", label: "Logit lens probe", status: "done", detail: "4 checkpoint(s) · 449.6 ms", at_ms: 13157.6, path: "internals_path", progress: 90 },
+        { id: "internals:attention_probe", label: "Attention probe", status: "done", detail: "ok · 286.6 ms", at_ms: 13157.6, path: "internals_path", progress: 93 },
+        { id: "internals:saliency_probe", label: "Saliency probe", status: "done", detail: "ok · 83.9 ms", at_ms: 13157.6, path: "internals_path", progress: 96 },
+        { id: "snapshot_after", label: "Snapshot refreshed", status: "done", detail: "8 packages available", at_ms: 13354.4, path: "answer_path", progress: 100 },
+      ],
+      elapsed_ms: 13157.6,
+      provider: snapshot.runtime.provider,
+      model: snapshot.runtime.model,
+      runtime_label: snapshot.runtime.label,
+      process: {
+        request_id: "53c62b8b-1234-5678-9abc-def012345678",
+        status: "COMPLETED",
+        step_count: 4,
+        trace_step_count: 4,
+        steps: [],
+        first_chunk_ms: 12088,
+        response_chunks: 1,
+        response_chars: 425,
+        total_ms: 13157.6,
+      },
+      rag_focus: {
+        source: "runtime_trace",
+        query: "Co to jest slonce?",
+        entities: [{ id: "e1", label: "slonce", kind: "query_token", active: true }],
+        evidence_edges: [{ id: "edge:1", from: "query", to: "response:1", label: "context signal", active: true }],
+        active_entity_ids: ["e1"],
+        grounding_score: 0.9,
+        answer_evidence_links: [{ id: "link:1", fragment: "Slonce to gwiazda.", edge_ids: ["edge:1"], entity_ids: ["e1"] }],
+      },
+      logit_lens: {
+        source: "probe_runtime",
+        status: "ok",
+        code: "logit_lens_proxy",
+        message: null,
+        runtime_label: snapshot.runtime.label,
+        input_tokens: ["Co", "to", "jest", "slonce?"],
+        output_tokens: ["Slonce", "to", "gwiazda"],
+        raw_input_tokens: ["▁Co", "▁to", "▁jest", "▁s", "ło", "ń", "ce", "?"],
+        raw_output_tokens: ["**", "▁Słońce", "▁to", "▁gwiazda"],
+        checkpoints: [
+          {
+            id: "cp_25",
+            percent: 25,
+            layer: 4,
+            top_k: [
+              { token: "式", raw_token: "式", token_index: 0, score: 6.094 },
+              { token: "<<-", raw_token: "<<-", token_index: 1, score: 6.031 },
+            ],
+            top_token: "式",
+            confidence: 0.22,
+            changed: false,
+          },
+        ],
+        signals: { early_unstable: true, late_stabilized: true, low_confidence_path: true },
+        interpretability: { interpretable: false, confidence_band: "low", token_noise_ratio: 0, readable_top_tokens: 0, total_top_tokens: 10 },
+        diagnostics: { elapsed_ms: 449.6 },
+      },
+      attention: {
+        source: "probe_runtime",
+        status: "ok",
+        code: "attention_proxy_logits",
+        message: "recovered via logits proxy",
+        runtime_label: snapshot.runtime.label,
+        tokens: ["Co", "to"],
+        layers: [{ layer: 0, heads: [{ head: 0, top_links: [{ from_index: 0, to_index: 1, from_token: "?", to_token: "?", weight: 61.75 }] }] }],
+        diagnostics: { elapsed_ms: 286.6 },
+      },
+      saliency: {
+        source: "probe_runtime",
+        status: "ok",
+        code: "saliency_proxy_logits",
+        message: "recovered via logits proxy",
+        runtime_label: snapshot.runtime.label,
+        method: "logits_proxy",
+        target_output_token_index: 0,
+        target_output_token: "Slonce",
+        token_weights: [{ token: "автоматлары", token_index: 0, weight: 42.75 }],
+        diagnostics: { elapsed_ms: 83.9 },
+      },
+      analysis_capabilities: {
+        attention: { available: true, source: "probe_runtime", status: "ok", reason: "attention_proxy_logits" },
+        saliency: { available: true, source: "probe_runtime", status: "ok", reason: "saliency_proxy_logits" },
+        logit_lens: { available: true, source: "probe_runtime", status: "ok", reason: "ok" },
+        available_count: 3,
+        total_count: 3,
+        probe_profile: "dev",
+        probe_enabled: true,
+        probe_healthy: true,
+        runtime_supported: true,
+        endpoint_configured: true,
+        model_whitelisted: true,
+        limits: { timeout_seconds: 25, max_attempts: 2, max_top_k: 32, max_layer_count: 8, max_head_count: 32, max_prompt_tokens: 1024 },
+        internals_verdict: "partial",
+      },
+    },
+  };
+}
+
+function createStableScreenStreamingResponse() {
+  const encoder = new TextEncoder();
+  const donePayload = makeStableScreenCompletedPayload();
+  const events = [
+    { delayMs: 0, payload: `event: analysis_start\ndata: ${JSON.stringify(makeAnalysisRunningPayload())}\n\n` },
+    { delayMs: 0, payload: "event: start\ndata: {}\n\n" },
+    { delayMs: 0, payload: 'event: content\ndata: {"text":"Slonce to gwiazda."}\n\n' },
+    { delayMs: 0, payload: "event: done\ndata: {}\n\n" },
+    { delayMs: 0, payload: `event: analysis_done\ndata: ${JSON.stringify(donePayload)}\n\n` },
+  ];
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const event of events) {
+          controller.enqueue(encoder.encode(event.payload));
+        }
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
+  );
+}
+
 beforeEach(() => {
   globalThis.window.localStorage.setItem(mechanismStorageKey, "true");
   globalThis.fetch = async (input: RequestInfo | URL) => {
@@ -686,9 +828,6 @@ describe("ModelIntrospectionDashboard", () => {
         ),
       );
     });
-    assert.ok(
-      screen.getAllByText("gemma-4-E2B-it · multi_runtime @ localhost:8014").length >= 1,
-    );
     assert.ok(screen.getByRole("link", { name: "Open Knowledge Graph" }));
     assert.ok(screen.getByLabelText("Prompt"));
     const technicalLayerToggle = screen.getByRole("button", {
@@ -713,7 +852,8 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText("Snapshot captured"));
       assert.ok(screen.getByText("Prompt prepared"));
       assert.ok(screen.getByText("First content chunk"));
-      assert.ok(screen.getByText("typing..."));
+      assert.ok(screen.getByText("przetwarzanie internals"));
+      assert.ok(screen.getAllByText("materializacja kroku").length >= 1);
       assert.ok(screen.getAllByText(/Slonce to/i).length >= 1);
     });
 
@@ -732,20 +872,20 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText("Presentation highlights"));
       assert.ok(screen.getByText("Model verdict"));
       assert.ok(screen.getByText("Process telemetry"));
-      assert.ok(screen.getByText("trace steps 4"));
+      assert.ok(screen.getByText("trace steps 7"));
       assert.ok(screen.getByText("process steps 7"));
       assert.ok(screen.getByText("Snapshot comparison"));
       assert.ok(screen.getByText("Before"));
       assert.ok(screen.getByText("After"));
       assert.ok(screen.getByText("Delta"));
-      assert.ok(screen.getAllByText("Slonce to gwiazda.").length >= 2);
+      assert.ok(screen.getAllByText("Slonce to gwiazda.").length >= 1);
     });
 
     await waitFor(() => {
       assert.ok(screen.getByText("Graph view"));
-      assert.ok(screen.getAllByText("Graph drilldown").length >= 2);
-      assert.ok(screen.getAllByText("Relations").length >= 2);
-      assert.ok(screen.getAllByText("captum").length >= 2);
+      assert.ok(screen.getAllByText("Graph drilldown").length >= 1);
+      assert.ok(screen.getAllByText("Relations").length >= 1);
+      assert.ok(screen.getAllByText("captum").length >= 1);
     });
   });
 
@@ -777,6 +917,72 @@ describe("ModelIntrospectionDashboard", () => {
     );
     await waitFor(() => {
       assert.ok(screen.getByText(/▁Co · ▁to · ▁jest/));
+    });
+  });
+
+  it("keeps stable-screen contract from PR230 without regressions", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes("/api/v1/models/introspection")) {
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }
+      if (url.includes("/api/v1/models/introspection/analyze/stream")) {
+        return createStableScreenStreamingResponse();
+      }
+      return new Response(JSON.stringify({ success: true, snapshot: makeSnapshotBeforeFixture() }), {
+        status: 200,
+      });
+    };
+
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByText("1 chunk(s) · 9 step(s) · completed"));
+      assert.ok(screen.getAllByText(/Advanced internals/i).length >= 1);
+      assert.ok(screen.getAllByText(/internals partial/i).length >= 1);
+      assert.ok(screen.getAllByText(/coverage 3\/3/i).length >= 1);
+      assert.ok(screen.getAllByText(/attention: recovered via logits proxy/i).length >= 1);
+      assert.ok(screen.getAllByText(/saliency: recovered via logits proxy/i).length >= 1);
+      assert.ok(screen.getByText(/token flow/i));
+      assert.ok(screen.getByText(/checkpoints/i));
+      assert.ok(screen.getByText(/25% · layer 4/i));
+      assert.ok(screen.getAllByText(/Logit lens probe/i).length >= 1);
+      assert.ok(screen.getAllByText(/Attention probe/i).length >= 1);
+      assert.ok(screen.getAllByText(/Saliency probe/i).length >= 1);
+      assert.equal(screen.queryByText(/Ukryj advanced internals/i), null);
+      assert.equal(screen.queryByText(/Pokaż advanced internals/i), null);
+    });
+
+    await waitFor(() => {
+      const resultsPanel = screen.getByText("Analysis results").closest("section");
+      assert.ok(resultsPanel);
+      const content = resultsPanel.textContent ?? "";
+      const step0 = content.indexOf("krok 0 · RAG focus (pre-response)");
+      const step5 = content.indexOf("krok 5 · Response assembled");
+      const step6 = content.indexOf("krok 6 · Snapshot refreshed");
+      const step7 = content.indexOf("krok 7 · Logit lens probe");
+      const step8 = content.indexOf("krok 8 · Attention probe");
+      const step9 = content.indexOf("krok 9 · Saliency probe");
+      assert.ok(step0 >= 0);
+      assert.ok(step5 >= 0);
+      assert.ok(step6 >= 0);
+      assert.ok(step7 >= 0);
+      assert.ok(step8 >= 0);
+      assert.ok(step9 >= 0);
+      assert.ok(step0 < step5);
+      assert.ok(step7 < step8);
+      assert.ok(step8 < step9);
     });
   });
 });

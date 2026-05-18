@@ -852,8 +852,12 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText("Snapshot captured"));
       assert.ok(screen.getByText("Prompt prepared"));
       assert.ok(screen.getByText("First content chunk"));
-      assert.ok(screen.getByText("przetwarzanie internals"));
-      assert.ok(screen.getAllByText("materializacja kroku").length >= 1);
+      assert.ok(
+        screen.getByText(/przetwarzanie internals|internals processing/i),
+      );
+      assert.ok(
+        screen.getAllByText(/materializacja kroku|step materialization/i).length >= 1,
+      );
       assert.ok(screen.getAllByText(/Slonce to/i).length >= 1);
     });
 
@@ -968,19 +972,19 @@ describe("ModelIntrospectionDashboard", () => {
       const resultsPanel = screen.getByText("Analysis results").closest("section");
       assert.ok(resultsPanel);
       const content = resultsPanel.textContent ?? "";
-      const step0 = content.indexOf("krok 0 · RAG focus (pre-response)");
-      const step5 = content.indexOf("krok 5 · Response assembled");
-      const step6 = content.indexOf("krok 6 · Snapshot refreshed");
-      const step7 = content.indexOf("krok 7 · Logit lens probe");
-      const step8 = content.indexOf("krok 8 · Attention probe");
-      const step9 = content.indexOf("krok 9 · Saliency probe");
-      assert.ok(step0 >= 0);
+      const step2 = content.indexOf("step 2 · Prompt prepared");
+      const step5 = content.indexOf("step 5 · Response assembled");
+      const step6 = content.indexOf("step 6 · Snapshot refreshed");
+      const step7 = content.indexOf("step 7 · Logit lens probe");
+      const step8 = content.indexOf("step 8 · Attention probe");
+      const step9 = content.indexOf("step 9 · Saliency probe");
+      assert.ok(step2 >= 0);
       assert.ok(step5 >= 0);
       assert.ok(step6 >= 0);
       assert.ok(step7 >= 0);
       assert.ok(step8 >= 0);
       assert.ok(step9 >= 0);
-      assert.ok(step0 < step5);
+      assert.ok(step2 < step5);
       assert.ok(step7 < step8);
       assert.ok(step8 < step9);
     });

@@ -618,6 +618,8 @@ export const en = {
         results: {
           title: "Analysis results",
           description: "Highlights, verdict and process telemetry are grouped here.",
+          stepPrefix: "step",
+          stepMaterializing: "step materialization",
           answer: "Answer",
           waitingToken: "Waiting for first streamed token...",
           streaming: "Streaming live from the model",
@@ -789,6 +791,33 @@ export const en = {
             normalizedAria: "Switch to normalized token view",
             rawAria: "Switch to raw token view",
             rawTokensUnavailable: "Raw output tokens are unavailable in the runtime contract.",
+          },
+          steps: {
+            snapshotBefore: "Snapshot captured",
+            requestReady: "Prompt prepared",
+            streamOpened: "Stream opened",
+            firstChunk: "First content chunk",
+            responseFinalized: "Response assembled",
+            snapshotAfter: "Snapshot refreshed",
+            logitLensProbe: "Logit lens probe",
+            attentionProbe: "Attention probe",
+            saliencyProbe: "Saliency probe",
+          },
+          attention: {
+            title: "Attention Head View",
+            empty: "No attention data for this analysis run.",
+            unavailable: "Attention probe unavailable for this run.",
+          },
+          saliency: {
+            title: "Saliency / Attribution",
+            empty: "No saliency data for this analysis run.",
+            unavailable: "Saliency probe unavailable for this run.",
+          },
+          internals: {
+            title: "Advanced internals",
+            description:
+              "Attention and Saliency are costly opt-in analyses. They may increase response time and are constrained by runtime/probe limits.",
+            processing: "internals processing",
           },
           internalsRecoveredTitle: "Probe internals recovered",
           internalsRecoveredBadge: "proxy path active",

@@ -70,7 +70,7 @@ def _activate_model(
     base_url: str, target: MatrixTarget, *, token: str | None
 ) -> tuple[bool, dict[str, Any]]:
     if not target.runtime:
-        return True, {"message": "activation skipped (runtime not provided)"}
+        return False, {"message": "activation skipped (runtime not provided)"}
     payload: dict[str, Any] = {
         "name": target.name,
         "runtime": target.runtime,
@@ -129,7 +129,7 @@ def main() -> int:
         "google/gemma-4-E2B-it:vllm",
         "qwen3.5:latest:ollama",
     ]
-    targets = [_parse_target(raw) for raw in targets_raw]
+    targets: list[MatrixTarget] = []
     base_url = str(args.base_url).rstrip("/")
     output_json = Path(args.output_json)
     output_json.parent.mkdir(parents=True, exist_ok=True)
@@ -140,6 +140,11 @@ def main() -> int:
         "targets": [],
         "errors": [],
     }
+    for raw in targets_raw:
+        try:
+            targets.append(_parse_target(raw))
+        except ValueError as exc:
+            report["errors"].append(f"invalid_target:{raw}:{exc}")
 
     for target in targets:
         entry: dict[str, Any] = {

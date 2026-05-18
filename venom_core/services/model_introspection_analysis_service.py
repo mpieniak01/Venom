@@ -678,7 +678,17 @@ def _capability_from_probe_payload(payload: dict[str, Any] | None) -> dict[str, 
         availability_class = "native_ok"
     elif available and proxy:
         availability_class = "proxy_ok"
-    elif status == "failed" or reason in {"probe_failed", "failed"}:
+    elif (
+        status == "failed"
+        or reason
+        in {
+            "probe_failed",
+            "failed",
+            "runtime_error",
+            "probe_transport_error",
+        }
+        or reason.startswith("probe_timeout")
+    ):
         availability_class = "failed"
     else:
         availability_class = "unavailable"

@@ -92,7 +92,7 @@ type ResultStepStatus = "done" | "running" | "pending" | "failed";
 type ResultStepMarker = {
   number: number;
   key: string;
-  label: string;
+  labelKey: string;
   status: ResultStepStatus;
   tone: ResultStepTone;
 };
@@ -331,15 +331,60 @@ function buildProbeLimitsLabel(limits: {
 }
 
 const RESULT_STEP_DEFS = [
-  { number: 1, key: "snapshot_before", label: "Snapshot captured", timelineIds: ["snapshot_before"] },
-  { number: 2, key: "request_ready", label: "Prompt prepared", timelineIds: ["request_ready"] },
-  { number: 3, key: "stream_opened", label: "Stream opened", timelineIds: ["stream_opened"] },
-  { number: 4, key: "first_chunk", label: "First content chunk", timelineIds: ["first_chunk"] },
-  { number: 5, key: "response_finalized", label: "Response assembled", timelineIds: ["response_finalized"] },
-  { number: 6, key: "snapshot_after", label: "Snapshot refreshed", timelineIds: ["snapshot_after"] },
-  { number: 7, key: "logit_lens_probe", label: "Logit lens probe", timelineIds: ["logit_lens_probe", "internals:logit_lens_probe"] },
-  { number: 8, key: "attention_probe", label: "Attention probe", timelineIds: ["attention_probe", "internals:attention_probe"] },
-  { number: 9, key: "saliency_probe", label: "Saliency probe", timelineIds: ["saliency_probe", "internals:saliency_probe"] },
+  {
+    number: 1,
+    key: "snapshot_before",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.snapshotBefore",
+    timelineIds: ["snapshot_before"],
+  },
+  {
+    number: 2,
+    key: "request_ready",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.requestReady",
+    timelineIds: ["request_ready"],
+  },
+  {
+    number: 3,
+    key: "stream_opened",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.streamOpened",
+    timelineIds: ["stream_opened"],
+  },
+  {
+    number: 4,
+    key: "first_chunk",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.firstChunk",
+    timelineIds: ["first_chunk"],
+  },
+  {
+    number: 5,
+    key: "response_finalized",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.responseFinalized",
+    timelineIds: ["response_finalized"],
+  },
+  {
+    number: 6,
+    key: "snapshot_after",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.snapshotAfter",
+    timelineIds: ["snapshot_after"],
+  },
+  {
+    number: 7,
+    key: "logit_lens_probe",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.logitLensProbe",
+    timelineIds: ["logit_lens_probe", "internals:logit_lens_probe"],
+  },
+  {
+    number: 8,
+    key: "attention_probe",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.attentionProbe",
+    timelineIds: ["attention_probe", "internals:attention_probe"],
+  },
+  {
+    number: 9,
+    key: "saliency_probe",
+    labelKey: "inspector.modelIntrospection.dashboard.results.steps.saliencyProbe",
+    timelineIds: ["saliency_probe", "internals:saliency_probe"],
+  },
 ] as const;
 
 function getStepTone(status: ResultStepStatus): ResultStepTone {
@@ -369,25 +414,39 @@ function resolveResultStepMarker(
   return {
     number: def.number,
     key: def.key,
-    label: def.label,
+    labelKey: def.labelKey,
     status,
     tone: getStepTone(status),
   };
 }
 
-function ResultStepHeader({ marker }: { marker: ResultStepMarker | null }) {
+function formatStepLabel(
+  t: (key: string) => string,
+  marker: ResultStepMarker | null,
+): string | undefined {
+  if (!marker) {
+    return undefined;
+  }
+  return `${t("inspector.modelIntrospection.dashboard.results.stepPrefix")} ${marker.number} · ${t(marker.labelKey)}`;
+}
+
+function ResultStepHeader({
+  marker,
+  t,
+}: Readonly<{
+  marker: ResultStepMarker | null;
+  t: (key: string) => string;
+}>) {
   if (!marker) return null;
   const materializing = marker.status === "pending" || marker.status === "running";
   return (
     <div className="mb-2 flex items-center gap-2">
-      <Badge tone={marker.tone}>
-        krok {marker.number} · {marker.label}
-      </Badge>
+      <Badge tone={marker.tone}>{formatStepLabel(t, marker)}</Badge>
       <Badge tone="neutral">{marker.status}</Badge>
       {materializing ? (
         <Badge tone="neutral">
           <Loader2 className="h-3 w-3 animate-spin" />
-          materializacja kroku
+          {t("inspector.modelIntrospection.dashboard.results.stepMaterializing")}
         </Badge>
       ) : null}
     </div>
@@ -412,10 +471,12 @@ function ResultStepContainer({
   marker,
   className,
   children,
+  t,
 }: Readonly<{
   marker: ResultStepMarker | null;
   className?: string;
   children: ReactNode;
+  t: (key: string) => string;
 }>) {
   const materializing = isStepMaterializing(marker);
   return (
@@ -429,7 +490,7 @@ function ResultStepContainer({
         <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/10 bg-black/20">
           <div className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-2 py-1 text-xs text-zinc-200">
             <Loader2 className="h-3 w-3 animate-spin" />
-            materializacja kroku
+            {t("inspector.modelIntrospection.dashboard.results.stepMaterializing")}
           </div>
         </div>
       ) : null}
@@ -1040,6 +1101,7 @@ export function ModelIntrospectionDashboard() {
   );
   const availableInternalsCount = internalsCapabilityRows.length - unavailableInternalsRows.length;
   const internalsProcessing = analysisLoading || analysisStreaming;
+  const ragStepMarker = resolveResultStepMarker("request_ready", analysisTimeline);
   const responseStepMarker = resolveResultStepMarker("response_finalized", analysisTimeline);
   const snapshotStepMarker = resolveResultStepMarker("snapshot_after", analysisTimeline);
   const logitStepMarker = resolveResultStepMarker("logit_lens_probe", analysisTimeline);
@@ -1141,10 +1203,8 @@ export function ModelIntrospectionDashboard() {
           <div className="relative transition-all duration-300">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,1fr)]">
           <div className="min-w-0">
-          <ResultStepContainer marker={responseStepMarker} className="mb-4">
-            <div className="mb-2 flex items-center gap-2">
-              <Badge tone="neutral">krok 0 · RAG focus (pre-response)</Badge>
-            </div>
+          <ResultStepContainer marker={ragStepMarker} className="mb-4" t={t}>
+            <ResultStepHeader marker={ragStepMarker} t={t} />
             <RagFocusPanel
               ragFocus={ragFocus}
               title={t("inspector.modelIntrospection.dashboard.results.ragFocus.title")}
@@ -1185,14 +1245,16 @@ export function ModelIntrospectionDashboard() {
           <div className="mb-4">
             <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-wide text-amber-100">Advanced internals</p>
+                <p className="text-xs uppercase tracking-wide text-amber-100">
+                  {t("inspector.modelIntrospection.dashboard.results.internals.title")}
+                </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
                   <Badge tone="warning">{resolveProbeBudgetLabel(internalsProbeElapsedMs)}</Badge>
                 </div>
               </div>
               <p className="mt-2 text-sm text-amber-50/90">
-                Attention i Saliency to kosztowna analiza opt-in. Może wydłużać odpowiedź i podlega limitom runtime/probe.
+                {t("inspector.modelIntrospection.dashboard.results.internals.description")}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge tone="neutral">
@@ -1219,7 +1281,7 @@ export function ModelIntrospectionDashboard() {
                 {internalsProcessing && (
                   <Badge tone="neutral">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    przetwarzanie internals
+                    {t("inspector.modelIntrospection.dashboard.results.internals.processing")}
                   </Badge>
                 )}
               </div>
@@ -1237,8 +1299,8 @@ export function ModelIntrospectionDashboard() {
               </div>
             </div>
           </div>
-          <ResultStepContainer marker={logitStepMarker} className="mb-4">
-            <ResultStepHeader marker={logitStepMarker} />
+          <ResultStepContainer marker={logitStepMarker} className="mb-4" t={t}>
+            <ResultStepHeader marker={logitStepMarker} t={t} />
             <LogitLensPanel
               logitLens={logitLens}
               title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
@@ -1325,35 +1387,35 @@ export function ModelIntrospectionDashboard() {
               extraBadge={probeLimitsLabel}
             />
           )}
-          <ResultStepContainer marker={attentionStepMarker} className="mb-4">
-            <ResultStepHeader marker={attentionStepMarker} />
+          <ResultStepContainer marker={attentionStepMarker} className="mb-4" t={t}>
+            <ResultStepHeader marker={attentionStepMarker} t={t} />
             <AttentionPanel
               attention={attention}
-              title="Attention Head View"
-              emptyLabel="Brak danych attention dla bieżącej analizy."
-              unavailableLabel="Attention probe niedostępny dla bieżącego runu."
+              title={t("inspector.modelIntrospection.dashboard.results.attention.title")}
+              emptyLabel={t("inspector.modelIntrospection.dashboard.results.attention.empty")}
+              unavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.attention.unavailable",
+              )}
             />
           </ResultStepContainer>
-          <ResultStepContainer marker={saliencyStepMarker} className="mb-4">
-            <ResultStepHeader marker={saliencyStepMarker} />
+          <ResultStepContainer marker={saliencyStepMarker} className="mb-4" t={t}>
+            <ResultStepHeader marker={saliencyStepMarker} t={t} />
             <SaliencyPanel
               saliency={saliency}
-              title="Saliency / Attribution"
-              emptyLabel="Brak danych saliency dla bieżącej analizy."
-              unavailableLabel="Saliency probe niedostępny dla bieżącego runu."
+              title={t("inspector.modelIntrospection.dashboard.results.saliency.title")}
+              emptyLabel={t("inspector.modelIntrospection.dashboard.results.saliency.empty")}
+              unavailableLabel={t(
+                "inspector.modelIntrospection.dashboard.results.saliency.unavailable",
+              )}
             />
           </ResultStepContainer>
           </div>
           <div className="min-w-0 xl:sticky xl:top-6 xl:self-start">
-            <ResultStepContainer marker={responseStepMarker} className="mb-4">
+            <ResultStepContainer marker={responseStepMarker} className="mb-4" t={t}>
               <AnalysisResultsPanel
-                responseStepLabel={
-                  responseStepMarker
-                    ? `krok ${responseStepMarker.number} · ${responseStepMarker.label}`
-                    : undefined
-                }
+                responseStepLabel={formatStepLabel(t, responseStepMarker)}
                 responseStepStatus={responseStepMarker?.status}
-                snapshotStepLabel={snapshotStepMarker ? `krok ${snapshotStepMarker.number} · ${snapshotStepMarker.label}` : undefined}
+                snapshotStepLabel={formatStepLabel(t, snapshotStepMarker)}
                 snapshotStepStatus={snapshotStepMarker?.status}
                 analysisResponse={analysisResponse}
                 analysisHighlights={analysisHighlights}

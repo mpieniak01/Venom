@@ -619,6 +619,8 @@ export const pl = {
         results: {
           title: "Wyniki analizy",
           description: "Highlights, werdykt i telemetria procesu są zebrane w jednym miejscu.",
+          stepPrefix: "krok",
+          stepMaterializing: "materializacja kroku",
           answer: "Odpowiedź",
           waitingToken: "Oczekiwanie na pierwszy token strumienia...",
           streaming: "Strumień odpowiedzi na żywo",
@@ -790,6 +792,33 @@ export const pl = {
             normalizedAria: "Przełącz na widok znormalizowany tokenów",
             rawAria: "Przełącz na widok surowy tokenów",
             rawTokensUnavailable: "Surowe tokeny wyjścia są niedostępne w kontrakcie runtime.",
+          },
+          steps: {
+            snapshotBefore: "Snapshot captured",
+            requestReady: "Prompt prepared",
+            streamOpened: "Stream opened",
+            firstChunk: "First content chunk",
+            responseFinalized: "Response assembled",
+            snapshotAfter: "Snapshot refreshed",
+            logitLensProbe: "Logit lens probe",
+            attentionProbe: "Attention probe",
+            saliencyProbe: "Saliency probe",
+          },
+          attention: {
+            title: "Attention Head View",
+            empty: "Brak danych attention dla bieżącej analizy.",
+            unavailable: "Attention probe niedostępny dla bieżącego runu.",
+          },
+          saliency: {
+            title: "Saliency / Attribution",
+            empty: "Brak danych saliency dla bieżącej analizy.",
+            unavailable: "Saliency probe niedostępny dla bieżącego runu.",
+          },
+          internals: {
+            title: "Advanced internals",
+            description:
+              "Attention i Saliency to kosztowna analiza opt-in. Może wydłużać odpowiedź i podlega limitom runtime/probe.",
+            processing: "przetwarzanie internals",
           },
           internalsRecoveredTitle: "Probe internals recovered",
           internalsRecoveredBadge: "proxy path active",

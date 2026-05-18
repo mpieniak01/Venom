@@ -782,6 +782,18 @@ async def daemon_restart() -> RestartResponse:
     )
 
 
+@app.post("/v1/daemon/unload")
+async def daemon_unload() -> dict[str, Any]:
+    """Unload all currently loaded models without restarting the daemon process."""
+    async with _lifecycle_lock:
+        try:
+            daemon = get_daemon()
+            daemon.unload_all()
+        except RuntimeError:
+            raise HTTPException(status_code=503, detail="Daemon not initialized")
+    return {"status": "ok", "message": "All models unloaded."}
+
+
 @app.post("/v1/daemon/assistant/attach", response_model=AssistantAttachResponse)
 async def daemon_assistant_attach(
     body: AssistantAttachRequest,

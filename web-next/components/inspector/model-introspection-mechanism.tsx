@@ -4,7 +4,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -127,7 +129,14 @@ export function ModelIntrospectionMechanismControl({
 }: Readonly<ModelIntrospectionMechanismControlProps>) {
   const t = useTranslation();
   const { enabled, setEnabled } = useModelIntrospectionMechanism();
-  const displayEnabled = enabled;
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  // Keep first client render identical to SSR output to avoid hydration mismatch.
+  const displayEnabled = hydrated ? enabled : false;
   const label = displayEnabled ? t("inspector.modelIntrospection.mechanism.enabled") : t("inspector.modelIntrospection.mechanism.disabled");
 
   if (variant === "compact") {

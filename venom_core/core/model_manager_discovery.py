@@ -98,6 +98,18 @@ class ModelManagerDiscoveryMixin:
                 return f"{base}/api/tags"
         return build_http_url("localhost", 11434, "/api/tags")
 
+    def _should_query_ollama_runtime(self) -> bool:
+        """Return True when remote Ollama tags polling should run.
+
+        In single-runtime mode we avoid background probing of inactive runtimes.
+        Set MODEL_DISCOVERY_FORCE_OLLAMA_QUERY=true to override.
+        """
+        forced = os.getenv("MODEL_DISCOVERY_FORCE_OLLAMA_QUERY", "").strip().lower()
+        if forced in {"1", "true", "yes", "on"}:
+            return True
+        active_server = os.getenv("ACTIVE_LLM_SERVER", "").strip().lower()
+        return active_server in {"", "ollama"}
+
     def _register_local_entry(
         self,
         models: Dict[str, Dict[str, Any]],
@@ -467,41 +479,47 @@ class ModelManagerDiscoveryMixin:
         self._load_ollama_cache(models)
         self._register_manifest_fallbacks(search_dirs, models)
 
-        try:
-            async with TrafficControlledHttpClient(
-                provider="ollama",
-                timeout=10.0,
-            ) as client:
-                response = await client.aget(
-                    self._resolve_ollama_tags_url(),
-                    raise_for_status=False,
+        if self._should_query_ollama_runtime():
+            try:
+                async with TrafficControlledHttpClient(
+                    provider="ollama",
+                    timeout=10.0,
+                ) as client:
+                    response = await client.aget(
+                        self._resolve_ollama_tags_url(),
+                        raise_for_status=False,
+                    )
+                    if response.status_code == 200:
+                        ollama_data = response.json()
+                        entries = self._collect_ollama_entries(
+                            ollama_data.get("models", [])
+                        )
+                        self._register_ollama_entries(models, entries)
+                        self._save_ollama_cache(entries)
+                    else:
+                        logger.warning(
+                            f"Nie udało się pobrać listy modeli z Ollama: "
+                            f"{response.status_code}",
+                        )
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                now = time.time()
+                if now - self._last_ollama_warning > 60:
+                    logger.warning(f"Ollama nie jest dostępne: {exc}")
+                    self._last_ollama_warning = now
+            except httpx.HTTPError as exc:
+                logger.error(f"Błąd HTTP podczas pobierania modeli z Ollama: {exc}")
+            except ValueError as exc:
+                logger.error(
+                    f"Błędna odpowiedź JSON podczas pobierania modeli z Ollama: {exc}"
                 )
-                if response.status_code == 200:
-                    ollama_data = response.json()
-                    entries = self._collect_ollama_entries(
-                        ollama_data.get("models", [])
-                    )
-                    self._register_ollama_entries(models, entries)
-                    self._save_ollama_cache(entries)
-                else:
-                    logger.warning(
-                        f"Nie udało się pobrać listy modeli z Ollama: "
-                        f"{response.status_code}",
-                    )
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            now = time.time()
-            if now - self._last_ollama_warning > 60:
-                logger.warning(f"Ollama nie jest dostępne: {exc}")
-                self._last_ollama_warning = now
-        except httpx.HTTPError as exc:
-            logger.error(f"Błąd HTTP podczas pobierania modeli z Ollama: {exc}")
-        except ValueError as exc:
-            logger.error(
-                f"Błędna odpowiedź JSON podczas pobierania modeli z Ollama: {exc}"
-            )
-        except Exception as exc:
-            logger.warning(
-                f"Nie udało się pobrać modeli z Ollama (fallback do lokalnego skanu): {exc}"
+            except Exception as exc:
+                logger.warning(
+                    f"Nie udało się pobrać modeli z Ollama (fallback do lokalnego skanu): {exc}"
+                )
+        else:
+            logger.debug(
+                "Pomijam aktywne odpytywanie Ollama (/api/tags), bo ACTIVE_LLM_SERVER=%s",
+                os.getenv("ACTIVE_LLM_SERVER", "").strip().lower() or "unknown",
             )
 
         return list(models.values())

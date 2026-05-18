@@ -139,9 +139,12 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
 
   const sttOk = status.stt_ready === true;
   const ttsOk = status.tts_ready === true;
+  const runtimeProvider = String(status.runtime_snapshot?.provider ?? "").trim();
+  const runtimeModel = String(status.runtime_snapshot?.model_name ?? "").trim();
   const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
-  const runtimeOk = probeStatus === "verified";
-  const allOk = sttOk && ttsOk && runtimeOk;
+  const llmOk = runtimeProvider.length > 0 && runtimeModel.length > 0;
+  const voiceProbeFailed = probeStatus === "failed";
+  const allOk = sttOk && ttsOk && llmOk && !voiceProbeFailed;
 
   return (
     <div
@@ -155,6 +158,11 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
         {allOk ? t("voice.status.systemReady") : t("voice.status.systemPartial")}
       </span>
       <span className="flex items-center gap-3">
+        <span className={`flex items-center gap-1 ${llmOk ? "text-emerald-400" : "text-zinc-600"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${llmOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          {" "}
+          LLM
+        </span>
         <span className={`flex items-center gap-1 ${sttOk ? "text-emerald-400" : "text-zinc-600"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${sttOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
           {" "}
@@ -165,10 +173,10 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
           {" "}
           TTS
         </span>
-        <span className={`flex items-center gap-1 ${runtimeOk ? "text-emerald-400" : "text-zinc-600"}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${runtimeOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+        <span className={`flex items-center gap-1 ${voiceProbeFailed ? "text-amber-400" : "text-emerald-400"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${voiceProbeFailed ? "bg-amber-400" : "bg-emerald-400"}`} />
           {" "}
-          {probeStatus ?? "—"}
+          {probeStatus ?? "verified"}
         </span>
       </span>
     </div>

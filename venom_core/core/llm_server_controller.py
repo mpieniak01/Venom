@@ -227,7 +227,7 @@ class LlmServerController:
                 supports_restart=True,
                 supports_health_wait=True,
                 supports_cache_flush=False,
-                supports_model_unload=False,
+                supports_model_unload=True,
                 is_in_process=False,
                 release_wait_seconds=10,
             ),

@@ -273,4 +273,10 @@ class TrafficControlConfig(BaseModel):
             rate_limit=TokenBucketConfig(capacity=100, refill_rate=10.0),
         )
 
+        # Introspection diagnostics: intentionally tighter than generic models/chat.
+        # Prevents introspection bursts from starving core chat/task traffic.
+        config.endpoint_group_policies["models_introspection"] = InboundPolicyConfig(
+            rate_limit=TokenBucketConfig(capacity=30, refill_rate=3.0),
+        )
+
         return config

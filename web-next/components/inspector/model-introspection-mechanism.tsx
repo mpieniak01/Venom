@@ -25,6 +25,10 @@ type ModelIntrospectionMechanismContextValue = {
 
 const ModelIntrospectionMechanismContext = createContext<ModelIntrospectionMechanismContextValue | null>(null);
 
+function subscribeNoop(): () => void {
+  return () => undefined;
+}
+
 function readEnabledFromStorage(): boolean {
   try {
     const localStorage = globalThis.window?.localStorage;
@@ -127,7 +131,10 @@ export function ModelIntrospectionMechanismControl({
 }: Readonly<ModelIntrospectionMechanismControlProps>) {
   const t = useTranslation();
   const { enabled, setEnabled } = useModelIntrospectionMechanism();
-  const displayEnabled = enabled;
+  const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
+
+  // Keep first client render identical to SSR output to avoid hydration mismatch.
+  const displayEnabled = hydrated ? enabled : false;
   const label = displayEnabled ? t("inspector.modelIntrospection.mechanism.enabled") : t("inspector.modelIntrospection.mechanism.disabled");
 
   if (variant === "compact") {

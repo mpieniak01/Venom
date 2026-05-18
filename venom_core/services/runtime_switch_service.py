@@ -47,6 +47,28 @@ async def _release_ollama_model(endpoint: str, model_name: str) -> bool:
         return False
 
 
+async def _release_multi_runtime_models(endpoint: str) -> bool:
+    """Ask multi_runtime daemon to unload all models before service stop."""
+    if not endpoint:
+        return False
+    base = endpoint.rstrip("/").removesuffix("/v1")
+    unload_url = f"{base}/v1/daemon/unload"
+    try:
+        async with httpx.AsyncClient(timeout=_CLEANUP_TIMEOUT) as client:
+            response = await client.post(unload_url)
+        if not (200 <= response.status_code < 300):
+            logger.warning(
+                "Nie udało się wyładować modeli multi_runtime przed stop: HTTP {}",
+                response.status_code,
+            )
+            return False
+        logger.info("multi_runtime: modele wyładowane przed zatrzymaniem serwisu")
+        return True
+    except Exception as exc:
+        logger.warning("Nie udało się wyładować modeli multi_runtime: {}", exc)
+        return False
+
+
 async def release_runtime_resources(
     server_name: str,
     *,
@@ -67,6 +89,9 @@ async def release_runtime_resources(
         endpoint = str(server.get("endpoint") or "http://localhost:11434")
         if active_model:
             released = await _release_ollama_model(endpoint, active_model)
+    elif server_name == "multi_runtime" and caps.get("supports_model_unload"):
+        endpoint = str(server.get("endpoint") or "").strip()
+        released = await _release_multi_runtime_models(endpoint) or released
 
     if caps.get("is_in_process") and caps.get("supports_cache_flush"):
         try:

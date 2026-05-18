@@ -14,13 +14,6 @@ type VoiceStatusSidebarProps = Readonly<{
   isDevMode?: boolean;
 }>;
 
-function getProbeTone(status?: string | null): "success" | "warning" | "danger" | "neutral" {
-  if (status === "verified") return "success";
-  if (status === "failed") return "danger";
-  if (status === "metadata_only") return "warning";
-  return "neutral";
-}
-
 function ReadyDot({ ready }: Readonly<{ ready?: boolean | null }>) {
   return (
     <span
@@ -313,6 +306,19 @@ function RuntimeOverviewCard({
   const model = runtime?.model_name ?? null;
   const endpoint = runtime?.endpoint ?? null;
   const probeStatus = runtime?.runtime_capabilities?.probe_status ?? null;
+  const runtimeProvider = String(provider ?? "").trim().toLowerCase();
+  const isNativeVoiceRuntime =
+    runtimeProvider.startsWith("multi_runtime") ||
+    runtimeProvider.startsWith("gemma4_audio");
+  const probeTone = (() => {
+    if (!probeStatus) return "neutral" as const;
+    if (probeStatus === "verified") return "success" as const;
+    if (probeStatus === "metadata_only") return "warning" as const;
+    if (probeStatus === "failed") {
+      return isNativeVoiceRuntime ? ("danger" as const) : ("warning" as const);
+    }
+    return "neutral" as const;
+  })();
   const t = useTranslation();
 
   return (
@@ -324,7 +330,7 @@ function RuntimeOverviewCard({
               {provider ?? "—"} / {model ?? t("voice.controls.unknownModel")}
             </span>
             {probeStatus && (
-              <Badge tone={getProbeTone(probeStatus)} className="shrink-0 text-[10px]">
+              <Badge tone={probeTone} className="shrink-0 text-[10px]">
                 {probeStatus}
               </Badge>
             )}

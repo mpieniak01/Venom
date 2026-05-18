@@ -15,6 +15,7 @@ import psutil
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.routes import system_deps
+from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
 from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
@@ -25,7 +26,11 @@ from venom_core.api.schemas.system_llm import (
 )
 from venom_core.config import SETTINGS
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
-from venom_core.services import remote_models_service, system_llm_service
+from venom_core.services import (
+    remote_models_service,
+    system_llm_service,
+    traffic_control_service,
+)
 from venom_core.services.config_manager import config_manager
 from venom_core.services.feedback_loop_policy import (
     FEEDBACK_LOOP_REQUESTED_ALIAS,
@@ -115,6 +120,7 @@ _CODING_MODEL_MARKERS: tuple[str, ...] = (
     "codeqwen",
     "opencoder",
 )
+_INBOUND_MODEL_OPS_SCOPE = "inbound:model_ops"
 
 
 def _runtime_adapter_deploy_capability(runtime_id: str) -> tuple[bool, str]:
@@ -515,8 +521,18 @@ async def _probe_server_status(candidate: dict) -> None:
         candidate["error_message"] = str(exc)
 
 
-async def _probe_servers(servers: list[dict]) -> None:
-    probe_tasks = [_probe_server_status(server) for server in servers]
+async def _probe_servers(
+    servers: list[dict],
+    active_server_name: str | None = None,
+) -> None:
+    normalized_active = str(active_server_name or "").strip().lower()
+    probe_tasks = []
+    for server in servers:
+        server_name = str(server.get("name") or "").strip().lower()
+        if normalized_active and server_name and server_name != normalized_active:
+            server["status"] = "inactive"
+            continue
+        probe_tasks.append(_probe_server_status(server))
     if probe_tasks:
         await asyncio.gather(*probe_tasks)
 
@@ -1926,7 +1942,9 @@ async def _runtime_server_status_snapshot() -> dict[str, dict[str, Any]]:
         servers.append(_build_onnx_server_payload())
     servers = _dedupe_servers_by_name(servers)
     _merge_monitor_status_into_servers(servers, service_monitor)
-    await _probe_servers(servers)
+    active_runtime = get_active_llm_runtime()
+    active_server_name = str(getattr(active_runtime, "provider", "") or "").strip()
+    await _probe_servers(servers, active_server_name)
 
     status_map: dict[str, dict[str, Any]] = {}
     for server in servers:
@@ -1967,7 +1985,9 @@ async def get_llm_servers():
         servers.append(_build_onnx_server_payload())
     servers = _dedupe_servers_by_name(servers)
     _merge_monitor_status_into_servers(servers, service_monitor)
-    await _probe_servers(servers)
+    active_runtime = get_active_llm_runtime()
+    active_server_name = str(getattr(active_runtime, "provider", "") or "").strip()
+    await _probe_servers(servers, active_server_name)
 
     return {"status": "success", "servers": servers, "count": len(servers)}
 
@@ -2062,6 +2082,64 @@ def get_active_llm_runtime_info():
 async def get_llm_runtime_options():
     """Spójny kontrakt opcji runtime/model dla paneli Chat i Models."""
     return await _resolve_runtime_options_payload()
+
+
+def _runtime_queue_scopes(runtime_name: str) -> list[str]:
+    normalized = str(runtime_name or "").strip().lower()
+    if normalized == "ollama":
+        return ["outbound:ollama", _INBOUND_MODEL_OPS_SCOPE]
+    if normalized == "vllm":
+        return ["outbound:vllm", _INBOUND_MODEL_OPS_SCOPE]
+    if normalized == "onnx":
+        return [_INBOUND_MODEL_OPS_SCOPE]
+    if is_multi_runtime(normalized):
+        return [_INBOUND_MODEL_OPS_SCOPE]
+    return [_INBOUND_MODEL_OPS_SCOPE]
+
+
+@router.get("/system/llm-runtime/queue-snapshot")
+def get_llm_runtime_queue_snapshot():
+    """Snapshot kolejki i metryk ruchu dla aktywnego runtime.
+
+    Cel: 231C — separacja kolejki statusowej od inferencyjnej i obserwowalność
+    aktywnego runtime bez aktywnego sondowania nieaktywnych stosów.
+    """
+    runtime = get_active_llm_runtime()
+    orchestrator = system_deps.get_orchestrator()
+    queue_status: dict[str, Any] | None = None
+    queue_error: str | None = None
+    if orchestrator is not None:
+        try:
+            queue_status = orchestrator.get_queue_status()
+        except Exception as exc:
+            queue_error = str(exc)
+    else:
+        queue_error = "Orchestrator not available"
+
+    scope_metrics: dict[str, Any] = {}
+    metrics_error: str | None = None
+    try:
+        controller = traffic_control_service.get_traffic_controller()
+        for scope in _runtime_queue_scopes(runtime.provider):
+            scope_metrics[scope] = controller.get_metrics(scope)
+    except Exception as exc:
+        metrics_error = str(exc)
+
+    return {
+        "status": "success",
+        "runtime": runtime.to_payload(),
+        "queue": {
+            "status": queue_status,
+            "error": queue_error,
+            "diagnostics": {
+                "introspection": get_introspection_queue_metrics(),
+            },
+        },
+        "traffic": {
+            "scopes": scope_metrics,
+            "error": metrics_error,
+        },
+    }
 
 
 @router.post(

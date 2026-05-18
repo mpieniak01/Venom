@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 
 # Mapowanie ścieżek na grupy endpointów
 ENDPOINT_GROUP_MAPPING = {
+    "/api/v1/models/introspection": "models_introspection",
     "/api/v1/chat": "chat",
     "/api/v1/memory": "memory",
     "/api/v1/workflow": "workflow",

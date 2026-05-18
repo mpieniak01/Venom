@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import importlib
+import sys
+import types
 from typing import Any
 
 import httpx
 import pytest
 
 import venom_core.services.runtime_switch_service as switch_mod
+from venom_core.services import traffic_control_service
 
 
 class _FakeResponse:
@@ -73,6 +76,57 @@ async def test_release_ollama_model_success_and_failure(monkeypatch):
         await mod._release_ollama_model("http://localhost:11434/v1", "phi3:mini")
         is False
     )
+
+
+@pytest.mark.asyncio
+async def test_release_multi_runtime_models_branches(monkeypatch):
+    mod = importlib.reload(switch_mod)
+
+    assert await mod._release_multi_runtime_models("") is False
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda timeout: _FakeAsyncClient())
+    assert await mod._release_multi_runtime_models("http://localhost:8014/v1") is True
+
+    class _BadStatusClient(_FakeAsyncClient):
+        async def post(self, _url: str, json: dict[str, Any] | None = None):
+            return _FakeResponse(301, {"moved": True})
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda timeout: _BadStatusClient())
+    assert await mod._release_multi_runtime_models("http://localhost:8014/v1") is False
+
+    monkeypatch.setattr(
+        mod.httpx,
+        "AsyncClient",
+        lambda timeout: _FakeAsyncClient(post_exception=True),
+    )
+    assert await mod._release_multi_runtime_models("http://localhost:8014/v1") is False
+
+
+@pytest.mark.asyncio
+async def test_release_runtime_resources_multi_runtime_branch(monkeypatch):
+    mod = importlib.reload(switch_mod)
+
+    async def _release(_endpoint: str) -> bool:
+        return True
+
+    monkeypatch.setattr(mod, "_release_multi_runtime_models", _release)
+    released = await mod.release_runtime_resources(
+        "multi_runtime",
+        server={
+            "endpoint": "http://localhost:8014/v1",
+            "capabilities": {"supports_model_unload": True},
+        },
+    )
+    assert released is True
+
+
+def test_get_traffic_controller_delegates_to_infrastructure(monkeypatch):
+    sentinel = object()
+    fake_module = types.SimpleNamespace(get_traffic_controller=lambda: sentinel)
+    monkeypatch.setitem(
+        sys.modules, "venom_core.infrastructure.traffic_control", fake_module
+    )
+    assert traffic_control_service.get_traffic_controller() is sentinel
 
 
 @pytest.mark.asyncio

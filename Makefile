@@ -50,7 +50,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-prod start-prod-confirm start-preprod stop restart status clean-ports \
+.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-lowmem start-prod start-prod-confirm start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-lite test-fast-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap audit-ci-lite agent-prep \
 		test-intelligence-report \
@@ -135,6 +135,10 @@ start-dev-webpack: ensure-env-file _start
 start-dev-turbo: START_MODE=dev
 start-dev-turbo: START_WEB_MODE=turbo
 start-dev-turbo: ensure-env-file _start
+
+start-lowmem: ensure-env-file
+	@echo "▶️  Uruchamiam profil low-memory (bez lokalnego runtime LLM, bez warmup, bez zadan tla)"
+	@bash scripts/dev/start_stack_low_memory.sh
 
 start-prod: START_MODE=prod
 start-prod: start-prod-confirm ensure-env-file _start
@@ -354,6 +358,7 @@ help:
 	@echo "Start/Stop (dev):"
 	@echo "  make start                    - start backend + frontend (webpack-safe dev) + runtime LLM"
 	@echo "  make start2                   - start backend + frontend (turbopack) + runtime LLM"
+	@echo "  make start-lowmem             - start backend + frontend (low-memory, no local LLM runtime)"
 	@echo "  make stop                     - stop backend + frontend + runtime LLM"
 	@echo "  make status                   - status procesów"
 	@echo "  make web-dev                  - frontend dev (webpack, fallback)"

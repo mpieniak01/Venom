@@ -95,6 +95,7 @@ def _build_voice_session_record(
         "timings_ms": metadata.get("timings_ms") or {},
         "runtime": metadata.get("runtime") or {},
         "pipeline_id": metadata.get("pipeline_id"),
+        "voice_pipeline_mode": metadata.get("voice_pipeline_mode"),
         "audio_runtime_provider": metadata.get("audio_runtime_provider"),
         "audio_runtime_model": metadata.get("audio_runtime_model"),
         "audio_input_status": metadata.get("audio_input_status"),
@@ -733,6 +734,25 @@ class AudioStreamHandler:
         active_server = _coerce_str(_gemma4_audio_setting("ACTIVE_LLM_SERVER", ""), "")
         return is_multi_runtime(active_server)
 
+    def _voice_pipeline_mode(self) -> str:
+        """Resolve voice pipeline contract for current runtime selection.
+
+        Contract:
+        - multi_runtime (Gemma4): native voice pipeline allowed.
+        - ollama/vllm/onnx/other: always local intermediary STT -> LLM -> TTS.
+        """
+        return (
+            "native_multi_runtime"
+            if self._gemma4_audio_runtime_selected()
+            else "intermediary_local_stt"
+        )
+
+    def _voice_pipeline_fallback_reason(self) -> str:
+        active_server = _coerce_str(_gemma4_audio_setting("ACTIVE_LLM_SERVER", ""), "")
+        if not active_server:
+            return "native voice disabled: ACTIVE_LLM_SERVER is empty"
+        return f"native voice disabled for active runtime: {active_server}"
+
     async def _gemma4_audio_health_ok(self) -> bool:
         health_url = self._gemma4_audio_health_url()
         if not health_url:
@@ -1020,9 +1040,23 @@ class AudioStreamHandler:
             )
             self._update_voice_session_metadata(
                 session_dir,
-                {"runtime": self._build_runtime_metadata(operator_agent)},
+                {
+                    "runtime": self._build_runtime_metadata(operator_agent),
+                    "voice_pipeline_mode": self._voice_pipeline_mode(),
+                },
             )
             logger.info(f"Zapisano sesję audio: {session_dir}")
+
+            if not self._gemma4_audio_runtime_selected():
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "fallback",
+                        "decoder_source": "faster_whisper",
+                        "fallback_reason": self._voice_pipeline_fallback_reason(),
+                    },
+                )
 
             if await self._process_native_gemma4_audio_pipeline(
                 connection_id,
@@ -1063,7 +1097,6 @@ class AudioStreamHandler:
                     "voice_mode": self._connection_voice_mode(connection_id),
                     "audio_input_status": "verified",
                     "decoder_source": "faster_whisper",
-                    "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
                         _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
@@ -1124,9 +1157,21 @@ class AudioStreamHandler:
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_mode": self._connection_voice_mode(connection_id),
+                    "voice_pipeline_mode": self._voice_pipeline_mode(),
                 },
             )
             logger.info(f"Zapisano sesję audio MediaRecorder: {session_dir}")
+
+            if not self._gemma4_audio_runtime_selected():
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "fallback",
+                        "decoder_source": "faster_whisper",
+                        "fallback_reason": self._voice_pipeline_fallback_reason(),
+                    },
+                )
 
             if await self._process_native_gemma4_audio_pipeline(
                 connection_id,
@@ -1165,7 +1210,6 @@ class AudioStreamHandler:
                     "timings_ms": timings_ms,
                     "audio_input_status": "verified",
                     "decoder_source": "faster_whisper",
-                    "fallback_reason": "",
                     "runtime_log_path": _coerce_str(
                         _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),

@@ -267,3 +267,84 @@ def test_rejects_cloud_model_not_in_catalog(client):
         )
         assert response.status_code == 400
         assert "katalogu providera 'openai'" in response.json()["detail"]
+
+
+def test_runtime_queue_snapshot_includes_queue_and_scope_metrics(client):
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "provider": "ollama",
+            "to_payload": lambda self: {
+                "provider": "ollama",
+                "runtime_id": "ollama@local",
+            },
+        },
+    )()
+    orchestrator = type(
+        "Orchestrator",
+        (),
+        {"get_queue_status": lambda self: {"paused": False, "pending": 2, "active": 1}},
+    )()
+    controller = type(
+        "Controller",
+        (),
+        {"get_metrics": lambda self, scope=None: {"scope": scope, "requests": 3}},
+    )()
+
+    with (
+        patch.object(system_llm, "get_active_llm_runtime", return_value=runtime),
+        patch.object(
+            system_llm.system_deps, "get_orchestrator", return_value=orchestrator
+        ),
+        patch.object(
+            system_llm.traffic_control_service,
+            "get_traffic_controller",
+            return_value=controller,
+        ),
+    ):
+        response = client.get("/api/v1/system/llm-runtime/queue-snapshot")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["runtime"]["provider"] == "ollama"
+    assert payload["queue"]["status"]["pending"] == 2
+    assert payload["queue"]["error"] is None
+    assert "outbound:ollama" in payload["traffic"]["scopes"]
+    assert payload["traffic"]["error"] is None
+
+
+def test_runtime_queue_snapshot_reports_missing_orchestrator(client):
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "provider": "multi_runtime",
+            "to_payload": lambda self: {
+                "provider": "multi_runtime",
+                "runtime_id": "multi_runtime@local",
+            },
+        },
+    )()
+    controller = type(
+        "Controller",
+        (),
+        {"get_metrics": lambda self, scope=None: {"scope": scope}},
+    )()
+
+    with (
+        patch.object(system_llm, "get_active_llm_runtime", return_value=runtime),
+        patch.object(system_llm.system_deps, "get_orchestrator", return_value=None),
+        patch.object(
+            system_llm.traffic_control_service,
+            "get_traffic_controller",
+            return_value=controller,
+        ),
+    ):
+        response = client.get("/api/v1/system/llm-runtime/queue-snapshot")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["queue"]["status"] is None
+    assert payload["queue"]["error"] == "Orchestrator not available"

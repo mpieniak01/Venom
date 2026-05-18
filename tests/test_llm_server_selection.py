@@ -511,7 +511,7 @@ async def test_get_llm_servers_filters_vllm_outside_full_profile(monkeypatch):
         lambda: {"ollama", "vllm"},
     )
 
-    async def _noop_probe(_servers):
+    async def _noop_probe(_servers, _active_server_name=None):
         return None
 
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
@@ -564,7 +564,7 @@ async def test_get_llm_servers_includes_onnx_when_enabled(monkeypatch):
         },
     )
 
-    async def _noop_probe(_servers):
+    async def _noop_probe(_servers, _active_server_name=None):
         return None
 
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
@@ -637,7 +637,7 @@ async def test_get_llm_servers_deduplicates_onnx(monkeypatch):
         },
     )
 
-    async def _noop_probe(_servers):
+    async def _noop_probe(_servers, _active_server_name=None):
         return None
 
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
@@ -792,7 +792,7 @@ async def test_get_llm_servers_excludes_not_installed_runtime(monkeypatch):
         lambda: {"ollama"},
     )
 
-    async def _noop_probe(_servers):
+    async def _noop_probe(_servers, _active_server_name=None):
         return None
 
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)

@@ -68,6 +68,10 @@ type AnalysisInputPanelProps = Readonly<{
 }>;
 
 type AnalysisResultsPanelProps = Readonly<{
+  responseStepLabel?: string;
+  responseStepStatus?: string;
+  snapshotStepLabel?: string;
+  snapshotStepStatus?: string;
   analysisResponse: string;
   analysisHighlights: string[];
   answerStatusLabel: string;
@@ -153,7 +157,6 @@ type AnalysisResultsPanelProps = Readonly<{
       }>
     | null
     | undefined;
-  operatorRunbookSteps: string[] | null | undefined;
   internalsVerdict:
     | {
         verdict: string;
@@ -1276,6 +1279,10 @@ function AnalysisRunTrendsCard(props: AnalysisRunTrendsCardProps) {
 export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
   const t = useTranslation();
   const {
+    responseStepLabel,
+    responseStepStatus,
+    snapshotStepLabel,
+    snapshotStepStatus,
     analysisResponse,
     analysisHighlights,
     answerStatusLabel,
@@ -1305,9 +1312,8 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
     inputProfile,
     generationProfile,
     runTrends,
-  operatorChecklist,
-  operatorRunbookSteps,
-  internalsVerdict,
+    operatorChecklist,
+    internalsVerdict,
   } = props;
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -1339,9 +1345,15 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
   );
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+    <div className="space-y-4">
       <div className="space-y-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          {responseStepLabel ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge tone="success">{responseStepLabel}</Badge>
+              {responseStepStatus ? <Badge tone="neutral">{responseStepStatus}</Badge> : null}
+            </div>
+          ) : null}
           <p className="text-xs uppercase tracking-wide text-zinc-500">{resultsHighlightsLabel}</p>
           <div className="mt-3 space-y-2">
             {analysisHighlights.length > 0 ? (
@@ -1421,6 +1433,12 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
       </div>
       <div className="space-y-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          {snapshotStepLabel ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge tone="success">{snapshotStepLabel}</Badge>
+              {snapshotStepStatus ? <Badge tone="neutral">{snapshotStepStatus}</Badge> : null}
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={analysisAnswerTone}>{answerStatusLabel}</Badge>
             <Badge tone={managerBadgeTone}>{managerBadgeText}</Badge>
@@ -1432,8 +1450,11 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
             {t("inspector.modelIntrospection.dashboard.results.analysisProcess")}
           </p>
           <div className="mt-3 space-y-2">
-            {analysisTimeline.map((step) => (
-              <div key={step.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+            {analysisTimeline.map((step, index) => (
+              <div
+                key={`${step.id}:${step.path ?? "none"}:${step.at_ms}:${index}`}
+                className="rounded-xl border border-white/10 bg-black/20 px-3 py-3"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm text-white">{step.label}</p>
@@ -1661,18 +1682,6 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
             )}
           </div>
         </div>
-        {(operatorRunbookSteps ?? []).length > 0 && (
-          <div className="rounded-2xl border border-amber-300/20 bg-amber-500/5 p-4">
-            <p className="text-xs uppercase tracking-wide text-amber-200/90">
-              {t("inspector.modelIntrospection.dashboard.results.runbook.title")}
-            </p>
-            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-200">
-              {operatorRunbookSteps?.map((step) => (
-                <li key={step}>{t(step)}</li>
-              ))}
-            </ol>
-          </div>
-        )}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <p className="text-xs uppercase tracking-wide text-zinc-500">
             {t("inspector.modelIntrospection.dashboard.results.runTrends.title")}
@@ -1790,8 +1799,6 @@ export function SnapshotComparisonPanel(props: SnapshotComparisonPanelProps) {
 type GraphPanelProps = Readonly<{
   snapshot: IntrospectionSnapshot;
   analysisActive: boolean;
-  graphViewOpen: boolean;
-  onToggleGraphView: () => void;
   selectedGraphNodeId: string | null;
   onSelectGraphNode: (id: string) => void;
   selectedGraphNode: GraphNodeItem | null;
@@ -1799,26 +1806,12 @@ type GraphPanelProps = Readonly<{
   typeHintText: string;
   title: string;
   description: string;
-  drilldownTitle: string;
-  hideLabel: string;
-  openLabel: string;
-  stateOpenLabel: string;
-  stateCollapsedLabel: string;
 }>;
 
 type GraphNodeItem = NonNullable<IntrospectionSnapshot["graph"]>["nodes"][number];
 type GraphEdgeItem = NonNullable<IntrospectionSnapshot["graph"]>["edges"][number];
 
 type GraphOverviewBadgesProps = Readonly<{ snapshot: IntrospectionSnapshot }>;
-type GraphDrilldownToggleProps = Readonly<{
-  graphViewOpen: boolean;
-  onToggleGraphView: () => void;
-  drilldownTitle: string;
-  hideLabel: string;
-  openLabel: string;
-  stateOpenLabel: string;
-  stateCollapsedLabel: string;
-}>;
 type GraphNodesGridProps = Readonly<{
   nodes: GraphNodeItem[];
   selectedGraphNodeId: string | null;
@@ -1871,34 +1864,6 @@ function GraphOverviewBadges(props: GraphOverviewBadgesProps) {
         drift issues {formatCount(summary.drift_issues)}
       </Badge>
     </div>
-  );
-}
-
-function GraphDrilldownToggle(props: GraphDrilldownToggleProps) {
-  const {
-    graphViewOpen,
-    onToggleGraphView,
-    drilldownTitle,
-    hideLabel,
-    openLabel,
-    stateOpenLabel,
-    stateCollapsedLabel,
-  } = props;
-  return (
-    <button
-      type="button"
-      onClick={onToggleGraphView}
-      aria-expanded={graphViewOpen}
-      className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/20 hover:bg-white/10"
-    >
-      <div>
-        <p className="text-xs uppercase tracking-wide text-zinc-500">{drilldownTitle}</p>
-        <p className="mt-1 text-sm text-zinc-200">{graphViewOpen ? hideLabel : openLabel}</p>
-      </div>
-      <Badge tone={graphViewOpen ? "success" : "neutral"}>
-        {graphViewOpen ? stateOpenLabel : stateCollapsedLabel}
-      </Badge>
-    </button>
   );
 }
 
@@ -2039,8 +2004,6 @@ export function GraphPanel(props: GraphPanelProps) {
   const {
     snapshot,
     analysisActive,
-    graphViewOpen,
-    onToggleGraphView,
     selectedGraphNodeId,
     onSelectGraphNode,
     selectedGraphNode,
@@ -2048,11 +2011,6 @@ export function GraphPanel(props: GraphPanelProps) {
     typeHintText,
     title,
     description,
-    drilldownTitle,
-    hideLabel,
-    openLabel,
-    stateOpenLabel,
-    stateCollapsedLabel,
   } = props;
   const nodes = getGraphNodes(snapshot);
   const edges = getGraphEdges(snapshot);
@@ -2067,38 +2025,24 @@ export function GraphPanel(props: GraphPanelProps) {
       </div>
       <div className="mt-4 space-y-4">
         <GraphOverviewBadges snapshot={snapshot} />
-        <GraphDrilldownToggle
-          graphViewOpen={graphViewOpen}
-          onToggleGraphView={onToggleGraphView}
-          drilldownTitle={drilldownTitle}
-          hideLabel={hideLabel}
-          openLabel={openLabel}
-          stateOpenLabel={stateOpenLabel}
-          stateCollapsedLabel={stateCollapsedLabel}
+        <GraphNodesGrid
+          nodes={nodes}
+          selectedGraphNodeId={selectedGraphNodeId}
+          onSelectGraphNode={onSelectGraphNode}
         />
-
-        {graphViewOpen && (
-          <>
-            <GraphNodesGrid
-              nodes={nodes}
-              selectedGraphNodeId={selectedGraphNodeId}
-              onSelectGraphNode={onSelectGraphNode}
-            />
-            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-              <GraphRelationsCard edges={edges} />
-              <GraphSelectedNodeCard
-                selectedGraphNode={selectedGraphNode}
-                selectedGraphNodeDetails={selectedGraphNodeDetails}
-                typeHintText={typeHintText}
-              />
-            </div>
-            <GraphContextSummary
-              snapshot={snapshot}
-              analysisActive={analysisActive}
-              nodeCount={analysisNodeCount}
-            />
-          </>
-        )}
+        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <GraphRelationsCard edges={edges} />
+          <GraphSelectedNodeCard
+            selectedGraphNode={selectedGraphNode}
+            selectedGraphNodeDetails={selectedGraphNodeDetails}
+            typeHintText={typeHintText}
+          />
+        </div>
+        <GraphContextSummary
+          snapshot={snapshot}
+          analysisActive={analysisActive}
+          nodeCount={analysisNodeCount}
+        />
       </div>
     </div>
   );

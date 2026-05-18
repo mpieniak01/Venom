@@ -84,6 +84,29 @@ def _build_unavailable_saliency_payload(
     }
 
 
+def _build_native_saliency_payload(
+    *,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+    method: str,
+    target_output_token_index: int,
+    target_output_token: str | None,
+    token_weights: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": None,
+        "message": "Saliency payload ready",
+        "runtime_label": runtime_label,
+        "method": method,
+        "target_output_token_index": target_output_token_index,
+        "target_output_token": target_output_token,
+        "token_weights": token_weights,
+        "diagnostics": diagnostics,
+    }
+
+
 async def _build_saliency_proxy_from_attention(
     *,
     prompt: str,
@@ -250,6 +273,80 @@ async def _resolve_saliency_proxy_or_unavailable(
     )
 
 
+async def _retry_native_saliency_payload(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+    requested_target_token: str | None,
+) -> dict[str, Any] | None:
+    probe_payload = await run_model_introspection_probe(
+        prompt=prompt,
+        mode="saliency",
+        layer_selection=[],
+        top_k=_SALIENCY_TOP_K,
+        target_output_token_index=_SALIENCY_TARGET_OUTPUT_TOKEN_INDEX,
+    )
+    if str(probe_payload.get("status") or "probe_unavailable") != "ok":
+        return None
+    probe = probe_payload.get("probe")
+    if not isinstance(probe, dict):
+        return None
+    token_weights = _normalize_token_weights(probe.get("token_weights"))
+    if not token_weights:
+        return None
+    target_index_raw = probe.get("target_output_token_index")
+    target_index = (
+        int(target_index_raw)
+        if isinstance(target_index_raw, int) and target_index_raw >= 0
+        else _SALIENCY_TARGET_OUTPUT_TOKEN_INDEX
+    )
+    target_token = _resolve_target_token(
+        probe_target_token=probe.get("target_output_token"),
+        requested_target_token=requested_target_token,
+    )
+    retry_diagnostics = dict(diagnostics)
+    retry_diagnostics["native_retry"] = True
+    retry_diagnostics["native_retry_layer_selection"] = []
+    return _build_native_saliency_payload(
+        runtime_label=runtime_label,
+        diagnostics=retry_diagnostics,
+        method=str(probe.get("method") or "integrated_gradients"),
+        target_output_token_index=target_index,
+        target_output_token=target_token,
+        token_weights=token_weights,
+    )
+
+
+async def _recover_saliency_payload(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+    status: str,
+    code: str,
+    message: str,
+    requested_target_token: str | None,
+) -> dict[str, Any]:
+    native_retry_payload = await _retry_native_saliency_payload(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+        requested_target_token=requested_target_token,
+    )
+    if native_retry_payload is not None:
+        return native_retry_payload
+    return await _resolve_saliency_proxy_or_unavailable(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+        status=status,
+        code=code,
+        message=message,
+        requested_target_token=requested_target_token,
+    )
+
+
 async def build_saliency_payload(
     *,
     prompt: str,
@@ -269,7 +366,7 @@ async def build_saliency_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
-        return await _resolve_saliency_proxy_or_unavailable(
+        return await _recover_saliency_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
@@ -291,7 +388,7 @@ async def build_saliency_payload(
 
     token_weights = _normalize_token_weights(probe.get("token_weights"))
     if not token_weights:
-        return await _resolve_saliency_proxy_or_unavailable(
+        return await _recover_saliency_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
@@ -313,15 +410,11 @@ async def build_saliency_payload(
         requested_target_token=target_output_token,
     )
 
-    return {
-        "source": "probe_runtime",
-        "status": "ok",
-        "code": None,
-        "message": "Saliency payload ready",
-        "runtime_label": runtime_label_str,
-        "method": str(probe.get("method") or "integrated_gradients"),
-        "target_output_token_index": target_index,
-        "target_output_token": target_token_str,
-        "token_weights": token_weights,
-        "diagnostics": diagnostics,
-    }
+    return _build_native_saliency_payload(
+        runtime_label=runtime_label_str,
+        diagnostics=diagnostics,
+        method=str(probe.get("method") or "integrated_gradients"),
+        target_output_token_index=target_index,
+        target_output_token=target_token_str,
+        token_weights=token_weights,
+    )

@@ -138,8 +138,13 @@ async def test_analysis_skipped_when_live_mode_disabled(
 
     assert result["status"] == "skipped"
     assert result["skipped_reason"] == "live_analysis_disabled"
-    assert result["analysis"]["timeline"][0]["label"] == "Live analysis disabled"
-    assert result["analysis"]["timeline"][0]["status"] == "skipped"
+    timeline = result["analysis"]["timeline"]
+    assert timeline[0]["id"] == "snapshot_before"
+    assert timeline[0]["status"] == "done"
+    assert timeline[2]["id"] == "stream_opened"
+    assert timeline[2]["label"] == "Stream opened"
+    assert timeline[2]["status"] == "skipped"
+    assert timeline[2]["reason_code"] == "live_analysis_disabled"
 
 
 @pytest.mark.asyncio
@@ -887,6 +892,9 @@ def test_analysis_capabilities_marks_proxy_as_partial_not_full() -> None:
     assert payload["native_available_count"] == 2
     assert payload["proxy_active"] is True
     assert payload["internals_verdict"] == "partial"
+    assert payload["attention"]["availability_class"] == "proxy_ok"
+    assert payload["saliency"]["availability_class"] == "native_ok"
+    assert payload["logit_lens"]["availability_class"] == "native_ok"
 
 
 def test_analysis_capabilities_marks_native_runtime_as_full() -> None:
@@ -900,6 +908,25 @@ def test_analysis_capabilities_marks_native_runtime_as_full() -> None:
     assert payload["native_available_count"] == 3
     assert payload["proxy_active"] is False
     assert payload["internals_verdict"] == "full"
+    assert payload["attention"]["availability_class"] == "native_ok"
+    assert payload["saliency"]["availability_class"] == "native_ok"
+    assert payload["logit_lens"]["availability_class"] == "native_ok"
+
+
+def test_analysis_capabilities_marks_failed_and_unavailable_classes() -> None:
+    payload = analysis_service._build_analysis_capabilities_payload(
+        attention={
+            "source": "probe_runtime",
+            "status": "failed",
+            "code": "probe_failed",
+        },
+        saliency={"source": "probe_unavailable", "status": "probe_unavailable"},
+        logit_lens={"source": "probe_runtime", "status": "ok"},
+        probe_health={"enabled": True, "healthy": True, "runtime_supported": True},
+    )
+    assert payload["attention"]["availability_class"] == "failed"
+    assert payload["saliency"]["availability_class"] == "unavailable"
+    assert payload["logit_lens"]["availability_class"] == "native_ok"
 
 
 def test_operator_conclusion_uses_proxy_reason_code() -> None:

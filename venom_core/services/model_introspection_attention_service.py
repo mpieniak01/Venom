@@ -174,6 +174,25 @@ def _build_unavailable_attention_payload(
     }
 
 
+def _build_native_attention_payload(
+    *,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+    tokens: list[str],
+    layers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": None,
+        "message": "Attention payload ready",
+        "runtime_label": runtime_label,
+        "tokens": tokens,
+        "layers": layers,
+        "diagnostics": diagnostics,
+    }
+
+
 def _build_proxy_links_from_logits(
     *,
     logits_top: list[Any],
@@ -273,6 +292,58 @@ async def _build_attention_proxy_from_logits(
     }
 
 
+async def _retry_native_attention_payload(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+) -> dict[str, Any] | None:
+    probe_payload = await run_model_introspection_probe(
+        prompt=prompt,
+        mode="attention",
+        layer_selection=[],
+        top_k=_ATTENTION_TOP_K,
+    )
+    if str(probe_payload.get("status") or "probe_unavailable") != "ok":
+        return None
+    probe = probe_payload.get("probe")
+    if not isinstance(probe, dict):
+        return None
+    tokens = _extract_tokens(probe)
+    layers = _normalize_layers(probe=probe, tokens=tokens)
+    if not layers:
+        return None
+    retry_diagnostics = dict(diagnostics)
+    retry_diagnostics["native_retry"] = True
+    retry_diagnostics["native_retry_layer_selection"] = []
+    return _build_native_attention_payload(
+        runtime_label=runtime_label,
+        diagnostics=retry_diagnostics,
+        tokens=tokens,
+        layers=layers,
+    )
+
+
+async def _recover_attention_payload(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+) -> dict[str, Any] | None:
+    native_retry_payload = await _retry_native_attention_payload(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+    if native_retry_payload is not None:
+        return native_retry_payload
+    return await _build_attention_proxy_from_logits(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+
+
 async def build_attention_payload(
     *,
     prompt: str,
@@ -290,13 +361,13 @@ async def build_attention_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
-        proxy_payload = await _build_attention_proxy_from_logits(
+        recovered_payload = await _recover_attention_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
         )
-        if proxy_payload is not None:
-            return proxy_payload
+        if recovered_payload is not None:
+            return recovered_payload
         return _build_unavailable_attention_payload(
             status=status,
             code=str(probe_payload.get("code") or "attention_unavailable"),
@@ -318,13 +389,13 @@ async def build_attention_payload(
     tokens = _extract_tokens(probe)
     layers = _normalize_layers(probe=probe, tokens=tokens)
     if not layers:
-        proxy_payload = await _build_attention_proxy_from_logits(
+        recovered_payload = await _recover_attention_payload(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
         )
-        if proxy_payload is not None:
-            return proxy_payload
+        if recovered_payload is not None:
+            return recovered_payload
         return _build_unavailable_attention_payload(
             status="probe_unavailable",
             code="attention_unavailable",
@@ -333,13 +404,9 @@ async def build_attention_payload(
             diagnostics=diagnostics,
         )
 
-    return {
-        "source": "probe_runtime",
-        "status": "ok",
-        "code": None,
-        "message": "Attention payload ready",
-        "runtime_label": runtime_label_str,
-        "tokens": tokens,
-        "layers": layers,
-        "diagnostics": diagnostics,
-    }
+    return _build_native_attention_payload(
+        runtime_label=runtime_label_str,
+        diagnostics=diagnostics,
+        tokens=tokens,
+        layers=layers,
+    )

@@ -127,4 +127,75 @@ describe("model introspection stream processor", () => {
       /analysis failed/,
     );
   });
+
+  it("does not duplicate first_chunk when analysis_start already contains it", async () => {
+    const runningWithFirstChunk: AnalysisResult = {
+      ...makeRunningResult(),
+      analysis: {
+        ...makeRunningResult().analysis!,
+        timeline: [
+          ...makeRunningResult().analysis!.timeline,
+          {
+            id: "first_chunk",
+            label: "First content chunk",
+            status: "pending",
+            detail: "Awaiting streamed content",
+            at_ms: 0,
+            progress: 40,
+          },
+        ],
+      },
+    };
+
+    const blocks = [
+      `event: analysis_start\ndata: ${JSON.stringify(runningWithFirstChunk)}\n\n`,
+      'event: content\ndata: {"text":"Slonce"}\n\n',
+      "event: done\ndata: {}\n\n",
+      `event: analysis_done\ndata: ${JSON.stringify({
+        ...runningWithFirstChunk,
+        status: "completed",
+        analysis: {
+          ...runningWithFirstChunk.analysis,
+          response: "Slonce",
+          chunk_count: 1,
+          events: ["content", "done"],
+        },
+      })}\n\n`,
+    ];
+
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const block of blocks) {
+            controller.enqueue(encode(block));
+          }
+          controller.close();
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    );
+
+    let liveResult: AnalysisResult | null = null;
+    const timelineSnapshots: Array<NonNullable<AnalysisResult["analysis"]>["timeline"]> = [];
+    await processAnalysisStream({
+      response,
+      streamStartedAt: performance.now(),
+      onSetLiveResult: (result) => {
+        liveResult = result;
+      },
+      onPatchLiveResult: (updater) => {
+        liveResult = updateLiveAnalysisResult(liveResult, updater);
+        if (liveResult?.analysis) {
+          timelineSnapshots.push([...liveResult.analysis.timeline]);
+        }
+      },
+    });
+
+    assert.ok(timelineSnapshots.length > 0);
+    const firstPatchedTimeline = timelineSnapshots[0] ?? [];
+    const firstChunkEntries = firstPatchedTimeline.filter((entry) => entry.id === "first_chunk");
+    assert.equal(firstChunkEntries.length, 1);
+    assert.equal(firstChunkEntries[0]?.status, "done");
+    assert.match(firstChunkEntries[0]?.detail ?? "", /chunk\(s\) total/);
+  });
 });

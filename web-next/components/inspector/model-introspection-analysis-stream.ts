@@ -74,6 +74,37 @@ function appendUniqueEvent(events: string[], nextEvent: string): string[] {
   return [...events, nextEvent];
 }
 
+function upsertFirstChunkTimelineEntry(args: {
+  timeline: NonNullable<AnalysisResult["analysis"]>["timeline"];
+  detail: string;
+  atMs: number;
+}): NonNullable<AnalysisResult["analysis"]>["timeline"] {
+  const { timeline, detail, atMs } = args;
+  const firstChunkIndex = timeline.findIndex((entry) => entry.id === "first_chunk");
+  if (firstChunkIndex === -1) {
+    return [
+      ...timeline,
+      {
+        id: "first_chunk",
+        label: "First content chunk",
+        status: "done",
+        detail,
+        at_ms: atMs,
+        progress: 40,
+      },
+    ];
+  }
+  const nextTimeline = [...timeline];
+  const currentEntry = nextTimeline[firstChunkIndex];
+  nextTimeline[firstChunkIndex] = {
+    ...currentEntry,
+    status: "done",
+    detail,
+    at_ms: atMs,
+  };
+  return nextTimeline;
+}
+
 function applyContentEvent(args: {
   analysis: NonNullable<AnalysisResult["analysis"]>;
   dataText: string;
@@ -85,18 +116,15 @@ function applyContentEvent(args: {
   if (!text) {
     return analysis;
   }
-  const nextTimeline = [...analysis.timeline];
   const nextChunkCount = analysis.chunk_count + 1;
   const nowMs = performance.now() - state.streamStartedAt;
+  let nextTimeline = analysis.timeline;
   if (!state.sawFirstChunk) {
     state.sawFirstChunk = true;
-    nextTimeline.push({
-      id: "first_chunk",
-      label: "First content chunk",
-      status: "done",
+    nextTimeline = upsertFirstChunkTimelineEntry({
+      timeline: analysis.timeline,
       detail: `${nextChunkCount} chunk(s) total`,
-      at_ms: nowMs,
-      progress: 40,
+      atMs: nowMs,
     });
   }
   return {

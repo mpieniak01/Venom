@@ -216,6 +216,58 @@ async def test_build_attention_payload_returns_unavailable_when_layers_and_proxy
 
 
 @pytest.mark.asyncio
+async def test_build_attention_payload_recovers_native_with_relaxed_layers_before_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, list[int]]] = []
+
+    async def _fake_probe(**kwargs):
+        mode = kwargs.get("mode")
+        layers = kwargs.get("layer_selection")
+        calls.append((str(mode), list(layers or [])))
+        if mode == "attention" and layers:
+            return {
+                "status": "probe_unavailable",
+                "code": "attention_unavailable",
+                "message": "strict layers unavailable",
+                "runtime_label": "runtime",
+                "diagnostics": {},
+            }
+        if mode == "attention" and not layers:
+            return {
+                "status": "ok",
+                "runtime_label": "runtime",
+                "probe": {
+                    "tokenization": {"tokens_preview": ["▁Co", "▁to", "▁jest"]},
+                    "layers": [
+                        {
+                            "layer": 1,
+                            "heads": [
+                                {
+                                    "head": 0,
+                                    "links": [
+                                        {"from_index": 2, "to_index": 0, "weight": 0.7}
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "diagnostics": {"elapsed_ms": 9.0},
+            }
+        raise AssertionError(f"unexpected probe call: {kwargs}")
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_attention_payload(prompt="Co to jest slonce?")
+
+    assert payload["status"] == "ok"
+    assert payload["code"] is None
+    assert payload["layers"]
+    assert payload["diagnostics"]["native_retry"] is True
+    assert ("attention", []) in calls
+
+
+@pytest.mark.asyncio
 async def test_attention_proxy_from_logits_returns_none_for_invalid_shapes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

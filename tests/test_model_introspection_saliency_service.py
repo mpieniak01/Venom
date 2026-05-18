@@ -207,6 +207,53 @@ async def test_build_saliency_payload_returns_unavailable_when_token_weights_and
 
 
 @pytest.mark.asyncio
+async def test_build_saliency_payload_recovers_native_with_relaxed_layers_before_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, list[int]]] = []
+
+    async def _fake_probe(**kwargs):
+        mode = kwargs.get("mode")
+        layers = kwargs.get("layer_selection")
+        calls.append((str(mode), list(layers or [])))
+        if mode == "saliency" and layers:
+            return {
+                "status": "probe_unavailable",
+                "code": "saliency_unavailable",
+                "message": "strict layers unavailable",
+                "runtime_label": "runtime",
+                "diagnostics": {},
+            }
+        if mode == "saliency" and not layers:
+            return {
+                "status": "ok",
+                "runtime_label": "runtime",
+                "probe": {
+                    "method": "integrated_gradients",
+                    "target_output_token_index": 0,
+                    "target_output_token": "Słońce",
+                    "token_weights": [
+                        {"token": "▁Słońce", "token_index": 0, "weight": 0.9}
+                    ],
+                },
+                "diagnostics": {"elapsed_ms": 11.0},
+            }
+        raise AssertionError(f"unexpected probe call: {kwargs}")
+
+    monkeypatch.setattr(service, "run_model_introspection_probe", _fake_probe)
+    payload = await service.build_saliency_payload(
+        prompt="q",
+        response_text="Słońce to gwiazda",
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["code"] is None
+    assert payload["token_weights"]
+    assert payload["diagnostics"]["native_retry"] is True
+    assert ("saliency", []) in calls
+
+
+@pytest.mark.asyncio
 async def test_build_saliency_payload_uses_requested_target_token_when_probe_missing_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

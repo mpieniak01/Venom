@@ -23,6 +23,26 @@ type Translator = (key: string, params?: Record<string, string | number>) => str
 
 const FLOW_TRACE_TIMEOUT_MS = 20000;
 
+function serializeMermaidError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || error.name || "Unknown Mermaid error";
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== "{}") {
+        return serialized;
+      }
+    } catch {
+      return "[unserializable Mermaid error object]";
+    }
+  }
+  return String(error ?? "unknown Mermaid render failure");
+}
+
 async function fetchFlowTraceWithTimeout(requestId: string, timeoutMs: number) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -395,13 +415,14 @@ export function useInspectorState(t: Translator) {
           requestAnimationFrame(() => fitViewRef.current?.());
         }
       } catch (err) {
-        console.error("Mermaid render error:", err);
-        if (!cancelled) {
-          if (svgRef.current) {
-            renderPlainDiagramFallback(svgRef.current, sanitizeMermaidDiagram(diagram || defaultDiagram));
-          }
-          setMermaidError(t("inspector.panels.diagram.errorRender"));
+        if (cancelled) {
+          return;
         }
+        console.error("Mermaid render error:", serializeMermaidError(err));
+        if (svgRef.current) {
+          renderPlainDiagramFallback(svgRef.current, sanitizeMermaidDiagram(diagram || defaultDiagram));
+        }
+        setMermaidError(t("inspector.panels.diagram.errorRender"));
       }
     };
 

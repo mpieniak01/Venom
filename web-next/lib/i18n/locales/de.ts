@@ -618,6 +618,14 @@ export const de = {
         results: {
           title: "Analyseergebnisse",
           description: "Highlights, Fazit und Prozess-Telemetrie sind hier gebündelt.",
+          stepPrefix: "Schritt",
+          stepMaterializing: "Schrittmaterialisierung",
+          stepStatus: {
+            done: "done",
+            running: "running",
+            pending: "pending",
+            failed: "failed",
+          },
           answer: "Antwort",
           waitingToken: "Warte auf das erste Streaming-Token...",
           streaming: "Live-Streaming aus dem Modell",
@@ -790,6 +798,33 @@ export const de = {
             rawAria: "Zur rohen Token-Ansicht wechseln",
             rawTokensUnavailable:
               "Rohe Ausgabetoken sind im Runtime-Vertrag nicht verfügbar.",
+          },
+          steps: {
+            snapshotBefore: "Snapshot captured",
+            requestReady: "Prompt prepared",
+            streamOpened: "Stream opened",
+            firstChunk: "First content chunk",
+            responseFinalized: "Response assembled",
+            snapshotAfter: "Snapshot refreshed",
+            logitLensProbe: "Logit lens probe",
+            attentionProbe: "Attention probe",
+            saliencyProbe: "Saliency probe",
+          },
+          attention: {
+            title: "Attention Head View",
+            empty: "Keine Attention-Daten für diesen Analyselauf.",
+            unavailable: "Attention-Probe ist für diesen Lauf nicht verfügbar.",
+          },
+          saliency: {
+            title: "Saliency / Attribution",
+            empty: "Keine Saliency-Daten für diesen Analyselauf.",
+            unavailable: "Saliency-Probe ist für diesen Lauf nicht verfügbar.",
+          },
+          internals: {
+            title: "Advanced internals",
+            description:
+              "Attention und Saliency sind kostenintensive Opt-in-Analysen. Sie können die Antwortzeit verlängern und unterliegen Runtime-/Probe-Limits.",
+            processing: "Internals werden verarbeitet",
           },
           internalsRecoveredTitle: "Probe internals recovered",
           internalsRecoveredBadge: "proxy path active",

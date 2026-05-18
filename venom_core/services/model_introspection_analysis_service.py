@@ -39,9 +39,15 @@ _ANALYSIS_STREAM_FAILED = "analysis stream failed"
 _TIMELINE_LABEL_SNAPSHOT_CAPTURED = "Snapshot captured"
 _TIMELINE_LABEL_PROMPT_PREPARED = "Prompt prepared"
 _TIMELINE_LABEL_STREAM_OPENED = "Stream opened"
+_TIMELINE_LABEL_FIRST_CONTENT_CHUNK = "First content chunk"
+_TIMELINE_LABEL_RESPONSE_ASSEMBLED = "Response assembled"
+_TIMELINE_LABEL_SNAPSHOT_REFRESHED = "Snapshot refreshed"
 _TIMELINE_LABEL_LOGIT_LENS = "Logit lens probe"
 _TIMELINE_LABEL_ATTENTION = "Attention probe"
 _TIMELINE_LABEL_SALIENCY = "Saliency probe"
+_TIMELINE_DETAIL_LIVE_ANALYSIS_DISABLED = "Live analysis disabled"
+_TIMELINE_DETAIL_AWAITING_STREAMED_CONTENT = "Awaiting streamed content"
+_TIMELINE_DETAIL_AWAITING_RESPONSE_ASSEMBLY = "Awaiting response assembly"
 _STREAM_DELAYED_THRESHOLD_MS = 1000.0
 _STREAM_BUFFERED_WINDOW_MS = 250.0
 _TRAFFIC_CONTROL_DEGRADED_ERROR = "Traffic control is in degraded mode"
@@ -670,10 +676,14 @@ def _capability_from_probe_payload(payload: dict[str, Any] | None) -> dict[str, 
     code = str(raw_code).strip() if isinstance(raw_code, str) else ""
     proxy = bool(code and "_proxy_" in code)
     native = bool(available and not proxy)
-    if available:
-        reason = code or "ok"
-    else:
-        reason = code or "probe_unavailable"
+    reason = code or ("ok" if available else "probe_unavailable")
+    availability_class = _resolve_availability_class(
+        native=native,
+        available=available,
+        proxy=proxy,
+        status=status,
+        reason=reason,
+    )
     return {
         "available": available,
         "native": native,
@@ -681,7 +691,34 @@ def _capability_from_probe_payload(payload: dict[str, Any] | None) -> dict[str, 
         "source": source,
         "status": status,
         "reason": reason,
+        "availability_class": availability_class,
     }
+
+
+def _is_probe_failure_reason(reason: str) -> bool:
+    return reason in {
+        "probe_failed",
+        "failed",
+        "runtime_error",
+        "probe_transport_error",
+    } or reason.startswith("probe_timeout")
+
+
+def _resolve_availability_class(
+    *,
+    native: bool,
+    available: bool,
+    proxy: bool,
+    status: str,
+    reason: str,
+) -> str:
+    if native:
+        return "native_ok"
+    if available and proxy:
+        return "proxy_ok"
+    if status == "failed" or _is_probe_failure_reason(reason):
+        return "failed"
+    return "unavailable"
 
 
 def _build_probe_limits_payload(limits: dict[str, Any]) -> dict[str, Any]:
@@ -836,6 +873,96 @@ async def _record_run_trends_async(
 def _build_skipped_analysis_result(
     prompt: str, runtime: dict[str, Any]
 ) -> dict[str, Any]:
+    timeline: list[dict[str, Any]] = [
+        {
+            "id": "snapshot_before",
+            "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
+            "status": "done",
+            "detail": runtime["label"],
+            "path": "answer_path",
+            "at_ms": 0.0,
+            "progress": 0,
+        },
+        {
+            "id": "request_ready",
+            "label": _TIMELINE_LABEL_PROMPT_PREPARED,
+            "status": "done",
+            "detail": prompt,
+            "path": "answer_path",
+            "at_ms": 0.0,
+            "progress": 10,
+        },
+        {
+            "id": "stream_opened",
+            "label": _TIMELINE_LABEL_STREAM_OPENED,
+            "status": "skipped",
+            "detail": _TIMELINE_DETAIL_LIVE_ANALYSIS_DISABLED,
+            "reason_code": "live_analysis_disabled",
+            "path": "answer_path",
+            "at_ms": 0.0,
+            "progress": 20,
+        },
+        {
+            "id": "first_chunk",
+            "label": _TIMELINE_LABEL_FIRST_CONTENT_CHUNK,
+            "status": "skipped",
+            "detail": _TIMELINE_DETAIL_LIVE_ANALYSIS_DISABLED,
+            "reason_code": "live_analysis_disabled",
+            "path": "answer_path",
+            "at_ms": 0.0,
+            "progress": 40,
+        },
+        {
+            "id": "response_finalized",
+            "label": _TIMELINE_LABEL_RESPONSE_ASSEMBLED,
+            "status": "skipped",
+            "detail": _TIMELINE_DETAIL_LIVE_ANALYSIS_DISABLED,
+            "reason_code": "live_analysis_disabled",
+            "path": "answer_path",
+            "at_ms": 0.0,
+            "progress": 85,
+        },
+        {
+            "id": "logit_lens_probe",
+            "label": _TIMELINE_LABEL_LOGIT_LENS,
+            "status": "skipped",
+            "detail": "probe_unavailable",
+            "reason_code": "live_analysis_disabled",
+            "path": "internals_path",
+            "at_ms": 0.0,
+            "progress": 90,
+        },
+        {
+            "id": "attention_probe",
+            "label": _TIMELINE_LABEL_ATTENTION,
+            "status": "skipped",
+            "detail": "attention_unavailable",
+            "reason_code": "live_analysis_disabled",
+            "path": "internals_path",
+            "at_ms": 0.0,
+            "progress": 93,
+        },
+        {
+            "id": "saliency_probe",
+            "label": _TIMELINE_LABEL_SALIENCY,
+            "status": "skipped",
+            "detail": "saliency_unavailable",
+            "reason_code": "live_analysis_disabled",
+            "path": "internals_path",
+            "at_ms": 0.0,
+            "progress": 96,
+        },
+        {
+            "id": "snapshot_after",
+            "label": _TIMELINE_LABEL_SNAPSHOT_REFRESHED,
+            "status": "skipped",
+            "detail": _TIMELINE_DETAIL_LIVE_ANALYSIS_DISABLED,
+            "reason_code": "live_analysis_disabled",
+            "path": "answer_path",
+            "at_ms": 0.0,
+            "progress": 100,
+        },
+    ]
     return {
         "analysis_enabled": False,
         "status": "skipped",
@@ -845,16 +972,8 @@ def _build_skipped_analysis_result(
             "response": "",
             "chunk_count": 0,
             "events": [],
-            "timeline_step_count": 1,
-            "timeline": [
-                {
-                    "id": "analysis_disabled",
-                    "label": "Live analysis disabled",
-                    "status": "skipped",
-                    "detail": "Snapshot-only mode",
-                    "at_ms": 0.0,
-                }
-            ],
+            "timeline_step_count": len(timeline),
+            "timeline": timeline,
             "elapsed_ms": 0.0,
             "provider": runtime["provider"],
             "model": runtime["model"],
@@ -878,21 +997,88 @@ def _build_degraded_mode_skipped_result(
             "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
             "status": "done",
             "detail": runtime["label"],
+            "path": "answer_path",
             "at_ms": 0.0,
+            "progress": 0,
         },
         {
             "id": "request_ready",
             "label": _TIMELINE_LABEL_PROMPT_PREPARED,
             "status": "done",
             "detail": prompt,
+            "path": "answer_path",
             "at_ms": request_ready_at_ms,
+            "progress": 10,
         },
         {
-            "id": "analysis_skipped",
-            "label": "Analysis skipped",
+            "id": "stream_opened",
+            "label": _TIMELINE_LABEL_STREAM_OPENED,
             "status": "skipped",
             "detail": detail,
+            "reason_code": error_code,
+            "path": "answer_path",
             "at_ms": elapsed_ms,
+            "progress": 20,
+        },
+        {
+            "id": "first_chunk",
+            "label": _TIMELINE_LABEL_FIRST_CONTENT_CHUNK,
+            "status": "skipped",
+            "detail": detail,
+            "reason_code": error_code,
+            "path": "answer_path",
+            "at_ms": elapsed_ms,
+            "progress": 40,
+        },
+        {
+            "id": "response_finalized",
+            "label": _TIMELINE_LABEL_RESPONSE_ASSEMBLED,
+            "status": "skipped",
+            "detail": detail,
+            "reason_code": error_code,
+            "path": "answer_path",
+            "at_ms": elapsed_ms,
+            "progress": 85,
+        },
+        {
+            "id": "logit_lens_probe",
+            "label": _TIMELINE_LABEL_LOGIT_LENS,
+            "status": "skipped",
+            "detail": "probe_unavailable",
+            "reason_code": error_code,
+            "path": "internals_path",
+            "at_ms": elapsed_ms,
+            "progress": 90,
+        },
+        {
+            "id": "attention_probe",
+            "label": _TIMELINE_LABEL_ATTENTION,
+            "status": "skipped",
+            "detail": "attention_unavailable",
+            "reason_code": error_code,
+            "path": "internals_path",
+            "at_ms": elapsed_ms,
+            "progress": 93,
+        },
+        {
+            "id": "saliency_probe",
+            "label": _TIMELINE_LABEL_SALIENCY,
+            "status": "skipped",
+            "detail": "saliency_unavailable",
+            "reason_code": error_code,
+            "path": "internals_path",
+            "at_ms": elapsed_ms,
+            "progress": 96,
+        },
+        {
+            "id": "snapshot_after",
+            "label": _TIMELINE_LABEL_SNAPSHOT_REFRESHED,
+            "status": "skipped",
+            "detail": detail,
+            "reason_code": error_code,
+            "path": "answer_path",
+            "at_ms": elapsed_ms,
+            "progress": 100,
         },
     ]
     return {
@@ -971,21 +1157,88 @@ def _build_model_drift_skipped_result(
             "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
             "status": "done",
             "detail": runtime["label"],
+            "path": "answer_path",
             "at_ms": 0.0,
+            "progress": 0,
         },
         {
             "id": "request_ready",
             "label": _TIMELINE_LABEL_PROMPT_PREPARED,
             "status": "done",
             "detail": prompt,
+            "path": "answer_path",
             "at_ms": request_ready_at_ms,
+            "progress": 10,
         },
         {
-            "id": "analysis_skipped_model_drift",
-            "label": "Analysis skipped",
+            "id": "stream_opened",
+            "label": _TIMELINE_LABEL_STREAM_OPENED,
             "status": "skipped",
             "detail": detail,
+            "reason_code": "model_drift_detected",
+            "path": "answer_path",
             "at_ms": request_ready_at_ms,
+            "progress": 20,
+        },
+        {
+            "id": "first_chunk",
+            "label": _TIMELINE_LABEL_FIRST_CONTENT_CHUNK,
+            "status": "skipped",
+            "detail": detail,
+            "reason_code": "model_drift_detected",
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 40,
+        },
+        {
+            "id": "response_finalized",
+            "label": _TIMELINE_LABEL_RESPONSE_ASSEMBLED,
+            "status": "skipped",
+            "detail": detail,
+            "reason_code": "model_drift_detected",
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 85,
+        },
+        {
+            "id": "logit_lens_probe",
+            "label": _TIMELINE_LABEL_LOGIT_LENS,
+            "status": "skipped",
+            "detail": "probe_unavailable",
+            "reason_code": "model_drift_detected",
+            "path": "internals_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 90,
+        },
+        {
+            "id": "attention_probe",
+            "label": _TIMELINE_LABEL_ATTENTION,
+            "status": "skipped",
+            "detail": "attention_unavailable",
+            "reason_code": "model_drift_detected",
+            "path": "internals_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 93,
+        },
+        {
+            "id": "saliency_probe",
+            "label": _TIMELINE_LABEL_SALIENCY,
+            "status": "skipped",
+            "detail": "saliency_unavailable",
+            "reason_code": "model_drift_detected",
+            "path": "internals_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 96,
+        },
+        {
+            "id": "snapshot_after",
+            "label": _TIMELINE_LABEL_SNAPSHOT_REFRESHED,
+            "status": "skipped",
+            "detail": detail,
+            "reason_code": "model_drift_detected",
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 100,
         },
     ]
     return {
@@ -1046,6 +1299,89 @@ def _build_running_analysis_result(
     runtime: dict[str, Any],
     request_ready_at_ms: float,
 ) -> dict[str, Any]:
+    timeline: list[dict[str, Any]] = [
+        {
+            "id": "snapshot_before",
+            "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
+            "status": "done",
+            "detail": runtime["label"],
+            "path": "answer_path",
+            "at_ms": 0.0,
+            "progress": 0,
+        },
+        {
+            "id": "request_ready",
+            "label": _TIMELINE_LABEL_PROMPT_PREPARED,
+            "status": "done",
+            "detail": prompt,
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 10,
+        },
+        {
+            "id": "stream_opened",
+            "label": _TIMELINE_LABEL_STREAM_OPENED,
+            "status": "running",
+            "detail": _TIMELINE_DETAIL_AWAITING_STREAMED_CONTENT,
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 20,
+        },
+        {
+            "id": "first_chunk",
+            "label": _TIMELINE_LABEL_FIRST_CONTENT_CHUNK,
+            "status": "pending",
+            "detail": _TIMELINE_DETAIL_AWAITING_STREAMED_CONTENT,
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 40,
+        },
+        {
+            "id": "response_finalized",
+            "label": _TIMELINE_LABEL_RESPONSE_ASSEMBLED,
+            "status": "pending",
+            "detail": _TIMELINE_DETAIL_AWAITING_STREAMED_CONTENT,
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 85,
+        },
+        {
+            "id": "logit_lens_probe",
+            "label": _TIMELINE_LABEL_LOGIT_LENS,
+            "status": "pending",
+            "detail": _TIMELINE_DETAIL_AWAITING_RESPONSE_ASSEMBLY,
+            "path": "internals_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 90,
+        },
+        {
+            "id": "attention_probe",
+            "label": _TIMELINE_LABEL_ATTENTION,
+            "status": "pending",
+            "detail": _TIMELINE_DETAIL_AWAITING_RESPONSE_ASSEMBLY,
+            "path": "internals_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 93,
+        },
+        {
+            "id": "saliency_probe",
+            "label": _TIMELINE_LABEL_SALIENCY,
+            "status": "pending",
+            "detail": _TIMELINE_DETAIL_AWAITING_RESPONSE_ASSEMBLY,
+            "path": "internals_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 96,
+        },
+        {
+            "id": "snapshot_after",
+            "label": _TIMELINE_LABEL_SNAPSHOT_REFRESHED,
+            "status": "pending",
+            "detail": _TIMELINE_DETAIL_AWAITING_RESPONSE_ASSEMBLY,
+            "path": "answer_path",
+            "at_ms": request_ready_at_ms,
+            "progress": 100,
+        },
+    ]
     return {
         "analysis_enabled": True,
         "status": "running",
@@ -1055,30 +1391,8 @@ def _build_running_analysis_result(
             "response": "",
             "chunk_count": 0,
             "events": [],
-            "timeline_step_count": 3,
-            "timeline": [
-                {
-                    "id": "snapshot_before",
-                    "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
-                    "status": "done",
-                    "detail": runtime["label"],
-                    "at_ms": 0.0,
-                },
-                {
-                    "id": "request_ready",
-                    "label": _TIMELINE_LABEL_PROMPT_PREPARED,
-                    "status": "done",
-                    "detail": prompt,
-                    "at_ms": request_ready_at_ms,
-                },
-                {
-                    "id": "stream_opened",
-                    "label": _TIMELINE_LABEL_STREAM_OPENED,
-                    "status": "running",
-                    "detail": "Awaiting streamed content",
-                    "at_ms": request_ready_at_ms,
-                },
-            ],
+            "timeline_step_count": len(timeline),
+            "timeline": timeline,
             "elapsed_ms": 0.0,
             "provider": runtime["provider"],
             "model": runtime["model"],
@@ -1108,28 +1422,89 @@ def _build_failed_analysis_result(
             "label": _TIMELINE_LABEL_SNAPSHOT_CAPTURED,
             "status": "done",
             "detail": runtime["label"],
+            "path": "answer_path",
             "at_ms": 0.0,
+            "progress": 0,
         },
         {
             "id": "request_ready",
             "label": _TIMELINE_LABEL_PROMPT_PREPARED,
             "status": "done",
             "detail": prompt,
+            "path": "answer_path",
             "at_ms": request_ready_at_ms,
+            "progress": 10,
         },
         {
             "id": "stream_opened",
             "label": _TIMELINE_LABEL_STREAM_OPENED,
             "status": "done",
             "detail": f"{len(events)} event(s) observed",
+            "path": "answer_path",
             "at_ms": response_received_at_ms,
+            "progress": 20,
         },
         {
-            "id": "analysis_failed",
-            "label": "Analysis failed",
+            "id": "first_chunk",
+            "label": _TIMELINE_LABEL_FIRST_CONTENT_CHUNK,
+            "status": "done" if chunk_count > 0 else "skipped",
+            "detail": f"{chunk_count} chunk(s) total"
+            if chunk_count > 0
+            else "No content chunk",
+            "reason_code": None if chunk_count > 0 else "no_first_chunk",
+            "path": "answer_path",
+            "at_ms": response_received_at_ms,
+            "progress": 40,
+        },
+        {
+            "id": "response_finalized",
+            "label": _TIMELINE_LABEL_RESPONSE_ASSEMBLED,
             "status": "failed",
             "detail": error_message,
+            "reason_code": "analysis_failed",
+            "path": "answer_path",
             "at_ms": elapsed_ms,
+            "progress": 85,
+        },
+        {
+            "id": "logit_lens_probe",
+            "label": _TIMELINE_LABEL_LOGIT_LENS,
+            "status": "skipped",
+            "detail": "probe_unavailable",
+            "reason_code": "analysis_failed",
+            "path": "internals_path",
+            "at_ms": elapsed_ms,
+            "progress": 90,
+        },
+        {
+            "id": "attention_probe",
+            "label": _TIMELINE_LABEL_ATTENTION,
+            "status": "skipped",
+            "detail": "attention_unavailable",
+            "reason_code": "analysis_failed",
+            "path": "internals_path",
+            "at_ms": elapsed_ms,
+            "progress": 93,
+        },
+        {
+            "id": "saliency_probe",
+            "label": _TIMELINE_LABEL_SALIENCY,
+            "status": "skipped",
+            "detail": "saliency_unavailable",
+            "reason_code": "analysis_failed",
+            "path": "internals_path",
+            "at_ms": elapsed_ms,
+            "progress": 96,
+        },
+        {
+            "id": "snapshot_after",
+            "label": _TIMELINE_LABEL_SNAPSHOT_REFRESHED,
+            "status": "skipped",
+            "detail": error_message,
+            "reason_code": "analysis_failed",
+            "path": "answer_path",
+            "at_ms": elapsed_ms,
+            "progress": 100,
         },
     ]
     return {
@@ -1544,7 +1919,7 @@ def _build_analysis_timeline(
         timeline.append(
             {
                 "id": "first_chunk",
-                "label": "First content chunk",
+                "label": _TIMELINE_LABEL_FIRST_CONTENT_CHUNK,
                 "status": "done",
                 "detail": f"{stream_payload.get('chunk_count', 0)} chunk(s) total",
                 "path": "answer_path",
@@ -1556,7 +1931,7 @@ def _build_analysis_timeline(
     timeline.append(
         {
             "id": "response_finalized",
-            "label": "Response assembled",
+            "label": _TIMELINE_LABEL_RESPONSE_ASSEMBLED,
             "status": "done",
             "detail": f"{len(stream_payload.get('response_text', ''))} chars",
             "path": "answer_path",
@@ -1576,7 +1951,7 @@ def _build_analysis_timeline(
         timeline.append(
             {
                 "id": "snapshot_after",
-                "label": "Snapshot refreshed",
+                "label": _TIMELINE_LABEL_SNAPSHOT_REFRESHED,
                 "status": "done",
                 "detail": f"{len(refreshed_snapshot.get('available_packages', []))} packages available",
                 "path": "answer_path",

@@ -89,6 +89,7 @@ async def _build_saliency_proxy_from_attention(
     prompt: str,
     runtime_label: str | None,
     diagnostics: dict[str, Any],
+    requested_target_token: str | None,
 ) -> dict[str, Any] | None:
     probe_payload = await run_model_introspection_probe(
         prompt=prompt,
@@ -132,7 +133,10 @@ async def _build_saliency_proxy_from_attention(
         "runtime_label": runtime_label,
         "method": "attention_proxy",
         "target_output_token_index": _SALIENCY_TARGET_OUTPUT_TOKEN_INDEX,
-        "target_output_token": None,
+        "target_output_token": _resolve_target_token(
+            probe_target_token=None,
+            requested_target_token=requested_target_token,
+        ),
         "token_weights": token_weights,
         "diagnostics": proxy_diagnostics,
     }
@@ -143,6 +147,7 @@ async def _build_saliency_proxy_from_logits(
     prompt: str,
     runtime_label: str | None,
     diagnostics: dict[str, Any],
+    requested_target_token: str | None,
 ) -> dict[str, Any] | None:
     probe_payload = await run_model_introspection_probe(
         prompt=prompt,
@@ -186,7 +191,10 @@ async def _build_saliency_proxy_from_logits(
         "runtime_label": runtime_label,
         "method": "logits_proxy",
         "target_output_token_index": _SALIENCY_TARGET_OUTPUT_TOKEN_INDEX,
-        "target_output_token": None,
+        "target_output_token": _resolve_target_token(
+            probe_target_token=None,
+            requested_target_token=requested_target_token,
+        ),
         "token_weights": token_weights,
         "diagnostics": proxy_diagnostics,
     }
@@ -197,11 +205,13 @@ async def _resolve_saliency_proxy_payload(
     prompt: str,
     runtime_label: str | None,
     diagnostics: dict[str, Any],
+    requested_target_token: str | None,
 ) -> dict[str, Any] | None:
     proxy_payload = await _build_saliency_proxy_from_attention(
         prompt=prompt,
         runtime_label=runtime_label,
         diagnostics=diagnostics,
+        requested_target_token=requested_target_token,
     )
     if proxy_payload is not None:
         return proxy_payload
@@ -209,6 +219,7 @@ async def _resolve_saliency_proxy_payload(
         prompt=prompt,
         runtime_label=runtime_label,
         diagnostics=diagnostics,
+        requested_target_token=requested_target_token,
     )
 
 
@@ -220,11 +231,13 @@ async def _resolve_saliency_proxy_or_unavailable(
     status: str,
     code: str,
     message: str,
+    requested_target_token: str | None,
 ) -> dict[str, Any]:
     proxy_payload = await _resolve_saliency_proxy_payload(
         prompt=prompt,
         runtime_label=runtime_label,
         diagnostics=diagnostics,
+        requested_target_token=requested_target_token,
     )
     if proxy_payload is not None:
         return proxy_payload
@@ -263,6 +276,7 @@ async def build_saliency_payload(
             status=status,
             code=str(probe_payload.get("code") or "saliency_unavailable"),
             message=str(probe_payload.get("message") or "Saliency probe unavailable"),
+            requested_target_token=target_output_token,
         )
 
     probe = probe_payload.get("probe")
@@ -284,6 +298,7 @@ async def build_saliency_payload(
             status="probe_unavailable",
             code="saliency_unavailable",
             message="Saliency payload is unavailable for selected output token",
+            requested_target_token=target_output_token,
         )
 
     target_index_raw = probe.get("target_output_token_index")

@@ -376,7 +376,9 @@ function resolveInternalsAvailability(
     saliency?.status === "ok" && saliency.token_weights.length > 0,
   );
   const logitLensAvailable = Boolean(
-    logitLens?.status === "ok" && logitLens.checkpoints.length > 0,
+    (logitLens?.status === "ok" && logitLens.checkpoints.length > 0) ||
+      ((logitLens?.raw_input_tokens.length ?? 0) > 0) ||
+      ((logitLens?.raw_output_tokens.length ?? 0) > 0),
   );
   return {
     attentionAvailable,

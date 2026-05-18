@@ -58,7 +58,7 @@ W praktyce UI rozroznia:
 Uwaga o aktualnym kontrakcie runtime:
 
 - probe `multi_runtime` obsluguje `hidden`, `attention`, `logits` oraz `saliency`,
-- `saliency` moze nadal zwracac `saliency_unavailable` dla wybranych runtime/profili, gdy natywny payload saliency nie jest wystawiany i uruchamia sie sciezka fallback/proxy.
+- `saliency` moze nadal zwracac `saliency_unavailable` dla wybranych runtime/profili, gdy natywny payload saliency nie jest wystawiany i uruchamia się sciezka fallback/proxy.
 
 ## 4. Jak czytac ekran
 

@@ -526,7 +526,7 @@ export type AnalysisResult = {
   skipped_reason?: string;
 };
 
-export type BadgeTone = "success" | "warning" | "neutral";
+export type BadgeTone = "success" | "warning" | "neutral" | "danger";
 
 export type AnalysisUpdateFn = (
   analysis: NonNullable<AnalysisResult["analysis"]>,

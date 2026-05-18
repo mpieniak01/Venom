@@ -11,9 +11,10 @@ fi
 
 changed_files=""
 if [[ -n "$upstream_ref" ]]; then
-  changed_files="$(git diff --name-only "${upstream_ref}...HEAD" || true)"
+  changed_files="$(git diff --name-only "${upstream_ref}...HEAD")"
 else
-  changed_files="$(git diff --name-only "$(git merge-base HEAD origin/main 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -n1)"...HEAD || true)"
+  base_ref="$(git merge-base HEAD origin/main 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -n1)"
+  changed_files="$(git diff --name-only "${base_ref}...HEAD")"
 fi
 
 if [[ -z "${changed_files}" ]]; then

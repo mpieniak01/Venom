@@ -148,6 +148,7 @@ _PROBE_EXECUTOR = ThreadPoolExecutor(
 _PROBE_SEMAPHORE = asyncio.Semaphore(_PROBE_MAX_CONCURRENCY)
 # Gradient-based saliency uses model-global grads; serialize that path.
 _PROBE_SALIENCY_LOCK = threading.Lock()
+_PROBE_SALIENCY_LOCK_WAIT_SECONDS = 0.05
 
 
 def _estimate_payload_bytes(payload: Any) -> int:
@@ -1259,6 +1260,14 @@ def _extract_saliency_token_weights(
     return entries
 
 
+def _acquire_saliency_lock_with_cancel(cancel_event: threading.Event | None) -> bool:
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
+        if _PROBE_SALIENCY_LOCK.acquire(timeout=_PROBE_SALIENCY_LOCK_WAIT_SECONDS):
+            return True
+
+
 def _run_probe_sync(
     *,
     engine: MultiRuntimeEngine,
@@ -1294,7 +1303,9 @@ def _run_probe_sync(
         attention_mask = attention_mask.to(model.device)
 
     if mode == "saliency":
-        with _PROBE_SALIENCY_LOCK:
+        if not _acquire_saliency_lock_with_cancel(cancel_event):
+            raise RuntimeError("probe_cancelled")
+        try:
             embedding_layer = getattr(model, "get_input_embeddings", None)
             if not callable(embedding_layer):
                 raise RuntimeError("input_embeddings_unavailable")
@@ -1302,7 +1313,6 @@ def _run_probe_sync(
             input_embeddings.requires_grad_(True)
             if cancel_event is not None and cancel_event.is_set():
                 raise RuntimeError("probe_cancelled")
-            model.zero_grad(set_to_none=True)
             outputs = model(
                 inputs_embeds=input_embeddings,
                 attention_mask=attention_mask,
@@ -1323,8 +1333,13 @@ def _run_probe_sync(
                 )
             )
             target_logit = next_token_logits[target_token_id]
-            target_logit.backward()
-            gradients = input_embeddings.grad
+            gradients = torch.autograd.grad(
+                target_logit,
+                input_embeddings,
+                retain_graph=False,
+                create_graph=False,
+                allow_unused=False,
+            )[0]
             if gradients is None:
                 raise RuntimeError("saliency_gradients_unavailable")
             token_weights = _extract_saliency_token_weights(
@@ -1332,6 +1347,8 @@ def _run_probe_sync(
                 token_strings=token_strings,
                 top_k=top_k,
             )
+        finally:
+            _PROBE_SALIENCY_LOCK.release()
         probe_payload = {
             "query": prompt,
             "mode": mode,

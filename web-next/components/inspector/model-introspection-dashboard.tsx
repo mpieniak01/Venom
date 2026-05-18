@@ -100,15 +100,22 @@ type InternalsNoticeProps = {
   extraBadge?: string;
 };
 
+type SnapshotLoadingPanelProps = Readonly<{
+  snapshot: IntrospectionSnapshot | null;
+  loading: boolean;
+  t: (key: string) => string;
+}>;
+
+type SnapshotErrorPanelProps = Readonly<{
+  error: string | null;
+  t: (key: string) => string;
+}>;
+
 function SnapshotLoadingPanel({
   snapshot,
   loading,
   t,
-}: {
-  snapshot: IntrospectionSnapshot | null;
-  loading: boolean;
-  t: (key: string) => string;
-}) {
+}: SnapshotLoadingPanelProps) {
   if (snapshot || !loading) {
     return null;
   }
@@ -128,7 +135,7 @@ function SnapshotLoadingPanel({
   );
 }
 
-function SnapshotErrorPanel({ error, t }: { error: string | null; t: (key: string) => string }) {
+function SnapshotErrorPanel({ error, t }: SnapshotErrorPanelProps) {
   if (!error) {
     return null;
   }
@@ -153,7 +160,7 @@ function InternalsNoticeCard({
   rowsTone,
   rowKeyPrefix,
   extraBadge,
-}: InternalsNoticeProps) {
+}: Readonly<InternalsNoticeProps>) {
   return (
     <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -170,6 +177,114 @@ function InternalsNoticeCard({
         {extraBadge ? <Badge tone="neutral">{extraBadge}</Badge> : null}
       </div>
     </div>
+  );
+}
+
+type RuntimeContextPanelProps = Readonly<{
+  stats: SummaryCard[];
+  t: (key: string) => string;
+}>;
+
+function RuntimeContextPanel({ stats, t }: RuntimeContextPanelProps) {
+  if (stats.length === 0) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// runtime context"
+      title={t("inspector.modelIntrospection.dashboard.runtimeContext.title")}
+      description={t("inspector.modelIntrospection.dashboard.runtimeContext.description")}
+    >
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => (
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            hint={stat.hint}
+            accent={stat.accent}
+          />
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+type TechnicalLayerPanelProps = Readonly<{
+  snapshot: IntrospectionSnapshot | null;
+  graphLayerOpen: boolean;
+  analysisActive: boolean;
+  graphDrilldownOpen: boolean;
+  selectedGraphNodeIdEffective: string | null;
+  selectedGraphNode: { id: string; label: string; kind: string; status: string } | null;
+  selectedGraphNodeDetails: GraphNodeDetails;
+  selectedGraphTypeHint: string;
+  onToggleGraphLayer: () => void;
+  onToggleGraphView: () => void;
+  onSelectGraphNode: (id: string | null) => void;
+  t: (key: string) => string;
+}>;
+
+function TechnicalLayerPanel({
+  snapshot,
+  graphLayerOpen,
+  analysisActive,
+  graphDrilldownOpen,
+  selectedGraphNodeIdEffective,
+  selectedGraphNode,
+  selectedGraphNodeDetails,
+  selectedGraphTypeHint,
+  onToggleGraphLayer,
+  onToggleGraphView,
+  onSelectGraphNode,
+  t,
+}: TechnicalLayerPanelProps) {
+  if (!snapshot) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// technical"
+      title={t("inspector.modelIntrospection.dashboard.graph.layerTitle")}
+      description={t("inspector.modelIntrospection.dashboard.graph.layerDescription")}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="neutral">nodes {formatCount(snapshot.graph?.summary.nodes ?? 0)}</Badge>
+          <Badge tone="neutral">edges {formatCount(snapshot.graph?.summary.edges ?? 0)}</Badge>
+          <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
+            drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
+          </Badge>
+        </div>
+        <Button variant="ghost" onClick={onToggleGraphLayer}>
+          {graphLayerOpen
+            ? t("inspector.modelIntrospection.dashboard.graph.hideLayer")
+            : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
+        </Button>
+      </div>
+      {graphLayerOpen ? (
+        <div className="mt-4">
+          <GraphPanel
+            snapshot={snapshot}
+            analysisActive={analysisActive}
+            graphViewOpen={graphDrilldownOpen}
+            onToggleGraphView={onToggleGraphView}
+            selectedGraphNodeId={selectedGraphNodeIdEffective}
+            onSelectGraphNode={onSelectGraphNode}
+            selectedGraphNode={selectedGraphNode}
+            selectedGraphNodeDetails={selectedGraphNodeDetails}
+            typeHintText={selectedGraphTypeHint}
+            title={t("inspector.modelIntrospection.dashboard.graph.title")}
+            description={t("inspector.modelIntrospection.dashboard.graph.description")}
+            drilldownTitle={t("inspector.modelIntrospection.dashboard.graph.drilldownTitle")}
+            hideLabel={t("inspector.modelIntrospection.dashboard.graph.hide")}
+            openLabel={t("inspector.modelIntrospection.dashboard.graph.open")}
+            stateOpenLabel={t("inspector.modelIntrospection.dashboard.graph.stateOpen")}
+            stateCollapsedLabel={t("inspector.modelIntrospection.dashboard.graph.stateCollapsed")}
+          />
+        </div>
+      ) : null}
+    </Panel>
   );
 }
 
@@ -1321,74 +1436,21 @@ export function ModelIntrospectionDashboard() {
         </div>
       )}
 
-      {stats.length > 0 && (
-        <Panel
-          eyebrow="// runtime context"
-          title={t("inspector.modelIntrospection.dashboard.runtimeContext.title")}
-          description={t("inspector.modelIntrospection.dashboard.runtimeContext.description")}
-        >
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {stats.map((stat) => (
-              <StatCard
-                key={stat.label}
-                label={stat.label}
-                value={stat.value}
-                hint={stat.hint}
-                accent={stat.accent}
-              />
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {snapshot && (
-        <Panel
-          eyebrow="// technical"
-          title={t("inspector.modelIntrospection.dashboard.graph.layerTitle")}
-          description={t("inspector.modelIntrospection.dashboard.graph.layerDescription")}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="neutral">
-                nodes {formatCount(snapshot.graph?.summary.nodes ?? 0)}
-              </Badge>
-              <Badge tone="neutral">
-                edges {formatCount(snapshot.graph?.summary.edges ?? 0)}
-              </Badge>
-              <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
-                drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
-              </Badge>
-            </div>
-            <Button variant="ghost" onClick={() => setGraphLayerOpen((current) => !current)}>
-              {graphLayerOpen
-                ? t("inspector.modelIntrospection.dashboard.graph.hideLayer")
-                : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
-            </Button>
-          </div>
-          {graphLayerOpen && (
-            <div className="mt-4">
-              <GraphPanel
-                snapshot={snapshot}
-                analysisActive={analysisActive}
-                graphViewOpen={graphDrilldownOpen}
-                onToggleGraphView={() => setGraphDrilldownOpen((current) => !current)}
-                selectedGraphNodeId={selectedGraphNodeIdEffective}
-                onSelectGraphNode={setSelectedGraphNodeId}
-                selectedGraphNode={selectedGraphNode}
-                selectedGraphNodeDetails={selectedGraphNodeDetails}
-                typeHintText={selectedGraphTypeHint}
-                title={t("inspector.modelIntrospection.dashboard.graph.title")}
-                description={t("inspector.modelIntrospection.dashboard.graph.description")}
-                drilldownTitle={t("inspector.modelIntrospection.dashboard.graph.drilldownTitle")}
-                hideLabel={t("inspector.modelIntrospection.dashboard.graph.hide")}
-                openLabel={t("inspector.modelIntrospection.dashboard.graph.open")}
-                stateOpenLabel={t("inspector.modelIntrospection.dashboard.graph.stateOpen")}
-                stateCollapsedLabel={t("inspector.modelIntrospection.dashboard.graph.stateCollapsed")}
-              />
-            </div>
-          )}
-        </Panel>
-      )}
+      <RuntimeContextPanel stats={stats} t={t} />
+      <TechnicalLayerPanel
+        snapshot={snapshot}
+        graphLayerOpen={graphLayerOpen}
+        analysisActive={analysisActive}
+        graphDrilldownOpen={graphDrilldownOpen}
+        selectedGraphNodeIdEffective={selectedGraphNodeIdEffective}
+        selectedGraphNode={selectedGraphNode}
+        selectedGraphNodeDetails={selectedGraphNodeDetails}
+        selectedGraphTypeHint={selectedGraphTypeHint}
+        onToggleGraphLayer={() => setGraphLayerOpen((current) => !current)}
+        onToggleGraphView={() => setGraphDrilldownOpen((current) => !current)}
+        onSelectGraphNode={setSelectedGraphNodeId}
+        t={t}
+      />
     </div>
   );
 }

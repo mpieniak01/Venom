@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { Brain, Radar, RefreshCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -818,6 +818,7 @@ export function ModelIntrospectionDashboard() {
   }, [loadSnapshot]);
 
   const handleRunAnalysis = useCallback(() => {
+    setAdvancedInternalsOpen(true);
     runAnalysis().catch(() => undefined);
   }, [runAnalysis]);
 
@@ -836,11 +837,6 @@ export function ModelIntrospectionDashboard() {
   const logitLensAvailable = Boolean(
     logitLens && logitLens.status === "ok" && logitLens.checkpoints.length > 0,
   );
-  useEffect(() => {
-    if (logitLensAvailable) {
-      setAdvancedInternalsOpen(true);
-    }
-  }, [analysisTraceId, logitLensAvailable]);
   const allInternalsUnavailable =
     !attentionAvailable && !saliencyAvailable && !logitLensAvailable;
   const anyInternalsAvailable =

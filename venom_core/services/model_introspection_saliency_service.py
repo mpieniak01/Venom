@@ -212,6 +212,31 @@ async def _resolve_saliency_proxy_payload(
     )
 
 
+async def _resolve_saliency_proxy_or_unavailable(
+    *,
+    prompt: str,
+    runtime_label: str | None,
+    diagnostics: dict[str, Any],
+    status: str,
+    code: str,
+    message: str,
+) -> dict[str, Any]:
+    proxy_payload = await _resolve_saliency_proxy_payload(
+        prompt=prompt,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+    if proxy_payload is not None:
+        return proxy_payload
+    return _build_unavailable_saliency_payload(
+        status=status,
+        code=code,
+        message=message,
+        runtime_label=runtime_label,
+        diagnostics=diagnostics,
+    )
+
+
 async def build_saliency_payload(
     *,
     prompt: str,
@@ -231,19 +256,13 @@ async def build_saliency_payload(
     runtime_label_str = str(runtime_label) if runtime_label else None
 
     if status != "ok":
-        proxy_payload = await _resolve_saliency_proxy_payload(
+        return await _resolve_saliency_proxy_or_unavailable(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
-        )
-        if proxy_payload is not None:
-            return proxy_payload
-        return _build_unavailable_saliency_payload(
             status=status,
             code=str(probe_payload.get("code") or "saliency_unavailable"),
             message=str(probe_payload.get("message") or "Saliency probe unavailable"),
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
         )
 
     probe = probe_payload.get("probe")
@@ -258,19 +277,13 @@ async def build_saliency_payload(
 
     token_weights = _normalize_token_weights(probe.get("token_weights"))
     if not token_weights:
-        proxy_payload = await _resolve_saliency_proxy_payload(
+        return await _resolve_saliency_proxy_or_unavailable(
             prompt=prompt,
             runtime_label=runtime_label_str,
             diagnostics=diagnostics,
-        )
-        if proxy_payload is not None:
-            return proxy_payload
-        return _build_unavailable_saliency_payload(
             status="probe_unavailable",
             code="saliency_unavailable",
             message="Saliency payload is unavailable for selected output token",
-            runtime_label=runtime_label_str,
-            diagnostics=diagnostics,
         )
 
     target_index_raw = probe.get("target_output_token_index")

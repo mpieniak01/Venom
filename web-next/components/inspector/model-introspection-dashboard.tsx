@@ -89,6 +89,89 @@ type InternalsCapabilityRow = {
   available: boolean;
   reason: string;
 };
+type InternalsNoticeProps = {
+  title: string;
+  message: string;
+  tone: BadgeTone;
+  badgeLabel?: string;
+  rows: InternalsCapabilityRow[];
+  rowsTone: BadgeTone;
+  rowKeyPrefix: string;
+  extraBadge?: string;
+};
+
+function SnapshotLoadingPanel({
+  snapshot,
+  loading,
+  t,
+}: {
+  snapshot: IntrospectionSnapshot | null;
+  loading: boolean;
+  t: (key: string) => string;
+}) {
+  if (snapshot || !loading) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// loading"
+      title={t("inspector.modelIntrospection.dashboard.loading.title")}
+      description={t("inspector.modelIntrospection.dashboard.loading.description")}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">read-only</Badge>
+        <Badge tone="neutral">brain reuse</Badge>
+        <Badge tone="neutral">diagnostics reuse</Badge>
+        <Badge tone="neutral">packages probe</Badge>
+      </div>
+    </Panel>
+  );
+}
+
+function SnapshotErrorPanel({ error, t }: { error: string | null; t: (key: string) => string }) {
+  if (!error) {
+    return null;
+  }
+  return (
+    <Panel
+      eyebrow="// error"
+      title={t("inspector.modelIntrospection.dashboard.error.title")}
+      description={error}
+      className="border border-amber-400/30"
+    >
+      <p className="text-sm text-zinc-300">{t("inspector.modelIntrospection.dashboard.error.note")}</p>
+    </Panel>
+  );
+}
+
+function InternalsNoticeCard({
+  title,
+  message,
+  tone,
+  badgeLabel,
+  rows,
+  rowsTone,
+  rowKeyPrefix,
+  extraBadge,
+}: InternalsNoticeProps) {
+  return (
+    <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
+        <Badge tone={tone}>{badgeLabel ?? title}</Badge>
+      </div>
+      <p className="mt-2 text-sm text-zinc-300">{message}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {rows.map((row) => (
+          <Badge key={`${rowKeyPrefix}-${row.label}`} tone={rowsTone}>
+            {row.label}: {row.reason}
+          </Badge>
+        ))}
+        {extraBadge ? <Badge tone="neutral">{extraBadge}</Badge> : null}
+      </div>
+    </div>
+  );
+}
 
 function resolveInternalsVerdictPresentation(
   verdict: string | undefined,
@@ -895,33 +978,8 @@ export function ModelIntrospectionDashboard() {
         }
       />
 
-      {!snapshot && loading && (
-        <Panel
-          eyebrow="// loading"
-          title={t("inspector.modelIntrospection.dashboard.loading.title")}
-          description={t("inspector.modelIntrospection.dashboard.loading.description")}
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="neutral">read-only</Badge>
-            <Badge tone="neutral">brain reuse</Badge>
-            <Badge tone="neutral">diagnostics reuse</Badge>
-            <Badge tone="neutral">packages probe</Badge>
-          </div>
-        </Panel>
-      )}
-
-      {error && (
-        <Panel
-          eyebrow="// error"
-          title={t("inspector.modelIntrospection.dashboard.error.title")}
-          description={error}
-          className="border border-amber-400/30"
-        >
-          <p className="text-sm text-zinc-300">
-            {t("inspector.modelIntrospection.dashboard.error.note")}
-          </p>
-        </Panel>
-      )}
+      <SnapshotLoadingPanel snapshot={snapshot} loading={loading} t={t} />
+      <SnapshotErrorPanel error={error} t={t} />
 
       {snapshot && (
         <Panel
@@ -1151,68 +1209,39 @@ export function ModelIntrospectionDashboard() {
           {advancedInternalsOpen && (
             <>
               {proxyInternalsRows.length > 0 && (
-                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.results.internalsRecoveredTitle")}
-                    </p>
-                    <Badge tone="neutral">
-                      {t("inspector.modelIntrospection.dashboard.results.internalsRecoveredBadge")}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-zinc-300">
-                    {t("inspector.modelIntrospection.dashboard.results.internalsRecoveredMessage")}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {proxyInternalsRows.map((row) => (
-                      <Badge key={`proxy-open-${row.label}`} tone="neutral">
-                        {row.label}: {row.reason}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                <InternalsNoticeCard
+                  title={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredTitle")}
+                  badgeLabel={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredBadge")}
+                  message={t("inspector.modelIntrospection.dashboard.results.internalsRecoveredMessage")}
+                  tone="neutral"
+                  rows={proxyInternalsRows}
+                  rowsTone="neutral"
+                  rowKeyPrefix="proxy-open"
+                />
               )}
               {anyInternalsAvailable && unavailableInternalsRows.length > 0 && (
-                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.results.internalsPartialTitle")}
-                    </p>
-                    <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-zinc-300">
-                    {t("inspector.modelIntrospection.dashboard.results.internalsPartialMessage")}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {unavailableInternalsRows.map((row) => (
-                      <Badge key={row.label} tone="warning">
-                        {row.label}: {row.reason}
-                      </Badge>
-                    ))}
-                    <Badge tone="neutral">{probeLimitsLabel}</Badge>
-                  </div>
-                </div>
+                <InternalsNoticeCard
+                  title={t("inspector.modelIntrospection.dashboard.results.internalsPartialTitle")}
+                  message={t("inspector.modelIntrospection.dashboard.results.internalsPartialMessage")}
+                  tone={internalsVerdictTone}
+                  badgeLabel={internalsVerdictLabel}
+                  rows={unavailableInternalsRows}
+                  rowsTone="warning"
+                  rowKeyPrefix="partial"
+                  extraBadge={probeLimitsLabel}
+                />
               )}
               {allInternalsUnavailable && (
-                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.results.internalsUnavailableTitle")}
-                    </p>
-                    <Badge tone={internalsVerdictTone}>{internalsVerdictLabel}</Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-zinc-300">
-                    {t("inspector.modelIntrospection.dashboard.results.internalsUnavailableMessage")}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {unavailableInternalsRows.map((row) => (
-                      <Badge key={row.label} tone="warning">
-                        {row.label}: {row.reason}
-                      </Badge>
-                    ))}
-                    <Badge tone="neutral">{probeLimitsLabel}</Badge>
-                  </div>
-                </div>
+                <InternalsNoticeCard
+                  title={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableTitle")}
+                  message={t("inspector.modelIntrospection.dashboard.results.internalsUnavailableMessage")}
+                  tone={internalsVerdictTone}
+                  badgeLabel={internalsVerdictLabel}
+                  rows={unavailableInternalsRows}
+                  rowsTone="warning"
+                  rowKeyPrefix="unavailable"
+                  extraBadge={probeLimitsLabel}
+                />
               )}
               <div className="mb-4">
                 <AttentionPanel

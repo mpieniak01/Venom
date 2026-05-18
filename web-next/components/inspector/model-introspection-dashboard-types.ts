@@ -299,6 +299,13 @@ export type SaliencyModel = {
 
 export type AnalysisPhase = "idle" | "requesting" | "streaming" | "first_chunk" | "completed";
 
+type AnalysisCapabilityPayload = {
+  available?: boolean;
+  source?: string;
+  status?: string;
+  reason?: string;
+};
+
 export type AnalysisResult = {
   status: string;
   analysis: {
@@ -483,24 +490,9 @@ export type AnalysisResult = {
       token_noise_ratio?: number;
     } | null;
     analysis_capabilities?: {
-      attention?: {
-        available?: boolean;
-        source?: string;
-        status?: string;
-        reason?: string;
-      };
-      saliency?: {
-        available?: boolean;
-        source?: string;
-        status?: string;
-        reason?: string;
-      };
-      logit_lens?: {
-        available?: boolean;
-        source?: string;
-        status?: string;
-        reason?: string;
-      };
+      attention?: AnalysisCapabilityPayload;
+      saliency?: AnalysisCapabilityPayload;
+      logit_lens?: AnalysisCapabilityPayload;
       available_count?: number;
       total_count?: number;
       probe_profile?: string;

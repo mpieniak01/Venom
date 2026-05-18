@@ -1180,68 +1180,23 @@ export function buildOperatorRunbookSteps(
   if (!Array.isArray(reasonCodes) || reasonCodes.length === 0) {
     return [];
   }
-  if (reasonCodes.includes("R0_MODEL_DRIFT")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.modelDrift.step3",
-    ];
-  }
-  if (reasonCodes.includes("R0_DEGRADED_ENDPOINT")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedEndpoint.step3",
-    ];
-  }
-  if (reasonCodes.includes("R0_DEGRADED_CIRCUIT")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedCircuit.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedCircuit.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedCircuit.step3",
-    ];
-  }
-  if (reasonCodes.includes("R0_DEGRADED_POLICY")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedPolicy.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedPolicy.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.degradedPolicy.step3",
-    ];
-  }
-  if (reasonCodes.includes("R3_PROBE_FALLBACK")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step3",
-    ];
-  }
-  if (reasonCodes.includes("R3_PROBE_PROXY")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step3",
-    ];
-  }
-  if (reasonCodes.includes("R3_PROBE_FAILED")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.probeFallback.step3",
-    ];
-  }
-  if (reasonCodes.includes("R4_STREAM_DELAYED")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.streamDelayed.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.streamDelayed.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.streamDelayed.step3",
-    ];
-  }
-  if (reasonCodes.includes("R5_LOGIT_NOISE_HIGH")) {
-    return [
-      "inspector.modelIntrospection.dashboard.results.runbook.logitNoiseHigh.step1",
-      "inspector.modelIntrospection.dashboard.results.runbook.logitNoiseHigh.step2",
-      "inspector.modelIntrospection.dashboard.results.runbook.logitNoiseHigh.step3",
-    ];
+  const runbookGroups: Array<{ codes: readonly string[]; stepsPrefix: string }> = [
+    { codes: ["R0_MODEL_DRIFT"], stepsPrefix: "modelDrift" },
+    { codes: ["R0_DEGRADED_ENDPOINT"], stepsPrefix: "degradedEndpoint" },
+    { codes: ["R0_DEGRADED_CIRCUIT"], stepsPrefix: "degradedCircuit" },
+    { codes: ["R0_DEGRADED_POLICY"], stepsPrefix: "degradedPolicy" },
+    { codes: ["R3_PROBE_FALLBACK", "R3_PROBE_PROXY", "R3_PROBE_FAILED"], stepsPrefix: "probeFallback" },
+    { codes: ["R4_STREAM_DELAYED"], stepsPrefix: "streamDelayed" },
+    { codes: ["R5_LOGIT_NOISE_HIGH"], stepsPrefix: "logitNoiseHigh" },
+  ];
+  for (const group of runbookGroups) {
+    if (group.codes.some((code) => reasonCodes.includes(code))) {
+      return [
+        `inspector.modelIntrospection.dashboard.results.runbook.${group.stepsPrefix}.step1`,
+        `inspector.modelIntrospection.dashboard.results.runbook.${group.stepsPrefix}.step2`,
+        `inspector.modelIntrospection.dashboard.results.runbook.${group.stepsPrefix}.step3`,
+      ];
+    }
   }
   return [];
 }

@@ -97,6 +97,12 @@ type ResultStepMarker = {
   status: ResultStepStatus;
   tone: ResultStepTone;
 };
+type ResultStepDef = {
+  number: number;
+  key: string;
+  labelKey: string;
+  timelineIds: readonly string[];
+};
 
 type SnapshotLoadingPanelProps = Readonly<{
   snapshot: IntrospectionSnapshot | null;
@@ -184,7 +190,7 @@ type TechnicalLayerPanelProps = Readonly<{
   analysisActive: boolean;
   selectedGraphNodeIdEffective: string | null;
   selectedGraphNode: { id: string; label: string; kind: string; status: string } | null;
-  selectedGraphNodeDetails: GraphNodeDetails;
+  selectedGraphNodeDetails: GraphNodeDetails | null;
   selectedGraphTypeHint: string;
   onToggleGraphLayer: () => void;
   onSelectGraphNode: (id: string | null) => void;
@@ -347,7 +353,7 @@ function resolveIntrospectionLevel(args: {
   return "none";
 }
 
-const RESULT_STEP_DEFS = [
+const RESULT_STEP_DEFS: readonly ResultStepDef[] = [
   {
     number: 1,
     key: "snapshot_before",
@@ -402,7 +408,7 @@ const RESULT_STEP_DEFS = [
     labelKey: "inspector.modelIntrospection.dashboard.results.steps.saliencyProbe",
     timelineIds: ["saliency_probe", "internals:saliency_probe"],
   },
-] as const;
+];
 
 function getStepTone(status: ResultStepStatus): ResultStepTone {
   if (status === "done") return "success";

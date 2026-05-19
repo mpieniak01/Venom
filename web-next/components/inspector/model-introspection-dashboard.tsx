@@ -88,6 +88,88 @@ type InternalsNoticeProps = {
   rowKeyPrefix: string;
   extraBadge?: string;
 };
+
+type DashboardRuntimeInternalsContext = {
+  allInternalsUnavailable: boolean;
+  anyInternalsAvailable: boolean;
+  isOllamaLiteRuntime: boolean;
+  logitLensTitle: string;
+  internalsHowToFull: string | null;
+  unavailableInternalsRows: InternalsCapabilityRow[];
+  proxyInternalsRows: InternalsCapabilityRow[];
+  availableInternalsCount: number;
+  internalsProcessing: boolean;
+  ragStepMarker: ResultStepMarker | null;
+  responseStepMarker: ResultStepMarker | null;
+  snapshotStepMarker: ResultStepMarker | null;
+  logitStepMarker: ResultStepMarker | null;
+  attentionStepMarker: ResultStepMarker | null;
+  saliencyStepMarker: ResultStepMarker | null;
+};
+
+function deriveDashboardRuntimeInternalsContext(args: {
+  analysisResult: ReturnType<typeof useModelIntrospectionAnalysisStream>["analysisResult"];
+  snapshot: IntrospectionSnapshot | null;
+  introspectionLevel: IntrospectionLevel;
+  logitLens: ReturnType<typeof buildLogitLensModel> | null;
+  attention: ReturnType<typeof buildAttentionModel> | null;
+  saliency: ReturnType<typeof buildSaliencyModel> | null;
+  analysisTimeline: AnalysisTimelineEntry[];
+  internalsCapabilityRows: InternalsCapabilityRow[];
+  analysisLoading: boolean;
+  analysisStreaming: boolean;
+  t: ReturnType<typeof useTranslation>;
+}): DashboardRuntimeInternalsContext {
+  const {
+    allInternalsUnavailable,
+    anyInternalsAvailable,
+  } = resolveInternalsAvailability(args.attention, args.saliency, args.logitLens);
+  const runtimeProviderNormalized = String(
+    args.analysisResult?.analysis?.provider ?? args.snapshot?.runtime?.provider ?? "",
+  ).toLowerCase();
+  const isOllamaLiteRuntime =
+    args.introspectionLevel === "lite" &&
+    runtimeProviderNormalized === "ollama" &&
+    args.logitLens?.source === "probe_lite";
+  const logitLensTitle = isOllamaLiteRuntime
+    ? args.t("inspector.modelIntrospection.dashboard.results.logitLens.titleLite")
+    : args.t("inspector.modelIntrospection.dashboard.results.logitLens.title");
+  const internalsHowToFull = isOllamaLiteRuntime
+    ? args.t("inspector.modelIntrospection.dashboard.results.internalsHowToFull")
+    : null;
+  const unavailableInternalsRows = args.internalsCapabilityRows.filter(
+    (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
+  );
+  const proxyInternalsRows = args.internalsCapabilityRows.filter(
+    (row) => row.availabilityClass === "proxy_ok",
+  );
+  const availableInternalsCount =
+    args.internalsCapabilityRows.length - unavailableInternalsRows.length;
+  const internalsProcessing = args.analysisLoading || args.analysisStreaming;
+  return {
+    allInternalsUnavailable,
+    anyInternalsAvailable,
+    isOllamaLiteRuntime,
+    logitLensTitle,
+    internalsHowToFull,
+    unavailableInternalsRows,
+    proxyInternalsRows,
+    availableInternalsCount,
+    internalsProcessing,
+    ragStepMarker: resolveResultStepMarker("request_ready", args.analysisTimeline),
+    responseStepMarker: resolveResultStepMarker(
+      "response_finalized",
+      args.analysisTimeline,
+    ),
+    snapshotStepMarker: resolveResultStepMarker("snapshot_after", args.analysisTimeline),
+    logitStepMarker: resolveResultStepMarker("logit_lens_probe", args.analysisTimeline),
+    attentionStepMarker: resolveResultStepMarker(
+      "attention_probe",
+      args.analysisTimeline,
+    ),
+    saliencyStepMarker: resolveResultStepMarker("saliency_probe", args.analysisTimeline),
+  };
+}
 type ResultStepTone = "success" | "warning" | "neutral" | "danger";
 type ResultStepStatus = "done" | "running" | "pending" | "failed";
 type ResultStepMarker = {
@@ -1155,34 +1237,32 @@ export function ModelIntrospectionDashboard() {
   const {
     allInternalsUnavailable,
     anyInternalsAvailable,
-  } = resolveInternalsAvailability(attention, saliency, logitLens);
-  const runtimeProviderNormalized = String(
-    analysisResult?.analysis?.provider ?? snapshot?.runtime?.provider ?? "",
-  ).toLowerCase();
-  const isOllamaLiteRuntime =
-    introspectionLevel === "lite" &&
-    runtimeProviderNormalized === "ollama" &&
-    logitLens?.source === "probe_lite";
-  const logitLensTitle = isOllamaLiteRuntime
-    ? t("inspector.modelIntrospection.dashboard.results.logitLens.titleLite")
-    : t("inspector.modelIntrospection.dashboard.results.logitLens.title");
-  const internalsHowToFull = isOllamaLiteRuntime
-    ? t("inspector.modelIntrospection.dashboard.results.internalsHowToFull")
-    : null;
-  const unavailableInternalsRows = internalsCapabilityRows.filter(
-    (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
-  );
-  const proxyInternalsRows = internalsCapabilityRows.filter(
-    (row) => row.availabilityClass === "proxy_ok",
-  );
-  const availableInternalsCount = internalsCapabilityRows.length - unavailableInternalsRows.length;
-  const internalsProcessing = analysisLoading || analysisStreaming;
-  const ragStepMarker = resolveResultStepMarker("request_ready", analysisTimeline);
-  const responseStepMarker = resolveResultStepMarker("response_finalized", analysisTimeline);
-  const snapshotStepMarker = resolveResultStepMarker("snapshot_after", analysisTimeline);
-  const logitStepMarker = resolveResultStepMarker("logit_lens_probe", analysisTimeline);
-  const attentionStepMarker = resolveResultStepMarker("attention_probe", analysisTimeline);
-  const saliencyStepMarker = resolveResultStepMarker("saliency_probe", analysisTimeline);
+    isOllamaLiteRuntime,
+    logitLensTitle,
+    internalsHowToFull,
+    unavailableInternalsRows,
+    proxyInternalsRows,
+    availableInternalsCount,
+    internalsProcessing,
+    ragStepMarker,
+    responseStepMarker,
+    snapshotStepMarker,
+    logitStepMarker,
+    attentionStepMarker,
+    saliencyStepMarker,
+  } = deriveDashboardRuntimeInternalsContext({
+    analysisResult,
+    snapshot,
+    introspectionLevel,
+    logitLens,
+    attention,
+    saliency,
+    analysisTimeline,
+    internalsCapabilityRows,
+    analysisLoading,
+    analysisStreaming,
+    t,
+  });
 
   return (
     <div className="space-y-6 pb-10">

@@ -425,7 +425,80 @@ def _build_payload(
         payload["temperature"] = request.temperature
     if request.top_p is not None:
         payload["top_p"] = request.top_p
+    if request.logprobs is not None:
+        payload["logprobs"] = bool(request.logprobs)
+    if request.top_logprobs is not None:
+        payload["top_logprobs"] = int(request.top_logprobs)
     return payload
+
+
+def _extract_logprobs_telemetry(data: dict[str, Any]) -> dict[str, Any] | None:
+    content = _extract_logprobs_content(data)
+    if content is None:
+        return None
+    normalized = _normalize_logprobs_content(content)
+    if not normalized:
+        return None
+    return {
+        "kind": "logprobs",
+        "content": normalized,
+    }
+
+
+def _extract_logprobs_content(data: dict[str, Any]) -> list[Any] | None:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return None
+    logprobs = first_choice.get("logprobs")
+    if not isinstance(logprobs, dict):
+        return None
+    content = logprobs.get("content")
+    return content if isinstance(content, list) else None
+
+
+def _normalize_logprobs_content(content: list[Any]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for item in content[:128]:
+        normalized_item = _normalize_logprobs_item(item)
+        if normalized_item is not None:
+            normalized.append(normalized_item)
+    return normalized
+
+
+def _normalize_logprobs_item(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    raw_logprob = item.get("logprob")
+    if not isinstance(raw_logprob, (int, float)):
+        return None
+    return {
+        "token": str(item.get("token") or ""),
+        "logprob": float(raw_logprob),
+        "top_logprobs": _normalize_top_logprobs(item.get("top_logprobs")),
+    }
+
+
+def _normalize_top_logprobs(top_logprobs_raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(top_logprobs_raw, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for top_item in top_logprobs_raw[:8]:
+        normalized_item = _normalize_top_logprobs_item(top_item)
+        if normalized_item is not None:
+            normalized.append(normalized_item)
+    return normalized
+
+
+def _normalize_top_logprobs_item(top_item: Any) -> dict[str, Any] | None:
+    if not isinstance(top_item, dict):
+        return None
+    top_logprob = top_item.get("logprob")
+    if not isinstance(top_logprob, (int, float)):
+        return None
+    return {"token": str(top_item.get("token") or ""), "logprob": float(top_logprob)}
 
 
 def _extract_message_content(data: dict[str, object], fallback_text: str = "") -> str:
@@ -1067,6 +1140,13 @@ async def _stream_simple_chunks_non_stream(
             return
 
         content = _extract_message_content(data, fallback_text="")
+        logprobs_telemetry = _extract_logprobs_telemetry(data)
+        if logprobs_telemetry is not None:
+            yield (
+                "event: telemetry\ndata: "
+                + json.dumps(logprobs_telemetry, ensure_ascii=False)
+                + "\n\n"
+            )
         if content:
             chunks.append(content)
             _trace_first_chunk(request_id, stream_start, content)
@@ -1144,7 +1224,8 @@ async def stream_simple_chat(request: SimpleChatRequest):
             headers=headers,
         )
 
-    if is_multi_runtime(runtime_provider):
+    force_non_stream = request.stream is False
+    if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:
             raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
         return StreamingResponse(

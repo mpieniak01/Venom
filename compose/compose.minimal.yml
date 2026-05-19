@@ -5,7 +5,7 @@ name: venom-minimal
 # Services are published on host interfaces to allow testing from another machine in LAN.
 services:
   ollama:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:0.16.1}
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.24.0}
     container_name: venom-ollama-minimal
     ports:
       - "11434:11434"

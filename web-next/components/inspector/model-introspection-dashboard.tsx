@@ -77,6 +77,7 @@ type InternalsCapabilityRow = {
   reason: string;
   availabilityClass: "native_ok" | "proxy_ok" | "unavailable" | "failed";
 };
+type IntrospectionLevel = "full" | "lite" | "none";
 type InternalsNoticeProps = {
   title: string;
   message: string;
@@ -87,6 +88,88 @@ type InternalsNoticeProps = {
   rowKeyPrefix: string;
   extraBadge?: string;
 };
+
+type DashboardRuntimeInternalsContext = {
+  allInternalsUnavailable: boolean;
+  anyInternalsAvailable: boolean;
+  isOllamaLiteRuntime: boolean;
+  logitLensTitle: string;
+  internalsHowToFull: string | null;
+  unavailableInternalsRows: InternalsCapabilityRow[];
+  proxyInternalsRows: InternalsCapabilityRow[];
+  availableInternalsCount: number;
+  internalsProcessing: boolean;
+  ragStepMarker: ResultStepMarker | null;
+  responseStepMarker: ResultStepMarker | null;
+  snapshotStepMarker: ResultStepMarker | null;
+  logitStepMarker: ResultStepMarker | null;
+  attentionStepMarker: ResultStepMarker | null;
+  saliencyStepMarker: ResultStepMarker | null;
+};
+
+function deriveDashboardRuntimeInternalsContext(args: {
+  analysisResult: ReturnType<typeof useModelIntrospectionAnalysisStream>["analysisResult"];
+  snapshot: IntrospectionSnapshot | null;
+  introspectionLevel: IntrospectionLevel;
+  logitLens: ReturnType<typeof buildLogitLensModel> | null;
+  attention: ReturnType<typeof buildAttentionModel> | null;
+  saliency: ReturnType<typeof buildSaliencyModel> | null;
+  analysisTimeline: AnalysisTimelineEntry[];
+  internalsCapabilityRows: InternalsCapabilityRow[];
+  analysisLoading: boolean;
+  analysisStreaming: boolean;
+  t: ReturnType<typeof useTranslation>;
+}): DashboardRuntimeInternalsContext {
+  const {
+    allInternalsUnavailable,
+    anyInternalsAvailable,
+  } = resolveInternalsAvailability(args.attention, args.saliency, args.logitLens);
+  const runtimeProviderNormalized = String(
+    args.analysisResult?.analysis?.provider ?? args.snapshot?.runtime?.provider ?? "",
+  ).toLowerCase();
+  const isOllamaLiteRuntime =
+    args.introspectionLevel === "lite" &&
+    runtimeProviderNormalized === "ollama" &&
+    args.logitLens?.source === "probe_lite";
+  const logitLensTitle = isOllamaLiteRuntime
+    ? args.t("inspector.modelIntrospection.dashboard.results.logitLens.titleLite")
+    : args.t("inspector.modelIntrospection.dashboard.results.logitLens.title");
+  const internalsHowToFull = isOllamaLiteRuntime
+    ? args.t("inspector.modelIntrospection.dashboard.results.internalsHowToFull")
+    : null;
+  const unavailableInternalsRows = args.internalsCapabilityRows.filter(
+    (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
+  );
+  const proxyInternalsRows = args.internalsCapabilityRows.filter(
+    (row) => row.availabilityClass === "proxy_ok",
+  );
+  const availableInternalsCount =
+    args.internalsCapabilityRows.length - unavailableInternalsRows.length;
+  const internalsProcessing = args.analysisLoading || args.analysisStreaming;
+  return {
+    allInternalsUnavailable,
+    anyInternalsAvailable,
+    isOllamaLiteRuntime,
+    logitLensTitle,
+    internalsHowToFull,
+    unavailableInternalsRows,
+    proxyInternalsRows,
+    availableInternalsCount,
+    internalsProcessing,
+    ragStepMarker: resolveResultStepMarker("request_ready", args.analysisTimeline),
+    responseStepMarker: resolveResultStepMarker(
+      "response_finalized",
+      args.analysisTimeline,
+    ),
+    snapshotStepMarker: resolveResultStepMarker("snapshot_after", args.analysisTimeline),
+    logitStepMarker: resolveResultStepMarker("logit_lens_probe", args.analysisTimeline),
+    attentionStepMarker: resolveResultStepMarker(
+      "attention_probe",
+      args.analysisTimeline,
+    ),
+    saliencyStepMarker: resolveResultStepMarker("saliency_probe", args.analysisTimeline),
+  };
+}
 type ResultStepTone = "success" | "warning" | "neutral" | "danger";
 type ResultStepStatus = "done" | "running" | "pending" | "failed";
 type ResultStepMarker = {
@@ -95,6 +178,12 @@ type ResultStepMarker = {
   labelKey: string;
   status: ResultStepStatus;
   tone: ResultStepTone;
+};
+type ResultStepDef = {
+  number: number;
+  key: string;
+  labelKey: string;
+  timelineIds: readonly string[];
 };
 
 type SnapshotLoadingPanelProps = Readonly<{
@@ -183,7 +272,7 @@ type TechnicalLayerPanelProps = Readonly<{
   analysisActive: boolean;
   selectedGraphNodeIdEffective: string | null;
   selectedGraphNode: { id: string; label: string; kind: string; status: string } | null;
-  selectedGraphNodeDetails: GraphNodeDetails;
+  selectedGraphNodeDetails: GraphNodeDetails | null;
   selectedGraphTypeHint: string;
   onToggleGraphLayer: () => void;
   onSelectGraphNode: (id: string | null) => void;
@@ -286,7 +375,12 @@ function buildInternalsCapabilityRow(
   const reasonMap: Record<string, string> = {
     ok: "ok",
     probe_unavailable: "probe unavailable",
+    probe_disabled: "probe disabled in runtime config",
     probe_failed: "probe failed",
+    runtime_not_supported: "runtime not supported for probe",
+    model_not_whitelisted: "model not whitelisted for probe",
+    endpoint_missing: "probe endpoint missing",
+    live_analysis_disabled: "live analysis disabled",
     attention_unavailable: "attention unavailable",
     saliency_unavailable: "saliency unavailable",
     logit_lens_unavailable: "logit lens unavailable",
@@ -330,7 +424,18 @@ function buildProbeLimitsLabel(limits: {
   return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
 }
 
-const RESULT_STEP_DEFS = [
+function resolveIntrospectionLevel(args: {
+  analysisLevel: string | null | undefined;
+  snapshotLevel: string | null | undefined;
+}): IntrospectionLevel {
+  const candidate = (args.analysisLevel ?? args.snapshotLevel ?? "none").toLowerCase();
+  if (candidate === "full" || candidate === "lite" || candidate === "none") {
+    return candidate;
+  }
+  return "none";
+}
+
+const RESULT_STEP_DEFS: readonly ResultStepDef[] = [
   {
     number: 1,
     key: "snapshot_before",
@@ -385,7 +490,7 @@ const RESULT_STEP_DEFS = [
     labelKey: "inspector.modelIntrospection.dashboard.results.steps.saliencyProbe",
     timelineIds: ["saliency_probe", "internals:saliency_probe"],
   },
-] as const;
+];
 
 function getStepTone(status: ResultStepStatus): ResultStepTone {
   if (status === "done") return "success";
@@ -865,6 +970,10 @@ function useDashboardDerivedState(args: {
   const attention = buildAttentionModel(analysisResult?.analysis?.attention ?? null);
   const saliency = buildSaliencyModel(analysisResult?.analysis?.saliency ?? null);
   const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
+  const introspectionLevel = resolveIntrospectionLevel({
+    analysisLevel: analysisResult?.analysis?.introspection_level,
+    snapshotLevel: snapshot?.summary?.introspection_level ?? snapshot?.introspection_level,
+  });
   const internalsProbeElapsedMs = useMemo(
     () =>
       sumProbeElapsedMs([
@@ -901,12 +1010,22 @@ function useDashboardDerivedState(args: {
     }
     const availableCount = Number(analysisCapabilities.available_count ?? 0);
     const totalCount = Number(analysisCapabilities.total_count ?? 3);
+    const probeGateDetails = [
+      `probe_status:${String(analysisCapabilities.probe_status ?? "unknown")}`,
+      `probe_enabled:${analysisCapabilities.probe_enabled ? "yes" : "no"}`,
+      `runtime_supported:${analysisCapabilities.runtime_supported ? "yes" : "no"}`,
+      `model_whitelisted:${analysisCapabilities.model_whitelisted ? "yes" : "no"}`,
+      `endpoint_configured:${analysisCapabilities.endpoint_configured ? "yes" : "no"}`,
+    ];
     return {
       verdict: internalsVerdictLabel,
       tone: internalsVerdictTone,
       availableCount,
       totalCount,
-      details: internalsCapabilityRows.map((row) => `${row.label}:${row.reason}`),
+      details: [
+        ...internalsCapabilityRows.map((row) => `${row.label}:${row.reason}`),
+        ...probeGateDetails,
+      ],
     };
   }, [analysisCapabilities, internalsCapabilityRows, internalsVerdictLabel, internalsVerdictTone]);
   const operatorConclusion = buildOperatorConclusion({
@@ -1013,6 +1132,7 @@ function useDashboardDerivedState(args: {
     attention,
     saliency,
     analysisCapabilities,
+    introspectionLevel,
     internalsProbeElapsedMs,
     internalsCapabilityRows,
     internalsVerdictLabel,
@@ -1072,6 +1192,7 @@ export function ModelIntrospectionDashboard() {
     attention,
     saliency,
     analysisCapabilities,
+    introspectionLevel,
     internalsProbeElapsedMs,
     internalsCapabilityRows,
     internalsVerdictLabel,
@@ -1116,21 +1237,32 @@ export function ModelIntrospectionDashboard() {
   const {
     allInternalsUnavailable,
     anyInternalsAvailable,
-  } = resolveInternalsAvailability(attention, saliency, logitLens);
-  const unavailableInternalsRows = internalsCapabilityRows.filter(
-    (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
-  );
-  const proxyInternalsRows = internalsCapabilityRows.filter(
-    (row) => row.availabilityClass === "proxy_ok",
-  );
-  const availableInternalsCount = internalsCapabilityRows.length - unavailableInternalsRows.length;
-  const internalsProcessing = analysisLoading || analysisStreaming;
-  const ragStepMarker = resolveResultStepMarker("request_ready", analysisTimeline);
-  const responseStepMarker = resolveResultStepMarker("response_finalized", analysisTimeline);
-  const snapshotStepMarker = resolveResultStepMarker("snapshot_after", analysisTimeline);
-  const logitStepMarker = resolveResultStepMarker("logit_lens_probe", analysisTimeline);
-  const attentionStepMarker = resolveResultStepMarker("attention_probe", analysisTimeline);
-  const saliencyStepMarker = resolveResultStepMarker("saliency_probe", analysisTimeline);
+    isOllamaLiteRuntime,
+    logitLensTitle,
+    internalsHowToFull,
+    unavailableInternalsRows,
+    proxyInternalsRows,
+    availableInternalsCount,
+    internalsProcessing,
+    ragStepMarker,
+    responseStepMarker,
+    snapshotStepMarker,
+    logitStepMarker,
+    attentionStepMarker,
+    saliencyStepMarker,
+  } = deriveDashboardRuntimeInternalsContext({
+    analysisResult,
+    snapshot,
+    introspectionLevel,
+    logitLens,
+    attention,
+    saliency,
+    analysisTimeline,
+    internalsCapabilityRows,
+    analysisLoading,
+    analysisStreaming,
+    t,
+  });
 
   return (
     <div className="space-y-6 pb-10">
@@ -1327,7 +1459,7 @@ export function ModelIntrospectionDashboard() {
             <ResultStepHeader marker={logitStepMarker} t={t} />
             <LogitLensPanel
               logitLens={logitLens}
-              title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
+              title={logitLensTitle}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
               unavailableLabel={t(
                 "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
@@ -1411,15 +1543,25 @@ export function ModelIntrospectionDashboard() {
               extraBadge={probeLimitsLabel}
             />
           )}
+          {internalsHowToFull && (
+            <div className="mb-4 rounded-2xl border border-cyan-400/25 bg-cyan-500/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-cyan-100">
+                {t("inspector.modelIntrospection.dashboard.results.internalsHowToFullTitle")}
+              </p>
+              <p className="mt-2 text-sm text-cyan-50/90">{internalsHowToFull}</p>
+            </div>
+          )}
           <ResultStepContainer marker={attentionStepMarker} className="mb-4" t={t}>
             <ResultStepHeader marker={attentionStepMarker} t={t} />
             <AttentionPanel
               attention={attention}
               title={t("inspector.modelIntrospection.dashboard.results.attention.title")}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.attention.empty")}
-              unavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.attention.unavailable",
-              )}
+              unavailableLabel={
+                isOllamaLiteRuntime
+                  ? t("inspector.modelIntrospection.dashboard.results.attention.unavailableLite")
+                  : t("inspector.modelIntrospection.dashboard.results.attention.unavailable")
+              }
             />
           </ResultStepContainer>
           <ResultStepContainer marker={saliencyStepMarker} className="mb-4" t={t}>
@@ -1428,9 +1570,11 @@ export function ModelIntrospectionDashboard() {
               saliency={saliency}
               title={t("inspector.modelIntrospection.dashboard.results.saliency.title")}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.saliency.empty")}
-              unavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.saliency.unavailable",
-              )}
+              unavailableLabel={
+                isOllamaLiteRuntime
+                  ? t("inspector.modelIntrospection.dashboard.results.saliency.unavailableLite")
+                  : t("inspector.modelIntrospection.dashboard.results.saliency.unavailable")
+              }
             />
           </ResultStepContainer>
           </div>

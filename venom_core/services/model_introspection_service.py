@@ -25,6 +25,30 @@ _INTROSPECTION_PACKAGES: tuple[tuple[str, str], ...] = (
 )
 
 
+def _resolve_snapshot_introspection_level(
+    *,
+    runtime_provider: str,
+    probe_health: dict[str, Any],
+) -> str:
+    provider = str(runtime_provider or "").strip().lower()
+    if provider == "ollama":
+        return "lite"
+    probe_enabled = bool(probe_health.get("enabled"))
+    runtime_supported = bool(probe_health.get("runtime_supported"))
+    endpoint_configured = bool(probe_health.get("endpoint_configured"))
+    model_whitelisted = bool(probe_health.get("model_whitelisted"))
+    healthy = bool(probe_health.get("healthy"))
+    if (
+        probe_enabled
+        and runtime_supported
+        and endpoint_configured
+        and model_whitelisted
+        and healthy
+    ):
+        return "full"
+    return "none"
+
+
 def _build_graph_snapshot(
     *,
     runtime: dict[str, Any],
@@ -174,6 +198,10 @@ async def build_model_introspection_snapshot(
     )
 
     probe_health = build_probe_health_payload(active_runtime)
+    introspection_level = _resolve_snapshot_introspection_level(
+        runtime_provider=str(runtime.get("provider") or ""),
+        probe_health=probe_health,
+    )
 
     runtime_probe_node = {
         "id": "probe",
@@ -204,6 +232,7 @@ async def build_model_introspection_snapshot(
         "missing_packages": missing_packages,
         "model_manager": model_manager_snapshot,
         "probe": probe_health,
+        "introspection_level": introspection_level,
         "graph": graph_snapshot,
         "reuse": {
             "brain": {
@@ -221,5 +250,6 @@ async def build_model_introspection_snapshot(
             "provider": runtime["provider"],
             "runtime_label": runtime["label"],
             "introspection_ready": True,
+            "introspection_level": introspection_level,
         },
     }

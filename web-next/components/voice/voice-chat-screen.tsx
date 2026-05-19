@@ -49,6 +49,7 @@ const VOICE_MODES: VoiceModeCard[] = [
     icon: ListTodo,
   },
 ];
+const NATIVE_VOICE_RUNTIME_PREFIXES = ["multi_runtime", "gemma4_audio"] as const;
 
 type VoiceChatScreenProps = Readonly<{
   isDevMode?: boolean;
@@ -140,19 +141,25 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
   const sttOk = status.stt_ready === true;
   const ttsOk = status.tts_ready === true;
   const runtimeProvider = String(status.runtime_snapshot?.provider ?? "").trim();
+  const runtimeProviderNormalized = runtimeProvider.toLowerCase();
   const runtimeModel = String(status.runtime_snapshot?.model_name ?? "").trim();
   const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
   const llmOk = runtimeProvider.length > 0 && runtimeModel.length > 0;
+  const isNativeVoiceRuntime = NATIVE_VOICE_RUNTIME_PREFIXES.some((prefix) =>
+    runtimeProviderNormalized.startsWith(prefix),
+  );
   const voiceProbeFailed = probeStatus === "failed";
-  const allOk = sttOk && ttsOk && llmOk && !voiceProbeFailed;
+  const voiceProbeBlocking = voiceProbeFailed && isNativeVoiceRuntime;
+  const allOk = sttOk && ttsOk && llmOk && !voiceProbeBlocking;
+  const voiceProbeToneClass = resolveVoiceProbeToneClass(voiceProbeFailed, voiceProbeBlocking);
+  const voiceProbeDotClass = resolveVoiceProbeDotClass(voiceProbeFailed, voiceProbeBlocking);
+  const containerClass = allOk
+    ? "border border-emerald-500/20 bg-emerald-500/[0.04] text-emerald-400"
+    : "border border-amber-500/20 bg-amber-500/[0.04] text-amber-400";
 
   return (
     <div
-      className={`rounded-2xl px-4 py-2 flex items-center justify-between gap-3 text-[11px] ${
-        allOk
-          ? "border border-emerald-500/20 bg-emerald-500/[0.04] text-emerald-400"
-          : "border border-amber-500/20 bg-amber-500/[0.04] text-amber-400"
-      }`}
+      className={`rounded-2xl px-4 py-2 flex items-center justify-between gap-3 text-[11px] ${containerClass}`}
     >
       <span className="font-medium">
         {allOk ? t("voice.status.systemReady") : t("voice.status.systemPartial")}
@@ -173,12 +180,32 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
           {" "}
           TTS
         </span>
-        <span className={`flex items-center gap-1 ${voiceProbeFailed ? "text-amber-400" : "text-emerald-400"}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${voiceProbeFailed ? "bg-amber-400" : "bg-emerald-400"}`} />
+        <span
+          className={`flex items-center gap-1 ${voiceProbeToneClass}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${voiceProbeDotClass}`} />
           {" "}
           {probeStatus ?? "—"}
         </span>
       </span>
     </div>
   );
+}
+
+function resolveVoiceProbeToneClass(
+  voiceProbeFailed: boolean,
+  voiceProbeBlocking: boolean,
+): string {
+  if (!voiceProbeFailed) return "text-emerald-400";
+  if (voiceProbeBlocking) return "text-rose-400";
+  return "text-amber-400";
+}
+
+function resolveVoiceProbeDotClass(
+  voiceProbeFailed: boolean,
+  voiceProbeBlocking: boolean,
+): string {
+  if (!voiceProbeFailed) return "bg-emerald-400";
+  if (voiceProbeBlocking) return "bg-rose-400";
+  return "bg-amber-400";
 }

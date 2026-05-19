@@ -274,6 +274,48 @@ async def test_ollama_list_tags_returns_empty_on_exception():
 
 
 @pytest.mark.asyncio
+async def test_ollama_get_model_show_strips_v1_suffix_for_api_call():
+    client = mrc.OllamaClient(endpoint="http://localhost:11434/v1")
+    response = MagicMock()
+    response.json.return_value = {"model": "gemma3:latest"}
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(return_value=response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        payload = await client.get_model_show("gemma3:latest")
+
+    assert payload == {"model": "gemma3:latest"}
+    called_url = mock_client.apost.await_args.args[0]
+    assert called_url == "http://localhost:11434/api/show"
+
+
+@pytest.mark.asyncio
+async def test_ollama_chat_strips_v1_suffix_for_api_call():
+    client = mrc.OllamaClient(endpoint="http://localhost:11434/v1")
+    response = MagicMock()
+    response.json.return_value = {"message": {"content": "ok"}}
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(return_value=response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        payload = await client.chat({"model": "gemma3:latest"})
+
+    assert payload == {"message": {"content": "ok"}}
+    called_url = mock_client.apost.await_args.args[0]
+    assert called_url == "http://localhost:11434/api/chat"
+
+
+@pytest.mark.asyncio
 async def test_ollama_search_models_success_and_failure():
     client = mrc.OllamaClient(endpoint="http://localhost:11434")
 

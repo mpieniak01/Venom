@@ -778,6 +778,7 @@ export const de = {
           },
           logitLens: {
             title: "Logit evolution",
+            titleLite: "Token confidence (lite)",
             empty: "Für diesen Lauf sind keine Logit-Lens-Daten verfügbar.",
             unavailable: "Die Logit-Lens-Probe ist vorübergehend nicht verfügbar.",
             source: "source",
@@ -814,11 +815,15 @@ export const de = {
             title: "Attention Head View",
             empty: "Keine Attention-Daten für diesen Analyselauf.",
             unavailable: "Attention-Probe ist für diesen Lauf nicht verfügbar.",
+            unavailableLite:
+              "Not available on this runtime (ollama). Switch to multi_runtime for native attention internals.",
           },
           saliency: {
             title: "Saliency / Attribution",
             empty: "Keine Saliency-Daten für diesen Analyselauf.",
             unavailable: "Saliency-Probe ist für diesen Lauf nicht verfügbar.",
+            unavailableLite:
+              "Not available on this runtime (ollama). Switch to multi_runtime for native saliency internals.",
           },
           internals: {
             title: "Advanced internals",
@@ -836,6 +841,9 @@ export const de = {
           internalsUnavailableTitle: "Probe internals unavailable",
           internalsUnavailableMessage:
             "Für diesen Lauf hat die Probe weder Attention, Saliency noch Logit Lens geliefert. Das Hauptsignal kommt jetzt aus RAG, Evidence und dem Antwort-Verdict.",
+          internalsHowToFullTitle: "How to get full internals",
+          internalsHowToFull:
+            "Full internals are available on multi_runtime. Switch runtime to multi_runtime to enable native attention/saliency probes.",
         },
         snapshotComparison: {
           title: "Snapshot-Vergleich",

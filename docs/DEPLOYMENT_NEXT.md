@@ -56,7 +56,7 @@ Interpretation rules:
    | `NEXT_PUBLIC_WS_BASE` | WebSocket endpoint for `/ws/events`. | `ws://localhost:8000/ws/events` |
    | `API_PROXY_TARGET` | Proxy target in `next.config.ts` (SSR). | `http://localhost:8000` |
    | `NEXT_DISABLE_TURBOPACK` | Set automatically by Makefile in dev mode. | `1` |
-   | `OLLAMA_IMAGE` | Ollama container image tag used by compose profiles. | `ollama/ollama:0.16.1` |
+   | `OLLAMA_IMAGE` | Ollama container image tag used by compose profiles. | `ollama/ollama:0.24.0` |
    | `VENOM_RUNTIME_PROFILE` | Runtime profile (`light`, `llm_off`, `full`) for single-package deployment flow (`llm_off` = no local LLM runtime, external APIs still possible after key setup). | `light` |
    | `OLLAMA_HOST` | Bind address for Ollama inside container. | `0.0.0.0` |
    | `VENOM_OLLAMA_PROFILE` | Venom single-user tuning profile (`balanced-12-24gb`, `low-vram-8-12gb`, `max-context-24gb-plus`). | `balanced-12-24gb` |

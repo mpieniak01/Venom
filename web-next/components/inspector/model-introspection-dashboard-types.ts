@@ -8,6 +8,7 @@ export type PackageProbe = {
 };
 
 export type IntrospectionSnapshot = {
+  introspection_level?: "full" | "lite" | "none";
   runtime: {
     provider: string;
     model: string;
@@ -62,6 +63,7 @@ export type IntrospectionSnapshot = {
     provider: string;
     runtime_label: string;
     introspection_ready: boolean;
+    introspection_level?: "full" | "lite" | "none";
   };
   graph?: {
     nodes: Array<{
@@ -113,6 +115,17 @@ export type SnapshotComparison = {
 };
 
 export type AnalysisTimelinePath = "answer_path" | "internals_path";
+export type AnalysisProbeStatus =
+  | "ok"
+  | "failed"
+  | "disabled"
+  | "runtime_not_supported"
+  | "model_not_whitelisted"
+  | "endpoint_missing"
+  | "metadata_only"
+  | "verified"
+  | "unknown"
+  | (string & {});
 
 export type AnalysisTimelineEntry = {
   id: string;
@@ -499,6 +512,7 @@ export type AnalysisResult = {
       probe_profile?: string;
       probe_enabled?: boolean;
       probe_healthy?: boolean;
+      probe_status?: AnalysisProbeStatus;
       runtime_supported?: boolean;
       endpoint_configured?: boolean;
       model_whitelisted?: boolean;
@@ -511,7 +525,9 @@ export type AnalysisResult = {
         max_prompt_tokens?: number;
       };
       internals_verdict?: string;
+      introspection_level?: "full" | "lite" | "none";
     } | null;
+    introspection_level?: "full" | "lite" | "none";
     run_trends?: {
       runs?: number;
       window?: number;

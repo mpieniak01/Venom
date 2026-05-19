@@ -128,6 +128,63 @@ def test_build_payload_includes_top_p_when_provided():
     assert payload["top_p"] == 0.9
 
 
+def test_build_payload_includes_logprobs_and_top_logprobs():
+    request = SimpleChatRequest(
+        content="hello",
+        logprobs=True,
+        top_logprobs=3,
+    )
+    runtime = _Runtime("openai")
+    payload = llm_simple_service._build_payload(
+        request=request,
+        runtime=runtime,
+        model_name="model-x",
+        messages=[{"role": "user", "content": "hello"}],
+        stream=False,
+    )
+    assert payload["logprobs"] is True
+    assert payload["top_logprobs"] == 3
+
+
+def test_extract_logprobs_telemetry_guard_branches():
+    assert llm_simple_service._extract_logprobs_telemetry({}) is None
+    assert llm_simple_service._extract_logprobs_telemetry({"choices": [{}]}) is None
+    assert (
+        llm_simple_service._extract_logprobs_telemetry(
+            {"choices": [{"logprobs": {"content": "bad"}}]}
+        )
+        is None
+    )
+
+
+def test_extract_logprobs_telemetry_normalizes_valid_items():
+    payload = {
+        "choices": [
+            {
+                "logprobs": {
+                    "content": [
+                        {
+                            "token": "A",
+                            "logprob": -0.1,
+                            "top_logprobs": [
+                                None,
+                                {"token": "B", "logprob": -0.2},
+                            ],
+                        },
+                        {"token": "skip", "logprob": "bad"},
+                    ]
+                }
+            }
+        ]
+    }
+    telemetry = llm_simple_service._extract_logprobs_telemetry(payload)
+    assert telemetry is not None
+    assert telemetry["kind"] == "logprobs"
+    assert len(telemetry["content"]) == 1
+    assert telemetry["content"][0]["token"] == "A"
+    assert telemetry["content"][0]["top_logprobs"][0]["token"] == "B"
+
+
 @pytest.mark.asyncio
 async def test_get_active_adapter_id_variants(monkeypatch):
     monkeypatch.setattr(llm_simple_service, "get_model_manager", lambda: None)

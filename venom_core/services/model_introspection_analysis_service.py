@@ -132,31 +132,95 @@ def _consume_sse_events(
     telemetry_packets: list[dict[str, Any]] | None = None,
 ) -> tuple[int, float | None]:
     for event_name, payload in drained_events:
-        events.append(event_name)
-        if event_name == "telemetry" and telemetry_packets is not None:
-            parsed_telemetry = _parse_json_dict(payload)
-            if parsed_telemetry:
-                telemetry_packets.append(parsed_telemetry)
-        if event_name == "error":
-            parsed_error = _parse_json_dict(payload)
-            message = str(
-                parsed_error.get("message")
-                or parsed_error.get("code")
-                or payload
-                or _ANALYSIS_STREAM_FAILED
-            )
-            raise RuntimeError(message)
-        if event_name != "content":
-            continue
-        text = _extract_content_text(payload)
-        if not text:
-            continue
-        content_parts.append(text)
-        chunk_count += 1
-        if content_event_times_ms is not None:
-            content_event_times_ms.append(chunk_at_ms)
-        if first_content_at_ms is None:
-            first_content_at_ms = chunk_at_ms
+        chunk_count, first_content_at_ms = _consume_single_sse_event(
+            event_name=event_name,
+            payload=payload,
+            events=events,
+            content_parts=content_parts,
+            chunk_count=chunk_count,
+            first_content_at_ms=first_content_at_ms,
+            chunk_at_ms=chunk_at_ms,
+            content_event_times_ms=content_event_times_ms,
+            telemetry_packets=telemetry_packets,
+        )
+    return chunk_count, first_content_at_ms
+
+
+def _consume_single_sse_event(
+    *,
+    event_name: str,
+    payload: str,
+    events: list[str],
+    content_parts: list[str],
+    chunk_count: int,
+    first_content_at_ms: float | None,
+    chunk_at_ms: float,
+    content_event_times_ms: list[float] | None,
+    telemetry_packets: list[dict[str, Any]] | None,
+) -> tuple[int, float | None]:
+    events.append(event_name)
+    _append_telemetry_packet_if_present(
+        event_name=event_name,
+        payload=payload,
+        telemetry_packets=telemetry_packets,
+    )
+    _raise_error_event_if_needed(event_name=event_name, payload=payload)
+    if event_name != "content":
+        return chunk_count, first_content_at_ms
+    return _append_content_event(
+        payload=payload,
+        content_parts=content_parts,
+        chunk_count=chunk_count,
+        first_content_at_ms=first_content_at_ms,
+        chunk_at_ms=chunk_at_ms,
+        content_event_times_ms=content_event_times_ms,
+    )
+
+
+def _append_telemetry_packet_if_present(
+    *,
+    event_name: str,
+    payload: str,
+    telemetry_packets: list[dict[str, Any]] | None,
+) -> None:
+    if event_name != "telemetry" or telemetry_packets is None:
+        return
+    parsed_telemetry = _parse_json_dict(payload)
+    if parsed_telemetry:
+        telemetry_packets.append(parsed_telemetry)
+
+
+def _raise_error_event_if_needed(*, event_name: str, payload: str) -> None:
+    if event_name != "error":
+        return
+    parsed_error = _parse_json_dict(payload)
+    message = str(
+        parsed_error.get("message")
+        or parsed_error.get("code")
+        or payload
+        or _ANALYSIS_STREAM_FAILED
+    )
+    raise RuntimeError(message)
+
+
+def _append_content_event(
+    *,
+    payload: str,
+    content_parts: list[str],
+    chunk_count: int,
+    first_content_at_ms: float | None,
+    chunk_at_ms: float,
+    content_event_times_ms: list[float] | None,
+) -> tuple[int, float | None]:
+    text = _extract_content_text(payload)
+    if not text:
+        return chunk_count, first_content_at_ms
+    content_parts.append(text)
+    chunk_count += 1
+    if content_event_times_ms is not None:
+        content_event_times_ms.append(chunk_at_ms)
+    if first_content_at_ms is None:
+        first_content_at_ms = chunk_at_ms
     return chunk_count, first_content_at_ms
 
 
@@ -1710,92 +1774,16 @@ def _build_ollama_lite_logit_lens_payload(
     runtime: dict[str, Any],
     stream_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    telemetry_raw = stream_payload.get("telemetry")
-    telemetry_packets = telemetry_raw if isinstance(telemetry_raw, list) else []
-    logprobs_packet = next(
-        (
-            packet
-            for packet in telemetry_packets
-            if isinstance(packet, dict) and str(packet.get("kind") or "") == "logprobs"
-        ),
-        None,
-    )
-    if not isinstance(logprobs_packet, dict):
+    logprobs_packet = _resolve_ollama_logprobs_packet(stream_payload)
+    if logprobs_packet is None:
         return _ollama_lite_probe_unavailable_payload(runtime)
-
-    content_raw = logprobs_packet.get("content")
-    content = content_raw if isinstance(content_raw, list) else []
-    normalized_tokens: list[dict[str, Any]] = []
-    for item in content:
-        if not isinstance(item, dict):
-            continue
-        token = str(item.get("token") or "")
-        raw_logprob = item.get("logprob")
-        if not isinstance(raw_logprob, (int, float)):
-            continue
-        top_raw = item.get("top_logprobs")
-        top_items = top_raw if isinstance(top_raw, list) else []
-        top_k: list[dict[str, Any]] = []
-        for top_item in top_items:
-            if not isinstance(top_item, dict):
-                continue
-            top_token = str(top_item.get("token") or "")
-            top_logprob = top_item.get("logprob")
-            if not isinstance(top_logprob, (int, float)):
-                continue
-            top_k.append(
-                {
-                    "token": top_token,
-                    "score": float(top_logprob),
-                }
-            )
-        normalized_tokens.append(
-            {
-                "token": token,
-                "logprob": float(raw_logprob),
-                "top_k": top_k,
-            }
-        )
-
+    normalized_tokens = _normalize_ollama_logprobs_tokens(logprobs_packet)
     if not normalized_tokens:
         return _ollama_lite_probe_unavailable_payload(runtime)
-
     token_count = len(normalized_tokens)
-    checkpoint_indices = sorted(
-        {
-            0,
-            token_count // 3,
-            (2 * token_count) // 3,
-            token_count - 1,
-        }
-    )
-    checkpoints: list[dict[str, Any]] = []
-    probabilities: list[float] = []
-    previous_token: str | None = None
-    for idx, token_index in enumerate(checkpoint_indices):
-        item = normalized_tokens[token_index]
-        top_k = item.get("top_k") or []
-        logprob = float(item["logprob"])
-        confidence = max(0.0, min(1.0, math.exp(logprob)))
-        probabilities.append(confidence)
-        token = str(item["token"])
-        checkpoints.append(
-            {
-                "id": f"cp_{idx}",
-                "percent": round((token_index / max(1, token_count - 1)) * 100),
-                "layer": -1,
-                "top_k": top_k,
-                "top_token": token,
-                "confidence": confidence,
-                "changed": previous_token is not None and token != previous_token,
-            }
-        )
-        previous_token = token
-
-    avg_prob = (sum(probabilities) / len(probabilities)) if probabilities else 0.0
-    confidence_band = (
-        "high" if avg_prob >= 0.75 else ("medium" if avg_prob >= 0.5 else "low")
-    )
+    checkpoints, probabilities = _build_ollama_checkpoint_series(normalized_tokens)
+    avg_prob = _average_probability(probabilities)
+    confidence_band = _resolve_confidence_band(avg_prob)
     return {
         "source": "probe_lite",
         "status": "ok",
@@ -1831,6 +1819,104 @@ def _build_ollama_lite_logit_lens_payload(
             "avg_top1_prob": round(avg_prob, 4),
         },
     }
+
+
+def _resolve_ollama_logprobs_packet(
+    stream_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    telemetry_raw = stream_payload.get("telemetry")
+    telemetry_packets = telemetry_raw if isinstance(telemetry_raw, list) else []
+    for packet in telemetry_packets:
+        if isinstance(packet, dict) and str(packet.get("kind") or "") == "logprobs":
+            return packet
+    return None
+
+
+def _normalize_ollama_logprobs_tokens(
+    logprobs_packet: dict[str, Any],
+) -> list[dict[str, Any]]:
+    content_raw = logprobs_packet.get("content")
+    content = content_raw if isinstance(content_raw, list) else []
+    normalized: list[dict[str, Any]] = []
+    for item in content:
+        normalized_item = _normalize_ollama_logprobs_token(item)
+        if normalized_item is not None:
+            normalized.append(normalized_item)
+    return normalized
+
+
+def _normalize_ollama_logprobs_token(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    raw_logprob = item.get("logprob")
+    if not isinstance(raw_logprob, (int, float)):
+        return None
+    return {
+        "token": str(item.get("token") or ""),
+        "logprob": float(raw_logprob),
+        "top_k": _normalize_ollama_logprobs_top_k(item.get("top_logprobs")),
+    }
+
+
+def _normalize_ollama_logprobs_top_k(top_raw: Any) -> list[dict[str, Any]]:
+    top_items = top_raw if isinstance(top_raw, list) else []
+    normalized: list[dict[str, Any]] = []
+    for top_item in top_items:
+        normalized_item = _normalize_ollama_top_k_item(top_item)
+        if normalized_item is not None:
+            normalized.append(normalized_item)
+    return normalized
+
+
+def _normalize_ollama_top_k_item(top_item: Any) -> dict[str, Any] | None:
+    if not isinstance(top_item, dict):
+        return None
+    top_logprob = top_item.get("logprob")
+    if not isinstance(top_logprob, (int, float)):
+        return None
+    return {"token": str(top_item.get("token") or ""), "score": float(top_logprob)}
+
+
+def _build_ollama_checkpoint_series(
+    normalized_tokens: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[float]]:
+    token_count = len(normalized_tokens)
+    checkpoint_indices = sorted(
+        {0, token_count // 3, (2 * token_count) // 3, token_count - 1}
+    )
+    checkpoints: list[dict[str, Any]] = []
+    probabilities: list[float] = []
+    previous_token: str | None = None
+    for idx, token_index in enumerate(checkpoint_indices):
+        item = normalized_tokens[token_index]
+        confidence = max(0.0, min(1.0, math.exp(float(item["logprob"]))))
+        probabilities.append(confidence)
+        token = str(item["token"])
+        checkpoints.append(
+            {
+                "id": f"cp_{idx}",
+                "percent": round((token_index / max(1, token_count - 1)) * 100),
+                "layer": -1,
+                "top_k": item.get("top_k") or [],
+                "top_token": token,
+                "confidence": confidence,
+                "changed": previous_token is not None and token != previous_token,
+            }
+        )
+        previous_token = token
+    return checkpoints, probabilities
+
+
+def _average_probability(probabilities: list[float]) -> float:
+    return (sum(probabilities) / len(probabilities)) if probabilities else 0.0
+
+
+def _resolve_confidence_band(avg_prob: float) -> str:
+    if avg_prob >= 0.75:
+        return "high"
+    if avg_prob >= 0.5:
+        return "medium"
+    return "low"
 
 
 def _build_logit_lens_timeline_step(
@@ -2369,6 +2455,126 @@ async def _finalize_completed_analysis(
     return payload, refreshed_snapshot, effective_snapshot_after_at_ms
 
 
+@dataclass(frozen=True)
+class _LiveAnalysisBootstrap:
+    flow_started_at: float
+    snapshot: dict[str, Any]
+    runtime: dict[str, Any]
+    request_ready_at_ms: float
+    request: SimpleChatRequest
+    ollama_lite_mode: bool
+
+
+async def _prepare_live_analysis_bootstrap(
+    *,
+    prompt: str,
+    live_analysis_enabled: bool,
+    max_tokens: int | None,
+    temperature: float | None,
+    top_p: float | None,
+    model_manager: Any,
+    settings: Any,
+) -> _LiveAnalysisBootstrap | dict[str, Any]:
+    flow_started_at = time.perf_counter()
+    snapshot = await build_model_introspection_snapshot(
+        model_manager=model_manager,
+        settings=settings,
+    )
+    runtime = snapshot["runtime"]
+    if not live_analysis_enabled:
+        return {
+            "kind": "skipped",
+            "payload": _build_skipped_analysis_result(prompt, runtime),
+            "snapshot": snapshot,
+        }
+    if not prompt.strip():
+        raise ValueError("prompt cannot be empty")
+    drift_issue = _extract_model_drift_issue(snapshot)
+    if drift_issue is not None:
+        request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        return {
+            "kind": "drift",
+            "payload": _build_model_drift_skipped_result(
+                prompt=prompt,
+                runtime=runtime,
+                request_ready_at_ms=request_ready_at_ms,
+                drift_issue=drift_issue,
+            ),
+            "snapshot": snapshot,
+        }
+
+    request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    ollama_lite_mode = _is_ollama_runtime(runtime)
+    request = _build_live_analysis_request(
+        prompt=prompt,
+        runtime=runtime,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        ollama_lite_mode=ollama_lite_mode,
+    )
+    return _LiveAnalysisBootstrap(
+        flow_started_at=flow_started_at,
+        snapshot=snapshot,
+        runtime=runtime,
+        request_ready_at_ms=request_ready_at_ms,
+        request=request,
+        ollama_lite_mode=ollama_lite_mode,
+    )
+
+
+def _is_ollama_runtime(runtime: dict[str, Any]) -> bool:
+    runtime_provider = str(runtime.get("provider") or "").strip().lower()
+    return runtime_provider == "ollama"
+
+
+def _build_live_analysis_request(
+    *,
+    prompt: str,
+    runtime: dict[str, Any],
+    max_tokens: int | None,
+    temperature: float | None,
+    top_p: float | None,
+    ollama_lite_mode: bool,
+) -> SimpleChatRequest:
+    return SimpleChatRequest(
+        content=prompt,
+        model=runtime["model"],
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        stream=False if ollama_lite_mode else None,
+        logprobs=True if ollama_lite_mode else None,
+        top_logprobs=3 if ollama_lite_mode else None,
+    )
+
+
+async def _collect_probe_payloads(
+    *,
+    prompt: str,
+    runtime: dict[str, Any],
+    stream_payload: dict[str, Any],
+    response_text: str,
+    ollama_lite_mode: bool,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    if ollama_lite_mode:
+        logit_lens = _build_ollama_lite_logit_lens_payload(
+            prompt=prompt,
+            runtime=runtime,
+            stream_payload=stream_payload,
+        )
+        attention, saliency = await asyncio.gather(
+            _collect_attention_payload_safe(prompt=prompt),
+            _collect_saliency_payload_safe(prompt=prompt, response_text=response_text),
+        )
+        return logit_lens, attention, saliency
+    return await asyncio.gather(
+        _collect_logit_lens_payload_safe(prompt=prompt, response_text=response_text),
+        _collect_attention_payload_safe(prompt=prompt),
+        _collect_saliency_payload_safe(prompt=prompt, response_text=response_text),
+    )
+
+
 async def stream_model_introspection_analysis(
     *,
     prompt: str,
@@ -2380,47 +2586,27 @@ async def stream_model_introspection_analysis(
     settings: Any = None,
 ) -> AsyncIterator[str]:
     """Stream introspection analysis as SSE, including live model chunks."""
-
-    flow_started_at = time.perf_counter()
-    snapshot = await build_model_introspection_snapshot(
-        model_manager=model_manager, settings=settings
-    )
-    runtime = snapshot["runtime"]
-    if not live_analysis_enabled:
-        skipped_result = _build_skipped_analysis_result(prompt, runtime)
-        yield _serialize_sse_event("analysis_start", skipped_result)
-        yield _serialize_sse_event("analysis_done", skipped_result)
-        return
-
-    if not prompt.strip():
-        raise ValueError("prompt cannot be empty")
-
-    drift_issue = _extract_model_drift_issue(snapshot)
-    if drift_issue is not None:
-        request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-        skipped_result = _build_model_drift_skipped_result(
-            prompt=prompt,
-            runtime=runtime,
-            request_ready_at_ms=request_ready_at_ms,
-            drift_issue=drift_issue,
-        )
-        yield _serialize_sse_event("analysis_start", skipped_result)
-        yield _serialize_sse_event("analysis_done", skipped_result)
-        return
-
-    runtime_provider = str(runtime.get("provider") or "").strip().lower()
-    ollama_lite_mode = runtime_provider == "ollama"
-    request = SimpleChatRequest(
-        content=prompt,
-        model=runtime["model"],
+    bootstrap = await _prepare_live_analysis_bootstrap(
+        prompt=prompt,
+        live_analysis_enabled=live_analysis_enabled,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
-        stream=False if ollama_lite_mode else None,
-        logprobs=True if ollama_lite_mode else None,
-        top_logprobs=3 if ollama_lite_mode else None,
+        model_manager=model_manager,
+        settings=settings,
     )
-    request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    if isinstance(bootstrap, dict):
+        skipped_result = dict(bootstrap["payload"])
+        yield _serialize_sse_event("analysis_start", skipped_result)
+        yield _serialize_sse_event("analysis_done", skipped_result)
+        return
+
+    flow_started_at = bootstrap.flow_started_at
+    snapshot = bootstrap.snapshot
+    runtime = bootstrap.runtime
+    request_ready_at_ms = bootstrap.request_ready_at_ms
+    request = bootstrap.request
+    ollama_lite_mode = bootstrap.ollama_lite_mode
     running_result = _build_running_analysis_result(
         prompt=prompt,
         runtime=runtime,
@@ -2551,31 +2737,13 @@ async def stream_model_introspection_analysis(
         "content_event_times_ms": content_event_times_ms,
         "telemetry": telemetry_packets,
     }
-    if ollama_lite_mode:
-        logit_lens = _build_ollama_lite_logit_lens_payload(
-            prompt=prompt,
-            runtime=runtime,
-            stream_payload=stream_payload,
-        )
-        attention, saliency = await asyncio.gather(
-            _collect_attention_payload_safe(prompt=prompt),
-            _collect_saliency_payload_safe(
-                prompt=prompt,
-                response_text=response_text,
-            ),
-        )
-    else:
-        logit_lens, attention, saliency = await asyncio.gather(
-            _collect_logit_lens_payload_safe(
-                prompt=prompt,
-                response_text=response_text,
-            ),
-            _collect_attention_payload_safe(prompt=prompt),
-            _collect_saliency_payload_safe(
-                prompt=prompt,
-                response_text=response_text,
-            ),
-        )
+    logit_lens, attention, saliency = await _collect_probe_payloads(
+        prompt=prompt,
+        runtime=runtime,
+        stream_payload=stream_payload,
+        response_text=response_text,
+        ollama_lite_mode=ollama_lite_mode,
+    )
     (
         analysis_payload,
         refreshed_snapshot,
@@ -2621,45 +2789,26 @@ async def analyze_model_with_optional_live_run(
     settings: Any = None,
 ) -> dict[str, Any]:
     """Build snapshot and optionally execute the active model for a prompt."""
-
-    flow_started_at = time.perf_counter()
-    snapshot = await build_model_introspection_snapshot(
-        model_manager=model_manager, settings=settings
-    )
-    runtime = snapshot["runtime"]
-    if not live_analysis_enabled:
-        skipped_result = _build_skipped_analysis_result(prompt, runtime)
-        skipped_result["snapshot"] = snapshot
-        return skipped_result
-
-    if not prompt.strip():
-        raise ValueError("prompt cannot be empty")
-
-    drift_issue = _extract_model_drift_issue(snapshot)
-    if drift_issue is not None:
-        request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
-        skipped_result = _build_model_drift_skipped_result(
-            prompt=prompt,
-            runtime=runtime,
-            request_ready_at_ms=request_ready_at_ms,
-            drift_issue=drift_issue,
-        )
-        skipped_result["snapshot"] = snapshot
-        return skipped_result
-
-    runtime_provider = str(runtime.get("provider") or "").strip().lower()
-    ollama_lite_mode = runtime_provider == "ollama"
-    request = SimpleChatRequest(
-        content=prompt,
-        model=runtime["model"],
+    bootstrap = await _prepare_live_analysis_bootstrap(
+        prompt=prompt,
+        live_analysis_enabled=live_analysis_enabled,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
-        stream=False if ollama_lite_mode else None,
-        logprobs=True if ollama_lite_mode else None,
-        top_logprobs=3 if ollama_lite_mode else None,
+        model_manager=model_manager,
+        settings=settings,
     )
-    request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    if isinstance(bootstrap, dict):
+        skipped_result = dict(bootstrap["payload"])
+        skipped_result["snapshot"] = bootstrap["snapshot"]
+        return skipped_result
+
+    flow_started_at = bootstrap.flow_started_at
+    snapshot = bootstrap.snapshot
+    runtime = bootstrap.runtime
+    request_ready_at_ms = bootstrap.request_ready_at_ms
+    request = bootstrap.request
+    ollama_lite_mode = bootstrap.ollama_lite_mode
     result: dict[str, Any] = {
         "analysis_enabled": True,
         "status": "running",
@@ -2706,31 +2855,13 @@ async def analyze_model_with_optional_live_run(
         raise
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
     response_text = str(stream_payload.get("response_text") or "")
-    if ollama_lite_mode:
-        logit_lens = _build_ollama_lite_logit_lens_payload(
-            prompt=prompt,
-            runtime=runtime,
-            stream_payload=stream_payload,
-        )
-        attention, saliency = await asyncio.gather(
-            _collect_attention_payload_safe(prompt=prompt),
-            _collect_saliency_payload_safe(
-                prompt=prompt,
-                response_text=response_text,
-            ),
-        )
-    else:
-        logit_lens, attention, saliency = await asyncio.gather(
-            _collect_logit_lens_payload_safe(
-                prompt=prompt,
-                response_text=response_text,
-            ),
-            _collect_attention_payload_safe(prompt=prompt),
-            _collect_saliency_payload_safe(
-                prompt=prompt,
-                response_text=response_text,
-            ),
-        )
+    logit_lens, attention, saliency = await _collect_probe_payloads(
+        prompt=prompt,
+        runtime=runtime,
+        stream_payload=stream_payload,
+        response_text=response_text,
+        ollama_lite_mode=ollama_lite_mode,
+    )
     (
         analysis_payload,
         refreshed_snapshot,

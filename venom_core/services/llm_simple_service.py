@@ -433,6 +433,19 @@ def _build_payload(
 
 
 def _extract_logprobs_telemetry(data: dict[str, Any]) -> dict[str, Any] | None:
+    content = _extract_logprobs_content(data)
+    if content is None:
+        return None
+    normalized = _normalize_logprobs_content(content)
+    if not normalized:
+        return None
+    return {
+        "kind": "logprobs",
+        "content": normalized,
+    }
+
+
+def _extract_logprobs_content(data: dict[str, Any]) -> list[Any] | None:
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
         return None
@@ -443,46 +456,49 @@ def _extract_logprobs_telemetry(data: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(logprobs, dict):
         return None
     content = logprobs.get("content")
-    if not isinstance(content, list):
-        return None
+    return content if isinstance(content, list) else None
 
+
+def _normalize_logprobs_content(content: list[Any]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for item in content[:128]:
-        if not isinstance(item, dict):
-            continue
-        token = str(item.get("token") or "")
-        raw_logprob = item.get("logprob")
-        if not isinstance(raw_logprob, (int, float)):
-            continue
-        top_logprobs_raw = item.get("top_logprobs")
-        top_logprobs: list[dict[str, Any]] = []
-        if isinstance(top_logprobs_raw, list):
-            for top_item in top_logprobs_raw[:8]:
-                if not isinstance(top_item, dict):
-                    continue
-                top_token = str(top_item.get("token") or "")
-                top_logprob = top_item.get("logprob")
-                if not isinstance(top_logprob, (int, float)):
-                    continue
-                top_logprobs.append(
-                    {
-                        "token": top_token,
-                        "logprob": float(top_logprob),
-                    }
-                )
-        normalized.append(
-            {
-                "token": token,
-                "logprob": float(raw_logprob),
-                "top_logprobs": top_logprobs,
-            }
-        )
-    if not normalized:
+        normalized_item = _normalize_logprobs_item(item)
+        if normalized_item is not None:
+            normalized.append(normalized_item)
+    return normalized
+
+
+def _normalize_logprobs_item(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    raw_logprob = item.get("logprob")
+    if not isinstance(raw_logprob, (int, float)):
         return None
     return {
-        "kind": "logprobs",
-        "content": normalized,
+        "token": str(item.get("token") or ""),
+        "logprob": float(raw_logprob),
+        "top_logprobs": _normalize_top_logprobs(item.get("top_logprobs")),
     }
+
+
+def _normalize_top_logprobs(top_logprobs_raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(top_logprobs_raw, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for top_item in top_logprobs_raw[:8]:
+        normalized_item = _normalize_top_logprobs_item(top_item)
+        if normalized_item is not None:
+            normalized.append(normalized_item)
+    return normalized
+
+
+def _normalize_top_logprobs_item(top_item: Any) -> dict[str, Any] | None:
+    if not isinstance(top_item, dict):
+        return None
+    top_logprob = top_item.get("logprob")
+    if not isinstance(top_logprob, (int, float)):
+        return None
+    return {"token": str(top_item.get("token") or ""), "logprob": float(top_logprob)}
 
 
 def _extract_message_content(data: dict[str, object], fallback_text: str = "") -> str:

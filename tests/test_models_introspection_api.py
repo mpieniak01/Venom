@@ -116,3 +116,29 @@ def test_probe_package_handles_version_lookup_failures(
     probe_generic = snapshot_service._probe_package("x.module", "x-package")
     assert probe_generic["available"] is True
     assert probe_generic["version"] is None
+
+
+def test_resolve_snapshot_introspection_level_full_and_none() -> None:
+    full = snapshot_service._resolve_snapshot_introspection_level(
+        runtime_provider="multi_runtime",
+        probe_health={
+            "enabled": True,
+            "runtime_supported": True,
+            "endpoint_configured": True,
+            "model_whitelisted": True,
+            "healthy": True,
+        },
+    )
+    assert full == "full"
+
+    none = snapshot_service._resolve_snapshot_introspection_level(
+        runtime_provider="multi_runtime",
+        probe_health={
+            "enabled": True,
+            "runtime_supported": True,
+            "endpoint_configured": True,
+            "model_whitelisted": False,
+            "healthy": True,
+        },
+    )
+    assert none == "none"

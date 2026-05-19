@@ -41,6 +41,7 @@ tests/test_academy_self_learning_routes.py
 tests/test_academy_self_learning_service.py
 tests/test_academy_training_service.py
 tests/test_adapter_audit_service.py
+tests/test_adapter_runtime_service.py
 tests/test_admin_audit.py
 tests/test_agent_improvements.py
 tests/test_agents.py

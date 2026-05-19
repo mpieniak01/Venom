@@ -359,10 +359,12 @@ def test_deploy_adapter_to_chat_runtime_ollama_uses_resolved_from_model_and_expe
                 ),
                 "config_manager_obj": config_manager_obj,
                 "compute_llm_config_hash_fn": lambda *_args: "hash-123",
-                "runtime_endpoint_for_hash_fn": lambda *_args,
-                **_kwargs: "http://localhost:11434/v1",
-                "is_runtime_model_dir_fn": lambda path: Path(path).resolve()
-                == runtime_base.resolve(),
+                "runtime_endpoint_for_hash_fn": lambda *_args, **_kwargs: (
+                    "http://localhost:11434/v1"
+                ),
+                "is_runtime_model_dir_fn": lambda path: (
+                    Path(path).resolve() == runtime_base.resolve()
+                ),
                 "get_active_llm_runtime_fn": get_active_llm_runtime_fn,
             },
         )
@@ -418,7 +420,9 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_runtime_unavailable_when_d
                 model_id="gemma3:4b",
                 settings_obj=settings_obj,
                 deploy_deps={
-                    "require_trusted_adapter_base_model_fn": lambda **_kw: "gemma-3-4b-it",
+                    "require_trusted_adapter_base_model_fn": lambda **_kw: (
+                        "gemma-3-4b-it"
+                    ),
                     "canonical_runtime_model_id_fn": lambda value: (
                         "gemma-3-4b-it"
                         if value.strip().lower() in {"gemma3:latest", "gemma3:4b"}
@@ -426,8 +430,9 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_runtime_unavailable_when_d
                     ),
                     "config_manager_obj": MagicMock(),
                     "compute_llm_config_hash_fn": lambda *_args: "hash-offline",
-                    "runtime_endpoint_for_hash_fn": lambda *_args,
-                    **_kwargs: "http://localhost:11434/v1",
+                    "runtime_endpoint_for_hash_fn": lambda *_args, **_kwargs: (
+                        "http://localhost:11434/v1"
+                    ),
                     "is_runtime_model_dir_fn": lambda _path: False,
                     "get_active_llm_runtime_fn": lambda: SimpleNamespace(
                         provider="ollama",
@@ -507,7 +512,9 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_deploy_failed_when_probe_o
                 model_id="gemma3:4b",
                 settings_obj=settings_obj,
                 deploy_deps={
-                    "require_trusted_adapter_base_model_fn": lambda **_kw: "gemma-3-4b-it",
+                    "require_trusted_adapter_base_model_fn": lambda **_kw: (
+                        "gemma-3-4b-it"
+                    ),
                     "canonical_runtime_model_id_fn": lambda value: (
                         "gemma-3-4b-it"
                         if value.strip().lower() in {"gemma3:latest", "gemma3:4b"}
@@ -515,8 +522,9 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_deploy_failed_when_probe_o
                     ),
                     "config_manager_obj": MagicMock(),
                     "compute_llm_config_hash_fn": lambda *_args: "hash-probe-ok",
-                    "runtime_endpoint_for_hash_fn": lambda *_args,
-                    **_kwargs: "http://localhost:11434/v1",
+                    "runtime_endpoint_for_hash_fn": lambda *_args, **_kwargs: (
+                        "http://localhost:11434/v1"
+                    ),
                     "is_runtime_model_dir_fn": lambda _path: False,
                     "get_active_llm_runtime_fn": lambda: SimpleNamespace(
                         provider="ollama",
@@ -924,9 +932,12 @@ def test_deploy_adapter_to_vllm_runtime_success_updates_previous_model(
             settings_obj=settings,
             config_manager_obj=config_manager_obj,
             compute_llm_config_hash_fn=lambda *_args: "hash-vllm",
-            runtime_endpoint_for_hash_fn=lambda *_args,
-            **_kwargs: "http://localhost:8001/v1",
-            build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: runtime_model_dir,
+            runtime_endpoint_for_hash_fn=lambda *_args, **_kwargs: (
+                "http://localhost:8001/v1"
+            ),
+            build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: (
+                runtime_model_dir
+            ),
             is_runtime_model_dir_fn=lambda _path: True,
             restart_vllm_runtime_fn=restart_runtime,
             get_active_llm_runtime_fn=lambda: SimpleNamespace(
@@ -966,7 +977,9 @@ def test_deploy_adapter_to_vllm_runtime_raises_for_non_runtime_model_dir(
             ars._deploy_adapter_to_vllm_runtime(
                 adapter_id=adapter_id,
                 settings_obj=SimpleNamespace(ACADEMY_MODELS_DIR=str(models_dir)),
-                build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: runtime_model_dir,
+                build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: (
+                    runtime_model_dir
+                ),
                 is_runtime_model_dir_fn=lambda _path: False,
                 restart_vllm_runtime_fn=lambda **_kwargs: None,
                 get_active_llm_runtime_fn=lambda: SimpleNamespace(
@@ -1177,3 +1190,125 @@ def test_restart_vllm_runtime_runs_service_and_surfaces_failures(
                 resolve_repo_root_fn=lambda **_kwargs: tmp_path,
                 settings_obj=SimpleNamespace(),
             )
+
+
+def test_append_resource_monitor_entry_warns_when_write_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    adapter_dir = _make_adapter_dir(tmp_path, metadata={})
+    warning = MagicMock()
+    monkeypatch.setattr(ars.logger, "warning", warning)
+    monkeypatch.setattr(ars.Path, "open", MagicMock(side_effect=OSError("denied")))
+
+    ars._append_resource_monitor_entry(
+        adapter_dir=adapter_dir,
+        stage="unit",
+        pid=123,
+        peak_rss_mb=42.5,
+        max_rss_mb=128,
+        exceeded=False,
+    )
+
+    warning.assert_called_once_with("Failed to append adapter resource monitor entry.")
+
+
+def test_communicate_or_raise_timeout_returns_output_on_success() -> None:
+    process = MagicMock()
+    process.communicate.return_value = ("stdout", "stderr")
+
+    out, err = ars._communicate_or_raise_timeout(
+        process=process,
+        timeout_sec=3,
+        stage="onnx_export",
+    )
+
+    assert out == "stdout"
+    assert err == "stderr"
+
+
+def test_resolve_local_runtime_model_path_by_name_rejects_escape_and_missing(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+    models_dir = repo_root / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    legit = models_dir / "runtime-model"
+    legit.mkdir(parents=True, exist_ok=True)
+
+    mgr = SimpleNamespace(models_dir=models_dir)
+    settings = SimpleNamespace(
+        REPO_ROOT=str(repo_root), ACADEMY_MODELS_DIR=str(models_dir)
+    )
+
+    assert ars._resolve_local_runtime_model_path_by_name(
+        mgr=mgr,
+        model_name="runtime-model",
+        settings_obj=settings,
+    ) == str(legit.resolve())
+    assert (
+        ars._resolve_local_runtime_model_path_by_name(
+            mgr=mgr,
+            model_name="../escape",
+            settings_obj=settings,
+        )
+        == ""
+    )
+    assert (
+        ars._resolve_local_runtime_model_path_by_name(
+            mgr=mgr,
+            model_name="missing-model",
+            settings_obj=settings,
+        )
+        == ""
+    )
+
+
+def test_file_candidate_helpers_cover_relative_and_missing(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+    existing = repo_root / "a.json"
+    existing.write_text("{}", encoding="utf-8")
+
+    resolved = ars._resolve_file_candidate(repo_root=repo_root, raw="a.json")
+    assert resolved == existing.resolve()
+    assert ars._resolve_file_candidate(repo_root=repo_root, raw="") is None
+    assert ars._resolve_file_candidate(repo_root=repo_root, raw="missing.json") is None
+
+    first = ars._resolve_first_existing_file(
+        repo_root=repo_root,
+        candidates=["missing.json", "a.json"],
+    )
+    assert first == existing.resolve()
+
+
+def test_resolve_installed_onnx_builder_none_paths(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        ars.importlib, "import_module", MagicMock(side_effect=RuntimeError("nope"))
+    )
+    assert ars._resolve_installed_onnx_builder() is None
+
+    ghost = tmp_path / "ghost_builder.py"
+    monkeypatch.setattr(
+        ars.importlib,
+        "import_module",
+        MagicMock(return_value=SimpleNamespace(__file__=str(ghost))),
+    )
+    assert ars._resolve_installed_onnx_builder() is None
+
+
+def test_safe_path_and_json_writer_reject_nonexistent_parent_dir(
+    tmp_path: Path,
+) -> None:
+    missing_dir = tmp_path / "missing"
+    with pytest.raises(ValueError, match="Parent directory does not exist"):
+        ars._resolve_safe_child_file_path(
+            parent_dir=missing_dir,
+            file_name="entry.json",
+        )
+    with pytest.raises(ValueError, match="Directory does not exist"):
+        ars._write_json_file_in_dir(
+            directory=missing_dir,
+            file_name="entry.json",
+            payload={"ok": True},
+        )

@@ -1680,6 +1680,30 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
     }
 
 
+def _ollama_lite_probe_unavailable_payload(runtime: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": "probe_unavailable",
+        "status": "probe_unavailable",
+        "code": "ollama_logprobs_unavailable",
+        "message": "Token-level logprobs are unavailable for this run",
+        "runtime_label": runtime.get("label"),
+        "checkpoints": [],
+        "signals": {
+            "early_unstable": False,
+            "late_stabilized": False,
+            "low_confidence_path": False,
+        },
+        "interpretability": {
+            "interpretable": False,
+            "confidence_band": "unknown",
+            "token_noise_ratio": 1.0,
+            "readable_top_tokens": 0,
+            "total_top_tokens": 0,
+        },
+        "diagnostics": {},
+    }
+
+
 def _build_ollama_lite_logit_lens_payload(
     *,
     prompt: str,
@@ -1697,27 +1721,7 @@ def _build_ollama_lite_logit_lens_payload(
         None,
     )
     if not isinstance(logprobs_packet, dict):
-        return {
-            "source": "probe_unavailable",
-            "status": "probe_unavailable",
-            "code": "ollama_logprobs_unavailable",
-            "message": "Token-level logprobs are unavailable for this run",
-            "runtime_label": runtime.get("label"),
-            "checkpoints": [],
-            "signals": {
-                "early_unstable": False,
-                "late_stabilized": False,
-                "low_confidence_path": False,
-            },
-            "interpretability": {
-                "interpretable": False,
-                "confidence_band": "unknown",
-                "token_noise_ratio": 1.0,
-                "readable_top_tokens": 0,
-                "total_top_tokens": 0,
-            },
-            "diagnostics": {},
-        }
+        return _ollama_lite_probe_unavailable_payload(runtime)
 
     content_raw = logprobs_packet.get("content")
     content = content_raw if isinstance(content_raw, list) else []
@@ -1754,27 +1758,7 @@ def _build_ollama_lite_logit_lens_payload(
         )
 
     if not normalized_tokens:
-        return {
-            "source": "probe_unavailable",
-            "status": "probe_unavailable",
-            "code": "ollama_logprobs_unavailable",
-            "message": "Token-level logprobs are unavailable for this run",
-            "runtime_label": runtime.get("label"),
-            "checkpoints": [],
-            "signals": {
-                "early_unstable": False,
-                "late_stabilized": False,
-                "low_confidence_path": False,
-            },
-            "interpretability": {
-                "interpretable": False,
-                "confidence_band": "unknown",
-                "token_noise_ratio": 1.0,
-                "readable_top_tokens": 0,
-                "total_top_tokens": 0,
-            },
-            "diagnostics": {},
-        }
+        return _ollama_lite_probe_unavailable_payload(runtime)
 
     token_count = len(normalized_tokens)
     checkpoint_indices = sorted(
@@ -1798,7 +1782,7 @@ def _build_ollama_lite_logit_lens_payload(
         checkpoints.append(
             {
                 "id": f"cp_{idx}",
-                "percent": int(round((token_index / max(1, token_count - 1)) * 100)),
+                "percent": round((token_index / max(1, token_count - 1)) * 100),
                 "layer": -1,
                 "top_k": top_k,
                 "top_token": token,
@@ -1808,7 +1792,7 @@ def _build_ollama_lite_logit_lens_payload(
         )
         previous_token = token
 
-    avg_prob = sum(probabilities) / len(probabilities)
+    avg_prob = (sum(probabilities) / len(probabilities)) if probabilities else 0.0
     confidence_band = (
         "high" if avg_prob >= 0.75 else ("medium" if avg_prob >= 0.5 else "low")
     )

@@ -115,6 +115,17 @@ export type SnapshotComparison = {
 };
 
 export type AnalysisTimelinePath = "answer_path" | "internals_path";
+export type AnalysisProbeStatus =
+  | "ok"
+  | "failed"
+  | "disabled"
+  | "runtime_not_supported"
+  | "model_not_whitelisted"
+  | "endpoint_missing"
+  | "metadata_only"
+  | "verified"
+  | "unknown"
+  | (string & {});
 
 export type AnalysisTimelineEntry = {
   id: string;
@@ -501,7 +512,7 @@ export type AnalysisResult = {
       probe_profile?: string;
       probe_enabled?: boolean;
       probe_healthy?: boolean;
-      probe_status?: string;
+      probe_status?: AnalysisProbeStatus;
       runtime_supported?: boolean;
       endpoint_configured?: boolean;
       model_whitelisted?: boolean;

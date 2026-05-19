@@ -1112,8 +1112,8 @@ describe("ModelIntrospectionDashboard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
     await waitFor(() => {
-      assert.ok(screen.getByText("Token confidence (lite)"));
-      assert.ok(screen.getByText(/How to get full internals/i));
+      assert.ok(screen.getByText(/Token confidence \(lite\)/i));
+      assert.ok(screen.getByText(/How to get full internals|jak uzyskać pełne internals/i));
       assert.ok(screen.getByText(/Switch runtime to multi_runtime/i));
     });
   });

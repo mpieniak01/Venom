@@ -49,6 +49,7 @@ const VOICE_MODES: VoiceModeCard[] = [
     icon: ListTodo,
   },
 ];
+const NATIVE_VOICE_RUNTIME_PREFIXES = ["multi_runtime", "gemma4_audio"] as const;
 
 type VoiceChatScreenProps = Readonly<{
   isDevMode?: boolean;
@@ -144,9 +145,9 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
   const runtimeModel = String(status.runtime_snapshot?.model_name ?? "").trim();
   const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
   const llmOk = runtimeProvider.length > 0 && runtimeModel.length > 0;
-  const isNativeVoiceRuntime =
-    runtimeProviderNormalized.startsWith("multi_runtime") ||
-    runtimeProviderNormalized.startsWith("gemma4_audio");
+  const isNativeVoiceRuntime = NATIVE_VOICE_RUNTIME_PREFIXES.some((prefix) =>
+    runtimeProviderNormalized.startsWith(prefix),
+  );
   const voiceProbeFailed = probeStatus === "failed";
   const voiceProbeBlocking = voiceProbeFailed && isNativeVoiceRuntime;
   const allOk = sttOk && ttsOk && llmOk && !voiceProbeBlocking;

@@ -346,7 +346,7 @@ function resolveIntrospectionLevel(args: {
   analysisLevel: string | null | undefined;
   snapshotLevel: string | null | undefined;
 }): IntrospectionLevel {
-  const candidate = String(args.analysisLevel || args.snapshotLevel || "none").toLowerCase();
+  const candidate = (args.analysisLevel ?? args.snapshotLevel ?? "none").toLowerCase();
   if (candidate === "full" || candidate === "lite" || candidate === "none") {
     return candidate;
   }
@@ -1156,12 +1156,18 @@ export function ModelIntrospectionDashboard() {
     allInternalsUnavailable,
     anyInternalsAvailable,
   } = resolveInternalsAvailability(attention, saliency, logitLens);
-  const isLiteIntrospection = introspectionLevel === "lite";
-  const logitLensTitle = isLiteIntrospection
-    ? "Token confidence (lite)"
+  const runtimeProviderNormalized = String(
+    analysisResult?.analysis?.provider ?? snapshot?.runtime?.provider ?? "",
+  ).toLowerCase();
+  const isOllamaLiteRuntime =
+    introspectionLevel === "lite" &&
+    runtimeProviderNormalized === "ollama" &&
+    logitLens?.source === "probe_lite";
+  const logitLensTitle = isOllamaLiteRuntime
+    ? t("inspector.modelIntrospection.dashboard.results.logitLens.titleLite")
     : t("inspector.modelIntrospection.dashboard.results.logitLens.title");
-  const internalsHowToFull = isLiteIntrospection
-    ? "Full internals are available on multi_runtime. Switch runtime to multi_runtime to enable native attention/saliency probes."
+  const internalsHowToFull = isOllamaLiteRuntime
+    ? t("inspector.modelIntrospection.dashboard.results.internalsHowToFull")
     : null;
   const unavailableInternalsRows = internalsCapabilityRows.filter(
     (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
@@ -1459,7 +1465,9 @@ export function ModelIntrospectionDashboard() {
           )}
           {internalsHowToFull && (
             <div className="mb-4 rounded-2xl border border-cyan-400/25 bg-cyan-500/10 p-4">
-              <p className="text-xs uppercase tracking-wide text-cyan-100">How to get full internals</p>
+              <p className="text-xs uppercase tracking-wide text-cyan-100">
+                {t("inspector.modelIntrospection.dashboard.results.internalsHowToFullTitle")}
+              </p>
               <p className="mt-2 text-sm text-cyan-50/90">{internalsHowToFull}</p>
             </div>
           )}
@@ -1470,8 +1478,8 @@ export function ModelIntrospectionDashboard() {
               title={t("inspector.modelIntrospection.dashboard.results.attention.title")}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.attention.empty")}
               unavailableLabel={
-                isLiteIntrospection
-                  ? "Not available on this runtime (ollama). Switch to multi_runtime for native attention internals."
+                isOllamaLiteRuntime
+                  ? t("inspector.modelIntrospection.dashboard.results.attention.unavailableLite")
                   : t("inspector.modelIntrospection.dashboard.results.attention.unavailable")
               }
             />
@@ -1483,8 +1491,8 @@ export function ModelIntrospectionDashboard() {
               title={t("inspector.modelIntrospection.dashboard.results.saliency.title")}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.saliency.empty")}
               unavailableLabel={
-                isLiteIntrospection
-                  ? "Not available on this runtime (ollama). Switch to multi_runtime for native saliency internals."
+                isOllamaLiteRuntime
+                  ? t("inspector.modelIntrospection.dashboard.results.saliency.unavailableLite")
                   : t("inspector.modelIntrospection.dashboard.results.saliency.unavailable")
               }
             />

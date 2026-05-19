@@ -1458,7 +1458,7 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
                 <div className="flex flex-col gap-2">
                   <div className="min-w-0">
                     <p className="text-sm text-white">{step.label}</p>
-                    <p className="mt-1 text-xs text-zinc-400 break-words whitespace-pre-wrap">
+                    <p className="mt-1 text-xs text-zinc-400 break-words whitespace-pre-wrap [overflow-wrap:anywhere] max-w-full">
                       {step.detail}
                     </p>
                   </div>

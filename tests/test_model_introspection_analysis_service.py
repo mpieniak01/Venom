@@ -224,6 +224,7 @@ async def test_analysis_collects_streamed_answer(
     assert result["analysis"]["analysis_capabilities"]["total_count"] == 3
     assert result["analysis"]["analysis_capabilities"]["probe_profile"] == "dev"
     assert result["analysis"]["analysis_capabilities"]["limits"]["max_head_count"] == 32
+    assert result["analysis"]["introspection_level"] in {"full", "lite", "none"}
     assert "run_trends" in result["analysis"]
 
 
@@ -790,21 +791,31 @@ def test_classify_stream_quality_variants() -> None:
 
 def test_build_logit_lens_timeline_step_for_failed_probe() -> None:
     step = analysis_service._build_logit_lens_timeline_step(
-        logit_lens={"status": "failed", "code": "probe_timeout"},
+        logit_lens={
+            "status": "failed",
+            "code": "probe_timeout",
+            "message": "Probe request timed out on active runtime",
+        },
         at_ms=100.0,
     )
     assert step["status"] == "failed"
-    assert step["detail"] == "probe_timeout"
+    assert step["detail"] == "Probe request timed out on active runtime (probe_timeout)"
     assert step["reason_code"] == "probe_timeout"
 
 
 def test_build_logit_lens_timeline_step_for_unavailable_probe() -> None:
     step = analysis_service._build_logit_lens_timeline_step(
-        logit_lens={"status": "probe_unavailable", "code": "probe_disabled"},
+        logit_lens={
+            "status": "probe_unavailable",
+            "code": "probe_disabled",
+            "message": "Probe is disabled by runtime configuration",
+        },
         at_ms=100.0,
     )
     assert step["status"] == "skipped"
-    assert step["detail"] == "probe_disabled"
+    assert (
+        step["detail"] == "Probe is disabled by runtime configuration (probe_disabled)"
+    )
     assert step["reason_code"] == "probe_disabled"
 
 
@@ -812,11 +823,18 @@ def test_build_probe_timeline_step_for_failed_probe() -> None:
     step = analysis_service._build_probe_timeline_step(
         step_id="attention_probe",
         step_label="Attention probe",
-        payload={"status": "failed", "code": "probe_transport_error"},
+        payload={
+            "status": "failed",
+            "code": "probe_transport_error",
+            "message": "Probe transport error on active runtime",
+        },
         at_ms=42.0,
     )
     assert step["status"] == "failed"
-    assert step["detail"] == "probe_transport_error"
+    assert (
+        step["detail"]
+        == "Probe transport error on active runtime (probe_transport_error)"
+    )
     assert step["reason_code"] == "probe_transport_error"
 
 
@@ -927,6 +945,81 @@ def test_analysis_capabilities_marks_failed_and_unavailable_classes() -> None:
     assert payload["attention"]["availability_class"] == "failed"
     assert payload["saliency"]["availability_class"] == "unavailable"
     assert payload["logit_lens"]["availability_class"] == "native_ok"
+
+
+def test_analysis_capabilities_marks_probe_lite_as_available_proxy() -> None:
+    payload = analysis_service._build_analysis_capabilities_payload(
+        attention={"source": "probe_unavailable", "status": "probe_unavailable"},
+        saliency={"source": "probe_unavailable", "status": "probe_unavailable"},
+        logit_lens={
+            "source": "probe_lite",
+            "status": "ok",
+            "code": "ollama_logprobs_lite",
+        },
+        probe_health={"enabled": False, "healthy": False, "runtime_supported": False},
+    )
+    assert payload["available_count"] == 1
+    assert payload["native_available_count"] == 0
+    assert payload["proxy_active"] is True
+    assert payload["internals_verdict"] == "partial"
+    assert payload["logit_lens"]["availability_class"] == "proxy_ok"
+
+
+@pytest.mark.asyncio
+async def test_analysis_ollama_requests_non_stream_logprobs_and_uses_lite_logit_lens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _build_snapshot()
+    snapshot["runtime"]["provider"] = "ollama"
+    snapshot["runtime"]["model"] = "gemma3:latest"
+    snapshot["runtime"]["endpoint"] = "http://localhost:11434/v1"
+    snapshot["runtime"]["label"] = "gemma3:latest · ollama @ localhost:11434"
+
+    async def fake_snapshot(**kwargs):
+        return snapshot
+
+    async def fake_stream_simple_chat(request):
+        assert request.stream is False
+        assert request.logprobs is True
+        assert request.top_logprobs == 3
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: telemetry\ndata: {"kind":"logprobs","content":[{"token":"Słońce","logprob":-0.1,"top_logprobs":[{"token":"Słońce","logprob":-0.1},{"token":"Planeta","logprob":-2.0}]}]}\n\n',
+                'event: content\ndata: {"text":"Słońce to gwiazda."}\n\n',
+                "event: done\ndata: {}\n\n",
+            ]
+        )
+
+    async def _unexpected_probe_call(**_kwargs):
+        raise AssertionError("probe path should not be used for ollama lite mode")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_logit_lens_payload_safe",
+        _unexpected_probe_call,
+    )
+
+    result = await analysis_service.analyze_model_with_optional_live_run(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    )
+
+    assert result["status"] == "completed"
+    assert result["analysis"]["logit_lens"]["source"] == "probe_lite"
+    assert result["analysis"]["logit_lens"]["status"] == "ok"
+    assert (
+        result["analysis"]["analysis_capabilities"]["logit_lens"]["available"] is True
+    )
+    assert result["analysis"]["analysis_capabilities"]["logit_lens"]["proxy"] is True
+    assert result["analysis"]["analysis_capabilities"]["introspection_level"] == "lite"
+    assert result["analysis"]["introspection_level"] == "lite"
 
 
 def test_operator_conclusion_uses_proxy_reason_code() -> None:

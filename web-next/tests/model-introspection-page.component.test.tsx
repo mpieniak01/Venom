@@ -989,4 +989,132 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(step8 < step9);
     });
   });
+
+  it("shows lite internals guidance for ollama runtime", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes("/api/v1/models/introspection")) {
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }
+      if (url.includes("/api/v1/models/introspection/analyze/stream")) {
+        const snapshot = {
+          ...makeSnapshotBeforeFixture(),
+          runtime: {
+            ...makeSnapshotBeforeFixture().runtime,
+            provider: "ollama",
+            model: "gemma3:latest",
+            endpoint: "http://localhost:11434/v1",
+            label: "gemma3:latest · ollama @ localhost:11434",
+          },
+          summary: {
+            ...makeSnapshotBeforeFixture().summary,
+            provider: "ollama",
+            runtime_label: "gemma3:latest · ollama @ localhost:11434",
+            introspection_level: "lite",
+          },
+          introspection_level: "lite",
+        };
+        const donePayload = {
+          analysis_enabled: true,
+          status: "completed",
+          snapshot,
+          snapshot_after: snapshot,
+          analysis: {
+            prompt: "Co to jest slonce?",
+            response: "Słońce to gwiazda.",
+            chunk_count: 1,
+            events: ["start", "content", "done"],
+            timeline_step_count: 9,
+            timeline: [
+              { id: "snapshot_before", label: "Snapshot captured", status: "done", detail: snapshot.runtime.label, at_ms: 0, path: "answer_path", progress: 0 },
+              { id: "request_ready", label: "Prompt prepared", status: "done", detail: "Co to jest slonce?", at_ms: 10, path: "answer_path", progress: 10 },
+              { id: "stream_opened", label: "Stream opened", status: "done", detail: "3 event(s) observed", at_ms: 20, path: "answer_path", progress: 20 },
+              { id: "first_chunk", label: "First content chunk", status: "done", detail: "1 chunk(s) total", at_ms: 30, path: "answer_path", progress: 40 },
+              { id: "response_finalized", label: "Response assembled", status: "done", detail: "18 chars", at_ms: 40, path: "answer_path", progress: 85 },
+              { id: "internals:logit_lens_probe", label: "Logit lens probe", status: "done", detail: "4 checkpoint(s)", at_ms: 50, path: "internals_path", progress: 90 },
+              { id: "internals:attention_probe", label: "Attention probe", status: "skipped", detail: "not available", at_ms: 50, path: "internals_path", progress: 93 },
+              { id: "internals:saliency_probe", label: "Saliency probe", status: "skipped", detail: "not available", at_ms: 50, path: "internals_path", progress: 96 },
+              { id: "snapshot_after", label: "Snapshot refreshed", status: "done", detail: "8 packages available", at_ms: 60, path: "answer_path", progress: 100 },
+            ],
+            elapsed_ms: 60,
+            provider: "ollama",
+            model: "gemma3:latest",
+            runtime_label: snapshot.runtime.label,
+            logit_lens: {
+              source: "probe_lite",
+              status: "ok",
+              code: "ollama_logprobs_lite",
+              message: "Token-level logprobs from ollama",
+              runtime_label: snapshot.runtime.label,
+              input_tokens: ["Co", "to", "jest"],
+              output_tokens: ["Słońce", "to", "gwiazda"],
+              raw_input_tokens: ["Co", "to", "jest"],
+              raw_output_tokens: ["Słońce", "to", "gwiazda"],
+              checkpoints: [{ id: "cp_0", percent: 0, layer: -1, top_k: [{ token: "Słońce", token_index: 0, score: -0.1 }], top_token: "Słońce", confidence: 0.9, changed: false }],
+              signals: { early_unstable: false, late_stabilized: true, low_confidence_path: false },
+              interpretability: { interpretable: true, confidence_band: "high", token_noise_ratio: 0.1, readable_top_tokens: 1, total_top_tokens: 1 },
+              diagnostics: {},
+            },
+            attention: { source: "probe_unavailable", status: "probe_unavailable", code: "runtime_not_supported", message: "not available", layers: [] },
+            saliency: { source: "probe_unavailable", status: "probe_unavailable", code: "runtime_not_supported", message: "not available", token_weights: [] },
+            analysis_capabilities: {
+              attention: { available: false, source: "probe_unavailable", status: "probe_unavailable", reason: "runtime_not_supported", availability_class: "unavailable" },
+              saliency: { available: false, source: "probe_unavailable", status: "probe_unavailable", reason: "runtime_not_supported", availability_class: "unavailable" },
+              logit_lens: { available: true, source: "probe_lite", status: "ok", reason: "ollama_logprobs_lite", availability_class: "proxy_ok" },
+              available_count: 1,
+              total_count: 3,
+              probe_profile: "legacy_text_only",
+              probe_enabled: false,
+              probe_healthy: false,
+              probe_status: "disabled",
+              runtime_supported: false,
+              endpoint_configured: true,
+              model_whitelisted: false,
+              limits: { timeout_seconds: 20, max_attempts: 2, max_top_k: 32, max_layer_count: 8, max_head_count: 32, max_prompt_tokens: 1024 },
+              internals_verdict: "partial",
+              introspection_level: "lite",
+            },
+            introspection_level: "lite",
+          },
+        };
+        const encoder = new TextEncoder();
+        const events = [
+          `event: analysis_start\ndata: ${JSON.stringify(makeAnalysisRunningPayload())}\n\n`,
+          "event: start\ndata: {}\n\n",
+          'event: content\ndata: {"text":"Słońce to gwiazda."}\n\n',
+          "event: done\ndata: {}\n\n",
+          `event: analysis_done\ndata: ${JSON.stringify(donePayload)}\n\n`,
+        ];
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              for (const event of events) controller.enqueue(encoder.encode(event));
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "text/event-stream" } },
+        );
+      }
+      return new Response(JSON.stringify({ success: true, snapshot: makeSnapshotBeforeFixture() }), {
+        status: 200,
+      });
+    };
+
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    await waitFor(() => {
+      assert.ok(screen.getByText("Token confidence (lite)"));
+      assert.ok(screen.getByText(/How to get full internals/i));
+      assert.ok(screen.getByText(/Switch runtime to multi_runtime/i));
+    });
+  });
 });

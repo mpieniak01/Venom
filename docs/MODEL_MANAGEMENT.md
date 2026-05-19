@@ -21,7 +21,7 @@ Profile behavior notes:
 ## Ollama Runtime Baseline (v1.5 / task 152)
 
 Current Venom baseline for local runtime:
-1. **Target Ollama line**: `0.16.x` (stable).
+1. **Target Ollama line**: `0.24.x` (stable).
 2. **Default single-user profile**: `balanced-12-24gb`.
 3. **Configuration source of truth**: backend env/config (no frontend hardcodes).
 

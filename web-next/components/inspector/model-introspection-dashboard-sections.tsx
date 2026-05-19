@@ -1455,12 +1455,14 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
                 key={`${step.id}:${step.path ?? "none"}:${step.at_ms}:${index}`}
                 className="rounded-xl border border-white/10 bg-black/20 px-3 py-3"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
+                <div className="flex flex-col gap-2">
+                  <div className="min-w-0">
                     <p className="text-sm text-white">{step.label}</p>
-                    <p className="mt-1 text-xs text-zinc-400">{step.detail}</p>
+                    <p className="mt-1 text-xs text-zinc-400 break-words whitespace-pre-wrap">
+                      {step.detail}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {step.path && (
                       <Badge tone={getTimelinePathTone(step.path)}>{step.path}</Badge>
                     )}
@@ -1470,6 +1472,8 @@ export function AnalysisResultsPanel(props: AnalysisResultsPanelProps) {
                     {step.reason_code && step.status !== "done" && (
                       <Badge tone="danger">{step.reason_code}</Badge>
                     )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={timelineBadgeTone(step.status)}>{step.status}</Badge>
                     <span className="font-mono text-xs text-zinc-400">{step.at_ms.toFixed(1)} ms</span>
                   </div>

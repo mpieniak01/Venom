@@ -77,6 +77,7 @@ type InternalsCapabilityRow = {
   reason: string;
   availabilityClass: "native_ok" | "proxy_ok" | "unavailable" | "failed";
 };
+type IntrospectionLevel = "full" | "lite" | "none";
 type InternalsNoticeProps = {
   title: string;
   message: string;
@@ -286,7 +287,12 @@ function buildInternalsCapabilityRow(
   const reasonMap: Record<string, string> = {
     ok: "ok",
     probe_unavailable: "probe unavailable",
+    probe_disabled: "probe disabled in runtime config",
     probe_failed: "probe failed",
+    runtime_not_supported: "runtime not supported for probe",
+    model_not_whitelisted: "model not whitelisted for probe",
+    endpoint_missing: "probe endpoint missing",
+    live_analysis_disabled: "live analysis disabled",
     attention_unavailable: "attention unavailable",
     saliency_unavailable: "saliency unavailable",
     logit_lens_unavailable: "logit lens unavailable",
@@ -328,6 +334,17 @@ function buildProbeLimitsLabel(limits: {
     return "limits: n/a";
   }
   return `limits: t=${limits.timeout_seconds ?? 0}s · att=${limits.max_attempts ?? 0} · top_k=${limits.max_top_k ?? 0} · layers=${limits.max_layer_count ?? 0} · heads=${limits.max_head_count ?? 0} · prompt=${limits.max_prompt_tokens ?? 0}`;
+}
+
+function resolveIntrospectionLevel(args: {
+  analysisLevel: string | null | undefined;
+  snapshotLevel: string | null | undefined;
+}): IntrospectionLevel {
+  const candidate = String(args.analysisLevel || args.snapshotLevel || "none").toLowerCase();
+  if (candidate === "full" || candidate === "lite" || candidate === "none") {
+    return candidate;
+  }
+  return "none";
 }
 
 const RESULT_STEP_DEFS = [
@@ -865,6 +882,10 @@ function useDashboardDerivedState(args: {
   const attention = buildAttentionModel(analysisResult?.analysis?.attention ?? null);
   const saliency = buildSaliencyModel(analysisResult?.analysis?.saliency ?? null);
   const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
+  const introspectionLevel = resolveIntrospectionLevel({
+    analysisLevel: analysisResult?.analysis?.introspection_level,
+    snapshotLevel: snapshot?.summary?.introspection_level ?? snapshot?.introspection_level,
+  });
   const internalsProbeElapsedMs = useMemo(
     () =>
       sumProbeElapsedMs([
@@ -901,12 +922,22 @@ function useDashboardDerivedState(args: {
     }
     const availableCount = Number(analysisCapabilities.available_count ?? 0);
     const totalCount = Number(analysisCapabilities.total_count ?? 3);
+    const probeGateDetails = [
+      `probe_status:${String(analysisCapabilities.probe_status ?? "unknown")}`,
+      `probe_enabled:${analysisCapabilities.probe_enabled ? "yes" : "no"}`,
+      `runtime_supported:${analysisCapabilities.runtime_supported ? "yes" : "no"}`,
+      `model_whitelisted:${analysisCapabilities.model_whitelisted ? "yes" : "no"}`,
+      `endpoint_configured:${analysisCapabilities.endpoint_configured ? "yes" : "no"}`,
+    ];
     return {
       verdict: internalsVerdictLabel,
       tone: internalsVerdictTone,
       availableCount,
       totalCount,
-      details: internalsCapabilityRows.map((row) => `${row.label}:${row.reason}`),
+      details: [
+        ...internalsCapabilityRows.map((row) => `${row.label}:${row.reason}`),
+        ...probeGateDetails,
+      ],
     };
   }, [analysisCapabilities, internalsCapabilityRows, internalsVerdictLabel, internalsVerdictTone]);
   const operatorConclusion = buildOperatorConclusion({
@@ -1013,6 +1044,7 @@ function useDashboardDerivedState(args: {
     attention,
     saliency,
     analysisCapabilities,
+    introspectionLevel,
     internalsProbeElapsedMs,
     internalsCapabilityRows,
     internalsVerdictLabel,
@@ -1072,6 +1104,7 @@ export function ModelIntrospectionDashboard() {
     attention,
     saliency,
     analysisCapabilities,
+    introspectionLevel,
     internalsProbeElapsedMs,
     internalsCapabilityRows,
     internalsVerdictLabel,
@@ -1117,6 +1150,13 @@ export function ModelIntrospectionDashboard() {
     allInternalsUnavailable,
     anyInternalsAvailable,
   } = resolveInternalsAvailability(attention, saliency, logitLens);
+  const isLiteIntrospection = introspectionLevel === "lite";
+  const logitLensTitle = isLiteIntrospection
+    ? "Token confidence (lite)"
+    : t("inspector.modelIntrospection.dashboard.results.logitLens.title");
+  const internalsHowToFull = isLiteIntrospection
+    ? "Full internals are available on multi_runtime. Switch runtime to multi_runtime to enable native attention/saliency probes."
+    : null;
   const unavailableInternalsRows = internalsCapabilityRows.filter(
     (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
   );
@@ -1327,7 +1367,7 @@ export function ModelIntrospectionDashboard() {
             <ResultStepHeader marker={logitStepMarker} t={t} />
             <LogitLensPanel
               logitLens={logitLens}
-              title={t("inspector.modelIntrospection.dashboard.results.logitLens.title")}
+              title={logitLensTitle}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.logitLens.empty")}
               unavailableLabel={t(
                 "inspector.modelIntrospection.dashboard.results.logitLens.unavailable",
@@ -1411,15 +1451,23 @@ export function ModelIntrospectionDashboard() {
               extraBadge={probeLimitsLabel}
             />
           )}
+          {internalsHowToFull && (
+            <div className="mb-4 rounded-2xl border border-cyan-400/25 bg-cyan-500/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-cyan-100">How to get full internals</p>
+              <p className="mt-2 text-sm text-cyan-50/90">{internalsHowToFull}</p>
+            </div>
+          )}
           <ResultStepContainer marker={attentionStepMarker} className="mb-4" t={t}>
             <ResultStepHeader marker={attentionStepMarker} t={t} />
             <AttentionPanel
               attention={attention}
               title={t("inspector.modelIntrospection.dashboard.results.attention.title")}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.attention.empty")}
-              unavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.attention.unavailable",
-              )}
+              unavailableLabel={
+                isLiteIntrospection
+                  ? "Not available on this runtime (ollama). Switch to multi_runtime for native attention internals."
+                  : t("inspector.modelIntrospection.dashboard.results.attention.unavailable")
+              }
             />
           </ResultStepContainer>
           <ResultStepContainer marker={saliencyStepMarker} className="mb-4" t={t}>
@@ -1428,9 +1476,11 @@ export function ModelIntrospectionDashboard() {
               saliency={saliency}
               title={t("inspector.modelIntrospection.dashboard.results.saliency.title")}
               emptyLabel={t("inspector.modelIntrospection.dashboard.results.saliency.empty")}
-              unavailableLabel={t(
-                "inspector.modelIntrospection.dashboard.results.saliency.unavailable",
-              )}
+              unavailableLabel={
+                isLiteIntrospection
+                  ? "Not available on this runtime (ollama). Switch to multi_runtime for native saliency internals."
+                  : t("inspector.modelIntrospection.dashboard.results.saliency.unavailable")
+              }
             />
           </ResultStepContainer>
           </div>

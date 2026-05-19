@@ -142,7 +142,7 @@ class TestRuntimeStatusAPI:
             mock_ollama.uptime_seconds = None
             mock_ollama.last_log = None
             mock_ollama.error_message = None
-            mock_ollama.runtime_version = "0.16.1"
+            mock_ollama.runtime_version = "0.24.0"
             mock_ollama.actionable = True
             mock_controller.get_all_services_status.return_value = [mock_ollama]
 
@@ -150,7 +150,7 @@ class TestRuntimeStatusAPI:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["services"][0]["runtime_version"] == "0.16.1"
+            assert data["services"][0]["runtime_version"] == "0.24.0"
 
     def test_runtime_status_error(self, client):
         """Test błędu podczas pobierania statusu runtime."""

@@ -19,6 +19,14 @@ from venom_core.utils.url_policy import build_http_url
 logger = get_logger(__name__)
 
 
+def _normalize_ollama_endpoint(endpoint: str) -> str:
+    """Normalizuje endpoint Ollama do bazowego URL bez sufiksu `/v1`."""
+    normalized = endpoint.rstrip("/")
+    if normalized.endswith("/v1"):
+        return normalized[: -len("/v1")]
+    return normalized
+
+
 def _normalize_hf_papers_month(month: Optional[str]) -> str:
     """Zwraca bezpieczny segment URL miesiąca w formacie YYYY-MM."""
     if month:
@@ -39,7 +47,8 @@ class OllamaClient:
     """Klient do integracji z Ollama (HTTP + CLI)."""
 
     def __init__(self, endpoint: Optional[str] = None):
-        self.endpoint = (endpoint or build_http_url("localhost", 11434)).rstrip("/")
+        resolved_endpoint = endpoint or build_http_url("localhost", 11434)
+        self.endpoint = _normalize_ollama_endpoint(resolved_endpoint)
 
     async def list_tags(self) -> Dict[str, Any]:
         async with TrafficControlledHttpClient(

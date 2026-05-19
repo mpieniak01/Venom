@@ -147,7 +147,7 @@ async def test_check_ollama_status_connected_includes_runtime_version(
             responses_by_url={
                 "http://localhost:11434/api/tags": _DummyResponse(200),
                 "http://localhost:11434/api/version": _DummyResponse(
-                    200, {"version": "0.16.1"}
+                    200, {"version": "0.24.0"}
                 ),
             }
         ),
@@ -155,7 +155,7 @@ async def test_check_ollama_status_connected_includes_runtime_version(
 
     status = await providers_route._check_ollama_status()
     assert status.status == "connected"
-    assert status.runtime_version == "0.16.1"
+    assert status.runtime_version == "0.24.0"
 
 
 @pytest.mark.asyncio

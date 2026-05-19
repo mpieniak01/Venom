@@ -140,11 +140,16 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
   const sttOk = status.stt_ready === true;
   const ttsOk = status.tts_ready === true;
   const runtimeProvider = String(status.runtime_snapshot?.provider ?? "").trim();
+  const runtimeProviderNormalized = runtimeProvider.toLowerCase();
   const runtimeModel = String(status.runtime_snapshot?.model_name ?? "").trim();
   const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
   const llmOk = runtimeProvider.length > 0 && runtimeModel.length > 0;
+  const isNativeVoiceRuntime =
+    runtimeProviderNormalized.startsWith("multi_runtime") ||
+    runtimeProviderNormalized.startsWith("gemma4_audio");
   const voiceProbeFailed = probeStatus === "failed";
-  const allOk = sttOk && ttsOk && llmOk && !voiceProbeFailed;
+  const voiceProbeBlocking = voiceProbeFailed && isNativeVoiceRuntime;
+  const allOk = sttOk && ttsOk && llmOk && !voiceProbeBlocking;
 
   return (
     <div
@@ -173,8 +178,20 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
           {" "}
           TTS
         </span>
-        <span className={`flex items-center gap-1 ${voiceProbeFailed ? "text-amber-400" : "text-emerald-400"}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${voiceProbeFailed ? "bg-amber-400" : "bg-emerald-400"}`} />
+        <span
+          className={`flex items-center gap-1 ${
+            voiceProbeFailed
+              ? (voiceProbeBlocking ? "text-rose-400" : "text-amber-400")
+              : "text-emerald-400"
+          }`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              voiceProbeFailed
+                ? (voiceProbeBlocking ? "bg-rose-400" : "bg-amber-400")
+                : "bg-emerald-400"
+            }`}
+          />
           {" "}
           {probeStatus ?? "—"}
         </span>

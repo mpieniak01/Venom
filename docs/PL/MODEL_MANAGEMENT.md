@@ -21,7 +21,7 @@ Uwagi operacyjne:
 ## Bazowy runtime Ollama (v1.5 / zadanie 152)
 
 Aktualna baza dla lokalnego runtime Venom:
-1. **Docelowa linia Ollama**: `0.16.x` (stable).
+1. **Docelowa linia Ollama**: `0.24.x` (stable).
 2. **Domyślny profil single-user**: `balanced-12-24gb`.
 3. **Źródło prawdy konfiguracji**: backend env/config (bez hardcodów w frontendzie).
 

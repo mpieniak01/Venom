@@ -49,6 +49,8 @@ def test_model_introspection_includes_runtime_packages() -> None:
     snapshot = payload["snapshot"]
     assert payload["success"] is True
     assert snapshot["summary"]["introspection_ready"] is True
+    assert snapshot["summary"]["introspection_level"] in {"full", "lite", "none"}
+    assert snapshot["introspection_level"] in {"full", "lite", "none"}
     assert snapshot["reuse"]["brain"]["path"] == "/brain"
     assert snapshot["reuse"]["diagnostics"][0]["id"] == "217da"
     assert snapshot["model_manager"]["available"] is True

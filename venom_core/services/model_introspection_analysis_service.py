@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -128,9 +129,14 @@ def _consume_sse_events(
     first_content_at_ms: float | None,
     chunk_at_ms: float,
     content_event_times_ms: list[float] | None = None,
+    telemetry_packets: list[dict[str, Any]] | None = None,
 ) -> tuple[int, float | None]:
     for event_name, payload in drained_events:
         events.append(event_name)
+        if event_name == "telemetry" and telemetry_packets is not None:
+            parsed_telemetry = _parse_json_dict(payload)
+            if parsed_telemetry:
+                telemetry_packets.append(parsed_telemetry)
         if event_name == "error":
             parsed_error = _parse_json_dict(payload)
             message = str(
@@ -671,10 +677,10 @@ def _build_operator_conclusion_payload(
 def _capability_from_probe_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
     source = str((payload or {}).get("source") or "probe_unavailable")
     status = str((payload or {}).get("status") or "probe_unavailable")
-    available = source == "probe_runtime" and status == "ok"
+    available = source in {"probe_runtime", "probe_lite"} and status == "ok"
     raw_code = (payload or {}).get("code")
     code = str(raw_code).strip() if isinstance(raw_code, str) else ""
-    proxy = bool(code and "_proxy_" in code)
+    proxy = source == "probe_lite" or bool(code and "_proxy_" in code)
     native = bool(available and not proxy)
     reason = code or ("ok" if available else "probe_unavailable")
     availability_class = _resolve_availability_class(
@@ -790,6 +796,11 @@ def _build_analysis_capabilities_payload(
         native_available_count=native_available_count,
         total_count=total_count,
     )
+    introspection_level = "none"
+    if native_available_count == total_count:
+        introspection_level = "full"
+    elif available_count > 0:
+        introspection_level = "lite"
     return {
         "attention": attention_capability,
         "saliency": saliency_capability,
@@ -801,11 +812,13 @@ def _build_analysis_capabilities_payload(
         "probe_profile": str(probe_health_dict.get("profile") or "unknown"),
         "probe_enabled": bool(probe_health_dict.get("enabled")),
         "probe_healthy": bool(probe_health_dict.get("healthy")),
+        "probe_status": str(probe_health_dict.get("status") or "unknown"),
         "runtime_supported": bool(probe_health_dict.get("runtime_supported")),
         "endpoint_configured": bool(probe_health_dict.get("endpoint_configured")),
         "model_whitelisted": bool(probe_health_dict.get("model_whitelisted")),
         "limits": _build_probe_limits_payload(limits_dict),
         "internals_verdict": internals_verdict,
+        "introspection_level": introspection_level,
     }
 
 
@@ -1611,6 +1624,7 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
     chunk_count = 0
     first_content_at_ms: float | None = None
     content_event_times_ms: list[float] = []
+    telemetry_packets: list[dict[str, Any]] = []
     stream_started_at = time.perf_counter()
 
     body_iterator = getattr(response, "body_iterator", None)
@@ -1639,6 +1653,7 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
             first_content_at_ms=first_content_at_ms,
             chunk_at_ms=chunk_at_ms,
             content_event_times_ms=content_event_times_ms,
+            telemetry_packets=telemetry_packets,
         )
 
     if sse_tail.strip():
@@ -1651,6 +1666,7 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
             first_content_at_ms=first_content_at_ms,
             chunk_at_ms=(time.perf_counter() - stream_started_at) * 1000.0,
             content_event_times_ms=content_event_times_ms,
+            telemetry_packets=telemetry_packets,
         )
 
     return {
@@ -1660,6 +1676,176 @@ async def _collect_streaming_response(response: Any) -> dict[str, Any]:
         "raw_chunks": raw_chunks,
         "first_content_at_ms": first_content_at_ms,
         "content_event_times_ms": content_event_times_ms,
+        "telemetry": telemetry_packets,
+    }
+
+
+def _build_ollama_lite_logit_lens_payload(
+    *,
+    prompt: str,
+    runtime: dict[str, Any],
+    stream_payload: dict[str, Any],
+) -> dict[str, Any]:
+    telemetry_raw = stream_payload.get("telemetry")
+    telemetry_packets = telemetry_raw if isinstance(telemetry_raw, list) else []
+    logprobs_packet = next(
+        (
+            packet
+            for packet in telemetry_packets
+            if isinstance(packet, dict) and str(packet.get("kind") or "") == "logprobs"
+        ),
+        None,
+    )
+    if not isinstance(logprobs_packet, dict):
+        return {
+            "source": "probe_unavailable",
+            "status": "probe_unavailable",
+            "code": "ollama_logprobs_unavailable",
+            "message": "Token-level logprobs are unavailable for this run",
+            "runtime_label": runtime.get("label"),
+            "checkpoints": [],
+            "signals": {
+                "early_unstable": False,
+                "late_stabilized": False,
+                "low_confidence_path": False,
+            },
+            "interpretability": {
+                "interpretable": False,
+                "confidence_band": "unknown",
+                "token_noise_ratio": 1.0,
+                "readable_top_tokens": 0,
+                "total_top_tokens": 0,
+            },
+            "diagnostics": {},
+        }
+
+    content_raw = logprobs_packet.get("content")
+    content = content_raw if isinstance(content_raw, list) else []
+    normalized_tokens: list[dict[str, Any]] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        token = str(item.get("token") or "")
+        raw_logprob = item.get("logprob")
+        if not isinstance(raw_logprob, (int, float)):
+            continue
+        top_raw = item.get("top_logprobs")
+        top_items = top_raw if isinstance(top_raw, list) else []
+        top_k: list[dict[str, Any]] = []
+        for top_item in top_items:
+            if not isinstance(top_item, dict):
+                continue
+            top_token = str(top_item.get("token") or "")
+            top_logprob = top_item.get("logprob")
+            if not isinstance(top_logprob, (int, float)):
+                continue
+            top_k.append(
+                {
+                    "token": top_token,
+                    "score": float(top_logprob),
+                }
+            )
+        normalized_tokens.append(
+            {
+                "token": token,
+                "logprob": float(raw_logprob),
+                "top_k": top_k,
+            }
+        )
+
+    if not normalized_tokens:
+        return {
+            "source": "probe_unavailable",
+            "status": "probe_unavailable",
+            "code": "ollama_logprobs_unavailable",
+            "message": "Token-level logprobs are unavailable for this run",
+            "runtime_label": runtime.get("label"),
+            "checkpoints": [],
+            "signals": {
+                "early_unstable": False,
+                "late_stabilized": False,
+                "low_confidence_path": False,
+            },
+            "interpretability": {
+                "interpretable": False,
+                "confidence_band": "unknown",
+                "token_noise_ratio": 1.0,
+                "readable_top_tokens": 0,
+                "total_top_tokens": 0,
+            },
+            "diagnostics": {},
+        }
+
+    token_count = len(normalized_tokens)
+    checkpoint_indices = sorted(
+        {
+            0,
+            token_count // 3,
+            (2 * token_count) // 3,
+            token_count - 1,
+        }
+    )
+    checkpoints: list[dict[str, Any]] = []
+    probabilities: list[float] = []
+    previous_token: str | None = None
+    for idx, token_index in enumerate(checkpoint_indices):
+        item = normalized_tokens[token_index]
+        top_k = item.get("top_k") or []
+        logprob = float(item["logprob"])
+        confidence = max(0.0, min(1.0, math.exp(logprob)))
+        probabilities.append(confidence)
+        token = str(item["token"])
+        checkpoints.append(
+            {
+                "id": f"cp_{idx}",
+                "percent": int(round((token_index / max(1, token_count - 1)) * 100)),
+                "layer": -1,
+                "top_k": top_k,
+                "top_token": token,
+                "confidence": confidence,
+                "changed": previous_token is not None and token != previous_token,
+            }
+        )
+        previous_token = token
+
+    avg_prob = sum(probabilities) / len(probabilities)
+    confidence_band = (
+        "high" if avg_prob >= 0.75 else ("medium" if avg_prob >= 0.5 else "low")
+    )
+    return {
+        "source": "probe_lite",
+        "status": "ok",
+        "code": "ollama_logprobs_lite",
+        "message": "Token-level logprobs from ollama non-stream chat completion",
+        "runtime_label": runtime.get("label"),
+        "input_tokens": prompt.split(),
+        "output_tokens": [
+            str(item.get("token") or "") for item in normalized_tokens[:64]
+        ],
+        "raw_input_tokens": prompt.split(),
+        "raw_output_tokens": [
+            str(item.get("token") or "") for item in normalized_tokens[:64]
+        ],
+        "checkpoints": checkpoints,
+        "signals": {
+            "early_unstable": bool(probabilities and probabilities[0] < 0.4),
+            "late_stabilized": bool(
+                len(probabilities) >= 2 and probabilities[-1] >= probabilities[0]
+            ),
+            "low_confidence_path": avg_prob < 0.45,
+        },
+        "interpretability": {
+            "interpretable": True,
+            "confidence_band": confidence_band,
+            "token_noise_ratio": max(0.0, min(1.0, 1.0 - avg_prob)),
+            "readable_top_tokens": len(checkpoints),
+            "total_top_tokens": len(checkpoints),
+        },
+        "diagnostics": {
+            "token_count": token_count,
+            "checkpoints_count": len(checkpoints),
+            "avg_top1_prob": round(avg_prob, 4),
+        },
     }
 
 
@@ -1675,6 +1861,7 @@ def _build_logit_lens_timeline_step(
     code = str(logit_lens.get("code") or "probe_unavailable")
     checkpoints = logit_lens.get("checkpoints")
     checkpoint_count = len(checkpoints) if isinstance(checkpoints, list) else 0
+    message = str(logit_lens.get("message") or "").strip()
     if status == "ok":
         detail = (
             f"{checkpoint_count} checkpoint(s) · {elapsed_ms:.1f} ms"
@@ -1683,10 +1870,10 @@ def _build_logit_lens_timeline_step(
         )
         step_status = "done"
     elif _is_probe_failure_status_or_code(status=status, code=code):
-        detail = code
+        detail = f"{message} ({code})" if message else code
         step_status = "failed"
     else:
-        detail = code
+        detail = f"{message} ({code})" if message else code
         step_status = "skipped"
     return {
         "id": "logit_lens_probe",
@@ -1727,6 +1914,7 @@ def _build_probe_timeline_step(
     elapsed_ms = diagnostics_dict.get("elapsed_ms")
     status = str(payload.get("status") or "probe_unavailable")
     code = str(payload.get("code") or "probe_unavailable")
+    message = str(payload.get("message") or "").strip()
     if status == "ok":
         detail = (
             f"ok · {elapsed_ms:.1f} ms"
@@ -1735,10 +1923,10 @@ def _build_probe_timeline_step(
         )
         step_status = "done"
     elif _is_probe_failure_status_or_code(status=status, code=code):
-        detail = code
+        detail = f"{message} ({code})" if message else code
         step_status = "failed"
     else:
-        detail = code
+        detail = f"{message} ({code})" if message else code
         step_status = "skipped"
     return {
         "id": step_id,
@@ -2041,6 +2229,9 @@ def _build_completed_analysis_payload(
         "evidence_coverage": context.evidence_coverage,
         "operator_conclusion": context.operator_conclusion,
         "analysis_capabilities": context.analysis_capabilities,
+        "introspection_level": str(
+            context.analysis_capabilities.get("introspection_level") or "none"
+        ),
         "run_trends": context.run_trends,
     }
 
@@ -2233,12 +2424,17 @@ async def stream_model_introspection_analysis(
         yield _serialize_sse_event("analysis_done", skipped_result)
         return
 
+    runtime_provider = str(runtime.get("provider") or "").strip().lower()
+    ollama_lite_mode = runtime_provider == "ollama"
     request = SimpleChatRequest(
         content=prompt,
         model=runtime["model"],
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
+        stream=False if ollama_lite_mode else None,
+        logprobs=True if ollama_lite_mode else None,
+        top_logprobs=3 if ollama_lite_mode else None,
     )
     request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     running_result = _build_running_analysis_result(
@@ -2279,6 +2475,7 @@ async def stream_model_introspection_analysis(
     chunk_count = 0
     first_content_at_ms: float | None = None
     content_event_times_ms: list[float] = []
+    telemetry_packets: list[dict[str, Any]] = []
     sse_tail = ""
 
     body_iterator = getattr(response, "body_iterator", None)
@@ -2322,6 +2519,7 @@ async def stream_model_introspection_analysis(
                 first_content_at_ms=first_content_at_ms,
                 chunk_at_ms=chunk_at_ms,
                 content_event_times_ms=content_event_times_ms,
+                telemetry_packets=telemetry_packets,
             )
             yield chunk_text
 
@@ -2335,6 +2533,7 @@ async def stream_model_introspection_analysis(
                 first_content_at_ms=first_content_at_ms,
                 chunk_at_ms=(time.perf_counter() - flow_started_at) * 1000.0,
                 content_event_times_ms=content_event_times_ms,
+                telemetry_packets=telemetry_packets,
             )
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
@@ -2360,24 +2559,39 @@ async def stream_model_introspection_analysis(
         return
 
     response_text = "".join(content_parts)
-    logit_lens, attention, saliency = await asyncio.gather(
-        _collect_logit_lens_payload_safe(
-            prompt=prompt,
-            response_text=response_text,
-        ),
-        _collect_attention_payload_safe(prompt=prompt),
-        _collect_saliency_payload_safe(
-            prompt=prompt,
-            response_text=response_text,
-        ),
-    )
     stream_payload = {
         "response_text": "".join(content_parts),
         "chunk_count": chunk_count,
         "events": events,
         "first_content_at_ms": first_content_at_ms,
         "content_event_times_ms": content_event_times_ms,
+        "telemetry": telemetry_packets,
     }
+    if ollama_lite_mode:
+        logit_lens = _build_ollama_lite_logit_lens_payload(
+            prompt=prompt,
+            runtime=runtime,
+            stream_payload=stream_payload,
+        )
+        attention, saliency = await asyncio.gather(
+            _collect_attention_payload_safe(prompt=prompt),
+            _collect_saliency_payload_safe(
+                prompt=prompt,
+                response_text=response_text,
+            ),
+        )
+    else:
+        logit_lens, attention, saliency = await asyncio.gather(
+            _collect_logit_lens_payload_safe(
+                prompt=prompt,
+                response_text=response_text,
+            ),
+            _collect_attention_payload_safe(prompt=prompt),
+            _collect_saliency_payload_safe(
+                prompt=prompt,
+                response_text=response_text,
+            ),
+        )
     (
         analysis_payload,
         refreshed_snapshot,
@@ -2449,12 +2663,17 @@ async def analyze_model_with_optional_live_run(
         skipped_result["snapshot"] = snapshot
         return skipped_result
 
+    runtime_provider = str(runtime.get("provider") or "").strip().lower()
+    ollama_lite_mode = runtime_provider == "ollama"
     request = SimpleChatRequest(
         content=prompt,
         model=runtime["model"],
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
+        stream=False if ollama_lite_mode else None,
+        logprobs=True if ollama_lite_mode else None,
+        top_logprobs=3 if ollama_lite_mode else None,
     )
     request_ready_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     result: dict[str, Any] = {
@@ -2503,17 +2722,31 @@ async def analyze_model_with_optional_live_run(
         raise
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
     response_text = str(stream_payload.get("response_text") or "")
-    logit_lens, attention, saliency = await asyncio.gather(
-        _collect_logit_lens_payload_safe(
+    if ollama_lite_mode:
+        logit_lens = _build_ollama_lite_logit_lens_payload(
             prompt=prompt,
-            response_text=response_text,
-        ),
-        _collect_attention_payload_safe(prompt=prompt),
-        _collect_saliency_payload_safe(
-            prompt=prompt,
-            response_text=response_text,
-        ),
-    )
+            runtime=runtime,
+            stream_payload=stream_payload,
+        )
+        attention, saliency = await asyncio.gather(
+            _collect_attention_payload_safe(prompt=prompt),
+            _collect_saliency_payload_safe(
+                prompt=prompt,
+                response_text=response_text,
+            ),
+        )
+    else:
+        logit_lens, attention, saliency = await asyncio.gather(
+            _collect_logit_lens_payload_safe(
+                prompt=prompt,
+                response_text=response_text,
+            ),
+            _collect_attention_payload_safe(prompt=prompt),
+            _collect_saliency_payload_safe(
+                prompt=prompt,
+                response_text=response_text,
+            ),
+        )
     (
         analysis_payload,
         refreshed_snapshot,

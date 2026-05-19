@@ -1889,7 +1889,9 @@ def _build_ollama_checkpoint_series(
     previous_token: str | None = None
     for idx, token_index in enumerate(checkpoint_indices):
         item = normalized_tokens[token_index]
-        confidence = max(0.0, min(1.0, math.exp(float(item["logprob"]))))
+        raw_logprob = float(item["logprob"])
+        bounded_logprob = min(0.0, max(-60.0, raw_logprob))
+        confidence = max(0.0, min(1.0, math.exp(bounded_logprob)))
         probabilities.append(confidence)
         token = str(item["token"])
         checkpoints.append(

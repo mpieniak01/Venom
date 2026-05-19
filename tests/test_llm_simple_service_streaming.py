@@ -180,6 +180,7 @@ def test_extract_logprobs_telemetry_normalizes_valid_items():
     telemetry = llm_simple_service._extract_logprobs_telemetry(payload)
     assert telemetry is not None
     assert telemetry["kind"] == "logprobs"
+    assert len(telemetry["content"]) == 1
     assert telemetry["content"][0]["token"] == "A"
     assert telemetry["content"][0]["top_logprobs"][0]["token"] == "B"
 

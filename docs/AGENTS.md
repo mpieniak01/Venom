@@ -13,6 +13,7 @@ If you are looking for the list of Venom system agents, use:
 - Avoid dead code and placeholder branches.
 - Make error paths explicit and covered by tests where practical.
 - Before running Python tooling, activate the repository virtualenv with `source .venv/bin/activate`.
+- Default response language for workspace agents is Polish unless the user explicitly asks for English or an external format requires it.
 
 ## MCP First For OpenAI/Codex Questions
 

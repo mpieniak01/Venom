@@ -16,6 +16,7 @@ Minimal contract:
 2. If gate fails, fix and rerun until green (or confirmed environment blocker path from `docs/AGENTS.md`).
 3. For markdown-only changes (all changed files are `*.md`, regardless of directory) hard gates may be skipped.
 4. Final report must include commands run, pass/fail, changed-lines coverage (from `pr-fast` output), and known risks/skips.
+5. Default response language for workspace agents is Polish unless the user explicitly asks for English or an external format requires it.
 
 Canonical process details:
 - [docs/AGENTS.md](docs/AGENTS.md)

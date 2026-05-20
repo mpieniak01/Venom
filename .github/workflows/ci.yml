@@ -50,6 +50,90 @@ jobs:
             exit 1
           fi
 
+  operator-docs-drift-guard:
+    name: Operator docs drift guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    needs: [forbidden-paths]
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run chat operator docs drift audit
+        run: |
+          make chat-operator-docs-drift-audit
+
+  operator-manual-drift-guard:
+    name: Operator manual drift guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    needs: [forbidden-paths]
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run operator manual docs drift audit
+        run: |
+          make operator-manual-docs-drift-audit
+
+  the-chat-drift-guard:
+    name: THE_CHAT drift guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    needs: [forbidden-paths]
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run THE_CHAT docs drift audit
+        run: |
+          make the-chat-docs-drift-audit
+
+  agent-state-registry-guard:
+    name: Agent state registry guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    needs: [forbidden-paths]
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run agent state registry probe
+        run: |
+          make local-first-agent-state-registry-probe
+
   architecture-drift-guard:
     name: Architecture drift guard
     runs-on: ubuntu-latest

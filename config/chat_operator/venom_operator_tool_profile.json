@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "profile_name": "venom-operator-tool-profile",
+  "decision_policy": "tool-first-required",
+  "core_tools": [
+    "exec_command",
+    "write_stdin",
+    "update_plan",
+    "apply_patch",
+    "view_image"
+  ],
+  "extended_tools": [
+    "gh",
+    "playwright/browser",
+    "drive",
+    "gmail",
+    "huggingface"
+  ],
+  "default_repo_probes": {
+    "repo_probe": [
+      "git status -sb",
+      "git diff --shortstat",
+      "git branch --show-current"
+    ],
+    "workspace_probe": [
+      "pwd",
+      "source .venv/bin/activate"
+    ],
+    "task_probe": [
+      "rg <pattern>",
+      "make <target>",
+      "pytest <scope>"
+    ]
+  },
+  "notes": "Operator profile derived from local-first workflow and repo-truth gate behavior. Keep repo probes before any decision about workspace state."
+}

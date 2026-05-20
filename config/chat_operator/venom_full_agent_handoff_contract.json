@@ -1,0 +1,21 @@
+{
+  "planning_boundary": "local-agent-plan-first",
+  "handoff_lane": "copilot-cli-worktree",
+  "handoff_trigger": "well_defined_long_running_task",
+  "review_return_surface": "main-vscode-window",
+  "worktree_policy": "isolated_worktree_required",
+  "required_terms": [
+    "Copilot CLI",
+    "worktree isolation",
+    "main VS Code window",
+    "Venom Release Guard",
+    "Venom Hard Gate Engineer"
+  ],
+  "handoff_steps": [
+    "plan in main VS Code window",
+    "handoff to Copilot CLI worktree",
+    "implement in isolated worktree",
+    "review in main VS Code window"
+  ],
+  "debug_note": "If the task is not well-defined enough for handoff, stay in local agent mode and continue planning."
+}

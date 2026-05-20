@@ -50,7 +50,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-lowmem start-prod start-prod-confirm start-preprod stop restart status clean-ports \
+.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-dev-webpack start-dev-turbo start-lowmem start-prod start-prod-confirm start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-lite test-fast-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap audit-ci-lite agent-prep \
 		test-intelligence-report \
@@ -58,12 +58,24 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		runtime-log-policy-audit runtime-logrotate-install-help \
 		api api-dev api-preprod api-stop web web-dev web-dev-turbo web-dev-turbo-debug web-preprod web-stop \
 		test-web-unit test-web-e2e test-web-turbo-smoke test-web-turbo-smoke-clean \
-		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
-		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check prebackup prerestore preverify preaudit predrill prereadiness \
+		test-202b-gate test-202b-web-gate test-202b-web-perf test-202b-global-p95 \
+		test-202d-lora-onnx-deploy test-202d-lora-onnx-smoke test-202d-all \
+		test-duration-audit test-light-coverage test-llm-manual \
+		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart multi-runtime-start multi-runtime-stop multi-runtime-restart multi-runtime-hygiene \
+		local-first-start local-first-status local-first-codex local-first-stop local-first-unload local-first-unload-all \
+		local-first-repo-truth-agent \
+		local-first-feedback-probe local-first-tool-flake-probe local-first-operator-tool-profile-probe local-first-chat-diagnostics local-first-agent-config-validate \
+		local-first-repo-truth-preflight-probe \
+		local-first-vscode-agent-probe local-first-utility-models-probe local-first-workspace-context-probe local-first-decision-gate \
+		local-first-full-agent-contract-probe local-first-full-agent-debug-probe local-first-full-agent-handoff-probe local-first-full-agent-tool-probe local-first-full-agent-gate \
+		local-first-env-index-readiness-probe local-first-agent-decision-evidence-probe local-first-agent-state-registry-probe local-first-policy-enforcement-probe local-first-agent-decision-gate \
+		local-first-help \
+		local-first-profile-status local-first-profile-install local-first-profile-remove local-first-profile-print \
+		local-first-profile-backup local-first-profile-list-backups local-first-profile-restore \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
-		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit llm-runtime-stability-audit llm-runtime-stability-cycle-start llm-runtime-stability-cycle-start2 test-preprod-readonly-smoke help \
+		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit chat-operator-docs-drift-audit operator-manual-docs-drift-audit the-chat-docs-drift-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit llm-runtime-stability-audit llm-runtime-stability-cycle-start llm-runtime-stability-cycle-start2 test-preprod-readonly-smoke help \
 		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor \
 		test-202c-diagnostics-contract test-202c-diagnostics-runtime test-202c-diagnostics-perf test-202c-diagnostics-report test-202c-diagnostics-all \
 		test-202c1-parity-semantic test-202c1-perf-warm test-202c1-model-selection test-202c1-lora-path test-202c1-all \
@@ -84,6 +96,8 @@ format:
 -include make/preprod.mk
 -include make/runtime.mk
 -include make/ops.mk
+-include make/help.mk
+-include make/legacy.mk
 
 define ensure_process_not_running
 	@if [ -f $(2) ]; then \
@@ -125,8 +139,6 @@ start: start-dev
 start-dev: START_MODE=dev
 start-dev: START_WEB_MODE=webpack
 start-dev: ensure-env-file _start
-
-start2: start-dev-turbo
 
 start-dev-webpack: START_MODE=dev
 start-dev-webpack: START_WEB_MODE=webpack
@@ -350,49 +362,3 @@ web-stop:
 	@pkill -f "next dev" 2>/dev/null || true
 	@pkill -f "next start" 2>/dev/null || true
 	@echo "✅ UI (Next.js) zatrzymany"
-
-
-help:
-	@echo "Venom Makefile - najczęściej używane komendy"
-	@echo ""
-	@echo "Start/Stop (dev):"
-	@echo "  make start                    - start backend + frontend (webpack-safe dev) + runtime LLM"
-	@echo "  make start2                   - start backend + frontend (turbopack) + runtime LLM"
-	@echo "  make start-lowmem             - start backend + frontend (low-memory, no local LLM runtime)"
-	@echo "  make stop                     - stop backend + frontend + runtime LLM"
-	@echo "  make status                   - status procesów"
-	@echo "  make web-dev                  - frontend dev (webpack, fallback)"
-	@echo "  make web-dev-turbo            - frontend dev (turbopack, opt-in)"
-	@echo "  make web-dev-turbo-debug      - frontend dev turbopack + debug logi"
-	@echo ""
-	@echo "Testy:"
-	@echo "  make test                     - backend testy (clean artifacts)"
-	@echo "  make test-data                - backend testy (preserve artifacts)"
-	@echo "  make test-web-unit            - frontend unit"
-	@echo "  make test-web-e2e             - frontend e2e"
-	@echo "  make test-web-turbo-smoke     - smoke dev:turbo"
-	@echo "  make test-web-turbo-smoke-clean - smoke dev:turbo + clean .next"
-	@echo ""
-	@echo "Preprod:"
-	@echo "  make startpre                 - start stacka preprod (readonly profile)"
-	@echo "  make preprod-backup           - backup danych preprod"
-	@echo "  make preprod-verify TS=...    - verify + smoke readonly po backupie"
-	@echo "  make preprod-readiness-check  - check gotowości preprod"
-	@echo ""
-	@echo "Runtime LLM:"
-	@echo "  make vllm-start|stop|restart  - kontrola usługi vLLM"
-	@echo "  make ollama-start|stop|restart - kontrola usługi Ollama"
-	@echo "  make multi-runtime-start|stop|restart|hygiene - kontrola usługi Multi-Runtime"
-	@echo ""
-	@echo "Jakość:"
-	@echo "  make pr-fast                  - hard gate (wymagane przed zakończeniem)"
-	@echo "  make make-targets-audit       - audyt .PHONY vs zdefiniowane targety"
-	@echo "  make audit-dead-code          - heurystyczny audyt ślepego kodu (Python)"
-	@echo "  make audit-dead-code-vulture-install - ręczna instalacja vulture do .venv"
-	@echo "  make audit-dead-code-full     - dead-code audit + sygnał vulture (soft)"
-	@echo "  make stack-stability-audit    - ręczny audyt stabilności procesów web/API + portów + manifestów modułów"
-	@echo "  make llm-runtime-stability-audit - ręczny audyt lifecycle runtime/model (ollama/vllm/onnx) na aktywnym backendzie"
-	@echo "  make llm-runtime-stability-cycle-start - cykl: make start -> audit runtime -> make stop"
-	@echo "  make llm-runtime-stability-cycle-start2 - cykl: make start2 -> audit runtime -> make stop"
-	@echo "  make test-groups-check        - weryfikacja grup testów"
-	@echo "  make test-catalog-check       - weryfikacja katalogu testów"

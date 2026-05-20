@@ -39,7 +39,7 @@ System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialn
 
 | Agent | Plik | Dokumentacja | Opis |
 |-------|------|--------------|------|
-| **Chat** | `chat.py` | [THE_CHAT.md](THE_CHAT.md) | Asystent konwersacyjny, pytania ogólne |
+| **Chat** | `chat.py` | [THE_CHAT.md](THE_CHAT.md) / [CHAT_OPERATOR.md](CHAT_OPERATOR.md) | Asystent konwersacyjny, pytania ogólne, workflow operatora czatu |
 | **Apprentice** | `apprentice.py` | [THE_APPRENTICE.md](THE_APPRENTICE.md) | Uczenie przez obserwację, nagrywanie workflows |
 | **Professor** | `professor.py` | [THE_ACADEMY.md](THE_ACADEMY.md) | Edukacja użytkownika, wyjaśnienia koncepcji |
 

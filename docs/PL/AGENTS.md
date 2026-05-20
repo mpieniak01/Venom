@@ -13,6 +13,7 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Unikaj martwego kodu i placeholderów.
 - Ścieżki błędów mają być jawne i, gdzie sensowne, pokryte testami.
 - Przed uruchamianiem narzędzi Pythona aktywuj środowisko repo: `source .venv/bin/activate`.
+- Domyślnym językiem odpowiedzi agentów workspace jest polski, chyba że user poprosi o angielski albo wymagany jest zewnętrzny format.
 
 ## MCP First dla pytań OpenAI/Codex
 

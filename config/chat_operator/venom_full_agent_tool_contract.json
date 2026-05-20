@@ -1,0 +1,24 @@
+{
+  "tool_loop_policy": "tool-first-required",
+  "required_phrases": [
+    "## Kontrakt tooli",
+    "search/codebase",
+    "search/usages",
+    "read",
+    "edit",
+    "terminal",
+    "runSubagent",
+    "zaczynaj od zrodel prawdy",
+    "git status --short",
+    "git diff --stat",
+    "#codebase",
+    "Jesli narzedzie nie jest dostepne",
+    "Nie zgaduj tam, gdzie stan repo lub workspace da sie sprawdzic",
+    "Po zmianie uruchom testy obszarowe lub probe kontraktu"
+  ],
+  "required_docs": [
+    ".github/agents/venom-full-agent.agent.md",
+    "docs/CHAT_OPERATOR.md",
+    "docs/PL/CHAT_OPERATOR.md"
+  ]
+}

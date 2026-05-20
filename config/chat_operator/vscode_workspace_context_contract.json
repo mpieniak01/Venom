@@ -1,0 +1,6 @@
+{
+  "chat.useAgentsMdFile": true,
+  "chat.useNestedAgentsMdFiles": true,
+  "venom.workspaceIndexMode": "local-first",
+  "venom.workspaceContextDefault": "#codebase"
+}

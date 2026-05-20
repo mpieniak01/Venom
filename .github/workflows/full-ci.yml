@@ -39,6 +39,18 @@ jobs:
         run: |
           pip install pre-commit
           pre-commit run --all-files
+      - name: Chat operator docs drift audit
+        run: |
+          make chat-operator-docs-drift-audit
+      - name: Operator manual docs drift audit
+        run: |
+          make operator-manual-docs-drift-audit
+      - name: THE_CHAT docs drift audit
+        run: |
+          make the-chat-docs-drift-audit
+      - name: Agent state registry probe
+        run: |
+          make local-first-agent-state-registry-probe
       - name: Pytest (smoke)
         run: pytest -q
 

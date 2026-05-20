@@ -6,7 +6,16 @@ env-audit:
 	@$(PYTHON_BIN) scripts/dev/env_audit.py
 
 make-targets-audit:
-	@$(PYTHON_BIN) scripts/dev/make_targets_audit.py --makefile Makefile --modules-dir make
+	@$(PYTHON_BIN) scripts/dev/make_targets_audit.py --makefile Makefile --modules-dir make --ignore-module legacy.mk
+
+chat-operator-docs-drift-audit:
+	@$(PYTHON_BIN) scripts/dev/238d_chat_operator_docs_drift_audit.py
+
+operator-manual-docs-drift-audit:
+	@$(PYTHON_BIN) scripts/dev/238e_operator_manual_docs_drift_audit.py
+
+the-chat-docs-drift-audit:
+	@$(PYTHON_BIN) scripts/dev/238f_the_chat_docs_drift_audit.py
 
 audit-dead-code:
 	@$(PYTHON_BIN) scripts/dev/dead_code_audit.py

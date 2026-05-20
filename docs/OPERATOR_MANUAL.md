@@ -61,81 +61,17 @@ If the disk usage indicator glows red:
 
 ---
 
-## 3. Performance Profiles (Runtime)
+## 3. Chat Operator
 
-In the configuration panel, you can also switch Venom's operation modes (Profiles):
+Chat-specific behavior, session state, tools, runtime controls, and Makefile shortcuts are documented in:
 
-*   **⚡ Full Stack**: Starts everything (AI, Backend, UI, Databases). For normal, full work.
-*   **🍃 Light**: Starts only Backend and UI. Saves battery/resources when you don't need AI code generation (e.g., just browsing files).
-*   **🛑 LLM OFF**: Completely disables language models. Useful on weaker machines or when you want to work manually.
+- [CHAT_OPERATOR.md](CHAT_OPERATOR.md)
+- [CHAT_SESSION.md](CHAT_SESSION.md)
+- [PL/CHAT_OPERATOR.md](PL/CHAT_OPERATOR.md)
 
----
+Use those documents as the operator source of truth for chat. Keep this manual focused on general system administration and high-level workflow.
 
-## 4. Hardware Recommendations
-
-Choosing the right AI engine (Runtime) is crucial for system stability, especially on weaker hardware.
-
-### 🐢 Ollama (Recommended for "Low-Spec")
-If your computer has:
-*   Less than 16GB RAM.
-*   A weak graphics card (below 8GB VRAM) or integrated graphics.
-*   Stability issues with vLLM (OOM errors, crashes).
-
-**RECOMMENDATION: Choose OLLAMA.**
-It is an engine optimized for low resource consumption. It runs slightly slower but is much more stable and uses less VRAM/RAM than vLLM. Ideal for working on laptops and older workstations.
-
-### 🚀 vLLM (Recommended for "High-Performance")
-If you have:
-*   A powerful NVIDIA graphics card (e.g., RTX 3090/4090, A100).
-*   A large amount of VRAM (>12GB).
-
-**RECOMMENDATION: Choose vLLM.**
-It offers unbeatable speed (tokens per second) but is very demanding ("greedy") on memory. On weaker configurations, it may cause system instability.
-
----
-
-## 5. Configuration Panel: System Parameters
-
-In addition to managing disk costs and services, the `Parameters` tab in `/config` allows you to control agent behavior.
-
-*   **AI Mode**: Decides whether Venom works fully locally ("Local") or hybrid ("Hybrid" - e.g., heavy tasks in the cloud). Default: **Local**.
-*   **Hive (Distributed Processing)**: Enables/disables the distributed architecture (Queue Worker).
-*   **Shadow (Desktop Awareness)**: If enabled, a background agent monitors system events, trying to proactively detect problems.
-*   **Ghost (GUI Automation)**: Allows Venom to control the mouse and keyboard (RPA). **Disabled by default** for security reasons.
-
-> [!TIP]
-> Changing parameters (e.g., disabling Shadow) may require a system restart to free up resources.
-
----
-
-## 6. Troubleshooting
-
-Typical situations you may encounter as an Operator:
-
-### 🔴 System not responding ("Connection Refused")
-*   **Cause**: The docker container (`venom-backend`) is not running or is restarting.
-*   **Solution**: Check the logs in the terminal. Make sure Docker Desktop is running. As a last resort, execute `docker-compose restart`.
-
-### 🟡 Model "grinds" indefinitely (Timeout)
-*   **Cause**: The selected model is too large for your graphics card (vLLM OOM) or too slow (CPU).
-*   **Solution**:
-    1.  Switch Runtime to **Ollama** in `/config`.
-    2.  Choose a smaller model (e.g., `gemma:2b` or `llama3:8b-quantized`).
-
-### 🟠 Out of disk space
-*   **Cause**: Accumulation of Dreams (Dream Timelines) or model caches.
-*   **Solution**: Go to `/config` -> Services -> Storage and clear the **Dreams** and **Cache** sections.
-
-### ⚪ Interface is in English, although I want Polish
-*   **Cause**: Browser settings or no saved choice.
-*   **Solution**: Click the flag/language icon in the Sidebar and select "PL". The setting will be remembered.
-
----
-
-## 7. Related Workflow Docs
-
-1. `docs/THE_WORKFLOW_CONTROL.md` - operator guide for the workflow composer.
-2. `docs/WORKFLOW_CONTROL_PLANE_API.md` - API contract and reason codes.
+This manual intentionally does not enumerate the full chat tool contract or the full `make` target surface; those details live in `CHAT_OPERATOR.md`.
 
 ---
 

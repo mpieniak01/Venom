@@ -60,6 +60,12 @@ def parse_args() -> argparse.Namespace:
         default="make",
         help="Directory with modularized *.mk includes (default: make).",
     )
+    parser.add_argument(
+        "--ignore-module",
+        action="append",
+        default=[],
+        help="Module filename to ignore during audit (repeatable, e.g. legacy.mk).",
+    )
     return parser.parse_args()
 
 
@@ -78,6 +84,8 @@ def main() -> int:
     defined_targets = parse_targets(makefile_path)
     if modules_dir.exists():
         for module_file in sorted(modules_dir.glob("*.mk")):
+            if module_file.name in set(args.ignore_module):
+                continue
             defined_targets.update(parse_targets(module_file))
 
     missing_defs = sorted(item for item in phony_targets if item not in defined_targets)

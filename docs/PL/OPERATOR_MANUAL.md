@@ -61,81 +61,17 @@ Jeśli wskaźnik użycia dysku świeci się na czerwono:
 
 ---
 
-## 3. Profile Wydajności (Runtime)
+## 3. Chat Operator
 
-W panelu konfiguracji możesz też przełączać tryby pracy Venoma (Profile):
+Zachowanie czatu, stan sesji, toolsy, kontrola runtime i skróty Makefile są opisane w:
 
-*   **⚡ Full Stack**: Uruchamia wszystko (AI, Backend, UI, Bazy). Do normalnej, pełnej pracy.
-*   **🍃 Light**: Uruchamia tylko Backend i UI. Oszczędza baterię/zasoby, gdy nie potrzebujesz generowania kodu przez AI (np. tylko przeglądasz pliki).
-*   **🛑 LLM OFF**: Całkowite wyłączenie modeli językowych. Przydatne na słabszych maszynach lub gdy chcesz pracować manualnie.
+- [CHAT_OPERATOR.md](CHAT_OPERATOR.md)
+- [CHAT_SESSION.md](CHAT_SESSION.md)
+- [CHAT_OPERATOR EN](../CHAT_OPERATOR.md)
 
----
+Używaj tych dokumentów jako źródła prawdy dla czatu. Ten podręcznik ma pozostać skupiony na ogólnej administracji systemu i wysokopoziomowym workflow.
 
-## 4. Rekomendacje Sprzętowe (Hardware)
-
-Wybór odpowiedniego silnika AI (Runtime) ma kluczowe znaczenie dla stabilności systemu, zwłaszcza na słabszym sprzęcie.
-
-### 🐢 Ollama (Zalecane dla "Low-Spec")
-Jeśli Twój komputer ma:
-*   Mniej niż 16GB RAM.
-*   Słabą kartę graficzną (poniżej 8GB VRAM) lub zintegrowaną grafikę.
-*   Problemy ze stabilnością działania vLLM (błędy OOM, crashe).
-
-**ZALECENIE: Wybierz OLLAMA.**
-Jest to silnik zoptymalizowany pod kątem niskiego zużycia zasobów. Działa nieco wolniej, ale jest znacznie stabilniejszy i zużywa mniej pamięci VRAM/RAM niż vLLM. Idealny do pracy na laptopach i starszych stacjach roboczych.
-
-### 🚀 vLLM (Zalecane dla "High-Performance")
-Jeśli dysponujesz:
-*   Mocną kartą graficzną NVIDIA (np. RTX 3090/4090, A100).
-*   Dużą ilością pamięci VRAM (>12GB).
-
-**ZALECENIE: Wybierz vLLM.**
-Oferuje on bezkonkurencyjną szybkość (tokeny na sekundę), ale jest bardzo wymagający („chciwy”) na pamięć. Na słabszych konfiguracjach może powodować niestabilność systemu.
-
----
-
-## 5. Panel Konfiguracji: Parametry Systemu
-
-Oprócz zarządzania kosztami dysku i usługami, zakładka `Parametry` w `/config` pozwala na sterowanie zachowaniem agentów.
-
-*   **Tryb AI (AI Mode)**: Decyduje, czy Venom działa w pełni lokalnie ("Local"), czy hybrydowo ("Hybrid" - np. ciężkie zadania w chmurze). Domyślnie: **Local**.
-*   **Hive (Przetwarzanie rozproszone)**: Włącza/wyłącza architekturę rozproszoną (Queue Worker).
-*   **Shadow (Desktop Awareness)**: Jeśli włączone, agent działający w tle monitoruje zdarzenia systemowe, próbując proaktywnie wykrywać problemy.
-*   **Ghost (GUI Automation)**: Zezwala Venomowi na sterowanie myszką i klawiaturą (RPA). **Domyślnie wyłączone** ze względów bezpieczeństwa.
-
-> [!TIP]
-> Zmieniając parametry (np. wyłączając Shadow), system może wymagać restartu, aby zwolnić zasoby.
-
----
-
-## 6. Rozwiązywanie Problemów (Troubleshooting)
-
-Typowe sytuacje, które możesz napotkać jako Operator:
-
-### 🔴 System nie odpowiada ("Connection Refused")
-*   **Przyczyna**: Kontener dockera (`venom-backend`) nie działa lub się restartuje.
-*   **Rozwiązanie**: Sprawdź logi w terminalu. Upewnij się, że Docker Desktop jest uruchomiony. W ostateczności wykonaj `docker-compose restart`.
-
-### 🟡 Model "mieli" w nieskończoność (Timeout)
-*   **Przyczyna**: Wybrany model jest zbyt duży dla Twojej karty graficznej (vLLM OOM) lub zbyt wolny (CPU).
-*   **Rozwiązanie**:
-    1.  Przełącz Runtime na **Ollama** w `/config`.
-    2.  Wybierz mniejszy model (np. `gemma:2b` lub `llama3:8b-quantized`).
-
-### 🟠 Brak miejsca na dysku
-*   **Przyczyna**: Nagromadzenie "Snów" (Dream Timelines) lub cache modeli.
-*   **Rozwiązanie**: Wejdź w `/config` -> Usługi -> Storage i wyczyść sekcję **Dreams** oraz **Cache**.
-
-### ⚪ Interface jest po angielsku, mimo że chcę Polski
-*   **Przyczyna**: Ustawienia przeglądarki lub brak zapisanego wyboru.
-*   **Rozwiązanie**: Kliknij ikonę flagi/języka w pasku bocznym (Sidebar) i wybierz "PL". Ustawienie zostanie zapamiętane.
-
----
-
-## 7. Powiązana dokumentacja Workflow
-
-1. `docs/PL/THE_WORKFLOW_CONTROL.md` - przewodnik operatorski kompozytora workflow.
-2. `docs/PL/WORKFLOW_CONTROL_PLANE_API.md` - kontrakt API i reason code.
+Ten podręcznik celowo nie wylicza pełnego kontraktu tooli czatu ani pełnej powierzchni targetów `make`; te szczegóły są w `CHAT_OPERATOR.md`.
 
 ---
 

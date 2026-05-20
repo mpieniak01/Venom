@@ -1,0 +1,12 @@
+{
+  "operator_model_local_first": "qwen2.5-coder:7b",
+  "operator_model_status": "provisional",
+  "utility_model_strategy": "copilot-defaults",
+  "utility_model": "openai/gpt-4.1-mini",
+  "utility_small_model": "openai/gpt-4.1-nano",
+  "main_window_policy": "local-first-primary",
+  "agents_window_policy": "supported-sessions-only",
+  "remote_agents_policy": "allowed-only-if-supported-session",
+  "repo_truth_policy": "tool-first-required",
+  "notes": "Model truthfulness in local direct/agent mode remains constrained; keep tool-first guard as mandatory."
+}

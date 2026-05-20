@@ -1,0 +1,5 @@
+{
+  "chat.model": "openai/gpt-4.1",
+  "chat.utilityModel": "openai/gpt-4.1-mini",
+  "chat.utilitySmallModel": "openai/gpt-4.1-nano"
+}

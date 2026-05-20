@@ -10,16 +10,6 @@ start-preprod: export STORAGE_PREFIX=preprod
 start-preprod: export ALLOW_DATA_MUTATION=0
 start-preprod: ensure-env-file _start
 
-# Preprod aliases (short commands)
-startpre: start-preprod
-stoppre: stop
-restartpre: stoppre startpre
-statuspre: status
-apipre: api-preprod
-webpre: web-preprod
-testpre: test-preprod-readonly-smoke
-ensurepreenv: ensure-preprod-env-file
-
 ensure-env-file:
 	@bash scripts/dev/ensure_env_file.sh "$(ENV_FILE)" "$(ENV_EXAMPLE_FILE)"
 
@@ -72,11 +62,3 @@ preprod-readiness-check:
 		--ticket "$${TICKET:-N/A}" \
 		--run-audit "$${RUN_AUDIT:-1}" \
 		--dry-run "$${DRY_RUN:-0}"
-
-# Preprod operation aliases
-prebackup: preprod-backup
-prerestore: preprod-restore
-preverify: preprod-verify
-preaudit: preprod-audit
-predrill: preprod-drill
-prereadiness: preprod-readiness-check

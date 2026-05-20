@@ -1,0 +1,34 @@
+{
+  "agent_name": "Venom Full Agent",
+  "decision_policy": "tool-feedback-first",
+  "repo_context_policy": "index-first",
+  "repo_truth_policy": "terminal-preflight-required",
+  "required_env_commands": [
+    "git",
+    "rg",
+    "codex"
+  ],
+  "required_tools": [
+    "search/codebase",
+    "search/usages",
+    "read",
+    "terminal"
+  ],
+  "required_repo_refs": [
+    "AGENTS.md",
+    "docs/AGENTS.md",
+    "docs/PL/AGENTS.md",
+    ".github/agents/venom-full-agent.agent.md"
+  ],
+  "required_index_markers": [
+    "#codebase",
+    "search/codebase",
+    "search/usages"
+  ],
+  "required_response_fields": [
+    "repo_truth",
+    "tools_used",
+    "decision",
+    "next_step"
+  ]
+}

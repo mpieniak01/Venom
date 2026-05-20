@@ -4,6 +4,8 @@ applyTo: "**"
 
 # Coding Agent Hard Gate (Repository Instruction)
 
+Default response language for workspace agents is Polish unless the user explicitly asks for English or an external format requires it.
+
 Before declaring task completion, always run:
 
 1. `make pr-fast`

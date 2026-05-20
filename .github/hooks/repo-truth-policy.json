@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "bash scripts/agent_repo_truth_policy_gate.sh",
+        "cwd": ".",
+        "timeoutSec": 1800
+      }
+    ]
+  }
+}

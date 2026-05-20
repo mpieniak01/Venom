@@ -1,0 +1,19 @@
+{
+  "debug_views": [
+    "Agent Debug Log",
+    "Chat Debug View"
+  ],
+  "debug_commands": [
+    "Show Agent Debug Logs",
+    "Developer: Show Chat Debug View"
+  ],
+  "debug_settings": [
+    "github.copilot.chat.agentDebugLog.fileLogging.enabled"
+  ],
+  "debug_policy": "audit-every-session",
+  "required_refs": [
+    ".github/agents/venom-full-agent.agent.md",
+    "docs/CHAT_OPERATOR.md",
+    "docs/PL/CHAT_OPERATOR.md"
+  ]
+}

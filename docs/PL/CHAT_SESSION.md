@@ -153,3 +153,7 @@ Te operacje są kluczowe dla utrzymania jakości kontekstu w czasie. Interfejs d
 - Chat UI: `web-next/components/cockpit/cockpit-home.tsx`
 - Budowa kontekstu: `venom_core/core/orchestrator/session_handler.py`
 - SessionStore: `venom_core/services/session_store.py`
+
+## Zobacz też
+
+- [CHAT_OPERATOR.md](CHAT_OPERATOR.md) - Operatorski workflow czatu i konfiguracja

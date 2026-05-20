@@ -4,11 +4,14 @@ To repo zawiera profile custom agents dla GitHub Coding Agent:
 
 1. `venom-hard-gate-engineer.md`
 2. `venom-release-guard.md`
+3. `venom-local-first-orchestrator.agent.md`
+4. `venom-full-agent.agent.md`
 
 ## Przeznaczenie
 
 - Standaryzacja zachowania agentów względem bramek jakości.
 - Powtarzalny workflow bez czerwonych gate'ów na końcu sesji.
+- Jawny kontrakt orkiestracji local-first i repo-first.
 
 ## Uwaga
 
@@ -17,6 +20,10 @@ Niezależnie od profilu, obowiązuje polityka Hard Gate z:
 - `AGENTS.md`
 - `docs/AGENTS.md`
 - `.github/copilot-instructions.md`
+
+Prompt files dla workspace sa w:
+
+- `.github/prompts/`
 
 ## Szybki start (dla agenta kodowania)
 

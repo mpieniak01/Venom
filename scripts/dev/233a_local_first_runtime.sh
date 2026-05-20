@@ -24,6 +24,9 @@ resolve_codex_bin() {
   fi
 
   local ext_root="${HOME}/.vscode-server/extensions"
+  if [[ ! -d "${ext_root}" ]]; then
+    ext_root="${HOME}/.vscode/extensions"
+  fi
   local latest
   latest="$(ls -1d "${ext_root}"/openai.chatgpt-* 2>/dev/null | tail -n 1 || true)"
   if [[ -n "${latest}" ]] && [[ -x "${latest}/bin/linux-x86_64/codex" ]]; then
@@ -95,7 +98,7 @@ start_stack() {
     exit 1
   fi
 
-  if ! grep -q '"done"[[:space:]]*:[[:space:]]*true' "${response_file}"; then
+  if ! jq -e '.done == true' "${response_file}" >/dev/null 2>&1; then
     echo "❌ Preload niepotwierdzony (brak done=true w odpowiedzi)"
     cat "${response_file}" || true
     rm -f "${response_file}"

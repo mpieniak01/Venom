@@ -115,11 +115,13 @@ def _http_json(
 def _detect_vscode_codex_extension() -> dict[str, Any]:
     base = Path.home() / ".vscode-server" / "extensions"
     if not base.exists():
-        return {
-            "found": False,
-            "path": None,
-            "note": "~/.vscode-server/extensions missing",
-        }
+        base = Path.home() / ".vscode" / "extensions"
+        if not base.exists():
+            return {
+                "found": False,
+                "path": None,
+                "note": "~/.vscode-server/extensions and ~/.vscode/extensions missing",
+            }
     matches = sorted(base.glob("openai.chatgpt-*"))
     if not matches:
         return {
@@ -236,9 +238,7 @@ def main() -> int:
 
     # shell smoke
     shell: dict[str, Any] = {}
-    shell["ls"] = _cmd_to_dict(
-        _run_cmd(["ls", "-la", "/home/ubuntu/venom"], cwd=REPO_ROOT)
-    )
+    shell["ls"] = _cmd_to_dict(_run_cmd(["ls", "-la", "."], cwd=REPO_ROOT))
     shell["ps"] = _cmd_to_dict(
         _run_cmd(["ps", "-eo", "pid,comm,%mem,%cpu", "--sort=-%mem"], cwd=REPO_ROOT)
     )

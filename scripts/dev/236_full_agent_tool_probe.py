@@ -77,8 +77,8 @@ def main() -> int:
             issues.append(f"missing_required_phrase:{phrase}")
 
     for doc in required_docs:
-        if doc not in contract.get("required_docs", []):
-            advisories.append(f"contract_doc_not_listed:{doc}")
+        if doc not in agent_text + "\n" + docs_en + "\n" + docs_pl:
+            issues.append(f"missing_required_doc_reference:{doc}")
 
     result = {
         "scope": "pr236-full-agent-tool-probe",

@@ -98,7 +98,8 @@ def main() -> int:
         issues.append("registry_missing_or_invalid")
         registry = {}
 
-    if int(registry.get("schema_version") or 0) != 1:
+    schema_version = registry.get("schema_version")
+    if not isinstance(schema_version, int) or schema_version != 1:
         issues.append("registry_schema_version_invalid")
 
     state_groups = registry.get("state_groups")

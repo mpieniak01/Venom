@@ -314,9 +314,9 @@ Oczekiwania implementacyjnego handoffu:
 Kontrakt pelnego agenta znajduje sie w:
 
 - `.github/agents/venom-full-agent.agent.md`
-- `docs_dev/_done/236_pr_pelny_agent_venom_vscode_debug_tools_dev.md`
-- `docs/CHAT_OPERATOR.md`
-- `docs/PL/CHAT_OPERATOR.md`
+- `config/chat_operator/venom_full_agent_contract.json`
+- `scripts/dev/236_full_agent_contract_probe.py`
+- `scripts/dev/236_full_agent_gate.py`
 
 ## Powiązane dokumenty
 

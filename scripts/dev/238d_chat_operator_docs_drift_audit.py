@@ -62,6 +62,7 @@ def run_make_target(target: str) -> str:
         check=False,
         capture_output=True,
         text=True,
+        cwd=Path(__file__).resolve().parents[2],
     )
     if proc.returncode != 0:
         raise RuntimeError(
@@ -108,7 +109,7 @@ def render_md(result: AuditResult) -> str:
 
 def main() -> int:
     args = parse_args()
-    repo_root = Path.cwd().resolve()
+    repo_root = Path(__file__).resolve().parents[2]
     docs = [str(Path(doc).as_posix()) for doc in args.docs]
 
     help_commands: set[str] = set()

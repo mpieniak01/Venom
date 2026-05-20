@@ -6,6 +6,12 @@ cd "$ROOT_DIR"
 
 echo "🔒 Repo-truth policy gate (sessionEnd)"
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo "❌ Missing jq"
+  echo "Install jq or run the gate in an environment that provides it."
+  exit 2
+fi
+
 DECISION_REPORT="test-results/235/decision_gate.json"
 PR237_REPORT="test-results/237/agent_decision_gate.json"
 

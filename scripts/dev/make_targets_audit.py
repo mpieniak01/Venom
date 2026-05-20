@@ -73,6 +73,7 @@ def main() -> int:
     args = parse_args()
     makefile_path = Path(args.makefile).resolve()
     modules_dir = Path(args.modules_dir).resolve()
+    ignored_modules = set(args.ignore_module)
 
     if not makefile_path.exists():
         print(f"ERROR: missing makefile: {makefile_path}")
@@ -84,7 +85,7 @@ def main() -> int:
     defined_targets = parse_targets(makefile_path)
     if modules_dir.exists():
         for module_file in sorted(modules_dir.glob("*.mk")):
-            if module_file.name in set(args.ignore_module):
+            if module_file.name in ignored_modules:
                 continue
             defined_targets.update(parse_targets(module_file))
 

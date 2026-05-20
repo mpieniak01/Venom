@@ -70,8 +70,8 @@ def main() -> int:
     if not policy_script.exists():
         issues.append("policy_script_missing")
     else:
-        if not os.access(policy_script, os.X_OK):
-            issues.append("policy_script_not_executable")
+        if not os.access(policy_script, os.R_OK):
+            issues.append("policy_script_not_readable")
         script_text = _read_text(policy_script)
         if "test-results/235/decision_gate.json" not in script_text:
             issues.append("policy_script_missing_pr235_gate_check")

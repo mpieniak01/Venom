@@ -64,8 +64,13 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart multi-runtime-start multi-runtime-stop multi-runtime-restart multi-runtime-hygiene \
 		local-first-start local-first-status local-first-codex local-first-stop local-first-unload local-first-unload-all \
+		local-repo-status local-repo-status-json \
 		local-first-repo-truth-agent \
+		local-first-pr240-orchestrator-routing-probe \
+		local-first-pr240-full-agent-handoff-probe \
 		local-first-feedback-probe local-first-tool-flake-probe local-first-operator-tool-profile-probe local-first-chat-diagnostics local-first-agent-config-validate \
+		local-first-copilot-chat-output-probe local-first-copilot-agent-session-probe local-first-copilot-chat-output-gate \
+		local-first-local-agent-tool-loop-probe local-first-local-agent-tool-loop-gate local-first-vscode-agent-log-probe local-first-vscode-terminal-tool-loop-probe local-first-local-model-tool-call-probe local-first-pr239-selftest local-first-git-status local-first-repo-truth-reply local-first-chat-tool-bridge \
 		local-first-repo-truth-preflight-probe \
 		local-first-vscode-agent-probe local-first-utility-models-probe local-first-workspace-context-probe local-first-decision-gate \
 		local-first-full-agent-contract-probe local-first-full-agent-debug-probe local-first-full-agent-handoff-probe local-first-full-agent-tool-probe local-first-full-agent-gate \

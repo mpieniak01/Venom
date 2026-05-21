@@ -61,17 +61,15 @@ Jeśli wskaźnik użycia dysku świeci się na czerwono:
 
 ---
 
-## 3. Chat Operator
+## 3. Start Chatu
 
-Zachowanie czatu, stan sesji, toolsy, kontrola runtime i skróty Makefile są opisane w:
+Jeśli chcesz zacząć używać Copilot chatu w Venom, zacznij od:
 
-- [CHAT_OPERATOR.md](CHAT_OPERATOR.md)
-- [CHAT_SESSION.md](CHAT_SESSION.md)
-- [CHAT_OPERATOR EN](../CHAT_OPERATOR.md)
+- [THE_CHAT.md](THE_CHAT.md) - punkt wejścia i szybki start
+- [CHAT_OPERATOR.md](CHAT_OPERATOR.md) - runtime, toolsy i komendy `make`
+- [CHAT_SESSION.md](CHAT_SESSION.md) - routing sesji i szczegóły cyklu życia
 
-Używaj tych dokumentów jako źródła prawdy dla czatu. Ten podręcznik ma pozostać skupiony na ogólnej administracji systemu i wysokopoziomowym workflow.
-
-Ten podręcznik celowo nie wylicza pełnego kontraktu tooli czatu ani pełnej powierzchni targetów `make`; te szczegóły są w `CHAT_OPERATOR.md`.
+Używaj tych dokumentów jako źródła prawdy dla czatu. Ten podręcznik pozostaje na poziomie ogólnego użycia systemu i nie powtarza pełnego kontraktu czatu.
 
 ---
 

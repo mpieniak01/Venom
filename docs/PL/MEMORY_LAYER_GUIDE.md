@@ -1,5 +1,7 @@
 # Przewodnik: Warstwa Pamięci i Meta-Uczenia
 
+Ten przewodnik opisuje wyłącznie pamięć i meta-uczenie. Aby zacząć workflow Copilot chatu w Venom, użyj `THE_CHAT.md` i `CHAT_OPERATOR.md`.
+
 ## Przegląd
 
 Venom v1.0 został rozszerzony o zaawansowaną warstwę pamięci, która przekształca system z prostego "wyszukiwania tekstowego" w inteligentną "sieć powiązań" z możliwością uczenia się na błędach.

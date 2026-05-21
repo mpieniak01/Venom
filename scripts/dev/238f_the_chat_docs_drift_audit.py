@@ -14,15 +14,22 @@ from pathlib import Path
 HEADING_RE = re.compile(r"^##\s+(.+)$")
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 FORBIDDEN_PATTERNS = (
-    "make local-first-",
     "config/chat_operator/",
     "venom_operator_tool_profile",
     "operator tool profile",
     "decision gate",
 )
 
+REQUIRED_START_COMMANDS = (
+    "make local-first-start",
+    "make local-first-status",
+    "make local-first-codex",
+    "make local-first-repo-truth-agent",
+)
+
 EXPECTED_EN_HEADINGS = [
     "Role",
+    "Quick start",
     "What it is for",
     "Main integrations",
     "Operating rules",
@@ -32,6 +39,7 @@ EXPECTED_EN_HEADINGS = [
 
 EXPECTED_PL_HEADINGS = [
     "Rola",
+    "Szybki start",
     "Do czego służy",
     "Główne integracje",
     "Zasady działania",
@@ -111,6 +119,14 @@ def audit_doc(path: Path, expected_headings: list[str]) -> ChatDocAuditResult:
     missing_links = sorted(link for link in EXPECTED_LINKS if link not in links)
     if missing_links:
         issues.append("missing see-also links: " + ", ".join(missing_links))
+
+    missing_start_commands = sorted(
+        command for command in REQUIRED_START_COMMANDS if command not in text
+    )
+    if missing_start_commands:
+        issues.append(
+            "missing quick-start commands: " + ", ".join(missing_start_commands)
+        )
 
     if "CHAT_OPERATOR.md" not in links or "CHAT_SESSION.md" not in links:
         issues.append("missing operator delegation links")

@@ -77,6 +77,26 @@ async def test_get_status(git_skill, temp_workspace):
 
 
 @pytest.mark.asyncio
+async def test_get_short_status(git_skill, temp_workspace):
+    """Test pobierania skróconego statusu repozytorium."""
+    await git_skill.init_repo()
+
+    repo = Repo(temp_workspace)
+    test_file = Path(temp_workspace) / "test-short.txt"
+    test_file.write_text("initial")
+    repo.index.add(["test-short.txt"])
+    repo.index.commit("Initial commit")
+
+    test_file.write_text("modified")
+
+    result = await git_skill.get_short_status()
+
+    assert isinstance(result, str)
+    assert result.startswith("##")
+    assert "test-short.txt" in result
+
+
+@pytest.mark.asyncio
 async def test_add_files_and_commit(git_skill, temp_workspace):
     """Test stage'owania plików i tworzenia commita."""
     # Zainicjalizuj repo

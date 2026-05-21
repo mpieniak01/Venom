@@ -2,6 +2,8 @@
 
 User intent classification system using local or cloud LLMs.
 
+This document covers intent classification only. For starting the Copilot chat workflow in Venom, use `THE_CHAT.md` and `CHAT_OPERATOR.md`.
+
 ## Configuration
 
 ### Local Mode (default)

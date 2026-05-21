@@ -1,0 +1,3 @@
+# Local build outputs for the VS Code executor extension.
+node_modules/
+out/

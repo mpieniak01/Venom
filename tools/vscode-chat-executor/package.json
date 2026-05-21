@@ -1,0 +1,87 @@
+{
+  "name": "venom-chat-executor",
+  "displayName": "Venom Chat Executor",
+  "description": "Execution-first chat participant for deterministic local git status in VS Code chat.",
+  "version": "0.0.1",
+  "publisher": "venom-local",
+  "engines": {
+    "vscode": "^1.102.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "venom.execution",
+        "name": "venom-exec",
+        "fullName": "Venom Execution",
+        "description": "Deterministic local command execution participant for git status workflow.",
+        "isSticky": true
+      },
+      {
+        "id": "venom.orchestrator",
+        "name": "venom-agent",
+        "fullName": "Venom Agent Orchestrator",
+        "description": "Routes git-status intent to execution tool and returns final response with evidence.",
+        "isSticky": true
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "run_git_status",
+        "displayName": "Venom Run Command",
+        "modelDescription": "Execute a local workspace command with strict allowlist. Use for repo-truth checks such as git status.",
+        "userDescription": "Run local git read-only command and return exact output.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "venom-git-status",
+        "tags": [
+          "git",
+          "repo-truth",
+          "local-first"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Command to execute in workspace root."
+            }
+          },
+          "required": [
+            "command"
+          ]
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "venom.execution.runGitStatus",
+        "title": "Venom: Run Git Status"
+      }
+    ],
+    "configuration": {
+      "title": "Venom Chat Executor",
+      "properties": {
+        "venom.execution.repoRoot": {
+          "type": "string",
+          "default": "/home/ubuntu/venom",
+          "description": "Absolute repository root used by Venom execution tool. If empty, extension tries git rev-parse from current workspace."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -w -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.102.0",
+    "typescript": "^5.7.2"
+  }
+}

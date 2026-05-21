@@ -113,7 +113,18 @@ locustfile.pyc
 # misc
 next-dev.log
 .pre-commit-cache/
-tools/
+tools/*
+!tools/vscode-chat-executor/
+tools/vscode-chat-executor/*
+!tools/vscode-chat-executor/.gitignore
+!tools/vscode-chat-executor/.vscode/
+!tools/vscode-chat-executor/.vscode/*
+!tools/vscode-chat-executor/README.md
+!tools/vscode-chat-executor/package.json
+!tools/vscode-chat-executor/package-lock.json
+!tools/vscode-chat-executor/tsconfig.json
+!tools/vscode-chat-executor/src/
+!tools/vscode-chat-executor/src/*
 
 # Local runtime artifacts
 :memory:

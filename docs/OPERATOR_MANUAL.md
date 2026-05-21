@@ -61,17 +61,15 @@ If the disk usage indicator glows red:
 
 ---
 
-## 3. Chat Operator
+## 3. Chat Start
 
-Chat-specific behavior, session state, tools, runtime controls, and Makefile shortcuts are documented in:
+If you want to start using the Copilot chat in Venom, begin with:
 
-- [CHAT_OPERATOR.md](CHAT_OPERATOR.md)
-- [CHAT_SESSION.md](CHAT_SESSION.md)
-- [PL/CHAT_OPERATOR.md](PL/CHAT_OPERATOR.md)
+- [THE_CHAT.md](THE_CHAT.md) - the entry point and quick start
+- [CHAT_OPERATOR.md](CHAT_OPERATOR.md) - runtime, tools, and `make` commands
+- [CHAT_SESSION.md](CHAT_SESSION.md) - session routing and lifecycle details
 
-Use those documents as the operator source of truth for chat. Keep this manual focused on general system administration and high-level workflow.
-
-This manual intentionally does not enumerate the full chat tool contract or the full `make` target surface; those details live in `CHAT_OPERATOR.md`.
+Use those documents as the operator source of truth for chat. This manual stays at the high-level system-usage layer and does not repeat the full chat contract.
 
 ---
 

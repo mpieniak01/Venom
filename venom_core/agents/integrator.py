@@ -1,5 +1,7 @@
 """Moduł: integrator - agent zarządzający wersjonowaniem i DevOps."""
 
+import re
+from pathlib import Path
 from typing import Any, Optional
 
 from semantic_kernel import Kernel
@@ -12,6 +14,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
+from venom_core.config import SETTINGS
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.execution.skills.platform_skill import PlatformSkill
 from venom_core.utils.logger import get_logger
@@ -124,7 +127,8 @@ Akcja: get_current_branch()"""
         self.skill_manager = skill_manager
 
         # Dodaj GitSkill do kernela
-        self.git_skill = GitSkill()
+        repo_root = Path(getattr(SETTINGS, "REPO_ROOT", ".")).expanduser().resolve()
+        self.git_skill = GitSkill(workspace_root=str(repo_root))
         kernel.add_plugin(self.git_skill, plugin_name="git")
 
         # Dodaj PlatformSkill do kernela
@@ -132,6 +136,85 @@ Akcja: get_current_branch()"""
         kernel.add_plugin(self.platform_skill, plugin_name="platform")
 
         logger.info("IntegratorAgent zainicjalizowany z GitSkill i PlatformSkill")
+
+    @staticmethod
+    def _normalize_input(input_text: str) -> str:
+        return re.sub(r"\s+", " ", (input_text or "").strip().lower())
+
+    @classmethod
+    def _is_repo_truth_request(cls, input_text: str) -> bool:
+        normalized = cls._normalize_input(input_text)
+        if not normalized:
+            return False
+
+        repo_truth_markers = (
+            "sprawdz status git",
+            "sprawdz repo git",
+            "stan repo",
+            "stan gita",
+            "git status",
+            "status git",
+            "pokaż status git",
+            "pokaz status git",
+            "jaki jest status repozytorium",
+        )
+        return any(marker in normalized for marker in repo_truth_markers)
+
+    @staticmethod
+    def _count_short_status_entries(short_status: str) -> tuple[int, int]:
+        lines = [
+            line.strip() for line in (short_status or "").splitlines() if line.strip()
+        ]
+        if lines and lines[0].startswith("##"):
+            lines = lines[1:]
+
+        modified_count = 0
+        untracked_count = 0
+        for line in lines:
+            if line.startswith("??"):
+                untracked_count += 1
+            else:
+                modified_count += 1
+        return modified_count, untracked_count
+
+    def _format_repo_truth_report(self, short_status: str) -> str:
+        repo_root = str(self.git_skill.workspace_root)
+        modified_count, untracked_count = self._count_short_status_entries(short_status)
+        if modified_count == 0 and untracked_count == 0:
+            summary_line = "Repo jest czyste."
+        else:
+            summary_line = (
+                f"Zmodyfikowane/dodane/usunięte: {modified_count}, "
+                f"nieśledzone: {untracked_count}."
+            )
+
+        next_step = (
+            "Następny krok: jeśli chcesz pełny diff, uruchom `git diff --shortstat`."
+        )
+        return "\n".join(
+            [
+                f"REPO_ROOT={repo_root}",
+                "```bash",
+                short_status.strip(),
+                "```",
+                "",
+                "Interpretacja:",
+                f"- {summary_line}",
+                f"- {next_step}",
+            ]
+        ).strip()
+
+    async def _process_repo_truth_request(self, input_text: str) -> str:
+        _ = input_text
+        short_status = await self.git_skill.get_short_status()
+        lowered = short_status.lower()
+        if (
+            short_status.startswith("❌")
+            or short_status.startswith("⚠️")
+            or "nie jest repozytorium git" in lowered
+        ):
+            return f"Blad wykonania: {short_status}"
+        return self._format_repo_truth_report(short_status)
 
     async def _invoke_git_tool(
         self, tool_name: str, arguments: Optional[dict[str, Any]] = None
@@ -166,6 +249,11 @@ Akcja: get_current_branch()"""
         """
         try:
             logger.info(f"IntegratorAgent przetwarza żądanie: {input_text[:100]}...")
+            if self._is_repo_truth_request(input_text):
+                logger.info(
+                    "IntegratorAgent używa execution-first fast path dla repo truth"
+                )
+                return await self._process_repo_truth_request(input_text)
 
             # Utwórz chat service
             chat_service: Any = self.kernel.get_service(service_id="chat")

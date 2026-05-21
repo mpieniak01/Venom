@@ -88,7 +88,7 @@ def extract_links(text: str) -> list[str]:
     return links
 
 
-def audit_doc(path: Path, counterpart_target: str) -> ManualAuditResult:
+def audit_doc(path: Path) -> ManualAuditResult:
     text = path.read_text(encoding="utf-8")
     issues: list[str] = []
 
@@ -106,7 +106,7 @@ def audit_doc(path: Path, counterpart_target: str) -> ManualAuditResult:
         issues.append("missing Chat Operator section")
 
     section3_links = extract_links(section3)
-    required_links = {"CHAT_OPERATOR.md", "CHAT_SESSION.md", counterpart_target}
+    required_links = {"THE_CHAT.md", "CHAT_OPERATOR.md", "CHAT_SESSION.md"}
     missing_links = sorted(
         link for link in required_links if link not in section3_links
     )
@@ -170,12 +170,12 @@ def main() -> int:
     if not en_path.exists():
         issues.append(f"missing doc: {args.en_doc}")
     else:
-        results.append(audit_doc(en_path, "PL/CHAT_OPERATOR.md"))
+        results.append(audit_doc(en_path))
 
     if not pl_path.exists():
         issues.append(f"missing doc: {args.pl_doc}")
     else:
-        results.append(audit_doc(pl_path, "../CHAT_OPERATOR.md"))
+        results.append(audit_doc(pl_path))
 
     if len(results) == 2:
         if results[0].top_level_sections != results[1].top_level_sections:

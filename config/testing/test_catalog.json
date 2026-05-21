@@ -6334,6 +6334,48 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_code_index_skill.py",
+      "domain": "skills",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coverage gate dla CodeIndexSkill (ripgrep + AST) - nowy komponent PR241."
+    },
+    {
+      "path": "tests/test_ollama_agent_loop.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coverage gate dla OllamaAgentLoop (pętla agentowa) - nowy komponent PR241."
+    },
+    {
+      "path": "tests/test_local_agent_cli.py",
+      "domain": "agents",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coverage gate dla LocalAgentCLI i IntentRouter - nowe komponenty PR241."
     }
   ]
 }

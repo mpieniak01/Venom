@@ -165,6 +165,22 @@ local-first-pr239-selftest:
 	@echo "🧪 PR239 selftest: runtime + model + session + execution lane + extension contract"
 	@$(PYTHON_BIN) scripts/dev/239_pr239_selftest.py
 
+local-first-pr241-selftest:
+	@echo "🧪 PR241 selftest: LocalAgentCLI + CodeIndexSkill + IntentRouter (bez VS Code)"
+	@$(PYTHON_BIN) scripts/dev/241_local_agent_selftest.py
+
+local-first-pr241-selftest-json:
+	@echo "🧪 PR241 selftest (JSON output)"
+	@$(PYTHON_BIN) scripts/dev/241_local_agent_selftest.py --json
+
+local-first-pr241b-probe:
+	@echo "🧪 PR241B probe: VSCode extension artefakty (participant, tools, agentic loop)"
+	@$(PYTHON_BIN) scripts/dev/241b_vscode_extension_probe.py
+
+local-first-pr241b-probe-json:
+	@echo "🧪 PR241B probe (JSON output)"
+	@$(PYTHON_BIN) scripts/dev/241b_vscode_extension_probe.py --json
+
 local-first-git-status:
 	@echo "📌 PR239 execution lane: exact git status"
 	@bash scripts/dev/239_local_first_git_status.sh "$(if $(REPO_ROOT),$(REPO_ROOT),$(CURDIR))"

@@ -85,6 +85,7 @@ tests/test_chrono_skill.py
 tests/test_chronos.py
 tests/test_cloud_provisioner.py
 tests/test_code_generation_utils.py
+tests/test_code_index_skill.py
 tests/test_code_review_optimization.py
 tests/test_coder.py
 tests/test_coder_agent_mcp.py
@@ -228,6 +229,7 @@ tests/test_llm_simple_payload_service.py
 tests/test_llm_simple_route_model_resolution.py
 tests/test_llm_simple_service_streaming.py
 tests/test_llm_simple_stream.py
+tests/test_local_agent_cli.py
 tests/test_logger_utils.py
 tests/test_main_internal_helpers.py
 tests/test_main_setup_router_dependencies.py
@@ -289,6 +291,7 @@ tests/test_node_protocol.py
 tests/test_nodes_init_exports.py
 tests/test_nodes_utility_contracts.py
 tests/test_notifier.py
+tests/test_ollama_agent_loop.py
 tests/test_ollama_runtime_capabilities.py
 tests/test_ollama_runtime_probe.py
 tests/test_ollama_tuning.py

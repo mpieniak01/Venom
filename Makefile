@@ -68,6 +68,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		local-first-repo-truth-agent \
 		local-first-pr240-orchestrator-routing-probe \
 		local-first-pr240-full-agent-handoff-probe \
+		local-first-pr241-selftest local-first-pr241-selftest-json \
 		local-first-feedback-probe local-first-tool-flake-probe local-first-operator-tool-profile-probe local-first-chat-diagnostics local-first-agent-config-validate \
 		local-first-copilot-chat-output-probe local-first-copilot-agent-session-probe local-first-copilot-chat-output-gate \
 		local-first-local-agent-tool-loop-probe local-first-local-agent-tool-loop-gate local-first-vscode-agent-log-probe local-first-vscode-terminal-tool-loop-probe local-first-local-model-tool-call-probe local-first-pr239-selftest local-first-git-status local-first-repo-truth-reply local-first-chat-tool-bridge \

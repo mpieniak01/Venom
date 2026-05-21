@@ -162,6 +162,8 @@ class TestSearchCode:
         assert matches == []
 
     def test_search_finds_pattern(self, skill, tmp_path):
+        if not skill._rg_available:
+            pytest.skip("ripgrep niedostępny w środowisku testowym")
         f = tmp_path / "code.py"
         f.write_text("def hello_world():\n    return 'hello'\n")
         matches = skill.search_code("hello_world", max_results=5)

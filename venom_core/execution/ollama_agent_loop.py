@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from venom_core.utils.logger import get_logger
 
@@ -37,7 +38,7 @@ class AgentLoopResult:
     final_answer: str
     tool_calls: List[ToolCall] = field(default_factory=list)
     iterations: int = 0
-    stopped_by: str = "finish"  # "finish" | "max_iter" | "error"
+    stopped_by: str = "finish"  # "finish" | "max_iter" | "error" | "fast_path"
     evidence: List[str] = field(default_factory=list)
 
     def has_evidence(self) -> bool:
@@ -132,29 +133,34 @@ class OllamaAgentLoop:
             payload["tools"] = self.tools
 
         body = json.dumps(payload)
-        result = subprocess.run(
-            [
-                "curl",
-                "-s",
-                "--max-time",
-                str(self.timeout),
-                "-X",
-                "POST",
-                self.ollama_url,
-                "-H",
-                "Content-Type: application/json",
-                "-d",
-                body,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=self.timeout + 5,
+        req = urllib_request.Request(
+            self.ollama_url,
+            data=body.encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
-        if result.returncode != 0:
-            raise RuntimeError(f"curl błąd {result.returncode}: {result.stderr[:200]}")
-        if not result.stdout.strip():
+        try:
+            with urllib_request.urlopen(req, timeout=self.timeout) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib_error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"HTTP {e.code}: {err_body[:200]}") from e
+        except urllib_error.URLError as e:
+            raise RuntimeError(f"Błąd połączenia: {e.reason}") from e
+        except TimeoutError as e:
+            raise RuntimeError(f"Timeout połączenia ({self.timeout}s)") from e
+
+        if not raw.strip():
             raise RuntimeError("Pusta odpowiedź Ollama")
-        return json.loads(result.stdout)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Nieprawidłowy JSON z Ollama: {e}") from e
+        if not isinstance(parsed, dict):
+            raise RuntimeError(
+                "Nieprawidłowy format odpowiedzi Ollama (oczekiwano obiektu)"
+            )
+        return parsed
 
     def _dispatch_tool(
         self, name: str, arguments: Dict[str, Any]
@@ -173,7 +179,10 @@ class OllamaAgentLoop:
         self, response_message: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Ekstrahuje tool_calls z odpowiedzi modelu (format Ollama/OpenAI)."""
-        return response_message.get("tool_calls") or []
+        raw = response_message.get("tool_calls")
+        if not isinstance(raw, list):
+            return []
+        return [tc for tc in raw if isinstance(tc, dict)]
 
     def run(self, user_intent: str) -> AgentLoopResult:
         """
@@ -242,17 +251,21 @@ class OllamaAgentLoop:
             # Wywołaj każde narzędzie i dodaj wyniki do messages
             for tc_raw in raw_tool_calls:
                 fn = tc_raw.get("function", {})
-                tc_name = fn.get("name", "")
+                if not isinstance(fn, dict):
+                    fn = {}
+                tc_name = str(fn.get("name", ""))
                 tc_args_raw = fn.get("arguments", {})
                 if isinstance(tc_args_raw, str):
                     try:
                         tc_args = json.loads(tc_args_raw)
                     except json.JSONDecodeError:
                         tc_args = {"raw": tc_args_raw}
-                else:
+                elif isinstance(tc_args_raw, dict):
                     tc_args = tc_args_raw
+                else:
+                    tc_args = {}
 
-                call_id = tc_raw.get("id") or f"call_{iterations}_{tc_name}"
+                call_id = str(tc_raw.get("id") or f"call_{iterations}_{tc_name}")
 
                 t0 = time.monotonic()
                 result_str, error = self._dispatch_tool(tc_name, tc_args)

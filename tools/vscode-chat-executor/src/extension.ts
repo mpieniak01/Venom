@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import { execFile, spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const MAX_ITERATIONS = 5;
+const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;
 const LEGACY_TOOL_NAME = 'run_git_status'; // backward-compat alias
 
 // ---------------------------------------------------------------------------
@@ -64,6 +66,7 @@ async function runGitCommand(cwd: string, command: string): Promise<string> {
 const SKIP_DIRS = ['.git', '.venv', 'node_modules', '__pycache__', '.pytest_cache', 'out', 'dist', 'models_cache', 'models'];
 
 async function searchCode(cwd: string, query: string, pathGlob?: string, maxResults = 10): Promise<string> {
+  const searchTimeoutMs = Math.max(1_000, getConfig<number>('searchTimeoutMs', DEFAULT_SEARCH_TIMEOUT_MS));
   const skipArgs = SKIP_DIRS.flatMap(d => ['--glob', `!${d}`, '--glob', `!**/${d}/**`]);
   const args = [
     '--json',
@@ -76,11 +79,30 @@ async function searchCode(cwd: string, query: string, pathGlob?: string, maxResu
   args.push(query, cwd);
 
   return new Promise<string>((resolve) => {
+    let settled = false;
+    let buffer = '';
     const lines: string[] = [];
     const proc = spawn('rg', args, { cwd });
+    const finish = (msg: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(msg);
+    };
+    const flushBuffer = () => {
+      const tail = buffer.trim();
+      if (tail) lines.push(tail);
+      buffer = '';
+    };
     proc.stdout.setEncoding('utf8');
-    proc.stdout.on('data', (d: string) => lines.push(...d.split('\n')));
+    proc.stdout.on('data', (d: string) => {
+      buffer += d;
+      const chunks = buffer.split('\n');
+      buffer = chunks.pop() ?? '';
+      for (const line of chunks) lines.push(line);
+    });
     proc.on('close', () => {
+      flushBuffer();
       const results: string[] = [];
       let count = 0;
       for (const line of lines) {
@@ -96,10 +118,13 @@ async function searchCode(cwd: string, query: string, pathGlob?: string, maxResu
           }
         } catch { /* skip malformed */ }
       }
-      resolve(results.length > 0 ? results.join('\n') : 'Brak wyników.');
+      finish(results.length > 0 ? results.join('\n') : 'Brak wyników.');
     });
-    proc.on('error', () => resolve('Błąd: ripgrep nie znaleziony. Zainstaluj: sudo apt install ripgrep'));
-    setTimeout(() => { proc.kill(); resolve('Timeout wyszukiwania (10s).'); }, 10_000);
+    proc.on('error', () => finish('Błąd: ripgrep nie znaleziony. Zainstaluj: sudo apt install ripgrep'));
+    const timer = setTimeout(() => {
+      proc.kill();
+      finish(`Timeout wyszukiwania (${searchTimeoutMs}ms).`);
+    }, searchTimeoutMs);
   });
 }
 
@@ -107,7 +132,21 @@ async function searchCode(cwd: string, query: string, pathGlob?: string, maxResu
 // File read z kontekstem
 // ---------------------------------------------------------------------------
 
-async function readFileContext(filePath: string, line: number, contextLines: number): Promise<string> {
+function isPathWithinRoot(root: string, target: string): boolean {
+  const rel = path.relative(path.resolve(root), path.resolve(target));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function resolveWorkspacePath(root: string, inputPath: string): string | undefined {
+  const workspaceRoot = path.resolve(root);
+  const resolved = path.resolve(workspaceRoot, inputPath);
+  return isPathWithinRoot(workspaceRoot, resolved) ? resolved : undefined;
+}
+
+async function readFileContext(filePath: string, line: number, contextLines: number, workspaceRoot?: string): Promise<string> {
+  if (workspaceRoot && !isPathWithinRoot(workspaceRoot, filePath)) {
+    return `Błąd odczytu pliku: ścieżka poza workspace (${filePath})`;
+  }
   try {
     const content = await fs.readFile(filePath, 'utf8');
     const all = content.split('\n');
@@ -131,12 +170,12 @@ async function readFileContext(filePath: string, line: number, contextLines: num
 // ---------------------------------------------------------------------------
 
 const EXEC_SAFE_PATTERNS = [
-  /^pytest(\s+.*)?$/,
-  /^python -m pytest(\s+.*)?$/,
-  /^make test-[\w-]+$/,
-  /^npm test$/,
-  /^ruff check(\s+.*)?$/,
-  /^mypy(\s+.*)?$/,
+  /^pytest$/,
+  /^python$/,
+  /^make$/,
+  /^npm$/,
+  /^ruff$/,
+  /^mypy$/,
 ];
 
 async function execSafe(cwd: string, command: string): Promise<string> {
@@ -144,13 +183,31 @@ async function execSafe(cwd: string, command: string): Promise<string> {
   if (!allowExec) {
     return 'Wykonanie komend zablokowane. Włącz w ustawieniach: venom.execution.allowExec = true';
   }
-  const norm = command.trim();
-  const allowed = EXEC_SAFE_PATTERNS.some(p => p.test(norm));
+  const norm = command.trim().replace(/\s+/g, ' ');
+  if (!norm) {
+    return 'Komenda nie może być pusta.';
+  }
+  if (/[;&|><`$\\\n\r]/.test(norm)) {
+    return `Komenda zawiera niedozwolone metaznaki shella: "${norm}".`;
+  }
+
+  const parts = norm.split(' ').filter(Boolean);
+  const [bin, ...args] = parts;
+  const allowedBin = EXEC_SAFE_PATTERNS.some(p => p.test(bin));
+  const allowed =
+    allowedBin && (
+      bin === 'pytest' ||
+      bin === 'mypy' ||
+      (bin === 'python' && args.length >= 2 && args[0] === '-m' && args[1] === 'pytest') ||
+      (bin === 'make' && args.length === 1 && /^test-[\w-]+$/.test(args[0])) ||
+      (bin === 'npm' && args.length === 1 && args[0] === 'test') ||
+      (bin === 'ruff' && args.length >= 1 && args[0] === 'check')
+    );
   if (!allowed) {
     return `Komenda nie jest na liście dozwolonych: "${norm}". Dozwolone: pytest, make test-*, ruff check, mypy.`;
   }
   try {
-    const { stdout, stderr } = await execFileAsync('bash', ['-c', norm], { cwd, timeout: 30_000 });
+    const { stdout, stderr } = await execFileAsync(bin, args, { cwd, timeout: 30_000 });
     return [stdout, stderr?.trim()].filter(Boolean).join('\n').trim() || '(brak outputu)';
   } catch (e) {
     return `Błąd: ${e instanceof Error ? e.message : String(e)}`;
@@ -195,8 +252,11 @@ async function dispatchTool(
       const file = String(input.file_path ?? '');
       const line = typeof input.line === 'number' ? input.line : 1;
       const ctx = typeof input.context_lines === 'number' ? input.context_lines : 5;
-      const resolved = file.startsWith('/') ? file : `${cwd}/${file}`;
-      return readFileContext(resolved, line, ctx);
+      const resolved = resolveWorkspacePath(cwd, file);
+      if (!resolved) {
+        return `Błąd odczytu pliku: ścieżka poza workspace (${file})`;
+      }
+      return readFileContext(resolved, line, ctx, cwd);
     }
     case 'venom_exec_safe': {
       const cmd = String(input.command ?? '');
@@ -270,11 +330,13 @@ async function venomAgentHandler(
     }
 
     const toolCalls: Array<{ part: vscode.LanguageModelToolCallPart; result: string }> = [];
+    const assistantTextParts: string[] = [];
     let hasToolCall = false;
 
     for await (const chunk of response.stream) {
       if (token.isCancellationRequested) break;
       if (chunk instanceof vscode.LanguageModelTextPart) {
+        assistantTextParts.push(chunk.value);
         stream.markdown(chunk.value);
       } else if (chunk instanceof vscode.LanguageModelToolCallPart) {
         hasToolCall = true;
@@ -301,10 +363,16 @@ async function venomAgentHandler(
     }
 
     // Dodaj odpowiedź asystenta (z tool callami) + wyniki do historii
+    const assistantParts: Array<vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart> = [];
+    const assistantText = assistantTextParts.join('');
+    if (assistantText.trim()) {
+      assistantParts.push(new vscode.LanguageModelTextPart(assistantText));
+    }
+    assistantParts.push(
+      ...toolCalls.map(tc => new vscode.LanguageModelToolCallPart(tc.part.callId, tc.part.name, tc.part.input))
+    );
     messages.push(
-      vscode.LanguageModelChatMessage.Assistant(
-        toolCalls.map(tc => new vscode.LanguageModelToolCallPart(tc.part.callId, tc.part.name, tc.part.input))
-      )
+      vscode.LanguageModelChatMessage.Assistant(assistantParts)
     );
     messages.push(
       vscode.LanguageModelChatMessage.User(
@@ -390,10 +458,13 @@ export function activate(context: vscode.ExtensionContext) {
       async invoke(options) {
         const root = await resolveRepoRoot();
         if (!root) return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Brak workspace.')]);
-        const file = options.input.file_path.startsWith('/')
-          ? options.input.file_path
-          : `${root}/${options.input.file_path}`;
-        const result = await readFileContext(file, options.input.line, options.input.context_lines ?? 5);
+        const file = resolveWorkspacePath(root, options.input.file_path);
+        if (!file) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Błąd odczytu pliku: ścieżka poza workspace (${options.input.file_path})`)
+          ]);
+        }
+        const result = await readFileContext(file, options.input.line, options.input.context_lines ?? 5, root);
         return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(result)]);
       },
       prepareInvocation(options) {

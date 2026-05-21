@@ -82,17 +82,43 @@ def probe_build_ok() -> ProbeResult:
     name = "build_ok"
     if not OUT_JS.exists():
         # Spróbuj zbudować
-        result = subprocess.run(
-            ["npm", "run", "build"],
-            cwd=str(EXTENSION_DIR),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode != 0:
-            return ProbeResult(
-                name, "FAIL", "npm run build nie powiódł się", result.stderr[-300:]
+        try:
+            result = subprocess.run(
+                ["npm", "run", "build"],
+                cwd=str(EXTENSION_DIR),
+                capture_output=True,
+                text=True,
+                timeout=60,
             )
+        except subprocess.TimeoutExpired as e:
+            stdout = (e.stdout or "")[-200:]
+            stderr = (e.stderr or "")[-200:]
+            detail = (
+                f"Timeout build dla {EXTENSION_DIR} (out: {OUT_JS}). "
+                f"stdout={stdout!r} stderr={stderr!r}"
+            )
+            return ProbeResult(name, "FAIL", "npm run build timeout (60s)", detail)
+        except FileNotFoundError as e:
+            return ProbeResult(
+                name,
+                "FAIL",
+                "Brak npm w środowisku",
+                f"{e}; extension_dir={EXTENSION_DIR}; out_js={OUT_JS}",
+            )
+        except Exception as e:
+            return ProbeResult(
+                name,
+                "FAIL",
+                "Błąd uruchomienia npm run build",
+                f"{e}; extension_dir={EXTENSION_DIR}; out_js={OUT_JS}",
+            )
+        if result.returncode != 0:
+            detail = (
+                f"build failed dla {EXTENSION_DIR} (out: {OUT_JS})\n"
+                f"stdout: {result.stdout[-300:]}\n"
+                f"stderr: {result.stderr[-300:]}"
+            )
+            return ProbeResult(name, "FAIL", "npm run build nie powiódł się", detail)
     if not OUT_JS.exists():
         return ProbeResult(name, "FAIL", f"Brak pliku: {OUT_JS.relative_to(REPO_ROOT)}")
     size = OUT_JS.stat().st_size

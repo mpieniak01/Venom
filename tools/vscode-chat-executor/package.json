@@ -161,6 +161,13 @@
           "minimum": 1,
           "maximum": 20,
           "description": "Maximum number of agentic loop iterations before @venom-agent stops and reports a partial answer."
+        },
+        "venom.execution.searchTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1000,
+          "maximum": 120000,
+          "description": "Timeout for ripgrep-based code search in milliseconds."
         }
       }
     }

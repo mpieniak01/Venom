@@ -227,6 +227,13 @@ class TestLocalAgentShellExec:
         result = agent_with_exec._handle_shell_exec("shell_exec", {"command": ""})
         assert "❌" in result
 
+    def test_shell_exec_blocks_shell_metacharacters(self, agent_with_exec):
+        result = agent_with_exec._handle_shell_exec(
+            "shell_exec", {"command": "echo ok; rm -rf /"}
+        )
+        assert "❌" in result
+        assert "metaznaki" in result
+
 
 class TestLocalAgentCodeSearch:
     @pytest.fixture

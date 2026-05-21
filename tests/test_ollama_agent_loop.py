@@ -291,3 +291,16 @@ class TestDispatchTool:
         result, error = loop._dispatch_tool("failing", {})
         assert error is not None
         assert "boom" in error
+
+
+class TestToolCallExtraction:
+    def test_extract_tool_calls_filters_invalid_entries(self):
+        loop = OllamaAgentLoop()
+        out = loop._extract_tool_calls(
+            {"tool_calls": ["x", {"id": "1", "function": {"name": "a"}}]}
+        )
+        assert out == [{"id": "1", "function": {"name": "a"}}]
+
+    def test_extract_tool_calls_handles_non_list(self):
+        loop = OllamaAgentLoop()
+        assert loop._extract_tool_calls({"tool_calls": "invalid"}) == []

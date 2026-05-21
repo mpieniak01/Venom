@@ -5,7 +5,7 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 from semantic_kernel.functions import kernel_function
 
@@ -110,7 +110,8 @@ class CodeIndexSkill(BaseSkill):
 
     def _parse_rg_json_output(self, raw: str, context_lines: int) -> List[CodeMatch]:
         matches: List[CodeMatch] = []
-        context_before_buf: List[str] = []
+        context_before_by_file: Dict[str, List[str]] = {}
+        active_matches_by_file: Dict[str, List[CodeMatch]] = {}
 
         for line in raw.splitlines():
             line = line.strip()
@@ -122,60 +123,59 @@ class CodeIndexSkill(BaseSkill):
                 continue
 
             entry_type = entry.get("type")
-            if entry_type == "context":
-                text = entry["data"]["lines"]["text"].rstrip("\n")
-                context_before_buf.append(text)
-                if len(context_before_buf) > context_lines:
-                    context_before_buf.pop(0)
-            elif entry_type == "match":
-                data = entry["data"]
-                file_path = data["path"]["text"]
-                line_no = data["line_number"]
-                match_text = data["lines"]["text"].rstrip("\n")
+            data = entry.get("data", {})
+            file_path = data.get("path", {}).get("text")
+            line_no = data.get("line_number")
+            text = data.get("lines", {}).get("text", "").rstrip("\n")
+
+            if (
+                entry_type in ("context", "match")
+                and file_path
+                and isinstance(line_no, int)
+            ):
+                active = active_matches_by_file.get(file_path, [])
+                if active and entry_type == "context":
+                    updated_active: List[CodeMatch] = []
+                    for m in active:
+                        if m.line < line_no <= m.line + context_lines:
+                            if len(m.context_after) < context_lines:
+                                m.context_after.append(text)
+                        if line_no < m.line + context_lines:
+                            updated_active.append(m)
+                    active_matches_by_file[file_path] = updated_active
+
+            if entry_type == "context" and file_path:
+                before = context_before_by_file.setdefault(file_path, [])
+                before.append(text)
+                if len(before) > context_lines:
+                    before.pop(0)
+            elif entry_type == "match" and file_path and isinstance(line_no, int):
+                before = context_before_by_file.get(file_path, [])
                 matches.append(
                     CodeMatch(
                         file=file_path,
                         line=line_no,
-                        text=match_text,
-                        context_before=list(context_before_buf),
+                        text=text,
+                        context_before=list(before),
                         context_after=[],
                     )
                 )
-                context_before_buf = []
+                active_matches_by_file.setdefault(file_path, []).append(matches[-1])
+                context_before_by_file[file_path] = []
             elif entry_type == "end":
-                context_before_buf = []
+                context_before_by_file.clear()
+                active_matches_by_file.clear()
 
         return matches
 
-    def _attach_context_after(
-        self, matches: List[CodeMatch], raw: str, context_lines: int
-    ) -> None:
-        """Uzupełnia context_after przez drugi pass przez output."""
-        lines_by_file: dict = {}
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if entry.get("type") not in ("match", "context"):
-                continue
-            data = entry["data"]
-            fp = data["path"]["text"]
-            ln = data["line_number"]
-            text = data["lines"]["text"].rstrip("\n")
-            lines_by_file.setdefault(fp, {})[ln] = text
-
-        for m in matches:
-            file_lines = lines_by_file.get(m.file, {})
-            after = []
-            for offset in range(1, context_lines + 1):
-                t = file_lines.get(m.line + offset)
-                if t is not None:
-                    after.append(t)
-            m.context_after = after
+    def _resolve_workspace_path(self, file_path: str) -> Path:
+        candidate = (self.workspace_root / file_path).resolve()
+        root = self.workspace_root.resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as e:
+            raise ValueError(f"Ścieżka poza workspace: {file_path}") from e
+        return candidate
 
     def search_code(
         self,
@@ -222,8 +222,12 @@ class CodeIndexSkill(BaseSkill):
                 text=True,
                 timeout=15,
             )
+            if result.returncode > 1:
+                self.logger.error(
+                    f"ripgrep błąd (code={result.returncode}): {result.stderr.strip()[:200]}"
+                )
+                return []
             matches = self._parse_rg_json_output(result.stdout, context_lines)
-            self._attach_context_after(matches, result.stdout, context_lines)
             return matches[:max_results]
         except subprocess.TimeoutExpired:
             self.logger.error("ripgrep timeout")
@@ -242,9 +246,11 @@ class CodeIndexSkill(BaseSkill):
         Returns:
             FileSymbols z listami klas, funkcji i importów.
         """
-        path = Path(file_path)
-        if not path.is_absolute():
-            path = self.workspace_root / file_path
+        try:
+            path = self._resolve_workspace_path(file_path)
+        except ValueError as e:
+            self.logger.warning(str(e))
+            return FileSymbols(file=file_path, classes=[], functions=[], imports=[])
 
         classes: List[str] = []
         functions: List[str] = []
@@ -300,9 +306,10 @@ class CodeIndexSkill(BaseSkill):
         Returns:
             Fragment pliku jako tekst z numerami linii.
         """
-        path = Path(file_path)
-        if not path.is_absolute():
-            path = self.workspace_root / file_path
+        try:
+            path = self._resolve_workspace_path(file_path)
+        except ValueError as e:
+            return f"❌ {e}"
 
         if not path.exists():
             return f"❌ Plik nie istnieje: {file_path}"

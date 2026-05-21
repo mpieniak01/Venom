@@ -14,9 +14,10 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -175,6 +176,7 @@ class LocalAgent:
         r"\b(rm\s+-rf|git\s+reset\s+--hard|drop\s+table|truncate|format\s+[a-z]:|mkfs|dd\s+if=)\b",
         re.IGNORECASE,
     )
+    _SHELL_META_PATTERN = re.compile(r"[;&|><`$\\\n\r]")
 
     def __init__(self, config: LocalAgentConfig):
         self.config = config
@@ -334,15 +336,23 @@ class LocalAgent:
             return "❌ Pusta komenda"
         if not self.config.allow_exec:
             return "❌ Wykonanie komend zablokowane. Użyj --allow-exec."
+        if self._SHELL_META_PATTERN.search(command):
+            return "❌ Komenda zawiera niedozwolone metaznaki shella."
         if not self.config.allow_destructive and self._DESTRUCTIVE_PATTERNS.search(
             command
         ):
             return "❌ Komenda destrukcyjna zablokowana. Użyj --allow-destructive."
+        try:
+            argv = shlex.split(command, posix=True)
+        except ValueError as e:
+            return f"❌ Błąd parsowania komendy: {e}"
+        if not argv:
+            return "❌ Pusta komenda"
         logger.info(f"shell_exec: {command!r}")
         try:
             result = subprocess.run(
-                command,
-                shell=True,
+                argv,
+                shell=False,
                 capture_output=True,
                 text=True,
                 cwd=self.config.workspace,
@@ -387,7 +397,7 @@ class LocalAgent:
                     "evidence": result.evidence,
                     "iterations": result.iterations,
                     "stopped_by": result.stopped_by,
-                    "tool_calls": [tc.to_dict() for tc in result.tool_calls],
+                    "tool_calls": [asdict(tc) for tc in result.tool_calls],
                 },
                 ensure_ascii=False,
                 indent=2,

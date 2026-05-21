@@ -63,6 +63,28 @@ class FileSymbols:
 
 
 @dataclass
+class _PythonSymbolCollector:
+    """Zbiera symbole z drzewa AST bez rozbudowanej logiki w funkcji wywołującej."""
+
+    classes: List[str] = field(default_factory=list)
+    functions: List[str] = field(default_factory=list)
+    imports: List[str] = field(default_factory=list)
+
+    def add_node(self, node: ast.AST) -> None:
+        if isinstance(node, ast.ClassDef):
+            self.classes.append(node.name)
+            return
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            self.functions.append(node.name)
+            return
+        if isinstance(node, ast.Import):
+            self.imports.extend(alias.name for alias in node.names)
+            return
+        if isinstance(node, ast.ImportFrom):
+            self.imports.append(node.module or "")
+
+
+@dataclass
 class _RgJsonStreamReducer:
     """Stanowy reduktor liniowego JSON outputu ripgrep."""
 
@@ -326,43 +348,45 @@ class CodeIndexSkill(BaseSkill):
             path = self._resolve_workspace_path(file_path)
         except ValueError as e:
             self.logger.warning(str(e))
-            return FileSymbols(file=file_path, classes=[], functions=[], imports=[])
+            return self._empty_file_symbols(file_path)
 
-        classes: List[str] = []
-        functions: List[str] = []
-        imports: List[str] = []
+        if not self._is_python_source_file(path):
+            return self._empty_file_symbols(str(path))
 
-        if not path.exists() or path.suffix != ".py":
-            return FileSymbols(
-                file=str(path), classes=classes, functions=functions, imports=imports
-            )
+        return self._extract_file_symbols(path)
 
+    @staticmethod
+    def _empty_file_symbols(file_path: str) -> FileSymbols:
+        return FileSymbols(file=file_path, classes=[], functions=[], imports=[])
+
+    @staticmethod
+    def _is_python_source_file(path: Path) -> bool:
+        return path.exists() and path.suffix == ".py"
+
+    @staticmethod
+    def _dedupe(values: List[str]) -> List[str]:
+        return list(dict.fromkeys(values))
+
+    def _extract_file_symbols(self, path: Path) -> FileSymbols:
         try:
             source = path.read_text(encoding="utf-8", errors="replace")
             tree = ast.parse(source, filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef):
-                    classes.append(node.name)
-                elif isinstance(node, ast.FunctionDef):
-                    functions.append(node.name)
-                elif isinstance(node, ast.AsyncFunctionDef):
-                    functions.append(node.name)
-                elif isinstance(node, ast.Import):
-                    for alias in node.names:
-                        imports.append(alias.name)
-                elif isinstance(node, ast.ImportFrom):
-                    module = node.module or ""
-                    imports.append(module)
         except SyntaxError as e:
             self.logger.debug(f"SyntaxError w {path}: {e}")
+            return self._empty_file_symbols(str(path))
         except Exception as e:
             self.logger.error(f"Błąd AST {path}: {e}")
+            return self._empty_file_symbols(str(path))
+
+        collector = _PythonSymbolCollector()
+        for node in ast.walk(tree):
+            collector.add_node(node)
 
         return FileSymbols(
             file=str(path),
-            classes=list(dict.fromkeys(classes)),
-            functions=list(dict.fromkeys(functions)),
-            imports=list(dict.fromkeys(imports)),
+            classes=self._dedupe(collector.classes),
+            functions=self._dedupe(collector.functions),
+            imports=self._dedupe(collector.imports),
         )
 
     def read_context(

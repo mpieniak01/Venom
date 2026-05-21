@@ -4,6 +4,8 @@
 
 Researcher Agent is a research expert in the Venom system, specializing in finding and synthesizing knowledge from the Internet. It provides current documentation, code examples, best practices, and information about libraries and tools.
 
+If you want to start the Copilot chat workflow itself, use `THE_CHAT.md` and `CHAT_OPERATOR.md`; this document is only for research and web search.
+
 ## Responsibilities
 
 - **Information search** - Finding current data on the Internet (DuckDuckGo)
@@ -159,6 +161,8 @@ Operational note:
 
 ## See also
 
+- [THE_CHAT.md](THE_CHAT.md)
+- [CHAT_OPERATOR.md](CHAT_OPERATOR.md)
 - [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planning with knowledge utilization
 - [THE_CODER.md](THE_CODER.md) - Implementation based on documentation
 - [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md)

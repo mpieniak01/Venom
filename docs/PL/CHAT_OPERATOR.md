@@ -12,6 +12,73 @@ Używaj tego dokumentu, gdy potrzebujesz odpowiedzi operacyjnej na pytania:
 - jak zarządzać stanem runtime i sesji,
 - jakie targety `make` są wspieranym panelem sterowania.
 
+## Szybki start
+
+Użyj tej sekwencji, gdy chcesz rozpocząć workflow Copilot chatu w Venom:
+
+1. Uruchom local-first runtime:
+   ```bash
+   make local-first-start MODEL=qwen2.5-coder:7b
+   ```
+2. Potwierdź, że runtime działa:
+   ```bash
+   make local-first-status
+   ```
+3. Użyj lokalnego lane Copilot dla zwykłej odpowiedzi:
+   ```bash
+   make local-first-codex MODEL=qwen2.5-coder:7b PROMPT='Powiedz tylko OK.'
+   ```
+4. Użyj lane repo-truth, gdy odpowiedź musi odzwierciedlać aktualny stan repo:
+   ```bash
+   make local-first-repo-truth-agent MODEL=qwen2.5-coder:7b PROMPT='Przeanalizuj stan repo i podaj kolejny krok.'
+   ```
+5. Jeśli potrzebujesz pełnego kontraktu runtime, przejdź do `CHAT_SESSION.md`.
+
+Zasada praktyczna:
+
+- `local-first-codex` do zwykłej rozmowy,
+- `local-first-repo-truth-agent` gdy odpowiedź zależy od `git status` / `git diff`,
+- jeśli celowo chcesz `qwen3.5:9b`, doinstaluj go w Ollama i podaj `MODEL=qwen3.5:9b`,
+- dla Agent-mode w VS Code trzymaj lokalny kontrakt modeli (`chat.model=qwen3.5:9b`, `chat.utilityModel=qwen3:4b`),
+- `CHAT_SESSION.md` gdy potrzebujesz routingu, sesji lub szczegółów cyklu życia.
+
+## Troubleshooting Copilot Agent (surowy JSON zamiast wykonania narzedzia)
+
+- Upewnij sie, ze `chat.tools.terminal.autoApprove` dopuszcza bezpieczne komendy read-only git (`git status`, `git diff --shortstat`, `git branch --show-current`, `git rev-parse --short HEAD`).
+
+Objaw:
+
+- odpowiedz czatu pokazuje JSON typu `{\"name\":\"run_command\", ...}` zamiast wyniku narzedzia.
+
+Znaczenie:
+
+- biezaca sesja czatu nie wykonuje realnej petli tool-call dla tego turnu/modelu/trybu.
+- karty handoff w UI sa tylko sugestia po odpowiedzi; nie sa dowodem, ze subagent naprawde wystartowal.
+- prawdziwa delegacja musi pojawic sie w Agent Debug Log / Chat Debug View jako event `agent` lub `runSubagent`, po ktorym wraca evidence.
+
+Wymagana naprawa operatorska w sesji VS Code:
+
+1. Upewnij sie, ze czat jest w trybie `Agent` (nie tylko Ask).
+2. Otworz tools picker i wlacz wymagane narzedzia dla tego requestu.
+3. Uzyj lokalnego kontraktu modeli dla Agent mode:
+   - `chat.model=qwen3.5:9b`
+   - `chat.utilityModel=qwen3:4b`
+4. Dla intencji `sprawdz status git` stosuj `single-command policy`:
+   - uruchom tylko `git status --short --branch` jeden raz,
+   - nie uzywaj `/create-prompt`, `/explain` ani list wielu komend,
+   - zwroc najpierw wynik komendy, potem maksymalnie jedna krotka linie nastepnego kroku.
+5. Powtorz turn z jawnym poleceniem:
+   - `Uzyj teraz handoffu do subagenta. Przekaz repo-truth do Venom Local-First Orchestrator i zwroc tylko evidence subagenta.`
+6. Jesli dalej widzisz surowy JSON payload, otworz:
+   - Agent Debug Log,
+   - Chat Debug View,
+   i sprawdz, czy realny tool-call zostal wywolany czy pominiety.
+
+Gdy tool jest pomijany:
+
+- traktuj turn jako `tool_unavailable_or_unsupported_session`;
+- nie akceptuj pseudo-JSON komend jako poprawnego wyniku.
+
 ## Co obsługuje operator czatu
 
 | Powierzchnia lub intencja | Co robi | Uwagi |
@@ -51,6 +118,7 @@ Te obszary mają własne toolsy, agentów i dokumenty workflow.
 - [CONFIG_PANEL.md](CONFIG_PANEL.md)
 - [RUNTIME_PROFILES.md](RUNTIME_PROFILES.md)
 - [MEMORY_IN_CHAT.md](MEMORY_IN_CHAT.md)
+- [PR240_ARTIFACT_INVENTORY.md](PR240_ARTIFACT_INVENTORY.md)
 
 Te dokumenty zawierają szczegóły techniczne. Ten dokument jest operacyjnym punktem wejścia.
 
@@ -118,6 +186,7 @@ Te dokumenty zawierają szczegóły techniczne. Ten dokument jest operacyjnym pu
    ```bash
    make local-first-repo-truth-agent MODEL=qwen2.5-coder:7b PROMPT='Przeanalizuj stan repo i podaj kolejny krok.'
    ```
+   - intencje repo-truth są teraz kierowane do execution-first lane Git, więc `sprawdz status git` ma zwracać evidence zamiast planu/listy komend.
 5. Zwolnij pamięć modelu:
    ```bash
    make local-first-unload MODEL=qwen2.5-coder:7b
@@ -143,13 +212,31 @@ Te dokumenty zawierają szczegóły techniczne. Ten dokument jest operacyjnym pu
    ```
    - macierz można nadpisać przez `MODELS`, `CHANNELS`, `PROMPT_VARIANTS`, `IGNORE_RULES`
    - `SHELL_ONLY=1` uruchamia prosty baseline repo bez wywołań modeli
-4. Repo-truth preflight probe (twardy preflight prawdziwego `git status` przed odpowiedzia agenta):
+4. Probe higieny outputu Copilot (wykrywanie wycieku surowego JSON tool-call do odpowiedzi asystenta):
+   ```bash
+   make local-first-copilot-chat-output-probe
+   ```
+   - domyślne źródło kontraktu: `config/chat_operator/copilot_chat_output_contract.json`
+   - domyślny raport wejściowy: `test-results/234/chat_diagnostics.json`
+5. Gate higieny outputu Copilot (ponawia diagnostykę i wymusza brak surowego JSON tool-call w odpowiedzi asystenta):
+   ```bash
+   make local-first-copilot-chat-output-gate
+   ```
+6. Probe sesji/modelu Copilot Agent (walidacja modelu i ustawień dla stabilnego tool-loop):
+   ```bash
+   make local-first-copilot-agent-session-probe
+   ```
+7. Repo-truth preflight probe (twardy preflight prawdziwego `git status` przed odpowiedzia agenta):
    ```bash
    make local-first-repo-truth-preflight-probe MODEL=qwen2.5-coder:7b
    ```
-5. Walidacja konfiguracji agentów i promptów:
+7. Walidacja konfiguracji agentów i promptów:
    ```bash
    make local-first-agent-config-validate
+   ```
+8. Probe evidencji z VS Code Agent Debug Log (wyeksportuj JSON sesji z panelu Agent Debug Log, potem zwaliduj evidence local tool-loop):
+   ```bash
+   make local-first-vscode-agent-log-probe LOG_FILE=/absolute/path/to/agent-session.json
    ```
 6. Probe kontraktu terminala (`VSCODE_AGENT`):
    ```bash
@@ -257,6 +344,11 @@ Jeśli zmienne local-first mają zostać w shellu na stałe, używaj:
 - `make local-first-feedback-probe` - pomiar zachowania modeli dla pracy feedback/review
 - `make local-first-tool-flake-probe` - test stabilności wywołań narzędzi
 - `make local-first-chat-diagnostics` - porównanie prawdziwości odpowiedzi i użycia narzędzi
+- `make local-first-copilot-chat-output-probe` - wykrywanie wycieku surowego JSON tool-call do odpowiedzi asystenta w lane Copilot
+- `make local-first-copilot-agent-session-probe` - walidacja kontraktu modelu i ustawień Agent-mode VS Code (`chat.model`, utility modele, flagi AGENTS.md)
+- `make local-first-copilot-chat-output-gate` - ponowienie diagnostyki i FAIL, gdy odpowiedź asystenta zawiera surowy JSON tool-call
+- `make local-first-local-agent-tool-loop-probe` - walidacja local-agent-first tool loop (`qwen2.5-coder:7b` + kanal `agent` + exact run repo-truth)
+- `make local-first-local-agent-tool-loop-gate` - FAIL, gdy local-agent lane nie ma exact tool-loop run albo wycieka pseudo payload narzedzia
 - `make local-first-repo-truth-preflight-probe MODEL=...` - wymuszenie preflightu prawdy repo (`git status`/`git diff`) przed walidacja odpowiedzi agenta
 - `make local-first-agent-config-validate` - walidacja agentów, promptów i instrukcji
 - `make local-first-vscode-agent-probe` - weryfikacja kontraktu środowiska terminala dla `VSCODE_AGENT`
@@ -293,6 +385,7 @@ Kontrakt tooli:
 3. `edit` sluzy do najmniejszego bezpiecznego wycinka zmian, nie do spekulatywnego przepisywania.
 4. `terminal` sluzy do prawdziwych komend, testow i prawdy git.
 5. `runSubagent` sluzy tylko do dobrze ograniczonych zadan, ktore da sie rozdzielic.
+   - Dla intencji repo-truth lokalny orchestrator ma delegowac do `Venom Full Agent`, zamiast odpowiadac planem.
 6. Jesli tool jest niedostepny, trzeba to powiedziec wprost i uzyc jawnego fallbacku zamiast wymyslac wynik.
 7. zaczynaj od zrodel prawdy i dopiero potem przechodz do zmiany.
 
@@ -314,6 +407,8 @@ Oczekiwania implementacyjnego handoffu:
 Kontrakt pelnego agenta znajduje sie w:
 
 - `.github/agents/venom-full-agent.agent.md`
+- `docs/CHAT_OPERATOR.md`
+- `docs/PL/CHAT_OPERATOR.md`
 - `config/chat_operator/venom_full_agent_contract.json`
 - `scripts/dev/236_full_agent_contract_probe.py`
 - `scripts/dev/236_full_agent_gate.py`

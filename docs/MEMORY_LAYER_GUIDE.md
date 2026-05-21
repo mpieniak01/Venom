@@ -1,5 +1,7 @@
 # Guide: Memory Layer and Meta-Learning
 
+This guide explains memory and meta-learning only. For starting the Copilot chat workflow in Venom, use `THE_CHAT.md` and `CHAT_OPERATOR.md`.
+
 ## Overview
 
 Venom v1.0 has been extended with an advanced memory layer that transforms the system from simple “text search” into an intelligent “relationship network” with the ability to learn from mistakes.

@@ -214,6 +214,25 @@ class GitSkill(BaseSkill):
             return str(e)
 
     @kernel_function(
+        name="get_short_status",
+        description="Zwraca skrócony status repozytorium Git z gałęzią (git status --short --branch).",
+    )
+    @async_safe_action
+    async def get_short_status(self) -> str:
+        """
+        Pobiera skrócony status repozytorium Git wraz z informacją o branchu.
+        """
+        try:
+            repo = self._get_repo()
+            status = repo.git.status("--short", "--branch")
+            self.logger.debug(
+                f"Skrócony status repozytorium (branch + short): {status}"
+            )
+            return status
+        except InvalidGitRepositoryError as e:
+            return str(e)
+
+    @kernel_function(
         name="get_diff",
         description="Zwraca różnice (diff) między workspace a ostatnim commitem.",
     )

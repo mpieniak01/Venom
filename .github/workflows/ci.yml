@@ -344,12 +344,32 @@ jobs:
         run: |
           npx --yes openapi-typescript@7.10.1 test-results/openapi/openapi.json -o test-results/openapi/api-types.d.ts
 
-      - name: Upload OpenAPI contract artifacts
+      - name: Upload OpenAPI contract artifacts (attempt 1)
+        id: upload_openapi_attempt_1
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: openapi-contract
           path: test-results/openapi/**
           if-no-files-found: error
+          overwrite: true
+
+      - name: Upload OpenAPI contract artifacts (attempt 2)
+        id: upload_openapi_attempt_2
+        if: steps.upload_openapi_attempt_1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: openapi-contract
+          path: test-results/openapi/**
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Fail if artifact upload failed after retries
+        if: steps.upload_openapi_attempt_1.outcome == 'failure' && steps.upload_openapi_attempt_2.outcome == 'failure'
+        run: |
+          echo "OpenAPI artifact upload failed twice (likely transient network/endpoint issue)."
+          exit 1
 
   sonar:
     name: SonarCloud Scan

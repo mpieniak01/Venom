@@ -61,6 +61,39 @@ async def test_integrator_agent_process(integrator_agent):
 
 
 @pytest.mark.asyncio
+async def test_integrator_agent_repo_truth_fast_path(integrator_agent):
+    """Repo-truth prompt powinien ominąć LLM i zwrócić evidence ze statusu git."""
+    integrator_agent._invoke_git_tool = AsyncMock(
+        return_value="## main...origin/main\n M test.py\n?? new.txt"
+    )
+
+    with patch.object(
+        integrator_agent, "_invoke_chat_with_fallbacks", new_callable=AsyncMock
+    ) as mock_chat:
+        result = await integrator_agent.process("sprawdz status git")
+
+    assert "REPO_ROOT=" in result
+    assert "## main...origin/main" in result
+    assert "Interpretacja:" in result
+    assert "git diff --shortstat" in result
+    integrator_agent._invoke_git_tool.assert_awaited_once_with("get_short_status")
+    mock_chat.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_integrator_agent_project_status_stays_on_llm_path(integrator_agent):
+    """Status projektu nie powinien wpadać w repo-truth fast path Git."""
+    with patch.object(
+        integrator_agent, "_invoke_chat_with_fallbacks", new_callable=AsyncMock
+    ) as mock_chat:
+        mock_chat.return_value = MagicMock(__str__=lambda s: "Raport statusu projektu")
+        result = await integrator_agent.process("jaki jest status projektu")
+
+    assert "Raport statusu projektu" in result
+    mock_chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_generate_commit_message(integrator_agent):
     """Test generowania wiadomości commita."""
     diff = """

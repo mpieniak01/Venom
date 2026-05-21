@@ -2,6 +2,8 @@
 
 System klasyfikacji intencji użytkownika z wykorzystaniem lokalnych lub chmurowych LLM.
 
+Ten dokument opisuje wyłącznie klasyfikację intencji. Aby zacząć workflow Copilot chatu w Venom, użyj `THE_CHAT.md` i `CHAT_OPERATOR.md`.
+
 ## Konfiguracja
 
 ### Tryb Lokalny (domyślny)

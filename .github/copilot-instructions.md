@@ -12,4 +12,6 @@ Pełne zasady są w `docs/AGENTS.md` (source of truth). Ten plik jest skrótem.
    - traktuj local semantic index jako canonical knowledge base,
    - używaj `.github/agents/*` i `.github/prompts/*` jako jawnych kontraktów ról i promptow,
    - nie dokładaj drugiego, równoległego stosu wiedzy bez jawnej decyzji w planie.
-7. Domyslny jezyk odpowiedzi agenta w workspace Venom to polski; angielski uzywaj tylko gdy user poprosi albo dokument/format wymaga angielskiego.
+7. Dla repo-truth intentow (`sprawdz status git`, `stan repo`, `git status`, `repo git`) aktywny agent ma najpierw wykonac handoff przez `agent` / `runSubagent` do `Venom Local-First Orchestrator` albo `Venom Full Agent`, a nie uruchamiac bezposrednio `terminal`; po powrocie zwraca evidence, nie plan ani liste komend.
+8. Jeśli handoff lub tool nie jest dostępny, odpowiedz jawnie `tool_unavailable_or_unsupported_session` zamiast symulowac routing.
+9. Domyslny jezyk odpowiedzi agenta w workspace Venom to polski; angielski uzywaj tylko gdy user poprosi albo dokument/format wymaga angielskiego.

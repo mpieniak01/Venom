@@ -105,6 +105,7 @@ tests/test_gemma4_audio_models.py
 tests/test_gemma4_audio_runtime_main.py
 tests/test_generation_params_adapter.py
 tests/test_ghost_agent.py
+tests/test_git_skill.py
 tests/test_git_skill_roi.py
 tests/test_github_skill_contracts.py
 tests/test_github_skill_optional_dep.py
@@ -122,6 +123,7 @@ tests/test_hidden_prompts_semantic.py
 tests/test_huggingface_skill.py
 tests/test_ingestion_engine_roi.py
 tests/test_input_skill.py
+tests/test_integrator_agent.py
 tests/test_intent_embedding_router_edges.py
 tests/test_intent_manager_contracts.py
 tests/test_issue_handler_flow_light.py

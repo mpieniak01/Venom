@@ -184,7 +184,164 @@ class OllamaAgentLoop:
             return []
         return [tc for tc in raw if isinstance(tc, dict)]
 
+    @staticmethod
+    def _extract_message(response: Dict[str, Any]) -> Dict[str, Any]:
+        message = response.get("message")
+        if isinstance(message, dict):
+            return message
+        return {}
+
+    @staticmethod
+    def _parse_tool_arguments(arguments: Any) -> Dict[str, Any]:
+        if isinstance(arguments, dict):
+            return arguments
+        if isinstance(arguments, str):
+            try:
+                parsed = json.loads(arguments)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                return {"raw": arguments}
+            return {}
+        return {}
+
+    def _prepare_tool_call(
+        self, tc_raw: Dict[str, Any], iteration: int
+    ) -> tuple[str, str, Dict[str, Any]]:
+        fn = tc_raw.get("function", {})
+        if not isinstance(fn, dict):
+            fn = {}
+        tool_name = str(fn.get("name", ""))
+        tool_args = self._parse_tool_arguments(fn.get("arguments", {}))
+        call_id = str(tc_raw.get("id") or f"call_{iteration}_{tool_name}")
+        return call_id, tool_name, tool_args
+
+    def _invoke_tool_call(
+        self, call_id: str, tool_name: str, tool_args: Dict[str, Any]
+    ) -> ToolCall:
+        t0 = time.monotonic()
+        result_str, error = self._dispatch_tool(tool_name, tool_args)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+        logger.info(
+            f"Tool {tool_name} [{elapsed_ms}ms]: {(result_str or error or '')[:100]}"
+        )
+        return ToolCall(
+            call_id=call_id,
+            name=tool_name,
+            arguments=tool_args,
+            result=result_str if not error else None,
+            error=error,
+            elapsed_ms=elapsed_ms,
+        )
+
+    @staticmethod
+    def _append_tool_result_message(
+        messages: List[Dict[str, Any]],
+        call_id: str,
+        result: Optional[str],
+        error: Optional[str],
+    ) -> None:
+        tool_result_content = result if not error else f"Błąd: {error}"
+        messages.append(
+            {
+                "role": "tool",
+                "content": tool_result_content,
+                "tool_call_id": call_id,
+            }
+        )
+
+    def _process_tool_calls(
+        self,
+        raw_tool_calls: List[Dict[str, Any]],
+        iteration: int,
+        messages: List[Dict[str, Any]],
+        all_tool_calls: List[ToolCall],
+        evidence: List[str],
+    ) -> None:
+        for tc_raw in raw_tool_calls:
+            call_id, tool_name, tool_args = self._prepare_tool_call(tc_raw, iteration)
+            tool_call = self._invoke_tool_call(call_id, tool_name, tool_args)
+            all_tool_calls.append(tool_call)
+            if tool_call.result:
+                evidence.append(f"{tool_name}: {tool_call.result}")
+            self._append_tool_result_message(
+                messages, call_id, tool_call.result, tool_call.error
+            )
+
+    @staticmethod
+    def _final_result_from_message(
+        message: Dict[str, Any],
+        finish_reason: str,
+        iterations: int,
+        all_tool_calls: List[ToolCall],
+        evidence: List[str],
+    ) -> AgentLoopResult:
+        final_answer = str(message.get("content", ""))
+        stopped_by = "finish" if finish_reason != "max_iter" else "max_iter"
+        return AgentLoopResult(
+            final_answer=final_answer,
+            tool_calls=all_tool_calls,
+            iterations=iterations,
+            stopped_by=stopped_by,
+            evidence=evidence,
+        )
+
     def run(self, user_intent: str) -> AgentLoopResult:
+        return self._run_agent_loop(user_intent)
+
+    @staticmethod
+    def _build_error_result(
+        error: Exception,
+        iterations: int,
+        all_tool_calls: List[ToolCall],
+        evidence: List[str],
+    ) -> AgentLoopResult:
+        return AgentLoopResult(
+            final_answer=f"❌ Błąd komunikacji z Ollama: {error}",
+            tool_calls=all_tool_calls,
+            iterations=iterations,
+            stopped_by="error",
+            evidence=evidence,
+        )
+
+    @staticmethod
+    def _build_initial_messages(
+        user_intent: str, system_prompt: str
+    ) -> List[Dict[str, Any]]:
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_intent},
+        ]
+
+    def _finalize_after_max_iterations(
+        self,
+        messages: List[Dict[str, Any]],
+        all_tool_calls: List[ToolCall],
+        evidence: List[str],
+    ) -> AgentLoopResult:
+        logger.warning(f"max_iterations={self.max_iterations} osiągnięte")
+        try:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Podsumuj dotychczasowe wyniki narzędzi w jednej krótkiej odpowiedzi.",
+                }
+            )
+            response = self._call_ollama(messages)
+            final_answer = self._extract_message(response).get("content", "")
+        except Exception as e:
+            final_answer = f"⚠️ Przekroczono limit iteracji. Ostatni błąd: {e}"
+
+        return AgentLoopResult(
+            final_answer=final_answer,
+            tool_calls=all_tool_calls,
+            iterations=self.max_iterations,
+            stopped_by="max_iter",
+            evidence=evidence,
+        )
+
+    def _run_agent_loop(self, user_intent: str) -> AgentLoopResult:
         """
         Uruchamia pętlę agentową dla podanego intentu.
 
@@ -194,48 +351,35 @@ class OllamaAgentLoop:
         Returns:
             AgentLoopResult z finalną odpowiedzią i dowodem wykonania.
         """
-        messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": user_intent},
-        ]
+        messages = self._build_initial_messages(user_intent, self.system_prompt)
 
         all_tool_calls: List[ToolCall] = []
         evidence: List[str] = []
-        iterations = 0
-        stopped_by = "finish"
 
         logger.info(
             f"OllamaAgentLoop start: model={self.model}, intent={user_intent[:80]!r}"
         )
 
-        while iterations < self.max_iterations:
-            iterations += 1
-            logger.debug(f"Iteracja {iterations}/{self.max_iterations}")
+        for iteration in range(1, self.max_iterations + 1):
+            logger.debug(f"Iteracja {iteration}/{self.max_iterations}")
 
             try:
                 response = self._call_ollama(messages)
             except Exception as e:
                 logger.error(f"Błąd Ollama: {e}")
-                return AgentLoopResult(
-                    final_answer=f"❌ Błąd komunikacji z Ollama: {e}",
-                    tool_calls=all_tool_calls,
-                    iterations=iterations,
-                    stopped_by="error",
-                    evidence=evidence,
-                )
+                return self._build_error_result(e, iteration, all_tool_calls, evidence)
 
-            message = response.get("message", {})
+            message = self._extract_message(response)
             finish_reason = response.get("done_reason", "")
             raw_tool_calls = self._extract_tool_calls(message)
 
             if not raw_tool_calls:
-                final_answer = message.get("content", "")
-                logger.info(f"Odpowiedź finalna po {iterations} iteracjach")
-                return AgentLoopResult(
-                    final_answer=final_answer,
-                    tool_calls=all_tool_calls,
-                    iterations=iterations,
-                    stopped_by="finish" if finish_reason != "max_iter" else "max_iter",
+                logger.info(f"Odpowiedź finalna po {iteration} iteracjach")
+                return self._final_result_from_message(
+                    message=message,
+                    finish_reason=str(finish_reason),
+                    iterations=iteration,
+                    all_tool_calls=all_tool_calls,
                     evidence=evidence,
                 )
 
@@ -248,76 +392,15 @@ class OllamaAgentLoop:
                 }
             )
 
-            # Wywołaj każde narzędzie i dodaj wyniki do messages
-            for tc_raw in raw_tool_calls:
-                fn = tc_raw.get("function", {})
-                if not isinstance(fn, dict):
-                    fn = {}
-                tc_name = str(fn.get("name", ""))
-                tc_args_raw = fn.get("arguments", {})
-                if isinstance(tc_args_raw, str):
-                    try:
-                        tc_args = json.loads(tc_args_raw)
-                    except json.JSONDecodeError:
-                        tc_args = {"raw": tc_args_raw}
-                elif isinstance(tc_args_raw, dict):
-                    tc_args = tc_args_raw
-                else:
-                    tc_args = {}
-
-                call_id = str(tc_raw.get("id") or f"call_{iterations}_{tc_name}")
-
-                t0 = time.monotonic()
-                result_str, error = self._dispatch_tool(tc_name, tc_args)
-                elapsed_ms = int((time.monotonic() - t0) * 1000)
-
-                tc = ToolCall(
-                    call_id=call_id,
-                    name=tc_name,
-                    arguments=tc_args,
-                    result=result_str if not error else None,
-                    error=error,
-                    elapsed_ms=elapsed_ms,
-                )
-                all_tool_calls.append(tc)
-                logger.info(
-                    f"Tool {tc_name} [{elapsed_ms}ms]: {(result_str or error or '')[:100]}"
-                )
-
-                if result_str:
-                    evidence.append(f"{tc_name}: {result_str}")
-
-                tool_result_content = result_str if not error else f"Błąd: {error}"
-                messages.append(
-                    {
-                        "role": "tool",
-                        "content": tool_result_content,
-                        "tool_call_id": call_id,
-                    }
-                )
-
-        # Przekroczono max_iterations – wymuś ostatnią odpowiedź
-        stopped_by = "max_iter"
-        logger.warning(f"max_iterations={self.max_iterations} osiągnięte")
-        try:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": "Podsumuj dotychczasowe wyniki narzędzi w jednej krótkiej odpowiedzi.",
-                }
+            self._process_tool_calls(
+                raw_tool_calls=raw_tool_calls,
+                iteration=iteration,
+                messages=messages,
+                all_tool_calls=all_tool_calls,
+                evidence=evidence,
             )
-            response = self._call_ollama(messages)
-            final_answer = response.get("message", {}).get("content", "")
-        except Exception as e:
-            final_answer = f"⚠️ Przekroczono limit iteracji. Ostatni błąd: {e}"
 
-        return AgentLoopResult(
-            final_answer=final_answer,
-            tool_calls=all_tool_calls,
-            iterations=iterations,
-            stopped_by=stopped_by,
-            evidence=evidence,
-        )
+        return self._finalize_after_max_iterations(messages, all_tool_calls, evidence)
 
 
 def build_tool_spec(

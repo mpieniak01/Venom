@@ -3,7 +3,7 @@
 import ast
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Dict, List, Optional
 
@@ -62,6 +62,109 @@ class FileSymbols:
         return "\n".join(parts)
 
 
+@dataclass
+class _RgJsonStreamReducer:
+    """Stanowy reduktor liniowego JSON outputu ripgrep."""
+
+    context_lines: int
+    matches: List[CodeMatch] = field(default_factory=list)
+    context_before_by_file: Dict[str, List[str]] = field(default_factory=dict)
+    active_matches_by_file: Dict[str, List[CodeMatch]] = field(default_factory=dict)
+
+    def feed_line(self, raw_line: str) -> None:
+        line = raw_line.strip()
+        if not line:
+            return
+
+        entry = self._parse_entry(line)
+        if entry is None:
+            return
+
+        entry_type, file_path, line_no, text = self._extract_entry_fields(entry)
+        if entry_type == "end":
+            self._reset_state()
+            return
+        if not file_path or not isinstance(line_no, int):
+            return
+
+        if entry_type in ("context", "match"):
+            self._update_active_matches(file_path, line_no, text)
+        if entry_type == "context":
+            self._append_context_before(file_path, text)
+        elif entry_type == "match":
+            self._append_match(file_path, line_no, text)
+
+    def _parse_entry(self, line: str) -> Optional[dict]:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(entry, dict):
+            return None
+        return entry
+
+    @staticmethod
+    def _extract_entry_fields(
+        entry: dict,
+    ) -> tuple[str, Optional[str], Optional[int], str]:
+        entry_type = str(entry.get("type", ""))
+        data = entry.get("data", {})
+        if not isinstance(data, dict):
+            data = {}
+        path_data = data.get("path", {})
+        if not isinstance(path_data, dict):
+            path_data = {}
+        lines_data = data.get("lines", {})
+        if not isinstance(lines_data, dict):
+            lines_data = {}
+        file_path = path_data.get("text")
+        line_no = data.get("line_number")
+        text = str(lines_data.get("text", "")).rstrip("\n")
+        return (
+            entry_type,
+            file_path if isinstance(file_path, str) else None,
+            line_no if isinstance(line_no, int) else None,
+            text,
+        )
+
+    def _update_active_matches(self, file_path: str, line_no: int, text: str) -> None:
+        active = self.active_matches_by_file.get(file_path, [])
+        if not active:
+            return
+
+        updated_active: List[CodeMatch] = []
+        for match in active:
+            if match.line < line_no <= match.line + self.context_lines:
+                if len(match.context_after) < self.context_lines:
+                    match.context_after.append(text)
+            if line_no < match.line + self.context_lines:
+                updated_active.append(match)
+        self.active_matches_by_file[file_path] = updated_active
+
+    def _append_context_before(self, file_path: str, text: str) -> None:
+        before = self.context_before_by_file.setdefault(file_path, [])
+        before.append(text)
+        if len(before) > self.context_lines:
+            before.pop(0)
+
+    def _append_match(self, file_path: str, line_no: int, text: str) -> None:
+        before = self.context_before_by_file.get(file_path, [])
+        match = CodeMatch(
+            file=file_path,
+            line=line_no,
+            text=text,
+            context_before=list(before),
+            context_after=[],
+        )
+        self.matches.append(match)
+        self.active_matches_by_file.setdefault(file_path, []).append(match)
+        self.context_before_by_file[file_path] = []
+
+    def _reset_state(self) -> None:
+        self.context_before_by_file.clear()
+        self.active_matches_by_file.clear()
+
+
 class CodeIndexSkill(BaseSkill):
     """
     Skill do przeszukiwania kodu projektu.
@@ -109,64 +212,10 @@ class CodeIndexSkill(BaseSkill):
         return args
 
     def _parse_rg_json_output(self, raw: str, context_lines: int) -> List[CodeMatch]:
-        matches: List[CodeMatch] = []
-        context_before_by_file: Dict[str, List[str]] = {}
-        active_matches_by_file: Dict[str, List[CodeMatch]] = {}
-
+        reducer = _RgJsonStreamReducer(context_lines=context_lines)
         for line in raw.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            entry_type = entry.get("type")
-            data = entry.get("data", {})
-            file_path = data.get("path", {}).get("text")
-            line_no = data.get("line_number")
-            text = data.get("lines", {}).get("text", "").rstrip("\n")
-
-            if (
-                entry_type in ("context", "match")
-                and file_path
-                and isinstance(line_no, int)
-            ):
-                active = active_matches_by_file.get(file_path, [])
-                if active and entry_type == "context":
-                    updated_active: List[CodeMatch] = []
-                    for m in active:
-                        if m.line < line_no <= m.line + context_lines:
-                            if len(m.context_after) < context_lines:
-                                m.context_after.append(text)
-                        if line_no < m.line + context_lines:
-                            updated_active.append(m)
-                    active_matches_by_file[file_path] = updated_active
-
-            if entry_type == "context" and file_path:
-                before = context_before_by_file.setdefault(file_path, [])
-                before.append(text)
-                if len(before) > context_lines:
-                    before.pop(0)
-            elif entry_type == "match" and file_path and isinstance(line_no, int):
-                before = context_before_by_file.get(file_path, [])
-                matches.append(
-                    CodeMatch(
-                        file=file_path,
-                        line=line_no,
-                        text=text,
-                        context_before=list(before),
-                        context_after=[],
-                    )
-                )
-                active_matches_by_file.setdefault(file_path, []).append(matches[-1])
-                context_before_by_file[file_path] = []
-            elif entry_type == "end":
-                context_before_by_file.clear()
-                active_matches_by_file.clear()
-
-        return matches
+            reducer.feed_line(line)
+        return reducer.matches
 
     def _resolve_workspace_path(self, file_path: str) -> Path:
         candidate = (self.workspace_root / file_path).resolve()
@@ -176,6 +225,50 @@ class CodeIndexSkill(BaseSkill):
         except ValueError as e:
             raise ValueError(f"Ścieżka poza workspace: {file_path}") from e
         return candidate
+
+    def _build_search_command(
+        self,
+        query: str,
+        path_glob: Optional[str],
+        max_results: int,
+        context_lines: int,
+        case_sensitive: bool,
+    ) -> List[str]:
+        cmd = [
+            self._RG_BINARY,
+            "--json",
+            f"--context={context_lines}",
+            f"--max-count={max_results}",
+        ]
+        if not case_sensitive:
+            cmd.append("--ignore-case")
+        cmd += self._build_skip_args()
+        if path_glob:
+            cmd += ["--glob", path_glob]
+        cmd += [query, str(self.workspace_root)]
+        return cmd
+
+    def _run_search_command(self, cmd: List[str]) -> Optional[str]:
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except subprocess.TimeoutExpired:
+            self.logger.error("ripgrep timeout")
+            return None
+        except Exception as e:
+            self.logger.error(f"Błąd ripgrep: {e}")
+            return None
+
+        if result.returncode > 1:
+            self.logger.error(
+                f"ripgrep błąd (code={result.returncode}): {result.stderr.strip()[:200]}"
+            )
+            return None
+        return result.stdout
 
     def search_code(
         self,
@@ -202,41 +295,24 @@ class CodeIndexSkill(BaseSkill):
             self.logger.warning("ripgrep niedostępny, zwracam pustą listę")
             return []
 
-        cmd = [
-            self._RG_BINARY,
-            "--json",
-            f"--context={context_lines}",
-            f"--max-count={max_results}",
-        ]
-        if not case_sensitive:
-            cmd.append("--ignore-case")
-        cmd += self._build_skip_args()
-        if path_glob:
-            cmd += ["--glob", path_glob]
-        cmd += [query, str(self.workspace_root)]
+        cmd = self._build_search_command(
+            query=query,
+            path_glob=path_glob,
+            max_results=max_results,
+            context_lines=context_lines,
+            case_sensitive=case_sensitive,
+        )
+        raw_output = self._run_search_command(cmd)
+        if raw_output is None:
+            return []
 
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            if result.returncode > 1:
-                self.logger.error(
-                    f"ripgrep błąd (code={result.returncode}): {result.stderr.strip()[:200]}"
-                )
-                return []
-            matches = self._parse_rg_json_output(result.stdout, context_lines)
-            return matches[:max_results]
-        except subprocess.TimeoutExpired:
-            self.logger.error("ripgrep timeout")
-            return []
-        except Exception as e:
-            self.logger.error(f"Błąd ripgrep: {e}")
-            return []
+        matches = self._parse_rg_json_output(raw_output, context_lines)
+        return matches[:max_results]
 
     def get_file_symbols(self, file_path: str) -> FileSymbols:
+        return self._collect_file_symbols(file_path)
+
+    def _collect_file_symbols(self, file_path: str) -> FileSymbols:
         """
         Ekstrahuje klasy, funkcje i importy z pliku Python przez AST.
 

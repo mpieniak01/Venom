@@ -69,7 +69,7 @@
       "properties": {
         "venom.execution.repoRoot": {
           "type": "string",
-          "default": "/home/ubuntu/venom",
+          "default": "",
           "description": "Absolute repository root used by Venom execution tool. If empty, extension tries git rev-parse from current workspace."
         }
       }

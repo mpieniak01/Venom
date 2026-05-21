@@ -127,7 +127,9 @@ Akcja: get_current_branch()"""
         self.skill_manager = skill_manager
 
         # Dodaj GitSkill do kernela
-        repo_root = Path(getattr(SETTINGS, "REPO_ROOT", ".")).expanduser().resolve()
+        repo_root = (
+            Path(getattr(SETTINGS, "REPO_ROOT", None) or ".").expanduser().resolve()
+        )
         self.git_skill = GitSkill(workspace_root=str(repo_root))
         kernel.add_plugin(self.git_skill, plugin_name="git")
 
@@ -214,6 +216,11 @@ Akcja: get_current_branch()"""
             or "nie jest repozytorium git" in lowered
         ):
             return f"Blad wykonania: {short_status}"
+        normalized_lines = [
+            line.strip() for line in short_status.splitlines() if line.strip()
+        ]
+        if normalized_lines and not normalized_lines[0].startswith("##"):
+            return f"Blad wykonania: nieoczekiwany format odpowiedzi git status: {short_status}"
         return self._format_repo_truth_report(short_status)
 
     async def _invoke_git_tool(

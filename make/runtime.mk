@@ -152,7 +152,11 @@ local-first-local-agent-tool-loop-gate:
 
 local-first-local-model-tool-call-probe:
 	@echo "🧪 PR239 probe: local model structured tool-calling capability"
-	@set -euo pipefail; 	args=(); 	args+=(--model "$(if $(MODEL),$(MODEL),qwen2.5-coder:7b)"); 	args+=(--ollama-url "$(if $(OLLAMA_URL),$(OLLAMA_URL),http://127.0.0.1:11434)"); 	$(PYTHON_BIN) scripts/dev/239_local_model_tool_call_probe.py "$${args[@]}"
+	@set -euo pipefail; \
+	args=(); \
+	args+=(--model "$(if $(MODEL),$(MODEL),qwen2.5-coder:7b)"); \
+	args+=(--ollama-url "$(if $(OLLAMA_URL),$(OLLAMA_URL),http://127.0.0.1:11434)"); \
+	$(PYTHON_BIN) scripts/dev/239_local_model_tool_call_probe.py "$${args[@]}"
 
 
 

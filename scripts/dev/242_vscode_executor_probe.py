@@ -43,6 +43,9 @@ def main() -> int:
     issues: list[str] = []
     package = _read_json("tools/vscode-chat-executor/package.json")
     extension = _read_text("tools/vscode-chat-executor/src/extension.ts")
+    extension_core = _read_text(
+        "tools/vscode-chat-executor/src/core/command-execution.ts"
+    )
 
     scripts = package.get("scripts")
     if not isinstance(scripts, dict):
@@ -78,11 +81,20 @@ def main() -> int:
     if "venom.agent" not in participants:
         issues.append("missing_chat_participant:venom.agent")
 
-    if "LanguageModelToolResultPart" not in extension:
+    if (
+        "LanguageModelToolResultPart" not in extension
+        and "LanguageModelToolResultPart" not in extension_core
+    ):
         issues.append("extension_missing_tool_result_roundtrip")
-    if "request.model.sendRequest" not in extension:
+    if (
+        "request.model.sendRequest" not in extension
+        and "request.model.sendRequest" not in extension_core
+    ):
         issues.append("extension_missing_send_request_call")
-    if '"tool": "runSubagent"' in extension:
+    if (
+        '"tool": "runSubagent"' in extension
+        or '"tool": "runSubagent"' in extension_core
+    ):
         issues.append("extension_contains_raw_runSubagent_payload_literal")
 
     verdict = "pass" if not issues else "fail"

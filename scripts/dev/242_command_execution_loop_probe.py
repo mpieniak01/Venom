@@ -74,9 +74,15 @@ def main() -> int:
 
     if "REPO_ROOT=" not in integrator_text:
         issues.append("integrator_missing_repo_root_marker")
-    if "venom_git_status" not in extension_text:
+    if (
+        "venom_git_status" not in extension_text
+        and "venom_git_status" not in extension_core_text
+    ):
         issues.append("extension_missing_venom_git_status_tool")
-    if "LanguageModelToolResultPart" not in extension_text:
+    if (
+        "LanguageModelToolResultPart" not in extension_text
+        and "LanguageModelToolResultPart" not in extension_core_text
+    ):
         issues.append("extension_missing_tool_result_mapping")
     if (
         "Nie generuj listy komend jako finalnej odpowiedzi" not in extension_text

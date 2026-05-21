@@ -59,23 +59,41 @@ const GIT_ALLOWLIST = new Set([
   'git stash list',
 ]);
 
-async function runGitCommand(cwd: string, command: string): Promise<string> {
-  const normalized = command.trim().replace(/\s+/g, ' ');
-  if (!normalized.startsWith('git ')) {
-    throw new Error(`Dozwolone są tylko komendy git: "${normalized}"`);
+function tokenizeCommandArgs(command: string): string[] {
+  const tokens: string[] = [];
+  const matcher = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|([^\s]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(command)) !== null) {
+    const value = match[1] ?? match[2] ?? match[3] ?? '';
+    const normalized = value.replace(/\\(["'\\])/g, '$1');
+    if (normalized) {
+      tokens.push(normalized);
+    }
   }
-  if (!GIT_ALLOWLIST.has(normalized)) {
+  return tokens;
+}
+
+async function runGitCommand(cwd: string, command: string): Promise<string> {
+  const rawCommand = command.trim();
+  const allowlistKey = rawCommand.replace(/\s+/g, ' ');
+  if (!allowlistKey.startsWith('git ')) {
+    throw new Error(`Dozwolone są tylko komendy git: "${allowlistKey}"`);
+  }
+  if (!GIT_ALLOWLIST.has(allowlistKey)) {
     const decision = await vscode.window.showWarningMessage(
-      `Komenda poza allowlistą: "${normalized}". Uruchomić mimo to?`,
+      `Komenda poza allowlistą: "${allowlistKey}". Uruchomić mimo to?`,
       { modal: true },
       'Uruchom mimo to',
       'Anuluj',
     );
     if (decision !== 'Uruchom mimo to') {
-      throw new Error(`Anulowano komendę poza allowlistą: "${normalized}"`);
+      throw new Error(`Anulowano komendę poza allowlistą: "${allowlistKey}"`);
     }
   }
-  const [bin, ...args] = normalized.split(' ');
+  const [bin, ...args] = tokenizeCommandArgs(rawCommand);
+  if (!bin) {
+    throw new Error('Komenda git nie może być pusta.');
+  }
   const { stdout, stderr } = await execFileAsync(bin, args, { cwd });
   return [stdout, stderr?.trim()].filter(Boolean).join('\n').trim();
 }

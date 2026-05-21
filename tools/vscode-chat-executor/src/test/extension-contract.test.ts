@@ -33,3 +33,9 @@ test("extension asks for confirmation when git command is outside allowlist", ()
   assert.ok(src.includes("Komenda poza allowlistą"), "missing outside-allowlist warning message");
   assert.ok(src.includes("Uruchom mimo to"), "missing confirmation action for outside allowlist");
 });
+
+test("extension parses git args with quoted values", () => {
+  const src = loadExtensionSource();
+  assert.ok(src.includes("tokenizeCommandArgs"), "missing quoted-args tokenizer");
+  assert.ok(!src.includes("normalized.split(' ')"), "legacy split parser should not be used");
+});

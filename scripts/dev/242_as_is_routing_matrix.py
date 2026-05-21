@@ -81,7 +81,7 @@ def main() -> int:
             prompt="sprawdz wersje pythona",
             expected_route="command_execution_loop",
             route_detected="forcedIntent" in chat_send_text,
-            evidence_detected="duration_seconds" in chat_send_text,
+            evidence_detected="duration_ms" in chat_send_text,
             summary_detected="steps" in chat_send_text,
             note="Current UI path stores metadata but does not prove executor loop yet.",
         ),

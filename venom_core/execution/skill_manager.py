@@ -94,10 +94,38 @@ class SkillManager:
             raise ValueError(f"Adapter '{adapter_name}' nie implementuje list_tools()")
         if not callable(getattr(adapter, "invoke_tool", None)):
             raise ValueError(f"Adapter '{adapter_name}' nie implementuje invoke_tool()")
+        available_tool_names: set[str] = set()
+        for tool in adapter.list_tools():
+            if isinstance(tool, str):
+                candidate = tool.strip()
+            elif isinstance(tool, dict):
+                candidate = str(tool.get("name", "")).strip()
+            else:
+                candidate = str(getattr(tool, "name", "")).strip()
+            if candidate:
+                available_tool_names.add(candidate)
+
+        normalized_tool_skill_map: Dict[str, str] = {}
+        for tool_name, mapped_skill_name in (tool_skill_map or {}).items():
+            normalized_tool_name = str(tool_name).strip()
+            normalized_skill_name = str(mapped_skill_name).strip()
+            if not normalized_tool_name:
+                raise ValueError(
+                    f"Adapter '{adapter_name}' ma pustą nazwę toola w tool_skill_map"
+                )
+            if not normalized_skill_name:
+                raise ValueError(
+                    f"Adapter '{adapter_name}' ma pustą nazwę skilla dla toola '{normalized_tool_name}'"
+                )
+            if normalized_tool_name not in available_tool_names:
+                raise ValueError(
+                    f"Adapter '{adapter_name}' nie udostępnia toola '{normalized_tool_name}'"
+                )
+            normalized_tool_skill_map[normalized_tool_name] = normalized_skill_name
 
         self.mcp_adapters[adapter_name] = adapter
         self.mcp_adapter_skill_names[adapter_name] = skill_name or adapter_name
-        self.mcp_adapter_tool_skill_names[adapter_name] = tool_skill_map or {}
+        self.mcp_adapter_tool_skill_names[adapter_name] = normalized_tool_skill_map
         logger.info(
             "Zarejestrowano adapter MCP-like: %s (skill=%s)",
             adapter_name,

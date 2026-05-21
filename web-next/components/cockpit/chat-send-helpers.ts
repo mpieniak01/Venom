@@ -455,6 +455,7 @@ export async function handleSimpleTaskSend(params: {
                 session_id: resolvedSession ?? null,
                 created_at: timestamp,
                 finished_at: timestamp,
+                duration_ms: Number.isFinite(duration) ? Math.round(duration) : null,
                 duration_seconds: Number.isFinite(duration) ? Math.round((duration / 1000) * 100) / 100 : null,
                 steps,
             },

@@ -62,7 +62,10 @@ export async function dispatchTool(
       return `REPO_ROOT=${cwd}\n${out}`;
     }
     case "venom_search_code": {
-      const query = String(input.query ?? "");
+      const query = String(input.query ?? "").trim();
+      if (!query) {
+        return "Błąd wyszukiwania: brak parametru query.";
+      }
       const glob = input.path_glob !== undefined ? String(input.path_glob) : undefined;
       const max = typeof input.max_results === "number" ? input.max_results : 10;
       return deps.searchCode(cwd, query, glob, max);

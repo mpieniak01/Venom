@@ -313,7 +313,10 @@ class _DummyMcpAdapter:
         self._should_fail = should_fail
 
     def list_tools(self):
-        return [SimpleNamespace(name="tool_a")]
+        return [
+            SimpleNamespace(name="tool_a"),
+            SimpleNamespace(name="get_short_status"),
+        ]
 
     async def invoke_tool(self, tool_name, arguments):
         if self._should_fail:
@@ -334,6 +337,26 @@ def test_list_mcp_tools_for_single_adapter(skill_manager):
     tools = skill_manager.list_mcp_tools("dummy")
     assert "dummy" in tools
     assert tools["dummy"][0].name == "tool_a"
+
+
+def test_register_mcp_adapter_rejects_unknown_tool_in_tool_skill_map(skill_manager):
+    with pytest.raises(ValueError, match="nie udostępnia toola"):
+        skill_manager.register_mcp_adapter(
+            "dummy",
+            _DummyMcpAdapter(),
+            skill_name="FileSkill",
+            tool_skill_map={"missing_tool": "GitReadSkill"},
+        )
+
+
+def test_register_mcp_adapter_rejects_empty_skill_name_in_tool_skill_map(skill_manager):
+    with pytest.raises(ValueError, match="pustą nazwę skilla"):
+        skill_manager.register_mcp_adapter(
+            "dummy",
+            _DummyMcpAdapter(),
+            skill_name="FileSkill",
+            tool_skill_map={"tool_a": "   "},
+        )
 
 
 @pytest.mark.asyncio

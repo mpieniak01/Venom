@@ -158,6 +158,22 @@ async def test_integrator_agent_fallbacks_to_repo_truth_when_chat_service_missin
 
 
 @pytest.mark.asyncio
+async def test_integrator_agent_no_repo_truth_fallback_for_generic_status_without_chat(
+    integrator_agent,
+):
+    """Brak chat service nie powinien wymuszać repo-truth dla ogólnego statusu."""
+    integrator_agent.kernel.get_service.side_effect = Exception(
+        "Service with service_id 'chat' does not exist or has a different type."
+    )
+    integrator_agent._invoke_git_tool = AsyncMock(return_value="## main\n")
+
+    result = await integrator_agent.process("jaki jest status projektu")
+
+    assert "❌ Błąd w IntegratorAgent:" in result
+    integrator_agent._invoke_git_tool.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_poll_issues_success(integrator_agent):
     """Test pomyślnego pollowania Issues."""
     # Mock PlatformSkill

@@ -273,10 +273,7 @@ Akcja: get_current_branch()"""
             try:
                 chat_service: Any = self.kernel.get_service(service_id="chat")
             except Exception as chat_error:
-                if any(
-                    marker in self._normalize_input(input_text)
-                    for marker in ("git", "repo", "branch", "commit", "diff", "status")
-                ):
+                if self._is_repo_truth_request(input_text):
                     logger.warning(
                         "Brak chat service, fallback do repo-truth execution path: %s",
                         chat_error,

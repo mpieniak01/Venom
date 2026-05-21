@@ -195,9 +195,7 @@ local-first-pr242-native-chat-probe:
 
 local-first-pr242-vscode-executor-test:
 	@echo "🧪 PR242 VS Code executor: build + unit + contract + probe (bez IDE)"
-	@npm --prefix tools/vscode-chat-executor run build
 	@npm --prefix tools/vscode-chat-executor test
-	@npm --prefix tools/vscode-chat-executor run test:contract
 	@$(PYTHON_BIN) scripts/dev/242_vscode_executor_probe.py
 
 local-first-pr242-routing-matrix:

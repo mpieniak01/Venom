@@ -42,3 +42,17 @@ test("dispatchTool blocks read_file outside workspace", async () => {
   const out = await dispatchTool("venom_read_file", { file_path: "../x", line: 1 }, "/tmp/repo", fakeDeps());
   assert.ok(out.includes("ścieżka poza workspace"));
 });
+
+test("dispatchTool rejects empty search query", async () => {
+  let searchCalled = false;
+  const deps: CommandExecutorDeps = {
+    ...fakeDeps(),
+    searchCode: async () => {
+      searchCalled = true;
+      return "search:should-not-run";
+    },
+  };
+  const out = await dispatchTool("venom_search_code", { query: "   " }, "/tmp/repo", deps);
+  assert.ok(out.includes("brak parametru query"));
+  assert.equal(searchCalled, false);
+});

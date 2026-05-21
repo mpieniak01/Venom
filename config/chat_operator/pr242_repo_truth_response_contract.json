@@ -1,0 +1,28 @@
+{
+  "scope": "pr242-repo-truth-response-contract",
+  "channels": [
+    "native-web",
+    "vscode-chat"
+  ],
+  "sentinel_prompt": "sprawdz status git",
+  "required_evidence_fields": [
+    "repo_root",
+    "command",
+    "cwd",
+    "exit_code",
+    "stdout",
+    "stderr",
+    "duration_ms"
+  ],
+  "required_output_markers": [
+    "REPO_ROOT=",
+    "git status --short --branch",
+    "## "
+  ],
+  "forbidden_output_markers": [
+    "\"tool\": \"runSubagent\"",
+    "\"agent\": \"Venom Full Agent\"",
+    "tool_unavailable_or_unsupported_session"
+  ],
+  "notes": "Sentinel contract for repo-truth execution. Response must include execution evidence and a concise model summary."
+}

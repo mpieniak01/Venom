@@ -1380,6 +1380,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_code_index_skill.py",
+      "domain": "skills",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_code_review_optimization.py",
       "domain": "agents",
       "test_type": "unit",
@@ -1472,6 +1486,18 @@
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
+    },
+    {
+      "path": "tests/test_command_execution_loop.py",
+      "domain": "agents",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
     },
     {
       "path": "tests/test_complexity_skill.py",
@@ -2474,10 +2500,11 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Changed frequently in operator/repo-truth slices; keep in new-code and release lanes."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_git_skill_roi.py",
@@ -2882,10 +2909,11 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Changed frequently in operator/repo-truth slices; keep in new-code and release lanes."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_intent_embedding_router.py",
@@ -3382,6 +3410,20 @@
       "domain": "runtime",
       "test_type": "service_contract",
       "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_local_agent_cli.py",
+      "domain": "agents",
+      "test_type": "unit",
+      "intent": "regression",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -4226,6 +4268,20 @@
     {
       "path": "tests/test_notifier.py",
       "domain": "misc",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_ollama_agent_loop.py",
+      "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
@@ -6334,48 +6390,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_code_index_skill.py",
-      "domain": "skills",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Coverage gate dla CodeIndexSkill (ripgrep + AST) - nowy komponent PR241."
-    },
-    {
-      "path": "tests/test_ollama_agent_loop.py",
-      "domain": "runtime",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Coverage gate dla OllamaAgentLoop (pętla agentowa) - nowy komponent PR241."
-    },
-    {
-      "path": "tests/test_local_agent_cli.py",
-      "domain": "agents",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Coverage gate dla LocalAgentCLI i IntentRouter - nowe komponenty PR241."
     }
   ]
 }

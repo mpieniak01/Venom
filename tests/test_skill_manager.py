@@ -421,3 +421,31 @@ async def test_invoke_mcp_tool_tool_error_emits_failed(
     failed_data = broadcaster.broadcast_event.await_args_list[1].kwargs["data"]
     assert failed_data["error_class"] == "RuntimeError"
     assert "duration_ms" in failed_data
+
+
+@pytest.mark.asyncio
+async def test_invoke_mcp_tool_uses_tool_level_policy_override(
+    kernel, temp_skills_dir, monkeypatch
+):
+    manager = SkillManager(kernel, custom_skills_dir=temp_skills_dir)
+    manager.register_mcp_adapter(
+        "git",
+        _DummyMcpAdapter(result="ok"),
+        skill_name="GitSkill",
+        tool_skill_map={"get_short_status": "GitReadSkill"},
+    )
+
+    checked: list[str] = []
+
+    def _check_permission(name: str) -> bool:
+        checked.append(name)
+        return True
+
+    monkeypatch.setattr(
+        skill_manager_module.permission_guard, "check_permission", _check_permission
+    )
+
+    result = await manager.invoke_mcp_tool("git", "get_short_status", {})
+
+    assert result == "get_short_status:ok"
+    assert checked == ["GitReadSkill"]

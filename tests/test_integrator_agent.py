@@ -81,6 +81,21 @@ async def test_integrator_agent_repo_truth_fast_path(integrator_agent):
 
 
 @pytest.mark.asyncio
+async def test_integrator_agent_repo_truth_marker_status_gita(integrator_agent):
+    """Wariant językowy 'status gita' też powinien trafić w repo-truth fast path."""
+    integrator_agent._invoke_git_tool = AsyncMock(return_value="## main\n")
+
+    with patch.object(
+        integrator_agent, "_invoke_chat_with_fallbacks", new_callable=AsyncMock
+    ) as mock_chat:
+        result = await integrator_agent.process("sprawdz status gita")
+
+    assert "REPO_ROOT=" in result
+    integrator_agent._invoke_git_tool.assert_awaited_once_with("get_short_status")
+    mock_chat.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_integrator_agent_project_status_stays_on_llm_path(integrator_agent):
     """Status projektu nie powinien wpadać w repo-truth fast path Git."""
     with patch.object(
@@ -124,6 +139,22 @@ async def test_integrator_agent_error_handling(integrator_agent):
 
     # Sprawdź czy błąd został obsłużony
     assert "❌" in result or "Błąd" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_integrator_agent_fallbacks_to_repo_truth_when_chat_service_missing(
+    integrator_agent,
+):
+    """Brak service_id=chat nie może blokować zapytania git/repo."""
+    integrator_agent.kernel.get_service.side_effect = Exception(
+        "Service with service_id 'chat' does not exist or has a different type."
+    )
+    integrator_agent._invoke_git_tool = AsyncMock(return_value="## main\n")
+
+    result = await integrator_agent.process("sprawdz status git")
+
+    assert "REPO_ROOT=" in result
+    integrator_agent._invoke_git_tool.assert_awaited_once_with("get_short_status")
 
 
 @pytest.mark.asyncio

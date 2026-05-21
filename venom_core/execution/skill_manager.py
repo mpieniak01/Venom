@@ -68,6 +68,8 @@ class SkillManager:
         self.mcp_adapters: Dict[str, Any] = {}
         # Mapowanie adaptera na nazwę skilla używaną przez policy gate.
         self.mcp_adapter_skill_names: Dict[str, str] = {}
+        # Opcjonalne mapowanie nazwy toola na skill policy w ramach adaptera.
+        self.mcp_adapter_tool_skill_names: Dict[str, Dict[str, str]] = {}
 
         logger.info(
             f"SkillManager zainicjalizowany z katalogiem: {self.custom_skills_dir}"
@@ -78,6 +80,7 @@ class SkillManager:
         adapter_name: str,
         adapter: Any,
         skill_name: Optional[str] = None,
+        tool_skill_map: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Rejestruje adapter MCP-like do wspólnej ścieżki wykonania.
@@ -94,6 +97,7 @@ class SkillManager:
 
         self.mcp_adapters[adapter_name] = adapter
         self.mcp_adapter_skill_names[adapter_name] = skill_name or adapter_name
+        self.mcp_adapter_tool_skill_names[adapter_name] = tool_skill_map or {}
         logger.info(
             "Zarejestrowano adapter MCP-like: %s (skill=%s)",
             adapter_name,
@@ -139,7 +143,11 @@ class SkillManager:
         if adapter is None:
             raise ValueError(f"Nieznany adapter MCP-like: {adapter_name}")
 
-        policy_skill_name = self.mcp_adapter_skill_names.get(adapter_name, adapter_name)
+        base_skill_name = self.mcp_adapter_skill_names.get(adapter_name, adapter_name)
+        tool_skill_name = self.mcp_adapter_tool_skill_names.get(adapter_name, {}).get(
+            tool_name
+        )
+        policy_skill_name = tool_skill_name or base_skill_name
         started_at = time.perf_counter()
         try:
             permission_guard.check_permission(policy_skill_name)

@@ -3,11 +3,17 @@ import { execFile, spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
+import {
+  LEGACY_TOOL_NAME,
+  buildSystemPrompt,
+  dispatchTool,
+  isPathWithinRoot,
+  resolveWorkspacePath,
+} from './core/command-execution';
 
 const execFileAsync = promisify(execFile);
 const MAX_ITERATIONS = 5;
 const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;
-const LEGACY_TOOL_NAME = 'run_git_status'; // backward-compat alias
 
 // ---------------------------------------------------------------------------
 // Konfiguracja i workspace root
@@ -40,7 +46,11 @@ const GIT_ALLOWLIST = new Set([
   'git diff --shortstat',
   'git diff --stat',
   'git diff HEAD --name-only',
+  'git ls-files',
+  'git ls-tree HEAD',
+  'git ls-tree --name-only HEAD',
   'git branch --show-current',
+  'git rev-parse --show-toplevel',
   'git rev-parse --short HEAD',
   'git log --oneline -5',
   'git log --oneline -10',
@@ -51,8 +61,19 @@ const GIT_ALLOWLIST = new Set([
 
 async function runGitCommand(cwd: string, command: string): Promise<string> {
   const normalized = command.trim().replace(/\s+/g, ' ');
+  if (!normalized.startsWith('git ')) {
+    throw new Error(`Dozwolone są tylko komendy git: "${normalized}"`);
+  }
   if (!GIT_ALLOWLIST.has(normalized)) {
-    throw new Error(`Komenda git poza allowlista: "${normalized}"`);
+    const decision = await vscode.window.showWarningMessage(
+      `Komenda poza allowlistą: "${normalized}". Uruchomić mimo to?`,
+      { modal: true },
+      'Uruchom mimo to',
+      'Anuluj',
+    );
+    if (decision !== 'Uruchom mimo to') {
+      throw new Error(`Anulowano komendę poza allowlistą: "${normalized}"`);
+    }
   }
   const [bin, ...args] = normalized.split(' ');
   const { stdout, stderr } = await execFileAsync(bin, args, { cwd });
@@ -131,17 +152,6 @@ async function searchCode(cwd: string, query: string, pathGlob?: string, maxResu
 // ---------------------------------------------------------------------------
 // File read z kontekstem
 // ---------------------------------------------------------------------------
-
-function isPathWithinRoot(root: string, target: string): boolean {
-  const rel = path.relative(path.resolve(root), path.resolve(target));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-function resolveWorkspacePath(root: string, inputPath: string): string | undefined {
-  const workspaceRoot = path.resolve(root);
-  const resolved = path.resolve(workspaceRoot, inputPath);
-  return isPathWithinRoot(workspaceRoot, resolved) ? resolved : undefined;
-}
 
 async function readFileContext(filePath: string, line: number, contextLines: number, workspaceRoot?: string): Promise<string> {
   if (workspaceRoot && !isPathWithinRoot(workspaceRoot, filePath)) {
@@ -230,64 +240,6 @@ function toolResultToText(result: vscode.LanguageModelToolResult): string {
 // Dispatch narzędzi
 // ---------------------------------------------------------------------------
 
-async function dispatchTool(
-  name: string,
-  input: Record<string, unknown>,
-  cwd: string
-): Promise<string> {
-  switch (name) {
-    case 'venom_git_status':
-    case LEGACY_TOOL_NAME: {
-      const command = String(input.command ?? 'git status --short --branch');
-      const out = await runGitCommand(cwd, command);
-      return `REPO_ROOT=${cwd}\n${out}`;
-    }
-    case 'venom_search_code': {
-      const query = String(input.query ?? '');
-      const glob = input.path_glob !== undefined ? String(input.path_glob) : undefined;
-      const max = typeof input.max_results === 'number' ? input.max_results : 10;
-      return searchCode(cwd, query, glob, max);
-    }
-    case 'venom_read_file': {
-      const file = String(input.file_path ?? '');
-      const line = typeof input.line === 'number' ? input.line : 1;
-      const ctx = typeof input.context_lines === 'number' ? input.context_lines : 5;
-      const resolved = resolveWorkspacePath(cwd, file);
-      if (!resolved) {
-        return `Błąd odczytu pliku: ścieżka poza workspace (${file})`;
-      }
-      return readFileContext(resolved, line, ctx, cwd);
-    }
-    case 'venom_exec_safe': {
-      const cmd = String(input.command ?? '');
-      return execSafe(cwd, cmd);
-    }
-    default:
-      return `Nieznane narzędzie: ${name}`;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// System prompt
-// ---------------------------------------------------------------------------
-
-function buildSystemPrompt(cwd: string): string {
-  const allowExec = getConfig<boolean>('allowExec', false);
-  const execNote = allowExec
-    ? 'Możesz uruchamiać komendy przez venom_exec_safe (pytest, make test-*, ruff, mypy).'
-    : 'Wykonanie komend shell jest wyłączone (venom.execution.allowExec=false).';
-  return [
-    `Jesteś asystentem programisty Venom dla projektu w workspace: ${cwd}.`,
-    'Zawsze wywołuj narzędzia zamiast zgadywać o kodzie lub stanie repo.',
-    'Dla pytań o kod: wywołaj venom_search_code.',
-    'Dla pytań o status/diff/log git: wywołaj venom_git_status.',
-    'Dla pytań o zawartość pliku: wywołaj venom_read_file.',
-    execNote,
-    'Odpowiadaj po polsku, chyba że użytkownik pisze po angielsku.',
-    'Nie generuj listy komend jako finalnej odpowiedzi – wywołaj narzędzie i pokaż evidence.',
-  ].join('\n');
-}
-
 // ---------------------------------------------------------------------------
 // Agentic loop handler
 // ---------------------------------------------------------------------------
@@ -305,8 +257,9 @@ async function venomAgentHandler(
   }
 
   const maxIter = getConfig<number>('maxIterations', MAX_ITERATIONS);
+  const allowExec = getConfig<boolean>('allowExec', false);
   const messages: vscode.LanguageModelChatMessage[] = [
-    vscode.LanguageModelChatMessage.User(buildSystemPrompt(cwd)),
+    vscode.LanguageModelChatMessage.User(buildSystemPrompt(cwd, allowExec)),
     vscode.LanguageModelChatMessage.User(request.prompt),
   ];
 
@@ -351,7 +304,12 @@ async function venomAgentHandler(
           toolOutput = toolResultToText(invoked);
         } catch {
           // Fallback: bezpośredni dispatch
-          toolOutput = await dispatchTool(chunk.name, chunk.input as Record<string, unknown>, cwd);
+          toolOutput = await dispatchTool(chunk.name, chunk.input as Record<string, unknown>, cwd, {
+            runGitCommand,
+            searchCode,
+            readFileContext,
+            execSafe,
+          });
         }
         toolCalls.push({ part: chunk, result: toolOutput });
       }

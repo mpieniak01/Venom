@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Sequence
 
 from semantic_kernel import Kernel
@@ -25,6 +26,7 @@ from venom_core.agents.tester import TesterAgent
 from venom_core.agents.time_assistant import TimeAssistantAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
 from venom_core.agents.unsupported import UnsupportedAgent
+from venom_core.config import SETTINGS
 from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.goal_store import GoalStore
 from venom_core.core.models import Intent
@@ -138,10 +140,20 @@ class TaskDispatcher:
 
         # Zarejestruj lokalne adaptery MCP-like (Etap C konwergencji Skills/MCP)
         try:
+            repo_root = str(
+                Path(getattr(SETTINGS, "REPO_ROOT", None) or ".").expanduser().resolve()
+            )
             self.skill_manager.register_mcp_adapter(
                 "git",
-                GitSkillMcpAdapter(),
+                GitSkillMcpAdapter(workspace_root=repo_root),
                 skill_name="GitSkill",
+                tool_skill_map={
+                    "get_status": "GitReadSkill",
+                    "get_short_status": "GitReadSkill",
+                    "get_diff": "GitReadSkill",
+                    "get_last_commit_log": "GitReadSkill",
+                    "get_current_branch": "GitReadSkill",
+                },
             )
             self.skill_manager.register_mcp_adapter(
                 "file",

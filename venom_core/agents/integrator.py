@@ -151,11 +151,15 @@ Akcja: get_current_branch()"""
 
         repo_truth_markers = (
             "sprawdz status git",
+            "sprawd status git",
+            "sprawdz status gita",
+            "sprawd status gita",
             "sprawdz repo git",
             "stan repo",
             "stan gita",
             "git status",
             "status git",
+            "status gita",
             "pokaż status git",
             "pokaz status git",
             "jaki jest status repozytorium",
@@ -265,8 +269,17 @@ Akcja: get_current_branch()"""
                 )
                 return await self._process_repo_truth_request(input_text)
 
-            # Utwórz chat service
-            chat_service: Any = self.kernel.get_service(service_id="chat")
+            # Utwórz chat service; jeśli go brak, nie kończ błędem dla zapytań Git/repo.
+            try:
+                chat_service: Any = self.kernel.get_service(service_id="chat")
+            except Exception as chat_error:
+                if self._is_repo_truth_request(input_text):
+                    logger.warning(
+                        "Brak chat service, fallback do repo-truth execution path: %s",
+                        chat_error,
+                    )
+                    return await self._process_repo_truth_request(input_text)
+                raise
 
             # Utwórz historię czatu
             history = ChatHistory()

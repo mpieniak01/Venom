@@ -68,6 +68,8 @@ class SkillManager:
         self.mcp_adapters: Dict[str, Any] = {}
         # Mapowanie adaptera na nazwę skilla używaną przez policy gate.
         self.mcp_adapter_skill_names: Dict[str, str] = {}
+        # Opcjonalne mapowanie nazwy toola na skill policy w ramach adaptera.
+        self.mcp_adapter_tool_skill_names: Dict[str, Dict[str, str]] = {}
 
         logger.info(
             f"SkillManager zainicjalizowany z katalogiem: {self.custom_skills_dir}"
@@ -78,6 +80,7 @@ class SkillManager:
         adapter_name: str,
         adapter: Any,
         skill_name: Optional[str] = None,
+        tool_skill_map: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Rejestruje adapter MCP-like do wspólnej ścieżki wykonania.
@@ -87,18 +90,71 @@ class SkillManager:
             adapter: Obiekt implementujący list_tools() i async invoke_tool()
             skill_name: Nazwa skilla dla policy gate (domyślnie adapter_name)
         """
-        if not callable(getattr(adapter, "list_tools", None)):
-            raise ValueError(f"Adapter '{adapter_name}' nie implementuje list_tools()")
-        if not callable(getattr(adapter, "invoke_tool", None)):
-            raise ValueError(f"Adapter '{adapter_name}' nie implementuje invoke_tool()")
+        self._validate_adapter_contract(adapter_name, adapter)
+        available_tool_names = self._collect_adapter_tool_names(adapter)
+        normalized_tool_skill_map = self._normalize_tool_skill_map(
+            adapter_name, tool_skill_map or {}, available_tool_names
+        )
 
         self.mcp_adapters[adapter_name] = adapter
         self.mcp_adapter_skill_names[adapter_name] = skill_name or adapter_name
+        self.mcp_adapter_tool_skill_names[adapter_name] = normalized_tool_skill_map
         logger.info(
             "Zarejestrowano adapter MCP-like: %s (skill=%s)",
             adapter_name,
             self.mcp_adapter_skill_names[adapter_name],
         )
+
+    @staticmethod
+    def _validate_adapter_contract(adapter_name: str, adapter: Any) -> None:
+        if not callable(getattr(adapter, "list_tools", None)):
+            raise ValueError(f"Adapter '{adapter_name}' nie implementuje list_tools()")
+        if not callable(getattr(adapter, "invoke_tool", None)):
+            raise ValueError(f"Adapter '{adapter_name}' nie implementuje invoke_tool()")
+
+    @staticmethod
+    def _extract_tool_name(tool: Any) -> str:
+        if isinstance(tool, str):
+            return tool.strip()
+        if isinstance(tool, dict):
+            return str(tool.get("name", "")).strip()
+        return str(getattr(tool, "name", "")).strip()
+
+    def _collect_adapter_tool_names(self, adapter: Any) -> set[str]:
+        available_tool_names: set[str] = set()
+        for tool in adapter.list_tools():
+            candidate = self._extract_tool_name(tool)
+            if candidate:
+                available_tool_names.add(candidate)
+        return available_tool_names
+
+    @staticmethod
+    def _normalize_tool_skill_map(
+        adapter_name: str,
+        tool_skill_map: Dict[str, str],
+        available_tool_names: set[str],
+    ) -> Dict[str, str]:
+        normalized_tool_skill_map: Dict[str, str] = {}
+        for tool_name, mapped_skill_name in tool_skill_map.items():
+            normalized_tool_name = str(tool_name).strip()
+            if not normalized_tool_name:
+                raise ValueError(
+                    f"Adapter '{adapter_name}' ma pustą nazwę toola w tool_skill_map"
+                )
+
+            normalized_skill_name = str(mapped_skill_name).strip()
+            if not normalized_skill_name:
+                raise ValueError(
+                    f"Adapter '{adapter_name}' ma pustą nazwę skilla dla toola '{normalized_tool_name}'"
+                )
+
+            if normalized_tool_name not in available_tool_names:
+                raise ValueError(
+                    f"Adapter '{adapter_name}' nie udostępnia toola '{normalized_tool_name}'"
+                )
+
+            normalized_tool_skill_map[normalized_tool_name] = normalized_skill_name
+        return normalized_tool_skill_map
 
     def list_mcp_tools(
         self, adapter_name: Optional[str] = None
@@ -139,7 +195,11 @@ class SkillManager:
         if adapter is None:
             raise ValueError(f"Nieznany adapter MCP-like: {adapter_name}")
 
-        policy_skill_name = self.mcp_adapter_skill_names.get(adapter_name, adapter_name)
+        base_skill_name = self.mcp_adapter_skill_names.get(adapter_name, adapter_name)
+        tool_skill_name = self.mcp_adapter_tool_skill_names.get(adapter_name, {}).get(
+            tool_name
+        )
+        policy_skill_name = tool_skill_name or base_skill_name
         started_at = time.perf_counter()
         try:
             permission_guard.check_permission(policy_skill_name)

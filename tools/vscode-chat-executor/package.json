@@ -174,7 +174,10 @@
   },
   "scripts": {
     "build": "tsc -p .",
-    "watch": "tsc -w -p ."
+    "watch": "tsc -w -p .",
+    "test:unit": "npm run build && node --test \"out/test/core-command-execution.test.js\"",
+    "test:contract": "npm run build && node --test \"out/test/package-contract.test.js\" \"out/test/extension-contract.test.js\"",
+    "test": "npm run test:unit && npm run test:contract"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

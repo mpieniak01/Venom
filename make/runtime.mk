@@ -181,6 +181,34 @@ local-first-pr241b-probe-json:
 	@echo "🧪 PR241B probe (JSON output)"
 	@$(PYTHON_BIN) scripts/dev/241b_vscode_extension_probe.py --json
 
+local-first-pr242-as-is:
+	@echo "🧪 PR242 probe: AS-IS routing matrix snapshot"
+	@$(PYTHON_BIN) scripts/dev/242_as_is_routing_matrix.py
+
+local-first-pr242-command-loop-probe:
+	@echo "🧪 PR242 probe: command-execution loop contract + code anchors"
+	@$(PYTHON_BIN) scripts/dev/242_command_execution_loop_probe.py
+
+local-first-pr242-native-chat-probe:
+	@echo "🧪 PR242 probe: native chat routing/evidence anchors"
+	@$(PYTHON_BIN) scripts/dev/242_native_chat_probe.py
+
+local-first-pr242-vscode-executor-test:
+	@echo "🧪 PR242 VS Code executor: build + unit + contract + probe (bez IDE)"
+	@npm --prefix tools/vscode-chat-executor test
+	@$(PYTHON_BIN) scripts/dev/242_vscode_executor_probe.py
+
+local-first-pr242-routing-matrix:
+	@echo "🧪 PR242 matrix: aggregate routing snapshot"
+	@$(MAKE) local-first-pr242-as-is
+	@$(MAKE) local-first-pr242-command-loop-probe
+	@$(MAKE) local-first-pr242-native-chat-probe
+	@$(MAKE) local-first-pr242-vscode-executor-test
+
+local-first-pr242-gate:
+	@echo "🧪 PR242 gate: helper probes aggregate"
+	@$(PYTHON_BIN) scripts/dev/242_pr_gate.py
+
 local-first-git-status:
 	@echo "📌 PR239 execution lane: exact git status"
 	@bash scripts/dev/239_local_first_git_status.sh "$(if $(REPO_ROOT),$(REPO_ROOT),$(CURDIR))"

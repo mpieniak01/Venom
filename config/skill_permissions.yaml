@@ -11,6 +11,7 @@ LocalLlmSkill: 0
 GraphQuerySkill: 0
 LessonsSkill: 0
 KnowledgeSkill: 0
+GitReadSkill: 0
 
 # ========================================
 # Poziom 10: CONNECTED - Internet (Free)

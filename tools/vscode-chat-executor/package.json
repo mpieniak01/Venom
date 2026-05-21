@@ -1,8 +1,8 @@
 {
   "name": "venom-chat-executor",
-  "displayName": "Venom Chat Executor",
-  "description": "Execution-first chat participant for deterministic local git status in VS Code chat.",
-  "version": "0.0.1",
+  "displayName": "Venom Agent",
+  "description": "Agentic developer assistant for Venom projects: code search, git, file reading, and safe command execution via @venom-agent.",
+  "version": "0.1.0",
   "publisher": "venom-local",
   "engines": {
     "vscode": "^1.102.0"
@@ -17,33 +17,40 @@
   "contributes": {
     "chatParticipants": [
       {
-        "id": "venom.execution",
-        "name": "venom-exec",
-        "fullName": "Venom Execution",
-        "description": "Deterministic local command execution participant for git status workflow.",
-        "isSticky": true
-      },
-      {
-        "id": "venom.orchestrator",
+        "id": "venom.agent",
         "name": "venom-agent",
-        "fullName": "Venom Agent Orchestrator",
-        "description": "Routes git-status intent to execution tool and returns final response with evidence.",
+        "fullName": "Venom Agent",
+        "description": "Agentic assistant for Venom projects: code search, git status/log/diff, file reading, and safe test execution.",
         "isSticky": true
       }
     ],
     "languageModelTools": [
       {
-        "name": "run_git_status",
-        "displayName": "Venom Run Command",
-        "modelDescription": "Execute a local workspace command with strict allowlist. Use for repo-truth checks such as git status.",
-        "userDescription": "Run local git read-only command and return exact output.",
+        "name": "venom_git_status",
+        "displayName": "Venom Git",
+        "modelDescription": "Run a read-only git command (status, diff, log, branch, etc.) in the workspace root. Returns exact output with REPO_ROOT prefix.",
+        "userDescription": "Run a git read-only command and return exact output.",
         "canBeReferencedInPrompt": true,
-        "toolReferenceName": "venom-git-status",
-        "tags": [
-          "git",
-          "repo-truth",
-          "local-first"
-        ],
+        "toolReferenceName": "venom-git",
+        "tags": ["git", "repo-truth", "local-first"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Git command to run, e.g. 'git status --short --branch' or 'git log --oneline -5'."
+            }
+          },
+          "required": ["command"]
+        }
+      },
+      {
+        "name": "run_git_status",
+        "displayName": "Venom Run Command (legacy)",
+        "modelDescription": "Backward-compatible alias for venom_git_status. Prefer venom_git_status for new interactions.",
+        "userDescription": "Run a local git read-only command and return exact output.",
+        "canBeReferencedInPrompt": false,
+        "tags": ["git", "legacy"],
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -52,9 +59,80 @@
               "description": "Command to execute in workspace root."
             }
           },
-          "required": [
-            "command"
-          ]
+          "required": ["command"]
+        }
+      },
+      {
+        "name": "venom_search_code",
+        "displayName": "Venom Search Code",
+        "modelDescription": "Search code in the workspace using ripgrep. Returns file paths, line numbers, and matching lines. Use for finding classes, functions, symbols, or any text pattern.",
+        "userDescription": "Search code in the project using ripgrep.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "venom-search",
+        "tags": ["code-search", "ripgrep", "local-first"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search pattern (text or regex) to find in the codebase."
+            },
+            "path_glob": {
+              "type": "string",
+              "description": "Optional glob to restrict search, e.g. '*.py' or '*.ts'."
+            },
+            "max_results": {
+              "type": "number",
+              "description": "Maximum number of results to return (default: 10)."
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      {
+        "name": "venom_read_file",
+        "displayName": "Venom Read File",
+        "modelDescription": "Read a fragment of a file around a specific line number with surrounding context. Use after venom_search_code to get code context.",
+        "userDescription": "Read a file fragment with surrounding context lines.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "venom-read",
+        "tags": ["file-read", "local-first"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file_path": {
+              "type": "string",
+              "description": "Absolute or workspace-relative path to the file."
+            },
+            "line": {
+              "type": "number",
+              "description": "Line number to center the context around."
+            },
+            "context_lines": {
+              "type": "number",
+              "description": "Number of lines of context around the target line (default: 5)."
+            }
+          },
+          "required": ["file_path", "line"]
+        }
+      },
+      {
+        "name": "venom_exec_safe",
+        "displayName": "Venom Exec Safe",
+        "modelDescription": "Run a safe, allowed command (pytest, make test-*, ruff check, mypy, npm test) in the workspace. Requires venom.execution.allowExec=true in settings.",
+        "userDescription": "Run a safe test/lint command in the workspace (requires allowExec=true).",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "venom-exec",
+        "tags": ["exec", "test", "local-first"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Command to run, e.g. 'pytest venom_core/tests/', 'ruff check .', 'mypy venom_core'."
+            }
+          },
+          "required": ["command"]
         }
       }
     ],
@@ -65,12 +143,24 @@
       }
     ],
     "configuration": {
-      "title": "Venom Chat Executor",
+      "title": "Venom Agent",
       "properties": {
         "venom.execution.repoRoot": {
           "type": "string",
           "default": "",
-          "description": "Absolute repository root used by Venom execution tool. If empty, extension tries git rev-parse from current workspace."
+          "description": "Absolute repository root used by Venom tools. If empty, auto-detected via git rev-parse from the current workspace."
+        },
+        "venom.execution.allowExec": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow @venom-agent to execute safe commands (pytest, ruff, mypy, make test-*). Disabled by default for safety."
+        },
+        "venom.execution.maxIterations": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of agentic loop iterations before @venom-agent stops and reports a partial answer."
         }
       }
     }

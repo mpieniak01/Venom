@@ -18,7 +18,7 @@ Use this sequence when you want to start the Copilot chat workflow in Venom:
 
 1. Start the local-first runtime:
    ```bash
-   make local-first-start MODEL=qwen3.5:9b
+   make local-first-start MODEL=qwen2.5-coder:7b
    ```
 2. Confirm that the runtime is up:
    ```bash
@@ -26,11 +26,11 @@ Use this sequence when you want to start the Copilot chat workflow in Venom:
    ```
 3. Use the local Copilot lane for a normal chat turn:
    ```bash
-   make local-first-codex MODEL=qwen3.5:9b PROMPT='Powiedz tylko OK.'
+   make local-first-codex MODEL=qwen2.5-coder:7b PROMPT='Powiedz tylko OK.'
    ```
 4. Use the repo-truth lane when the answer must reflect the live repository state:
    ```bash
-   make local-first-repo-truth-agent MODEL=qwen3.5:9b PROMPT='Przeanalizuj stan repo i podaj kolejny krok.'
+   make local-first-repo-truth-agent MODEL=qwen2.5-coder:7b PROMPT='Przeanalizuj stan repo i podaj kolejny krok.'
    ```
 5. If you need the full runtime contract, continue in `CHAT_SESSION.md`.
 
@@ -38,6 +38,7 @@ Rule of thumb:
 
 - use `local-first-codex` for a regular chat turn,
 - use `local-first-repo-truth-agent` when the answer depends on `git status` / `git diff`,
+- if you intentionally want `qwen3.5:9b`, install it first in Ollama and pass `MODEL=qwen3.5:9b`,
 - keep VS Code Agent-mode on the local-first model contract (`chat.model=qwen3.5:9b`, `chat.utilityModel=qwen3:4b`),
 - use `CHAT_SESSION.md` when you need routing, session, or lifecycle detail.
 

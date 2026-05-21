@@ -56,13 +56,14 @@
       "domain": "api",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
-        "release",
-        "new-code"
+        "new-code",
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/api/test_memory_api_pruning.py",
@@ -480,20 +481,6 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_adapter_runtime_service.py",
-      "domain": "academy",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Direct module-name fallback entrypoint for changed-lines coverage gate."
-    },
-    {
       "path": "tests/test_academy_api.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -718,6 +705,20 @@
     {
       "path": "tests/test_adapter_audit_service.py",
       "domain": "audit",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_adapter_runtime_service.py",
+      "domain": "runtime",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -2470,12 +2471,13 @@
       "domain": "skills",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed frequently in operator/repo-truth slices; keep in new-code and release lanes."
     },
     {
       "path": "tests/test_git_skill_roi.py",
@@ -2877,12 +2879,13 @@
       "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed frequently in operator/repo-truth slices; keep in new-code and release lanes."
     },
     {
       "path": "tests/test_intent_embedding_router.py",
@@ -5155,7 +5158,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "CI-lite coverage for changed-scope runtime controller API checks."
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_runtime_controller_roi.py",
@@ -5296,13 +5299,14 @@
       "domain": "runtime",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
-        "release",
-        "new-code"
+        "new-code",
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_scenario_weaver.py",
@@ -6003,7 +6007,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Fast deterministic regression check for Toolmaker branches required by new-code coverage floor and CI-lite lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_tracer.py",

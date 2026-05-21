@@ -63,7 +63,7 @@ async def test_integrator_agent_process(integrator_agent):
 @pytest.mark.asyncio
 async def test_integrator_agent_repo_truth_fast_path(integrator_agent):
     """Repo-truth prompt powinien ominąć LLM i zwrócić evidence ze statusu git."""
-    integrator_agent.git_skill.get_short_status = AsyncMock(
+    integrator_agent._invoke_git_tool = AsyncMock(
         return_value="## main...origin/main\n M test.py\n?? new.txt"
     )
 
@@ -76,6 +76,7 @@ async def test_integrator_agent_repo_truth_fast_path(integrator_agent):
     assert "## main...origin/main" in result
     assert "Interpretacja:" in result
     assert "git diff --shortstat" in result
+    integrator_agent._invoke_git_tool.assert_awaited_once_with("get_short_status")
     mock_chat.assert_not_called()
 
 

@@ -17,9 +17,9 @@ Zapewnia deterministyczne wykonanie `git status --short --branch` zamiast teksto
 
 Participant wykona lokalnie `git status --short --branch` w katalogu workspace i zwroci output jako blok `bash`.
 
-W aktualnej implementacji participant wywoluje lokalny tool `venom.runCommand` przez VS Code Language Model Tool API (`lm.invokeTool`), co wymusza przejscie przez execution layer zamiast samego tekstu modelu.
+W aktualnej implementacji participant wywoluje lokalny tool `run_git_status` przez VS Code Language Model Tool API (`lm.invokeTool`), co wymusza przejscie przez execution layer zamiast samego tekstu modelu.
 
-Domyslnie extension wykonuje komendy w `venom.execution.repoRoot` (`/home/ubuntu/venom`) i zwraca `REPO_ROOT=...` w output, zeby uniknac falszywych wynikow z niewlasciwego katalogu.
+Domyslnie extension probuje wykryc katalog repo z aktywnego workspace. Jesli ustawisz `venom.execution.repoRoot`, to wymusi wykonanie komendy w podanej sciezce i zwroci `REPO_ROOT=...` w output.
 
 ## Dlaczego to dziala
 

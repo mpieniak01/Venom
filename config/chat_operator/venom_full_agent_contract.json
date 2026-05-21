@@ -1,6 +1,6 @@
 {
   "agent_name": "Venom Full Agent",
-  "model": "qwen2.5-coder:7b",
+  "model": "qwen3.5:9b",
   "primary_surface": "main-vscode-window",
   "agents_window_policy": "review-only",
   "background_handoff": "copilot-cli-worktree",

@@ -208,19 +208,22 @@ Akcja: get_current_branch()"""
 
     async def _process_repo_truth_request(self, input_text: str) -> str:
         _ = input_text
-        short_status = await self.git_skill.get_short_status()
+        short_status = await self._invoke_git_tool("get_short_status")
         lowered = short_status.lower()
         if (
             short_status.startswith("❌")
             or short_status.startswith("⚠️")
             or "nie jest repozytorium git" in lowered
         ):
-            return f"Blad wykonania: {short_status}"
+            return f"❌ Błąd wykonania: {short_status}"
         normalized_lines = [
             line.strip() for line in short_status.splitlines() if line.strip()
         ]
         if normalized_lines and not normalized_lines[0].startswith("##"):
-            return f"Blad wykonania: nieoczekiwany format odpowiedzi git status: {short_status}"
+            return (
+                "❌ Błąd wykonania: nieoczekiwany format odpowiedzi git status: "
+                f"{short_status}"
+            )
         return self._format_repo_truth_report(short_status)
 
     async def _invoke_git_tool(

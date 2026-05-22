@@ -111,7 +111,7 @@ function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number
     listeners: new Set(),
     fetching: false,
   };
-  pollingRegistry.set(key, entry as PollingEntry<unknown>);
+  pollingRegistry.set(key, entry);
   triggerFetch(entry);
   return entry;
 }

@@ -20,9 +20,12 @@ Current development line: v1.9.0. v1.8 remains the last stable release line whil
 
 It is not a black box. You get explicit process control (Workflow Control Plane), transparent runtime decisions, and full request-level audit trails. You can also choose between three model stacks: `ONNX`, `vLLM`, `Ollama`, depending on hardware, cost, and latency goals.
 
+Venom also ships its own LLM daemon for Gemma4, so text and audio are handled inside one controlled runtime instead of being split across unrelated tools. That matters operationally because the same daemon can serve the multimodal voice flow, keep reasoning summaries and response formatting under one policy, and fall back cleanly to the stable Whisper/LLM/Piper path when native audio is not available.
+
 ## Why Venom
 - Local-first by default, cloud when needed: keep data and inference local instead of pushing everything to SaaS.
 - Three runtime stacks (`ONNX` / `vLLM` / `Ollama`): pick the best fit for your hardware and latency/cost target.
+- Own LLM daemon for Gemma4: keep text and audio in one multimodal runtime with deterministic fallback, simpler operations, and a clearer voice product story.
 - Process control instead of hidden behavior: Workflow Control Plane shows what runs, what is active, and what changes.
 - Transparency and auditability: request tracing exposes decisions, steps, and outcomes end-to-end.
 - Memory and lessons learned: knowledge persists beyond a single chat session.
@@ -67,7 +70,7 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - [Backend architecture](docs/BACKEND_ARCHITECTURE.md) - Backend modules, responsibilities, and component flows.
 - [Hybrid AI engine](docs/HYBRID_AI_ENGINE.md) - LOCAL/HYBRID/CLOUD routing and local-first policy.
 - [Workflow Control](docs/THE_WORKFLOW_CONTROL.md) - Workflow control model, operations, and guardrails.
-- [Voice runtime capabilities](docs/VOICE_RUNTIME_CAPABILITIES.md) - Current voice loop status and multimodal capability strategy for `ollama`/`vllm`/`onnx`.
+- [Voice runtime capabilities](docs/VOICE_RUNTIME_CAPABILITIES.md) - Current voice loop status, including the stable Whisper/LLM/Piper fallback and the Gemma4 native-audio two-step path.
 
 ### Agents and capabilities
 - [System agents catalog](docs/SYSTEM_AGENTS_CATALOG.md) - Agent roles, inputs/outputs, and runtime cooperation.

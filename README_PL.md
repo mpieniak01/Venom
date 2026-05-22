@@ -20,9 +20,12 @@ Aktualna linia rozwoju: v1.9.0. v1.8 pozostaje ostatnią stabilną linią, a ten
 
 To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (Workflow Control Plane), przejrzyste decyzje runtime i pełny ślad audytowy requestów. Do tego 3 stosy modeli do wyboru: `ONNX`, `vLLM`, `Ollama` - zależnie od sprzętu, kosztu i celu.
 
+Venom dostarcza też własnego demona LLM dla Gemma4, więc tekst i audio są obsługiwane w jednym kontrolowanym runtime zamiast być rozrzucone po kilku narzędziach. Operacyjnie daje to jedną multimodalną ścieżkę voice, spójne zasady dla podsumowań i formatowania odpowiedzi oraz bezpieczny fallback do stabilnego toru Whisper/LLM/Piper, gdy natywne audio nie jest dostępne.
+
 ## Dlaczego Venom
 - Local-first z opcją cloud: dane i inferencja mogą zostać lokalnie, a nie w zewnętrznym SaaS.
 - Trzy runtime do wyboru (`ONNX` / `vLLM` / `Ollama`): dobierasz stos pod sprzęt i wymagany latency/cost.
+- Własny demon LLM dla Gemma4: jedna multimodalna ścieżka dla tekstu i audio, prostsza operacja i czytelniejszy produkt voice z deterministycznym fallbackiem.
 - Sterowanie procesem zamiast "magii": Workflow Control Plane pokazuje co działa, co jest aktywne i co się zmienia.
 - Transparentność i audyt: request tracing pokazuje decyzje, kroki i wyniki end-to-end.
 - Pamięć i lessons learned: wiedza nie znika po jednym czacie, tylko wraca w kolejnych zadaniach.
@@ -66,7 +69,7 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md) - Moduły backendu, odpowiedzialności i przepływy między komponentami.
 - [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md) - Zasady routingu LOCAL/HYBRID/CLOUD i polityki local-first.
 - [Workflow Control](docs/PL/THE_WORKFLOW_CONTROL.md) - Model sterowania workflow, operacje i reguły kontroli wykonania.
-- [Możliwości runtime voice](docs/PL/VOICE_RUNTIME_CAPABILITIES.md) - Aktualny status pętli głosowej i strategia multimodal dla `ollama`/`vllm`/`onnx`.
+- [Możliwości runtime voice](docs/PL/VOICE_RUNTIME_CAPABILITIES.md) - Aktualny status pętli głosowej, w tym stabilny fallback Whisper/LLM/Piper oraz dwuetapowa ścieżka natywna Gemma4.
 
 ### Agenci i funkcje
 - [Katalog agentów systemu](docs/PL/SYSTEM_AGENTS_CATALOG.md) - Opis ról agentów, ich wejść/wyjść i współpracy w runtime.

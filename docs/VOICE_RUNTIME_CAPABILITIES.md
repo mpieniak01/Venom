@@ -16,6 +16,13 @@ Current production-safe path:
 5. TTS uses Piper when a voice model is available,
 6. `/voice` shows the transcript, response, recording link, timings, quality metrics, and runtime snapshot.
 
+Two operational answer tracks are now documented explicitly:
+
+1. text-only fallback path: `whisper_llm_piper` - Whisper transcribes the audio, the active text model generates the answer from text, and Piper speaks the response,
+2. Gemma4 native-audio path: `multi_runtime_piper` - Gemma4 receives audio directly, returns the transcription plus response text, and Piper speaks that response,
+3. both tracks end in the same TTS layer, so spoken output stays consistent even when the answer source changes,
+4. when the native path is not selected or fails health checks, the backend falls back to the text-only track and records the fallback reason in session metadata.
+
 The current branch also treats the voice orb as a dedicated UI stack, not a loose widget:
 
 1. `VoiceCommandCenter` owns the `/voice` screen state and wires the orb into the rest of the page,

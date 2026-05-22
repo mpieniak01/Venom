@@ -123,6 +123,7 @@ From repository root, you can use:
 ### 0.6 Voice screen and `react-three` orb stack
 - `web-next/components/voice/*` is the dedicated voice surface for `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, `VoiceOrb3D`, dialog windows, metrics hooks, and orb-specific overlays.
 - The orb now has a `react-three` rendering path (`VoiceOrb3D` with `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) plus a CSS fallback when WebGL or 3D mode is unavailable.
+- The `/voice` status panels should make the active audio route explicit: `whisper_llm_piper` for the stable text-only path and `multi_runtime_piper` for the Gemma4 native-audio path, including the fallback reason when the native route is not used.
 - `web-next/tests/voice-orb.spec.ts` covers `/voice` layout stability and orb visibility in smoke-style Playwright checks.
 - Frontend helper scripts that matter for this stack live in `web-next/scripts/`:
   - `run-e2e.mjs`

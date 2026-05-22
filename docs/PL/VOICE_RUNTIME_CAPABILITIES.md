@@ -16,6 +16,13 @@ Aktualna bezpieczna ścieżka produkcyjna:
 5. TTS wykonuje Piper, jeśli model głosu jest dostępny,
 6. `/voice` pokazuje transkrypcję, odpowiedź, link do nagrania, czasy, metryki jakości i snapshot runtime.
 
+Dwa operacyjne tory odpowiedzi są teraz opisane wprost:
+
+1. tekstowy fallback `whisper_llm_piper` - Whisper robi transkrypcję, aktywny model tekstowy generuje odpowiedź z tekstu, a Piper odczytuje wynik,
+2. natywny tor Gemma4 `multi_runtime_piper` - Gemma4 dostaje audio bezpośrednio, zwraca transkrypcję i tekst odpowiedzi, a Piper odczytuje tę odpowiedź,
+3. oba tory kończą się w tej samej warstwie TTS, więc efekt głosowy pozostaje spójny nawet wtedy, gdy zmienia się źródło odpowiedzi,
+4. gdy tor natywny nie jest wybrany albo nie przechodzi health check, backend wraca do toru tekstowego i zapisuje powód fallbacku w metadanych sesji.
+
 Ta gałąź traktuje też orb voice jako osobny stos UI, a nie luźny widget:
 
 1. `VoiceCommandCenter` zarządza stanem ekranu `/voice` i podpina orb do reszty strony,

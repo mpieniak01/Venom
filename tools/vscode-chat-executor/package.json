@@ -119,7 +119,7 @@
       {
         "name": "venom_exec_safe",
         "displayName": "Venom Exec Safe",
-        "modelDescription": "Run a safe, allowed command (pytest, make test-*, ruff check, mypy, npm test) in the workspace. Requires venom.execution.allowExec=true in settings.",
+        "modelDescription": "Run a safe, allowed command (pytest, ruff check, mypy, npm test, or documented Makefile test targets) in the workspace. Requires venom.execution.allowExec=true in settings.",
         "userDescription": "Run a safe test/lint command in the workspace (requires allowExec=true).",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "venom-exec",
@@ -153,7 +153,7 @@
         "venom.execution.allowExec": {
           "type": "boolean",
           "default": false,
-          "description": "Allow @venom-agent to execute safe commands (pytest, ruff, mypy, make test-*). Disabled by default for safety."
+          "description": "Allow @venom-agent to execute safe commands (pytest, ruff, mypy, npm test, or documented Makefile test targets). Disabled by default for safety."
         },
         "venom.execution.maxIterations": {
           "type": "number",

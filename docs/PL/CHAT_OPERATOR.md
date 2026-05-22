@@ -55,7 +55,7 @@ Uruchamia ograniczoną pętlę agentic na toolach dostępnych w workspace:
 Uwagi o zachowaniu:
 
 - `venom_git_status` może wykonać komendy git poza krótką allowlistą po jawnej modalnej zgodzie.
-- `venom_exec_safe` jest opt-in i ograniczony do `pytest`, `make test-*`, `ruff check`, `mypy` i `npm test`.
+- `venom_exec_safe` jest opt-in i ograniczony do `pytest`, `ruff check`, `mypy`, `npm test` oraz udokumentowanych targetów testowych Makefile widocznych w `make local-first-help`, takich jak `test`, `test-web-unit`, `test-web-e2e`, `test-web-turbo-smoke` i `test-web-turbo-smoke-clean`.
 - `@venom-agent` jest przydatny do repo-truth, search i wąskiego test/lint exec, ale nie jest ogólnym nieograniczonym shellem.
 
 ## Troubleshooting Copilot Agent (surowy JSON zamiast wykonania narzedzia)

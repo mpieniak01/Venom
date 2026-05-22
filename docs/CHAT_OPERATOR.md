@@ -55,7 +55,7 @@ It runs a bounded agentic loop over workspace-local tools:
 Behavior notes:
 
 - `venom_git_status` accepts git commands outside the short allowlist after explicit modal confirmation.
-- `venom_exec_safe` is opt-in and limited to `pytest`, `make test-*`, `ruff check`, `mypy`, and `npm test`.
+- `venom_exec_safe` is opt-in and limited to `pytest`, `ruff check`, `mypy`, `npm test`, and the documented Makefile test targets exposed through `make local-first-help` such as `test`, `test-web-unit`, `test-web-e2e`, `test-web-turbo-smoke`, and `test-web-turbo-smoke-clean`.
 - `@venom-agent` is useful for repo-truth, search, and narrow test/lint execution, but it is not a general unrestricted shell.
 
 ## Copilot Agent troubleshooting (raw JSON instead of tool execution)

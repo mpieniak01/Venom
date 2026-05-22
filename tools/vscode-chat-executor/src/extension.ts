@@ -232,7 +232,7 @@ async function execSafe(cwd: string, command: string): Promise<string> {
       (bin === 'ruff' && args.length >= 1 && args[0] === 'check')
     );
   if (!allowed) {
-    return `Komenda nie jest na liście dozwolonych: "${norm}". Dozwolone: pytest, make test-*, ruff check, mypy.`;
+    return `Komenda nie jest na liście dozwolonych: "${norm}". Dozwolone: pytest, ruff check, mypy, npm test oraz udokumentowane targety testowe Makefile.`;
   }
   try {
     const { stdout, stderr } = await execFileAsync(bin, args, { cwd, timeout: 30_000 });

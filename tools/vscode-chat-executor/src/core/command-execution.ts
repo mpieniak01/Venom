@@ -34,7 +34,7 @@ export function resolveWorkspacePath(root: string, inputPath: string): string | 
 
 export function buildSystemPrompt(cwd: string, allowExec: boolean): string {
   const execNote = allowExec
-    ? "Możesz uruchamiać komendy przez venom_exec_safe (pytest, make test-*, ruff, mypy)."
+    ? "Możesz uruchamiać komendy przez venom_exec_safe (pytest, ruff, mypy, npm test oraz udokumentowane targety testowe Makefile)."
     : "Wykonanie komend shell jest wyłączone (venom.execution.allowExec=false).";
   return [
     `Jesteś asystentem programisty Venom dla projektu w workspace: ${cwd}.`,

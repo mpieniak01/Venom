@@ -21,7 +21,7 @@ describe("app meta bootstrap", () => {
 
   it("returns merged bootstrap meta when payload is present", () => {
     (globalThis as { __VENOM_APP_META__?: unknown }).__VENOM_APP_META__ = {
-      version: "1.8.0",
+      version: "1.9.0",
       commit: "abc123",
       environmentRole: "pre-prod",
       appName: "Venom Cockpit",
@@ -29,7 +29,7 @@ describe("app meta bootstrap", () => {
 
     const value = resolveBootstrappedMeta();
     assert.ok(value);
-    assert.equal(value?.version, "1.8.0");
+    assert.equal(value?.version, "1.9.0");
     assert.equal(value?.commit, "abc123");
     assert.equal(value?.environmentRole, "preprod");
     assert.equal(value?.appName, "Venom Cockpit");

@@ -259,13 +259,14 @@ Default tags:
 - on release tag: `<git_tag>` + `latest`
 - manual run: optional `custom_tag` (+ optional `latest`)
 
-Example release flow (current stable: `v1.8.0`):
+Example release flow (current stable: `v1.9.0`):
 ```bash
 git checkout main
 git pull --ff-only
-git tag v1.8.0
-git push origin v1.8.0
+git tag v1.9.0
+git push origin v1.9.0
 ```
+Note: the publish workflows validate full semver tags. `v1.9` is rejected.
 
 ## Post-Deployment Tests
 

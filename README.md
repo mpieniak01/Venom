@@ -1,4 +1,4 @@
-# Venom v1.9 🐍
+# Venom v1.9.0 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -16,7 +16,7 @@
 
 Current environment recommendation: use `dev` and `preprod`. `prod` is still planned and not yet validated/recommended for live operation.
 
-Current development line: v1.9. v1.8 remains the last stable release line while this README now reflects the delivered 1.9 scope.
+Current development line: v1.9.0. v1.8 remains the last stable release line while this README now reflects the delivered 1.9 scope.
 
 It is not a black box. You get explicit process control (Workflow Control Plane), transparent runtime decisions, and full request-level audit trails. You can also choose between three model stacks: `ONNX`, `vLLM`, `Ollama`, depending on hardware, cost, and latency goals.
 
@@ -41,7 +41,7 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - 🔍 **Transparency and full auditability** - end-to-end trace of decisions, actions, and outcomes for operational trust, compliance, and faster incident review.
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
-## What changed for v1.9
+## What changed for v1.9.0
 - Added `@venom-agent`, the local VS Code participant with a bounded tool loop over repo-truth git, code search, file context, and opt-in safe exec. Business value: faster repo-truth answers and fewer manual back-and-forth turns.
 - Added `LocalAgentCLI`, `OllamaAgentLoop`, and `CodeIndexSkill` so local-agent execution and intent routing are repeatable from code and `make` targets. Business value: operator flows now have a durable, scripted control surface.
 - Added two dedicated screens: `/voice` for multimodal voice workflows and `/inspector/model-introspection` for split answer/internals review. Business value: less context switching and cleaner diagnosis.
@@ -457,7 +457,7 @@ make check-new-code-coverage
 - [x] Improved release predictability through stronger quality gates and explicit operational rollout-readiness validation.
 - [x] Increased team delivery throughput with fewer ad-hoc exceptions, more consistent flows, and cleaner ownership handovers.
 
-### ✅ v1.9 (delivered)
+### ✅ v1.9.0 (delivered)
 - [x] Workspace-local chat operator lane with `@venom-agent`, repo-truth, search/read, and safe exec.
 - [x] Full-agent handoff and debug contract for multi-step tool loops.
 - [x] Decision gates, workspace-context probes, and operator/utility model split.

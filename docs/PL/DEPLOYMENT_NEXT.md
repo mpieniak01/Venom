@@ -259,13 +259,14 @@ Domyślne tagi:
 - na tagu release: `<git_tag>` + `latest`
 - przy uruchomieniu ręcznym: opcjonalny `custom_tag` (+ opcjonalny `latest`)
 
-Przykładowy flow release (aktualny stable: `v1.8.0`):
+Przykładowy flow release (aktualny stable: `v1.9.0`):
 ```bash
 git checkout main
 git pull --ff-only
-git tag v1.8.0
-git push origin v1.8.0
+git tag v1.9.0
+git push origin v1.9.0
 ```
+Uwaga: workflow publikacji sprawdza pełny semver. `v1.9` zostanie odrzucony.
 
 ## Testy po wdrożeniu
 

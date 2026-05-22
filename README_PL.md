@@ -1,4 +1,4 @@
-# Venom v1.9 🐍
+# Venom v1.9.0 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -16,7 +16,7 @@
 
 Aktualna rekomendacja środowiskowa: używaj `dev` i `preprod`. `prod` jest nadal etapem planowanym i nie jest jeszcze zwalidowane/rekomendowane do działania live.
 
-Aktualna linia rozwoju: v1.9. v1.8 pozostaje ostatnią stabilną linią, a ten README opisuje już dowieziony zakres 1.9.
+Aktualna linia rozwoju: v1.9.0. v1.8 pozostaje ostatnią stabilną linią, a ten README opisuje już dowieziony zakres 1.9.
 
 To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (Workflow Control Plane), przejrzyste decyzje runtime i pełny ślad audytowy requestów. Do tego 3 stosy modeli do wyboru: `ONNX`, `vLLM`, `Ollama` - zależnie od sprzętu, kosztu i celu.
 
@@ -40,7 +40,7 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - 🔍 **Transparentność i pełna audytowalność** - śledzenie end-to-end decyzji, działań i wyników dla zaufania operacyjnego, compliance oraz szybszej analizy incydentów.
 - 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
 
-## Co zmieniło się w 1.9
+## Co zmieniło się w 1.9.0
 - Dodano `@venom-agent`, lokalny participant VS Code z ograniczoną pętlą narzędzi dla repo-truth, wyszukiwania kodu, kontekstu plików i opcjonalnego safe exec. Wartość biznesowa: szybsze odpowiedzi repo-truth i mniej ręcznych iteracji.
 - Dodano `LocalAgentCLI`, `OllamaAgentLoop` i `CodeIndexSkill`, żeby lokalne wykonanie agenta i routing intencji były powtarzalne z kodu i targetów `make`. Wartość biznesowa: operacyjne flow ma trwały, skryptowalny panel sterowania.
 - Dodano dwa dedykowane ekrany: `/voice` dla multimodalnej pracy głosowej i `/inspector/model-introspection` dla rozdzielonego review odpowiedzi i internals. Wartość biznesowa: mniej przełączania kontekstu i czytelniejsza diagnostyka.
@@ -460,7 +460,7 @@ make check-new-code-coverage
 - [x] Zwiększono przewidywalność wydań i wdrożeń dzięki mocniejszym bramkom jakości oraz operacyjnej walidacji gotowości rollout.
 - [x] Ułatwiono skalowanie pracy zespołu: mniej wyjątków ad-hoc, bardziej jednolite procesy i szybsze przekazywanie odpowiedzialności między rolami.
 
-### ✅ v1.9 (dostarczone)
+### ✅ v1.9.0 (dostarczone)
 - [x] Lokalny lane operatora czatu z `@venom-agent`, repo-truth, search/read i safe exec.
 - [x] Kontrakt pełnego agenta dla handoffów i wieloetapowych pętli narzędzi.
 - [x] Decision gates, probe'y workspace context i podział operator/utility model.

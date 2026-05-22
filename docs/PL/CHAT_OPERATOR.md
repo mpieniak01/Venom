@@ -42,6 +42,22 @@ Zasada praktyczna:
 - dla Agent-mode w VS Code trzymaj lokalny kontrakt modeli (`chat.model=qwen3.5:9b`, `chat.utilityModel=qwen3:4b`),
 - `CHAT_SESSION.md` gdy potrzebujesz routingu, sesji lub szczegółów cyklu życia.
 
+## Venom Agent (`@venom-agent`)
+
+`@venom-agent` to lokalny participant czatu VS Code z `tools/vscode-chat-executor`.
+Uruchamia ograniczoną pętlę agentic na toolach dostępnych w workspace:
+
+- `venom_git_status` dla komend git read-only,
+- `venom_search_code` dla wyszukiwania kodu przez ripgrep,
+- `venom_read_file` dla kontekstu plików po liniach,
+- `venom_exec_safe` gdy `venom.execution.allowExec=true`.
+
+Uwagi o zachowaniu:
+
+- `venom_git_status` może wykonać komendy git poza krótką allowlistą po jawnej modalnej zgodzie.
+- `venom_exec_safe` jest opt-in i ograniczony do `pytest`, `make test-*`, `ruff check`, `mypy` i `npm test`.
+- `@venom-agent` jest przydatny do repo-truth, search i wąskiego test/lint exec, ale nie jest ogólnym nieograniczonym shellem.
+
 ## Troubleshooting Copilot Agent (surowy JSON zamiast wykonania narzedzia)
 
 - Upewnij sie, ze `chat.tools.terminal.autoApprove` dopuszcza bezpieczne komendy read-only git (`git status`, `git diff --shortstat`, `git branch --show-current`, `git rev-parse --short HEAD`).
@@ -74,6 +90,11 @@ Wymagana naprawa operatorska w sesji VS Code:
    - Chat Debug View,
    i sprawdz, czy realny tool-call zostal wywolany czy pominiety.
 
+Pamietaj, ze `@venom-agent` nie jest ograniczony do krótkiej read-only allowlisty git:
+
+- komendy git poza allowlistą mogą być uruchomione po jawnej zgodzie,
+- arbitralny shell nadal jest blokowany, chyba że `venom.execution.allowExec=true` i komenda należy do wąskiego safe-exec subsetu.
+
 Gdy tool jest pomijany:
 
 - traktuj turn jako `tool_unavailable_or_unsupported_session`;
@@ -84,6 +105,7 @@ Gdy tool jest pomijany:
 | Powierzchnia lub intencja | Co robi | Uwagi |
 | --- | --- | --- |
 | Chat Cockpit | Ogólna rozmowa z asystentem w UI | Domyślna powierzchnia konwersacyjna |
+| `@venom-agent` | Lokalny participant VS Code oparty o `tools/vscode-chat-executor` | Toolsy workspace, ograniczona pętla i opcjonalny safe exec |
 | `GENERAL_CHAT` | Odpowiedzi operacyjne, stan repo, API, docs, skrypty | Idzie do LLM, jeśli nie jest wymagany tool |
 | Akcje pamięci | `recall()` i `memorize()` przez `MemorySkill` | Używane dla preferencji i trwałych faktów |
 | Akcje kalendarza | `read_agenda()` i `schedule_task()` przez `GoogleCalendarSkill` | Opcjonalne, nie jest to główny temat czatu |

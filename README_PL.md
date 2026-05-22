@@ -1,4 +1,4 @@
-# Venom v1.8 🐍
+# Venom v1.9 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -16,6 +16,8 @@
 
 Aktualna rekomendacja środowiskowa: używaj `dev` i `preprod`. `prod` jest nadal etapem planowanym i nie jest jeszcze zwalidowane/rekomendowane do działania live.
 
+Aktualna linia rozwoju: v1.9. v1.8 pozostaje ostatnią stabilną linią, a ten README opisuje już dowieziony zakres 1.9.
+
 To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (Workflow Control Plane), przejrzyste decyzje runtime i pełny ślad audytowy requestów. Do tego 3 stosy modeli do wyboru: `ONNX`, `vLLM`, `Ollama` - zależnie od sprzętu, kosztu i celu.
 
 ## Dlaczego Venom
@@ -28,7 +30,8 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - Mierzalne bramki jakości w CI: SonarCloud, Snyk i kontrakt OpenAPI działają jako jawne sygnały jakości.
 
 ## Kluczowe możliwości
-- 🤖 **Orkiestracja agentów** - planowanie i wykonanie zadań przez wyspecjalizowane role.
+- 🤖 **Orkiestracja agentów i lane operatora** - planowanie, wykonanie oraz lokalne pętle agentowe VS Code.
+- 🖥️ **Dedykowane ekrany operatora** - voice i model-introspection rozdzielają interakcję multimodalną od diagnostyki.
 - 🧭 **Hybrydowy runtime modeli (3-stack)** - przełączanie Ollama / vLLM / ONNX + cloud z podejściem local-first.
 - 🔎 **Introspekcja modelu** - osobny ekran dla odpowiedzi, internals, `analysis_capabilities` i gates gotowosci probe.
 - 💾 **Pamięć i wiedza** - utrwalanie kontekstu, lessons learned i ponowne użycie wiedzy.
@@ -37,24 +40,14 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - 🔍 **Transparentność i pełna audytowalność** - śledzenie end-to-end decyzji, działań i wyników dla zaufania operacyjnego, compliance oraz szybszej analizy incydentów.
 - 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
 
-## Ostatnie zmiany (2026-05)
-- Dodano osobny ekran introspekcji modelu pod `/inspector/model-introspection`.
-- Rozdzielono `answer verdict` i `internals verdict`, tak aby jakosc odpowiedzi nie mieszała sie ze stanem probe.
-- Wprowadzono `analysis_capabilities` dla runtime/probe, w tym `model_whitelisted` i limity probe.
-- Timeline pokazuje osobne sciezki `answer_path` i `internals_path`.
-- Dodano progi gotowosci i gates SLO dla probe oraz dokumentacje operacyjna w `docs/PL/MODEL_INTROSPECTION_GUIDE.md`.
-
-## Ostatnie wdrożenia (2026-03, v1.8)
-- Global Policy Gate działa jako jeden centralny checkpoint runtime w przepływie orchestratora (`global_pre_execution`).
-- Ujednolicono kontrakt blokad policy/autonomy (`reason_code`, `user_message`, `technical_context`, `remediation_hint`) oraz zapis audytowy.
-- Dodano endpointy operacyjne dla rollout i KPI policy:
-  - `GET /api/v1/system/autonomy/rollout-status`
-  - `GET /api/v1/system/autonomy/observability`
-- Dostarczono skrypt walidacji rollout: `scripts/ops/verify_policy_rollout.py`.
-- Uproszczono ścieżkę wykonawczą do governance runtime-only (usunięto legacy submit-level policy block ze ścieżki wykonania).
-- Rozszerzono UI `/config` o zakładkę `Uprawnienia` i sterowanie autonomią/audytem na tym samym strumieniu zdarzeń.
-- Domknięto E2E ścieżkę direct deploy ONNX w Academy dla Gemma-3 LoRA (`merge_export -> activate -> inference -> deactivate`) z walidacją live i artefaktami.
-- Podniesiono rekomendowany profil WSL2 dla Academy ONNX E2E na hostach 32 GB / 12 GB do `memory=30GB`, `swap=16GB` (szczegóły: `docs/PL/RUNTIME_PROFILES.md`).
+## Co zmieniło się w 1.9
+- Dodano `@venom-agent`, lokalny participant VS Code z ograniczoną pętlą narzędzi dla repo-truth, wyszukiwania kodu, kontekstu plików i opcjonalnego safe exec. Wartość biznesowa: szybsze odpowiedzi repo-truth i mniej ręcznych iteracji.
+- Dodano `LocalAgentCLI`, `OllamaAgentLoop` i `CodeIndexSkill`, żeby lokalne wykonanie agenta i routing intencji były powtarzalne z kodu i targetów `make`. Wartość biznesowa: operacyjne flow ma trwały, skryptowalny panel sterowania.
+- Dodano dwa dedykowane ekrany: `/voice` dla multimodalnej pracy głosowej i `/inspector/model-introspection` dla rozdzielonego review odpowiedzi i internals. Wartość biznesowa: mniej przełączania kontekstu i czytelniejsza diagnostyka.
+- Dodano kontrakt pełnego agenta, handoffy do subagenta, oczekiwania dla debug logów / Chat Debug View i gate'y pętli tool-loop dla read/search/edit/terminal. Wartość biznesowa: ograniczone handoffy i lepsze evidence przy błędach.
+- Dodano podział operator/utility model, probe'owanie workspace context, rejestr stanu agenta i finalne decision gates. Wartość biznesowa: mniej błędów routingu i bardziej przewidywalny dobór modeli.
+- Rozszerzono introspekcję modelu o osobne verdicty dla odpowiedzi i internals, `analysis_capabilities` oraz progi gotowości/SLO. Wartość biznesowa: szybszy triage i jasne kryteria pass/fail.
+- Uszczelniono zarządzanie runtime/profile oraz diagnostykę voice/multimodal, żeby local-first workflow był bardziej deterministyczny i prostszy do walidacji. Wartość biznesowa: mniej tarcia przy setupie i odzyskiwaniu.
 
 ## Dokumentacja
 ### Start i operacje
@@ -63,6 +56,7 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - [Przewodnik Dashboard](docs/PL/DASHBOARD_GUIDE.md) - Uruchamianie panelu web, skrypty i przegląd cockpitu operacyjnego.
 - [Przewodnik introspekcji modelu](docs/PL/MODEL_INTROSPECTION_GUIDE.md) - Stan przejsciowy vs docelowy, `analysis_capabilities`, verdicty i gates SLO.
 - [Przewodnik użycia tooli](docs/PL/TOOLS_USAGE_GUIDE.md) - Routing slash tooli, zachowanie `forced_tool` i wymagania web-search w `.venv`.
+- [Workflow operatora czatu](docs/PL/CHAT_OPERATOR.md) - Local-first lane operatora, repo-truth, tool-loop i zasady safe exec.
 - [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) - Zakres ustawień dostępnych w UI i zasady bezpiecznej edycji.
 - [Frontend Next.js](docs/PL/FRONTEND_NEXT_GUIDE.md) - Struktura aplikacji `web-next`, widoki i standardy implementacyjne.
 - [Kontrola ruchu API](docs/PL/API_TRAFFIC_CONTROL.md) - Globalny model anti-spam/anti-ban dla ruchu inbound i outbound.
@@ -458,7 +452,7 @@ make check-new-code-coverage
 - [x] Domknięto falę hardeningu Academy/API (dekompozycja modułów, spójność kontraktów, bezpieczniejsze ścieżki upload/trening/historia).
 - [x] Sfinalizowano model pracy pre-prod na wspólnym stacku (separacja danych, podział `.env.dev`/`.env.preprod`, sterowanie Makefile, guard rails, backup/restore/smoke).
 
-### ✅ v1.8 (obecna)
+### ✅ v1.8 (fundament)
 - [x] Zmniejszono ryzyko nieautoryzowanego wykonania zadań i kosztów błędów operacyjnych dzięki jednolitym zasadom decyzji runtime.
 - [x] Skrócono czas diagnozy incydentów i blokad dzięki spójnemu feedbackowi, lepszej widoczności powodów decyzji i pełniejszemu audytowi.
 - [x] Zwiększono bezpieczeństwo automatyzacji działań na plikach i desktopie, co ogranicza liczbę awarii oraz ręcznych interwencji operatora.
@@ -466,13 +460,13 @@ make check-new-code-coverage
 - [x] Zwiększono przewidywalność wydań i wdrożeń dzięki mocniejszym bramkom jakości oraz operacyjnej walidacji gotowości rollout.
 - [x] Ułatwiono skalowanie pracy zespołu: mniej wyjątków ad-hoc, bardziej jednolite procesy i szybsze przekazywanie odpowiedzialności między rolami.
 
-### 🚧 v1.9 (planowane detale)
-- [ ] Odpytywanie w tle dla GitHub Issues.
-- [ ] Panel dashboardu dla integracji zewnętrznych.
-- [ ] Rekurencyjne streszczanie długich dokumentów.
-- [ ] Cache wyników wyszukiwania.
-- [ ] Walidacja i optymalizacja planu (UX).
-- [ ] Lepsze odzyskiwanie po błędach end-to-end.
+### ✅ v1.9 (dostarczone)
+- [x] Lokalny lane operatora czatu z `@venom-agent`, repo-truth, search/read i safe exec.
+- [x] Kontrakt pełnego agenta dla handoffów i wieloetapowych pętli narzędzi.
+- [x] Decision gates, probe'y workspace context i podział operator/utility model.
+- [x] Dedykowane ekrany voice i model-introspection.
+- [x] Gotowość introspekcji modelu, rozdzielone verdicty i gates SLO.
+- [x] Utwardzenie runtime/profile oraz diagnostyki voice/multimodal.
 
 ### 🔮 v2.0 (w przyszłości)
 - [ ] Obsługa webhooków GitHub.

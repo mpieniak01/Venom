@@ -1,4 +1,4 @@
-# Venom v1.8 🐍
+# Venom v1.9 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -16,6 +16,8 @@
 
 Current environment recommendation: use `dev` and `preprod`. `prod` is still planned and not yet validated/recommended for live operation.
 
+Current development line: v1.9. v1.8 remains the last stable release line while this README now reflects the delivered 1.9 scope.
+
 It is not a black box. You get explicit process control (Workflow Control Plane), transparent runtime decisions, and full request-level audit trails. You can also choose between three model stacks: `ONNX`, `vLLM`, `Ollama`, depending on hardware, cost, and latency goals.
 
 ## Why Venom
@@ -29,6 +31,8 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 
 ## Key capabilities
 - 🤖 **Agent orchestration** - planning and execution through specialized roles.
+- 🤖 **Agent orchestration and operator lanes** - planning, execution, and local VS Code agent loops.
+- 🖥️ **Dedicated operator screens** - voice and model-introspection screens split multimodal interaction from diagnostics.
 - 🧭 **Hybrid model runtime (3-stack)** - Ollama / vLLM / ONNX + cloud switching with local-first behavior.
 - 🔎 **Model introspection** - a dedicated screen for answers, internals, `analysis_capabilities`, and probe readiness gates.
 - 💾 **Memory and knowledge** - persistent context, lessons learned, and knowledge reuse.
@@ -37,24 +41,14 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - 🔍 **Transparency and full auditability** - end-to-end trace of decisions, actions, and outcomes for operational trust, compliance, and faster incident review.
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
-## Recent updates (2026-05)
-- Added a dedicated model-introspection screen at `/inspector/model-introspection`.
-- Separated `answer verdict` from `internals verdict` so answer quality is not mixed with probe state.
-- Introduced `analysis_capabilities` for runtime/probe readiness, including `model_whitelisted` and probe limits.
-- Timeline now exposes separate `answer_path` and `internals_path`.
-- Added readiness thresholds and SLO gates for probes plus the operational guide in `docs/MODEL_INTROSPECTION_GUIDE.md`.
-
-## Recent updates (2026-03, v1.8)
-- Global Policy Gate is active as one central runtime checkpoint in orchestrator flow (`global_pre_execution`).
-- Deny contract was unified across policy/autonomy (`reason_code`, `user_message`, `technical_context`, `remediation_hint`) with consistent audit eventing.
-- Operational endpoints for policy rollout and KPI were added:
-  - `GET /api/v1/system/autonomy/rollout-status`
-  - `GET /api/v1/system/autonomy/observability`
-- Rollout verification script was delivered: `scripts/ops/verify_policy_rollout.py`.
-- Runtime path was simplified to runtime-only governance (legacy submit-level policy block path removed from execution flow).
-- Permissions UI in `/config` was expanded with the `Permissions` tab and autonomy/audit controls aligned with the same audit stream.
-- Academy ONNX direct deploy path was closed end-to-end for Gemma-3 LoRA (`merge_export -> activate -> inference -> deactivate`) with live artifacted validation.
-- Recommended WSL2 profile for ONNX Academy E2E on 32 GB / 12 GB hosts was raised to `memory=30GB`, `swap=16GB` (see `docs/RUNTIME_PROFILES.md`).
+## What changed for v1.9
+- Added `@venom-agent`, the local VS Code participant with a bounded tool loop over repo-truth git, code search, file context, and opt-in safe exec. Business value: faster repo-truth answers and fewer manual back-and-forth turns.
+- Added `LocalAgentCLI`, `OllamaAgentLoop`, and `CodeIndexSkill` so local-agent execution and intent routing are repeatable from code and `make` targets. Business value: operator flows now have a durable, scripted control surface.
+- Added two dedicated screens: `/voice` for multimodal voice workflows and `/inspector/model-introspection` for split answer/internals review. Business value: less context switching and cleaner diagnosis.
+- Added the full-agent contract, subagent handoffs, debug-log / chat-debug expectations, and tool-loop gates for read/search/edit/terminal flows. Business value: bounded handoffs and clearer failure evidence.
+- Added the operator/utility model split, workspace-context probing, the agent-state registry, and final decision gates. Business value: fewer routing mistakes and more predictable model selection.
+- Expanded model introspection with separate answer/internals verdicts, `analysis_capabilities`, and readiness/SLO gates. Business value: quicker triage and clearer pass/fail criteria.
+- Tightened runtime/profile management and voice/multimodal diagnostics so local-first workflows are more deterministic and easier to validate. Business value: less operator friction during setup and recovery.
 
 ## Documentation
 ### Start and operations
@@ -63,6 +57,7 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - [Dashboard Guide](docs/DASHBOARD_GUIDE.md) - Web dashboard startup, scripts, and operational cockpit overview.
 - [Model Introspection Guide](docs/MODEL_INTROSPECTION_GUIDE.md) - Transitional vs target state, `analysis_capabilities`, verdicts, and SLO gates.
 - [Tools Usage Guide](docs/TOOLS_USAGE_GUIDE.md) - Slash-tool routing, tool behavior, and web-search runtime requirements.
+- [Chat operator workflow](docs/CHAT_OPERATOR.md) - Local-first operator lanes, repo-truth, tool-loop, and safe-exec rules.
 - [Configuration panel](docs/CONFIG_PANEL.md) - What can be edited from UI and safe editing rules.
 - [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md) - `web-next` structure, views, and implementation standards.
 - [API traffic control](docs/API_TRAFFIC_CONTROL.md) - Global anti-spam/anti-ban model for inbound and outbound API traffic.
@@ -454,7 +449,7 @@ make check-new-code-coverage
 - [x] Academy/API hardening wave completed (module decomposition, contract consistency, safer upload/training/history paths).
 - [x] Pre-prod operating model finalized on shared stack (data isolation, env split `.env.dev`/`.env.preprod`, Makefile control, guard rails, backup/restore/smoke).
 
-### ✅ v1.8 (current)
+### ✅ v1.8 (foundation)
 - [x] Reduced operational and compliance risk by enforcing one consistent decision model for runtime execution.
 - [x] Shortened incident triage time with clearer decision feedback, stronger audit visibility, and more actionable blocking context.
 - [x] Improved execution safety for file and desktop automation, reducing failure rate and manual operator intervention.
@@ -462,13 +457,13 @@ make check-new-code-coverage
 - [x] Improved release predictability through stronger quality gates and explicit operational rollout-readiness validation.
 - [x] Increased team delivery throughput with fewer ad-hoc exceptions, more consistent flows, and cleaner ownership handovers.
 
-### 🚧 v1.9 (planned details)
-- [ ] Background polling for GitHub Issues.
-- [ ] Dashboard panel for external integrations.
-- [ ] Recursive long-document summarization.
-- [ ] Search result caching.
-- [ ] Plan validation and optimization UX.
-- [ ] Better end-to-end error recovery.
+### ✅ v1.9 (delivered)
+- [x] Workspace-local chat operator lane with `@venom-agent`, repo-truth, search/read, and safe exec.
+- [x] Full-agent handoff and debug contract for multi-step tool loops.
+- [x] Decision gates, workspace-context probes, and operator/utility model split.
+- [x] Dedicated voice and model-introspection screens.
+- [x] Model-introspection readiness, verdict separation, and SLO gates.
+- [x] Runtime/profile hardening and voice/multimodal diagnostics.
 
 ### 🔮 v2.0 (future)
 - [ ] GitHub webhook handling.

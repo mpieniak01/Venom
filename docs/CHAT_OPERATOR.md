@@ -42,6 +42,22 @@ Rule of thumb:
 - keep VS Code Agent-mode on the local-first model contract (`chat.model=qwen3.5:9b`, `chat.utilityModel=qwen3:4b`),
 - use `CHAT_SESSION.md` when you need routing, session, or lifecycle detail.
 
+## Venom Agent (`@venom-agent`)
+
+`@venom-agent` is the local VS Code chat participant from `tools/vscode-chat-executor`.
+It runs a bounded agentic loop over workspace-local tools:
+
+- `venom_git_status` for read-only git commands,
+- `venom_search_code` for ripgrep-based code search,
+- `venom_read_file` for line-based file context,
+- `venom_exec_safe` when `venom.execution.allowExec=true`.
+
+Behavior notes:
+
+- `venom_git_status` accepts git commands outside the short allowlist after explicit modal confirmation.
+- `venom_exec_safe` is opt-in and limited to `pytest`, `make test-*`, `ruff check`, `mypy`, and `npm test`.
+- `@venom-agent` is useful for repo-truth, search, and narrow test/lint execution, but it is not a general unrestricted shell.
+
 ## Copilot Agent troubleshooting (raw JSON instead of tool execution)
 
 - Ensure `chat.tools.terminal.autoApprove` allows safe read-only git commands (`git status`, `git diff --shortstat`, `git branch --show-current`, `git rev-parse --short HEAD`).
@@ -74,6 +90,11 @@ Required operator fix in VS Code session:
    - Chat Debug View,
    and verify whether a real tool call was invoked or skipped.
 
+Keep in mind that `@venom-agent` is not limited to the short read-only git allowlist:
+
+- out-of-allowlist git commands can still run after explicit confirmation,
+- arbitrary shell execution stays gated behind `venom.execution.allowExec=true` and the narrow safe-exec subset.
+
 If tools are skipped:
 
 - treat the turn as `tool_unavailable_or_unsupported_session`;
@@ -84,6 +105,7 @@ If tools are skipped:
 | Surface or intent | What it does | Notes |
 | --- | --- | --- |
 | Cockpit chat | General assistant conversation in the UI | Default conversational surface |
+| `@venom-agent` | Local VS Code participant backed by `tools/vscode-chat-executor` | Workspace-local tools, bounded tool loop, and optional safe exec |
 | `GENERAL_CHAT` | Repo state, API scope, docs and scripts analysis | Routes to the LLM unless a tool is required |
 | Memory actions | `recall()` and `memorize()` through `MemorySkill` | Used for user preferences and persistent facts |
 | Calendar actions | `read_agenda()` and `schedule_task()` through `GoogleCalendarSkill` | Optional, not a primary chat topic |

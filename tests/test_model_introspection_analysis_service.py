@@ -495,6 +495,111 @@ async def test_analysis_stream_emits_failed_result_when_response_has_no_body_ite
 
 
 @pytest.mark.asyncio
+async def test_analysis_stream_emits_error_on_stream_consumption_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: content\ndata: {"text":"Slonce to "}\n\n',
+            ]
+        )
+
+    def _boom(**_kwargs):
+        raise RuntimeError("stream consumption exploded")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+    monkeypatch.setattr(analysis_service, "_consume_sse_events", _boom)
+
+    chunks: list[str] = []
+    async for chunk in analysis_service.stream_model_introspection_analysis(
+        prompt="Co to jest slonce?",
+        live_analysis_enabled=True,
+    ):
+        chunks.append(chunk)
+
+    events: list[tuple[str, str]] = []
+    for chunk in chunks:
+        events.extend(analysis_service.parse_sse_events(chunk))
+
+    event_names = [name for name, _ in events]
+    assert event_names[-2:] == ["error", "analysis_done"]
+    done_payload = json.loads(events[-1][1])
+    assert done_payload["status"] == "failed"
+    assert "stream consumption exploded" in done_payload["analysis"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_analysis_raises_when_stream_open_fails_with_non_degraded_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        raise RuntimeError("unexpected bootstrap failure")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+
+    with pytest.raises(RuntimeError, match="unexpected bootstrap failure"):
+        await analysis_service.analyze_model_with_optional_live_run(
+            prompt="Co to jest slonce?",
+            live_analysis_enabled=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_analysis_raises_when_stream_collection_fails_with_non_degraded_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_snapshot(**kwargs):
+        return _build_snapshot()
+
+    async def fake_stream_simple_chat(_request):
+        return _FakeStreamingResponse(
+            [
+                "event: start\ndata: {}\n\n",
+                'event: content\ndata: {"text":"Slonce to "}\n\n',
+            ]
+        )
+
+    async def fake_collect_streaming_response(_response):
+        raise RuntimeError("unexpected collection failure")
+
+    monkeypatch.setattr(
+        analysis_service,
+        "build_model_introspection_snapshot",
+        fake_snapshot,
+    )
+    monkeypatch.setattr(analysis_service, "stream_simple_chat", fake_stream_simple_chat)
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_streaming_response",
+        fake_collect_streaming_response,
+    )
+
+    with pytest.raises(RuntimeError, match="unexpected collection failure"):
+        await analysis_service.analyze_model_with_optional_live_run(
+            prompt="Co to jest slonce?",
+            live_analysis_enabled=True,
+        )
+
+
+@pytest.mark.asyncio
 async def test_analysis_stream_maps_traffic_control_degraded_to_skipped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

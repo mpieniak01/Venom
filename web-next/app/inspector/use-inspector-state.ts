@@ -39,8 +39,22 @@ function serializeMermaidError(error: unknown): string {
     } catch {
       return "[unserializable Mermaid error object]";
     }
+    return "[Mermaid error object]";
   }
-  return String(error ?? "unknown Mermaid render failure");
+  if (error == null) {
+    return "unknown Mermaid render failure";
+  }
+  switch (typeof error) {
+    case "string":
+      return error;
+    case "number":
+    case "boolean":
+    case "bigint":
+    case "symbol":
+      return String(error);
+    default:
+      return "unknown Mermaid render failure";
+  }
 }
 
 async function fetchFlowTraceWithTimeout(requestId: string, timeoutMs: number) {

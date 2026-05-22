@@ -2721,11 +2721,9 @@ async def stream_model_introspection_analysis(
             response_text="".join(content_parts),
         )
         if error_message is not None:
-            yield (
-                _serialize_sse_event(
-                    "error",
-                    {"code": "analysis_stream_failed", "message": error_message},
-                ),
+            yield _serialize_sse_event(
+                "error",
+                {"code": "analysis_stream_failed", "message": error_message},
             )
         yield _serialize_sse_event("analysis_done", done_payload)
         return

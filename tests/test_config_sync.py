@@ -58,8 +58,19 @@ def test_auto_sync_vllm(mock_config_manager):
     assert env_values["LLM_LOCAL_ENDPOINT"] == LOCALHOST_8001_V1
 
 
-def test_auto_sync_multi_runtime(mock_config_manager):
+def test_auto_sync_multi_runtime(mock_config_manager, monkeypatch):
     manager, mock_write = mock_config_manager
+    gemma_endpoint = http_url("localhost", 8014, "/v1")
+    monkeypatch.setattr(
+        manager,
+        "_load_env_values",
+        lambda: {
+            "ACTIVE_LLM_SERVER": "vllm",
+            "LLM_LOCAL_ENDPOINT": LOCALHOST_8001_V1,
+            "VLLM_ENDPOINT": LOCALHOST_8001_V1,
+            "GEMMA4_AUDIO_ENDPOINT": gemma_endpoint,
+        },
+    )
 
     result = manager.update_config({"ACTIVE_LLM_SERVER": "multi_runtime"})
 
@@ -67,7 +78,7 @@ def test_auto_sync_multi_runtime(mock_config_manager):
     args, _ = mock_write.call_args
     env_values = args[0]
     assert env_values["ACTIVE_LLM_SERVER"] == "multi_runtime"
-    assert env_values["LLM_LOCAL_ENDPOINT"] == http_url("localhost", 8014, "/v1")
+    assert env_values["LLM_LOCAL_ENDPOINT"] == gemma_endpoint
 
 
 def test_explicit_override_respected(mock_config_manager):

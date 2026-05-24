@@ -11,10 +11,14 @@ import venom_core.agents.operator as op_module
 from venom_core.agents.operator import (
     OperatorAgent,
     _build_voice_context_message,
+    _build_voice_retry_history,
     _coerce_float,
     _coerce_int,
+    _extract_text_payload,
+    _normalize_voice_response,
     _ollama_extra_body,
     _ollama_native_call,
+    _sanitize_voice_response,
 )
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 
@@ -777,3 +781,103 @@ class TestGenerateVoiceResponseGuards:
         assert call_payloads[1]["count"] == 2
         assert call_payloads[0]["enable_functions"] is False
         assert call_payloads[1]["enable_functions"] is False
+
+    @pytest.mark.asyncio
+    async def test_prompt_leak_after_retry_returns_fallback_message(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(
+            side_effect=[
+                "Oto nowy tryb komunikacji: Tryb 1: Dwie odpowiedzie.",
+                "Tryb 2: NIE używaj markdown.",
+            ]
+        )
+
+        response = await agent._generate_voice_response("Ile to dwa?")
+
+        assert (
+            response == "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_with_ollama_runtime_uses_native_fallback_when_empty(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="ollama"),
+        )
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(
+            side_effect=[
+                "Oto nowy tryb komunikacji: Tryb 1: Dwie odpowiedzie.",
+                "",
+            ]
+        )
+        native_mock = AsyncMock(return_value="Dwa razy dwa to cztery.")
+        monkeypatch.setattr(op_module, "_ollama_native_call", native_mock)
+
+        response = await agent._generate_voice_response("Ile to dwa razy dwa?")
+
+        assert response == "Dwa razy dwa to cztery."
+        assert native_mock.await_count == 1
+
+
+class TestVoiceResponseNormalization:
+    def test_extract_text_payload_supports_structures(self):
+        payload = {
+            "message": {
+                "content": [
+                    {"text": "Ala"},
+                    {"response_text": "ma"},
+                    " kota ",
+                ]
+            }
+        }
+
+        result = _extract_text_payload(payload)
+
+        assert result == "Ala ma kota"
+
+    def test_extract_text_payload_supports_object_attrs_and_bytes(self):
+        obj = SimpleNamespace(content=b"  tak  ")
+        assert _extract_text_payload(obj) == "tak"
+
+    def test_sanitize_and_normalize_voice_response_filter_instructions(self):
+        raw = (
+            "Oto nowy tryb komunikacji: Tryb 1.\n"
+            "- nie używaj markdown i nie wymieniaj szczegółów.\n"
+            "Dwa razy dwa to cztery."
+        )
+        cleaned = _sanitize_voice_response(raw)
+        normalized, needs_retry = _normalize_voice_response(raw)
+
+        assert cleaned == "Dwa razy dwa to cztery."
+        assert normalized == "Dwa razy dwa to cztery."
+        assert needs_retry is True
+
+    def test_normalize_voice_response_without_leak(self):
+        normalized, needs_retry = _normalize_voice_response("Krótka odpowiedź.")
+        assert normalized == "Krótka odpowiedź."
+        assert needs_retry is False
+
+    def test_build_voice_retry_history_respects_mode_and_context(self):
+        history = _build_voice_retry_history(
+            input_text="Ile to dwa?",
+            mode_prompt={"instruction": "Streść odpowiedź."},
+            voice_context={"reasoning_summary": "r", "reasoning_summary_enabled": True},
+            mode="summary",
+        )
+
+        roles = [str(getattr(msg, "role", "")).lower() for msg in history.messages]
+        assert sum("system" in role for role in roles) == 3
+        assert "user" in roles[-1]

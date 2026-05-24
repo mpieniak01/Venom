@@ -73,6 +73,7 @@ tests/test_coding_run_service.py
 tests/test_command_execution_loop.py
 tests/test_complexity_skill.py
 tests/test_config_manager.py
+tests/test_config_sync.py
 tests/test_contracts_init.py
 tests/test_control_plane_audit.py
 tests/test_control_plane_compatibility.py

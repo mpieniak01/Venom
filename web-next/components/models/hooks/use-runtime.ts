@@ -55,19 +55,22 @@ function resolveApiErrorDetail(data: unknown): string | null {
     return null;
 }
 
-export function resolveRuntimeActivationErrorMessage(error: unknown): string {
+export function resolveRuntimeActivationErrorMessage(
+    error: unknown,
+    fallbackMessage = "Nie udało się aktywować runtime.",
+): string {
     if (error instanceof ApiError) {
         const detail = resolveApiErrorDetail(error.data);
         if (detail) {
             return detail;
         }
-        return `Request failed: ${error.status}`;
+        return `${fallbackMessage} (HTTP ${error.status}).`;
     }
     if (error instanceof Error) {
         const message = error.message.trim();
         if (message) return message;
     }
-    return "Nie udało się aktywować runtime.";
+    return fallbackMessage;
 }
 
 export function buildInstalledBuckets(
@@ -308,7 +311,7 @@ export function useRuntime() {
             "success",
         );
     } catch (error) {
-            pushToast(resolveRuntimeActivationErrorMessage(error), "error");
+            pushToast(resolveRuntimeActivationErrorMessage(error, t("models.toasts.activateError")), "error");
         } finally {
             setPending(key, false);
         }

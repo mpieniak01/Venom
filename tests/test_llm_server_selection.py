@@ -94,6 +94,19 @@ def _restore_settings(snapshot):
         SETTINGS.LLM_CONFIG_HASH = snapshot["config_hash"]
 
 
+def _capture_update_config(updates: dict[str, object]):
+    def _update(payload: dict[str, object]):
+        updates.update(payload)
+        return {
+            "success": True,
+            "message": "ok",
+            "restart_required": [],
+            "changed_keys": list(payload.keys()),
+        }
+
+    return _update
+
+
 @pytest.fixture(autouse=True)
 def _skip_real_shutdown_wait(monkeypatch):
     async def _fake_shutdown(_server_name: str, _health_url: str) -> bool:
@@ -186,7 +199,9 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     servers = [
         {
@@ -242,7 +257,9 @@ async def test_set_active_llm_server_fallbacks_to_previous(monkeypatch):
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     servers = [
         {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""}
@@ -289,7 +306,9 @@ async def test_set_active_llm_server_waits_for_previous_runtime_shutdown_before_
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     servers = [
         {
@@ -347,10 +366,13 @@ async def test_set_active_llm_server_raises_without_models(monkeypatch):
         "PREVIOUS_MODEL_OLLAMA": "",
         "LLM_MODEL_NAME": "missing",
     }
+    updates = {}
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", lambda *_: None)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     servers = [
         {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""}
@@ -396,7 +418,9 @@ async def test_set_active_llm_server_uses_available_ollama_model_when_requested_
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     servers = [
         {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""},
@@ -450,7 +474,9 @@ async def test_set_active_llm_server_continues_when_stopping_other_server_fails(
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     servers = [
         {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""},
@@ -691,7 +717,9 @@ async def test_set_active_llm_server_onnx_in_process(monkeypatch):
         )
         updates = {}
         monkeypatch.setattr(
-            system_routes.config_manager, "update_config", updates.update
+            system_routes.config_manager,
+            "update_config",
+            _capture_update_config(updates),
         )
         dummy_client = SimpleNamespace(
             ensure_ready=lambda: None,
@@ -746,10 +774,11 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
             "_installed_local_servers",
             lambda: {"onnx"},
         )
+        updates = {}
         monkeypatch.setattr(
             system_routes.config_manager,
             "update_config",
-            lambda *_args, **_kwargs: None,
+            _capture_update_config(updates),
         )
         dummy_client = SimpleNamespace(
             ensure_ready=lambda: None,
@@ -821,7 +850,9 @@ async def test_set_active_llm_server_releases_onnx_caches_when_switching_to_olla
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     controller = DummyController(
         [
@@ -876,7 +907,9 @@ async def test_set_active_llm_server_normalizes_gemma4_audio_alias(monkeypatch):
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     controller = DummyController(
         [
@@ -1007,7 +1040,9 @@ async def test_set_active_llm_server_resolves_feedback_loop_alias_to_primary(
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     controller = DummyController(
         [
@@ -1075,7 +1110,9 @@ async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_gu
     monkeypatch.setattr(
         system_routes.config_manager, "get_config", lambda **_: config.copy()
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     controller = DummyController(
         [

@@ -970,12 +970,13 @@ async def respond(request: Request) -> RespondResponse:
 
     if request_payload.release_after_response:
         try:
-            await asyncio.to_thread(daemon.unload_all)
+            async with _lifecycle_lock:
+                await asyncio.to_thread(daemon.unload_all)
             post_response_cleanup = "unload_all"
             logger.info("Post-response cleanup: unload_all completed")
-        except Exception as exc:
-            post_response_cleanup = f"cleanup_failed: {exc}"
-            logger.warning("Post-response cleanup failed: %s", exc)
+        except Exception:
+            post_response_cleanup = "cleanup_failed"
+            logger.exception("Post-response cleanup failed")
 
     total_duration_ms = pipeline_result.total_duration_ms
     voice_insights = build_voice_session_insights(

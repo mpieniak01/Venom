@@ -380,7 +380,10 @@ def _persist_local_runtime_endpoint(server_name: str, endpoint: str | None) -> N
 
 def _ensure_config_update_success(result: dict[str, Any] | None, context: str) -> None:
     if result is None:
-        return
+        raise HTTPException(
+            status_code=500,
+            detail=f"{context}: Brak odpowiedzi z update_config (None).",
+        )
     if bool(result.get("success", False)):
         return
     message = str(result.get("message") or "Nie udało się zapisać konfiguracji.")
@@ -2795,6 +2798,6 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
                 "server_name": server_name,
                 "requested_server": request.server_name,
                 "model": request.model,
-                "error": str(exc),
+                "error": "internal_error",
             },
         ) from exc

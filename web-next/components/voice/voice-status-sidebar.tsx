@@ -71,7 +71,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
   if (!status) {
     return (
       <div className="space-y-3">
-        <RuntimeSwitchCard />
+        <RuntimeSwitchCard onRuntimeApplied={onRuntimeApplied} />
         <div className="flex items-center gap-3 pt-1">
           <div className="flex-1 border-t border-white/[0.05]" />
           <span className="text-[10px] uppercase tracking-widest text-zinc-600">
@@ -103,7 +103,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
 
   return (
     <div className="space-y-3">
-      <RuntimeSwitchCard />
+      <RuntimeSwitchCard onRuntimeApplied={onRuntimeApplied} />
       {isGemma4AudioRuntime && (
         <Gemma4RuntimeControl
           variant="voice"
@@ -177,12 +177,15 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
   );
 }
 
-function RuntimeSwitchCard() {
+function RuntimeSwitchCard({
+  onRuntimeApplied,
+}: Readonly<{ onRuntimeApplied?: () => void }>) {
   const t = useTranslation();
   const runtime = useRuntime();
   const [pending, setPending] = useState(false);
   const [applied, setApplied] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
+  const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didAutoSelectPreferredRuntime = useRef(false);
   const nativeVoiceRuntimeIds = useMemo(() => new Set(["multi_runtime", "gemma4_audio"]), []);
   const selectedRuntime = runtime.selectedServer ?? "";
@@ -234,6 +237,14 @@ function RuntimeSwitchCard() {
     didAutoSelectPreferredRuntime.current = true;
   }, [nativeVoiceRuntimeIds, preferredNativeRuntime, runtime, selectedRuntime]);
 
+  useEffect(() => {
+    return () => {
+      if (appliedTimerRef.current) {
+        clearTimeout(appliedTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleApply = async () => {
     if (applyDisabled) return;
     setPending(true);
@@ -242,9 +253,17 @@ function RuntimeSwitchCard() {
       await runtime.activateRuntimeSelection(selectedRuntime, selectedModel);
       onRuntimeApplied?.();
       setApplied(true);
-      setTimeout(() => setApplied(false), 2500);
+      if (appliedTimerRef.current) {
+        clearTimeout(appliedTimerRef.current);
+      }
+      appliedTimerRef.current = setTimeout(() => {
+        setApplied(false);
+        appliedTimerRef.current = null;
+      }, 2500);
     } catch (error) {
-      setActivationError(resolveRuntimeActivationErrorMessage(error));
+      setActivationError(
+        resolveRuntimeActivationErrorMessage(error, t("models.toasts.activateError")),
+      );
     } finally {
       setPending(false);
     }
@@ -254,7 +273,7 @@ function RuntimeSwitchCard() {
     <StatusCard title={t("voice.controls.runtime")}>
       {preferredNativeRuntime && selectedRuntime !== preferredNativeRuntime.value && (
         <p className="mb-2 text-[11px] text-amber-300">
-          {t("voice.controls.runtime")} {preferredNativeRuntime.label} ma pierwszeństwo dla voice.
+          {t("voice.controls.voiceRuntimePriority", { runtime: preferredNativeRuntime.label })}
         </p>
       )}
       <div className="space-y-2.5">
@@ -385,7 +404,7 @@ function RuntimeOverviewCard({
           </div>
           {provider && <Row label={t("voice.controls.provider")} value={provider} />}
           {activeVoiceRuntime && (
-            <Row label="Runtime systemowy voice" value={activeVoiceRuntime} />
+            <Row label={t("voice.controls.systemVoiceRuntime")} value={activeVoiceRuntime} />
           )}
           {endpoint && <Row label={t("voice.controls.endpoint")} value={endpoint} />}
           {profile && <Row label={t("voice.controls.profile")} value={profile} />}
@@ -441,7 +460,7 @@ function VoiceSessionCard({
       {session.voice_mode && <Row label={t("voice.controls.voiceMode")} value={session.voice_mode} />}
       {(session.audio_runtime_provider || session.audio_runtime_model) && (
         <Row
-          label="Runtime odpowiedzi"
+          label={t("voice.controls.responseRuntime")}
           value={`${session.audio_runtime_provider ?? "—"} / ${session.audio_runtime_model ?? "—"}`}
         />
       )}

@@ -171,5 +171,6 @@ describe("useRuntime gemma4_audio activation", () => {
   it("routes gemma4_audio provider to multi_runtime for model activation", () => {
     assert.equal(getRuntimeForProvider("gemma4_audio"), "multi_runtime");
     assert.equal(getRuntimeForProvider("multi_runtime"), "multi_runtime");
+    assert.equal(getRuntimeForProvider("GeMmA4_AuDiO"), "multi_runtime");
   });
 });

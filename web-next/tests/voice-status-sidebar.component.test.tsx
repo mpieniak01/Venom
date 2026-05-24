@@ -375,7 +375,7 @@ describe("VoiceStatusSidebar", () => {
       fireEvent.click(screen.getByRole("button", { name: "Zastosuj runtime" }));
     });
 
-    assert.ok(screen.getByText("multi_runtime health check failed"));
+    assert.ok(await screen.findByText("multi_runtime health check failed"));
   });
 
   it("keeps the active and response runtime labels distinct", () => {

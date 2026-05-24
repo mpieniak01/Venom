@@ -148,34 +148,53 @@ def _coerce_float(value: Any, default: float) -> float:
 
 
 def _extract_text_payload(value: Any) -> str:
+    """Best-effort text extraction from heterogeneous response payloads."""
     if value is None:
         return ""
-    if isinstance(value, str):
-        return value.strip()
+    if isinstance(value, (str, bytes)):
+        return _extract_text_from_scalar(value)
+    if isinstance(value, dict):
+        return _extract_text_from_mapping(value)
+    if isinstance(value, (list, tuple)):
+        return _extract_text_from_sequence(value)
+    if _is_mock_object(value):
+        return str(value).strip()
+    extracted = _extract_text_from_attributes(value)
+    if extracted:
+        return extracted
+    return str(value).strip()
+
+
+def _extract_text_from_scalar(value: str | bytes) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace").strip()
-    if isinstance(value, dict):
-        for key in ("content", "text", "response_text"):
-            extracted = _extract_text_payload(value.get(key))
-            if extracted:
-                return extracted
-        message = value.get("message")
-        if message is not None:
-            extracted = _extract_text_payload(message)
-            if extracted:
-                return extracted
-        return ""
-    if isinstance(value, (list, tuple)):
-        parts = [_extract_text_payload(item) for item in value]
-        return " ".join(part for part in parts if part).strip()
-    if value.__class__.__module__.startswith("unittest.mock"):
-        return str(value).strip()
+    return value.strip()
+
+
+def _extract_text_from_mapping(value: dict[str, Any]) -> str:
+    for key in ("content", "text", "response_text"):
+        extracted = _extract_text_payload(value.get(key))
+        if extracted:
+            return extracted
+    return _extract_text_payload(value.get("message"))
+
+
+def _extract_text_from_sequence(value: list[Any] | tuple[Any, ...]) -> str:
+    parts = [_extract_text_payload(item) for item in value]
+    return " ".join(part for part in parts if part).strip()
+
+
+def _extract_text_from_attributes(value: Any) -> str:
     for attr in ("content", "text", "response_text"):
         if hasattr(value, attr):
             extracted = _extract_text_payload(getattr(value, attr))
             if extracted:
                 return extracted
-    return str(value).strip()
+    return ""
+
+
+def _is_mock_object(value: Any) -> bool:
+    return value.__class__.__module__.startswith("unittest.mock")
 
 
 def _is_ollama_runtime_active() -> bool:
@@ -541,16 +560,15 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         if mode != "standard":
             temp_history.add_system_message(str(mode_prompt["instruction"]))
         for message in self.chat_history.messages:
-            if getattr(message, "role", None) != "system":
-                if "assistant" in str(getattr(message, "role", "")).lower():
-                    if _looks_like_voice_response_leak(
-                        _extract_text_payload(message.content)
-                    ):
-                        logger.debug(
-                            "Pominięto leaky assistant message z historii voice."
-                        )
-                        continue
-                temp_history.add_message(message)
+            role = getattr(message, "role", "")
+            if role == "system":
+                continue
+            if "assistant" in str(role).lower() and _looks_like_voice_response_leak(
+                _extract_text_payload(message.content)
+            ):
+                logger.debug("Pominięto leaky assistant message z historii voice.")
+                continue
+            temp_history.add_message(message)
         temp_history.add_user_message(input_text)
         return temp_history
 

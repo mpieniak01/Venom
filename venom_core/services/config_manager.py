@@ -619,15 +619,9 @@ class ConfigManager:
         """
         logger.info(f"Aktualizacja konfiguracji: {list(updates.keys())}")
 
-        # Walidacja
-        try:
-            ConfigUpdateRequest(updates=updates)
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Błąd walidacji: {str(e)}",
-                "restart_required": [],
-            }
+        validation_error = self._validate_update_payload(updates)
+        if validation_error is not None:
+            return validation_error
 
         # Backup aktywnego pliku env
         backup_path = self._backup_env_file()
@@ -642,49 +636,8 @@ class ConfigManager:
         env_values = self._load_env_values()
 
         # Zastosuj zmiany
-        changed_keys: List[str] = []
-        for key, value in updates.items():
-            old_value = env_values.get(key, "")
-            if str(value) != str(old_value):
-                env_values[key] = str(value)
-                changed_keys.append(key)
-
-        # [AUTO-SYNC LOGIC] Automatyczna aktualizacja endpointu przy zmianie serwera
-        if "ACTIVE_LLM_SERVER" in updates and "LLM_LOCAL_ENDPOINT" not in updates:
-            new_server = str(updates["ACTIVE_LLM_SERVER"]).lower()
-            if new_server == "vllm":
-                # Pobierz endpoint vLLM z updates (jeśli zmieniany) lub z obecnych wartości
-                vllm_endpoint = updates.get("VLLM_ENDPOINT")
-                if not vllm_endpoint:
-                    vllm_endpoint = env_values.get(
-                        "VLLM_ENDPOINT", build_http_url("localhost", 8001, "/v1")
-                    )
-
-                env_values["LLM_LOCAL_ENDPOINT"] = str(vllm_endpoint)
-                changed_keys.append("LLM_LOCAL_ENDPOINT")
-                logger.info(
-                    f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {vllm_endpoint} (vLLM)"
-                )
-
-            elif new_server == "ollama":
-                # Domyślny endpoint Ollama
-                ollama_endpoint = build_http_url("localhost", 11434, "/v1")
-                env_values["LLM_LOCAL_ENDPOINT"] = ollama_endpoint
-                changed_keys.append("LLM_LOCAL_ENDPOINT")
-                logger.info(
-                    f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {ollama_endpoint} (Ollama)"
-                )
-            elif new_server == "multi_runtime":
-                gemma_endpoint = updates.get("GEMMA4_AUDIO_ENDPOINT") or env_values.get(
-                    "GEMMA4_AUDIO_ENDPOINT",
-                    getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""),
-                )
-                if gemma_endpoint:
-                    env_values["LLM_LOCAL_ENDPOINT"] = str(gemma_endpoint)
-                    changed_keys.append("LLM_LOCAL_ENDPOINT")
-                    logger.info(
-                        f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {gemma_endpoint} (multi_runtime)"
-                    )
+        changed_keys = self._apply_updates(env_values, updates)
+        self._auto_sync_llm_endpoint(env_values, updates, changed_keys)
 
         # Zapisz aktywny plik env
         try:
@@ -721,6 +674,97 @@ class ConfigManager:
             "changed_keys": changed_keys,
             "backup_path": str(backup_path),
         }
+
+    @staticmethod
+    def _validate_update_payload(
+        updates: Dict[str, Any],
+    ) -> Dict[str, Any] | None:
+        try:
+            ConfigUpdateRequest(updates=updates)
+        except Exception as exc:
+            return {
+                "success": False,
+                "message": f"Błąd walidacji: {str(exc)}",
+                "restart_required": [],
+            }
+        return None
+
+    @staticmethod
+    def _append_changed_key(changed_keys: List[str], key: str) -> None:
+        if key not in changed_keys:
+            changed_keys.append(key)
+
+    def _set_env_value(
+        self,
+        env_values: Dict[str, str],
+        changed_keys: List[str],
+        key: str,
+        value: Any,
+    ) -> None:
+        new_value = str(value)
+        old_value = str(env_values.get(key, ""))
+        if new_value == old_value:
+            return
+        env_values[key] = new_value
+        self._append_changed_key(changed_keys, key)
+
+    def _apply_updates(
+        self,
+        env_values: Dict[str, str],
+        updates: Dict[str, Any],
+    ) -> List[str]:
+        changed_keys: List[str] = []
+        for key, value in updates.items():
+            self._set_env_value(env_values, changed_keys, key, value)
+        return changed_keys
+
+    def _auto_sync_llm_endpoint(
+        self,
+        env_values: Dict[str, str],
+        updates: Dict[str, Any],
+        changed_keys: List[str],
+    ) -> None:
+        if "ACTIVE_LLM_SERVER" not in updates or "LLM_LOCAL_ENDPOINT" in updates:
+            return
+
+        new_server = str(updates["ACTIVE_LLM_SERVER"]).lower()
+        if new_server == "vllm":
+            vllm_endpoint = updates.get("VLLM_ENDPOINT") or env_values.get(
+                "VLLM_ENDPOINT", build_http_url("localhost", 8001, "/v1")
+            )
+            self._set_env_value(
+                env_values, changed_keys, "LLM_LOCAL_ENDPOINT", vllm_endpoint
+            )
+            logger.info(
+                "Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na %s (vLLM)", vllm_endpoint
+            )
+            return
+
+        if new_server == "ollama":
+            ollama_endpoint = build_http_url("localhost", 11434, "/v1")
+            self._set_env_value(
+                env_values, changed_keys, "LLM_LOCAL_ENDPOINT", ollama_endpoint
+            )
+            logger.info(
+                "Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na %s (Ollama)",
+                ollama_endpoint,
+            )
+            return
+
+        if new_server == "multi_runtime":
+            gemma_endpoint = updates.get("GEMMA4_AUDIO_ENDPOINT") or env_values.get(
+                "GEMMA4_AUDIO_ENDPOINT",
+                getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""),
+            )
+            if not gemma_endpoint:
+                return
+            self._set_env_value(
+                env_values, changed_keys, "LLM_LOCAL_ENDPOINT", gemma_endpoint
+            )
+            logger.info(
+                "Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na %s (multi_runtime)",
+                gemma_endpoint,
+            )
 
     def _read_env_file(self) -> Dict[str, str]:
         """Wczytuje aktywny plik env do słownika."""

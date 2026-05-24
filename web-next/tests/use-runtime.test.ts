@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildInstalledBuckets,
+  resolveRuntimeActivationErrorMessage,
   resolveModelsForServer,
 } from "../components/models/hooks/use-runtime";
+import { ApiError } from "../lib/api-client";
 
 describe("use-runtime helpers", () => {
   it("normalizes provider buckets and keeps fallback models", () => {
@@ -41,5 +43,24 @@ describe("use-runtime helpers", () => {
     });
 
     assert.deepStrictEqual(selected.map((model) => model.name), ["llama3:8b"]);
+  });
+
+  it("extracts nested api error detail for runtime activation errors", () => {
+    const error = new ApiError("Request failed: 500", 500, {
+      detail: { reason: "runtime temporarily unavailable" },
+    });
+
+    assert.equal(
+      resolveRuntimeActivationErrorMessage(error, "activation failed"),
+      "runtime temporarily unavailable",
+    );
+  });
+
+  it("returns localized HTTP fallback when api error has no detail", () => {
+    const error = new ApiError("Request failed: 500", 500, { detail: "   " });
+    assert.equal(
+      resolveRuntimeActivationErrorMessage(error, "activation failed"),
+      "activation failed (HTTP 500).",
+    );
   });
 });

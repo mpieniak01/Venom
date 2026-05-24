@@ -852,6 +852,15 @@ class TestVoiceResponseNormalization:
         obj = SimpleNamespace(content=b"  tak  ")
         assert _extract_text_payload(obj) == "tak"
 
+    def test_extract_text_payload_supports_mock_and_string_fallback(self):
+        mocked = MagicMock()
+        assert _extract_text_payload(mocked)
+        assert _extract_text_payload(123) == "123"
+
+    def test_extract_text_payload_handles_empty_mapping_message_chain(self):
+        payload = {"content": "", "text": "", "response_text": "", "message": None}
+        assert _extract_text_payload(payload) == ""
+
     def test_sanitize_and_normalize_voice_response_filter_instructions(self):
         raw = (
             "Oto nowy tryb komunikacji: Tryb 1.\n"

@@ -26,31 +26,37 @@ const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
     runtime === "multi_runtime" || runtime === "gemma4_audio";
 
-function resolveApiErrorDetail(data: unknown): string | null {
-    if (typeof data === "string") {
-        const trimmed = data.trim();
-        return trimmed || null;
+const ERROR_DETAIL_KEYS = ["detail", "message", "error", "reason"] as const;
+
+function readTrimmedString(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed || null;
+}
+
+function resolveNestedErrorDetail(value: unknown): string | null {
+    if (!value || typeof value !== "object") return null;
+    const nested = value as Record<string, unknown>;
+    for (const key of ERROR_DETAIL_KEYS) {
+        const detail = readTrimmedString(nested[key]);
+        if (detail) return detail;
     }
+    return null;
+}
+
+function resolveApiErrorDetail(data: unknown): string | null {
+    const directDetail = readTrimmedString(data);
+    if (directDetail) return directDetail;
     if (!data || typeof data !== "object") {
         return null;
     }
     const payload = data as Record<string, unknown>;
-    const candidates = [payload.detail, payload.message, payload.error, payload.reason];
+    const candidates = ERROR_DETAIL_KEYS.map((key) => payload[key]);
     for (const candidate of candidates) {
-        if (typeof candidate === "string") {
-            const trimmed = candidate.trim();
-            if (trimmed) return trimmed;
-        }
-        if (candidate && typeof candidate === "object") {
-            const nested = candidate as Record<string, unknown>;
-            for (const key of ["detail", "message", "error", "reason"]) {
-                const nestedValue = nested[key];
-                if (typeof nestedValue === "string") {
-                    const trimmed = nestedValue.trim();
-                    if (trimmed) return trimmed;
-                }
-            }
-        }
+        const candidateDetail = readTrimmedString(candidate);
+        if (candidateDetail) return candidateDetail;
+        const nestedDetail = resolveNestedErrorDetail(candidate);
+        if (nestedDetail) return nestedDetail;
     }
     return null;
 }

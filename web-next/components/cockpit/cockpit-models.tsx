@@ -9,7 +9,7 @@ import Link from "next/link";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { useTranslation } from "@/lib/i18n";
-import type { LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
+import type { ActiveLlmServerResponse, LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
 
 type Gemma4AudioRuntimeInfo = Pick<
   LlmRuntimeTargetOption,
@@ -40,7 +40,7 @@ type CockpitModelsProps = Readonly<{
   onServerSessionReset: () => void;
   onClearSessionMemory: () => void;
   onClearGlobalMemory: () => void;
-  activeServerInfo?: { active_server?: string | null; active_model?: string | null } | null;
+  activeServerInfo?: ActiveLlmServerResponse | null;
   activeServerName?: string | null;
   llmActionPending: string | null;
   onActivateServer: () => void;
@@ -72,18 +72,8 @@ export function CockpitModels({
   gemma4AudioRuntimeInfo,
 }: CockpitModelsProps) {
   const t = useTranslation();
-  const activeRuntimePayload = (activeServerInfo ?? null) as Record<string, unknown> | null;
-  const runtimeSwitchGate = (activeRuntimePayload?.runtime_switch_gate ??
-    null) as
-    | {
-      in_progress?: boolean;
-      from_runtime?: string | null;
-      to_runtime?: string | null;
-      active_requests?: number;
-    }
-    | null;
-  const lastRuntimeSwitch = (activeRuntimePayload?.last_runtime_switch ??
-    null) as { at_utc?: string | null } | null;
+  const runtimeSwitchGate = activeServerInfo?.runtime_switch_gate;
+  const lastRuntimeSwitch = activeServerInfo?.last_runtime_switch;
   const gateSwitching = runtimeSwitchGate?.in_progress === true;
   const normalizedSelectedServer = normalizeRuntimeValue(selectedLlmServer);
   const normalizedActiveServer = normalizeRuntimeValue(

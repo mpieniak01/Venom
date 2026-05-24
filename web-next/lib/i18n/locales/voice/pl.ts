@@ -19,6 +19,8 @@ export const voice = {
     noRuntimes: "Brak runtimeów",
     systemStatus: "Status systemu",
     runtimeApplied: "Runtime przełączony ✓",
+    runtimeSwitchInProgress: "Trwa przełączanie runtime: {{from}} -> {{to}}",
+    runtimeLastSwitch: "Ostatnie przełączenie: {{at}}",
     systemVoiceRuntime: "Runtime systemowy voice",
     selectedRuntime: "Wybrany runtime",
     responseRuntime: "Runtime odpowiedzi",

@@ -240,22 +240,22 @@ const buildVoiceDebugSteps = (
   });
 
 export function useVoiceDebugMode(t: Translator): VoiceDebugSnapshot {
-  const [hydrated, setHydrated] = useState(false);
   const readLocationSearch = () =>
     globalThis.location === undefined ? "" : globalThis.location.search;
-  const [urlSearch, setUrlSearch] = useState("");
+  const [hydrated, setHydrated] = useState(globalThis.location !== undefined);
+  const [urlSearch, setUrlSearch] = useState(() => readLocationSearch());
   const requested = globalThis.location !== undefined && parseVoiceDebugEnabled(readLocationSearch());
 
   useEffect(() => {
-    const syncLocation = () => setUrlSearch(readLocationSearch());
-    const timerId = globalThis.setTimeout(() => {
-      setHydrated(true);
-      syncLocation();
-    }, 0);
+    const syncLocation = () => {
+      const nextSearch = readLocationSearch();
+      setUrlSearch((current) => (current === nextSearch ? current : nextSearch));
+      setHydrated((current) => (current ? current : true));
+    };
+    syncLocation();
     globalThis.addEventListener?.("popstate", syncLocation);
     globalThis.addEventListener?.("hashchange", syncLocation);
     return () => {
-      globalThis.clearTimeout(timerId);
       globalThis.removeEventListener?.("popstate", syncLocation);
       globalThis.removeEventListener?.("hashchange", syncLocation);
     };

@@ -344,14 +344,17 @@ function RuntimeSwitchCard({
         </Button>
         {gateSwitching && (
           <p className="text-[11px] text-amber-300">
-            {`Trwa przełączanie runtime: ${
-              runtime.runtimeSwitchGate?.from_runtime || "—"
-            } -> ${runtime.runtimeSwitchGate?.to_runtime || "—"}`}
+            {t("voice.controls.runtimeSwitchInProgress")
+              .replace("{{from}}", runtime.runtimeSwitchGate?.from_runtime || "—")
+              .replace("{{to}}", runtime.runtimeSwitchGate?.to_runtime || "—")}
           </p>
         )}
         {!gateSwitching && runtime.lastRuntimeSwitch?.at_utc && (
           <p className="text-[11px] text-zinc-400">
-            {`Ostatnie przełączenie: ${runtime.lastRuntimeSwitch.at_utc}`}
+            {t("voice.controls.runtimeLastSwitch").replace(
+              "{{at}}",
+              runtime.lastRuntimeSwitch.at_utc,
+            )}
           </p>
         )}
         <Row label={t("voice.controls.selectedRuntime")} value={selectedRuntimeSummary} />

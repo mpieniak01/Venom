@@ -72,3 +72,22 @@ async def test_runtime_switch_waits_for_active_requests_to_drain():
 
     gate.finish_runtime_switch(switch_id=snapshot.switch_id)
     await task
+
+
+def test_finish_runtime_switch_ignores_mismatched_switch_id():
+    snapshot = gate.begin_runtime_switch(
+        source="ui",
+        from_runtime="ollama",
+        to_runtime="multi_runtime",
+        reason="test",
+    )
+
+    gate.finish_runtime_switch(switch_id="different-switch-id")
+    current = gate.get_runtime_switch_gate_snapshot()
+    assert current.in_progress is True
+    assert current.switch_id == snapshot.switch_id
+
+    gate.finish_runtime_switch(switch_id=snapshot.switch_id)
+    closed = gate.get_runtime_switch_gate_snapshot()
+    assert closed.in_progress is False
+    assert closed.switch_id is None

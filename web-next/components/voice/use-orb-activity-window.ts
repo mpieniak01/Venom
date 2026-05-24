@@ -21,6 +21,11 @@ export function useOrbActivityWindow(
     }
 
     const schedule = (nextValue: boolean, delayMs: number) => {
+      if (delayMs <= 0) {
+        setActiveWindow(nextValue);
+        timeoutRef.current = null;
+        return;
+      }
       timeoutRef.current = setTimeout(() => {
         setActiveWindow(nextValue);
         timeoutRef.current = null;

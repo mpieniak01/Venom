@@ -402,15 +402,10 @@ def _build_voice_runtime_alignment(
 
     switch_event = get_last_runtime_switch_event() or {}
     switch_at = str(switch_event.get("at_utc") or "").strip()
-    session_before_switch = False
-    session_dt = _parse_iso_datetime(session_created_at)
-    switch_dt = _parse_iso_datetime(switch_at)
-    if session_dt and switch_dt:
-        if session_dt.tzinfo is None:
-            session_dt = session_dt.replace(tzinfo=UTC)
-        if switch_dt.tzinfo is None:
-            switch_dt = switch_dt.replace(tzinfo=UTC)
-        session_before_switch = session_dt < switch_dt
+    session_before_switch = _is_session_before_switch(
+        session_created_at=session_created_at,
+        switch_at=switch_at,
+    )
 
     response_runtime_fresh = bool(latest_session) and not session_before_switch
     runtime_match = _same_runtime_identity(
@@ -430,6 +425,22 @@ def _build_voice_runtime_alignment(
         "response_runtime_fresh": response_runtime_fresh,
         "response_runtime_matches_active": runtime_match,
     }
+
+
+def _normalize_datetime_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
+def _is_session_before_switch(*, session_created_at: str, switch_at: str) -> bool:
+    session_dt = _normalize_datetime_utc(_parse_iso_datetime(session_created_at))
+    switch_dt = _normalize_datetime_utc(_parse_iso_datetime(switch_at))
+    if not session_dt or not switch_dt:
+        return False
+    return session_dt < switch_dt
 
 
 async def _build_voice_runtime_snapshot() -> dict[str, object] | None:

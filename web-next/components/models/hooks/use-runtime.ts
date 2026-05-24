@@ -145,31 +145,8 @@ export function useRuntime() {
     const operations = useModelOperations(10, 0);
     const runtimeOptions = useLlmRuntimeOptions(0);
     const activeServer = useActiveLlmServer(0);
-    const activeServerPayload = (activeServer.data ?? null) as Record<string, unknown> | null;
-    const runtimeSwitchGate = (activeServerPayload?.runtime_switch_gate ??
-        null) as
-        | {
-            in_progress?: boolean;
-            active_requests?: number;
-            switch_id?: string | null;
-            source?: string | null;
-            from_runtime?: string | null;
-            to_runtime?: string | null;
-            started_at_utc?: string | null;
-            reason?: string | null;
-        }
-        | null;
-    const lastRuntimeSwitch = (activeServerPayload?.last_runtime_switch ??
-        null) as
-        | {
-            event?: string | null;
-            source?: string | null;
-            runtime?: string | null;
-            model?: string | null;
-            from_runtime?: string | null;
-            at_utc?: string | null;
-        }
-        | null;
+    const runtimeSwitchGate = activeServer.data?.runtime_switch_gate;
+    const lastRuntimeSwitch = activeServer.data?.last_runtime_switch;
     const runtimeSwitchInProgress = runtimeSwitchGate?.in_progress === true;
 
     const activeRuntime = installed.data?.active;

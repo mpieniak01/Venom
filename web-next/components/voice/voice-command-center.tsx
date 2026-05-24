@@ -1105,23 +1105,17 @@ function useVoiceCommandCenterDebugBootstrap(params: {
   debugDryRunRequested: boolean;
   debugRecording: boolean;
   onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
-  refreshAudioStatus: () => Promise<void>;
-  refreshTtsModelOptions: () => Promise<void>;
 }) {
   const {
     debugDryRunRequested,
     debugRecording,
     onStatusUpdate,
-    refreshAudioStatus,
-    refreshTtsModelOptions,
   } = params;
 
   useEffect(() => {
     if (!debugDryRunRequested) return;
     onStatusUpdate?.(buildDebugAudioStatus(debugRecording));
-    refreshAudioStatus().catch(() => undefined);
-    refreshTtsModelOptions().catch(() => undefined);
-  }, [debugDryRunRequested, debugRecording, onStatusUpdate, refreshAudioStatus, refreshTtsModelOptions]);
+  }, [debugDryRunRequested, debugRecording, onStatusUpdate]);
 }
 
 function useVoiceCommandCenterCompleteReset(params: {
@@ -2439,8 +2433,6 @@ function VoiceCommandCenterPanel({
     debugDryRunRequested,
     debugRecording: debugMode.recording,
     onStatusUpdate,
-    refreshAudioStatus,
-    refreshTtsModelOptions,
   });
 
   useVoiceCommandCenterTtsModelRefresh({

@@ -457,7 +457,12 @@ async def test_set_active_llm_server_waits_for_active_runtime_requests_to_drain(
         response_task = asyncio.create_task(
             system_routes.set_active_llm_server(request)
         )
-        await asyncio.sleep(0.05)
+        for _ in range(50):
+            if gate.get_runtime_switch_gate_snapshot().in_progress:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            pytest.fail("runtime switch gate was not opened in time")
         assert not response_task.done()
 
         with pytest.raises(HTTPException) as exc_info:

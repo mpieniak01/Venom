@@ -19,6 +19,8 @@ export const voice = {
     noRuntimes: "No runtimes",
     systemStatus: "System status",
     runtimeApplied: "Runtime applied ✓",
+    runtimeSwitchInProgress: "Runtime switch in progress: {{from}} -> {{to}}",
+    runtimeLastSwitch: "Last runtime switch: {{at}}",
     systemVoiceRuntime: "System voice runtime",
     selectedRuntime: "Selected runtime",
     responseRuntime: "Response runtime",

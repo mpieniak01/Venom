@@ -172,6 +172,7 @@ def finish_runtime_switch(*, switch_id: str | None) -> None:
                 _STATE.switch_id,
                 switch_id,
             )
+            return
         _STATE.in_progress = False
         _STATE.switch_id = None
         _STATE.source = None
@@ -207,8 +208,26 @@ async def wait_for_runtime_requests_to_drain(
 async def runtime_request_guard(
     *, request_kind: str, provider: str | None = None, model: str | None = None
 ) -> AsyncIterator[RuntimeSwitchGateSnapshot]:
-    assert_runtime_request_allowed(request_kind=request_kind)
     with _STATE_LOCK:
+        if _STATE.in_progress:
+            snapshot = _snapshot_unlocked()
+            raise HTTPException(
+                status_code=_HTTP_409_RUNTIME_SWITCH_IN_PROGRESS,
+                detail={
+                    "code": "runtime_switch_in_progress",
+                    "message": "Przełączanie runtime już trwa.",
+                    "runtime_switch_gate": {
+                        "in_progress": snapshot.in_progress,
+                        "active_requests": snapshot.active_requests,
+                        "switch_id": snapshot.switch_id,
+                        "source": snapshot.source,
+                        "from_runtime": snapshot.from_runtime,
+                        "to_runtime": snapshot.to_runtime,
+                        "started_at_utc": snapshot.started_at_utc,
+                        "reason": snapshot.reason,
+                    },
+                },
+            )
         _STATE.active_requests += 1
         snapshot = _snapshot_unlocked()
     logger.info(

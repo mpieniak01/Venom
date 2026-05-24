@@ -100,7 +100,7 @@ beforeEach(() => {
     if (url.endsWith("/api/v1/system/llm-servers/active")) {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body ?? "{}")) as Record<string, string>;
-        assert.equal(body.server_name, "gemma4_audio");
+        assert.equal(body.server_name, "multi_runtime");
         assert.equal(body.model, "google/gemma-4-E2B-it");
         return new Response(JSON.stringify(payloads.activeServer), { status: 200 });
       }
@@ -136,7 +136,7 @@ function RuntimeHarness() {
 }
 
 describe("useRuntime gemma4_audio activation", () => {
-  it("uses inline model activation for gemma4_audio and does not switch via /models/switch", async () => {
+  it("canonicalizes gemma4_audio to multi_runtime and does not switch via /models/switch", async () => {
     render(
       <LanguageProvider>
         <ToastProvider>

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+from .runtime_config import read_config_str
 
 
 @dataclass(slots=True)
@@ -35,7 +36,7 @@ def _module_available(module_name: str) -> bool:
 
 
 def _resolve_tts_status() -> tuple[bool, str, str | None]:
-    configured_path = str(os.getenv("TTS_MODEL_PATH", "")).strip()
+    configured_path = read_config_str("TTS_MODEL_PATH", "")
     if configured_path:
         path = Path(configured_path)
         if path.exists():

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useActiveLlmServer, useQueueStatus } from "@/hooks/use-api";
 import { useTranslation } from "@/lib/i18n";
+import { canonicalRuntimeId } from "@/lib/runtime-id";
 
 type StatusTone = "success" | "warning" | "danger" | "neutral";
 
@@ -33,6 +34,7 @@ export function SystemStatusPanel() {
     }
 
     const hasLlm = Boolean(llmActive?.active_server || llmActive?.active_model);
+    const activeServer = canonicalRuntimeId(llmActive?.active_server ?? "");
     let llmTone: StatusTone = "warning";
     if (hasLlm) {
       llmTone = "success";
@@ -41,7 +43,7 @@ export function SystemStatusPanel() {
     }
     const llmHint = hasLlm
       ? t("systemStatus.hints.llmDetails", {
-        server: llmActive?.active_server ?? t("systemStatus.hints.unknown"),
+        server: activeServer || t("systemStatus.hints.unknown"),
         model: llmActive?.active_model ?? t("systemStatus.hints.unknown"),
       })
       : "";

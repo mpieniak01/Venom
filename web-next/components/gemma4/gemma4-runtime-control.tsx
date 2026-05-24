@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "@/lib/i18n";
+import { isMultiRuntime } from "@/lib/runtime-id";
 import type {
   DaemonConfigRequest,
   DaemonRespondResponse,
@@ -1690,17 +1691,9 @@ function resolveRuntimeSnapshotModel(
   const fallbackModel = snapshot?.model_name ?? "—";
   if (!targetModelOverride) return fallbackModel;
 
-  const runtimeId = String(snapshot?.runtime_id ?? "").trim().toLowerCase();
-  const provider = String(snapshot?.provider ?? "").trim().toLowerCase();
-  const isMultiRuntimeSnapshot =
-    runtimeId === "multi_runtime" ||
-    runtimeId === "gemma4_audio" ||
-    runtimeId.startsWith("multi_runtime@") ||
-    runtimeId.startsWith("gemma4_audio@") ||
-    provider === "multi_runtime" ||
-    provider === "gemma4_audio" ||
-    provider.startsWith("multi_runtime@") ||
-    provider.startsWith("gemma4_audio@");
+  const runtimeId = String(snapshot?.runtime_id ?? "").trim();
+  const provider = String(snapshot?.provider ?? "").trim();
+  const isMultiRuntimeSnapshot = isMultiRuntime(runtimeId) || isMultiRuntime(provider);
   return isMultiRuntimeSnapshot ? targetModelOverride : fallbackModel;
 }
 

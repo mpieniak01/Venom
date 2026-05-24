@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAppMeta } from "@/lib/app-meta";
+import { canonicalRuntimeId } from "@/lib/runtime-id";
 import { getNavigationItems, AUTONOMY_LEVELS, AutonomySnapshot } from "./sidebar-helpers";
 import type { LanguageCode } from "@/lib/i18n";
 
@@ -134,6 +135,7 @@ export function CostModeSection({
     onToggle: () => void;
     t: (key: string) => string;
 }>) {
+    const canonicalProvider = canonicalRuntimeId(costMode?.provider ?? "");
     let toggleLabel = t("sidebar.cost.switchToPro");
     if (costLoading) {
         toggleLabel = t("sidebar.cost.switching");
@@ -149,7 +151,7 @@ export function CostModeSection({
                         {costMode?.enabled ? t("sidebar.cost.pro") : t("sidebar.cost.eco")}
                     </p>
                     <p className="text-xs text-[color:var(--ui-muted)]">
-                        {t("common.provider")}: {costMode?.provider ?? "brak"}
+                        {t("common.provider")}: {canonicalProvider || t("common.unknown")}
                     </p>
                 </div>
                 <Sparkles className="h-5 w-5 text-emerald-200" />

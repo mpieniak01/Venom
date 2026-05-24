@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from .runtime_config import read_config_int
 
 ExecutionMode = Literal["balanced", "vision_priority", "voice_priority"]
 ImageStrategy = Literal["vlm_only", "ocr_first", "hybrid"]
@@ -17,15 +18,13 @@ _ECONOMY_VRAM_THRESHOLD_DEFAULT = 2048
 
 
 def _economy_vram_threshold() -> int:
-    try:
-        return int(
-            os.getenv(
-                "MULTI_RUNTIME_ECONOMY_VRAM_THRESHOLD_MB",
-                _ECONOMY_VRAM_THRESHOLD_DEFAULT,
-            )
-        )
-    except (ValueError, TypeError):
+    threshold = read_config_int(
+        "MULTI_RUNTIME_ECONOMY_VRAM_THRESHOLD_MB",
+        _ECONOMY_VRAM_THRESHOLD_DEFAULT,
+    )
+    if threshold <= 0:
         return _ECONOMY_VRAM_THRESHOLD_DEFAULT
+    return threshold
 
 
 @dataclass(slots=True)

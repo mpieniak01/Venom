@@ -20,6 +20,7 @@ export const voice = {
     systemStatus: "Status systemu",
     runtimeApplied: "Runtime przełączony ✓",
     systemVoiceRuntime: "Runtime systemowy voice",
+    selectedRuntime: "Wybrany runtime",
     responseRuntime: "Runtime odpowiedzi",
     voiceRuntimePriority: "Runtime {{runtime}} ma pierwszeństwo dla voice.",
     diagnostics: "Diagnostyka dev",

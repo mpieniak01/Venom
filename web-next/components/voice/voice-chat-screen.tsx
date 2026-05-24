@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { useTranslation } from "@/lib/i18n";
+import { isMultiRuntime } from "@/lib/runtime-id";
 import {
   VoiceCommandCenter,
   type VoiceModePreset,
@@ -49,7 +50,6 @@ const VOICE_MODES: VoiceModeCard[] = [
     icon: ListTodo,
   },
 ];
-const NATIVE_VOICE_RUNTIME_PREFIXES = ["multi_runtime", "gemma4_audio"] as const;
 
 type VoiceChatScreenProps = Readonly<{
   isDevMode?: boolean;
@@ -149,13 +149,10 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
   const sttOk = status.stt_ready === true;
   const ttsOk = status.tts_ready === true;
   const runtimeProvider = String(status.runtime_snapshot?.provider ?? "").trim();
-  const runtimeProviderNormalized = runtimeProvider.toLowerCase();
   const runtimeModel = String(status.runtime_snapshot?.model_name ?? "").trim();
   const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
   const llmOk = runtimeProvider.length > 0 && runtimeModel.length > 0;
-  const isNativeVoiceRuntime = NATIVE_VOICE_RUNTIME_PREFIXES.some((prefix) =>
-    runtimeProviderNormalized.startsWith(prefix),
-  );
+  const isNativeVoiceRuntime = isMultiRuntime(runtimeProvider);
   const voiceProbeFailed = probeStatus === "failed";
   const voiceProbeBlocking = voiceProbeFailed && isNativeVoiceRuntime;
   const allOk = sttOk && ttsOk && llmOk && !voiceProbeBlocking;

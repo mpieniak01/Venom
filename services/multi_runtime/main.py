@@ -77,10 +77,69 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 
-def _read_positive_int_env(*names: str, default: int) -> int:
+_BOOTSTRAP_CONFIG_SNAPSHOT: dict[str, str] = {}
+
+
+def _bootstrap_config_snapshot_value(name: str) -> str:
+    raw = getattr(SETTINGS, name, None)
+    if raw is None or str(raw).strip() == "":
+        raw = os.environ.get(name)
+    if raw is None:
+        return ""
+    return str(raw).strip()
+
+
+def _refresh_bootstrap_config_snapshot() -> None:
+    tracked_names = (
+        "GEMMA4_AUDIO_PROBE_TIMEOUT_SECONDS",
+        "GEMMA4_AUDIO_PROBE_MAX_PROMPT_TOKENS",
+        "GEMMA4_AUDIO_PROBE_MAX_LAYERS",
+        "GEMMA4_AUDIO_PROBE_MAX_TOP_K",
+        "GEMMA4_AUDIO_PROBE_HIDDEN_SLICE",
+        "GEMMA4_AUDIO_PROBE_ENABLED",
+        "VENOM_INTROSPECTION_PROBE_MAX_CONCURRENCY",
+        "GEMMA4_AUDIO_PROBE_MAX_CONCURRENCY",
+        "VENOM_INTROSPECTION_PROBE_EXECUTOR_WORKERS",
+        "GEMMA4_AUDIO_PROBE_EXECUTOR_WORKERS",
+        "GEMMA4_AUDIO_PRECISION",
+        "GEMMA4_AUDIO_QUANTIZATION_BACKEND",
+        "GEMMA4_AUDIO_DEVICE_TARGET",
+        "GEMMA4_AUDIO_CACHE_IMPLEMENTATION",
+        "GEMMA4_AUDIO_STARTUP_PROFILE",
+        "GEMMA4_AUDIO_MODEL_ID",
+        "GEMMA4_AUDIO_CACHE_DIR",
+        "GEMMA4_AUDIO_DEVICE",
+        "GEMMA4_AUDIO_MAX_NEW_TOKENS",
+        "GEMMA4_AUDIO_IMAGE_ALLOWED_HOSTS",
+        "GEMMA4_AUDIO_IMAGE_INPUT_DIR",
+        "GEMMA4_CORS_ORIGINS",
+        "GEMMA4_AUDIO_HOST",
+        "GEMMA4_AUDIO_PORT",
+        "GEMMA4_AUDIO_LOG_PATH",
+    )
+    for name in tracked_names:
+        _BOOTSTRAP_CONFIG_SNAPSHOT[name] = _bootstrap_config_snapshot_value(name)
+
+
+_refresh_bootstrap_config_snapshot()
+
+
+def _read_config_str(name: str, default: str = "") -> str:
+    text = _BOOTSTRAP_CONFIG_SNAPSHOT.get(name, "")
+    if not text:
+        text = str(os.environ.get(name, "")).strip()
+    return text or default
+
+
+def _read_config_bool(name: str, default: bool = False) -> bool:
+    raw = _read_config_str(name, "1" if default else "0").lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _read_positive_int_config(*names: str, default: int) -> int:
     for name in names:
-        raw = os.getenv(name)
-        if raw is None:
+        raw = _read_config_str(name, "")
+        if not raw:
             continue
         try:
             parsed = int(raw)
@@ -91,10 +150,10 @@ def _read_positive_int_env(*names: str, default: int) -> int:
     return default
 
 
-def _read_positive_float_env(*names: str, default: float) -> float:
+def _read_positive_float_config(*names: str, default: float) -> float:
     for name in names:
-        raw = os.getenv(name)
-        if raw is None:
+        raw = _read_config_str(name, "")
+        if not raw:
             continue
         try:
             parsed = float(raw)
@@ -105,38 +164,33 @@ def _read_positive_float_env(*names: str, default: float) -> float:
     return default
 
 
-_PROBE_TIMEOUT_SECONDS = _read_positive_float_env(
+_PROBE_TIMEOUT_SECONDS = _read_positive_float_config(
     "GEMMA4_AUDIO_PROBE_TIMEOUT_SECONDS",
     default=20.0,
 )
-_PROBE_MAX_PROMPT_TOKENS = _read_positive_int_env(
+_PROBE_MAX_PROMPT_TOKENS = _read_positive_int_config(
     "GEMMA4_AUDIO_PROBE_MAX_PROMPT_TOKENS",
     default=1024,
 )
-_PROBE_MAX_LAYERS = _read_positive_int_env(
+_PROBE_MAX_LAYERS = _read_positive_int_config(
     "GEMMA4_AUDIO_PROBE_MAX_LAYERS",
     default=8,
 )
-_PROBE_MAX_TOP_K = _read_positive_int_env(
+_PROBE_MAX_TOP_K = _read_positive_int_config(
     "GEMMA4_AUDIO_PROBE_MAX_TOP_K",
     default=32,
 )
-_PROBE_HIDDEN_SLICE = _read_positive_int_env(
+_PROBE_HIDDEN_SLICE = _read_positive_int_config(
     "GEMMA4_AUDIO_PROBE_HIDDEN_SLICE",
     default=16,
 )
-_PROBE_ENABLED = str(os.getenv("GEMMA4_AUDIO_PROBE_ENABLED", "0")).strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-_PROBE_MAX_CONCURRENCY = _read_positive_int_env(
+_PROBE_ENABLED = _read_config_bool("GEMMA4_AUDIO_PROBE_ENABLED", default=False)
+_PROBE_MAX_CONCURRENCY = _read_positive_int_config(
     "VENOM_INTROSPECTION_PROBE_MAX_CONCURRENCY",
     "GEMMA4_AUDIO_PROBE_MAX_CONCURRENCY",
     default=2,
 )
-_PROBE_EXECUTOR_WORKERS = _read_positive_int_env(
+_PROBE_EXECUTOR_WORKERS = _read_positive_int_config(
     "VENOM_INTROSPECTION_PROBE_EXECUTOR_WORKERS",
     "GEMMA4_AUDIO_PROBE_EXECUTOR_WORKERS",
     default=_PROBE_MAX_CONCURRENCY,
@@ -189,12 +243,12 @@ def _resolve_startup_runtime_params() -> dict[str, object]:
     2. Optional startup profile override (safe_int4) when explicitly enabled.
     3. Defaults (auto/no quant/auto).
     """
-    precision = str(os.getenv("GEMMA4_AUDIO_PRECISION", "")).strip().lower()
-    quantization_backend = (
-        str(os.getenv("GEMMA4_AUDIO_QUANTIZATION_BACKEND", "")).strip().lower()
-    )
-    device_target = str(os.getenv("GEMMA4_AUDIO_DEVICE_TARGET", "")).strip().lower()
-    cache_impl = str(os.getenv("GEMMA4_AUDIO_CACHE_IMPLEMENTATION", "")).strip().lower()
+    precision = _read_config_str("GEMMA4_AUDIO_PRECISION", "").lower()
+    quantization_backend = _read_config_str(
+        "GEMMA4_AUDIO_QUANTIZATION_BACKEND", ""
+    ).lower()
+    device_target = _read_config_str("GEMMA4_AUDIO_DEVICE_TARGET", "").lower()
+    cache_impl = _read_config_str("GEMMA4_AUDIO_CACHE_IMPLEMENTATION", "").lower()
 
     if not precision:
         precision = "auto"
@@ -209,9 +263,9 @@ def _resolve_startup_runtime_params() -> dict[str, object]:
         cache_impl = ""
 
     # Optional startup profile: explicitly opt-in, does not redefine "auto".
-    startup_profile = (
-        str(os.getenv("GEMMA4_AUDIO_STARTUP_PROFILE", "default")).strip().lower()
-    )
+    startup_profile = _read_config_str(
+        "GEMMA4_AUDIO_STARTUP_PROFILE", "default"
+    ).lower()
     if (
         startup_profile == "safe_int4"
         and precision == "auto"
@@ -309,10 +363,10 @@ async def initialize_daemon(
 
 
 async def _startup_model_loader() -> None:
-    model_id = os.getenv("GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it")
-    cache_dir = os.getenv("GEMMA4_AUDIO_CACHE_DIR", "models_cache/hf")
-    device = os.getenv("GEMMA4_AUDIO_DEVICE", "auto")
-    max_tokens = int(os.getenv("GEMMA4_AUDIO_MAX_NEW_TOKENS", "128"))
+    model_id = _read_config_str("GEMMA4_AUDIO_MODEL_ID", "google/gemma-4-E2B-it")
+    cache_dir = _read_config_str("GEMMA4_AUDIO_CACHE_DIR", "models_cache/hf")
+    device = _read_config_str("GEMMA4_AUDIO_DEVICE", "auto")
+    max_tokens = _read_positive_int_config("GEMMA4_AUDIO_MAX_NEW_TOKENS", default=128)
     await initialize_daemon(model_id, cache_dir, device, max_tokens)
 
 
@@ -392,7 +446,7 @@ def _validate_image_url(url: str) -> None:
     if _is_private_or_local_host(parsed.hostname):
         raise ValueError("Local/private hosts are not allowed for image URLs")
 
-    raw_allowed_hosts = os.getenv("GEMMA4_AUDIO_IMAGE_ALLOWED_HOSTS", "").strip()
+    raw_allowed_hosts = _read_config_str("GEMMA4_AUDIO_IMAGE_ALLOWED_HOSTS", "")
     if not raw_allowed_hosts:
         return
 
@@ -416,7 +470,7 @@ async def _image_from_url(url: str) -> Image.Image:
 
 
 def _image_from_path(path: str) -> Image.Image:
-    raw_allowed_dir = os.getenv("GEMMA4_AUDIO_IMAGE_INPUT_DIR", "").strip()
+    raw_allowed_dir = _read_config_str("GEMMA4_AUDIO_IMAGE_INPUT_DIR", "")
     if not raw_allowed_dir:
         raise ValueError("Local image path loading is disabled by policy")
     allowed_root = Path(raw_allowed_dir).resolve()
@@ -443,7 +497,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("GEMMA4_CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=[
+        origin.strip()
+        for origin in _read_config_str(
+            "GEMMA4_CORS_ORIGINS", "http://localhost:3000"
+        ).split(",")
+        if origin.strip()
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1839,7 +1899,9 @@ def run_server(
 
 
 if __name__ == "__main__":
-    host = os.getenv("GEMMA4_AUDIO_HOST", "127.0.0.1")
-    port = int(os.getenv("GEMMA4_AUDIO_PORT", "8014"))
-    log_file = os.getenv("GEMMA4_AUDIO_LOG_PATH", "logs/gemma4_audio_service.log")
+    host = _read_config_str("GEMMA4_AUDIO_HOST", "127.0.0.1")
+    port = _read_positive_int_config("GEMMA4_AUDIO_PORT", default=8014)
+    log_file = _read_config_str(
+        "GEMMA4_AUDIO_LOG_PATH", "logs/gemma4_audio_service.log"
+    )
     run_server(host, port, log_file)

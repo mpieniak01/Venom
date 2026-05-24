@@ -10,6 +10,11 @@ import pytest
 
 import venom_core.api.audio_stream as audio_stream_mod
 from venom_core.api.audio_stream import AudioStreamHandler, get_audio_stream_handler
+from venom_core.utils.mode_contracts import (
+    MODE_CONTRACTS,
+    VOICE_EXECUTION_CONTEXT,
+    VOICE_HISTORY_SCOPE,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -79,6 +84,7 @@ def test_get_status_reports_basic_state():
     assert status["stt_backend"] is None
     assert status["tts_backend"] is None
     assert "dependencies" in status
+    assert status["mode_contracts"] == MODE_CONTRACTS
 
 
 def test_get_status_reports_loaded_backends_and_dependencies(monkeypatch):
@@ -131,7 +137,7 @@ def test_coerce_str_returns_default_for_non_string_or_blank():
     assert audio_stream_mod._coerce_str(" value ", "fallback") == "value"
 
 
-def test_gemma4_audio_voice_flags_reflect_settings(monkeypatch):
+def test_multi_runtime_voice_flags_reflect_settings(monkeypatch):
     monkeypatch.setattr(
         audio_stream_mod.SETTINGS,
         "GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED",
@@ -151,7 +157,7 @@ def test_gemma4_audio_voice_flags_reflect_settings(monkeypatch):
         raising=False,
     )
 
-    flags = audio_stream_mod._gemma4_audio_voice_flags()
+    flags = audio_stream_mod._multi_runtime_voice_flags()
 
     assert flags == {
         "reasoning_summary_enabled": True,
@@ -854,14 +860,14 @@ def test_build_voice_session_record_includes_runtime_fields(tmp_path):
             "mime_type": "audio/webm",
             "voice_mode": "summary",
             "timings_ms": {"stt_ms": 12.0},
-            "runtime": {"provider": "gemma4_audio"},
-            "pipeline_id": "gemma4_audio_piper",
-            "audio_runtime_provider": "gemma4_audio",
+            "runtime": {"provider": "multi_runtime"},
+            "pipeline_id": "multi_runtime_piper",
+            "audio_runtime_provider": "multi_runtime",
             "audio_runtime_model": "google/gemma-4-E2B-it",
             "audio_input_status": "verified",
             "fallback_reason": None,
             "native_audio_ms": 111.0,
-            "runtime_log_path": "logs/gemma4_audio_service.log",
+            "runtime_log_path": "logs/multi_runtime_service.log",
             "transcription": "piec razy piec",
             "response_text": "25",
         },
@@ -869,12 +875,12 @@ def test_build_voice_session_record_includes_runtime_fields(tmp_path):
 
     assert record["session_id"] == "session-a"
     assert record["voice_mode"] == "summary"
-    assert record["runtime"] == {"provider": "gemma4_audio"}
-    assert record["pipeline_id"] == "gemma4_audio_piper"
-    assert record["audio_runtime_provider"] == "gemma4_audio"
+    assert record["runtime"] == {"provider": "multi_runtime"}
+    assert record["pipeline_id"] == "multi_runtime_piper"
+    assert record["audio_runtime_provider"] == "multi_runtime"
     assert record["audio_runtime_model"] == "google/gemma-4-E2B-it"
     assert record["audio_input_status"] == "verified"
-    assert record["runtime_log_path"] == "logs/gemma4_audio_service.log"
+    assert record["runtime_log_path"] == "logs/multi_runtime_service.log"
     assert record["transcription"] == "piec razy piec"
 
 
@@ -895,7 +901,7 @@ def test_build_voice_session_insights_payload_delegates_to_voice_metadata(monkey
         transcript="ile to jest dwa razy dwa",
         response="dwa razy dwa to cztery",
         voice_mode="summary",
-        pipeline_id="gemma4_audio_piper",
+        pipeline_id="multi_runtime_piper",
         reasoning_summary_enabled=True,
         emotion_detection_enabled=True,
         emotion_response_style_enabled=False,
@@ -907,7 +913,7 @@ def test_build_voice_session_insights_payload_delegates_to_voice_metadata(monkey
         "transcript": "ile to jest dwa razy dwa",
         "response": "dwa razy dwa to cztery",
         "voice_mode": "summary",
-        "pipeline_id": "gemma4_audio_piper",
+        "pipeline_id": "multi_runtime_piper",
         "reasoning_summary_enabled": True,
         "emotion_detection_enabled": True,
         "emotion_response_style_enabled": False,
@@ -1007,7 +1013,7 @@ def test_build_runtime_metadata_and_tts_sample_rate(monkeypatch):
     assert handler._get_tts_sample_rate() == 22050
 
 
-def test_gemma4_audio_helper_urls_and_selection(monkeypatch):
+def test_multi_runtime_helper_urls_and_selection(monkeypatch):
     """Gemma4 helper URLs should normalize /v1 origin and selected state."""
     handler = _make_handler()
 
@@ -1024,23 +1030,23 @@ def test_gemma4_audio_helper_urls_and_selection(monkeypatch):
         audio_stream_mod.SETTINGS, "ACTIVE_LLM_SERVER", "gemma4_audio", raising=False
     )
 
-    assert handler._gemma4_audio_service_origin() == "http://localhost:8014"
-    assert handler._gemma4_audio_respond_url() == "http://localhost:8014/v1/respond"
-    assert handler._gemma4_audio_health_url() == "http://localhost:8014/health"
-    assert handler._gemma4_audio_runtime_selected() is True
+    assert handler._multi_runtime_service_origin() == "http://localhost:8014"
+    assert handler._multi_runtime_respond_url() == "http://localhost:8014/v1/respond"
+    assert handler._multi_runtime_health_url() == "http://localhost:8014/health"
+    assert handler._multi_runtime_runtime_selected() is True
 
     monkeypatch.setattr(
         audio_stream_mod.SETTINGS, "ACTIVE_LLM_SERVER", "ollama", raising=False
     )
-    assert handler._gemma4_audio_runtime_selected() is False
+    assert handler._multi_runtime_runtime_selected() is False
 
 
 @pytest.mark.asyncio
-async def test_gemma4_audio_health_ok_handles_success_and_failures(monkeypatch):
+async def test_multi_runtime_health_ok_handles_success_and_failures(monkeypatch):
     """Health check should accept ok/warming and reject invalid responses."""
     handler = _make_handler()
     monkeypatch.setattr(
-        handler, "_gemma4_audio_health_url", lambda: "http://runtime/health"
+        handler, "_multi_runtime_health_url", lambda: "http://runtime/health"
     )
 
     responses = iter(
@@ -1065,15 +1071,15 @@ async def test_gemma4_audio_health_ok_handles_success_and_failures(monkeypatch):
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
 
-    assert await handler._gemma4_audio_health_ok() is True
-    assert await handler._gemma4_audio_health_ok() is False
+    assert await handler._multi_runtime_health_ok() is True
+    assert await handler._multi_runtime_health_ok() is False
 
-    monkeypatch.setattr(handler, "_gemma4_audio_health_url", lambda: "")
-    assert await handler._gemma4_audio_health_ok() is False
+    monkeypatch.setattr(handler, "_multi_runtime_health_url", lambda: "")
+    assert await handler._multi_runtime_health_ok() is False
 
 
 @pytest.mark.asyncio
-async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response(
+async def test_invoke_multi_runtime_builds_request_and_validates_response(
     monkeypatch, tmp_path
 ):
     """Gemma4 runtime request should send multipart payload and parse text result."""
@@ -1100,7 +1106,7 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
         raising=False,
     )
     monkeypatch.setattr(
-        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
     monkeypatch.setattr(
         audio_stream_mod.Path,
@@ -1163,7 +1169,7 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
 
-    result = await handler._invoke_gemma4_audio_runtime(wav_path, 17)
+    result = await handler._invoke_multi_runtime(wav_path, 17)
 
     assert result["text"] == "25"
     assert result["response_text"] == "25"
@@ -1183,7 +1189,7 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
 
 
 @pytest.mark.asyncio
-async def test_invoke_gemma4_audio_runtime_prefers_alternate_text_fields(
+async def test_invoke_multi_runtime_prefers_alternate_text_fields(
     monkeypatch, tmp_path
 ):
     """Gemma4 runtime should accept alternate response text fields."""
@@ -1191,7 +1197,7 @@ async def test_invoke_gemma4_audio_runtime_prefers_alternate_text_fields(
     wav_path = tmp_path / "recording.wav"
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
     monkeypatch.setattr(
-        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
 
     class _AsyncBinaryFile:
@@ -1233,14 +1239,14 @@ async def test_invoke_gemma4_audio_runtime_prefers_alternate_text_fields(
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
 
-    result = await handler._invoke_gemma4_audio_runtime(wav_path, 17)
+    result = await handler._invoke_multi_runtime(wav_path, 17)
 
     assert result["text"] == "42"
     assert result["response_text"] == "42"
 
 
 @pytest.mark.asyncio
-async def test_invoke_gemma4_audio_runtime_uses_generated_text_when_response_empty(
+async def test_invoke_multi_runtime_uses_generated_text_when_response_empty(
     monkeypatch, tmp_path
 ):
     """Fallback to generated_text when response_text is blank."""
@@ -1248,7 +1254,7 @@ async def test_invoke_gemma4_audio_runtime_uses_generated_text_when_response_emp
     wav_path = tmp_path / "recording.wav"
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
     monkeypatch.setattr(
-        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
 
     class _AsyncBinaryFile:
@@ -1286,12 +1292,12 @@ async def test_invoke_gemma4_audio_runtime_uses_generated_text_when_response_emp
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
 
-    result = await handler._invoke_gemma4_audio_runtime(wav_path, 17)
+    result = await handler._invoke_multi_runtime(wav_path, 17)
     assert result["text"] == "41"
 
 
 @pytest.mark.asyncio
-async def test_invoke_gemma4_audio_runtime_uses_message_content_when_other_fields_empty(
+async def test_invoke_multi_runtime_uses_message_content_when_other_fields_empty(
     monkeypatch, tmp_path
 ):
     """Fallback to message.content when text/response_text/generated_text are blank."""
@@ -1299,7 +1305,7 @@ async def test_invoke_gemma4_audio_runtime_uses_message_content_when_other_field
     wav_path = tmp_path / "recording.wav"
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
     monkeypatch.setattr(
-        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
 
     class _AsyncBinaryFile:
@@ -1342,12 +1348,12 @@ async def test_invoke_gemma4_audio_runtime_uses_message_content_when_other_field
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
 
-    result = await handler._invoke_gemma4_audio_runtime(wav_path, 17)
+    result = await handler._invoke_multi_runtime(wav_path, 17)
     assert result["text"] == "40"
 
 
 @pytest.mark.asyncio
-async def test_invoke_gemma4_audio_runtime_raises_for_http_and_empty_text(
+async def test_invoke_multi_runtime_raises_for_http_and_empty_text(
     monkeypatch, tmp_path
 ):
     """Gemma4 runtime should reject HTTP errors and empty text payloads."""
@@ -1355,7 +1361,7 @@ async def test_invoke_gemma4_audio_runtime_raises_for_http_and_empty_text(
     wav_path = tmp_path / "recording.wav"
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
     monkeypatch.setattr(
-        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
 
     class _HttpErrorClient:
@@ -1374,7 +1380,7 @@ async def test_invoke_gemma4_audio_runtime_raises_for_http_and_empty_text(
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _HttpErrorClient)
 
     with pytest.raises(RuntimeError, match="Gemma4 audio runtime HTTP 503: down"):
-        await handler._invoke_gemma4_audio_runtime(wav_path, 7)
+        await handler._invoke_multi_runtime(wav_path, 7)
 
     class _EmptyTextClient(_HttpErrorClient):
         async def post(self, url, data=None, files=None):
@@ -1383,11 +1389,11 @@ async def test_invoke_gemma4_audio_runtime_raises_for_http_and_empty_text(
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _EmptyTextClient)
 
     with pytest.raises(RuntimeError, match="returned an empty response"):
-        await handler._invoke_gemma4_audio_runtime(wav_path, 8)
+        await handler._invoke_multi_runtime(wav_path, 8)
 
 
 @pytest.mark.asyncio
-async def test_process_native_gemma4_audio_pipeline_handles_selection_and_fallbacks(
+async def test_process_native_multi_runtime_pipeline_handles_selection_and_fallbacks(
     monkeypatch, tmp_path
 ):
     """Native pipeline should short-circuit cleanly before whisper fallback."""
@@ -1398,23 +1404,23 @@ async def test_process_native_gemma4_audio_pipeline_handles_selection_and_fallba
     wav_path.write_bytes(b"wav")
     timings_ms = {}
 
-    monkeypatch.setattr(handler, "_gemma4_audio_runtime_selected", lambda: False)
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: False)
     assert (
-        await handler._process_native_gemma4_audio_pipeline(
+        await handler._process_native_multi_runtime_pipeline(
             1, session_dir, wav_path, timings_ms, 0.0, MagicMock()
         )
         is False
     )
 
     handler.audio_engine = MagicMock()
-    monkeypatch.setattr(handler, "_gemma4_audio_runtime_selected", lambda: True)
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
     monkeypatch.setattr(
         handler,
-        "_gemma4_audio_runtime_snapshot",
-        lambda: {"audio_runtime_provider": "gemma4_audio"},
+        "_multi_runtime_runtime_snapshot",
+        lambda: {"audio_runtime_provider": "multi_runtime"},
     )
     monkeypatch.setattr(
-        handler, "_gemma4_audio_health_ok", AsyncMock(return_value=False)
+        handler, "_multi_runtime_health_ok", AsyncMock(return_value=False)
     )
     update_calls = []
     monkeypatch.setattr(
@@ -1426,7 +1432,7 @@ async def test_process_native_gemma4_audio_pipeline_handles_selection_and_fallba
     monkeypatch.setattr(handler, "_connection_voice_mode", lambda _cid: "standard")
 
     assert (
-        await handler._process_native_gemma4_audio_pipeline(
+        await handler._process_native_multi_runtime_pipeline(
             2, session_dir, wav_path, timings_ms, 0.0, MagicMock()
         )
         is False
@@ -1436,7 +1442,7 @@ async def test_process_native_gemma4_audio_pipeline_handles_selection_and_fallba
 
 
 @pytest.mark.asyncio
-async def test_process_native_gemma4_audio_pipeline_success(monkeypatch, tmp_path):
+async def test_process_native_multi_runtime_pipeline_success(monkeypatch, tmp_path):
     """Native pipeline success should update metadata and send TTS response."""
     handler = _make_handler()
     handler.audio_engine = MagicMock()
@@ -1452,18 +1458,18 @@ async def test_process_native_gemma4_audio_pipeline_success(monkeypatch, tmp_pat
     sent_audio = []
     update_calls = []
 
-    monkeypatch.setattr(handler, "_gemma4_audio_runtime_selected", lambda: True)
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
     monkeypatch.setattr(
         handler,
-        "_gemma4_audio_runtime_snapshot",
-        lambda: {"audio_runtime_provider": "gemma4_audio"},
+        "_multi_runtime_runtime_snapshot",
+        lambda: {"audio_runtime_provider": "multi_runtime"},
     )
     monkeypatch.setattr(
-        handler, "_gemma4_audio_health_ok", AsyncMock(return_value=True)
+        handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
     )
     monkeypatch.setattr(
         handler,
-        "_invoke_gemma4_audio_runtime",
+        "_invoke_multi_runtime",
         AsyncMock(return_value={"text": "piec razy piec", "response_text": "25"}),
     )
     monkeypatch.setattr(
@@ -1485,7 +1491,7 @@ async def test_process_native_gemma4_audio_pipeline_success(monkeypatch, tmp_pat
     )
     monkeypatch.setattr(handler, "_elapsed_ms", lambda _started: 12.5)
 
-    result = await handler._process_native_gemma4_audio_pipeline(
+    result = await handler._process_native_multi_runtime_pipeline(
         3, session_dir, wav_path, timings_ms, 0.0, MagicMock()
     )
 
@@ -1498,6 +1504,8 @@ async def test_process_native_gemma4_audio_pipeline_success(monkeypatch, tmp_pat
     assert len(sent_audio) == 1
     assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"
     assert update_calls[0]["transcription"] == "piec razy piec"
+    assert update_calls[0]["execution_context"] == VOICE_EXECUTION_CONTEXT
+    assert update_calls[0]["history_scope"] == VOICE_HISTORY_SCOPE
     assert update_calls[1]["pipeline_id"] == "multi_runtime_piper"
 
 

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
 import { ApiError } from "@/lib/api-client";
+import { canonicalRuntimeId, isMultiRuntime } from "@/lib/runtime-id";
 import type {
     ActiveLlmServerResponse,
     LlmRuntimeModelOption,
@@ -24,7 +25,7 @@ const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
     runtime === "openai" || runtime === "google";
 
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
-    runtime === "multi_runtime" || runtime === "gemma4_audio";
+    isMultiRuntime(runtime);
 
 const ERROR_DETAIL_KEYS = ["detail", "message", "error", "reason"] as const;
 
@@ -276,15 +277,17 @@ export function useRuntime() {
     const activateRuntimeSelection = useCallback(
         async (server: string, model: string | null): Promise<ActiveLlmServerResponse | void> => {
             if (!server) return;
-            const resolvedModel = resolveSelectedModelForServer(server, model);
+            const canonicalServer = canonicalRuntimeId(server);
+            const targetServer = canonicalServer || server;
+            const resolvedModel = resolveSelectedModelForServer(targetServer, model);
             let response: ActiveLlmServerResponse | void = undefined;
-            if (isCloudRuntime(server)) {
-                response = await setActiveLlmRuntime(server, resolvedModel ?? model ?? undefined);
-            } else if (isServerWithInlineModelActivation(server)) {
-                response = await setActiveLlmServer(server, resolvedModel ?? model ?? undefined);
+            if (isCloudRuntime(targetServer)) {
+                response = await setActiveLlmRuntime(targetServer, resolvedModel ?? model ?? undefined);
+            } else if (isServerWithInlineModelActivation(targetServer)) {
+                response = await setActiveLlmServer(targetServer, resolvedModel ?? model ?? undefined);
             } else {
-                if (server !== activeServer.data?.active_server) {
-                    response = await setActiveLlmServer(server, resolvedModel ?? undefined);
+                if (targetServer !== activeServer.data?.active_server) {
+                    response = await setActiveLlmServer(targetServer, resolvedModel ?? undefined);
                 }
                 if (resolvedModel) {
                     await switchModel(resolvedModel);

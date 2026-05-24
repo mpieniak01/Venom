@@ -39,34 +39,34 @@ function makeAudioStatus() {
       runtime: {
         stt_model: "medium",
         stt_device: "cuda",
-        llm_service_id: "gemma4_audio",
+        llm_service_id: "multi_runtime",
         llm_model: "google/gemma-4-E2B-it",
         tts_sample_rate: 24000,
       },
-      pipeline_id: "gemma4_audio_piper",
-      audio_runtime_provider: "gemma4_audio",
+      pipeline_id: "multi_runtime_piper",
+      audio_runtime_provider: "multi_runtime",
       audio_runtime_model: "google/gemma-4-E2B-it",
       audio_input_status: "verified",
-      decoder_source: "gemma4_audio",
+      decoder_source: "multi_runtime",
       fallback_reason: null,
       native_audio_ms: 1200,
-      runtime_log_path: "/var/log/venom/gemma4_audio.log",
+      runtime_log_path: "/var/log/venom/multi_runtime.log",
     },
     runtime_snapshot: {
-      runtime_id: "gemma4_audio@http://localhost:8014/v1",
-      provider: "gemma4_audio",
+      runtime_id: "multi_runtime://localhost:8014/v1",
+      provider: "multi_runtime",
       model_name: "google/gemma-4-E2B-it",
       endpoint: "http://localhost:8014/v1",
       config_hash: "cfg123",
       runtime_capabilities: {
-        compatibility_profile: "gemma4_audio_native",
+        compatibility_profile: "multi_runtime_native",
         probe_status: "verified",
         probes: {
           health: { status: "verified" },
         },
       },
       voice_pipeline: {
-        profile: "gemma4_audio_native",
+        profile: "multi_runtime_native",
         stt: "native_audio",
         reasoning: "native_audio_model",
         tools: "disabled",
@@ -123,10 +123,12 @@ describe("DevDiagnosticsDrawer", () => {
     assert.ok(screen.getByText("Sygnał: ws:open"));
     assert.ok(screen.getByText("Chunki: 2"));
     assert.ok(screen.getByText("render: debug"));
-    assert.ok(screen.getByText("Dostawca: gemma4_audio"));
+    assert.ok(screen.getByText("Dostawca: multi_runtime"));
     assert.ok(screen.getAllByText("ID sesji: session-123").length >= 2);
     assert.ok(screen.getByText("Hash konfiguracji"));
     assert.ok(screen.getByText("Pipeline głosu"));
+    assert.ok(screen.getByText(/LLM multi_runtime:google\/gemma-4-E2B-it/));
+    assert.ok(screen.getByText(/STT backend:\s+multi_runtime \(google\/gemma-4-E2B-it\)/));
     assert.ok(screen.getAllByText("Kanał gotowy").length >= 2);
     assert.ok(screen.getByText("Kopiuj runtime JSON"));
     assert.ok(screen.getByText("Kopiuj sesję JSON"));

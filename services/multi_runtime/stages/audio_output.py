@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import base64
 import io
-import os
 import re
 import wave
 from pathlib import Path
 from time import perf_counter
 from typing import Any
+
+from services.multi_runtime.runtime_config import read_config_str
 
 from .base import StageContext
 
@@ -19,7 +20,7 @@ _PIPER_VOICE_CACHE: dict[str, Any] = {}
 
 
 def _find_tts_model_path() -> Path | None:
-    configured = str(os.getenv("TTS_MODEL_PATH", "")).strip()
+    configured = read_config_str("TTS_MODEL_PATH", "")
     if configured:
         p = Path(configured)
         return p if p.exists() else None

@@ -25,6 +25,7 @@ import {
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { LanguageSwitcher } from "./language-switcher";
 import { useLanguage, useTranslation } from "@/lib/i18n";
+import { canonicalRuntimeId } from "@/lib/runtime-id";
 import { getNavigationItems } from "./sidebar-helpers";
 import { ModelIntrospectionMechanismControl } from "@/components/inspector/model-introspection-mechanism";
 import {
@@ -67,6 +68,7 @@ export function MobileNav() {
     tasks: t("mobileNav.telemetry.tasks"),
     ws: t("mobileNav.telemetry.ws"),
   };
+  const canonicalCostProvider = canonicalRuntimeId(costMode?.provider ?? "");
 
   const handleCostToggle = async () => {
     setCostLoading(true);
@@ -248,7 +250,7 @@ export function MobileNav() {
                   <p className="text-lg font-semibold text-[color:var(--text-heading)]">
                     {costMode?.enabled ? t("sidebar.cost.pro") : t("sidebar.cost.eco")}
                   </p>
-                  <p className="text-xs text-[color:var(--text-secondary)]">{t("mobileNav.telemetry.provider")}: {costMode?.provider ?? t("mobileNav.telemetry.noneProvider")}</p>
+                  <p className="text-xs text-[color:var(--text-secondary)]">{t("mobileNav.telemetry.provider")}: {canonicalCostProvider || t("mobileNav.telemetry.noneProvider")}</p>
                 </div>
                 <Sparkles className="h-5 w-5 text-emerald-200" />
               </div>

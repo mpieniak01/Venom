@@ -3013,17 +3013,6 @@ function VoiceCommandCenterPanel({
               summaryItems={
                 [
                   {
-                    label: t("voice.controls.selectedRuntime"),
-                    value: formatRuntimeSummaryLabel(
-                      viewState.effectiveAudioStatus.latest_voice_session?.runtime?.llm_service_id
-                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.provider
-                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.runtime_id,
-                      viewState.effectiveAudioStatus.latest_voice_session?.runtime?.llm_model
-                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.model_name,
-                    ),
-                    tone: "neutral",
-                  },
-                  {
                     label: t("voice.controls.systemVoiceRuntime"),
                     value: formatRuntimeSummaryLabel(
                       viewState.effectiveAudioStatus.runtime_snapshot?.provider

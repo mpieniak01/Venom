@@ -987,6 +987,8 @@ class AudioStreamHandler:
             {
                 **snapshot,
                 "pipeline_id": "multi_runtime_piper",
+                "audio_runtime_provider": MULTI_RUNTIME_ID,
+                "audio_runtime_model": _coerce_str(runtime_result.get("model"), ""),
                 "audio_input_status": "verified",
                 "decoder_source": "multi_runtime",
                 "fallback_reason": "",
@@ -1312,6 +1314,7 @@ class AudioStreamHandler:
                 "history_scope": VOICE_HISTORY_SCOPE,
             }
         )
+        runtime_metadata = self._build_runtime_metadata(operator_agent)
         response_text = await _invoke_operator_agent(
             operator_agent,
             transcription,
@@ -1334,6 +1337,11 @@ class AudioStreamHandler:
                     raw_thinking_available=False,
                 ),
                 "timings_ms": timings_ms,
+                # In fallback whisper->LLM path, this pair must reflect the LLM that
+                # actually generated the response, not the native multi_runtime daemon.
+                "audio_runtime_provider": runtime_metadata.get("llm_service_id"),
+                "audio_runtime_model": runtime_metadata.get("llm_model"),
+                "runtime": runtime_metadata,
                 **self._voice_contract_payload(connection_id),
             },
         )

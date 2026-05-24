@@ -29,6 +29,8 @@ describe("VoiceCommandCenter debug mode", () => {
   };
 
   beforeEach(() => {
+    const rafTimers = new Map<number, ReturnType<typeof setTimeout>>();
+    let rafId = 0;
     window.history.replaceState({}, "", "http://localhost/voice?debug");
     Object.defineProperty(globalThis, "location", {
       configurable: true,
@@ -40,11 +42,22 @@ describe("VoiceCommandCenter debug mode", () => {
     });
     Object.defineProperty(globalThis, "requestAnimationFrame", {
       configurable: true,
-      value: () => 0,
+      value: (callback: FrameRequestCallback) => {
+        rafId += 1;
+        const timer = setTimeout(() => callback(Date.now()), 0);
+        rafTimers.set(rafId, timer);
+        return rafId;
+      },
     });
     Object.defineProperty(globalThis, "cancelAnimationFrame", {
       configurable: true,
-      value: () => undefined,
+      value: (id: number) => {
+        const timer = rafTimers.get(id);
+        if (timer) {
+          clearTimeout(timer);
+          rafTimers.delete(id);
+        }
+      },
     });
   });
 

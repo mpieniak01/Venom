@@ -151,7 +151,7 @@ export function CostModeSection({
                         {costMode?.enabled ? t("sidebar.cost.pro") : t("sidebar.cost.eco")}
                     </p>
                     <p className="text-xs text-[color:var(--ui-muted)]">
-                        {t("common.provider")}: {canonicalProvider || "brak"}
+                        {t("common.provider")}: {canonicalProvider || t("common.unknown")}
                     </p>
                 </div>
                 <Sparkles className="h-5 w-5 text-emerald-200" />

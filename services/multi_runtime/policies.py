@@ -18,10 +18,13 @@ _ECONOMY_VRAM_THRESHOLD_DEFAULT = 2048
 
 
 def _economy_vram_threshold() -> int:
-    return read_config_int(
+    threshold = read_config_int(
         "MULTI_RUNTIME_ECONOMY_VRAM_THRESHOLD_MB",
         _ECONOMY_VRAM_THRESHOLD_DEFAULT,
     )
+    if threshold <= 0:
+        return _ECONOMY_VRAM_THRESHOLD_DEFAULT
+    return threshold
 
 
 @dataclass(slots=True)

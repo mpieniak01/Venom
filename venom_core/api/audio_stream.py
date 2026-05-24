@@ -715,8 +715,9 @@ class AudioStreamHandler:
             "audio_runtime_supports_image": True,
             "audio_runtime_supports_unified_multimodal_respond": True,
             "audio_runtime_runtime_mode": "processor_model",
-            "audio_runtime_image_token_budget": int(
-                _multi_runtime_setting("GEMMA4_AUDIO_IMAGE_TOKEN_BUDGET", 280)
+            "audio_runtime_image_token_budget": _coerce_int(
+                _multi_runtime_setting("GEMMA4_AUDIO_IMAGE_TOKEN_BUDGET", 280),
+                280,
             ),
             "assistant_models": multi_runtime_available_models(role="assistant"),
             "audio_runtime_log_path": log_path,

@@ -3015,10 +3015,10 @@ function VoiceCommandCenterPanel({
                   {
                     label: t("voice.controls.selectedRuntime"),
                     value: formatRuntimeSummaryLabel(
-                      viewState.effectiveAudioStatus.latest_voice_session.runtime?.llm_service_id
+                      viewState.effectiveAudioStatus.latest_voice_session?.runtime?.llm_service_id
                         ?? viewState.effectiveAudioStatus.runtime_snapshot?.provider
                         ?? viewState.effectiveAudioStatus.runtime_snapshot?.runtime_id,
-                      viewState.effectiveAudioStatus.latest_voice_session.runtime?.llm_model
+                      viewState.effectiveAudioStatus.latest_voice_session?.runtime?.llm_model
                         ?? viewState.effectiveAudioStatus.runtime_snapshot?.model_name,
                     ),
                     tone: "neutral",
@@ -3035,8 +3035,8 @@ function VoiceCommandCenterPanel({
                   {
                     label: t("voice.controls.responseRuntime"),
                     value: formatRuntimeSummaryLabel(
-                      viewState.effectiveAudioStatus.latest_voice_session.audio_runtime_provider,
-                      viewState.effectiveAudioStatus.latest_voice_session.audio_runtime_model,
+                      viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_provider,
+                      viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_model,
                     ),
                     tone: "neutral",
                   },

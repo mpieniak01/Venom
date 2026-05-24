@@ -250,7 +250,7 @@ export function useVoiceDebugMode(t: Translator): VoiceDebugSnapshot {
     const syncLocation = () => {
       const nextSearch = readLocationSearch();
       setUrlSearch((current) => (current === nextSearch ? current : nextSearch));
-      setHydrated((current) => (current ? current : true));
+      setHydrated(true);
     };
     syncLocation();
     globalThis.addEventListener?.("popstate", syncLocation);

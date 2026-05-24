@@ -966,6 +966,16 @@ async def respond(request: Request) -> RespondResponse:
     generated_text = pipeline_result.generated_text
     duration = pipeline_result.audio_duration_sec
     active_precision = str(daemon_params.get("precision", "auto"))
+    post_response_cleanup = "none"
+
+    if request_payload.release_after_response:
+        try:
+            await asyncio.to_thread(daemon.unload_all)
+            post_response_cleanup = "unload_all"
+            logger.info("Post-response cleanup: unload_all completed")
+        except Exception as exc:
+            post_response_cleanup = f"cleanup_failed: {exc}"
+            logger.warning("Post-response cleanup failed: %s", exc)
 
     total_duration_ms = pipeline_result.total_duration_ms
     voice_insights = build_voice_session_insights(
@@ -1026,6 +1036,7 @@ async def respond(request: Request) -> RespondResponse:
         audio_output_bytes=pipeline_result.audio_bytes,
         audio_output_sample_rate=pipeline_result.audio_sample_rate,
         active_precision=active_precision,
+        post_response_cleanup=post_response_cleanup,
     )
 
 

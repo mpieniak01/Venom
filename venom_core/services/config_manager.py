@@ -668,6 +668,17 @@ class ConfigManager:
                 logger.info(
                     f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {ollama_endpoint} (Ollama)"
                 )
+            elif new_server == "multi_runtime":
+                gemma_endpoint = updates.get("GEMMA4_AUDIO_ENDPOINT") or env_values.get(
+                    "GEMMA4_AUDIO_ENDPOINT",
+                    getattr(SETTINGS, "GEMMA4_AUDIO_ENDPOINT", ""),
+                )
+                if gemma_endpoint:
+                    env_values["LLM_LOCAL_ENDPOINT"] = str(gemma_endpoint)
+                    changed_keys.append("LLM_LOCAL_ENDPOINT")
+                    logger.info(
+                        f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {gemma_endpoint} (multi_runtime)"
+                    )
 
         # Zapisz aktywny plik env
         try:

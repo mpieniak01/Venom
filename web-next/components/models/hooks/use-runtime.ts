@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
+import { ApiError } from "@/lib/api-client";
 import type {
     ActiveLlmServerResponse,
     LlmRuntimeModelOption,
@@ -24,6 +25,50 @@ const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
 
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
     runtime === "multi_runtime" || runtime === "gemma4_audio";
+
+function resolveApiErrorDetail(data: unknown): string | null {
+    if (typeof data === "string") {
+        const trimmed = data.trim();
+        return trimmed || null;
+    }
+    if (!data || typeof data !== "object") {
+        return null;
+    }
+    const payload = data as Record<string, unknown>;
+    const candidates = [payload.detail, payload.message, payload.error, payload.reason];
+    for (const candidate of candidates) {
+        if (typeof candidate === "string") {
+            const trimmed = candidate.trim();
+            if (trimmed) return trimmed;
+        }
+        if (candidate && typeof candidate === "object") {
+            const nested = candidate as Record<string, unknown>;
+            for (const key of ["detail", "message", "error", "reason"]) {
+                const nestedValue = nested[key];
+                if (typeof nestedValue === "string") {
+                    const trimmed = nestedValue.trim();
+                    if (trimmed) return trimmed;
+                }
+            }
+        }
+    }
+    return null;
+}
+
+export function resolveRuntimeActivationErrorMessage(error: unknown): string {
+    if (error instanceof ApiError) {
+        const detail = resolveApiErrorDetail(error.data);
+        if (detail) {
+            return detail;
+        }
+        return `Request failed: ${error.status}`;
+    }
+    if (error instanceof Error) {
+        const message = error.message.trim();
+        if (message) return message;
+    }
+    return "Nie udało się aktywować runtime.";
+}
 
 export function buildInstalledBuckets(
     data: ModelsResponse | null,
@@ -258,12 +303,12 @@ export function useRuntime() {
             const response = await activateRuntimeSelection(server, model);
             pushToast(
                 t("models.toasts.activateSuccess", {
-                    name: response?.active_model ?? model,
-                }),
-                "success",
-            );
-        } catch {
-            pushToast(t("models.toasts.activateError"), "error");
+                name: response?.active_model ?? model,
+            }),
+            "success",
+        );
+    } catch (error) {
+            pushToast(resolveRuntimeActivationErrorMessage(error), "error");
         } finally {
             setPending(key, false);
         }

@@ -106,6 +106,7 @@ export type DaemonRespondRequest = {
   }>;
   task?: string | null;
   max_new_tokens?: number;
+  release_after_response?: boolean;
 };
 
 export type DaemonRespondResponse = {
@@ -126,6 +127,7 @@ export type DaemonRespondResponse = {
   audio_output_bytes?: string | null;
   audio_output_sample_rate?: number | null;
   active_precision?: string | null;
+  post_response_cleanup?: string | null;
 };
 
 async function daemonFetch<T>(

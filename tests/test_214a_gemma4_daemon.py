@@ -13,6 +13,7 @@ Covers the 7 backend test cases from the spec (section 2.3):
 from __future__ import annotations
 
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -594,6 +595,68 @@ def test_chat_completions_rejects_streaming(monkeypatch) -> None:
 
     assert response.status_code == 400
     assert "Streaming is not supported" in response.json()["detail"]
+
+
+def test_respond_release_after_response_unloads_models(monkeypatch) -> None:
+    daemon = _make_daemon()
+    unload_calls = []
+
+    def _unload_all():
+        unload_calls.append(True)
+
+    daemon.unload_all = _unload_all  # type: ignore[method-assign]
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+
+    pipeline_result = SimpleNamespace(
+        generated_text="to jest odpowiedz",
+        audio_duration_sec=0.0,
+        total_duration_ms=123,
+        audio_bytes=None,
+        audio_sample_rate=None,
+        input_modalities=["text"],
+        output_modalities=["text"],
+        diagnostics=SimpleNamespace(
+            trace_names=lambda: ["stt", "llm", "tts"],
+            selected_policy="native",
+            selected_image_strategy=None,
+            retrieval_used=False,
+            retrieval_context_items=0,
+            retrieval_route=None,
+            assistant_used=False,
+            economy_mode_activated=False,
+            degradation_reasons=[],
+            component_snapshot=[],
+        ),
+    )
+
+    class _Pipeline:
+        def __init__(self, engine, daemon):
+            self.engine = engine
+            self.daemon = daemon
+
+        def execute(self, **kwargs):
+            return pipeline_result
+
+    monkeypatch.setattr(runtime_main, "MultiRuntimePipeline", _Pipeline)
+
+    client = TestClient(runtime_main.app)
+    response = client.post(
+        "/v1/respond",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Ile to dwa razy dwa?"}],
+                }
+            ],
+            "release_after_response": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["post_response_cleanup"] == "unload_all"
+    assert unload_calls == [True]
 
 
 # ---------------------------------------------------------------------------

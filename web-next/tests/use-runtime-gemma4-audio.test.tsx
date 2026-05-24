@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { LanguageProvider } from "../lib/i18n";
 import { ToastProvider } from "../components/ui/toast";
 import { useRuntime } from "../components/models/hooks/use-runtime";
+import { getRuntimeForProvider } from "../components/models/models-helpers";
 
 afterEach(() => cleanup());
 
@@ -165,5 +166,10 @@ describe("useRuntime gemma4_audio activation", () => {
       postBodies.some((url) => url.endsWith("/api/v1/models/switch")),
       false,
     );
+  });
+
+  it("routes gemma4_audio provider to multi_runtime for model activation", () => {
+    assert.equal(getRuntimeForProvider("gemma4_audio"), "multi_runtime");
+    assert.equal(getRuntimeForProvider("multi_runtime"), "multi_runtime");
   });
 });

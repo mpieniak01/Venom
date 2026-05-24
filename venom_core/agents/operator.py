@@ -43,6 +43,21 @@ VOICE_MODE_PROMPTS = {
     },
 }
 
+_VOICE_RESPONSE_LEAK_MARKERS = (
+    "oto nowy tryb komunikacji",
+    "tryb 1:",
+    "tryb 2:",
+    "tryb 3:",
+    "odpowiedzi muszą być krótkie",
+    "nie używaj markdown",
+    "nie wymieniaj szczegółów technicznych",
+    "twoim celem jest",
+    "twoim zadaniem",
+    "pamiętaj:",
+    "jesteś interfejsem głosowym",
+    "odpowiedzi muszą",
+)
+
 
 def _build_voice_context_message(voice_context: dict[str, Any] | None) -> str | None:
     if not voice_context:
@@ -76,6 +91,48 @@ def _build_voice_context_message(voice_context: dict[str, Any] | None) -> str | 
     return "\n".join(parts)
 
 
+def _looks_like_voice_response_leak(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    if not normalized:
+        return False
+    return any(marker in normalized for marker in _VOICE_RESPONSE_LEAK_MARKERS)
+
+
+def _sanitize_voice_response(text: str) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+
+    lines: list[str] = []
+    for line in raw.splitlines():
+        normalized = " ".join(line.lower().split())
+        if not normalized:
+            continue
+        if any(marker in normalized for marker in _VOICE_RESPONSE_LEAK_MARKERS):
+            continue
+        if normalized.startswith("- ") and len(normalized.split()) > 2:
+            continue
+        lines.append(line.strip())
+
+    cleaned = re.sub(r"\s+", " ", " ".join(lines)).strip()
+    return cleaned or raw
+
+
+def _normalize_voice_response(text: Any) -> tuple[str, bool]:
+    raw = _extract_text_payload(text)
+    if not raw:
+        return "", True
+
+    cleaned = _sanitize_voice_response(raw)
+    if not cleaned:
+        return "", True
+
+    if _looks_like_voice_response_leak(raw) or _looks_like_voice_response_leak(cleaned):
+        return cleaned, True
+
+    return cleaned, False
+
+
 def _coerce_int(value: Any, default: int) -> int:
     try:
         return int(value)
@@ -90,6 +147,50 @@ def _coerce_float(value: Any, default: float) -> float:
         return default
 
 
+def _extract_text_payload(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    if isinstance(value, dict):
+        for key in ("content", "text", "response_text"):
+            extracted = _extract_text_payload(value.get(key))
+            if extracted:
+                return extracted
+        message = value.get("message")
+        if message is not None:
+            extracted = _extract_text_payload(message)
+            if extracted:
+                return extracted
+        return ""
+    if isinstance(value, (list, tuple)):
+        parts = [_extract_text_payload(item) for item in value]
+        return " ".join(part for part in parts if part).strip()
+    if value.__class__.__module__.startswith("unittest.mock"):
+        return str(value).strip()
+    for attr in ("content", "text", "response_text"):
+        if hasattr(value, attr):
+            extracted = _extract_text_payload(getattr(value, attr))
+            if extracted:
+                return extracted
+    return str(value).strip()
+
+
+def _is_ollama_runtime_active() -> bool:
+    try:
+        runtime = get_active_llm_runtime()
+        provider = str(getattr(runtime, "provider", "") or "").strip().lower()
+        return provider == "ollama"
+    except Exception:
+        return False
+
+
+def _should_use_ollama_native_fallback() -> bool:
+    return SETTINGS.LLM_SERVICE_TYPE == "local" or _is_ollama_runtime_active()
+
+
 def _ollama_extra_body() -> dict[str, Any] | None:
     """Returns extra_body to disable thinking for Ollama models (e.g. gemma4).
 
@@ -97,7 +198,7 @@ def _ollama_extra_body() -> dict[str, Any] | None:
     an empty `content` field and put the answer in `thinking`/`reasoning` when
     thinking is enabled.  Passing `think: false` forces the regular response path.
     """
-    if SETTINGS.LLM_SERVICE_TYPE == "local" and not SETTINGS.OLLAMA_ENABLE_THINK:
+    if _should_use_ollama_native_fallback() and not SETTINGS.OLLAMA_ENABLE_THINK:
         return {"think": False}
     return None
 
@@ -145,8 +246,30 @@ def _chat_history_to_ollama_messages(chat_history: ChatHistory) -> list[dict[str
             role = "assistant"
         else:
             role = "user"
-        messages.append({"role": role, "content": str(msg.content or "")})
+        messages.append({"role": role, "content": _extract_text_payload(msg.content)})
     return messages
+
+
+def _build_voice_retry_history(
+    *,
+    input_text: str,
+    mode_prompt: dict[str, object],
+    voice_context: dict[str, Any] | None,
+    mode: str,
+) -> ChatHistory:
+    retry_history = ChatHistory()
+    retry_history.add_system_message(
+        "Odpowiadaj wyłącznie krótką, rzeczową odpowiedzią po polsku. "
+        "Nie powtarzaj promptu, instrukcji ani nagłówków. "
+        "Nie używaj markdown ani list, chyba że użytkownik o to wyraźnie prosi."
+    )
+    voice_context_message = _build_voice_context_message(voice_context)
+    if voice_context_message:
+        retry_history.add_system_message(voice_context_message)
+    if mode != "standard":
+        retry_history.add_system_message(str(mode_prompt["instruction"]))
+    retry_history.add_user_message(input_text)
+    return retry_history
 
 
 async def _ollama_native_call(
@@ -419,16 +542,21 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             temp_history.add_system_message(str(mode_prompt["instruction"]))
         for message in self.chat_history.messages:
             if getattr(message, "role", None) != "system":
+                if "assistant" in str(getattr(message, "role", "")).lower():
+                    if _looks_like_voice_response_leak(
+                        _extract_text_payload(message.content)
+                    ):
+                        logger.debug(
+                            "Pominięto leaky assistant message z historii voice."
+                        )
+                        continue
                 temp_history.add_message(message)
         temp_history.add_user_message(input_text)
         return temp_history
 
     def _extract_assistant_message(self, response: Any) -> str:
         """Normalize SK response to a plain assistant message string."""
-        if not response or (isinstance(response, list) and not response):
-            return ""
-        item = response[0] if isinstance(response, list) else response
-        return str(item).strip()
+        return _extract_text_payload(response)
 
     def _append_to_history(self, input_text: str, assistant_message: str) -> None:
         self.chat_history.add_user_message(input_text)
@@ -486,8 +614,8 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 enable_functions=False,
             )
 
-            assistant_message = self._extract_assistant_message(response)
-            if not assistant_message and SETTINGS.LLM_SERVICE_TYPE == "local":
+            assistant_message, needs_retry = _normalize_voice_response(response)
+            if not assistant_message and _should_use_ollama_native_fallback():
                 # Ollama's OpenAI-compat endpoint ignores think:false for some
                 # thinking models (gemma4, qwen3, deepseek-r1). Fall back to the
                 # native /api/chat endpoint which reliably disables thinking.
@@ -496,15 +624,55 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                     "native Ollama API for input: %s",
                     input_text[:80],
                 )
-                assistant_message = await _ollama_native_call(
-                    chat_history=temp_history,
-                    max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
-                    temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+                assistant_message, needs_retry = _normalize_voice_response(
+                    await _ollama_native_call(
+                        chat_history=temp_history,
+                        max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
+                        temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+                    )
                 )
+
+            if needs_retry:
+                logger.warning(
+                    "Voice response looks like prompt leakage; retrying with a "
+                    "minimal history for input: %s",
+                    input_text[:80],
+                )
+                retry_history = _build_voice_retry_history(
+                    input_text=input_text,
+                    mode_prompt=mode_prompt,
+                    voice_context=voice_context,
+                    mode=mode,
+                )
+                retry_response = await self._invoke_chat_with_fallbacks(
+                    chat_service=chat_service,
+                    chat_history=retry_history,
+                    settings=settings,
+                    enable_functions=False,
+                )
+                assistant_message, needs_retry = _normalize_voice_response(
+                    retry_response
+                )
+                if not assistant_message and _should_use_ollama_native_fallback():
+                    assistant_message, needs_retry = _normalize_voice_response(
+                        await _ollama_native_call(
+                            chat_history=retry_history,
+                            max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
+                            temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+                        )
+                    )
 
             if not assistant_message:
                 logger.warning(
                     "LLM zwrócił pustą odpowiedź dla input: %s", input_text[:80]
+                )
+                return "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
+
+            if needs_retry and _looks_like_voice_response_leak(assistant_message):
+                logger.warning(
+                    "Voice response still looks like prompt leakage after retry "
+                    "for input: %s",
+                    input_text[:80],
                 )
                 return "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
 

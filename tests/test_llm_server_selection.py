@@ -866,6 +866,133 @@ async def test_set_active_llm_server_releases_onnx_caches_when_switching_to_olla
 
 
 @pytest.mark.asyncio
+async def test_set_active_llm_server_normalizes_gemma4_audio_alias(monkeypatch):
+    config = {
+        "LAST_MODEL_GEMMA4_AUDIO": "google/gemma-4-E2B-it",
+        "PREVIOUS_MODEL_GEMMA4_AUDIO": "",
+        "LLM_MODEL_NAME": "google/gemma-4-E2B-it",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+
+    controller = DummyController(
+        [
+            {
+                "name": "ollama",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+            },
+            {
+                "name": "multi_runtime",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+            },
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager(
+            [{"name": "google/gemma-4-E2B-it", "provider": "multi_runtime"}]
+        ),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes,
+        "_installed_local_servers",
+        lambda: {"ollama", "multi_runtime"},
+    )
+
+    original = _snapshot_settings()
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+    SETTINGS.LLM_MODEL_NAME = "google/gemma-4-E2B-it"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    try:
+        request = system_routes.ActiveLlmServerRequest(
+            server_name="gemma4_audio",
+            model="google/gemma-4-E2B-it",
+        )
+        response = await system_routes.set_active_llm_server(request)
+        assert response["status"] == "success"
+        assert response["active_server"] == "multi_runtime"
+        assert response["active_model"] == "google/gemma-4-E2B-it"
+        assert ("ollama", "stop") in controller.actions
+        assert ("multi_runtime", "start") in controller.actions
+        assert updates["ACTIVE_LLM_SERVER"] == "multi_runtime"
+        assert updates["GEMMA4_AUDIO_ENABLED"] == "true"
+        assert updates["GEMMA4_AUDIO_MODEL_ID"] == "google/gemma-4-E2B-it"
+    finally:
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_fails_when_persistence_fails(monkeypatch):
+    config = {
+        "LAST_MODEL_GEMMA4_AUDIO": "google/gemma-4-E2B-it",
+        "PREVIOUS_MODEL_GEMMA4_AUDIO": "",
+        "LLM_MODEL_NAME": "google/gemma-4-E2B-it",
+    }
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(
+        system_routes.config_manager,
+        "update_config",
+        lambda *_args, **_kwargs: {"success": False, "message": "disk full"},
+    )
+
+    controller = DummyController(
+        [
+            {
+                "name": "multi_runtime",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+            },
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager(
+            [{"name": "google/gemma-4-E2B-it", "provider": "multi_runtime"}]
+        ),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes,
+        "_installed_local_servers",
+        lambda: {"multi_runtime"},
+    )
+
+    original = _snapshot_settings()
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.LLM_LOCAL_ENDPOINT = "http://localhost:8014/v1"
+    SETTINGS.LLM_MODEL_NAME = "google/gemma-4-E2B-it"
+    SETTINGS.ACTIVE_LLM_SERVER = "multi_runtime"
+    try:
+        request = system_routes.ActiveLlmServerRequest(
+            server_name="gemma4_audio",
+            model="google/gemma-4-E2B-it",
+        )
+        with pytest.raises(system_routes.HTTPException) as exc:
+            await system_routes.set_active_llm_server(request)
+        assert exc.value.status_code == 500
+        assert "Nie udało się zapisać endpointu dla runtime 'multi_runtime'" in str(
+            exc.value.detail
+        )
+    finally:
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
 async def test_set_active_llm_server_resolves_feedback_loop_alias_to_primary(
     monkeypatch,
 ):

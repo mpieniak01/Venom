@@ -7,9 +7,13 @@ export const formatNumber = (value?: number | null) => {
 
 export const getRuntimeForProvider = (provider?: string | null) => {
     if (!provider) return "vllm";
-    if (provider === "openai" || provider === "google") return provider;
-    if (provider === "ollama") return "ollama";
-    if (provider === "onnx") return "onnx";
+    const normalized = provider.toLowerCase();
+    if (normalized === "openai" || normalized === "google") return normalized;
+    if (normalized === "ollama") return "ollama";
+    if (normalized === "onnx") return "onnx";
+    if (normalized === "multi_runtime" || normalized === "gemma4_audio") {
+        return "multi_runtime";
+    }
     return "vllm";
 };
 

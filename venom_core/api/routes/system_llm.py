@@ -63,7 +63,11 @@ from venom_core.utils.llm_runtime import (
     infer_local_provider,
 )
 from venom_core.utils.logger import get_logger
-from venom_core.utils.runtime_names import MULTI_RUNTIME_ID, is_multi_runtime
+from venom_core.utils.runtime_names import (
+    MULTI_RUNTIME_ID,
+    is_multi_runtime,
+    normalize_runtime_id,
+)
 from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
@@ -342,11 +346,15 @@ def _persist_local_runtime_endpoint(server_name: str, endpoint: str | None) -> N
             SETTINGS.ACTIVE_LLM_SERVER = "onnx"
         except Exception:
             logger.warning("Nie udało się zaktualizować SETTINGS dla runtime ONNX.")
-        config_manager.update_config(
+        result = config_manager.update_config(
             {
                 "LLM_SERVICE_TYPE": "onnx",
                 "ACTIVE_LLM_SERVER": "onnx",
             }
+        )
+        _ensure_config_update_success(
+            result,
+            "Nie udało się zapisać endpointu dla runtime 'onnx'",
         )
         return
 
@@ -357,13 +365,26 @@ def _persist_local_runtime_endpoint(server_name: str, endpoint: str | None) -> N
         SETTINGS.LLM_LOCAL_ENDPOINT = endpoint
     except Exception:
         logger.warning("Nie udało się zaktualizować SETTINGS dla endpointu LLM.")
-    config_manager.update_config(
+    result = config_manager.update_config(
         {
             "LLM_SERVICE_TYPE": "local",
             "LLM_LOCAL_ENDPOINT": endpoint,
             "ACTIVE_LLM_SERVER": server_name,
         }
     )
+    _ensure_config_update_success(
+        result,
+        f"Nie udało się zapisać endpointu dla runtime '{server_name}'",
+    )
+
+
+def _ensure_config_update_success(result: dict[str, Any] | None, context: str) -> None:
+    if result is None:
+        return
+    if bool(result.get("success", False)):
+        return
+    message = str(result.get("message") or "Nie udało się zapisać konfiguracji.")
+    raise HTTPException(status_code=500, detail=f"{context}: {message}")
 
 
 def _select_model_for_server(
@@ -397,7 +418,11 @@ def _select_model_for_server(
     if desired_model in available:
         return desired_model, last_model_key, prev_model_key
     if previous_model and previous_model in available:
-        config_manager.update_config({last_model_key: previous_model})
+        result = config_manager.update_config({last_model_key: previous_model})
+        _ensure_config_update_success(
+            result,
+            f"Nie udało się zaktualizować ostatniego modelu dla '{server_name}'",
+        )
         return previous_model, last_model_key, prev_model_key
     raise HTTPException(
         status_code=400,
@@ -648,7 +673,11 @@ def _persist_selected_model_settings(
         config_updates["GEMMA4_AUDIO_MODEL_ID"] = selected_model
     else:
         config_updates["GEMMA4_AUDIO_ENABLED"] = "false"
-    config_manager.update_config(config_updates)
+    result = config_manager.update_config(config_updates)
+    _ensure_config_update_success(
+        result,
+        f"Nie udało się utrwalić ustawień runtime '{server_name}'",
+    )
     try:
         SETTINGS.LLM_CONFIG_HASH = config_hash
         SETTINGS.ACTIVE_LLM_SERVER = server_name
@@ -755,7 +784,7 @@ def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
         runtime = get_active_llm_runtime()
         config_hash = runtime.config_hash or ""
         SETTINGS.LLM_CONFIG_HASH = config_hash
-        config_manager.update_config(
+        result = config_manager.update_config(
             {
                 "LLM_SERVICE_TYPE": "onnx",
                 "LLM_MODEL_NAME": model_name,
@@ -764,6 +793,7 @@ def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
                 "LLM_CONFIG_HASH": config_hash,
             }
         )
+        _ensure_config_update_success(result, "Nie udało się aktywować runtime ONNX")
     except Exception:
         _restore_runtime_settings_snapshot(snapshot)
         raise
@@ -1537,7 +1567,11 @@ def _apply_vllm_runtime_autofix(
         fallback_path=fallback_path,
         endpoint=str(getattr(SETTINGS, "VLLM_ENDPOINT", "") or "").strip() or None,
     )
-    config_manager.update_config(updates)
+    result = config_manager.update_config(updates)
+    _ensure_config_update_success(
+        result,
+        "Nie udało się utrwalić ustawień runtime vLLM podczas auto-heal",
+    )
     try:
         _apply_vllm_autofix_settings(
             fallback_name=fallback_name,
@@ -1905,13 +1939,17 @@ def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, A
         config_hash = runtime.config_hash or ""
         SETTINGS.LLM_CONFIG_HASH = config_hash
 
-        config_manager.update_config(
+        result = config_manager.update_config(
             {
                 "LLM_SERVICE_TYPE": provider_raw,
                 "LLM_MODEL_NAME": model_name,
                 "ACTIVE_LLM_SERVER": provider_raw,
                 "LLM_CONFIG_HASH": config_hash,
             }
+        )
+        _ensure_config_update_success(
+            result,
+            f"Nie udało się aktywować runtime '{provider_raw}'",
         )
     except Exception:
         _restore_runtime_settings_snapshot(snapshot)
@@ -2206,7 +2244,7 @@ def _activate_onnx_server_switch(*, stop_results: dict[str, Any]) -> dict[str, A
         raise HTTPException(status_code=400, detail=str(exc))
     config = config_manager.get_config(mask_secrets=False)
     selected_model = config.get("LAST_MODEL_ONNX") or onnx_client.config.model_path
-    config_manager.update_config(
+    result = config_manager.update_config(
         {
             "LLM_SERVICE_TYPE": "onnx",
             "ACTIVE_LLM_SERVER": "onnx",
@@ -2214,6 +2252,7 @@ def _activate_onnx_server_switch(*, stop_results: dict[str, Any]) -> dict[str, A
             "LAST_MODEL_ONNX": selected_model,
         }
     )
+    _ensure_config_update_success(result, "Nie udało się aktywować runtime ONNX")
     try:
         SETTINGS.LLM_SERVICE_TYPE = "onnx"
         SETTINGS.ACTIVE_LLM_SERVER = "onnx"
@@ -2306,6 +2345,13 @@ def _validate_gemma4_audio_requested_model(
     *, requested_model: str, server_name: str
 ) -> None:
     available_models = gemma4_audio_available_models(role="target")
+    if not available_models:
+        logger.warning(
+            "Brak katalogu modeli multi_runtime; akceptuję requested_model='{}' dla {}.",
+            requested_model,
+            server_name,
+        )
+        return
     if requested_model in available_models:
         return
     raise HTTPException(
@@ -2603,126 +2649,152 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     """
     Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
     """
-    switch_source = assert_runtime_switch_source_allowed(request.switch_source)
-    assert_runtime_switch_ownership_token(request.ownership_token)
-    _ensure_server_allowed(request.server_name)
-    server_name = request.server_name
-    requested_alias = str(request.model_alias or "").strip()
-    _validate_feedback_alias_request(
-        server_name=server_name, requested_alias=requested_alias
-    )
-    llm_controller = _get_llm_controller_or_503()
-    servers = llm_controller.list_servers()
+    server_name = normalize_runtime_id(request.server_name)
+    try:
+        switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+        assert_runtime_switch_ownership_token(request.ownership_token)
+        _ensure_server_allowed(server_name)
+        requested_alias = str(request.model_alias or "").strip()
+        _validate_feedback_alias_request(
+            server_name=server_name, requested_alias=requested_alias
+        )
+        llm_controller = _get_llm_controller_or_503()
+        servers = llm_controller.list_servers()
 
-    request_tracer = system_deps.get_request_tracer()
-    model_manager = None
-    if server_name != "onnx":
-        _, model_manager, request_tracer = _validate_switch_dependencies()
+        request_tracer = system_deps.get_request_tracer()
+        model_manager = None
+        if server_name != "onnx":
+            _, model_manager, request_tracer = _validate_switch_dependencies()
 
-    if not llm_controller.has_server(server_name):
-        raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
+        if not llm_controller.has_server(server_name):
+            raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
 
-    active_runtime = get_active_llm_runtime()
-    from_server = str(getattr(active_runtime, "provider", "") or "").strip().lower()
-    _trace_switch(
-        request_tracer,
-        request.trace_id,
-        "llm_switch_requested",
-        f"server={server_name}, source={switch_source}",
-    )
+        active_runtime = get_active_llm_runtime()
+        from_server = str(getattr(active_runtime, "provider", "") or "").strip().lower()
+        _trace_switch(
+            request_tracer,
+            request.trace_id,
+            "llm_switch_requested",
+            f"server={server_name}, source={switch_source}",
+        )
 
-    # Delegate full lifecycle (stop → release → flush → start → health) to orchestrator.
-    # Config/endpoint are saved ONLY after orchestrator returns with confirmed health.
-    active_model = str(getattr(active_runtime, "model_name", "") or "").strip()
-    orchestrator = RuntimeSwitchOrchestrator(llm_controller)
-    (
-        switch_state,
-        stop_results,
-        shutdown_results,
-        start_result,
-        target,
-    ) = await orchestrator.execute_lifecycle_switch(
-        servers=servers,
-        target_server_name=server_name,
-        from_server_name=from_server or "unknown",
-        active_model=active_model,
-        onnx_flush_fn=_release_onnx_runtime_caches,
-    )
+        # Delegate full lifecycle (stop → release → flush → start → health) to orchestrator.
+        # Config/endpoint are saved ONLY after orchestrator returns with confirmed health.
+        active_model = str(getattr(active_runtime, "model_name", "") or "").strip()
+        orchestrator = RuntimeSwitchOrchestrator(llm_controller)
+        (
+            switch_state,
+            stop_results,
+            shutdown_results,
+            start_result,
+            target,
+        ) = await orchestrator.execute_lifecycle_switch(
+            servers=servers,
+            target_server_name=server_name,
+            from_server_name=from_server or "unknown",
+            active_model=active_model,
+            onnx_flush_fn=_release_onnx_runtime_caches,
+        )
 
-    if server_name == "onnx":
-        switch_state.mark_done(LifecycleStep.ENDPOINT_SWITCHED)
+        if server_name == "onnx":
+            switch_state.mark_done(LifecycleStep.ENDPOINT_SWITCHED)
+            switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
+            response = _activate_onnx_server_switch(stop_results=stop_results)
+            emit_runtime_model_event(
+                "runtime_model_selected",
+                source=switch_source,
+                runtime=server_name,
+                model=response.get("active_model"),
+                from_runtime=from_server or "unknown",
+            )
+            response["shutdown_results"] = shutdown_results
+            response["lifecycle_state"] = switch_state.to_payload()
+            return response
+
+        # All lifecycle steps confirmed — safe to persist config and model now.
+        endpoint = _resolve_local_endpoint(server_name, target)
+        _persist_local_runtime_endpoint(server_name, endpoint)
+
+        assert model_manager is not None
+        config = config_manager.get_config(mask_secrets=False)
+        models = await model_manager.list_local_models()
+        (
+            selected_model,
+            last_model_key,
+            feedback_resolution,
+        ) = await _resolve_switch_model_selection(
+            request=request,
+            requested_alias=requested_alias,
+            server_name=server_name,
+            model_manager=model_manager,
+            config=config,
+            models=models,
+        )
+
+        old_last_model = config.get(last_model_key) or ""
+        updates = _build_model_updates(
+            server_name=server_name,
+            selected_model=selected_model,
+            models=models,
+            last_model_key=last_model_key,
+            previous_model=old_last_model,
+        )
+        config_update_result = config_manager.update_config(updates)
+        _ensure_config_update_success(
+            config_update_result,
+            "Nie udało się utrwalić ustawień aktywnego runtime",
+        )
+        config_hash = _persist_selected_model_settings(
+            server_name, selected_model, endpoint
+        )
         switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
-        response = _activate_onnx_server_switch(stop_results=stop_results)
+
+        runtime = get_active_llm_runtime()
+        _trace_switch(
+            request_tracer,
+            request.trace_id,
+            "llm_switch_applied",
+            f"server={server_name}, model={selected_model}, hash={config_hash}",
+        )
         emit_runtime_model_event(
             "runtime_model_selected",
             source=switch_source,
             runtime=server_name,
-            model=response.get("active_model"),
+            model=selected_model,
             from_runtime=from_server or "unknown",
         )
-        response["shutdown_results"] = shutdown_results
-        response["lifecycle_state"] = switch_state.to_payload()
-        return response
-
-    # All lifecycle steps confirmed — safe to persist config and model now.
-    endpoint = _resolve_local_endpoint(server_name, target)
-    _persist_local_runtime_endpoint(server_name, endpoint)
-
-    assert model_manager is not None
-    config = config_manager.get_config(mask_secrets=False)
-    models = await model_manager.list_local_models()
-    (
-        selected_model,
-        last_model_key,
-        feedback_resolution,
-    ) = await _resolve_switch_model_selection(
-        request=request,
-        requested_alias=requested_alias,
-        server_name=server_name,
-        model_manager=model_manager,
-        config=config,
-        models=models,
-    )
-
-    old_last_model = config.get(last_model_key) or ""
-    updates = _build_model_updates(
-        server_name=server_name,
-        selected_model=selected_model,
-        models=models,
-        last_model_key=last_model_key,
-        previous_model=old_last_model,
-    )
-    config_manager.update_config(updates)
-    config_hash = _persist_selected_model_settings(
-        server_name, selected_model, endpoint
-    )
-    switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
-
-    runtime = get_active_llm_runtime()
-    _trace_switch(
-        request_tracer,
-        request.trace_id,
-        "llm_switch_applied",
-        f"server={server_name}, model={selected_model}, hash={config_hash}",
-    )
-    emit_runtime_model_event(
-        "runtime_model_selected",
-        source=switch_source,
-        runtime=server_name,
-        model=selected_model,
-        from_runtime=from_server or "unknown",
-    )
-    return {
-        "status": "success",
-        "active_server": infer_local_provider(runtime.endpoint),
-        "active_model": selected_model,
-        "config_hash": runtime.config_hash,
-        "runtime_id": runtime.runtime_id,
-        "requested_model_alias": feedback_resolution["requested_model_alias"],
-        "resolved_model_id": feedback_resolution["resolved_model_id"],
-        "resolution_reason": feedback_resolution["resolution_reason"],
-        "start_result": start_result,
-        "stop_results": stop_results,
-        "shutdown_results": shutdown_results,
-        "lifecycle_state": switch_state.to_payload(),
-    }
+        return {
+            "status": "success",
+            "active_server": infer_local_provider(runtime.endpoint),
+            "active_model": selected_model,
+            "config_hash": runtime.config_hash,
+            "runtime_id": runtime.runtime_id,
+            "requested_model_alias": feedback_resolution["requested_model_alias"],
+            "resolved_model_id": feedback_resolution["resolved_model_id"],
+            "resolution_reason": feedback_resolution["resolution_reason"],
+            "start_result": start_result,
+            "stop_results": stop_results,
+            "shutdown_results": shutdown_results,
+            "lifecycle_state": switch_state.to_payload(),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.exception(
+            "Błąd wewnętrzny podczas przełączania aktywnego serwera LLM: {}",
+            {
+                "server_name": server_name,
+                "requested_server": request.server_name,
+                "model": request.model,
+            },
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Błąd wewnętrzny podczas przełączania aktywnego serwera",
+                "server_name": server_name,
+                "requested_server": request.server_name,
+                "model": request.model,
+                "error": str(exc),
+            },
+        ) from exc

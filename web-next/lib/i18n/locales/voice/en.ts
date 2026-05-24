@@ -22,6 +22,8 @@ export const voice = {
     systemVoiceRuntime: "System voice runtime",
     selectedRuntime: "Selected runtime",
     responseRuntime: "Response runtime",
+    previousSession: "previous session",
+    runtimeAfterSwitch: "The latest response is from before the runtime switch. Send a new utterance to refresh response runtime.",
     voiceRuntimePriority: "Runtime {{runtime}} is preferred for voice.",
     diagnostics: "Dev diagnostics",
     pushToTalk: "Hold to talk",

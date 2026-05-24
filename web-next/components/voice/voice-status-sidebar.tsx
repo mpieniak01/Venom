@@ -62,6 +62,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
   const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;
+  const runtimeAlignment = status?.runtime_alignment ?? null;
   const runtimeProvider = runtime?.provider ?? "";
   const runtimeId = runtime?.runtime_id ?? "";
   const isGemma4AudioRuntime = isMultiRuntime(runtimeProvider) || isMultiRuntime(runtimeId);
@@ -123,7 +124,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
         title={t("voice.controls.runtime")}
       />
       {latestVoiceSession && (
-        <VoiceSessionCard session={latestVoiceSession} />
+        <VoiceSessionCard session={latestVoiceSession} runtimeAlignment={runtimeAlignment} />
       )}
 
       {/* STT / TTS box */}
@@ -441,8 +442,10 @@ function RuntimeOverviewCard({
 
 function VoiceSessionCard({
   session,
+  runtimeAlignment,
 }: Readonly<{
   session: NonNullable<VoiceStatusUpdate["latest_voice_session"]>;
+  runtimeAlignment?: VoiceStatusUpdate["runtime_alignment"] | null;
 }>) {
   const t = useTranslation();
   const confidence = formatConfidence(session.emotion_confidence);
@@ -465,8 +468,17 @@ function VoiceSessionCard({
       {(session.audio_runtime_provider || session.audio_runtime_model) && (
         <Row
           label={t("voice.controls.responseRuntime")}
-          value={formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)}
+          value={
+            runtimeAlignment?.response_runtime_fresh === false
+              ? `${formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)} (${t("voice.controls.previousSession")})`
+              : formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)
+          }
         />
+      )}
+      {runtimeAlignment?.response_runtime_fresh === false && (
+        <p className="text-[11px] text-amber-300">
+          {t("voice.controls.runtimeAfterSwitch")}
+        </p>
       )}
       {session.reasoning_summary_status && (
         <Row

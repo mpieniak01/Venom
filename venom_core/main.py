@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager, suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +130,7 @@ from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.services.module_registry import include_optional_api_routers
+from venom_core.services.runtime_switch_telemetry import get_last_runtime_switch_event
 from venom_core.services.session_store import SessionStore
 from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.llm_runtime import (
@@ -355,6 +357,78 @@ def _build_gemma4_voice_runtime_snapshot(runtime: Any) -> dict[str, object]:
         "config_hash": runtime.config_hash,
         "runtime_capabilities": _build_gemma4_runtime_capabilities(),
         "voice_pipeline": _build_gemma4_voice_pipeline(),
+    }
+
+
+def _parse_iso_datetime(raw: Any) -> datetime | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _same_runtime_identity(
+    provider_a: str | None,
+    model_a: str | None,
+    provider_b: str | None,
+    model_b: str | None,
+) -> bool | None:
+    pa = str(provider_a or "").strip().lower()
+    ma = str(model_a or "").strip().lower()
+    pb = str(provider_b or "").strip().lower()
+    mb = str(model_b or "").strip().lower()
+    if not pa or not ma or not pb or not mb:
+        return None
+    return pa == pb and ma == mb
+
+
+def _build_voice_runtime_alignment(
+    *,
+    runtime_snapshot: dict[str, object] | None,
+    latest_session: dict[str, object] | None,
+) -> dict[str, object]:
+    active_provider = str((runtime_snapshot or {}).get("provider") or "").strip()
+    active_model = str((runtime_snapshot or {}).get("model_name") or "").strip()
+    response_provider = str(
+        (latest_session or {}).get("audio_runtime_provider") or ""
+    ).strip()
+    response_model = str(
+        (latest_session or {}).get("audio_runtime_model") or ""
+    ).strip()
+    session_created_at = str((latest_session or {}).get("created_at") or "").strip()
+
+    switch_event = get_last_runtime_switch_event() or {}
+    switch_at = str(switch_event.get("at_utc") or "").strip()
+    session_before_switch = False
+    session_dt = _parse_iso_datetime(session_created_at)
+    switch_dt = _parse_iso_datetime(switch_at)
+    if session_dt and switch_dt:
+        if session_dt.tzinfo is None:
+            session_dt = session_dt.replace(tzinfo=UTC)
+        if switch_dt.tzinfo is None:
+            switch_dt = switch_dt.replace(tzinfo=UTC)
+        session_before_switch = session_dt < switch_dt
+
+    response_runtime_fresh = bool(latest_session) and not session_before_switch
+    runtime_match = _same_runtime_identity(
+        active_provider,
+        active_model,
+        response_provider,
+        response_model,
+    )
+    return {
+        "active_provider": active_provider,
+        "active_model": active_model,
+        "response_provider": response_provider,
+        "response_model": response_model,
+        "latest_session_created_at": session_created_at or None,
+        "last_runtime_switch_at_utc": switch_at or None,
+        "latest_session_before_runtime_switch": session_before_switch,
+        "response_runtime_fresh": response_runtime_fresh,
+        "response_runtime_matches_active": runtime_match,
     }
 
 
@@ -1502,12 +1576,20 @@ async def audio_status_endpoint(request: Request):
         )
     status["latest_voice_session"] = latest_session
     try:
-        status["runtime_snapshot"] = await _build_voice_runtime_snapshot()
+        runtime_snapshot = await _build_voice_runtime_snapshot()
+        status["runtime_snapshot"] = runtime_snapshot
     except Exception as exc:  # pragma: no cover - best effort diagnostics
         logger.warning("Nie udało się pobrać runtime snapshot: %s", exc)
-        status["runtime_snapshot"] = {
+        runtime_snapshot = {
             "error": str(exc),
         }
+        status["runtime_snapshot"] = runtime_snapshot
+    status["runtime_alignment"] = _build_voice_runtime_alignment(
+        runtime_snapshot=runtime_snapshot
+        if isinstance(runtime_snapshot, dict)
+        else None,
+        latest_session=latest_session if isinstance(latest_session, dict) else None,
+    )
     return status
 
 

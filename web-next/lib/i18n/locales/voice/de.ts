@@ -22,6 +22,8 @@ export const voice = {
     systemVoiceRuntime: "System-Voice-Runtime",
     selectedRuntime: "Ausgewählte Runtime",
     responseRuntime: "Antwort-Runtime",
+    previousSession: "vorherige Sitzung",
+    runtimeAfterSwitch: "Die letzte Antwort stammt von vor dem Runtime-Wechsel. Sende eine neue Äußerung, um die Antwort-Runtime zu aktualisieren.",
     voiceRuntimePriority: "Runtime {{runtime}} hat Priorität für Voice.",
     diagnostics: "Dev-Diagnose",
     pushToTalk: "Gedrückt halten und sprechen",

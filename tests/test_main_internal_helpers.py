@@ -218,12 +218,14 @@ async def test_audio_status_endpoint_includes_latest_session_download_url(monkey
 
     monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
     monkeypatch.setattr(main_module, "operator_agent", object())
+    monkeypatch.setattr(main_module, "get_last_runtime_switch_event", lambda: None)
     monkeypatch.setattr(
         main_module,
         "_build_voice_runtime_snapshot",
         AsyncMock(
             return_value={
                 "runtime_id": "ollama@localhost",
+                "provider": "ollama",
                 "model_name": "gemma4:latest",
             }
         ),
@@ -238,6 +240,9 @@ async def test_audio_status_endpoint_includes_latest_session_download_url(monkey
     )
     assert status["latest_voice_session"]["transcription"] == "hello"
     assert status["runtime_snapshot"]["model_name"] == "gemma4:latest"
+    assert status["runtime_alignment"]["active_provider"] == "ollama"
+    assert status["runtime_alignment"]["active_model"] == "gemma4:latest"
+    assert status["runtime_alignment"]["response_runtime_fresh"] is True
 
 
 @pytest.mark.asyncio
@@ -245,6 +250,7 @@ async def test_audio_status_endpoint_returns_disabled_state_without_handler(
     monkeypatch,
 ):
     monkeypatch.setattr(main_module, "audio_stream_handler", None)
+    monkeypatch.setattr(main_module, "get_last_runtime_switch_event", lambda: None)
     monkeypatch.setattr(
         main_module,
         "_build_voice_runtime_snapshot",
@@ -262,6 +268,7 @@ async def test_audio_status_endpoint_returns_disabled_state_without_handler(
 @pytest.mark.asyncio
 async def test_audio_status_endpoint_handles_runtime_snapshot_failure(monkeypatch):
     monkeypatch.setattr(main_module, "audio_stream_handler", None)
+    monkeypatch.setattr(main_module, "get_last_runtime_switch_event", lambda: None)
     monkeypatch.setattr(
         main_module,
         "_build_voice_runtime_snapshot",
@@ -273,6 +280,54 @@ async def test_audio_status_endpoint_handles_runtime_snapshot_failure(monkeypatc
 
     assert status["enabled"] is False
     assert status["runtime_snapshot"]["error"] == "boom"
+
+
+@pytest.mark.asyncio
+async def test_audio_status_endpoint_marks_latest_session_as_stale_after_runtime_switch(
+    monkeypatch,
+):
+    class DummyHandler:
+        def get_status(self, operator_agent=None):
+            return {
+                "enabled": True,
+                "connected_clients": 1,
+                "active_recordings": 0,
+                "message": "ok",
+            }
+
+        def get_latest_voice_session(self):
+            return {
+                "session_id": "session-1",
+                "created_at": "2026-05-24T09:00:00+00:00",
+                "audio_runtime_provider": "multi_runtime",
+                "audio_runtime_model": "google/gemma-4-E2B-it",
+            }
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(main_module, "operator_agent", object())
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(
+            return_value={
+                "runtime_id": "ollama@localhost",
+                "provider": "ollama",
+                "model_name": "qwen3.5:latest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:10:00+00:00"},
+    )
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["runtime_alignment"]["latest_session_before_runtime_switch"] is True
+    assert status["runtime_alignment"]["response_runtime_fresh"] is False
+    assert status["runtime_alignment"]["response_runtime_matches_active"] is False
 
 
 @pytest.mark.asyncio

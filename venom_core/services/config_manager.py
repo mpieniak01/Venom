@@ -376,6 +376,7 @@ class ConfigUpdateRequest(BaseModel):
             "FORCE_LOCAL_MODEL",
             "ENABLE_MULTI_SERVICE",
             "GHOST_VERIFICATION_ENABLED",
+            "GEMMA4_AUDIO_ENABLED",
         ]
         for param in bool_params:
             if param not in updates:

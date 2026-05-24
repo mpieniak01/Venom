@@ -172,7 +172,7 @@ def _extract_text_from_scalar(value: str | bytes) -> str:
 
 
 def _extract_text_from_mapping(value: dict[str, Any]) -> str:
-    for key in ("content", "text", "response_text"):
+    for key in ("content", "text", "response_text", "generated_text"):
         extracted = _extract_text_payload(value.get(key))
         if extracted:
             return extracted
@@ -185,7 +185,7 @@ def _extract_text_from_sequence(value: list[Any] | tuple[Any, ...]) -> str:
 
 
 def _extract_text_from_attributes(value: Any) -> str:
-    for attr in ("content", "text", "response_text"):
+    for attr in ("content", "text", "response_text", "generated_text"):
         if hasattr(value, attr):
             extracted = _extract_text_payload(getattr(value, attr))
             if extracted:
@@ -195,6 +195,11 @@ def _extract_text_from_attributes(value: Any) -> str:
 
 def _is_mock_object(value: Any) -> bool:
     return value.__class__.__module__.startswith("unittest.mock")
+
+
+def _normalize_message_role(role: Any) -> str:
+    role_value = getattr(role, "name", None) or getattr(role, "value", None) or role
+    return str(role_value or "").strip().lower()
 
 
 def _is_ollama_runtime_active() -> bool:
@@ -258,7 +263,7 @@ def _normalize_ollama_native_base_url(
 def _chat_history_to_ollama_messages(chat_history: ChatHistory) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     for msg in chat_history.messages:
-        role_raw = str(getattr(msg, "role", "user")).lower()
+        role_raw = _normalize_message_role(getattr(msg, "role", "user"))
         if "system" in role_raw:
             role = "system"
         elif "assistant" in role_raw:
@@ -560,10 +565,10 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         if mode != "standard":
             temp_history.add_system_message(str(mode_prompt["instruction"]))
         for message in self.chat_history.messages:
-            role = getattr(message, "role", "")
-            if role == "system":
+            role_value = _normalize_message_role(getattr(message, "role", ""))
+            if role_value == "system":
                 continue
-            if "assistant" in str(role).lower() and _looks_like_voice_response_leak(
+            if "assistant" in role_value and _looks_like_voice_response_leak(
                 _extract_text_payload(message.content)
             ):
                 logger.debug("Pominięto leaky assistant message z historii voice.")

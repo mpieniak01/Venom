@@ -186,6 +186,13 @@ def test_config_update_request_rejects_theme_with_wrong_case():
     assert "UI_THEME_DEFAULT" in str(exc.value)
 
 
+def test_config_update_request_rejects_invalid_gemma4_audio_enabled_value():
+    with pytest.raises(ValueError) as exc:
+        ConfigUpdateRequest(updates={"GEMMA4_AUDIO_ENABLED": "enabled"})
+
+    assert "GEMMA4_AUDIO_ENABLED" in str(exc.value)
+
+
 def test_update_config_accepts_supported_theme(config_manager: ConfigManager):
     config_manager.env_file.write_text("AI_MODE=LOCAL\n", encoding="utf-8")
 

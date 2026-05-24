@@ -329,6 +329,12 @@ class TestOperatorAgent:
         agent.chat_history.add_user_message("historia user")
         agent.chat_history.add_assistant_message("historia assistant")
         agent.chat_history.add_system_message("system-only-history")
+        agent.chat_history.messages.append(
+            SimpleNamespace(
+                role=SimpleNamespace(name="SYSTEM"),
+                content="system-object-role",
+            )
+        )
 
         captured = {}
 
@@ -851,6 +857,13 @@ class TestVoiceResponseNormalization:
     def test_extract_text_payload_supports_object_attrs_and_bytes(self):
         obj = SimpleNamespace(content=b"  tak  ")
         assert _extract_text_payload(obj) == "tak"
+
+    def test_extract_text_payload_supports_generated_text_fields(self):
+        payload = {"generated_text": "Wynik 42"}
+        assert _extract_text_payload(payload) == "Wynik 42"
+
+        obj = SimpleNamespace(generated_text="Wynik 43")
+        assert _extract_text_payload(obj) == "Wynik 43"
 
     def test_extract_text_payload_supports_mock_and_string_fallback(self):
         mocked = MagicMock()

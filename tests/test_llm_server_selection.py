@@ -1,11 +1,14 @@
 """Unit tests for active LLM server selection (PR 069)."""
 
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
 
+import venom_core.main as main_module
 from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
@@ -469,6 +472,85 @@ async def test_set_active_llm_server_waits_for_active_runtime_requests_to_drain(
         release.set()
         await task
         _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_audio_status_endpoint_marks_latest_session_as_stale_after_runtime_switch(
+    monkeypatch,
+):
+    class DummyHandler:
+        def get_status(self, operator_agent=None):
+            return {
+                "enabled": True,
+                "connected_clients": 1,
+                "active_recordings": 0,
+                "message": "ok",
+            }
+
+        def get_latest_voice_session(self):
+            return {
+                "session_id": "session-1",
+                "created_at": "2026-05-24T09:00:00+00:00",
+                "audio_runtime_provider": "multi_runtime",
+                "audio_runtime_model": "google/gemma-4-E2B-it",
+            }
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(main_module, "operator_agent", object())
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(
+            return_value={
+                "runtime_id": "ollama@localhost",
+                "provider": "ollama",
+                "model_name": "qwen3.5:latest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:10:00+00:00"},
+    )
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["runtime_alignment"]["latest_session_before_runtime_switch"] is True
+    assert status["runtime_alignment"]["response_runtime_fresh"] is False
+    assert status["runtime_alignment"]["response_runtime_matches_active"] is False
+
+
+def test_main_voice_runtime_alignment_helpers_cover_parse_and_identity(monkeypatch):
+    assert main_module._parse_iso_datetime(None) is None
+    assert main_module._parse_iso_datetime("2026-05-24T09:10:00Z") == datetime(
+        2026, 5, 24, 9, 10, tzinfo=UTC
+    )
+    assert (
+        main_module._same_runtime_identity(
+            " Ollama ",
+            " Qwen3.5:Latest ",
+            "ollama",
+            "qwen3.5:latest",
+        )
+        is True
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:10:00+00:00"},
+    )
+    alignment = main_module._build_voice_runtime_alignment(
+        runtime_snapshot={"provider": "ollama", "model_name": "qwen3.5:latest"},
+        latest_session=None,
+    )
+
+    assert alignment["latest_session_created_at"] is None
+    assert alignment["latest_session_before_runtime_switch"] is False
+    assert alignment["response_runtime_fresh"] is False
+    assert alignment["response_runtime_matches_active"] is None
 
 
 @pytest.mark.asyncio

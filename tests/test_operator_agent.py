@@ -1,5 +1,6 @@
 """Testy jednostkowe dla modułu operator (OperatorAgent)."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -10,10 +11,14 @@ import venom_core.agents.operator as op_module
 from venom_core.agents.operator import (
     OperatorAgent,
     _build_voice_context_message,
+    _build_voice_retry_history,
     _coerce_float,
     _coerce_int,
+    _extract_text_payload,
+    _normalize_voice_response,
     _ollama_extra_body,
     _ollama_native_call,
+    _sanitize_voice_response,
 )
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 
@@ -324,6 +329,12 @@ class TestOperatorAgent:
         agent.chat_history.add_user_message("historia user")
         agent.chat_history.add_assistant_message("historia assistant")
         agent.chat_history.add_system_message("system-only-history")
+        agent.chat_history.messages.append(
+            SimpleNamespace(
+                role=SimpleNamespace(name="SYSTEM"),
+                content="system-object-role",
+            )
+        )
 
         captured = {}
 
@@ -385,6 +396,11 @@ class TestOllamaExtraBody:
         mock_settings.LLM_SERVICE_TYPE = "local"
         mock_settings.OLLAMA_ENABLE_THINK = False
         monkeypatch.setattr(op_module, "SETTINGS", mock_settings)
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
 
         result = _ollama_extra_body()
 
@@ -395,16 +411,41 @@ class TestOllamaExtraBody:
         mock_settings.LLM_SERVICE_TYPE = "openai"
         mock_settings.OLLAMA_ENABLE_THINK = False
         monkeypatch.setattr(op_module, "SETTINGS", mock_settings)
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
 
         result = _ollama_extra_body()
 
         assert result is None
+
+    def test_returns_think_false_for_ollama_runtime(self, monkeypatch):
+        mock_settings = MagicMock()
+        mock_settings.LLM_SERVICE_TYPE = "openai"
+        mock_settings.OLLAMA_ENABLE_THINK = False
+        monkeypatch.setattr(op_module, "SETTINGS", mock_settings)
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="ollama"),
+        )
+
+        result = _ollama_extra_body()
+
+        assert result == {"think": False}
 
     def test_returns_none_when_think_enabled(self, monkeypatch):
         mock_settings = MagicMock()
         mock_settings.LLM_SERVICE_TYPE = "local"
         mock_settings.OLLAMA_ENABLE_THINK = True
         monkeypatch.setattr(op_module, "SETTINGS", mock_settings)
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="ollama"),
+        )
 
         result = _ollama_extra_body()
 
@@ -583,6 +624,11 @@ class TestGenerateVoiceResponseGuards:
         self, mock_kernel, monkeypatch
     ):
         monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
         agent = OperatorAgent(kernel=mock_kernel)
         agent._invoke_chat_with_fallbacks = AsyncMock(return_value=None)
 
@@ -597,6 +643,11 @@ class TestGenerateVoiceResponseGuards:
         self, mock_kernel, monkeypatch
     ):
         monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
         agent = OperatorAgent(kernel=mock_kernel)
         agent._invoke_chat_with_fallbacks = AsyncMock(return_value=[])
 
@@ -609,10 +660,14 @@ class TestGenerateVoiceResponseGuards:
     @pytest.mark.asyncio
     async def test_list_response_uses_first_item(self, mock_kernel, monkeypatch):
         monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
         agent = OperatorAgent(kernel=mock_kernel)
 
-        mock_item = MagicMock()
-        mock_item.__str__ = lambda self: "answer"
+        mock_item = SimpleNamespace(content="answer")
         agent._invoke_chat_with_fallbacks = AsyncMock(return_value=[mock_item])
 
         response = await agent._generate_voice_response("test input")
@@ -639,6 +694,11 @@ class TestGenerateVoiceResponseGuards:
         self, mock_kernel, monkeypatch
     ):
         monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
         agent = OperatorAgent(kernel=mock_kernel)
         agent._invoke_chat_with_fallbacks = AsyncMock(return_value="")
 
@@ -651,3 +711,195 @@ class TestGenerateVoiceResponseGuards:
             response == "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
         )
         native_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_sk_with_ollama_runtime_calls_native_fallback(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="ollama"),
+        )
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(return_value="")
+        native_mock = AsyncMock(return_value="native answer")
+        monkeypatch.setattr(op_module, "_ollama_native_call", native_mock)
+
+        response = await agent._generate_voice_response("test input")
+
+        assert response == "native answer"
+        native_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_prompt_leak_triggers_retry_with_minimal_history(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent.chat_history.add_user_message("wcześniejsze pytanie")
+        agent.chat_history.add_assistant_message(
+            "Oto nowy tryb komunikacji: Tryb 1: Dwie odpowiedzie - Odpowiedzi MUSZĄ być krótkie."
+        )
+
+        call_payloads = []
+        responses = iter(
+            [
+                "Oto nowy tryb komunikacji: Tryb 1: Dwie odpowiedzie - Odpowiedzi MUSZĄ być krótkie.",
+                "Dwa.",
+            ]
+        )
+
+        async def fake_invoke_chat_with_fallbacks(
+            *, chat_service, chat_history, settings, enable_functions
+        ):
+            call_payloads.append(
+                {
+                    "messages": [
+                        str(getattr(message, "role", "")).lower()
+                        for message in chat_history.messages
+                    ],
+                    "count": len(chat_history.messages),
+                    "enable_functions": enable_functions,
+                    "service": chat_service,
+                }
+            )
+            return next(responses)
+
+        mock_chat_service = MagicMock()
+        mock_kernel.get_service.return_value = mock_chat_service
+        agent._invoke_chat_with_fallbacks = AsyncMock(
+            side_effect=fake_invoke_chat_with_fallbacks
+        )
+
+        response = await agent._generate_voice_response("Ile to dwa?")
+
+        assert response == "Dwa."
+        assert agent._invoke_chat_with_fallbacks.await_count == 2
+        assert call_payloads[0]["count"] == 3
+        assert "assistant" not in call_payloads[0]["messages"][1:]
+        assert call_payloads[1]["count"] == 2
+        assert call_payloads[0]["enable_functions"] is False
+        assert call_payloads[1]["enable_functions"] is False
+
+    @pytest.mark.asyncio
+    async def test_prompt_leak_after_retry_returns_fallback_message(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="vllm"),
+        )
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(
+            side_effect=[
+                "Oto nowy tryb komunikacji: Tryb 1: Dwie odpowiedzie.",
+                "Tryb 2: NIE używaj markdown.",
+            ]
+        )
+
+        response = await agent._generate_voice_response("Ile to dwa?")
+
+        assert (
+            response == "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_with_ollama_runtime_uses_native_fallback_when_empty(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="ollama"),
+        )
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(
+            side_effect=[
+                "Oto nowy tryb komunikacji: Tryb 1: Dwie odpowiedzie.",
+                "",
+            ]
+        )
+        native_mock = AsyncMock(return_value="Dwa razy dwa to cztery.")
+        monkeypatch.setattr(op_module, "_ollama_native_call", native_mock)
+
+        response = await agent._generate_voice_response("Ile to dwa razy dwa?")
+
+        assert response == "Dwa razy dwa to cztery."
+        assert native_mock.await_count == 1
+
+
+class TestVoiceResponseNormalization:
+    def test_extract_text_payload_supports_structures(self):
+        payload = {
+            "message": {
+                "content": [
+                    {"text": "Ala"},
+                    {"response_text": "ma"},
+                    " kota ",
+                ]
+            }
+        }
+
+        result = _extract_text_payload(payload)
+
+        assert result == "Ala ma kota"
+
+    def test_extract_text_payload_supports_object_attrs_and_bytes(self):
+        obj = SimpleNamespace(content=b"  tak  ")
+        assert _extract_text_payload(obj) == "tak"
+
+    def test_extract_text_payload_supports_generated_text_fields(self):
+        payload = {"generated_text": "Wynik 42"}
+        assert _extract_text_payload(payload) == "Wynik 42"
+
+        obj = SimpleNamespace(generated_text="Wynik 43")
+        assert _extract_text_payload(obj) == "Wynik 43"
+
+    def test_extract_text_payload_supports_mock_and_string_fallback(self):
+        mocked = MagicMock()
+        assert _extract_text_payload(mocked)
+        assert _extract_text_payload(123) == "123"
+
+    def test_extract_text_payload_handles_empty_mapping_message_chain(self):
+        payload = {"content": "", "text": "", "response_text": "", "message": None}
+        assert _extract_text_payload(payload) == ""
+
+    def test_sanitize_and_normalize_voice_response_filter_instructions(self):
+        raw = (
+            "Oto nowy tryb komunikacji: Tryb 1.\n"
+            "- nie używaj markdown i nie wymieniaj szczegółów.\n"
+            "Dwa razy dwa to cztery."
+        )
+        cleaned = _sanitize_voice_response(raw)
+        normalized, needs_retry = _normalize_voice_response(raw)
+
+        assert cleaned == "Dwa razy dwa to cztery."
+        assert normalized == "Dwa razy dwa to cztery."
+        assert needs_retry is True
+
+    def test_normalize_voice_response_without_leak(self):
+        normalized, needs_retry = _normalize_voice_response("Krótka odpowiedź.")
+        assert normalized == "Krótka odpowiedź."
+        assert needs_retry is False
+
+    def test_build_voice_retry_history_respects_mode_and_context(self):
+        history = _build_voice_retry_history(
+            input_text="Ile to dwa?",
+            mode_prompt={"instruction": "Streść odpowiedź."},
+            voice_context={"reasoning_summary": "r", "reasoning_summary_enabled": True},
+            mode="summary",
+        )
+
+        roles = [str(getattr(msg, "role", "")).lower() for msg in history.messages]
+        assert sum("system" in role for role in roles) == 3
+        assert "user" in roles[-1]

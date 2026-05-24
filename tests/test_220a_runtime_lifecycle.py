@@ -117,6 +117,19 @@ def _make_server(
     }
 
 
+def _capture_update_config(updates: dict[str, Any]):
+    def _update(payload: dict[str, Any]):
+        updates.update(payload)
+        return {
+            "success": True,
+            "message": "Configuration updated successfully",
+            "restart_required": [],
+            "changed_keys": sorted(payload.keys()),
+        }
+
+    return _update
+
+
 def _snapshot_settings():
     return {
         "service_type": SETTINGS.LLM_SERVICE_TYPE,
@@ -285,7 +298,7 @@ async def test_ollama_to_multi_runtime_stops_ollama_starts_multi(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        system_routes.config_manager, "update_config", lambda u: updates.update(u)
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
     )
     monkeypatch.setattr(system_routes, "_release_onnx_runtime_caches", lambda: None)
 
@@ -348,7 +361,7 @@ async def test_multi_runtime_to_ollama_stops_multi_starts_ollama(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        system_routes.config_manager, "update_config", lambda u: updates.update(u)
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
     )
     monkeypatch.setattr(system_routes, "_release_onnx_runtime_caches", lambda: None)
 
@@ -394,7 +407,7 @@ async def test_health_check_timeout_prevents_config_write(monkeypatch):
         ),
     ]
     controller = _DummyController(servers)
-    config_written = []
+    config_written: dict[str, Any] = {}
     monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
     monkeypatch.setattr(
         system_routes.system_deps,
@@ -408,7 +421,7 @@ async def test_health_check_timeout_prevents_config_write(monkeypatch):
     monkeypatch.setattr(
         system_routes.config_manager,
         "update_config",
-        lambda u: config_written.append(u),
+        _capture_update_config(config_written),
     )
     monkeypatch.setattr(system_routes, "_release_onnx_runtime_caches", lambda: None)
 
@@ -429,7 +442,7 @@ async def test_health_check_timeout_prevents_config_write(monkeypatch):
             )
         assert exc_info.value.status_code == 503
         # Config must NOT have been written — health failed before config save.
-        assert config_written == [], (
+        assert config_written == {}, (
             "Config must not be written when health check fails"
         )
     finally:
@@ -465,7 +478,10 @@ async def test_onnx_cleanup_failure_does_not_break_switch(monkeypatch):
             "LAST_MODEL_OLLAMA": "phi3:mini",
         },
     )
-    monkeypatch.setattr(system_routes.config_manager, "update_config", lambda _: None)
+    updates: dict[str, Any] = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
 
     def _onnx_flush_raises():
         raise RuntimeError("ONNX not available")

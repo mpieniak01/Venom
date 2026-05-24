@@ -1173,12 +1173,177 @@ async def test_invoke_gemma4_audio_runtime_builds_request_and_validates_response
     request_payload = json.loads(calls["data"]["request"])
     assert request_payload["task"] == "question"
     assert request_payload["max_new_tokens"] == 77
+    assert request_payload["release_after_response"] is True
     assert request_payload["messages"][0]["content"][0] == {
         "type": "audio",
         "path": "recording.wav",
     }
     assert calls["files"]["audio"][0] == "recording.wav"
     assert calls["files"]["audio"][1] == b"fake-wave-content"
+
+
+@pytest.mark.asyncio
+async def test_invoke_gemma4_audio_runtime_prefers_alternate_text_fields(
+    monkeypatch, tmp_path
+):
+    """Gemma4 runtime should accept alternate response text fields."""
+    handler = _make_handler()
+    wav_path = tmp_path / "recording.wav"
+    wav_path.write_bytes(b"RIFF....WAVEfmt ")
+    monkeypatch.setattr(
+        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+    )
+
+    class _AsyncBinaryFile:
+        async def read(self):
+            return b"fake-wave-content"
+
+    class _AsyncOpenContext:
+        async def __aenter__(self):
+            return _AsyncBinaryFile()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _fake_open_file(path, mode):
+        return _AsyncOpenContext()
+
+    monkeypatch.setattr(audio_stream_mod.anyio, "open_file", _fake_open_file)
+
+    class _AsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, data=None, files=None):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "response_text": "42",
+                    "generated_text": "41",
+                    "message": {"content": "40"},
+                },
+                text="",
+            )
+
+    monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
+
+    result = await handler._invoke_gemma4_audio_runtime(wav_path, 17)
+
+    assert result["text"] == "42"
+    assert result["response_text"] == "42"
+
+
+@pytest.mark.asyncio
+async def test_invoke_gemma4_audio_runtime_uses_generated_text_when_response_empty(
+    monkeypatch, tmp_path
+):
+    """Fallback to generated_text when response_text is blank."""
+    handler = _make_handler()
+    wav_path = tmp_path / "recording.wav"
+    wav_path.write_bytes(b"RIFF....WAVEfmt ")
+    monkeypatch.setattr(
+        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+    )
+
+    class _AsyncBinaryFile:
+        async def read(self):
+            return b"fake-wave-content"
+
+    class _AsyncOpenContext:
+        async def __aenter__(self):
+            return _AsyncBinaryFile()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _fake_open_file(path, mode):
+        return _AsyncOpenContext()
+
+    monkeypatch.setattr(audio_stream_mod.anyio, "open_file", _fake_open_file)
+
+    class _AsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, data=None, files=None):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"response_text": "  ", "generated_text": "41"},
+                text="",
+            )
+
+    monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
+
+    result = await handler._invoke_gemma4_audio_runtime(wav_path, 17)
+    assert result["text"] == "41"
+
+
+@pytest.mark.asyncio
+async def test_invoke_gemma4_audio_runtime_uses_message_content_when_other_fields_empty(
+    monkeypatch, tmp_path
+):
+    """Fallback to message.content when text/response_text/generated_text are blank."""
+    handler = _make_handler()
+    wav_path = tmp_path / "recording.wav"
+    wav_path.write_bytes(b"RIFF....WAVEfmt ")
+    monkeypatch.setattr(
+        handler, "_gemma4_audio_respond_url", lambda: "http://runtime/v1/respond"
+    )
+
+    class _AsyncBinaryFile:
+        async def read(self):
+            return b"fake-wave-content"
+
+    class _AsyncOpenContext:
+        async def __aenter__(self):
+            return _AsyncBinaryFile()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _fake_open_file(path, mode):
+        return _AsyncOpenContext()
+
+    monkeypatch.setattr(audio_stream_mod.anyio, "open_file", _fake_open_file)
+
+    class _AsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, data=None, files=None):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "text": " ",
+                    "response_text": "",
+                    "generated_text": " ",
+                    "message": {"content": "40"},
+                },
+                text="",
+            )
+
+    monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
+
+    result = await handler._invoke_gemma4_audio_runtime(wav_path, 17)
+    assert result["text"] == "40"
 
 
 @pytest.mark.asyncio

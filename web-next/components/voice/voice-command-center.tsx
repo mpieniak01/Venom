@@ -2237,6 +2237,7 @@ type VoiceCommandCenterProps = Readonly<{
   onTranscriptReady?: (text: string) => void;
   voiceModePreset?: VoiceModePreset;
   onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
+  statusRefreshSignal?: number;
   isDevMode?: boolean;
 }>;
 
@@ -2329,6 +2330,7 @@ function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
   onStatusUpdate,
+  statusRefreshSignal,
 }: VoiceCommandCenterProps) {
   const t = useTranslation();
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
@@ -2431,6 +2433,13 @@ function VoiceCommandCenterPanel({
     refreshAudioStatus,
     refreshTtsModelOptions,
   });
+
+  useEffect(() => {
+    if (debugDryRunRequested) {
+      return;
+    }
+    refreshAudioStatus().catch(() => undefined);
+  }, [debugDryRunRequested, refreshAudioStatus, statusRefreshSignal]);
 
   const releasePlaybackResources = useCallback(
     () =>

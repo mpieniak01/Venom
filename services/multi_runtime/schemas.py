@@ -55,6 +55,13 @@ class RespondRequest(BaseModel):
     temperature: Optional[float] = Field(None, description="Sampling temperature")
     top_p: Optional[float] = Field(None, description="Top-p sampling")
     do_sample: Optional[bool] = Field(None, description="Use sampling vs greedy")
+    release_after_response: bool = Field(
+        False,
+        description=(
+            "Unload the daemon models after the response is generated. "
+            "Used by voice flows that should free GPU immediately after completion."
+        ),
+    )
 
 
 class Capabilities(BaseModel):
@@ -181,6 +188,10 @@ class RespondResponse(BaseModel):
     active_precision: Optional[str] = Field(
         None,
         description="Active model precision used by the runtime during this request",
+    )
+    post_response_cleanup: Optional[str] = Field(
+        None,
+        description="Best-effort cleanup action performed after response generation",
     )
 
 

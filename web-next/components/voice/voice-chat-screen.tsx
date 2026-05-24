@@ -58,6 +58,7 @@ type VoiceChatScreenProps = Readonly<{
 export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
   const [voiceModePreset, setVoiceModePreset] = useState<VoiceModePreset>("standard");
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatusUpdate | null>(null);
+  const [statusRefreshSignal, setStatusRefreshSignal] = useState(0);
   const t = useTranslation();
 
   const handleStatusUpdate = useCallback((s: VoiceStatusUpdate | null) => {
@@ -87,6 +88,7 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
         <VoiceCommandCenter
           voiceModePreset={voiceModePreset}
           onStatusUpdate={handleStatusUpdate}
+          statusRefreshSignal={statusRefreshSignal}
           isDevMode={isDevMode}
         />
         <div className="space-y-4">
@@ -127,7 +129,13 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
           <ImageProbeCard />
 
           {/* STT/TTS + Runtime status — compact info boxes for tuning */}
-          <VoiceStatusSidebar status={voiceStatus} isDevMode={isDevMode} />
+          <VoiceStatusSidebar
+            status={voiceStatus}
+            isDevMode={isDevMode}
+            onRuntimeApplied={() => {
+              setStatusRefreshSignal((current) => current + 1);
+            }}
+          />
         </div>
       </div>
     </div>

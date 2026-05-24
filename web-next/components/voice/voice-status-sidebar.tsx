@@ -1,17 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control";
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
 import { useTranslation } from "@/lib/i18n";
-import { useRuntime } from "@/components/models/hooks/use-runtime";
+import { resolveRuntimeActivationErrorMessage, useRuntime } from "@/components/models/hooks/use-runtime";
 
 type VoiceStatusSidebarProps = Readonly<{
   status: VoiceStatusUpdate | null;
   isDevMode?: boolean;
+  onRuntimeApplied?: () => void;
 }>;
 
 function ReadyDot({ ready }: Readonly<{ ready?: boolean | null }>) {
@@ -51,7 +52,7 @@ function isGenericFailureResponse(text: string): boolean {
   );
 }
 
-export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSidebarProps) {
+export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied }: VoiceStatusSidebarProps) {
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
   const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;
@@ -70,7 +71,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
   if (!status) {
     return (
       <div className="space-y-3">
-        <RuntimeSwitchCard />
+        <RuntimeSwitchCard onRuntimeApplied={onRuntimeApplied} />
         <div className="flex items-center gap-3 pt-1">
           <div className="flex-1 border-t border-white/[0.05]" />
           <span className="text-[10px] uppercase tracking-widest text-zinc-600">
@@ -102,7 +103,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
 
   return (
     <div className="space-y-3">
-      <RuntimeSwitchCard />
+      <RuntimeSwitchCard onRuntimeApplied={onRuntimeApplied} />
       {isGemma4AudioRuntime && (
         <Gemma4RuntimeControl
           variant="voice"
@@ -176,11 +177,17 @@ export function VoiceStatusSidebar({ status, isDevMode = false }: VoiceStatusSid
   );
 }
 
-function RuntimeSwitchCard() {
+function RuntimeSwitchCard({
+  onRuntimeApplied,
+}: Readonly<{ onRuntimeApplied?: () => void }>) {
   const t = useTranslation();
   const runtime = useRuntime();
   const [pending, setPending] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [activationError, setActivationError] = useState<string | null>(null);
+  const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didAutoSelectPreferredRuntime = useRef(false);
+  const nativeVoiceRuntimeIds = useMemo(() => new Set(["multi_runtime", "gemma4_audio"]), []);
   const selectedRuntime = runtime.selectedServer ?? "";
   const selectedModel = runtime.selectedModel ?? "";
   const applyDisabled = pending || !selectedRuntime || !selectedModel;
@@ -202,13 +209,61 @@ function RuntimeSwitchCard() {
     [runtime.modelOptions],
   );
 
+  const preferredNativeRuntime = useMemo(
+    () =>
+      serverOptions.find((option) => nativeVoiceRuntimeIds.has(String(option.value).trim().toLowerCase())) ??
+      null,
+    [nativeVoiceRuntimeIds, serverOptions],
+  );
+
+  useEffect(() => {
+    if (didAutoSelectPreferredRuntime.current) {
+      return;
+    }
+    if (!preferredNativeRuntime) {
+      return;
+    }
+    const normalizedSelectedRuntime = selectedRuntime.trim().toLowerCase();
+    const normalizedPreferredRuntime = String(preferredNativeRuntime.value).trim().toLowerCase();
+    if (normalizedSelectedRuntime === normalizedPreferredRuntime) {
+      didAutoSelectPreferredRuntime.current = true;
+      return;
+    }
+    if (normalizedSelectedRuntime && nativeVoiceRuntimeIds.has(normalizedSelectedRuntime)) {
+      didAutoSelectPreferredRuntime.current = true;
+      return;
+    }
+    runtime.setSelectedServer(String(preferredNativeRuntime.value));
+    didAutoSelectPreferredRuntime.current = true;
+  }, [nativeVoiceRuntimeIds, preferredNativeRuntime, runtime, selectedRuntime]);
+
+  useEffect(() => {
+    return () => {
+      if (appliedTimerRef.current) {
+        clearTimeout(appliedTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleApply = async () => {
     if (applyDisabled) return;
     setPending(true);
+    setActivationError(null);
     try {
       await runtime.activateRuntimeSelection(selectedRuntime, selectedModel);
+      onRuntimeApplied?.();
       setApplied(true);
-      setTimeout(() => setApplied(false), 2500);
+      if (appliedTimerRef.current) {
+        clearTimeout(appliedTimerRef.current);
+      }
+      appliedTimerRef.current = setTimeout(() => {
+        setApplied(false);
+        appliedTimerRef.current = null;
+      }, 2500);
+    } catch (error) {
+      setActivationError(
+        resolveRuntimeActivationErrorMessage(error, t("models.toasts.activateError")),
+      );
     } finally {
       setPending(false);
     }
@@ -216,6 +271,11 @@ function RuntimeSwitchCard() {
 
   return (
     <StatusCard title={t("voice.controls.runtime")}>
+      {preferredNativeRuntime && selectedRuntime !== preferredNativeRuntime.value && (
+        <p className="mb-2 text-[11px] text-amber-300">
+          {t("voice.controls.voiceRuntimePriority", { runtime: preferredNativeRuntime.label })}
+        </p>
+      )}
       <div className="space-y-2.5">
         <div>
           <p className="text-caption mb-1">{t("voice.controls.provider")}</p>
@@ -282,6 +342,12 @@ function RuntimeSwitchCard() {
           <p className="text-[11px] text-emerald-400">{t("voice.controls.runtimeApplied")}</p>
         )}
 
+        {activationError && (
+          <p className="text-[11px] text-rose-300">
+            {activationError}
+          </p>
+        )}
+
         {runtimeError && (
           <p className="text-[11px] text-rose-300 truncate">
             {String(runtimeError)}
@@ -306,6 +372,7 @@ function RuntimeOverviewCard({
   const model = runtime?.model_name ?? null;
   const endpoint = runtime?.endpoint ?? null;
   const probeStatus = runtime?.runtime_capabilities?.probe_status ?? null;
+  const activeVoiceRuntime = provider || model ? `${provider ?? "—"} / ${model ?? "—"}` : null;
   const runtimeProvider = String(provider ?? "").trim().toLowerCase();
   const isNativeVoiceRuntime =
     runtimeProvider.startsWith("multi_runtime") ||
@@ -336,6 +403,9 @@ function RuntimeOverviewCard({
             )}
           </div>
           {provider && <Row label={t("voice.controls.provider")} value={provider} />}
+          {activeVoiceRuntime && (
+            <Row label={t("voice.controls.systemVoiceRuntime")} value={activeVoiceRuntime} />
+          )}
           {endpoint && <Row label={t("voice.controls.endpoint")} value={endpoint} />}
           {profile && <Row label={t("voice.controls.profile")} value={profile} />}
           {runtime.voice_pipeline?.stt && (
@@ -388,6 +458,12 @@ function VoiceSessionCard({
         )}
       </div>
       {session.voice_mode && <Row label={t("voice.controls.voiceMode")} value={session.voice_mode} />}
+      {(session.audio_runtime_provider || session.audio_runtime_model) && (
+        <Row
+          label={t("voice.controls.responseRuntime")}
+          value={`${session.audio_runtime_provider ?? "—"} / ${session.audio_runtime_model ?? "—"}`}
+        />
+      )}
       {session.reasoning_summary_status && (
         <Row
           label={t("voice.controls.reasoningStatus")}

@@ -800,6 +800,7 @@ class AudioStreamHandler:
             "max_new_tokens": _coerce_int(
                 _gemma4_audio_setting("GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
             ),
+            "release_after_response": True,
         }
 
         timeout = httpx.Timeout(GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC, connect=5.0)
@@ -821,6 +822,14 @@ class AudioStreamHandler:
 
         data = response.json()
         text = _coerce_str(data.get("text"), "")
+        if not text:
+            text = _coerce_str(data.get("response_text"), "")
+        if not text:
+            text = _coerce_str(data.get("generated_text"), "")
+        if not text:
+            message = data.get("message")
+            if isinstance(message, dict):
+                text = _coerce_str(message.get("content"), "")
         if not text:
             raise RuntimeError("Gemma4 audio runtime returned an empty response")
 

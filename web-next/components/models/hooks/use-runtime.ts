@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
+import { ApiError } from "@/lib/api-client";
 import type {
     ActiveLlmServerResponse,
     LlmRuntimeModelOption,
@@ -24,6 +25,59 @@ const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
 
 const isServerWithInlineModelActivation = (runtime: string): boolean =>
     runtime === "multi_runtime" || runtime === "gemma4_audio";
+
+const ERROR_DETAIL_KEYS = ["detail", "message", "error", "reason"] as const;
+
+function readTrimmedString(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed || null;
+}
+
+function resolveNestedErrorDetail(value: unknown): string | null {
+    if (!value || typeof value !== "object") return null;
+    const nested = value as Record<string, unknown>;
+    for (const key of ERROR_DETAIL_KEYS) {
+        const detail = readTrimmedString(nested[key]);
+        if (detail) return detail;
+    }
+    return null;
+}
+
+function resolveApiErrorDetail(data: unknown): string | null {
+    const directDetail = readTrimmedString(data);
+    if (directDetail) return directDetail;
+    if (!data || typeof data !== "object") {
+        return null;
+    }
+    const payload = data as Record<string, unknown>;
+    const candidates = ERROR_DETAIL_KEYS.map((key) => payload[key]);
+    for (const candidate of candidates) {
+        const candidateDetail = readTrimmedString(candidate);
+        if (candidateDetail) return candidateDetail;
+        const nestedDetail = resolveNestedErrorDetail(candidate);
+        if (nestedDetail) return nestedDetail;
+    }
+    return null;
+}
+
+export function resolveRuntimeActivationErrorMessage(
+    error: unknown,
+    fallbackMessage = "Nie udało się aktywować runtime.",
+): string {
+    if (error instanceof ApiError) {
+        const detail = resolveApiErrorDetail(error.data);
+        if (detail) {
+            return detail;
+        }
+        return `${fallbackMessage} (HTTP ${error.status}).`;
+    }
+    if (error instanceof Error) {
+        const message = error.message.trim();
+        if (message) return message;
+    }
+    return fallbackMessage;
+}
 
 export function buildInstalledBuckets(
     data: ModelsResponse | null,
@@ -258,12 +312,12 @@ export function useRuntime() {
             const response = await activateRuntimeSelection(server, model);
             pushToast(
                 t("models.toasts.activateSuccess", {
-                    name: response?.active_model ?? model,
-                }),
-                "success",
-            );
-        } catch {
-            pushToast(t("models.toasts.activateError"), "error");
+                name: response?.active_model ?? model,
+            }),
+            "success",
+        );
+    } catch (error) {
+            pushToast(resolveRuntimeActivationErrorMessage(error, t("models.toasts.activateError")), "error");
         } finally {
             setPending(key, false);
         }

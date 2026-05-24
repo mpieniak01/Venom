@@ -165,6 +165,20 @@ _start_time: float = 0
 _warming: bool = False
 _startup_error: Optional[str] = None
 _lifecycle_lock: asyncio.Lock = asyncio.Lock()
+_respond_inflight_requests: int = 0
+
+
+async def _increment_respond_inflight() -> None:
+    global _respond_inflight_requests
+    async with _lifecycle_lock:
+        _respond_inflight_requests += 1
+
+
+async def _decrement_respond_inflight() -> int:
+    global _respond_inflight_requests
+    async with _lifecycle_lock:
+        _respond_inflight_requests = max(0, _respond_inflight_requests - 1)
+        return _respond_inflight_requests
 
 
 def _resolve_startup_runtime_params() -> dict[str, object]:
@@ -947,25 +961,47 @@ async def respond(request: Request) -> RespondResponse:
 
     daemon_status = daemon.status()
 
+    await _increment_respond_inflight()
     try:
-        pipeline_result = await asyncio.to_thread(
-            MultiRuntimePipeline(engine, daemon).execute,
-            daemon_status=daemon_status,
-            request=PipelineRequestData(
-                request_payload=request_payload,
-                text_content=text_content,
-                audio_array=audio_array,
-                sample_rate=sample_rate,
-                images=images,
-            ),
-        )
-    except InferenceError as e:
-        raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
+        try:
+            pipeline_result = await asyncio.to_thread(
+                MultiRuntimePipeline(engine, daemon).execute,
+                daemon_status=daemon_status,
+                request=PipelineRequestData(
+                    request_payload=request_payload,
+                    text_content=text_content,
+                    audio_array=audio_array,
+                    sample_rate=sample_rate,
+                    images=images,
+                ),
+            )
+        except InferenceError as e:
+            raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
+    finally:
+        await _decrement_respond_inflight()
 
     daemon_params = daemon_status["params"]
     generated_text = pipeline_result.generated_text
     duration = pipeline_result.audio_duration_sec
     active_precision = str(daemon_params.get("precision", "auto"))
+    post_response_cleanup = "none"
+
+    if request_payload.release_after_response:
+        try:
+            async with _lifecycle_lock:
+                if _respond_inflight_requests > 0:
+                    post_response_cleanup = "cleanup_skipped_inflight"
+                    logger.info(
+                        "Post-response cleanup skipped due to inflight requests",
+                        extra={"inflight_requests": _respond_inflight_requests},
+                    )
+                else:
+                    await asyncio.to_thread(daemon.unload_all)
+                    post_response_cleanup = "unload_all"
+                    logger.info("Post-response cleanup: unload_all completed")
+        except Exception:
+            post_response_cleanup = "cleanup_failed"
+            logger.exception("Post-response cleanup failed")
 
     total_duration_ms = pipeline_result.total_duration_ms
     voice_insights = build_voice_session_insights(
@@ -1026,6 +1062,7 @@ async def respond(request: Request) -> RespondResponse:
         audio_output_bytes=pipeline_result.audio_bytes,
         audio_output_sample_rate=pipeline_result.audio_sample_rate,
         active_precision=active_precision,
+        post_response_cleanup=post_response_cleanup,
     )
 
 

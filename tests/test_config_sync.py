@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import venom_core.services.config_manager as config_manager_module
 from tests.helpers.url_fixtures import LOCALHOST_8001_V1, LOCALHOST_11434_V1, http_url
 from venom_core.services.config_manager import ConfigManager
 
@@ -55,6 +56,79 @@ def test_auto_sync_vllm(mock_config_manager):
     args, _ = mock_write.call_args
     env_values = args[0]
     assert env_values["ACTIVE_LLM_SERVER"] == "vllm"
+    assert env_values["LLM_LOCAL_ENDPOINT"] == LOCALHOST_8001_V1
+
+
+def test_auto_sync_multi_runtime(mock_config_manager, monkeypatch):
+    manager, mock_write = mock_config_manager
+    gemma_endpoint = http_url("localhost", 8014, "/v1")
+    monkeypatch.setattr(
+        manager,
+        "_load_env_values",
+        lambda: {
+            "ACTIVE_LLM_SERVER": "vllm",
+            "LLM_LOCAL_ENDPOINT": LOCALHOST_8001_V1,
+            "VLLM_ENDPOINT": LOCALHOST_8001_V1,
+            "GEMMA4_AUDIO_ENDPOINT": gemma_endpoint,
+        },
+    )
+
+    result = manager.update_config({"ACTIVE_LLM_SERVER": "multi_runtime"})
+
+    assert result["success"] is True
+    args, _ = mock_write.call_args
+    env_values = args[0]
+    assert env_values["ACTIVE_LLM_SERVER"] == "multi_runtime"
+    assert env_values["LLM_LOCAL_ENDPOINT"] == gemma_endpoint
+
+
+def test_auto_sync_multi_runtime_prefers_explicit_endpoint_update(mock_config_manager):
+    manager, _ = mock_config_manager
+    explicit_endpoint = http_url("127.0.0.1", 8111, "/v1")
+    env_values = {
+        "ACTIVE_LLM_SERVER": "vllm",
+        "LLM_LOCAL_ENDPOINT": LOCALHOST_8001_V1,
+    }
+    changed_keys: list[str] = []
+
+    manager._auto_sync_llm_endpoint(
+        env_values,
+        {
+            "ACTIVE_LLM_SERVER": "multi_runtime",
+            "GEMMA4_AUDIO_ENDPOINT": explicit_endpoint,
+        },
+        changed_keys,
+    )
+
+    assert env_values["ACTIVE_LLM_SERVER"] == "vllm"
+    assert env_values["LLM_LOCAL_ENDPOINT"] == explicit_endpoint
+    assert "LLM_LOCAL_ENDPOINT" in changed_keys
+
+
+def test_auto_sync_multi_runtime_skips_endpoint_when_missing(
+    mock_config_manager, monkeypatch
+):
+    manager, mock_write = mock_config_manager
+    monkeypatch.setattr(
+        manager,
+        "_load_env_values",
+        lambda: {
+            "ACTIVE_LLM_SERVER": "vllm",
+            "LLM_LOCAL_ENDPOINT": LOCALHOST_8001_V1,
+            "VLLM_ENDPOINT": LOCALHOST_8001_V1,
+            "GEMMA4_AUDIO_ENDPOINT": "",
+        },
+    )
+    monkeypatch.setattr(
+        config_manager_module.SETTINGS, "GEMMA4_AUDIO_ENDPOINT", "", raising=False
+    )
+
+    result = manager.update_config({"ACTIVE_LLM_SERVER": "multi_runtime"})
+
+    assert result["success"] is True
+    args, _ = mock_write.call_args
+    env_values = args[0]
+    assert env_values["ACTIVE_LLM_SERVER"] == "multi_runtime"
     assert env_values["LLM_LOCAL_ENDPOINT"] == LOCALHOST_8001_V1
 
 

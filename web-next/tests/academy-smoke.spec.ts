@@ -927,7 +927,9 @@ test.describe("Academy smoke", () => {
     await expect(page.getByText(selfLearningAdapterId, { exact: true })).toBeVisible();
     await expect(page.getByText("gemma-3-4b-it").first()).toBeVisible();
     await expect(page.getByText("ollama").first()).toBeVisible();
-    await expect(page.getByText("selected_files: README_PL.md")).toBeVisible();
+    await expect(
+      page.getByText(`data/models/${selfLearningAdapterId}/adapter`, { exact: true }),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: "Aktywuj" }).first().click();
     await expect(page.getByText("Aktywny").first()).toBeVisible();

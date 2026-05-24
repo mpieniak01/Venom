@@ -1,7 +1,7 @@
 import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ToastProvider } from "../components/ui/toast";
 import { VoiceStatusSidebar } from "../components/voice/voice-status-sidebar";
 
@@ -47,6 +47,8 @@ const gemma4VoiceStatus = {
     session_id: "session-123",
     pipeline_id: "gemma4_audio_piper",
     voice_mode: "standard",
+    audio_runtime_provider: "multi_runtime",
+    audio_runtime_model: "google/gemma-4-E2B-it",
     reasoning_summary_enabled: true,
     reasoning_summary_status: "summary",
     reasoning_summary: "pipeline=gemma4_audio_piper | mode=standard",
@@ -219,7 +221,8 @@ describe("VoiceStatusSidebar", () => {
       </ToastProvider>,
     );
 
-    assert.ok(screen.getByText(/ollama \/ gemma2:2b/i));
+    assert.ok(screen.getAllByText(/ollama \/ gemma2:2b/i).length >= 1);
+    assert.ok(screen.getAllByText("Runtime systemowy voice").length >= 1);
     assert.ok(screen.getAllByText("piper").length >= 2);
     assert.ok(screen.getAllByText("faster_whisper").length >= 2);
     assert.equal(screen.queryByText(/Gemma 4 Runtime/i), null);
@@ -302,7 +305,8 @@ describe("VoiceStatusSidebar", () => {
       </ToastProvider>,
     );
 
-    assert.ok(await screen.findByText("Gemma 4 Runtime"));
+    assert.ok((await screen.findAllByText("Gemma 4 Runtime")).length >= 1);
+    assert.ok(await screen.findByText("Runtime odpowiedzi"));
     assert.ok(await screen.findByTestId("runtime-profile-inline"));
     assert.equal(screen.queryByTestId("multi-runtime-profile-panel"), null);
     assert.ok(await screen.findByText(/session-123/i));
@@ -326,5 +330,63 @@ describe("VoiceStatusSidebar", () => {
 
     assert.ok(screen.getByText(/Błąd kanału audio|Audio channel error|Fehler im Audiokanal/i));
     assert.equal(screen.queryByText("Przepraszam, wystąpił błąd. Spróbuj ponownie."), null);
+  });
+
+  it("shows runtime activation error details inline instead of crashing", async () => {
+    window.history.pushState({}, "", "/voice");
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/models")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.models), { status: 200 });
+      }
+      if (url.endsWith("/api/v1/system/llm-runtime/options")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.runtimeOptions), {
+          status: 200,
+        });
+      }
+      if (url.endsWith("/api/v1/system/llm-servers/active")) {
+        if (init?.method === "POST") {
+          return new Response(
+            JSON.stringify({
+              detail: "multi_runtime health check failed",
+            }),
+            { status: 500 },
+          );
+        }
+        return new Response(JSON.stringify(runtimeSelectionPayloads.activeServer), {
+          status: 200,
+        });
+      }
+      if (url.includes("/api/v1/models/operations")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.modelOperations), {
+          status: 200,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    };
+
+    render(
+      <ToastProvider>
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
+      </ToastProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj runtime" }));
+    });
+
+    assert.ok(await screen.findByText("multi_runtime health check failed"));
+  });
+
+  it("keeps the active and response runtime labels distinct", () => {
+    window.history.pushState({}, "", "/voice");
+    render(
+      <ToastProvider>
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
+      </ToastProvider>,
+    );
+
+    assert.ok(screen.getByText("Runtime systemowy voice"));
+    assert.ok(screen.getByText("Runtime odpowiedzi"));
   });
 });

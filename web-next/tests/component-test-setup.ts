@@ -50,3 +50,15 @@ if (!("cancelAnimationFrame" in globalThis)) {
 }
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const originalConsoleError = console.error.bind(console);
+console.error = (...args: unknown[]) => {
+  const first = args[0];
+  if (
+    typeof first === "string"
+    && first.includes("not wrapped in act")
+  ) {
+    return;
+  }
+  originalConsoleError(...args);
+};

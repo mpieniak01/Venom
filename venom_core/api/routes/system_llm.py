@@ -42,7 +42,7 @@ from venom_core.services.feedback_loop_policy import (
     is_feedback_loop_ready,
     resolve_feedback_loop_model,
 )
-from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
+from venom_core.services.multi_runtime_models import multi_runtime_available_models
 from venom_core.services.runtime_switch_service import (
     RuntimeSwitchOrchestrator,
     probe_health_ready,
@@ -63,6 +63,7 @@ from venom_core.utils.llm_runtime import (
     infer_local_provider,
 )
 from venom_core.utils.logger import get_logger
+from venom_core.utils.mode_contracts import mode_contracts_payload
 from venom_core.utils.runtime_names import (
     MULTI_RUNTIME_ID,
     is_multi_runtime,
@@ -1292,19 +1293,19 @@ async def _local_models_by_runtime(
             runtime_id = str(payload.get("runtime_id") or "").strip().lower()
             if runtime_id in grouped:
                 grouped[runtime_id].append(payload)
-    grouped[MULTI_RUNTIME_ID] = _gemma4_audio_static_models(
+    grouped[MULTI_RUNTIME_ID] = _multi_runtime_static_models(
         active_provider=active_provider,
         active_model=active_model,
     )
     return grouped, audit_issues
 
 
-def _gemma4_audio_static_models(
+def _multi_runtime_static_models(
     *,
     active_provider: str,
     active_model: str,
 ) -> list[dict[str, Any]]:
-    target_models = gemma4_audio_available_models(role="target")
+    target_models = multi_runtime_available_models(role="target")
     return [
         _runtime_model_payload(
             runtime_id=MULTI_RUNTIME_ID,
@@ -1455,15 +1456,15 @@ def _runtime_target_payload(
         "supports_adapter_runtime_apply": runtime_capabilities[
             "supports_adapter_runtime_apply"
         ],
-        **_gemma4_audio_runtime_input_capabilities(runtime_id),
+        **_multi_runtime_input_capabilities(runtime_id),
     }
 
 
-def _gemma4_audio_runtime_input_capabilities(runtime_id: str) -> dict[str, Any]:
+def _multi_runtime_input_capabilities(runtime_id: str) -> dict[str, Any]:
     if not is_multi_runtime(runtime_id):
         return {}
-    target_models = gemma4_audio_available_models(role="target")
-    assistant_models = gemma4_audio_available_models(role="assistant")
+    target_models = multi_runtime_available_models(role="target")
+    assistant_models = multi_runtime_available_models(role="assistant")
     return {
         "supports_text_input": True,
         "supports_audio_input": True,
@@ -1866,6 +1867,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
             "active_endpoint": active_runtime.endpoint,
             "config_hash": active_runtime.config_hash,
             "source_type": _runtime_source_type(active_runtime.provider),
+            "mode_contracts": mode_contracts_payload(),
             "requested_model_alias": active_feedback_resolution[
                 "requested_model_alias"
             ],
@@ -2099,6 +2101,7 @@ def get_active_llm_server():
         },
         "runtime_switch_policy": get_runtime_switch_guard_status(),
         "last_runtime_switch": get_last_runtime_switch_event(),
+        "mode_contracts": mode_contracts_payload(),
     }
 
 
@@ -2113,6 +2116,7 @@ def get_active_llm_runtime_info():
         "drift": drift,
         "runtime_switch_policy": get_runtime_switch_guard_status(),
         "last_runtime_switch": get_last_runtime_switch_event(),
+        "mode_contracts": mode_contracts_payload(),
     }
 
 
@@ -2286,7 +2290,7 @@ def _resolve_selected_model_for_switch(
     models: list[dict[str, Any]],
 ) -> tuple[str, str]:
     if is_multi_runtime(server_name):
-        return _resolve_gemma4_audio_selected_model_for_switch(
+        return _resolve_multi_runtime_selected_model_for_switch(
             request=request,
             server_name=server_name,
             config=config,
@@ -2325,7 +2329,7 @@ def _resolve_selected_model_for_switch(
         return fallback
 
 
-def _resolve_gemma4_audio_selected_model_for_switch(
+def _resolve_multi_runtime_selected_model_for_switch(
     *,
     request: ActiveLlmServerRequest,
     server_name: str,
@@ -2335,19 +2339,19 @@ def _resolve_gemma4_audio_selected_model_for_switch(
     requested_model = str(request.model or "").strip()
 
     if requested_model:
-        _validate_gemma4_audio_requested_model(
+        _validate_multi_runtime_requested_model(
             requested_model=requested_model, server_name=server_name
         )
         return requested_model, requested_last_model_key
 
-    selected = _resolve_gemma4_audio_fallback_model(config=config)
+    selected = _resolve_multi_runtime_fallback_model(config=config)
     return selected, requested_last_model_key
 
 
-def _validate_gemma4_audio_requested_model(
+def _validate_multi_runtime_requested_model(
     *, requested_model: str, server_name: str
 ) -> None:
-    available_models = gemma4_audio_available_models(role="target")
+    available_models = multi_runtime_available_models(role="target")
     if not available_models:
         logger.warning(
             "Brak katalogu modeli multi_runtime; akceptuję requested_model='{}' dla {}.",
@@ -2366,8 +2370,8 @@ def _validate_gemma4_audio_requested_model(
     )
 
 
-def _resolve_gemma4_audio_fallback_model(*, config: dict[str, Any]) -> str:
-    available_models = gemma4_audio_available_models(role="target")
+def _resolve_multi_runtime_fallback_model(*, config: dict[str, Any]) -> str:
+    available_models = multi_runtime_available_models(role="target")
     previous_choice = str(config.get("LAST_MODEL_GEMMA4_AUDIO") or "").strip()
     if previous_choice in available_models:
         return previous_choice

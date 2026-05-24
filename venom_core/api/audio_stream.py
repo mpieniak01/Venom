@@ -21,10 +21,15 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
-from venom_core.services.gemma4_audio_models import gemma4_audio_available_models
+from venom_core.services.multi_runtime_models import multi_runtime_available_models
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
-from venom_core.utils.runtime_names import is_multi_runtime
+from venom_core.utils.mode_contracts import (
+    VOICE_EXECUTION_CONTEXT,
+    VOICE_HISTORY_SCOPE,
+    mode_contracts_payload,
+)
+from venom_core.utils.runtime_names import MULTI_RUNTIME_ID, is_multi_runtime
 from venom_core.utils.voice_metadata import build_voice_session_insights
 
 logger = get_logger(__name__)
@@ -126,6 +131,8 @@ def _build_voice_session_record(
         "economy_mode_activated": metadata.get("economy_mode_activated"),
         "degradation_reasons": metadata.get("degradation_reasons") or [],
         "component_snapshot": metadata.get("component_snapshot") or [],
+        "execution_context": metadata.get("execution_context"),
+        "history_scope": metadata.get("history_scope"),
     }
 
 
@@ -143,20 +150,20 @@ def _coerce_str(value: Any, default: str) -> str:
     return text or default
 
 
-def _gemma4_audio_setting(name: str, default: Any) -> Any:
+def _multi_runtime_setting(name: str, default: Any) -> Any:
     return getattr(SETTINGS, name, default)
 
 
-def _gemma4_audio_voice_flags() -> dict[str, bool]:
+def _multi_runtime_voice_flags() -> dict[str, bool]:
     return {
         "reasoning_summary_enabled": bool(
-            _gemma4_audio_setting("GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
+            _multi_runtime_setting("GEMMA4_AUDIO_REASONING_SUMMARY_ENABLED", False)
         ),
         "emotion_detection_enabled": bool(
-            _gemma4_audio_setting("GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
+            _multi_runtime_setting("GEMMA4_AUDIO_EMOTION_DETECTION_ENABLED", False)
         ),
         "emotion_response_style_enabled": bool(
-            _gemma4_audio_setting(
+            _multi_runtime_setting(
                 "GEMMA4_AUDIO_EMOTION_RESPONSE_STYLE_ENABLED",
                 False,
             )
@@ -347,7 +354,8 @@ class AudioStreamHandler:
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "dependencies": dependencies,
-            **self._gemma4_audio_runtime_snapshot(),
+            "mode_contracts": mode_contracts_payload(),
+            **self._multi_runtime_runtime_snapshot(),
         }
 
     def get_latest_voice_session(self) -> dict[str, object] | None:
@@ -677,39 +685,46 @@ class AudioStreamHandler:
         voice_mode = conn["voice_mode"]
         return str(voice_mode).strip() or "standard"
 
-    def _gemma4_audio_runtime_snapshot(self) -> dict[str, Any]:
-        endpoint = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
-        log_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), "")
-        pid_path = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_PID_PATH", ""), "")
+    def _voice_contract_payload(self, connection_id: int) -> dict[str, str]:
         return {
-            "audio_runtime_provider": "multi_runtime",
+            "execution_context": VOICE_EXECUTION_CONTEXT,
+            "history_scope": VOICE_HISTORY_SCOPE,
+            "voice_mode": self._connection_voice_mode(connection_id),
+        }
+
+    def _multi_runtime_runtime_snapshot(self) -> dict[str, Any]:
+        endpoint = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
+        log_path = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_LOG_PATH", ""), "")
+        pid_path = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_PID_PATH", ""), "")
+        return {
+            "audio_runtime_provider": MULTI_RUNTIME_ID,
             "audio_runtime_model": _coerce_str(
-                _gemma4_audio_setting("GEMMA4_AUDIO_MODEL_ID", ""), ""
+                _multi_runtime_setting("GEMMA4_AUDIO_MODEL_ID", ""), ""
             ),
             "audio_runtime_endpoint": endpoint,
             "audio_runtime_enabled": bool(
-                _gemma4_audio_setting("GEMMA4_AUDIO_ENABLED", False)
+                _multi_runtime_setting("GEMMA4_AUDIO_ENABLED", False)
             ),
-            "audio_runtime_selected": self._gemma4_audio_runtime_selected(),
+            "audio_runtime_selected": self._multi_runtime_runtime_selected(),
             "audio_runtime_supports_audio": bool(
-                _gemma4_audio_setting("GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
+                _multi_runtime_setting("GEMMA4_AUDIO_SUPPORTS_AUDIO", True)
             ),
             "audio_runtime_supports_text": bool(
-                _gemma4_audio_setting("GEMMA4_AUDIO_SUPPORTS_TEXT", True)
+                _multi_runtime_setting("GEMMA4_AUDIO_SUPPORTS_TEXT", True)
             ),
             "audio_runtime_supports_image": True,
             "audio_runtime_supports_unified_multimodal_respond": True,
             "audio_runtime_runtime_mode": "processor_model",
             "audio_runtime_image_token_budget": int(
-                _gemma4_audio_setting("GEMMA4_AUDIO_IMAGE_TOKEN_BUDGET", 280)
+                _multi_runtime_setting("GEMMA4_AUDIO_IMAGE_TOKEN_BUDGET", 280)
             ),
-            "assistant_models": gemma4_audio_available_models(role="assistant"),
+            "assistant_models": multi_runtime_available_models(role="assistant"),
             "audio_runtime_log_path": log_path,
             "audio_runtime_pid_path": pid_path,
         }
 
-    def _gemma4_audio_service_origin(self) -> str:
-        endpoint = _coerce_str(_gemma4_audio_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
+    def _multi_runtime_service_origin(self) -> str:
+        endpoint = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
         if not endpoint:
             return ""
         endpoint = endpoint.rstrip("/")
@@ -717,21 +732,28 @@ class AudioStreamHandler:
             return endpoint[:-3].rstrip("/")
         return endpoint
 
-    def _gemma4_audio_respond_url(self) -> str:
-        origin = self._gemma4_audio_service_origin()
+    def _multi_runtime_respond_url(self) -> str:
+        origin = self._multi_runtime_service_origin()
         return f"{origin}/v1/respond" if origin else ""
 
-    def _gemma4_audio_health_url(self) -> str:
-        origin = self._gemma4_audio_service_origin()
+    def _multi_runtime_health_url(self) -> str:
+        origin = self._multi_runtime_service_origin()
         return f"{origin}/health" if origin else ""
 
-    def _gemma4_audio_runtime_enabled(self) -> bool:
-        return bool(_gemma4_audio_setting("GEMMA4_AUDIO_ENABLED", False))
+    def _multi_runtime_runtime_enabled(self) -> bool:
+        return bool(_multi_runtime_setting("GEMMA4_AUDIO_ENABLED", False))
 
-    def _gemma4_audio_runtime_selected(self) -> bool:
-        if not self._gemma4_audio_runtime_enabled():
+    def _multi_runtime_runtime_selected(self) -> bool:
+        if not self._multi_runtime_runtime_enabled():
             return False
-        active_server = _coerce_str(_gemma4_audio_setting("ACTIVE_LLM_SERVER", ""), "")
+        try:
+            runtime = get_active_llm_runtime()
+            if is_multi_runtime(getattr(runtime, "provider", "")):
+                return True
+        except Exception:
+            # Compatibility fallback for early bootstrap and partial runtime init.
+            pass
+        active_server = _coerce_str(_multi_runtime_setting("ACTIVE_LLM_SERVER", ""), "")
         return is_multi_runtime(active_server)
 
     def _voice_pipeline_mode(self) -> str:
@@ -743,18 +765,25 @@ class AudioStreamHandler:
         """
         return (
             "native_multi_runtime"
-            if self._gemma4_audio_runtime_selected()
+            if self._multi_runtime_runtime_selected()
             else "intermediary_local_stt"
         )
 
     def _voice_pipeline_fallback_reason(self) -> str:
-        active_server = _coerce_str(_gemma4_audio_setting("ACTIVE_LLM_SERVER", ""), "")
+        active_server = ""
+        try:
+            runtime = get_active_llm_runtime()
+            active_server = _coerce_str(getattr(runtime, "provider", ""), "")
+        except Exception:
+            active_server = _coerce_str(
+                _multi_runtime_setting("ACTIVE_LLM_SERVER", ""), ""
+            )
         if not active_server:
             return "native voice disabled: ACTIVE_LLM_SERVER is empty"
         return f"native voice disabled for active runtime: {active_server}"
 
-    async def _gemma4_audio_health_ok(self) -> bool:
-        health_url = self._gemma4_audio_health_url()
+    async def _multi_runtime_health_ok(self) -> bool:
+        health_url = self._multi_runtime_health_url()
         if not health_url:
             return False
         try:
@@ -769,12 +798,12 @@ class AudioStreamHandler:
         except Exception:
             return False
 
-    async def _invoke_gemma4_audio_runtime(
+    async def _invoke_multi_runtime(
         self,
         wav_path: Path,
         connection_id: int,
     ) -> dict[str, Any]:
-        respond_url = self._gemma4_audio_respond_url()
+        respond_url = self._multi_runtime_respond_url()
         if not respond_url:
             raise RuntimeError("Gemma4 audio endpoint is not configured")
 
@@ -795,10 +824,10 @@ class AudioStreamHandler:
             "task": "question",
             "question": prompt,
             "system_prompt": _coerce_str(
-                _gemma4_audio_setting("SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
+                _multi_runtime_setting("SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
             ),
             "max_new_tokens": _coerce_int(
-                _gemma4_audio_setting("GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
+                _multi_runtime_setting("GEMMA4_AUDIO_MAX_NEW_TOKENS", 128), 128
             ),
             "release_after_response": True,
         }
@@ -837,7 +866,8 @@ class AudioStreamHandler:
             "text": text,
             "response_text": text,
             "model": _coerce_str(
-                data.get("model") or _gemma4_audio_setting("GEMMA4_AUDIO_MODEL_ID", ""),
+                data.get("model")
+                or _multi_runtime_setting("GEMMA4_AUDIO_MODEL_ID", ""),
                 "",
             ),
             "duration_ms": data.get("duration_ms"),
@@ -860,7 +890,7 @@ class AudioStreamHandler:
             "component_snapshot": data.get("component_snapshot") or [],
         }
 
-    async def _process_native_gemma4_audio_pipeline(
+    async def _process_native_multi_runtime_pipeline(
         self,
         connection_id: int,
         session_dir: Path,
@@ -869,13 +899,13 @@ class AudioStreamHandler:
         total_started_at: float,
         operator_agent,
     ) -> bool:
-        if not self._gemma4_audio_runtime_selected():
+        if not self._multi_runtime_runtime_selected():
             return False
         if not self.audio_engine:
             return False
 
-        snapshot = self._gemma4_audio_runtime_snapshot()
-        if not await self._gemma4_audio_health_ok():
+        snapshot = self._multi_runtime_runtime_snapshot()
+        if not await self._multi_runtime_health_ok():
             self._update_voice_session_metadata(
                 session_dir,
                 {
@@ -889,12 +919,12 @@ class AudioStreamHandler:
                         response="",
                         voice_mode=self._connection_voice_mode(connection_id),
                         pipeline_id="whisper_llm_piper",
-                        **_gemma4_audio_voice_flags(),
+                        **_multi_runtime_voice_flags(),
                         raw_thinking_available=False,
                     ),
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
-                    "voice_mode": self._connection_voice_mode(connection_id),
+                    **self._voice_contract_payload(connection_id),
                 },
             )
             return False
@@ -905,9 +935,7 @@ class AudioStreamHandler:
 
         native_started_at = time.perf_counter()
         try:
-            runtime_result = await self._invoke_gemma4_audio_runtime(
-                wav_path, connection_id
-            )
+            runtime_result = await self._invoke_multi_runtime(wav_path, connection_id)
         except Exception as exc:
             timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
             self._update_voice_session_metadata(
@@ -924,12 +952,12 @@ class AudioStreamHandler:
                         response="",
                         voice_mode=self._connection_voice_mode(connection_id),
                         pipeline_id="whisper_llm_piper",
-                        **_gemma4_audio_voice_flags(),
+                        **_multi_runtime_voice_flags(),
                         raw_thinking_available=False,
                     ),
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
-                    "voice_mode": self._connection_voice_mode(connection_id),
+                    **self._voice_contract_payload(connection_id),
                 },
             )
             logger.warning(
@@ -947,7 +975,7 @@ class AudioStreamHandler:
             response=response_text,
             voice_mode=self._connection_voice_mode(connection_id),
             pipeline_id="multi_runtime_piper",
-            **_gemma4_audio_voice_flags(),
+            **_multi_runtime_voice_flags(),
             raw_thinking_available=bool(
                 runtime_result.get("raw_thinking_available", False)
             ),
@@ -983,7 +1011,7 @@ class AudioStreamHandler:
                 **insights,
                 "timings_ms": timings_ms,
                 "runtime": self._build_runtime_metadata(operator_agent),
-                "voice_mode": self._connection_voice_mode(connection_id),
+                **self._voice_contract_payload(connection_id),
             },
         )
 
@@ -1056,7 +1084,7 @@ class AudioStreamHandler:
             )
             logger.info(f"Zapisano sesję audio: {session_dir}")
 
-            if not self._gemma4_audio_runtime_selected():
+            if not self._multi_runtime_runtime_selected():
                 self._update_voice_session_metadata(
                     session_dir,
                     {
@@ -1067,7 +1095,7 @@ class AudioStreamHandler:
                     },
                 )
 
-            if await self._process_native_gemma4_audio_pipeline(
+            if await self._process_native_multi_runtime_pipeline(
                 connection_id,
                 session_dir,
                 session_dir / VOICE_SESSION_WAV_FILENAME,
@@ -1107,7 +1135,7 @@ class AudioStreamHandler:
                     "audio_input_status": "verified",
                     "decoder_source": "faster_whisper",
                     "runtime_log_path": _coerce_str(
-                        _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
+                        _multi_runtime_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
                 },
             )
@@ -1171,7 +1199,7 @@ class AudioStreamHandler:
             )
             logger.info(f"Zapisano sesję audio MediaRecorder: {session_dir}")
 
-            if not self._gemma4_audio_runtime_selected():
+            if not self._multi_runtime_runtime_selected():
                 self._update_voice_session_metadata(
                     session_dir,
                     {
@@ -1182,7 +1210,7 @@ class AudioStreamHandler:
                     },
                 )
 
-            if await self._process_native_gemma4_audio_pipeline(
+            if await self._process_native_multi_runtime_pipeline(
                 connection_id,
                 session_dir,
                 wav_path,
@@ -1220,7 +1248,7 @@ class AudioStreamHandler:
                     "audio_input_status": "verified",
                     "decoder_source": "faster_whisper",
                     "runtime_log_path": _coerce_str(
-                        _gemma4_audio_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
+                        _multi_runtime_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
                 },
             )
@@ -1274,8 +1302,14 @@ class AudioStreamHandler:
             response="",
             voice_mode=self._connection_voice_mode(connection_id),
             pipeline_id="whisper_llm_piper",
-            **_gemma4_audio_voice_flags(),
+            **_multi_runtime_voice_flags(),
             raw_thinking_available=False,
+        )
+        voice_context.update(
+            {
+                "execution_context": VOICE_EXECUTION_CONTEXT,
+                "history_scope": VOICE_HISTORY_SCOPE,
+            }
         )
         response_text = await _invoke_operator_agent(
             operator_agent,
@@ -1295,10 +1329,11 @@ class AudioStreamHandler:
                     response=response_text,
                     voice_mode=self._connection_voice_mode(connection_id),
                     pipeline_id="whisper_llm_piper",
-                    **_gemma4_audio_voice_flags(),
+                    **_multi_runtime_voice_flags(),
                     raw_thinking_available=False,
                 ),
                 "timings_ms": timings_ms,
+                **self._voice_contract_payload(connection_id),
             },
         )
         if not response_text:
@@ -1547,7 +1582,7 @@ class AudioStreamHandler:
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "tts_sample_rate": self._get_tts_sample_rate(),
-            **self._gemma4_audio_runtime_snapshot(),
+            **self._multi_runtime_runtime_snapshot(),
         }
 
     def _update_voice_session_metadata(

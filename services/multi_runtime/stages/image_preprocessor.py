@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from time import perf_counter
 
 from PIL import Image, ImageOps
+
+from services.multi_runtime.runtime_config import read_config_int
 
 from .base import StageContext
 
@@ -13,10 +14,7 @@ _MAX_DIM_DEFAULT = 1024
 
 
 def _max_image_dim() -> int:
-    try:
-        return int(os.getenv("MULTI_RUNTIME_IMAGE_MAX_DIM", _MAX_DIM_DEFAULT))
-    except (ValueError, TypeError):
-        return _MAX_DIM_DEFAULT
+    return read_config_int("MULTI_RUNTIME_IMAGE_MAX_DIM", _MAX_DIM_DEFAULT)
 
 
 def _normalize_image(img: Image.Image, max_dim: int) -> tuple[Image.Image, str]:

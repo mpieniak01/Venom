@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import system_llm
+from venom_core.utils.mode_contracts import MODE_CONTRACTS
 
 
 @pytest.fixture
@@ -185,6 +186,7 @@ class TestLlmRuntimeActivationAPI:
                 payload["runtime_switch_policy"]["ownership_token_configured"] is True
             )
             assert payload["last_runtime_switch"]["runtime"] == "multi_runtime"
+            assert payload["mode_contracts"] == MODE_CONTRACTS
 
     def test_get_active_runtime_info_includes_switch_policy_and_last_event(
         self, client
@@ -218,6 +220,7 @@ class TestLlmRuntimeActivationAPI:
 
             response = client.get("/api/v1/system/llm-runtime/active")
             assert response.status_code == 200
+            assert response.json()["mode_contracts"] == MODE_CONTRACTS
             payload = response.json()
             assert payload["runtime_switch_policy"]["allowed_sources"] == [
                 "make_start",

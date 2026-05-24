@@ -45,13 +45,13 @@ const gemma4VoiceStatus = {
   ...voiceStatus,
   latest_voice_session: {
     session_id: "session-123",
-    pipeline_id: "gemma4_audio_piper",
+    pipeline_id: "multi_runtime_piper",
     voice_mode: "standard",
     audio_runtime_provider: "multi_runtime",
     audio_runtime_model: "google/gemma-4-E2B-it",
     reasoning_summary_enabled: true,
     reasoning_summary_status: "summary",
-    reasoning_summary: "pipeline=gemma4_audio_piper | mode=standard",
+    reasoning_summary: "pipeline=multi_runtime_piper | mode=standard",
     raw_thinking_available: true,
     emotion_detection_enabled: true,
     emotion_response_style_enabled: true,
@@ -63,16 +63,16 @@ const gemma4VoiceStatus = {
   },
   runtime_snapshot: {
     ...voiceStatus.runtime_snapshot,
-    runtime_id: "gemma4_audio@http://localhost:8014/v1",
-    provider: "gemma4_audio",
+    runtime_id: "multi_runtime://localhost:8014/v1",
+    provider: "multi_runtime",
     model_name: "google/gemma-4-E2B-it",
     endpoint: "http://localhost:8014/v1",
     runtime_capabilities: {
-      compatibility_profile: "gemma4_audio_native",
+      compatibility_profile: "multi_runtime_native",
       probe_status: "verified",
     },
     voice_pipeline: {
-      profile: "gemma4_audio_native",
+      profile: "multi_runtime_native",
       stt: "native_audio",
       reasoning: "native_audio_model",
       reasoning_summary: "summary",
@@ -149,10 +149,10 @@ const runtimeSelectionPayloads = {
     models: [],
     count: 0,
     providers: {
-      gemma4_audio: [
+      multi_runtime: [
         {
           name: "google/gemma-4-E2B-it",
-          provider: "gemma4_audio",
+          provider: "multi_runtime",
           source: "local-runtime",
           installed: true,
           active: true,
@@ -160,7 +160,7 @@ const runtimeSelectionPayloads = {
       ],
     },
     active: {
-      provider: "gemma4_audio",
+      provider: "multi_runtime",
       model: "google/gemma-4-E2B-it",
       endpoint: "http://localhost:8014/v1",
       status: "ready",
@@ -169,8 +169,8 @@ const runtimeSelectionPayloads = {
   runtimeOptions: {
     status: "success",
     active: {
-      runtime_id: "gemma4_audio",
-      active_server: "gemma4_audio",
+      runtime_id: "multi_runtime",
+      active_server: "multi_runtime",
       active_model: "google/gemma-4-E2B-it",
       active_endpoint: "http://localhost:8014/v1",
       config_hash: "cfg123",
@@ -178,7 +178,7 @@ const runtimeSelectionPayloads = {
     },
     runtimes: [
       {
-        runtime_id: "gemma4_audio",
+        runtime_id: "multi_runtime",
         source_type: "local-runtime",
         configured: true,
         available: true,
@@ -187,7 +187,7 @@ const runtimeSelectionPayloads = {
         models: [
           {
             name: "google/gemma-4-E2B-it",
-            provider: "gemma4_audio",
+            provider: "multi_runtime",
             source_type: "local-runtime",
             chat_compatible: true,
           },
@@ -198,11 +198,11 @@ const runtimeSelectionPayloads = {
   },
   activeServer: {
     status: "success",
-    active_server: "gemma4_audio",
+    active_server: "multi_runtime",
     active_endpoint: "http://localhost:8014/v1",
     active_model: "google/gemma-4-E2B-it",
     config_hash: "cfg123",
-    runtime_id: "gemma4_audio",
+    runtime_id: "multi_runtime",
     source_type: "local-runtime",
   },
   modelOperations: {
@@ -213,9 +213,16 @@ const runtimeSelectionPayloads = {
 } as const;
 
 describe("VoiceStatusSidebar", () => {
-  it("shows active runtime details and does not surface Gemma 4 controls for ollama", () => {
+  const renderAndFlush = async (ui: Parameters<typeof render>[0]) => {
+    await act(async () => {
+      render(ui);
+      await Promise.resolve();
+    });
+  };
+
+  it("shows active runtime details and does not surface Gemma 4 controls for ollama", async () => {
     window.history.pushState({}, "", "/voice");
-    render(
+    await renderAndFlush(
       <ToastProvider>
         <VoiceStatusSidebar status={voiceStatus as never} isDevMode={false} />
       </ToastProvider>,
@@ -228,7 +235,7 @@ describe("VoiceStatusSidebar", () => {
     assert.equal(screen.queryByText(/Gemma 4 Runtime/i), null);
   });
 
-  it("surfaces Gemma 4 runtime controls for gemma4_audio without dev gate", async () => {
+  it("surfaces Gemma 4 runtime controls for multi_runtime without dev gate", async () => {
     window.history.pushState({}, "", "/voice");
     globalThis.fetch = async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -299,7 +306,7 @@ describe("VoiceStatusSidebar", () => {
       }
       throw new Error(`Unexpected fetch: ${url}`);
     };
-    render(
+    await renderAndFlush(
       <ToastProvider>
         <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
       </ToastProvider>,
@@ -313,7 +320,7 @@ describe("VoiceStatusSidebar", () => {
     assert.ok(screen.getByText(/curious/i));
   });
 
-  it("normalizes generic backend apology in latest session response", () => {
+  it("normalizes generic backend apology in latest session response", async () => {
     window.history.pushState({}, "", "/voice");
     const statusWithGenericError = {
       ...gemma4VoiceStatus,
@@ -322,7 +329,7 @@ describe("VoiceStatusSidebar", () => {
         response_text: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
       },
     };
-    render(
+    await renderAndFlush(
       <ToastProvider>
         <VoiceStatusSidebar status={statusWithGenericError as never} isDevMode={false} />
       </ToastProvider>,
@@ -365,7 +372,7 @@ describe("VoiceStatusSidebar", () => {
       throw new Error(`Unexpected fetch: ${url}`);
     };
 
-    render(
+    await renderAndFlush(
       <ToastProvider>
         <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
       </ToastProvider>,
@@ -378,15 +385,16 @@ describe("VoiceStatusSidebar", () => {
     assert.ok(await screen.findByText("multi_runtime health check failed"));
   });
 
-  it("keeps the active and response runtime labels distinct", () => {
+  it("keeps the active and response runtime labels distinct", async () => {
     window.history.pushState({}, "", "/voice");
-    render(
+    await renderAndFlush(
       <ToastProvider>
         <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
       </ToastProvider>,
     );
 
-    assert.ok(screen.getByText("Runtime systemowy voice"));
+    assert.ok(screen.getAllByText("Runtime systemowy voice").length >= 1);
+    assert.ok(screen.getByText("Wybrany runtime"));
     assert.ok(screen.getByText("Runtime odpowiedzi"));
   });
 });

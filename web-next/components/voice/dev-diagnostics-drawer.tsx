@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useTranslation } from "@/lib/i18n";
+import { canonicalRuntimeId, isMultiRuntime } from "@/lib/runtime-id";
 
 type AudioStatus = {
   enabled: boolean;
@@ -173,6 +174,7 @@ export function DevDiagnosticsDrawerContent({
   const latestVoiceSession = audioStatus?.latest_voice_session ?? null;
   const runtimeSnapshot = audioStatus?.runtime_snapshot ?? null;
   const wsState = audioStatus?.enabled ? "online" : "offline";
+  const displayedRuntimeProvider = canonicalRuntimeId(runtimeSnapshot?.provider ?? runtimeSnapshot?.runtime_id ?? "");
 
   const copyJson = async (value: unknown) => {
     if (!navigator?.clipboard) return;
@@ -194,9 +196,9 @@ export function DevDiagnosticsDrawerContent({
         {renderDiagnosticMode && renderDiagnosticMode !== "off" && (
           <Badge tone="neutral">render: {renderDiagnosticMode}</Badge>
         )}
-        {runtimeSnapshot?.provider && (
+        {displayedRuntimeProvider && (
           <Badge tone="neutral">
-            {t("runtime.snapshot.provider")}: {runtimeSnapshot.provider}
+            {t("runtime.snapshot.provider")}: {displayedRuntimeProvider}
           </Badge>
         )}
         {latestVoiceSession?.session_id && (
@@ -309,6 +311,8 @@ function LatestRecordingSection({
 
   const timings = latestVoiceSession.timings_ms;
   const runtime = latestVoiceSession.runtime;
+  const displayedLlmRuntime = canonicalRuntimeId(runtime?.llm_service_id ?? "");
+  const audioRuntimeProvider = canonicalRuntimeId(latestVoiceSession.audio_runtime_provider ?? "");
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -349,7 +353,7 @@ function LatestRecordingSection({
         {runtime && (
           <p>
             {joinParts([
-              runtime.llm_model && `LLM ${runtime.llm_service_id}:${runtime.llm_model}`,
+              runtime.llm_model && `LLM ${(displayedLlmRuntime || runtime.llm_service_id || "unknown")}:${runtime.llm_model}`,
               runtime.stt_model && `STT ${runtime.stt_model}/${runtime.stt_device}`,
               formatTtsSampleRateLabel(runtime.tts_sample_rate),
             ])}
@@ -359,10 +363,10 @@ function LatestRecordingSection({
         {latestVoiceSession.pipeline_id && (
           <p>Pipeline: {latestVoiceSession.pipeline_id}</p>
         )}
-        {latestVoiceSession.audio_runtime_provider && (
+        {audioRuntimeProvider && (
           <p>
             STT backend:{" "}
-            {latestVoiceSession.audio_runtime_provider === "multi_runtime"
+            {isMultiRuntime(audioRuntimeProvider)
               ? "multi_runtime"
               : "faster-whisper"}
             {latestVoiceSession.audio_runtime_model
@@ -397,6 +401,9 @@ function RuntimeSnapshotSection({
 }>) {
   const t = useTranslation();
   if (!runtimeSnapshot) return null;
+  const displayedRuntimeProvider = canonicalRuntimeId(
+    runtimeSnapshot.provider ?? runtimeSnapshot.runtime_id ?? "",
+  );
   const capabilities = runtimeSnapshot.runtime_capabilities;
   const pipeline = runtimeSnapshot.voice_pipeline;
   const probeStatus = capabilities?.probe_status ?? t("runtime.snapshot.unknown");
@@ -427,7 +434,7 @@ function RuntimeSnapshotSection({
       <div className="mb-3 grid gap-2 text-xs sm:grid-cols-3">
         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
           <p className="text-caption">{t("runtime.snapshot.provider")}</p>
-          <p className="mt-1 text-white">{runtimeSnapshot.provider ?? runtimeSnapshot.runtime_id ?? "—"}</p>
+          <p className="mt-1 text-white">{displayedRuntimeProvider || "—"}</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
           <p className="text-caption">{t("runtime.snapshot.endpoint")}</p>

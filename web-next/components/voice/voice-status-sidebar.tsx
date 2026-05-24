@@ -7,6 +7,7 @@ import { SelectMenu } from "@/components/ui/select-menu";
 import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control";
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
 import { useTranslation } from "@/lib/i18n";
+import { canonicalRuntimeId, isMultiRuntime } from "@/lib/runtime-id";
 import { resolveRuntimeActivationErrorMessage, useRuntime } from "@/components/models/hooks/use-runtime";
 
 type VoiceStatusSidebarProps = Readonly<{
@@ -39,6 +40,11 @@ function formatConfidence(value?: number | null): string | null {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
+function formatRuntimeTuple(provider: string | null | undefined, model: string | null | undefined): string {
+  const normalizedProvider = canonicalRuntimeId(provider ?? "") || "—";
+  return `${normalizedProvider} / ${model ?? "—"}`;
+}
+
 function isGenericFailureResponse(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   if (!normalized) return false;
@@ -56,17 +62,9 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
   const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;
-  const runtimeProvider = (runtime?.provider ?? "").trim().toLowerCase();
-  const runtimeId = (runtime?.runtime_id ?? "").trim().toLowerCase();
-  const isGemma4AudioRuntime =
-    runtimeProvider === "multi_runtime" ||
-    runtimeProvider === "gemma4_audio" ||
-    runtimeProvider.startsWith("multi_runtime@") ||
-    runtimeProvider.startsWith("gemma4_audio@") ||
-    runtimeId === "multi_runtime" ||
-    runtimeId === "gemma4_audio" ||
-    runtimeId.startsWith("multi_runtime@") ||
-    runtimeId.startsWith("gemma4_audio@");
+  const runtimeProvider = runtime?.provider ?? "";
+  const runtimeId = runtime?.runtime_id ?? "";
+  const isGemma4AudioRuntime = isMultiRuntime(runtimeProvider) || isMultiRuntime(runtimeId);
 
   if (!status) {
     return (
@@ -187,9 +185,14 @@ function RuntimeSwitchCard({
   const [activationError, setActivationError] = useState<string | null>(null);
   const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didAutoSelectPreferredRuntime = useRef(false);
-  const nativeVoiceRuntimeIds = useMemo(() => new Set(["multi_runtime", "gemma4_audio"]), []);
+  const nativeVoiceRuntimeIds = useMemo(() => new Set(["multi_runtime"]), []);
   const selectedRuntime = runtime.selectedServer ?? "";
   const selectedModel = runtime.selectedModel ?? "";
+  const selectedRuntimeSummary = formatRuntimeTuple(selectedRuntime, selectedModel);
+  const activeRuntimeSummary = formatRuntimeTuple(
+    runtime.activeServer.data?.active_server ?? null,
+    runtime.activeServer.data?.active_model ?? null,
+  );
   const applyDisabled = pending || !selectedRuntime || !selectedModel;
   const runtimeError = runtime.activeServer.error ?? runtime.llmServers.error;
   const serversLoading = runtime.llmServers.loading ?? false;
@@ -211,7 +214,7 @@ function RuntimeSwitchCard({
 
   const preferredNativeRuntime = useMemo(
     () =>
-      serverOptions.find((option) => nativeVoiceRuntimeIds.has(String(option.value).trim().toLowerCase())) ??
+      serverOptions.find((option) => nativeVoiceRuntimeIds.has(canonicalRuntimeId(String(option.value)))) ??
       null,
     [nativeVoiceRuntimeIds, serverOptions],
   );
@@ -223,8 +226,8 @@ function RuntimeSwitchCard({
     if (!preferredNativeRuntime) {
       return;
     }
-    const normalizedSelectedRuntime = selectedRuntime.trim().toLowerCase();
-    const normalizedPreferredRuntime = String(preferredNativeRuntime.value).trim().toLowerCase();
+    const normalizedSelectedRuntime = canonicalRuntimeId(selectedRuntime);
+    const normalizedPreferredRuntime = canonicalRuntimeId(String(preferredNativeRuntime.value));
     if (normalizedSelectedRuntime === normalizedPreferredRuntime) {
       didAutoSelectPreferredRuntime.current = true;
       return;
@@ -337,6 +340,8 @@ function RuntimeSwitchCard({
         >
           {pending ? t("voice.controls.refreshing") : t("voice.controls.refresh")}
         </Button>
+        <Row label={t("voice.controls.selectedRuntime")} value={selectedRuntimeSummary} />
+        <Row label={t("voice.controls.systemVoiceRuntime")} value={activeRuntimeSummary} />
 
         {applied && (
           <p className="text-[11px] text-emerald-400">{t("voice.controls.runtimeApplied")}</p>
@@ -368,15 +373,14 @@ function RuntimeOverviewCard({
   loadingLabel?: string;
 }>) {
   const profile = runtime?.runtime_capabilities?.compatibility_profile ?? runtime?.voice_pipeline?.profile ?? null;
-  const provider = runtime?.provider ?? null;
+  const provider = canonicalRuntimeId(runtime?.provider ?? runtime?.runtime_id ?? "");
   const model = runtime?.model_name ?? null;
   const endpoint = runtime?.endpoint ?? null;
   const probeStatus = runtime?.runtime_capabilities?.probe_status ?? null;
-  const activeVoiceRuntime = provider || model ? `${provider ?? "—"} / ${model ?? "—"}` : null;
+  const activeVoiceRuntime = provider || model ? formatRuntimeTuple(provider, model) : null;
   const runtimeProvider = String(provider ?? "").trim().toLowerCase();
   const isNativeVoiceRuntime =
-    runtimeProvider.startsWith("multi_runtime") ||
-    runtimeProvider.startsWith("gemma4_audio");
+    isMultiRuntime(runtimeProvider);
   const probeTone = (() => {
     if (!probeStatus) return "neutral" as const;
     if (probeStatus === "verified") return "success" as const;
@@ -394,7 +398,7 @@ function RuntimeOverviewCard({
         <>
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-sm font-semibold text-white truncate">
-              {provider ?? "—"} / {model ?? t("voice.controls.unknownModel")}
+              {formatRuntimeTuple(provider, model ?? t("voice.controls.unknownModel"))}
             </span>
             {probeStatus && (
               <Badge tone={probeTone} className="shrink-0 text-[10px]">
@@ -461,7 +465,7 @@ function VoiceSessionCard({
       {(session.audio_runtime_provider || session.audio_runtime_model) && (
         <Row
           label={t("voice.controls.responseRuntime")}
-          value={`${session.audio_runtime_provider ?? "—"} / ${session.audio_runtime_model ?? "—"}`}
+          value={formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)}
         />
       )}
       {session.reasoning_summary_status && (

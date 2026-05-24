@@ -43,6 +43,7 @@ import {
   RuntimeDiagnosticsPanel,
   type RuntimeSummaryItem,
 } from "@/components/runtime/runtime-diagnostics-panel";
+import { canonicalRuntimeId } from "@/lib/runtime-id";
 
 export type AudioStatus = {
   enabled: boolean;
@@ -182,6 +183,14 @@ const nextSecureRandomFallbackInt = () => {
   const perfNow = typeof performance === "undefined" ? 0 : Math.floor(performance.now());
   return Date.now() + perfNow + secureRandomFallbackCounter;
 };
+
+function formatRuntimeSummaryLabel(
+  provider: string | null | undefined,
+  model: string | null | undefined,
+): string {
+  const normalizedProvider = canonicalRuntimeId(provider ?? "") || "—";
+  return `${normalizedProvider} / ${model ?? "—"}`;
+}
 
 const secureRandomInt = (maxExclusive: number): number => {
   if (maxExclusive <= 0) return 0;
@@ -3003,6 +3012,34 @@ function VoiceCommandCenterPanel({
               description={t("runtime.diagnostics.description")}
               summaryItems={
                 [
+                  {
+                    label: t("voice.controls.selectedRuntime"),
+                    value: formatRuntimeSummaryLabel(
+                      viewState.effectiveAudioStatus.latest_voice_session.runtime?.llm_service_id
+                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.provider
+                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.runtime_id,
+                      viewState.effectiveAudioStatus.latest_voice_session.runtime?.llm_model
+                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.model_name,
+                    ),
+                    tone: "neutral",
+                  },
+                  {
+                    label: t("voice.controls.systemVoiceRuntime"),
+                    value: formatRuntimeSummaryLabel(
+                      viewState.effectiveAudioStatus.runtime_snapshot?.provider
+                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.runtime_id,
+                      viewState.effectiveAudioStatus.runtime_snapshot?.model_name,
+                    ),
+                    tone: "neutral",
+                  },
+                  {
+                    label: t("voice.controls.responseRuntime"),
+                    value: formatRuntimeSummaryLabel(
+                      viewState.effectiveAudioStatus.latest_voice_session.audio_runtime_provider,
+                      viewState.effectiveAudioStatus.latest_voice_session.audio_runtime_model,
+                    ),
+                    tone: "neutral",
+                  },
                   {
                     label: t("runtime.diagnostics.policy"),
                     value: viewState.effectiveAudioStatus.latest_voice_session.selected_policy ?? "—",

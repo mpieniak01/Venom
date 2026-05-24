@@ -9,7 +9,7 @@ import Link from "next/link";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { useTranslation } from "@/lib/i18n";
-import type { LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
+import type { ActiveLlmServerResponse, LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
 
 type Gemma4AudioRuntimeInfo = Pick<
   LlmRuntimeTargetOption,
@@ -40,7 +40,7 @@ type CockpitModelsProps = Readonly<{
   onServerSessionReset: () => void;
   onClearSessionMemory: () => void;
   onClearGlobalMemory: () => void;
-  activeServerInfo?: { active_model?: string | null } | null;
+  activeServerInfo?: ActiveLlmServerResponse | null;
   activeServerName?: string | null;
   llmActionPending: string | null;
   onActivateServer: () => void;
@@ -72,8 +72,26 @@ export function CockpitModels({
   gemma4AudioRuntimeInfo,
 }: CockpitModelsProps) {
   const t = useTranslation();
+  const runtimeSwitchGate = activeServerInfo?.runtime_switch_gate;
+  const lastRuntimeSwitch = activeServerInfo?.last_runtime_switch;
+  const gateSwitching = runtimeSwitchGate?.in_progress === true;
+  const normalizedSelectedServer = normalizeRuntimeValue(selectedLlmServer);
+  const normalizedActiveServer = normalizeRuntimeValue(
+    activeServerName ?? activeServerInfo?.active_server,
+  );
+  const selectedModelTrimmed = String(selectedLlmModel ?? "").trim();
+  const activeModelTrimmed = String(activeServerInfo?.active_model ?? "").trim();
+  const runtimeSelectionApplied =
+    Boolean(normalizedSelectedServer) &&
+    normalizedSelectedServer === normalizedActiveServer &&
+    (!selectedModelTrimmed || selectedModelTrimmed === activeModelTrimmed);
+  const runtimeSwitchFailedHint =
+    !gateSwitching &&
+    !runtimeSelectionApplied &&
+    Boolean(selectedServerEntry?.error_message) &&
+    Boolean(selectedServerEntry?.status && selectedServerEntry.status !== "online");
   let activateServerLabel = "Aktywuj serwer";
-  if (llmActionPending === `activate:${selectedLlmServer}`) {
+  if (gateSwitching || llmActionPending === `activate:${selectedLlmServer}`) {
     activateServerLabel = "Aktywuję...";
   } else if (selectedLlmModel) {
     activateServerLabel = "Aktywuj model";
@@ -112,7 +130,7 @@ export function CockpitModels({
               onChange={onSelectLlmServer}
               ariaLabel="Wybierz serwer LLM"
               placeholder="Wybierz serwer"
-              disabled={llmServers.length === 0}
+              disabled={llmServers.length === 0 || gateSwitching}
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"
             />
@@ -129,10 +147,31 @@ export function CockpitModels({
                   ? t("cockpit.models.chooseModel")
                   : t("cockpit.models.noModels")
               }
-              disabled={llmServers.length === 0 || availableModelsForServer.length === 0}
+              disabled={llmServers.length === 0 || availableModelsForServer.length === 0 || gateSwitching}
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"
             />
+            {gateSwitching && (
+              <p className="text-xs text-amber-300">
+                {`Trwa przełączanie runtime: ${runtimeSwitchGate?.from_runtime || "—"} -> ${
+                  runtimeSwitchGate?.to_runtime || "—"
+                }`}
+              </p>
+            )}
+            {!gateSwitching && lastRuntimeSwitch?.at_utc && (
+              <p className="text-xs text-zinc-500">{`Ostatnie przełączenie: ${lastRuntimeSwitch.at_utc}`}</p>
+            )}
+            {!gateSwitching && runtimeSelectionApplied && (
+              <p className="text-xs text-emerald-400">Przełączenie runtime zakończone sukcesem.</p>
+            )}
+            {!gateSwitching && runtimeSwitchFailedHint && (
+              <p className="text-xs text-rose-300">
+                {`Przełączenie runtime nieudane: ${selectedServerEntry?.error_message ?? "brak szczegółów"}`}
+              </p>
+            )}
+            {!gateSwitching && !runtimeSelectionApplied && !runtimeSwitchFailedHint && (
+              <p className="text-xs text-amber-300">Wybór runtime oczekuje na aktywację.</p>
+            )}
             {selectedLlmServer && availableModelsForServer.length === 0 && (
               <div className="space-y-2">
                 <EmptyState
@@ -219,6 +258,7 @@ export function CockpitModels({
             className="mt-4 w-full justify-center text-center tracking-[0.2em]"
             onClick={onActivateServer}
             disabled={
+              gateSwitching ||
               llmActionPending === `activate:${selectedLlmServer}` ||
               !selectedLlmServer
             }
@@ -273,4 +313,8 @@ function Gemma4AudioCapabilityInfo({
       )}
     </div>
   );
+}
+
+function normalizeRuntimeValue(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
 }

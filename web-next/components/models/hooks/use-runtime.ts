@@ -145,6 +145,9 @@ export function useRuntime() {
     const operations = useModelOperations(10, 0);
     const runtimeOptions = useLlmRuntimeOptions(0);
     const activeServer = useActiveLlmServer(0);
+    const runtimeSwitchGate = activeServer.data?.runtime_switch_gate;
+    const lastRuntimeSwitch = activeServer.data?.last_runtime_switch;
+    const runtimeSwitchInProgress = runtimeSwitchGate?.in_progress === true;
 
     const activeRuntime = installed.data?.active;
     const [selectedServer, setSelectedServer] = useState<string | null>(null);
@@ -361,6 +364,9 @@ export function useRuntime() {
         operations,
         llmServers: { ...runtimeOptions, data: llmServers },
         activeServer,
+        runtimeSwitchGate,
+        lastRuntimeSwitch,
+        runtimeSwitchInProgress,
         activeRuntime,
         selectedServer,
         setSelectedServer,

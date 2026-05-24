@@ -1,13 +1,18 @@
 """Unit tests for active LLM server selection (PR 069)."""
 
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
+import venom_core.main as main_module
 from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
+from venom_core.services import runtime_switch_gate as gate
 from venom_core.services import runtime_switch_service
 from venom_core.services.runtime_switch_telemetry import (
     assert_runtime_switch_source_allowed,
@@ -357,6 +362,200 @@ async def test_set_active_llm_server_waits_for_previous_runtime_shutdown_before_
         assert controller.actions == [("vllm", "stop"), ("ollama", "start")]
     finally:
         _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_waits_for_active_runtime_requests_to_drain(
+    monkeypatch,
+):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _active_request():
+        async with gate.runtime_request_guard(
+            request_kind="voice_chat",
+            provider="ollama",
+            model="qwen3.5:latest",
+        ):
+            entered.set()
+            await release.wait()
+
+    task = asyncio.create_task(_active_request())
+    await entered.wait()
+
+    config = {
+        "LAST_MODEL_OLLAMA": "phi3:mini",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "phi3:mini",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
+    controller = DummyController(
+        [
+            {
+                "name": "ollama",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+                "health_url": "http://localhost:11434/api/tags",
+            }
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager([{"name": "phi3:mini", "provider": "ollama"}]),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(system_routes, "_installed_local_servers", lambda: {"ollama"})
+
+    class _DummySwitchState:
+        def __init__(self):
+            self.completed = []
+
+        def mark_done(self, step):
+            self.completed.append(step)
+
+        def to_payload(self):
+            return {
+                "completed_steps": [step.value for step in self.completed],
+                "is_complete": True,
+            }
+
+    class _DummyOrchestrator:
+        def __init__(self, _controller):
+            self._controller = _controller
+
+        async def execute_lifecycle_switch(self, **_kwargs):
+            return (
+                _DummySwitchState(),
+                {},
+                {},
+                {"ok": True},
+                {
+                    "name": "ollama",
+                    "endpoint": "",
+                },
+            )
+
+    monkeypatch.setattr(system_routes, "RuntimeSwitchOrchestrator", _DummyOrchestrator)
+
+    original = _snapshot_settings()
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+
+    request = system_routes.ActiveLlmServerRequest(server_name="ollama")
+    try:
+        response_task = asyncio.create_task(
+            system_routes.set_active_llm_server(request)
+        )
+        for _ in range(50):
+            if gate.get_runtime_switch_gate_snapshot().in_progress:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            pytest.fail("runtime switch gate was not opened in time")
+        assert not response_task.done()
+
+        with pytest.raises(HTTPException) as exc_info:
+            async with gate.runtime_request_guard(request_kind="simple_chat"):
+                pass
+        assert exc_info.value.status_code == 409
+
+        release.set()
+        response = await response_task
+        assert response["status"] == "success"
+    finally:
+        release.set()
+        await task
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_audio_status_endpoint_marks_latest_session_as_stale_after_runtime_switch(
+    monkeypatch,
+):
+    class DummyHandler:
+        def get_status(self, operator_agent=None):
+            return {
+                "enabled": True,
+                "connected_clients": 1,
+                "active_recordings": 0,
+                "message": "ok",
+            }
+
+        def get_latest_voice_session(self):
+            return {
+                "session_id": "session-1",
+                "created_at": "2026-05-24T09:00:00+00:00",
+                "audio_runtime_provider": "multi_runtime",
+                "audio_runtime_model": "google/gemma-4-E2B-it",
+            }
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(main_module, "operator_agent", object())
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(
+            return_value={
+                "runtime_id": "ollama@localhost",
+                "provider": "ollama",
+                "model_name": "qwen3.5:latest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:10:00+00:00"},
+    )
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["runtime_alignment"]["latest_session_before_runtime_switch"] is True
+    assert status["runtime_alignment"]["response_runtime_fresh"] is False
+    assert status["runtime_alignment"]["response_runtime_matches_active"] is False
+
+
+def test_main_voice_runtime_alignment_helpers_cover_parse_and_identity(monkeypatch):
+    assert main_module._parse_iso_datetime(None) is None
+    assert main_module._parse_iso_datetime("2026-05-24T09:10:00Z") == datetime(
+        2026, 5, 24, 9, 10, tzinfo=UTC
+    )
+    assert (
+        main_module._same_runtime_identity(
+            " Ollama ",
+            " Qwen3.5:Latest ",
+            "ollama",
+            "qwen3.5:latest",
+        )
+        is True
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:10:00+00:00"},
+    )
+    alignment = main_module._build_voice_runtime_alignment(
+        runtime_snapshot={"provider": "ollama", "model_name": "qwen3.5:latest"},
+        latest_session=None,
+    )
+
+    assert alignment["latest_session_created_at"] is None
+    assert alignment["latest_session_before_runtime_switch"] is False
+    assert alignment["response_runtime_fresh"] is False
+    assert alignment["response_runtime_matches_active"] is None
 
 
 @pytest.mark.asyncio

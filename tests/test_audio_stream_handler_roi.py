@@ -7,9 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
+from fastapi import HTTPException
 
 import venom_core.api.audio_stream as audio_stream_mod
 from venom_core.api.audio_stream import AudioStreamHandler, get_audio_stream_handler
+from venom_core.services import runtime_switch_gate as gate
 from venom_core.utils.mode_contracts import (
     MODE_CONTRACTS,
     VOICE_EXECUTION_CONTEXT,
@@ -260,6 +262,51 @@ def test_get_audio_stream_handler_returns_same_instance(monkeypatch):
     first = get_audio_stream_handler()
     second = get_audio_stream_handler()
     assert first is second
+
+
+@pytest.mark.asyncio
+async def test_native_voice_pipeline_rejects_during_runtime_switch(
+    monkeypatch, tmp_path
+):
+    handler = _make_handler()
+    handler.audio_engine = MagicMock()
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_health_ok",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(handler, "_send_json", AsyncMock())
+    monkeypatch.setattr(handler, "_update_voice_session_metadata", lambda *a, **k: None)
+    monkeypatch.setattr(
+        handler,
+        "_build_runtime_metadata",
+        lambda *_a, **_k: {"llm_service_id": "ollama", "llm_model": "qwen3.5:latest"},
+    )
+    invoke_multi_runtime = AsyncMock(return_value={"text": "ok"})
+    monkeypatch.setattr(handler, "_invoke_multi_runtime", invoke_multi_runtime)
+
+    snapshot = gate.begin_runtime_switch(
+        source="ui",
+        from_runtime="ollama",
+        to_runtime="multi_runtime",
+        reason="test",
+    )
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            await handler._process_native_multi_runtime_pipeline(
+                connection_id=1,
+                session_dir=tmp_path,
+                wav_path=tmp_path / "recording.wav",
+                timings_ms={},
+                total_started_at=0.0,
+                operator_agent=object(),
+            )
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["code"] == "runtime_switch_in_progress"
+        assert invoke_multi_runtime.await_count == 0
+    finally:
+        gate.finish_runtime_switch(switch_id=snapshot.switch_id)
     # Cleanup
     monkeypatch.setattr(audio_stream_mod, "audio_stream_handler", None)
 

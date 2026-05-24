@@ -22,6 +22,11 @@ from fastapi import WebSocket, WebSocketDisconnect
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
+from venom_core.services.runtime_switch_gate import (
+    assert_runtime_request_allowed,
+    get_runtime_switch_gate_status,
+    runtime_request_guard,
+)
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.mode_contracts import (
@@ -355,6 +360,7 @@ class AudioStreamHandler:
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "dependencies": dependencies,
             "mode_contracts": mode_contracts_payload(),
+            "runtime_switch_gate": get_runtime_switch_gate_status(),
             **self._multi_runtime_runtime_snapshot(),
         }
 
@@ -934,87 +940,100 @@ class AudioStreamHandler:
             connection_id, {"type": "processing", "status": "native_audio"}
         )
 
-        native_started_at = time.perf_counter()
-        try:
-            runtime_result = await self._invoke_multi_runtime(wav_path, connection_id)
-        except Exception as exc:
+        async with runtime_request_guard(
+            request_kind="voice_native_runtime",
+            provider=MULTI_RUNTIME_ID,
+            model=_coerce_str(snapshot.get("audio_runtime_model"), ""),
+        ):
+            native_started_at = time.perf_counter()
+            try:
+                runtime_result = await self._invoke_multi_runtime(
+                    wav_path, connection_id
+                )
+            except Exception as exc:
+                timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        **snapshot,
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "fallback",
+                        "decoder_source": "faster_whisper",
+                        "fallback_reason": str(exc),
+                        "native_audio_ms": timings_ms["native_audio_ms"],
+                        **_build_voice_session_insights_payload(
+                            transcript="",
+                            response="",
+                            voice_mode=self._connection_voice_mode(connection_id),
+                            pipeline_id="whisper_llm_piper",
+                            **_multi_runtime_voice_flags(),
+                            raw_thinking_available=False,
+                        ),
+                        "timings_ms": timings_ms,
+                        "runtime": self._build_runtime_metadata(operator_agent),
+                        **self._voice_contract_payload(connection_id),
+                    },
+                )
+                logger.warning(
+                    "Gemma4 audio runtime failed for connection_id=%s: %s",
+                    connection_id,
+                    exc,
+                )
+                return False
+
             timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
+            transcription = runtime_result["text"]
+            response_text = runtime_result.get("response_text") or transcription
+            insights = _build_voice_session_insights_payload(
+                transcript=transcription,
+                response=response_text,
+                voice_mode=self._connection_voice_mode(connection_id),
+                pipeline_id="multi_runtime_piper",
+                **_multi_runtime_voice_flags(),
+                raw_thinking_available=bool(
+                    runtime_result.get("raw_thinking_available", False)
+                ),
+            )
+
             self._update_voice_session_metadata(
                 session_dir,
                 {
                     **snapshot,
-                    "pipeline_id": "whisper_llm_piper",
-                    "audio_input_status": "fallback",
-                    "decoder_source": "faster_whisper",
-                    "fallback_reason": str(exc),
+                    "pipeline_id": "multi_runtime_piper",
+                    "audio_runtime_provider": MULTI_RUNTIME_ID,
+                    "audio_runtime_model": _coerce_str(runtime_result.get("model"), ""),
+                    "audio_input_status": "verified",
+                    "decoder_source": "multi_runtime",
+                    "fallback_reason": "",
                     "native_audio_ms": timings_ms["native_audio_ms"],
-                    **_build_voice_session_insights_payload(
-                        transcript="",
-                        response="",
-                        voice_mode=self._connection_voice_mode(connection_id),
-                        pipeline_id="whisper_llm_piper",
-                        **_multi_runtime_voice_flags(),
-                        raw_thinking_available=False,
+                    "transcription": transcription,
+                    "transcription_length": len(transcription or ""),
+                    "response_text": response_text,
+                    "response_length": len(response_text or ""),
+                    "execution_trace": runtime_result.get("execution_trace") or [],
+                    "selected_policy": runtime_result.get("selected_policy"),
+                    "selected_image_strategy": runtime_result.get(
+                        "selected_image_strategy"
                     ),
+                    "retrieval_used": runtime_result.get("retrieval_used"),
+                    "retrieval_context_items": runtime_result.get(
+                        "retrieval_context_items"
+                    ),
+                    "retrieval_route": runtime_result.get("retrieval_route"),
+                    "assistant_used": runtime_result.get("assistant_used"),
+                    "economy_mode_activated": runtime_result.get(
+                        "economy_mode_activated"
+                    ),
+                    "degradation_reasons": runtime_result.get("degradation_reasons")
+                    or [],
+                    "component_snapshot": runtime_result.get("component_snapshot")
+                    or [],
+                    **insights,
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     **self._voice_contract_payload(connection_id),
                 },
             )
-            logger.warning(
-                "Gemma4 audio runtime failed for connection_id=%s: %s",
-                connection_id,
-                exc,
-            )
-            return False
-
-        timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
-        transcription = runtime_result["text"]
-        response_text = runtime_result.get("response_text") or transcription
-        insights = _build_voice_session_insights_payload(
-            transcript=transcription,
-            response=response_text,
-            voice_mode=self._connection_voice_mode(connection_id),
-            pipeline_id="multi_runtime_piper",
-            **_multi_runtime_voice_flags(),
-            raw_thinking_available=bool(
-                runtime_result.get("raw_thinking_available", False)
-            ),
-        )
-
-        self._update_voice_session_metadata(
-            session_dir,
-            {
-                **snapshot,
-                "pipeline_id": "multi_runtime_piper",
-                "audio_input_status": "verified",
-                "decoder_source": "multi_runtime",
-                "fallback_reason": "",
-                "native_audio_ms": timings_ms["native_audio_ms"],
-                "transcription": transcription,
-                "transcription_length": len(transcription or ""),
-                "response_text": response_text,
-                "response_length": len(response_text or ""),
-                "execution_trace": runtime_result.get("execution_trace") or [],
-                "selected_policy": runtime_result.get("selected_policy"),
-                "selected_image_strategy": runtime_result.get(
-                    "selected_image_strategy"
-                ),
-                "retrieval_used": runtime_result.get("retrieval_used"),
-                "retrieval_context_items": runtime_result.get(
-                    "retrieval_context_items"
-                ),
-                "retrieval_route": runtime_result.get("retrieval_route"),
-                "assistant_used": runtime_result.get("assistant_used"),
-                "economy_mode_activated": runtime_result.get("economy_mode_activated"),
-                "degradation_reasons": runtime_result.get("degradation_reasons") or [],
-                "component_snapshot": runtime_result.get("component_snapshot") or [],
-                **insights,
-                "timings_ms": timings_ms,
-                "runtime": self._build_runtime_metadata(operator_agent),
-                **self._voice_contract_payload(connection_id),
-            },
-        )
 
         await self._send_json(
             connection_id,
@@ -1059,6 +1078,7 @@ class AudioStreamHandler:
             audio_buffer: Lista fragmentów audio
             operator_agent: Agent do przetwarzania
         """
+        assert_runtime_request_allowed(request_kind="voice_chat")
         try:
             total_started_at = time.perf_counter()
             timings_ms: dict[str, float] = {}
@@ -1163,6 +1183,7 @@ class AudioStreamHandler:
         mime_type: str = "",
     ):
         """Przetwarza nagranie z MediaRecorder przez ffmpeg -> WAV -> STT."""
+        assert_runtime_request_allowed(request_kind="voice_chat")
         try:
             total_started_at = time.perf_counter()
             timings_ms: dict[str, float] = {}
@@ -1312,70 +1333,83 @@ class AudioStreamHandler:
                 "history_scope": VOICE_HISTORY_SCOPE,
             }
         )
-        response_text = await _invoke_operator_agent(
-            operator_agent,
-            transcription,
-            mode=self._connection_voice_mode(connection_id),
-            voice_context=voice_context,
-        )
-        timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
-        self._update_voice_session_metadata(
-            session_dir,
-            {
-                "pipeline_id": "whisper_llm_piper",
-                "response_text": response_text,
-                "response_length": len(response_text or ""),
-                **_build_voice_session_insights_payload(
-                    transcript=transcription,
-                    response=response_text,
-                    voice_mode=self._connection_voice_mode(connection_id),
-                    pipeline_id="whisper_llm_piper",
-                    **_multi_runtime_voice_flags(),
-                    raw_thinking_available=False,
-                ),
-                "timings_ms": timings_ms,
-                **self._voice_contract_payload(connection_id),
-            },
-        )
-        if not response_text:
-            logger.warning(
-                "Agent zwrócił pustą odpowiedź dla connection_id=%s%s",
-                connection_id,
-                empty_agent_response_log_suffix,
+        runtime_metadata = self._build_runtime_metadata(operator_agent)
+        async with runtime_request_guard(
+            request_kind="voice_fallback_llm",
+            provider=_coerce_str(runtime_metadata.get("llm_service_id"), ""),
+            model=_coerce_str(runtime_metadata.get("llm_model"), ""),
+        ):
+            response_text = await _invoke_operator_agent(
+                operator_agent,
+                transcription,
+                mode=self._connection_voice_mode(connection_id),
+                voice_context=voice_context,
             )
-            await self._send_json(
-                connection_id,
+            timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
+            self._update_voice_session_metadata(
+                session_dir,
                 {
-                    "type": "error",
-                    "message": "Agent returned empty response. Check runtime status.",
+                    "pipeline_id": "whisper_llm_piper",
+                    "response_text": response_text,
+                    "response_length": len(response_text or ""),
+                    **_build_voice_session_insights_payload(
+                        transcript=transcription,
+                        response=response_text,
+                        voice_mode=self._connection_voice_mode(connection_id),
+                        pipeline_id="whisper_llm_piper",
+                        **_multi_runtime_voice_flags(),
+                        raw_thinking_available=False,
+                    ),
+                    "timings_ms": timings_ms,
+                    # In fallback whisper->LLM path, this pair must reflect the LLM that
+                    # actually generated the response, not the native multi_runtime daemon.
+                    "audio_runtime_provider": runtime_metadata.get("llm_service_id"),
+                    "audio_runtime_model": runtime_metadata.get("llm_model"),
+                    "runtime": runtime_metadata,
+                    **self._voice_contract_payload(connection_id),
                 },
             )
-            return
+            if not response_text:
+                logger.warning(
+                    "Agent zwrócił pustą odpowiedź dla connection_id=%s%s",
+                    connection_id,
+                    empty_agent_response_log_suffix,
+                )
+                await self._send_json(
+                    connection_id,
+                    {
+                        "type": "error",
+                        "message": "Agent returned empty response. Check runtime status.",
+                    },
+                )
+                return
 
-        await self._send_json(
-            connection_id, {"type": "response_text", "text": response_text}
-        )
-        await self._send_json(connection_id, {"type": "processing", "status": "tts"})
-        audio_engine = self.audio_engine
-        if audio_engine is None:
-            logger.warning("Brak audio_engine podczas etapu TTS; pomijam speak().")
+            await self._send_json(
+                connection_id, {"type": "response_text", "text": response_text}
+            )
+            await self._send_json(
+                connection_id, {"type": "processing", "status": "tts"}
+            )
+            audio_engine = self.audio_engine
+            if audio_engine is None:
+                logger.warning("Brak audio_engine podczas etapu TTS; pomijam speak().")
+                await self._send_json(connection_id, {"type": "complete"})
+                return
+            tts_started_at = time.perf_counter()
+            audio_response = await audio_engine.speak(response_text)
+            timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
+            timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    "timings_ms": timings_ms,
+                    "runtime": self._build_runtime_metadata(operator_agent),
+                },
+            )
+            if audio_response is not None:
+                await self._send_audio(connection_id, audio_response)
+
             await self._send_json(connection_id, {"type": "complete"})
-            return
-        tts_started_at = time.perf_counter()
-        audio_response = await audio_engine.speak(response_text)
-        timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
-        timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
-        self._update_voice_session_metadata(
-            session_dir,
-            {
-                "timings_ms": timings_ms,
-                "runtime": self._build_runtime_metadata(operator_agent),
-            },
-        )
-        if audio_response is not None:
-            await self._send_audio(connection_id, audio_response)
-
-        await self._send_json(connection_id, {"type": "complete"})
 
     def _persist_encoded_voice_session(
         self,

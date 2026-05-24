@@ -25,6 +25,7 @@ tests/test_policy_gate_integration.py
 tests/test_rag_boost_integration.py
 tests/test_rag_integration.py
 tests/test_routing_integration.py
+tests/test_runtime_switch_gate.py
 tests/test_sonar_change_scope_resolver.py
 tests/test_system_routes_integration_regression.py
 tests/test_test_intelligence_report.py

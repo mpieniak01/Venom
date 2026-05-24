@@ -91,6 +91,12 @@ export type AudioStatus = {
     latest_voice_session?: VoiceSessionDiagnostics | null;
     error?: string | null;
   } | null;
+  runtime_alignment?: {
+    response_runtime_fresh?: boolean | null;
+    latest_session_before_runtime_switch?: boolean | null;
+    response_runtime_matches_active?: boolean | null;
+    last_runtime_switch_at_utc?: string | null;
+  } | null;
 };
 
 type VoiceRuntimeInfo = {
@@ -1071,7 +1077,7 @@ export type VoiceStatusUpdate = Pick<AudioStatus,
   | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
   | "whisper_model_size" | "stt_backend" | "tts_backend"
   | "vad_threshold" | "dependencies" | "runtime_snapshot"
-  | "latest_voice_session"
+  | "latest_voice_session" | "runtime_alignment"
 >;
 
 const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
@@ -1099,23 +1105,17 @@ function useVoiceCommandCenterDebugBootstrap(params: {
   debugDryRunRequested: boolean;
   debugRecording: boolean;
   onStatusUpdate?: (status: VoiceStatusUpdate | null) => void;
-  refreshAudioStatus: () => Promise<void>;
-  refreshTtsModelOptions: () => Promise<void>;
 }) {
   const {
     debugDryRunRequested,
     debugRecording,
     onStatusUpdate,
-    refreshAudioStatus,
-    refreshTtsModelOptions,
   } = params;
 
   useEffect(() => {
     if (!debugDryRunRequested) return;
     onStatusUpdate?.(buildDebugAudioStatus(debugRecording));
-    refreshAudioStatus().catch(() => undefined);
-    refreshTtsModelOptions().catch(() => undefined);
-  }, [debugDryRunRequested, debugRecording, onStatusUpdate, refreshAudioStatus, refreshTtsModelOptions]);
+  }, [debugDryRunRequested, debugRecording, onStatusUpdate]);
 }
 
 function useVoiceCommandCenterCompleteReset(params: {
@@ -2433,8 +2433,6 @@ function VoiceCommandCenterPanel({
     debugDryRunRequested,
     debugRecording: debugMode.recording,
     onStatusUpdate,
-    refreshAudioStatus,
-    refreshTtsModelOptions,
   });
 
   useVoiceCommandCenterTtsModelRefresh({
@@ -3013,17 +3011,6 @@ function VoiceCommandCenterPanel({
               summaryItems={
                 [
                   {
-                    label: t("voice.controls.selectedRuntime"),
-                    value: formatRuntimeSummaryLabel(
-                      viewState.effectiveAudioStatus.latest_voice_session?.runtime?.llm_service_id
-                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.provider
-                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.runtime_id,
-                      viewState.effectiveAudioStatus.latest_voice_session?.runtime?.llm_model
-                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.model_name,
-                    ),
-                    tone: "neutral",
-                  },
-                  {
                     label: t("voice.controls.systemVoiceRuntime"),
                     value: formatRuntimeSummaryLabel(
                       viewState.effectiveAudioStatus.runtime_snapshot?.provider
@@ -3034,10 +3021,15 @@ function VoiceCommandCenterPanel({
                   },
                   {
                     label: t("voice.controls.responseRuntime"),
-                    value: formatRuntimeSummaryLabel(
-                      viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_provider,
-                      viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_model,
-                    ),
+                    value: (() => {
+                      const tuple = formatRuntimeSummaryLabel(
+                        viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_provider,
+                        viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_model,
+                      );
+                      return viewState.effectiveAudioStatus.runtime_alignment?.response_runtime_fresh === false
+                        ? `${tuple} (${t("voice.controls.previousSession")})`
+                        : tuple;
+                    })(),
                     tone: "neutral",
                   },
                   {

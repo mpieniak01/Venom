@@ -43,6 +43,12 @@ from venom_core.services.feedback_loop_policy import (
     resolve_feedback_loop_model,
 )
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
+from venom_core.services.runtime_switch_gate import (
+    begin_runtime_switch,
+    finish_runtime_switch,
+    get_runtime_switch_gate_status,
+    wait_for_runtime_requests_to_drain,
+)
 from venom_core.services.runtime_switch_service import (
     RuntimeSwitchOrchestrator,
     probe_health_ready,
@@ -2100,6 +2106,7 @@ def get_active_llm_server():
             "previous_onnx": config.get("PREVIOUS_MODEL_ONNX", ""),
         },
         "runtime_switch_policy": get_runtime_switch_guard_status(),
+        "runtime_switch_gate": get_runtime_switch_gate_status(),
         "last_runtime_switch": get_last_runtime_switch_event(),
         "mode_contracts": mode_contracts_payload(),
     }
@@ -2115,6 +2122,7 @@ def get_active_llm_runtime_info():
         "runtime": runtime.to_payload(),
         "drift": drift,
         "runtime_switch_policy": get_runtime_switch_guard_status(),
+        "runtime_switch_gate": get_runtime_switch_gate_status(),
         "last_runtime_switch": get_last_runtime_switch_event(),
         "mode_contracts": mode_contracts_payload(),
     }
@@ -2648,45 +2656,53 @@ async def _resolve_switch_model_selection(
     return selected_model, last_model_key, feedback_resolution
 
 
-@router.post(
-    "/system/llm-servers/active",
-    responses=LLM_SERVER_ACTIVATE_RESPONSES,
-)
-async def set_active_llm_server(request: ActiveLlmServerRequest):
-    """
-    Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
-    """
-    server_name = normalize_runtime_id(request.server_name)
+async def _set_active_llm_server_impl(
+    *,
+    request: ActiveLlmServerRequest,
+    server_name: str,
+    switch_source: str,
+) -> dict[str, Any]:
+    assert_runtime_switch_ownership_token(request.ownership_token)
+    _ensure_server_allowed(server_name)
+    requested_alias = str(request.model_alias or "").strip()
+    _validate_feedback_alias_request(
+        server_name=server_name, requested_alias=requested_alias
+    )
+    llm_controller = _get_llm_controller_or_503()
+    servers = llm_controller.list_servers()
+
+    request_tracer = system_deps.get_request_tracer()
+    model_manager = None
+    if server_name != "onnx":
+        _, model_manager, request_tracer = _validate_switch_dependencies()
+
+    if not llm_controller.has_server(server_name):
+        raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
+
+    active_runtime = get_active_llm_runtime()
+    from_server = str(getattr(active_runtime, "provider", "") or "").strip().lower()
+    switch_gate = begin_runtime_switch(
+        source=switch_source,
+        from_runtime=from_server or "unknown",
+        to_runtime=server_name,
+        reason="set_active_llm_server",
+    )
     try:
-        switch_source = assert_runtime_switch_source_allowed(request.switch_source)
-        assert_runtime_switch_ownership_token(request.ownership_token)
-        _ensure_server_allowed(server_name)
-        requested_alias = str(request.model_alias or "").strip()
-        _validate_feedback_alias_request(
-            server_name=server_name, requested_alias=requested_alias
-        )
-        llm_controller = _get_llm_controller_or_503()
-        servers = llm_controller.list_servers()
-
-        request_tracer = system_deps.get_request_tracer()
-        model_manager = None
-        if server_name != "onnx":
-            _, model_manager, request_tracer = _validate_switch_dependencies()
-
-        if not llm_controller.has_server(server_name):
-            raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
-
-        active_runtime = get_active_llm_runtime()
-        from_server = str(getattr(active_runtime, "provider", "") or "").strip().lower()
+        drain_ok = await wait_for_runtime_requests_to_drain(timeout_seconds=30.0)
+        if not drain_ok:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Nie udało się poczekać na zakończenie aktywnych requestów "
+                    "przed przełączeniem runtime."
+                ),
+            )
         _trace_switch(
             request_tracer,
             request.trace_id,
             "llm_switch_requested",
             f"server={server_name}, source={switch_source}",
         )
-
-        # Delegate full lifecycle (stop → release → flush → start → health) to orchestrator.
-        # Config/endpoint are saved ONLY after orchestrator returns with confirmed health.
         active_model = str(getattr(active_runtime, "model_name", "") or "").strip()
         orchestrator = RuntimeSwitchOrchestrator(llm_controller)
         (
@@ -2718,7 +2734,6 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
             response["lifecycle_state"] = switch_state.to_payload()
             return response
 
-        # All lifecycle steps confirmed — safe to persist config and model now.
         endpoint = _resolve_local_endpoint(server_name, target)
         _persist_local_runtime_endpoint(server_name, endpoint)
 
@@ -2784,6 +2799,26 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
             "shutdown_results": shutdown_results,
             "lifecycle_state": switch_state.to_payload(),
         }
+    finally:
+        finish_runtime_switch(switch_id=switch_gate.switch_id)
+
+
+@router.post(
+    "/system/llm-servers/active",
+    responses=LLM_SERVER_ACTIVATE_RESPONSES,
+)
+async def set_active_llm_server(request: ActiveLlmServerRequest):
+    """
+    Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
+    """
+    server_name = normalize_runtime_id(request.server_name)
+    try:
+        switch_source = assert_runtime_switch_source_allowed(request.switch_source)
+        return await _set_active_llm_server_impl(
+            request=request,
+            server_name=server_name,
+            switch_source=switch_source,
+        )
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover

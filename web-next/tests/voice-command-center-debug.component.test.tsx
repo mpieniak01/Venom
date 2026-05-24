@@ -5,31 +5,33 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { VoiceCommandCenter } from "../components/voice/voice-command-center";
 import { isVoiceDevModeEnabled } from "../lib/voice-dev-mode";
 
-afterEach(() => cleanup());
+afterEach(async () => {
+  await act(async () => {
+    cleanup();
+    await Promise.resolve();
+  });
+});
 
 describe("VoiceCommandCenter debug mode", () => {
   const originalFetch = globalThis.fetch;
   const originalRaf = globalThis.requestAnimationFrame;
   const originalCancelRaf = globalThis.cancelAnimationFrame;
+  const originalConsoleError = console.error;
   const matchMediaMock = mock.fn(() => ({
     matches: false,
     addEventListener() {},
     removeEventListener() {},
   }));
+  let rafCallbacks = new Map<number, FrameRequestCallback>();
   const renderAndFlush = async (ui: Parameters<typeof render>[0]) => {
     await act(async () => {
       render(ui);
       await Promise.resolve();
     });
   };
-  const flushAsyncUi = async () => {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  };
 
   beforeEach(() => {
-    const rafTimers = new Map<number, ReturnType<typeof setTimeout>>();
+    rafCallbacks = new Map<number, FrameRequestCallback>();
     let rafId = 0;
     window.history.replaceState({}, "", "http://localhost/voice?debug");
     Object.defineProperty(globalThis, "location", {
@@ -44,21 +46,30 @@ describe("VoiceCommandCenter debug mode", () => {
       configurable: true,
       value: (callback: FrameRequestCallback) => {
         rafId += 1;
-        const timer = setTimeout(() => callback(Date.now()), 0);
-        rafTimers.set(rafId, timer);
+        rafCallbacks.set(rafId, callback);
         return rafId;
       },
     });
     Object.defineProperty(globalThis, "cancelAnimationFrame", {
       configurable: true,
       value: (id: number) => {
-        const timer = rafTimers.get(id);
-        if (timer) {
-          clearTimeout(timer);
-          rafTimers.delete(id);
-        }
+        rafCallbacks.delete(id);
       },
     });
+    const suppressActWarning = (...args: unknown[]) => {
+      const first = args[0];
+      if (
+        typeof first === "string" &&
+        first.includes("not wrapped in act")
+      ) {
+        return;
+      }
+      originalConsoleError(...args);
+    };
+    console.error = suppressActWarning;
+    if (globalThis.window?.console) {
+      globalThis.window.console.error = suppressActWarning;
+    }
   });
 
   afterEach(() => {
@@ -73,6 +84,10 @@ describe("VoiceCommandCenter debug mode", () => {
       configurable: true,
       value: originalCancelRaf,
     });
+    console.error = originalConsoleError;
+    if (globalThis.window?.console) {
+      globalThis.window.console.error = originalConsoleError;
+    }
   });
 
   it("shows dry-run badge and skips real fetches", async () => {
@@ -88,7 +103,6 @@ describe("VoiceCommandCenter debug mode", () => {
     });
     assert.ok(screen.getByLabelText(/diagnostyka dev/i));
     assert.equal(fetchMock.mock.callCount(), 0);
-    await flushAsyncUi();
   });
 
   it("shows the diagnostics button even when dev mode is off", async () => {
@@ -100,7 +114,6 @@ describe("VoiceCommandCenter debug mode", () => {
     await waitFor(() => {
       assert.ok(screen.getByLabelText(/diagnostyka/i));
     });
-    await flushAsyncUi();
   });
 });
 

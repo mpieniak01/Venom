@@ -62,6 +62,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
   const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;
+  const runtimeAlignment = status?.runtime_alignment ?? null;
   const runtimeProvider = runtime?.provider ?? "";
   const runtimeId = runtime?.runtime_id ?? "";
   const isGemma4AudioRuntime = isMultiRuntime(runtimeProvider) || isMultiRuntime(runtimeId);
@@ -123,7 +124,7 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
         title={t("voice.controls.runtime")}
       />
       {latestVoiceSession && (
-        <VoiceSessionCard session={latestVoiceSession} />
+        <VoiceSessionCard session={latestVoiceSession} runtimeAlignment={runtimeAlignment} />
       )}
 
       {/* STT / TTS box */}
@@ -193,7 +194,8 @@ function RuntimeSwitchCard({
     runtime.activeServer.data?.active_server ?? null,
     runtime.activeServer.data?.active_model ?? null,
   );
-  const applyDisabled = pending || !selectedRuntime || !selectedModel;
+  const gateSwitching = runtime.runtimeSwitchInProgress;
+  const applyDisabled = pending || gateSwitching || !selectedRuntime || !selectedModel;
   const runtimeError = runtime.activeServer.error ?? runtime.llmServers.error;
   const serversLoading = runtime.llmServers.loading ?? false;
 
@@ -338,8 +340,23 @@ function RuntimeSwitchCard({
           disabled={applyDisabled}
           className="w-full"
         >
-          {pending ? t("voice.controls.refreshing") : t("voice.controls.refresh")}
+          {pending || gateSwitching ? t("voice.controls.refreshing") : t("voice.controls.refresh")}
         </Button>
+        {gateSwitching && (
+          <p className="text-[11px] text-amber-300">
+            {t("voice.controls.runtimeSwitchInProgress")
+              .replace("{{from}}", runtime.runtimeSwitchGate?.from_runtime || "—")
+              .replace("{{to}}", runtime.runtimeSwitchGate?.to_runtime || "—")}
+          </p>
+        )}
+        {!gateSwitching && runtime.lastRuntimeSwitch?.at_utc && (
+          <p className="text-[11px] text-zinc-400">
+            {t("voice.controls.runtimeLastSwitch").replace(
+              "{{at}}",
+              runtime.lastRuntimeSwitch.at_utc,
+            )}
+          </p>
+        )}
         <Row label={t("voice.controls.selectedRuntime")} value={selectedRuntimeSummary} />
         <Row label={t("voice.controls.systemVoiceRuntime")} value={activeRuntimeSummary} />
 
@@ -406,10 +423,7 @@ function RuntimeOverviewCard({
               </Badge>
             )}
           </div>
-          {provider && <Row label={t("voice.controls.provider")} value={provider} />}
-          {activeVoiceRuntime && (
-            <Row label={t("voice.controls.systemVoiceRuntime")} value={activeVoiceRuntime} />
-          )}
+          {activeVoiceRuntime && <Row label={t("voice.controls.runtime")} value={activeVoiceRuntime} />}
           {endpoint && <Row label={t("voice.controls.endpoint")} value={endpoint} />}
           {profile && <Row label={t("voice.controls.profile")} value={profile} />}
           {runtime.voice_pipeline?.stt && (
@@ -441,8 +455,10 @@ function RuntimeOverviewCard({
 
 function VoiceSessionCard({
   session,
+  runtimeAlignment,
 }: Readonly<{
   session: NonNullable<VoiceStatusUpdate["latest_voice_session"]>;
+  runtimeAlignment?: VoiceStatusUpdate["runtime_alignment"] | null;
 }>) {
   const t = useTranslation();
   const confidence = formatConfidence(session.emotion_confidence);
@@ -465,8 +481,17 @@ function VoiceSessionCard({
       {(session.audio_runtime_provider || session.audio_runtime_model) && (
         <Row
           label={t("voice.controls.responseRuntime")}
-          value={formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)}
+          value={
+            runtimeAlignment?.response_runtime_fresh === false
+              ? `${formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)} (${t("voice.controls.previousSession")})`
+              : formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)
+          }
         />
+      )}
+      {runtimeAlignment?.response_runtime_fresh === false && (
+        <p className="text-[11px] text-amber-300">
+          {t("voice.controls.runtimeAfterSwitch")}
+        </p>
       )}
       {session.reasoning_summary_status && (
         <Row

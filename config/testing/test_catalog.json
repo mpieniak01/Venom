@@ -1052,6 +1052,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_runtime_switch_gate.py",
+      "domain": "testing_tooling",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for runtime switch gate regression."
+    },
+    {
       "path": "tests/test_audit_lite_deps.py",
       "domain": "audit",
       "test_type": "gate",

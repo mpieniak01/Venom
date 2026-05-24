@@ -7,11 +7,14 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from tests.helpers.url_fixtures import MOCK_HTTP, http_url
+from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.main import app
 from venom_core.services import llm_simple_service, llm_simple_stream_service
+from venom_core.services import runtime_switch_gate as gate
 from venom_core.services.llm_simple_stream_service import SimpleStreamState
 
 
@@ -931,3 +934,22 @@ def test_stream_service_packet_update_and_post_attempt_branches() -> None:
     unknown_apply = llm_simple_stream_service.apply_post_attempt_action("stop")
     assert stop_action == "stop"
     assert unknown_apply == (False, False)
+
+
+@pytest.mark.asyncio
+async def test_stream_simple_chat_rejects_when_runtime_switch_is_active():
+    snapshot = gate.begin_runtime_switch(
+        source="ui",
+        from_runtime="ollama",
+        to_runtime="multi_runtime",
+        reason="test",
+    )
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            await llm_simple_service.stream_simple_chat(
+                SimpleChatRequest(content="hello")
+            )
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["code"] == "runtime_switch_in_progress"
+    finally:
+        gate.finish_runtime_switch(switch_id=snapshot.switch_id)

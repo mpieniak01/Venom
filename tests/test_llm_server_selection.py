@@ -4,10 +4,12 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
+from venom_core.services import runtime_switch_gate as gate
 from venom_core.services import runtime_switch_service
 from venom_core.services.runtime_switch_telemetry import (
     assert_runtime_switch_source_allowed,
@@ -356,6 +358,116 @@ async def test_set_active_llm_server_waits_for_previous_runtime_shutdown_before_
         assert shutdown_calls == [("vllm", "http://localhost:8001/models")]
         assert controller.actions == [("vllm", "stop"), ("ollama", "start")]
     finally:
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_waits_for_active_runtime_requests_to_drain(
+    monkeypatch,
+):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _active_request():
+        async with gate.runtime_request_guard(
+            request_kind="voice_chat",
+            provider="ollama",
+            model="qwen3.5:latest",
+        ):
+            entered.set()
+            await release.wait()
+
+    task = asyncio.create_task(_active_request())
+    await entered.wait()
+
+    config = {
+        "LAST_MODEL_OLLAMA": "phi3:mini",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "phi3:mini",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
+    controller = DummyController(
+        [
+            {
+                "name": "ollama",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+                "health_url": "http://localhost:11434/api/tags",
+            }
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager([{"name": "phi3:mini", "provider": "ollama"}]),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(system_routes, "_installed_local_servers", lambda: {"ollama"})
+
+    class _DummySwitchState:
+        def __init__(self):
+            self.completed = []
+
+        def mark_done(self, step):
+            self.completed.append(step)
+
+        def to_payload(self):
+            return {
+                "completed_steps": [step.value for step in self.completed],
+                "is_complete": True,
+            }
+
+    class _DummyOrchestrator:
+        def __init__(self, _controller):
+            self._controller = _controller
+
+        async def execute_lifecycle_switch(self, **_kwargs):
+            return (
+                _DummySwitchState(),
+                {},
+                {},
+                {"ok": True},
+                {
+                    "name": "ollama",
+                    "endpoint": "",
+                },
+            )
+
+    monkeypatch.setattr(system_routes, "RuntimeSwitchOrchestrator", _DummyOrchestrator)
+
+    original = _snapshot_settings()
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+
+    request = system_routes.ActiveLlmServerRequest(server_name="ollama")
+    try:
+        response_task = asyncio.create_task(
+            system_routes.set_active_llm_server(request)
+        )
+        await asyncio.sleep(0.05)
+        assert not response_task.done()
+
+        with pytest.raises(HTTPException) as exc_info:
+            async with gate.runtime_request_guard(request_kind="simple_chat"):
+                pass
+        assert exc_info.value.status_code == 409
+
+        release.set()
+        response = await response_task
+        assert response["status"] == "success"
+    finally:
+        release.set()
+        await task
         _restore_settings(original)
 
 

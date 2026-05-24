@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -328,6 +329,108 @@ async def test_audio_status_endpoint_marks_latest_session_as_stale_after_runtime
     assert status["runtime_alignment"]["latest_session_before_runtime_switch"] is True
     assert status["runtime_alignment"]["response_runtime_fresh"] is False
     assert status["runtime_alignment"]["response_runtime_matches_active"] is False
+
+
+def test_parse_iso_datetime_handles_blank_invalid_and_zulu():
+    assert main_module._parse_iso_datetime(None) is None
+    assert main_module._parse_iso_datetime("   ") is None
+    assert main_module._parse_iso_datetime("not-a-date") is None
+    assert main_module._parse_iso_datetime("2026-05-24T09:10:00Z") == datetime(
+        2026, 5, 24, 9, 10, tzinfo=UTC
+    )
+
+
+def test_same_runtime_identity_handles_missing_values_and_case_insensitive_match():
+    assert main_module._same_runtime_identity(None, "model", "ollama", "model") is None
+    assert main_module._same_runtime_identity("ollama", None, "ollama", "model") is None
+    assert (
+        main_module._same_runtime_identity(
+            " Ollama ",
+            " Qwen3.5:Latest ",
+            "ollama",
+            "qwen3.5:latest",
+        )
+        is True
+    )
+    assert (
+        main_module._same_runtime_identity(
+            "ollama",
+            "qwen3.5:latest",
+            "multi_runtime",
+            "qwen3.5:latest",
+        )
+        is False
+    )
+
+
+def test_build_voice_runtime_alignment_without_latest_session(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:10:00Z"},
+    )
+
+    alignment = main_module._build_voice_runtime_alignment(
+        runtime_snapshot={"provider": "ollama", "model_name": "qwen3.5:latest"},
+        latest_session=None,
+    )
+
+    assert alignment["active_provider"] == "ollama"
+    assert alignment["active_model"] == "qwen3.5:latest"
+    assert alignment["latest_session_created_at"] is None
+    assert alignment["last_runtime_switch_at_utc"] == "2026-05-24T09:10:00Z"
+    assert alignment["latest_session_before_runtime_switch"] is False
+    assert alignment["response_runtime_fresh"] is False
+    assert alignment["response_runtime_matches_active"] is None
+
+
+@pytest.mark.asyncio
+async def test_audio_status_endpoint_includes_runtime_alignment_for_matching_session(
+    monkeypatch,
+):
+    class DummyHandler:
+        def get_status(self, operator_agent=None):
+            return {
+                "enabled": True,
+                "connected_clients": 1,
+                "active_recordings": 0,
+                "message": "ok",
+            }
+
+        def get_latest_voice_session(self):
+            return {
+                "session_id": "session-1",
+                "created_at": "2026-05-24T09:12:00+00:00",
+                "audio_runtime_provider": "ollama",
+                "audio_runtime_model": "qwen3.5:latest",
+            }
+
+    monkeypatch.setattr(main_module, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(main_module, "operator_agent", object())
+    monkeypatch.setattr(
+        main_module,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(
+            return_value={
+                "runtime_id": "ollama@localhost",
+                "provider": "ollama",
+                "model_name": "qwen3.5:latest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:00:00+00:00"},
+    )
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await main_module.audio_status_endpoint(request)
+
+    assert status["runtime_snapshot"]["provider"] == "ollama"
+    assert status["runtime_alignment"]["latest_session_before_runtime_switch"] is False
+    assert status["runtime_alignment"]["response_runtime_fresh"] is True
+    assert status["runtime_alignment"]["response_runtime_matches_active"] is True
 
 
 @pytest.mark.asyncio

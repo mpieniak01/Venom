@@ -84,6 +84,10 @@ from venom_core.services.runtime_dependencies import (
     get_model_manager,
     get_request_tracer,
 )
+from venom_core.services.runtime_switch_gate import (
+    assert_runtime_request_allowed,
+    runtime_request_guard,
+)
 from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
     get_active_llm_runtime,
@@ -935,77 +939,82 @@ async def _stream_simple_chunks(
     request_id: UUID,
     model_name: str,
 ) -> AsyncIterator[str]:
-    state = _SimpleStreamState(chunks=[])
-    stream_start = time.perf_counter()
-    runtime_telemetry: dict[str, int] = {}
+    async with runtime_request_guard(
+        request_kind="simple_chat_stream",
+        provider=runtime.provider,
+        model=model_name,
+    ):
+        state = _SimpleStreamState(chunks=[])
+        stream_start = time.perf_counter()
+        runtime_telemetry: dict[str, int] = {}
 
-    yield _SSE_EVENT_START
+        yield _SSE_EVENT_START
 
-    max_attempts = (
-        max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
-        if runtime.provider == "ollama"
-        else 1
-    )
-    retry_backoff = max(0.0, float(SETTINGS.OLLAMA_RETRY_BACKOFF_SECONDS))
+        max_attempts = (
+            max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
+            if runtime.provider == "ollama"
+            else 1
+        )
+        retry_backoff = max(0.0, float(SETTINGS.OLLAMA_RETRY_BACKOFF_SECONDS))
 
-    for attempt in range(1, max_attempts + 1):
-        try:
-            _reset_stream_attempt_state(state)
-            async for event in _stream_single_attempt(
-                completions_url=completions_url,
-                payload=payload,
-                runtime=runtime,
-                request_id=request_id,
-                model_name=model_name,
-                stream_start=stream_start,
-                attempt=attempt,
-                max_attempts=max_attempts,
-                retry_backoff=retry_backoff,
-                state=state,
-                runtime_telemetry=runtime_telemetry,
-            ):
-                yield event
+        for attempt in range(1, max_attempts + 1):
+            try:
+                _reset_stream_attempt_state(state)
+                async for event in _stream_single_attempt(
+                    completions_url=completions_url,
+                    payload=payload,
+                    runtime=runtime,
+                    request_id=request_id,
+                    model_name=model_name,
+                    stream_start=stream_start,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    retry_backoff=retry_backoff,
+                    state=state,
+                    runtime_telemetry=runtime_telemetry,
+                ):
+                    yield event
 
-            action = _resolve_post_attempt_action(
-                runtime=runtime,
-                request_id=request_id,
-                stream_start=stream_start,
-                state=state,
-                runtime_telemetry=runtime_telemetry,
-            )
-            should_retry, should_emit_done = _apply_post_attempt_action(action)
-            if should_retry:
-                continue
-            if should_emit_done:
-                yield _SSE_EVENT_DONE
-            return
+                action = _resolve_post_attempt_action(
+                    runtime=runtime,
+                    request_id=request_id,
+                    stream_start=stream_start,
+                    state=state,
+                    runtime_telemetry=runtime_telemetry,
+                )
+                should_retry, should_emit_done = _apply_post_attempt_action(action)
+                if should_retry:
+                    continue
+                if should_emit_done:
+                    yield _SSE_EVENT_DONE
+                return
 
-        except httpx.HTTPError as exc:
-            result = await _handle_stream_http_error(
-                exc=exc,
-                runtime=runtime,
-                request_id=request_id,
-                model_name=model_name,
-                stream_start=stream_start,
-                attempt=attempt,
-                max_attempts=max_attempts,
-                retry_backoff=retry_backoff,
-                chunk_count=state.chunk_count,
-                runtime_telemetry=runtime_telemetry,
-            )
-            if result == "retry":
-                continue
+            except httpx.HTTPError as exc:
+                result = await _handle_stream_http_error(
+                    exc=exc,
+                    runtime=runtime,
+                    request_id=request_id,
+                    model_name=model_name,
+                    stream_start=stream_start,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    retry_backoff=retry_backoff,
+                    chunk_count=state.chunk_count,
+                    runtime_telemetry=runtime_telemetry,
+                )
+                if result == "retry":
+                    continue
 
-            yield result
-            return
-        except Exception as exc:
-            yield _emit_internal_error_and_mark_failed(
-                exc=exc,
-                runtime=runtime,
-                request_id=request_id,
-                stream_start=stream_start,
-            )
-            return
+                yield result
+                return
+            except Exception as exc:
+                yield _emit_internal_error_and_mark_failed(
+                    exc=exc,
+                    runtime=runtime,
+                    request_id=request_id,
+                    stream_start=stream_start,
+                )
+                return
 
 
 async def _stream_simple_chunks_onnx(
@@ -1017,60 +1026,67 @@ async def _stream_simple_chunks_onnx(
     max_tokens: int | None,
     temperature: float | None,
 ) -> AsyncIterator[str]:
-    stream_start = time.perf_counter()
-    chunks: list[str] = []
-    chunk_count = 0
-    first_chunk_seen = False
+    async with runtime_request_guard(
+        request_kind="simple_chat_onnx",
+        provider=runtime.provider,
+        model=model_name,
+    ):
+        stream_start = time.perf_counter()
+        chunks: list[str] = []
+        chunk_count = 0
+        first_chunk_seen = False
 
-    yield _SSE_EVENT_START
-    try:
-        client = _get_onnx_simple_client()
-        async for content in _aiter_sync_onnx_stream(
-            client,
-            messages=messages,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-        ):
-            if not content:
-                continue
-            chunk_count += 1
-            chunks.append(content)
-            if not first_chunk_seen:
-                _trace_first_chunk(request_id, stream_start, content)
-                first_chunk_seen = True
-            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+        yield _SSE_EVENT_START
+        try:
+            client = _get_onnx_simple_client()
+            async for content in _aiter_sync_onnx_stream(
+                client,
+                messages=messages,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+            ):
+                if not content:
+                    continue
+                chunk_count += 1
+                chunks.append(content)
+                if not first_chunk_seen:
+                    _trace_first_chunk(request_id, stream_start, content)
+                    first_chunk_seen = True
+                yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
 
-        _trace_stream_completion(request_id, "".join(chunks), chunk_count, stream_start)
-        collector = get_metrics_collector()
-        collector.record_provider_request(
-            provider=runtime.provider,
-            success=True,
-            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-        )
-        yield _SSE_EVENT_DONE
-    except Exception as exc:
-        _record_simple_error(
-            request_id,
-            error_code="onnx_generation_error",
-            error_message=f"Błąd generacji ONNX: {exc}",
-            error_details={"provider": "onnx", "model": model_name},
-            error_class=exc.__class__.__name__,
-            retryable=False,
-        )
-        collector = get_metrics_collector()
-        collector.record_provider_request(
-            provider=runtime.provider,
-            success=False,
-            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-            error_code="onnx_generation_error",
-        )
-        yield (
-            "event: error\ndata: "
-            + json.dumps(
-                {"code": "onnx_generation_error", "message": f"Błąd ONNX: {exc}"}
+            _trace_stream_completion(
+                request_id, "".join(chunks), chunk_count, stream_start
             )
-            + "\n\n"
-        )
+            collector = get_metrics_collector()
+            collector.record_provider_request(
+                provider=runtime.provider,
+                success=True,
+                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+            )
+            yield _SSE_EVENT_DONE
+        except Exception as exc:
+            _record_simple_error(
+                request_id,
+                error_code="onnx_generation_error",
+                error_message=f"Błąd generacji ONNX: {exc}",
+                error_details={"provider": "onnx", "model": model_name},
+                error_class=exc.__class__.__name__,
+                retryable=False,
+            )
+            collector = get_metrics_collector()
+            collector.record_provider_request(
+                provider=runtime.provider,
+                success=False,
+                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                error_code="onnx_generation_error",
+            )
+            yield (
+                "event: error\ndata: "
+                + json.dumps(
+                    {"code": "onnx_generation_error", "message": f"Błąd ONNX: {exc}"}
+                )
+                + "\n\n"
+            )
 
 
 async def _stream_simple_chunks_non_stream(
@@ -1081,112 +1097,122 @@ async def _stream_simple_chunks_non_stream(
     request_id: UUID,
     model_name: str,
 ) -> AsyncIterator[str]:
-    stream_start = time.perf_counter()
-    chunks: list[str] = []
+    async with runtime_request_guard(
+        request_kind="simple_chat_non_stream",
+        provider=runtime.provider,
+        model=model_name,
+    ):
+        stream_start = time.perf_counter()
+        chunks: list[str] = []
 
-    yield _SSE_EVENT_START
-    try:
-        async with llm_simple_transport.open_stream_response(
-            provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
-            completions_url=completions_url,
-            payload=payload,
-        ) as response:
-            response.raise_for_status()
-            aread = getattr(response, "aread", None)
-            if callable(aread):
-                raw_body = await aread()
-                if raw_body:
-                    data = json.loads(raw_body.decode("utf-8", errors="replace"))
+        yield _SSE_EVENT_START
+        try:
+            async with llm_simple_transport.open_stream_response(
+                provider_name=str(getattr(runtime, "provider", "") or "llm_runtime"),
+                completions_url=completions_url,
+                payload=payload,
+            ) as response:
+                response.raise_for_status()
+                aread = getattr(response, "aread", None)
+                if callable(aread):
+                    raw_body = await aread()
+                    if raw_body:
+                        data = json.loads(raw_body.decode("utf-8", errors="replace"))
+                    else:
+                        data = {}
                 else:
-                    data = {}
-            else:
-                json_reader = getattr(response, "json", None)
-                data = json_reader() if callable(json_reader) else {}
+                    json_reader = getattr(response, "json", None)
+                    data = json_reader() if callable(json_reader) else {}
 
-        if not isinstance(data, dict):
-            _trace_stream_completion(request_id, "", 0, stream_start)
-            _record_simple_error(
-                request_id,
-                error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
-                error_message=(
-                    f"Nieprawidłowa odpowiedź LLM ({runtime.provider}): "
-                    "oczekiwano obiektu JSON."
-                ),
-                error_details={
-                    "provider": runtime.provider,
-                    "model": model_name,
-                    "response_type": type(data).__name__,
-                },
-                error_class=type(data).__name__,
-                retryable=False,
+            if not isinstance(data, dict):
+                _trace_stream_completion(request_id, "", 0, stream_start)
+                _record_simple_error(
+                    request_id,
+                    error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
+                    error_message=(
+                        f"Nieprawidłowa odpowiedź LLM ({runtime.provider}): "
+                        "oczekiwano obiektu JSON."
+                    ),
+                    error_details={
+                        "provider": runtime.provider,
+                        "model": model_name,
+                        "response_type": type(data).__name__,
+                    },
+                    error_class=type(data).__name__,
+                    retryable=False,
+                )
+                collector = get_metrics_collector()
+                collector.record_provider_request(
+                    provider=runtime.provider,
+                    success=False,
+                    latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                    error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
+                )
+                yield (
+                    "event: error\ndata: "
+                    + json.dumps(
+                        {
+                            "code": _NON_STREAM_INVALID_RESPONSE_CODE,
+                            "message": (
+                                "Nieprawidłowa odpowiedź z aktywnego runtime LLM."
+                            ),
+                        }
+                    )
+                    + "\n\n"
+                )
+                return
+
+            content = _extract_message_content(data, fallback_text="")
+            logprobs_telemetry = _extract_logprobs_telemetry(data)
+            if logprobs_telemetry is not None:
+                yield (
+                    "event: telemetry\ndata: "
+                    + json.dumps(logprobs_telemetry, ensure_ascii=False)
+                    + "\n\n"
+                )
+            if content:
+                chunks.append(content)
+                _trace_first_chunk(request_id, stream_start, content)
+                yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+
+            _trace_stream_completion(
+                request_id, "".join(chunks), len(chunks), stream_start
             )
             collector = get_metrics_collector()
             collector.record_provider_request(
                 provider=runtime.provider,
-                success=False,
+                success=True,
                 latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-                error_code=_NON_STREAM_INVALID_RESPONSE_CODE,
             )
-            yield (
-                "event: error\ndata: "
-                + json.dumps(
-                    {
-                        "code": _NON_STREAM_INVALID_RESPONSE_CODE,
-                        "message": ("Nieprawidłowa odpowiedź z aktywnego runtime LLM."),
-                    }
-                )
-                + "\n\n"
+            yield _SSE_EVENT_DONE
+        except httpx.HTTPStatusError as exc:
+            result = await _emit_http_status_error_and_mark_failed(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                stream_start=stream_start,
             )
-            return
-
-        content = _extract_message_content(data, fallback_text="")
-        logprobs_telemetry = _extract_logprobs_telemetry(data)
-        if logprobs_telemetry is not None:
-            yield (
-                "event: telemetry\ndata: "
-                + json.dumps(logprobs_telemetry, ensure_ascii=False)
-                + "\n\n"
+            yield result
+        except httpx.HTTPError as exc:
+            yield _emit_connection_error_and_mark_failed(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                stream_start=stream_start,
             )
-        if content:
-            chunks.append(content)
-            _trace_first_chunk(request_id, stream_start, content)
-            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
-
-        _trace_stream_completion(request_id, "".join(chunks), len(chunks), stream_start)
-        collector = get_metrics_collector()
-        collector.record_provider_request(
-            provider=runtime.provider,
-            success=True,
-            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-        )
-        yield _SSE_EVENT_DONE
-    except httpx.HTTPStatusError as exc:
-        result = await _emit_http_status_error_and_mark_failed(
-            exc=exc,
-            runtime=runtime,
-            request_id=request_id,
-            model_name=model_name,
-            stream_start=stream_start,
-        )
-        yield result
-    except httpx.HTTPError as exc:
-        yield _emit_connection_error_and_mark_failed(
-            exc=exc,
-            runtime=runtime,
-            request_id=request_id,
-            model_name=model_name,
-            stream_start=stream_start,
-        )
-    except Exception as exc:
-        yield _emit_internal_error_and_mark_failed(
-            exc=exc,
-            runtime=runtime,
-            request_id=request_id,
-            stream_start=stream_start,
-        )
+        except Exception as exc:
+            yield _emit_internal_error_and_mark_failed(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                stream_start=stream_start,
+            )
 
 
 async def stream_simple_chat(request: SimpleChatRequest):
+    assert_runtime_request_allowed(request_kind="simple_chat")
     await asyncio.sleep(0)
     runtime = get_active_llm_runtime()
     model_name = _resolve_model_name_for_simple_request(

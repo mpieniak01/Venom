@@ -43,6 +43,12 @@ from venom_core.services.feedback_loop_policy import (
     resolve_feedback_loop_model,
 )
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
+from venom_core.services.runtime_switch_gate import (
+    begin_runtime_switch,
+    finish_runtime_switch,
+    get_runtime_switch_gate_status,
+    wait_for_runtime_requests_to_drain,
+)
 from venom_core.services.runtime_switch_service import (
     RuntimeSwitchOrchestrator,
     probe_health_ready,
@@ -2100,6 +2106,7 @@ def get_active_llm_server():
             "previous_onnx": config.get("PREVIOUS_MODEL_ONNX", ""),
         },
         "runtime_switch_policy": get_runtime_switch_guard_status(),
+        "runtime_switch_gate": get_runtime_switch_gate_status(),
         "last_runtime_switch": get_last_runtime_switch_event(),
         "mode_contracts": mode_contracts_payload(),
     }
@@ -2115,6 +2122,7 @@ def get_active_llm_runtime_info():
         "runtime": runtime.to_payload(),
         "drift": drift,
         "runtime_switch_policy": get_runtime_switch_guard_status(),
+        "runtime_switch_gate": get_runtime_switch_gate_status(),
         "last_runtime_switch": get_last_runtime_switch_event(),
         "mode_contracts": mode_contracts_payload(),
     }
@@ -2678,6 +2686,22 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
 
         active_runtime = get_active_llm_runtime()
         from_server = str(getattr(active_runtime, "provider", "") or "").strip().lower()
+        switch_gate = begin_runtime_switch(
+            source=switch_source,
+            from_runtime=from_server or "unknown",
+            to_runtime=server_name,
+            reason="set_active_llm_server",
+        )
+        drain_ok = await wait_for_runtime_requests_to_drain(timeout_seconds=30.0)
+        if not drain_ok:
+            finish_runtime_switch(switch_id=switch_gate.switch_id)
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Nie udało się poczekać na zakończenie aktywnych requestów "
+                    "przed przełączeniem runtime."
+                ),
+            )
         _trace_switch(
             request_tracer,
             request.trace_id,
@@ -2716,6 +2740,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
             )
             response["shutdown_results"] = shutdown_results
             response["lifecycle_state"] = switch_state.to_payload()
+            finish_runtime_switch(switch_id=switch_gate.switch_id)
             return response
 
         # All lifecycle steps confirmed — safe to persist config and model now.
@@ -2770,6 +2795,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
             model=selected_model,
             from_runtime=from_server or "unknown",
         )
+        finish_runtime_switch(switch_id=switch_gate.switch_id)
         return {
             "status": "success",
             "active_server": infer_local_provider(runtime.endpoint),
@@ -2785,8 +2811,16 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
             "lifecycle_state": switch_state.to_payload(),
         }
     except HTTPException:
+        try:
+            finish_runtime_switch(switch_id=switch_gate.switch_id)
+        except UnboundLocalError:
+            pass
         raise
     except Exception as exc:  # pragma: no cover
+        try:
+            finish_runtime_switch(switch_id=switch_gate.switch_id)
+        except UnboundLocalError:
+            pass
         logger.exception(
             "Błąd wewnętrzny podczas przełączania aktywnego serwera LLM: {}",
             {

@@ -1,6 +1,6 @@
 # Status runtime voice i capability multimodalnych
 
-Data statusu: 2026-05-10
+Data statusu: 2026-05-25
 Zakres: PR 205/205B voice loop, PR 207 runtime capability
 
 ## Podsumowanie
@@ -22,6 +22,19 @@ Dwa operacyjne tory odpowiedzi są teraz opisane wprost:
 2. natywny tor Gemma4 `multi_runtime_piper` - Gemma4 dostaje audio bezpośrednio, zwraca transkrypcję i tekst odpowiedzi, a Piper odczytuje tę odpowiedź,
 3. oba tory kończą się w tej samej warstwie TTS, więc efekt głosowy pozostaje spójny nawet wtedy, gdy zmienia się źródło odpowiedzi,
 4. gdy tor natywny nie jest wybrany albo nie przechodzi health check, backend wraca do toru tekstowego i zapisuje powód fallbacku w metadanych sesji.
+
+### Kontrakt prawdy runtime po PR246
+
+Aktualny kontrakt runtime dla `/api/v1/audio/status`:
+
+1. `multi_runtime` jest jedynym natywnym torem audio (`multi_runtime_piper`),
+2. każdy inny runtime (`ollama`, `vllm`, `onnx` i providery chmurowe) jest raportowany dla voice jako `whisper_llm_piper`,
+3. payload zawiera `runtime_state` z czterema jawnymi wymiarami:
+   - `selected`: runtime/model wybrany przez operatora,
+   - `active`: runtime/model aktualnie aktywny po stronie backendu,
+   - `response`: runtime/model oraz pipeline ostatniej odpowiedzi voice,
+   - `switch`: asynchroniczny stan przełączenia (`idle`, `switching`, `ready`, `failed`),
+4. UI powinien traktować `runtime_state` jako kanoniczne źródło prawdy, a `runtime_snapshot`/`runtime_alignment` jako diagnostykę.
 
 Ta gałąź traktuje też orb voice jako osobny stos UI, a nie luźny widget:
 

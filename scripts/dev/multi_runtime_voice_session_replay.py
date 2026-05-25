@@ -72,6 +72,11 @@ async def _run(args: argparse.Namespace) -> int:
     resolved_audio_path = _resolve_audio_path(session_dir, audio_path)
 
     base_url = args.base_url.rstrip("/")
+    respond_url = (
+        f"{base_url}/v1/respond"
+        if not base_url.endswith("/v1")
+        else f"{base_url}/respond"
+    )
     payload = _build_payload(
         resolved_audio_path,
         task=args.task,
@@ -81,14 +86,14 @@ async def _run(args: argparse.Namespace) -> int:
     )
 
     print(f"Session audio: {resolved_audio_path}")
-    print(f"POST {base_url}/respond")
+    print(f"POST {respond_url}")
 
     timeout = httpx.Timeout(args.timeout, connect=min(5.0, args.timeout))
     with resolved_audio_path.open("rb") as audio_handle:
         files = {"audio": (resolved_audio_path.name, audio_handle, "audio/wav")}
         data = {"request": json.dumps(payload, ensure_ascii=False)}
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(f"{base_url}/respond", data=data, files=files)
+            response = await client.post(respond_url, data=data, files=files)
 
     if response.status_code >= 400:
         print(f"HTTP {response.status_code}")

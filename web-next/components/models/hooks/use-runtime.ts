@@ -3,6 +3,7 @@ import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
 import { ApiError } from "@/lib/api-client";
 import { canonicalRuntimeId, isMultiRuntime } from "@/lib/runtime-id";
+import { buildRuntimeStateViewFromActiveServer } from "@/lib/voice-runtime-state";
 import type {
     ActiveLlmServerResponse,
     LlmRuntimeModelOption,
@@ -152,6 +153,14 @@ export function useRuntime() {
     const activeRuntime = installed.data?.active;
     const [selectedServer, setSelectedServer] = useState<string | null>(null);
     const [selectedModel, setSelectedModel] = useState<string | null>(null);
+    const runtimeState = useMemo(
+        () =>
+            buildRuntimeStateViewFromActiveServer(activeServer.data ?? null, {
+                runtimeId: selectedServer ?? "",
+                modelName: selectedModel ?? "",
+            }),
+        [activeServer.data, selectedModel, selectedServer],
+    );
 
     const setPending = useCallback((key: string, value: boolean) => {
         setPendingActions((prev) => ({ ...prev, [key]: value }));
@@ -377,6 +386,7 @@ export function useRuntime() {
         runtimeSwitchGate,
         lastRuntimeSwitch,
         runtimeSwitchInProgress,
+        runtimeState,
         activeRuntime,
         selectedServer,
         setSelectedServer,

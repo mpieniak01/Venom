@@ -35,7 +35,11 @@ from venom_core.utils.mode_contracts import (
     mode_contracts_payload,
 )
 from venom_core.utils.runtime_names import MULTI_RUNTIME_ID, is_multi_runtime
-from venom_core.utils.voice_metadata import build_voice_session_insights
+from venom_core.utils.voice_metadata import (
+    build_voice_session_insights,
+    build_voice_trace_annotations,
+    infer_voice_session_mode,
+)
 
 logger = get_logger(__name__)
 
@@ -88,6 +92,11 @@ def _is_voice_session_eligible(metadata: dict[str, Any]) -> bool:
 def _build_voice_session_record(
     session_dir: Path, metadata: dict[str, Any]
 ) -> dict[str, Any]:
+    voice_pipeline_mode = metadata.get("voice_pipeline_mode")
+    pipeline_id = metadata.get("pipeline_id")
+    decoder_source = metadata.get("decoder_source")
+    native_audio_ms = metadata.get("native_audio_ms")
+    execution_trace = metadata.get("execution_trace") or []
     return {
         "session_id": session_dir.name,
         "created_at": metadata.get("created_at"),
@@ -112,6 +121,13 @@ def _build_voice_session_record(
         "decoder_source": metadata.get("decoder_source"),
         "fallback_reason": metadata.get("fallback_reason"),
         "native_audio_ms": metadata.get("native_audio_ms"),
+        "voice_session_mode": metadata.get("voice_session_mode")
+        or infer_voice_session_mode(
+            voice_pipeline_mode=voice_pipeline_mode,
+            pipeline_id=pipeline_id,
+            decoder_source=decoder_source,
+            native_audio_ms=native_audio_ms,
+        ),
         "runtime_log_path": metadata.get("runtime_log_path"),
         "reasoning_summary_enabled": metadata.get("reasoning_summary_enabled"),
         "reasoning_summary_status": metadata.get("reasoning_summary_status"),
@@ -126,7 +142,27 @@ def _build_voice_session_record(
         "emotion_confidence": metadata.get("emotion_confidence"),
         "transcription": metadata.get("transcription") or "",
         "response_text": metadata.get("response_text") or "",
-        "execution_trace": metadata.get("execution_trace") or [],
+        "execution_trace": execution_trace,
+        "execution_trace_annotations": metadata.get("execution_trace_annotations")
+        or build_voice_trace_annotations(
+            execution_trace,
+            voice_pipeline_mode=voice_pipeline_mode,
+            pipeline_id=pipeline_id,
+            decoder_source=decoder_source,
+            native_audio_ms=native_audio_ms,
+        ),
+        "execution_trace_mode": metadata.get("execution_trace_mode")
+        or (
+            "audio_only"
+            if infer_voice_session_mode(
+                voice_pipeline_mode=voice_pipeline_mode,
+                pipeline_id=pipeline_id,
+                decoder_source=decoder_source,
+                native_audio_ms=native_audio_ms,
+            )
+            != "unknown"
+            else "unknown"
+        ),
         "selected_policy": metadata.get("selected_policy"),
         "selected_image_strategy": metadata.get("selected_image_strategy"),
         "retrieval_used": metadata.get("retrieval_used"),
@@ -743,6 +779,10 @@ class AudioStreamHandler:
         origin = self._multi_runtime_service_origin()
         return f"{origin}/v1/respond" if origin else ""
 
+    def _multi_runtime_transcribe_url(self) -> str:
+        origin = self._multi_runtime_service_origin()
+        return f"{origin}/audio/transcribe" if origin else ""
+
     def _multi_runtime_health_url(self) -> str:
         origin = self._multi_runtime_service_origin()
         return f"{origin}/health" if origin else ""
@@ -813,6 +853,9 @@ class AudioStreamHandler:
         respond_url = self._multi_runtime_respond_url()
         if not respond_url:
             raise RuntimeError("Gemma4 audio endpoint is not configured")
+        transcribe_url = self._multi_runtime_transcribe_url()
+        if not transcribe_url:
+            raise RuntimeError("Gemma4 transcription endpoint is not configured")
 
         prompt = (
             "Odpowiedz po polsku na wypowiedź użytkownika z nagrania. "
@@ -829,7 +872,6 @@ class AudioStreamHandler:
                 }
             ],
             "task": "question",
-            "question": prompt,
             "system_prompt": _coerce_str(
                 _multi_runtime_setting("SIMPLE_MODE_SYSTEM_PROMPT", ""), ""
             ),
@@ -845,10 +887,29 @@ class AudioStreamHandler:
             files = {
                 "audio": (wav_path.name, audio_bytes, "audio/wav"),
             }
-            data = {
-                "request": json.dumps(payload, ensure_ascii=False),
-            }
             async with httpx.AsyncClient(timeout=timeout) as client:
+                transcribe_response = await client.post(
+                    transcribe_url,
+                    files=files,
+                )
+                if transcribe_response.status_code >= 400:
+                    raise RuntimeError(
+                        "Gemma4 audio runtime returned HTTP "
+                        f"{transcribe_response.status_code} from /audio/transcribe: "
+                        f"{transcribe_response.text}"
+                    )
+                transcription = _coerce_str(
+                    transcribe_response.json().get("text"),
+                    "",
+                )
+                if not transcription:
+                    raise RuntimeError(
+                        "Gemma4 audio runtime returned an empty transcription"
+                    )
+
+                data = {
+                    "request": json.dumps(payload, ensure_ascii=False),
+                }
                 response = await client.post(respond_url, data=data, files=files)
 
         if response.status_code >= 400:
@@ -857,21 +918,22 @@ class AudioStreamHandler:
             )
 
         data = response.json()
-        text = _coerce_str(data.get("text"), "")
-        if not text:
-            text = _coerce_str(data.get("response_text"), "")
-        if not text:
-            text = _coerce_str(data.get("generated_text"), "")
-        if not text:
+        response_text = _coerce_str(data.get("text"), "")
+        if not response_text:
+            response_text = _coerce_str(data.get("response_text"), "")
+        if not response_text:
+            response_text = _coerce_str(data.get("generated_text"), "")
+        if not response_text:
             message = data.get("message")
             if isinstance(message, dict):
-                text = _coerce_str(message.get("content"), "")
-        if not text:
+                response_text = _coerce_str(message.get("content"), "")
+        if not response_text:
             raise RuntimeError("Gemma4 audio runtime returned an empty response")
 
         return {
-            "text": text,
-            "response_text": text,
+            "text": transcription,
+            "transcription": transcription,
+            "response_text": response_text,
             "model": _coerce_str(
                 data.get("model")
                 or _multi_runtime_setting("GEMMA4_AUDIO_MODEL_ID", ""),
@@ -909,32 +971,25 @@ class AudioStreamHandler:
         if not self._multi_runtime_runtime_selected():
             return False
         if not self.audio_engine:
-            return False
-
-        snapshot = self._multi_runtime_runtime_snapshot()
-        if not await self._multi_runtime_health_ok():
-            self._update_voice_session_metadata(
-                session_dir,
+            logger.error(
+                "AudioEngine nie jest dostępny dla natywnego toru multi_runtime"
+            )
+            await self._send_json(
+                connection_id,
                 {
-                    **snapshot,
-                    "pipeline_id": "whisper_llm_piper",
-                    "audio_input_status": "fallback",
-                    "decoder_source": "faster_whisper",
-                    "fallback_reason": "multi_runtime health check failed",
-                    **_build_voice_session_insights_payload(
-                        transcript="",
-                        response="",
-                        voice_mode=self._connection_voice_mode(connection_id),
-                        pipeline_id="whisper_llm_piper",
-                        **_multi_runtime_voice_flags(),
-                        raw_thinking_available=False,
-                    ),
-                    "timings_ms": timings_ms,
-                    "runtime": self._build_runtime_metadata(operator_agent),
-                    **self._voice_contract_payload(connection_id),
+                    "type": "error",
+                    "message": "Audio engine not available for native multi_runtime pipeline",
                 },
             )
-            return False
+            return True
+
+        snapshot = self._multi_runtime_runtime_snapshot()
+        health_ok = await self._multi_runtime_health_ok()
+        if not health_ok:
+            logger.warning(
+                "multi_runtime health precheck failed for connection_id=%s; attempting native pipeline anyway",
+                connection_id,
+            )
 
         await self._send_json(
             connection_id, {"type": "processing", "status": "native_audio"}
@@ -956,16 +1011,16 @@ class AudioStreamHandler:
                     session_dir,
                     {
                         **snapshot,
-                        "pipeline_id": "whisper_llm_piper",
-                        "audio_input_status": "fallback",
-                        "decoder_source": "faster_whisper",
-                        "fallback_reason": str(exc),
+                        "pipeline_id": "multi_runtime_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "multi_runtime",
+                        "fallback_reason": "",
                         "native_audio_ms": timings_ms["native_audio_ms"],
                         **_build_voice_session_insights_payload(
                             transcript="",
                             response="",
                             voice_mode=self._connection_voice_mode(connection_id),
-                            pipeline_id="whisper_llm_piper",
+                            pipeline_id="multi_runtime_piper",
                             **_multi_runtime_voice_flags(),
                             raw_thinking_available=False,
                         ),
@@ -979,11 +1034,76 @@ class AudioStreamHandler:
                     connection_id,
                     exc,
                 )
-                return False
+                await self._send_json(
+                    connection_id,
+                    {
+                        "type": "error",
+                        "message": "Gemma4 native audio pipeline failed. Check runtime status.",
+                    },
+                )
+                return True
 
             timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
-            transcription = runtime_result["text"]
+            transcription = _coerce_str(
+                runtime_result.get("transcription"), ""
+            ) or _coerce_str(runtime_result.get("text"), "")
             response_text = runtime_result.get("response_text") or transcription
+            if not transcription or not response_text:
+                timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        **snapshot,
+                        "pipeline_id": "multi_runtime_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "multi_runtime",
+                        "fallback_reason": "",
+                        "native_audio_ms": timings_ms["native_audio_ms"],
+                        "transcription": transcription,
+                        "transcription_length": len(transcription or ""),
+                        "response_text": response_text,
+                        "response_length": len(response_text or ""),
+                        "execution_trace": runtime_result.get("execution_trace") or [],
+                        "selected_policy": runtime_result.get("selected_policy"),
+                        "selected_image_strategy": runtime_result.get(
+                            "selected_image_strategy"
+                        ),
+                        "retrieval_used": runtime_result.get("retrieval_used"),
+                        "retrieval_context_items": runtime_result.get(
+                            "retrieval_context_items"
+                        ),
+                        "retrieval_route": runtime_result.get("retrieval_route"),
+                        "assistant_used": runtime_result.get("assistant_used"),
+                        "economy_mode_activated": runtime_result.get(
+                            "economy_mode_activated"
+                        ),
+                        "degradation_reasons": runtime_result.get("degradation_reasons")
+                        or [],
+                        "component_snapshot": runtime_result.get("component_snapshot")
+                        or [],
+                        **_build_voice_session_insights_payload(
+                            transcript=transcription,
+                            response=response_text,
+                            voice_mode=self._connection_voice_mode(connection_id),
+                            pipeline_id="multi_runtime_piper",
+                            **_multi_runtime_voice_flags(),
+                            raw_thinking_available=bool(
+                                runtime_result.get("raw_thinking_available", False)
+                            ),
+                        ),
+                        "timings_ms": timings_ms,
+                        "runtime": self._build_runtime_metadata(operator_agent),
+                        **self._voice_contract_payload(connection_id),
+                    },
+                )
+                await self._send_json(
+                    connection_id,
+                    {
+                        "type": "error",
+                        "message": "Gemma4 native audio pipeline returned an incomplete result.",
+                    },
+                )
+                return True
             insights = _build_voice_session_insights_payload(
                 transcript=transcription,
                 response=response_text,

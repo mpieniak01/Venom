@@ -47,6 +47,7 @@ const gemma4VoiceStatus = {
     session_id: "session-123",
     pipeline_id: "multi_runtime_piper",
     voice_mode: "standard",
+    voice_pipeline_mode: "native_multi_runtime",
     audio_runtime_provider: "multi_runtime",
     audio_runtime_model: "google/gemma-4-E2B-it",
     reasoning_summary_enabled: true,
@@ -60,6 +61,10 @@ const gemma4VoiceStatus = {
     emotion_confidence: 0.82,
     transcription: "Co to jest kwadrat?",
     response_text: "Kwadrat ma cztery boki.",
+    native_audio_ms: 1200,
+    execution_trace_annotations: [
+      { label: "Image preprocessor", status: "no-op", note: "audio-only voice session" },
+    ],
   },
   runtime_snapshot: {
     ...voiceStatus.runtime_snapshot,
@@ -318,6 +323,10 @@ describe("VoiceStatusSidebar", () => {
     assert.equal(screen.queryByTestId("multi-runtime-profile-panel"), null);
     assert.ok(await screen.findByText(/session-123/i));
     assert.ok(screen.getByText(/curious/i));
+    assert.ok(screen.getByText("Tryb toru"));
+    assert.ok(screen.getByText("Native audio"));
+    assert.ok(screen.getByText("Trace semantics"));
+    assert.ok(screen.getByText(/Image preprocessor:no-op/i));
   });
 
   it("normalizes generic backend apology in latest session response", async () => {

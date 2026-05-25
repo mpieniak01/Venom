@@ -42,7 +42,7 @@ type UnifiedModelCatalogLike = {
   runtimes?: ReadonlyArray<CatalogRuntime>;
 } | null;
 
-type ActiveRuntimeInfo = {
+export type ActiveRuntimeInfo = {
   status?: string;
   active_server?: string | null;
   active_endpoint?: string | null;
@@ -68,6 +68,24 @@ type ActiveRuntimeInfo = {
     string,
     { ok?: boolean; exit_code?: number | null; error?: string }
   > | null;
+  runtime_switch_gate?: {
+    in_progress?: boolean;
+    active_requests?: number;
+    switch_id?: string | null;
+    source?: string | null;
+    from_runtime?: string | null;
+    to_runtime?: string | null;
+    started_at_utc?: string | null;
+    reason?: string | null;
+  } | null;
+  last_runtime_switch?: {
+    at_utc?: string | null;
+    from_runtime?: string | null;
+    to_runtime?: string | null;
+    source?: string | null;
+    reason?: string | null;
+    model?: string | null;
+  } | null;
 } | null;
 
 function findActiveCatalogRuntime(

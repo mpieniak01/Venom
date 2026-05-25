@@ -63,7 +63,9 @@ def test_select_startup_model_priority_chain():
 
 
 @pytest.mark.asyncio
-async def test_build_voice_runtime_snapshot_returns_none_for_non_ollama(monkeypatch):
+async def test_build_voice_runtime_snapshot_returns_whisper_fallback_for_non_ollama(
+    monkeypatch,
+):
     monkeypatch.setattr(
         main_module,
         "get_active_llm_runtime",
@@ -76,7 +78,11 @@ async def test_build_voice_runtime_snapshot_returns_none_for_non_ollama(monkeypa
         ),
     )
 
-    assert await main_module._build_voice_runtime_snapshot() is None
+    snapshot = await main_module._build_voice_runtime_snapshot()
+    assert snapshot is not None
+    assert snapshot["provider"] == "vllm"
+    assert snapshot["voice_pipeline"]["profile"] == "whisper_llm_piper_fallback"
+    assert snapshot["voice_pipeline"]["stt"] == "faster_whisper"
 
 
 @pytest.mark.asyncio
@@ -323,6 +329,8 @@ async def test_audio_status_endpoint_includes_latest_session_download_url(monkey
     assert status["runtime_alignment"]["active_provider"] == "ollama"
     assert status["runtime_alignment"]["active_model"] == "gemma4:latest"
     assert status["runtime_alignment"]["response_runtime_fresh"] is True
+    assert status["runtime_state"]["active"]["runtime_id"] == "ollama@localhost"
+    assert status["runtime_state"]["switch"]["state"] == "idle"
 
 
 @pytest.mark.asyncio
@@ -343,6 +351,7 @@ async def test_audio_status_endpoint_returns_disabled_state_without_handler(
     assert status["enabled"] is False
     assert status["message"] == "Audio interface is disabled or not initialized."
     assert status["runtime_snapshot"]["runtime_id"] == "ollama@localhost"
+    assert status["runtime_state"]["active"]["runtime_id"] == "ollama@localhost"
 
 
 @pytest.mark.asyncio
@@ -510,6 +519,7 @@ async def test_audio_status_endpoint_includes_runtime_alignment_for_matching_ses
     assert status["runtime_alignment"]["latest_session_before_runtime_switch"] is False
     assert status["runtime_alignment"]["response_runtime_fresh"] is True
     assert status["runtime_alignment"]["response_runtime_matches_active"] is True
+    assert status["runtime_state"]["response"]["matches_active"] is True
 
 
 @pytest.mark.asyncio

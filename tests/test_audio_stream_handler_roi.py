@@ -2,6 +2,9 @@ import asyncio
 import base64
 import json
 import os
+import tempfile
+from functools import lru_cache
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -46,6 +49,61 @@ def _add_connection(handler: AudioStreamHandler, cid: int, is_speaking: bool = F
         "voice_mode": "standard",
     }
     return ws
+
+
+_VOICE_SESSION_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "data/audio/voice_sessions/20260525_115459_349506_137042488529824_a633d1bb"
+)
+_VOICE_FIXTURE_WAV = _VOICE_SESSION_FIXTURE / "recording.wav"
+_VOICE_FIXTURE_WEBM = _VOICE_SESSION_FIXTURE / "original.webm"
+_GEMMA4_LIVE_AUDIO_MODEL_CACHE = (
+    Path(__file__).resolve().parents[1]
+    / "models_cache/hf/models--google--gemma-4-E2B-it/snapshots"
+)
+
+
+def _live_gemma4_audio_enabled() -> bool:
+    """Enable live Gemma4 audio probing only on machines with local model cache."""
+    return bool(
+        os.environ.get("GEMMA4_LIVE_AUDIO_TESTS") == "1"
+        and _VOICE_FIXTURE_WAV.exists()
+        and any(_GEMMA4_LIVE_AUDIO_MODEL_CACHE.glob("*"))
+    )
+
+
+@lru_cache(maxsize=1)
+def _real_gemma4_transcription() -> str:
+    """Return the real native Gemma4 transcription for the checked-in voice sample."""
+    if not _live_gemma4_audio_enabled():
+        pytest.skip("Live Gemma4 audio probe is not enabled")
+
+    from scripts.dev.multi_runtime_direct_ingest_probe import (
+        DEFAULT_MODEL_ID,
+        _build_messages,
+        _build_prompt,
+        _load_model,
+        _normalize_answer,
+        _normalize_audio,
+        _run_inference,
+    )
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="gemma4_voice_roi_"))
+    normalized = _normalize_audio(_VOICE_FIXTURE_WAV, tmpdir)
+    model, processor, _ = _load_model(DEFAULT_MODEL_ID)
+    prompt = _build_prompt(
+        "Transcribe the speech in the audio. Return only the transcription, with no bullets and no extra commentary.",
+        "",
+        "transcribe",
+    )
+    messages = _build_messages(normalized.normalized_path, prompt)
+    generated_text = _run_inference(
+        model=model,
+        processor=processor,
+        messages=messages,
+        max_new_tokens=64,
+    )
+    return _normalize_answer(generated_text, "transcribe")
 
 
 # ---------------------------------------------------------------------------
@@ -591,6 +649,7 @@ async def test_process_audio_buffer_uses_voice_mode(monkeypatch, tmp_path):
     _add_connection(handler, cid)
     handler.active_connections[cid]["voice_mode"] = "action_items"
     monkeypatch.setattr(audio_stream_mod, "VOICE_SESSION_ROOT", tmp_path)
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: False)
 
     audio_engine = MagicMock()
     audio_engine.whisper = None
@@ -1129,7 +1188,7 @@ async def test_multi_runtime_health_ok_handles_success_and_failures(monkeypatch)
 async def test_invoke_multi_runtime_builds_request_and_validates_response(
     monkeypatch, tmp_path
 ):
-    """Gemma4 runtime request should send multipart payload and parse text result."""
+    """Gemma4 runtime should split transcription and response in native flow."""
     handler = _make_handler()
     wav_path = tmp_path / "recording.wav"
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
@@ -1154,6 +1213,11 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
     )
     monkeypatch.setattr(
         handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
+    )
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_transcribe_url",
+        lambda: "http://runtime/audio/transcribe",
     )
     monkeypatch.setattr(
         audio_stream_mod.Path,
@@ -1201,9 +1265,16 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
             return False
 
         async def post(self, url, data=None, files=None):
-            calls["url"] = url
-            calls["data"] = data
-            calls["files"] = files
+            calls.setdefault("urls", []).append(url)
+            calls.setdefault("payloads", []).append(
+                {"url": url, "data": data, "files": files}
+            )
+            if url.endswith("/audio/transcribe"):
+                return SimpleNamespace(
+                    status_code=200,
+                    json=lambda: {"text": "Ile to pięć razy pięć?"},
+                    text="",
+                )
             return SimpleNamespace(
                 status_code=200,
                 json=lambda: {
@@ -1218,21 +1289,31 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
 
     result = await handler._invoke_multi_runtime(wav_path, 17)
 
-    assert result["text"] == "25"
+    assert result["text"] == "Ile to pięć razy pięć?"
+    assert result["transcription"] == "Ile to pięć razy pięć?"
     assert result["response_text"] == "25"
     assert result["connection_id"] == 17
     assert calls["open_file"] == (str(wav_path), "rb")
-    assert calls["url"] == "http://runtime/v1/respond"
-    request_payload = json.loads(calls["data"]["request"])
+    assert calls["urls"] == [
+        "http://runtime/audio/transcribe",
+        "http://runtime/v1/respond",
+    ]
+    respond_payload = next(
+        payload
+        for payload in calls["payloads"]
+        if payload["url"].endswith("/v1/respond")
+    )
+    request_payload = json.loads(respond_payload["data"]["request"])
     assert request_payload["task"] == "question"
+    assert "question" not in request_payload
     assert request_payload["max_new_tokens"] == 77
     assert request_payload["release_after_response"] is True
     assert request_payload["messages"][0]["content"][0] == {
         "type": "audio",
         "path": "recording.wav",
     }
-    assert calls["files"]["audio"][0] == "recording.wav"
-    assert calls["files"]["audio"][1] == b"fake-wave-content"
+    assert respond_payload["files"]["audio"][0] == "recording.wav"
+    assert respond_payload["files"]["audio"][1] == b"fake-wave-content"
 
 
 @pytest.mark.asyncio
@@ -1245,6 +1326,11 @@ async def test_invoke_multi_runtime_prefers_alternate_text_fields(
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
     monkeypatch.setattr(
         handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
+    )
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_transcribe_url",
+        lambda: "http://runtime/audio/transcribe",
     )
 
     class _AsyncBinaryFile:
@@ -1274,6 +1360,12 @@ async def test_invoke_multi_runtime_prefers_alternate_text_fields(
             return False
 
         async def post(self, url, data=None, files=None):
+            if url.endswith("/audio/transcribe"):
+                return SimpleNamespace(
+                    status_code=200,
+                    json=lambda: {"text": "Dwa razy dwa"},
+                    text="",
+                )
             return SimpleNamespace(
                 status_code=200,
                 json=lambda: {
@@ -1288,20 +1380,24 @@ async def test_invoke_multi_runtime_prefers_alternate_text_fields(
 
     result = await handler._invoke_multi_runtime(wav_path, 17)
 
-    assert result["text"] == "42"
+    assert result["text"] == "Dwa razy dwa"
+    assert result["transcription"] == "Dwa razy dwa"
     assert result["response_text"] == "42"
 
 
 @pytest.mark.asyncio
-async def test_invoke_multi_runtime_uses_generated_text_when_response_empty(
-    monkeypatch, tmp_path
-):
-    """Fallback to generated_text when response_text is blank."""
+async def test_invoke_multi_runtime_raises_when_transcribe_fails(monkeypatch, tmp_path):
+    """Native Gemma transcription failure should fail fast."""
     handler = _make_handler()
     wav_path = tmp_path / "recording.wav"
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
     monkeypatch.setattr(
         handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
+    )
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_transcribe_url",
+        lambda: "http://runtime/audio/transcribe",
     )
 
     class _AsyncBinaryFile:
@@ -1331,6 +1427,8 @@ async def test_invoke_multi_runtime_uses_generated_text_when_response_empty(
             return False
 
         async def post(self, url, data=None, files=None):
+            if url.endswith("/audio/transcribe"):
+                return SimpleNamespace(status_code=500, json=lambda: {}, text="down")
             return SimpleNamespace(
                 status_code=200,
                 json=lambda: {"response_text": "  ", "generated_text": "41"},
@@ -1339,20 +1437,25 @@ async def test_invoke_multi_runtime_uses_generated_text_when_response_empty(
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
 
-    result = await handler._invoke_multi_runtime(wav_path, 17)
-    assert result["text"] == "41"
+    with pytest.raises(RuntimeError, match="audio/transcribe"):
+        await handler._invoke_multi_runtime(wav_path, 17)
 
 
 @pytest.mark.asyncio
 async def test_invoke_multi_runtime_uses_message_content_when_other_fields_empty(
     monkeypatch, tmp_path
 ):
-    """Fallback to message.content when text/response_text/generated_text are blank."""
+    """Fallback to message.content when response_text/generated_text are blank."""
     handler = _make_handler()
     wav_path = tmp_path / "recording.wav"
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
     monkeypatch.setattr(
         handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
+    )
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_transcribe_url",
+        lambda: "http://runtime/audio/transcribe",
     )
 
     class _AsyncBinaryFile:
@@ -1382,6 +1485,10 @@ async def test_invoke_multi_runtime_uses_message_content_when_other_fields_empty
             return False
 
         async def post(self, url, data=None, files=None):
+            if url.endswith("/audio/transcribe"):
+                return SimpleNamespace(
+                    status_code=200, json=lambda: {"text": "transkrypcja"}, text=""
+                )
             return SimpleNamespace(
                 status_code=200,
                 json=lambda: {
@@ -1396,7 +1503,9 @@ async def test_invoke_multi_runtime_uses_message_content_when_other_fields_empty
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _AsyncClient)
 
     result = await handler._invoke_multi_runtime(wav_path, 17)
-    assert result["text"] == "40"
+    assert result["text"] == "transkrypcja"
+    assert result["transcription"] == "transkrypcja"
+    assert result["response_text"] == "40"
 
 
 @pytest.mark.asyncio
@@ -1410,6 +1519,11 @@ async def test_invoke_multi_runtime_raises_for_http_and_empty_text(
     monkeypatch.setattr(
         handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_transcribe_url",
+        lambda: "http://runtime/audio/transcribe",
+    )
 
     class _HttpErrorClient:
         def __init__(self, *args, **kwargs):
@@ -1422,6 +1536,10 @@ async def test_invoke_multi_runtime_raises_for_http_and_empty_text(
             return False
 
         async def post(self, url, data=None, files=None):
+            if url.endswith("/audio/transcribe"):
+                return SimpleNamespace(
+                    status_code=200, json=lambda: {"text": "x"}, text=""
+                )
             return SimpleNamespace(status_code=503, json=lambda: {}, text="down")
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _HttpErrorClient)
@@ -1431,6 +1549,10 @@ async def test_invoke_multi_runtime_raises_for_http_and_empty_text(
 
     class _EmptyTextClient(_HttpErrorClient):
         async def post(self, url, data=None, files=None):
+            if url.endswith("/audio/transcribe"):
+                return SimpleNamespace(
+                    status_code=200, json=lambda: {"text": "x"}, text=""
+                )
             return SimpleNamespace(status_code=200, json=lambda: {"text": ""}, text="")
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _EmptyTextClient)
@@ -1440,10 +1562,10 @@ async def test_invoke_multi_runtime_raises_for_http_and_empty_text(
 
 
 @pytest.mark.asyncio
-async def test_process_native_multi_runtime_pipeline_handles_selection_and_fallbacks(
+async def test_process_native_multi_runtime_pipeline_handles_selection_and_health_check(
     monkeypatch, tmp_path
 ):
-    """Native pipeline should short-circuit cleanly before whisper fallback."""
+    """Native pipeline should stay native even if health precheck is false."""
     handler = _make_handler()
     session_dir = tmp_path / "session"
     session_dir.mkdir()
@@ -1460,6 +1582,9 @@ async def test_process_native_multi_runtime_pipeline_handles_selection_and_fallb
     )
 
     handler.audio_engine = MagicMock()
+    handler.audio_engine.speak = AsyncMock(
+        return_value=np.array([1, 2], dtype=np.int16)
+    )
     monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
     monkeypatch.setattr(
         handler,
@@ -1477,15 +1602,24 @@ async def test_process_native_multi_runtime_pipeline_handles_selection_and_fallb
     )
     monkeypatch.setattr(handler, "_build_runtime_metadata", lambda _agent: {"llm": "x"})
     monkeypatch.setattr(handler, "_connection_voice_mode", lambda _cid: "standard")
+    invoke_multi_runtime = AsyncMock(
+        return_value={"text": "test", "response_text": "test"}
+    )
+    monkeypatch.setattr(handler, "_invoke_multi_runtime", invoke_multi_runtime)
+    monkeypatch.setattr(handler, "_send_json", AsyncMock())
+    monkeypatch.setattr(handler, "_send_audio", AsyncMock())
 
     assert (
         await handler._process_native_multi_runtime_pipeline(
             2, session_dir, wav_path, timings_ms, 0.0, MagicMock()
         )
-        is False
+        is True
     )
-    assert update_calls[-1]["pipeline_id"] == "whisper_llm_piper"
-    assert update_calls[-1]["fallback_reason"] == "multi_runtime health check failed"
+    assert invoke_multi_runtime.await_count == 1
+    assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"
+    assert update_calls[0]["audio_input_status"] == "verified"
+    assert update_calls[0]["decoder_source"] == "multi_runtime"
+    assert update_calls[0]["fallback_reason"] == ""
 
 
 @pytest.mark.asyncio
@@ -1550,10 +1684,68 @@ async def test_process_native_multi_runtime_pipeline_success(monkeypatch, tmp_pa
     assert sent_json[-1] == {"type": "complete"}
     assert len(sent_audio) == 1
     assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"
+    assert update_calls[0]["audio_input_status"] == "verified"
+    assert update_calls[0]["decoder_source"] == "multi_runtime"
+    assert update_calls[0]["fallback_reason"] == ""
     assert update_calls[0]["transcription"] == "piec razy piec"
     assert update_calls[0]["execution_context"] == VOICE_EXECUTION_CONTEXT
     assert update_calls[0]["history_scope"] == VOICE_HISTORY_SCOPE
     assert update_calls[1]["pipeline_id"] == "multi_runtime_piper"
+
+
+@pytest.mark.asyncio
+async def test_process_native_multi_runtime_pipeline_reports_error_on_native_failure(
+    monkeypatch, tmp_path
+):
+    """Native multi_runtime failure should stop the pipeline instead of falling back."""
+    handler = _make_handler()
+    handler.audio_engine = MagicMock()
+    handler.audio_engine.speak = AsyncMock(
+        return_value=np.array([1, 2], dtype=np.int16)
+    )
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    wav_path = session_dir / "recording.wav"
+    wav_path.write_bytes(b"wav")
+    timings_ms = {}
+    sent_json = []
+    update_calls = []
+
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_runtime_snapshot",
+        lambda: {"audio_runtime_provider": "multi_runtime"},
+    )
+    monkeypatch.setattr(
+        handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(
+        handler,
+        "_invoke_multi_runtime",
+        AsyncMock(side_effect=RuntimeError("native boom")),
+    )
+    monkeypatch.setattr(
+        handler,
+        "_update_voice_session_metadata",
+        lambda _dir, payload: update_calls.append(payload),
+    )
+    monkeypatch.setattr(handler, "_build_runtime_metadata", lambda _agent: {"llm": "x"})
+    monkeypatch.setattr(
+        handler,
+        "_send_json",
+        AsyncMock(side_effect=lambda cid, payload: sent_json.append(payload)),
+    )
+    monkeypatch.setattr(handler, "_send_audio", AsyncMock())
+
+    result = await handler._process_native_multi_runtime_pipeline(
+        4, session_dir, wav_path, timings_ms, 0.0, MagicMock()
+    )
+
+    assert result is True
+    assert any(item.get("type") == "error" for item in sent_json)
+    assert update_calls[0]["audio_input_status"] == "failed"
+    assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"
 
 
 # ---------------------------------------------------------------------------
@@ -1584,25 +1776,18 @@ async def test_process_audio_buffer_no_engine_sends_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_process_encoded_audio_buffer_full_flow(monkeypatch, tmp_path):
-    """Encoded pipeline should persist, transcribe, answer and emit audio."""
+    """Encoded pipeline should persist and use the native Gemma4 audio path."""
+    if not _live_gemma4_audio_enabled():
+        pytest.skip("Live Gemma4 audio probe is not enabled")
     handler = _make_handler()
     cid = 31
     _add_connection(handler, cid)
     handler.active_connections[cid]["voice_mode"] = "summary"
     monkeypatch.setattr(audio_stream_mod, "VOICE_SESSION_ROOT", tmp_path)
 
-    session_dir = tmp_path / "20260509_000000_31"
-    session_dir.mkdir(parents=True)
-    (session_dir / "recording.wav").write_bytes(b"RIFFTEST")
-
     audio_engine = MagicMock()
-    audio_engine.transcribe_file = MagicMock(return_value="co to jest?")
     audio_engine.speak = AsyncMock(return_value=np.array([10, 11], dtype=np.int16))
     handler.audio_engine = audio_engine
-
-    operator_agent = MagicMock()
-    operator_agent.process = AsyncMock(return_value="To jest test.")
-    operator_agent._resolve_chat_service_id.return_value = "chat"
 
     sent = []
     audio_sent = []
@@ -1615,27 +1800,40 @@ async def test_process_encoded_audio_buffer_full_flow(monkeypatch, tmp_path):
 
     monkeypatch.setattr(handler, "_send_json", fake_send_json)
     monkeypatch.setattr(handler, "_send_audio", fake_send_audio)
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
     monkeypatch.setattr(
-        handler, "_persist_encoded_voice_session", lambda *a, **k: session_dir
+        handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
     )
-    monkeypatch.setattr(
-        handler,
-        "_load_wav_int16",
-        lambda _path: (np.array([100, 200], dtype=np.int16), 16000),
-    )
-    monkeypatch.setattr(
-        handler,
-        "_normalize_recorded_audio",
-        lambda audio: (
-            audio,
-            {
-                "gain_applied": 1.0,
-                "peak_before_normalization": 0.1,
-                "dc_offset": 0.0,
-            },
-        ),
-    )
-    monkeypatch.setattr(handler, "_write_wav", lambda *a, **k: None)
+
+    async def _invoke_multi_runtime(_wav_path, _cid):
+        transcript = _real_gemma4_transcription()
+        return {
+            "text": transcript,
+            "transcription": transcript,
+            "response_text": transcript,
+            "model": "google/gemma-4-E2B-it",
+            "execution_trace": [
+                "input_router",
+                "image_preprocessor",
+                "ocr_or_vision",
+                "retrieval",
+                "main_generation",
+                "assistant_postprocess",
+                "audio_output",
+            ],
+            "selected_policy": "balanced|vlm_only|off|off|off|off",
+            "selected_image_strategy": "vlm_only",
+            "retrieval_used": False,
+            "retrieval_context_items": 0,
+            "retrieval_route": "none",
+            "assistant_used": False,
+            "economy_mode_activated": False,
+            "degradation_reasons": [],
+            "component_snapshot": [],
+            "raw_thinking_available": False,
+        }
+
+    monkeypatch.setattr(handler, "_invoke_multi_runtime", _invoke_multi_runtime)
     monkeypatch.setattr(
         handler,
         "_build_runtime_metadata",
@@ -1651,21 +1849,29 @@ async def test_process_encoded_audio_buffer_full_flow(monkeypatch, tmp_path):
         },
     )
 
+    webm_bytes = _VOICE_FIXTURE_WEBM.read_bytes()
     await handler._process_encoded_audio_buffer(
         cid,
-        [b"encoded-chunk-a", b"encoded-chunk-b"],
-        operator_agent=operator_agent,
+        [webm_bytes[: len(webm_bytes) // 2], webm_bytes[len(webm_bytes) // 2 :]],
+        operator_agent=MagicMock(),
         mime_type="audio/webm;codecs=opus",
     )
 
     assert any(msg.get("status") == "decode" for msg in sent)
-    assert any(msg.get("status") == "stt" for msg in sent)
-    assert any(msg.get("status") == "thinking" for msg in sent)
+    assert any(msg.get("status") == "native_audio" for msg in sent)
+    assert any(msg.get("type") == "transcription" for msg in sent)
+    assert any(msg.get("type") == "response_text" for msg in sent)
     assert any(msg.get("status") == "tts" for msg in sent)
     assert any(msg.get("type") == "complete" for msg in sent)
     assert audio_sent
-    operator_agent.process.assert_awaited_once()
     audio_engine.speak.assert_awaited_once()
+    session_path = next(tmp_path.iterdir())
+    metadata = json.loads((session_path / "metadata.json").read_text())
+    assert metadata["pipeline_id"] == "multi_runtime_piper"
+    assert metadata["audio_input_status"] == "verified"
+    assert metadata["decoder_source"] == "multi_runtime"
+    assert metadata["transcription"] == _real_gemma4_transcription()
+    assert metadata["response_text"] == _real_gemma4_transcription()
 
 
 @pytest.mark.asyncio
@@ -1765,21 +1971,15 @@ async def test_schedule_silence_finalize_reraises_cancelled_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_process_audio_buffer_runs_normal_flow(monkeypatch, tmp_path):
+    if not _live_gemma4_audio_enabled():
+        pytest.skip("Live Gemma4 audio probe is not enabled")
     handler = _make_handler()
     cid = 81
     _add_connection(handler, cid, is_speaking=True)
     handler.audio_engine = MagicMock()
-    handler.audio_engine.listen = AsyncMock(return_value="co to jest?")
     handler.audio_engine.speak = AsyncMock(
         return_value=np.array([1, 2], dtype=np.int16)
     )
-
-    class DummyAgent:
-        def _resolve_chat_service_id(self):
-            return "chat"
-
-        async def process(self, text, mode="standard"):
-            return f"odpowiedź: {text}:{mode}"
 
     sent = []
 
@@ -1792,17 +1992,34 @@ async def test_process_audio_buffer_runs_normal_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(handler, "_persist_voice_session", lambda *a, **k: tmp_path)
     monkeypatch.setattr(handler, "_update_voice_session_metadata", lambda *a, **k: None)
     monkeypatch.setattr(handler, "_build_runtime_metadata", lambda *_a, **_k: {"rt": 1})
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
+    monkeypatch.setattr(
+        handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
+    )
+
+    async def _invoke_multi_runtime(_wav_path, _cid):
+        transcript = _real_gemma4_transcription()
+        return {
+            "text": transcript,
+            "transcription": transcript,
+            "response_text": transcript,
+            "model": "google/gemma-4-E2B-it",
+        }
+
+    monkeypatch.setattr(handler, "_invoke_multi_runtime", _invoke_multi_runtime)
+
+    wav_audio, wav_sr = handler._load_wav_int16(_VOICE_FIXTURE_WAV)
 
     await handler._process_audio_buffer(
         cid,
-        [np.array([1, 2, 3], dtype=np.int16)],
-        DummyAgent(),
-        sample_rate=16000,
+        [wav_audio],
+        MagicMock(),
+        sample_rate=wav_sr,
     )
 
-    assert any(msg.get("status") == "stt" for msg in sent)
+    assert any(msg.get("status") == "native_audio" for msg in sent)
     assert any(msg.get("type") == "transcription" for msg in sent)
-    assert any(msg.get("status") == "thinking" for msg in sent)
+    assert any(msg.get("type") == "response_text" for msg in sent)
     assert any(msg.get("status") == "tts" for msg in sent)
     assert any(msg.get("type") == "complete" for msg in sent)
     assert send_audio.await_count == 1

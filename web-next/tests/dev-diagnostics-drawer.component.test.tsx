@@ -30,6 +30,7 @@ function makeAudioStatus() {
       sample_rate: 24000,
       input_format: "wav",
       voice_mode: "standard",
+      voice_pipeline_mode: "native_multi_runtime",
       gain_applied: 1,
       peak_before_normalization: 0.4,
       rms_after_normalization: 0.2,
@@ -48,6 +49,9 @@ function makeAudioStatus() {
       audio_runtime_model: "google/gemma-4-E2B-it",
       audio_input_status: "verified",
       decoder_source: "multi_runtime",
+      execution_trace_annotations: [
+        { label: "Image preprocessor", status: "no-op", note: "audio-only voice session" },
+      ],
       fallback_reason: null,
       native_audio_ms: 1200,
       runtime_log_path: "/var/log/venom/multi_runtime.log",
@@ -130,6 +134,9 @@ describe("DevDiagnosticsDrawer", () => {
     assert.ok(screen.getByText(/LLM multi_runtime:google\/gemma-4-E2B-it/));
     assert.ok(screen.getByText(/STT backend:\s+multi_runtime \(google\/gemma-4-E2B-it\)/));
     assert.ok(screen.getAllByText("Kanał gotowy").length >= 2);
+    assert.ok(screen.getByText("Tryb toru: native_multi_runtime"));
+    assert.ok(screen.getAllByText("Native audio: 1.20s").length >= 1);
+    assert.ok(screen.getByText(/Trace semantics: Image preprocessor:no-op/i));
     assert.ok(screen.getByText("Kopiuj runtime JSON"));
     assert.ok(screen.getByText("Kopiuj sesję JSON"));
 

@@ -584,8 +584,9 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         voice_context_message = _build_voice_context_message(voice_context)
         if voice_context_message:
             temp_history.add_system_message(voice_context_message)
-        if mode != "standard":
-            temp_history.add_system_message(str(mode_prompt["instruction"]))
+        mode_instruction = str(mode_prompt.get("instruction") or "").strip()
+        if mode != "standard" and mode_instruction:
+            temp_history.add_system_message(mode_instruction)
         for message in self.chat_history.messages:
             role_value = _normalize_message_role(getattr(message, "role", ""))
             if role_value == "system":

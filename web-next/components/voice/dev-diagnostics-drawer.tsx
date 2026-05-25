@@ -44,6 +44,13 @@ type AudioStatus = {
       tts_sample_rate?: number | null;
     };
     pipeline_id?: string | null;
+    voice_pipeline_mode?: string | null;
+    execution_trace_annotations?: Array<{
+      stage?: string | null;
+      label?: string | null;
+      status?: "active" | "no-op" | "disabled" | "unknown" | null;
+      note?: string | null;
+    }> | null;
     audio_runtime_provider?: string | null;
     audio_runtime_model?: string | null;
     audio_input_status?: string | null;
@@ -307,6 +314,7 @@ function LatestRecordingSection({
 }: Readonly<{
   latestVoiceSession: AudioStatus["latest_voice_session"];
 }>) {
+  const t = useTranslation();
   if (!latestVoiceSession?.download_url) return null;
 
   const timings = latestVoiceSession.timings_ms;
@@ -360,8 +368,14 @@ function LatestRecordingSection({
           </p>
         )}
         {latestVoiceSession.transcription && <p>STT: {latestVoiceSession.transcription}</p>}
+        {latestVoiceSession.voice_pipeline_mode && (
+          <p>{t("voice.controls.pipelineMode")}: {latestVoiceSession.voice_pipeline_mode}</p>
+        )}
         {latestVoiceSession.pipeline_id && (
           <p>Pipeline: {latestVoiceSession.pipeline_id}</p>
+        )}
+        {latestVoiceSession.native_audio_ms != null && (
+          <p>{t("voice.controls.nativeAudio")}: {formatSeconds(latestVoiceSession.native_audio_ms)}</p>
         )}
         {audioRuntimeProvider && (
           <p>
@@ -377,6 +391,14 @@ function LatestRecordingSection({
         {latestVoiceSession.decoder_source && (
           <p>Decoder source: {latestVoiceSession.decoder_source}</p>
         )}
+        {latestVoiceSession.execution_trace_annotations?.length ? (
+          <p>
+            Trace semantics:{" "}
+            {latestVoiceSession.execution_trace_annotations
+              .map((item) => `${item.label ?? item.stage ?? "stage"}:${item.status ?? "unknown"}`)
+              .join(" · ")}
+          </p>
+        ) : null}
         {latestVoiceSession.audio_input_status && (
           <p>Audio input: {latestVoiceSession.audio_input_status}</p>
         )}

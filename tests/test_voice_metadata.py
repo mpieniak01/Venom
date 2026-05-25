@@ -3,7 +3,9 @@ from __future__ import annotations
 from venom_core.utils.voice_metadata import (
     build_voice_reasoning_summary,
     build_voice_session_insights,
+    build_voice_trace_annotations,
     infer_voice_emotion,
+    infer_voice_session_mode,
 )
 
 
@@ -135,3 +137,43 @@ def test_build_voice_session_insights_prefers_raw_thinking_status():
     assert payload["emotion_label"] is None
     assert payload["emotion_confidence"] is None
     assert payload["emotion_source"] == "none"
+
+
+def test_infer_voice_session_mode_prefers_native_audio_for_multi_runtime():
+    assert (
+        infer_voice_session_mode(
+            voice_pipeline_mode="native_multi_runtime",
+            pipeline_id="multi_runtime_piper",
+            decoder_source="multi_runtime",
+            native_audio_ms=1234.0,
+        )
+        == "native_audio"
+    )
+
+
+def test_build_voice_trace_annotations_marks_audio_only_no_ops():
+    annotations = build_voice_trace_annotations(
+        [
+            "input_router",
+            "image_preprocessor",
+            "ocr_or_vision",
+            "retrieval",
+            "main_generation",
+            "assistant_postprocess",
+            "audio_output",
+        ],
+        voice_pipeline_mode="native_multi_runtime",
+        pipeline_id="multi_runtime_piper",
+        decoder_source="multi_runtime",
+        native_audio_ms=1234.0,
+    )
+
+    assert [item["status"] for item in annotations[:4]] == [
+        "active",
+        "no-op",
+        "no-op",
+        "no-op",
+    ]
+    assert annotations[4]["note"] == "Gemma response"
+    assert annotations[5]["note"] == "response shaping"
+    assert annotations[6]["note"] == "tts output"

@@ -2,6 +2,7 @@
 
 import type { LogEntryType } from "@/lib/logs";
 import type { LlmRuntimeTargetOption, LlmServerInfo, Task } from "@/lib/types";
+import type { ActiveRuntimeInfo } from "@/lib/cockpit-runtime-selection";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { CockpitLogs } from "@/components/cockpit/cockpit-logs";
 import { CockpitModels } from "@/components/cockpit/cockpit-models";
@@ -24,7 +25,7 @@ type CockpitLlmOpsPanelProps = Readonly<{
   onServerSessionReset: () => void;
   onClearSessionMemory: () => void;
   onClearGlobalMemory: () => void;
-  activeServerInfo?: { active_model?: string | null } | null;
+  activeServerInfo?: ActiveRuntimeInfo;
   activeServerName?: string | null;
   llmActionPending: string | null;
   onActivateServer: () => void;

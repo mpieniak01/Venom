@@ -27,6 +27,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from venom_core.api.schemas.multi_runtime_profile import (
     MultiRuntimeProfileResponse,
@@ -349,6 +350,27 @@ def get_engine():
     return get_daemon().active_engine()
 
 
+async def _ensure_daemon_target_ready(daemon: MultiRuntimeDaemon) -> MultiRuntimeEngine:
+    """Ensure the target model is loaded before servicing an inference request."""
+    # Backward-compat for lightweight test doubles that only expose active_engine().
+    if not hasattr(daemon, "is_ready") or not hasattr(daemon, "load_target"):
+        engine = daemon.active_engine()
+        if not engine.is_loaded():
+            raise RuntimeError("Model not loaded")
+        return engine
+
+    if daemon.is_ready():
+        return daemon.active_engine()
+
+    lock = await _acquire_lifecycle_lock_after_drain(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
+    try:
+        if not daemon.is_ready():
+            await asyncio.to_thread(daemon.load_target)
+        return daemon.active_engine()
+    finally:
+        lock.release()
+
+
 async def initialize_daemon(
     model_id: str, cache_dir: str, device: str = "auto", max_new_tokens: int = 128
 ) -> None:
@@ -430,14 +452,14 @@ async def _parse_respond_request(
         request_payload = RespondRequest.model_validate_json(str(raw_request))
         audio_file = form.get("audio")
         audio_bytes = None
-        if isinstance(audio_file, UploadFile):
+        if isinstance(audio_file, StarletteUploadFile):
             audio_bytes = await audio_file.read()
         image_bytes_list: list[bytes] = []
         image_field = form.get("image")
-        if isinstance(image_field, UploadFile):
+        if isinstance(image_field, StarletteUploadFile):
             image_bytes_list.append(await image_field.read())
         for image_item in form.getlist("images"):
-            if isinstance(image_item, UploadFile):
+            if isinstance(image_item, StarletteUploadFile):
                 image_bytes_list.append(await image_item.read())
         return request_payload, audio_bytes, image_bytes_list
 
@@ -996,7 +1018,7 @@ async def respond(request: Request) -> RespondResponse:
     inflight_incremented = False
     try:
         daemon = get_daemon()
-        engine = daemon.active_engine()
+        engine = await _ensure_daemon_target_ready(daemon)
         await _increment_respond_inflight()
         inflight_incremented = True
     except RuntimeError as e:
@@ -1773,7 +1795,7 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
     """OpenAI-compatible text chat endpoint for Semantic Kernel connectors."""
     try:
         daemon = get_daemon()
-        engine = daemon.active_engine()
+        engine = await _ensure_daemon_target_ready(daemon)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -1854,7 +1876,7 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
 async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
     try:
         daemon = get_daemon()
-        engine = daemon.active_engine()
+        engine = await _ensure_daemon_target_ready(daemon)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -1890,7 +1912,7 @@ async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
 async def warmup():
     try:
         daemon = get_daemon()
-        engine = daemon.active_engine()
+        engine = await _ensure_daemon_target_ready(daemon)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 

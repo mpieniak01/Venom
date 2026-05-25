@@ -25,11 +25,19 @@ type RuntimeComponentSnapshotItem = Readonly<{
   last_error?: string | null;
 }>;
 
+type RuntimeTraceAnnotationItem = Readonly<{
+  stage?: string | null;
+  label?: string | null;
+  status?: "active" | "no-op" | "disabled" | "unknown" | null;
+  note?: string | null;
+}>;
+
 type RuntimeDiagnosticsPanelProps = Readonly<{
   title: string;
   description?: string;
   summaryItems?: RuntimeSummaryItem[];
   trace?: string[] | null;
+  traceAnnotations?: RuntimeTraceAnnotationItem[] | null;
   componentSnapshot?: RuntimeComponentSnapshotItem[] | null;
   degradationReasons?: string[] | null;
   emptyStateTitle?: string;
@@ -74,6 +82,7 @@ export function RuntimeDiagnosticsPanel({
   description,
   summaryItems,
   trace,
+  traceAnnotations,
   componentSnapshot,
   degradationReasons,
   emptyStateTitle,
@@ -86,9 +95,10 @@ export function RuntimeDiagnosticsPanel({
     emptyStateDescription ?? t("runtime.diagnostics.emptyStateDescription");
   const hasSummary = Boolean(summaryItems && summaryItems.length > 0);
   const hasTrace = Boolean(trace && trace.length > 0);
+  const hasTraceAnnotations = Boolean(traceAnnotations && traceAnnotations.length > 0);
   const hasComponents = Boolean(componentSnapshot && componentSnapshot.length > 0);
   const hasDegradations = Boolean(degradationReasons && degradationReasons.length > 0);
-  const hasAny = hasSummary || hasTrace || hasComponents || hasDegradations;
+  const hasAny = hasSummary || hasTrace || hasTraceAnnotations || hasComponents || hasDegradations;
 
   return (
     <Panel
@@ -125,6 +135,38 @@ export function RuntimeDiagnosticsPanel({
               <p className="mt-1 font-mono text-[11px] text-zinc-300">
                 {trace?.join(" -> ")}
               </p>
+            </div>
+          )}
+
+          {hasTraceAnnotations && (
+            <div className="rounded-2xl box-muted px-4 py-3">
+              <p className="text-caption">{t("runtime.diagnostics.executionTrace")}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {traceAnnotations?.map((item) => {
+                  const tone =
+                    item.status === "active"
+                      ? "success"
+                      : item.status === "no-op"
+                        ? "neutral"
+                        : item.status === "disabled"
+                          ? "warning"
+                          : "neutral";
+                  return (
+                    <Badge key={`${item.stage ?? item.label ?? "trace"}-${item.status ?? "unknown"}`} tone={tone}>
+                      {item.label ?? item.stage ?? t("runtime.diagnostics.unknown")}
+                      {item.status ? ` · ${item.status}` : ""}
+                    </Badge>
+                  );
+                })}
+              </div>
+              {traceAnnotations?.some((item) => item.note) && (
+                <p className="mt-2 text-[11px] text-zinc-400">
+                  {traceAnnotations
+                    ?.map((item) => item.note)
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
             </div>
           )}
 
@@ -208,4 +250,5 @@ export type {
   RuntimeSummaryItem,
   RuntimeComponentSnapshotItem,
   RuntimeDiagnosticsPanelProps,
+  RuntimeTraceAnnotationItem,
 };

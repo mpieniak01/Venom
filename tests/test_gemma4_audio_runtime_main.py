@@ -292,7 +292,9 @@ async def test_chat_completions_does_not_decrement_inflight_when_increment_fails
 
 
 @pytest.mark.asyncio
-async def test_respond_decrements_inflight_when_model_not_loaded(monkeypatch) -> None:
+async def test_respond_returns_503_before_inflight_when_model_not_loaded(
+    monkeypatch,
+) -> None:
     class EngineStub:
         def is_loaded(self) -> bool:
             return False
@@ -329,5 +331,5 @@ async def test_respond_decrements_inflight_when_model_not_loaded(monkeypatch) ->
         await runtime_main.respond(request)
 
     assert exc_info.value.status_code == 503
-    assert calls["inc"] == 1
-    assert calls["dec"] == 1
+    assert calls["inc"] == 0
+    assert calls["dec"] == 0

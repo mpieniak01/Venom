@@ -43,7 +43,14 @@ import {
   RuntimeDiagnosticsPanel,
   type RuntimeSummaryItem,
 } from "@/components/runtime/runtime-diagnostics-panel";
-import { canonicalRuntimeId } from "@/lib/runtime-id";
+import {
+  buildVoiceRuntimeStateView,
+  formatVoiceRuntimeTuple,
+} from "@/lib/voice-runtime-state";
+import {
+  buildVoiceTimingEntries,
+  inferVoiceSessionTimingMode,
+} from "@/lib/voice-session-timings";
 
 export type AudioStatus = {
   enabled: boolean;
@@ -97,6 +104,53 @@ export type AudioStatus = {
     response_runtime_matches_active?: boolean | null;
     last_runtime_switch_at_utc?: string | null;
   } | null;
+  runtime_state?: {
+    selected?: {
+      runtime_id?: string | null;
+      model_name?: string | null;
+      source?: string | null;
+    } | null;
+    active?: {
+      runtime_id?: string | null;
+      provider?: string | null;
+      model_name?: string | null;
+    } | null;
+    response?: {
+      provider?: string | null;
+      model_name?: string | null;
+      pipeline_id?: string | null;
+      created_at?: string | null;
+      fresh?: boolean | null;
+      matches_active?: boolean | null;
+    } | null;
+    switch?: {
+      state?: "idle" | "switching" | "ready" | "failed" | null;
+      switch_id?: string | null;
+      from_runtime?: string | null;
+      to_runtime?: string | null;
+      started_at_utc?: string | null;
+      finished_at_utc?: string | null;
+      reason?: string | null;
+      source?: string | null;
+    } | null;
+  } | null;
+  runtime_switch_gate?: {
+    in_progress?: boolean;
+    switch_id?: string | null;
+    source?: string | null;
+    from_runtime?: string | null;
+    to_runtime?: string | null;
+    started_at_utc?: string | null;
+    reason?: string | null;
+  } | null;
+  last_runtime_switch?: {
+    at_utc?: string | null;
+    from_runtime?: string | null;
+    to_runtime?: string | null;
+    source?: string | null;
+    reason?: string | null;
+    model?: string | null;
+  } | null;
 };
 
 type VoiceRuntimeInfo = {
@@ -138,7 +192,15 @@ type VoiceSessionDiagnostics = {
   response_text?: string;
   download_url?: string | null;
   pipeline_id?: string | null;
+  voice_pipeline_mode?: string | null;
+  voice_session_mode?: string | null;
   execution_trace?: string[] | null;
+  execution_trace_annotations?: Array<{
+    stage?: string | null;
+    label?: string | null;
+    status?: "active" | "no-op" | "disabled" | "unknown" | null;
+    note?: string | null;
+  }> | null;
   selected_policy?: string | null;
   selected_image_strategy?: string | null;
   retrieval_used?: boolean | null;
@@ -189,14 +251,6 @@ const nextSecureRandomFallbackInt = () => {
   const perfNow = typeof performance === "undefined" ? 0 : Math.floor(performance.now());
   return Date.now() + perfNow + secureRandomFallbackCounter;
 };
-
-function formatRuntimeSummaryLabel(
-  provider: string | null | undefined,
-  model: string | null | undefined,
-): string {
-  const normalizedProvider = canonicalRuntimeId(provider ?? "") || "—";
-  return `${normalizedProvider} / ${model ?? "—"}`;
-}
 
 const secureRandomInt = (maxExclusive: number): number => {
   if (maxExclusive <= 0) return 0;
@@ -278,26 +332,22 @@ const buildDebugAudioStatus = (recording: boolean): AudioStatus => ({
 const getBrowserWindow = (): BrowserWindowLike | undefined =>
   globalThis as unknown as BrowserWindowLike;
 
-const TIMING_STAGES: Array<{ key: string; label: string; accent?: boolean }> = [
-  { key: "decode_ms", label: "Decode" },
-  { key: "stt_ms", label: "STT" },
-  { key: "llm_ms", label: "LLM" },
-  { key: "tts_ms", label: "TTS" },
-  { key: "total_backend_ms", label: "Total", accent: true },
-];
-
 type TimingStripProps = Readonly<{
   timings?: Record<string, number | null | undefined> | null;
+  session?: Pick<
+    VoiceSessionDiagnostics,
+    "voice_pipeline_mode" | "pipeline_id" | "decoder_source" | "native_audio_ms"
+  > | null;
 }>;
 
-function TimingStrip({ timings }: TimingStripProps) {
-  const timingValues = timings ?? null;
-  const hasAny = Boolean(timingValues) && TIMING_STAGES.some((s) => timingValues?.[s.key] != null);
+export function TimingStrip({ timings, session }: TimingStripProps) {
+  const timingEntries = buildVoiceTimingEntries(timings, session);
+  const hasAny = timingEntries.some((entry) => entry.value != null);
+  const gridTemplateColumns = `repeat(${timingEntries.length}, minmax(0, 1fr))`;
   return (
-    <div className="grid grid-cols-5 gap-1.5 text-xs">
-      {TIMING_STAGES.map(({ key, label, accent }) => {
-        const raw = timings?.[key];
-        const val = formatTimingSeconds(typeof raw === "number" ? raw : null);
+    <div className="grid gap-1.5 text-xs" style={{ gridTemplateColumns }}>
+      {timingEntries.map(({ key, label, value, accent }) => {
+        const val = formatTimingSeconds(typeof value === "number" ? value : null);
         return (
           <div
             key={key}
@@ -1077,7 +1127,8 @@ export type VoiceStatusUpdate = Pick<AudioStatus,
   | "enabled" | "stt_ready" | "tts_ready" | "tts_fallback"
   | "whisper_model_size" | "stt_backend" | "tts_backend"
   | "vad_threshold" | "dependencies" | "runtime_snapshot"
-  | "latest_voice_session" | "runtime_alignment"
+  | "latest_voice_session" | "runtime_alignment" | "runtime_state"
+  | "runtime_switch_gate" | "last_runtime_switch"
 >;
 
 const VOICE_MODE_TITLE_KEYS: Record<VoiceModePreset, string> = {
@@ -2823,6 +2874,7 @@ function VoiceCommandCenterPanel({
     orbActivityWindow,
     metricsRef,
   });
+  const runtimeStateView = buildVoiceRuntimeStateView(viewState.effectiveAudioStatus ?? null);
 
   useEffect(() => bindRecordingReleaseListeners(viewState.effectiveRecording, stopRecording), [
     stopRecording,
@@ -3022,7 +3074,10 @@ function VoiceCommandCenterPanel({
             </div>
           </div>
 
-          <TimingStrip timings={viewState.effectiveAudioStatus?.latest_voice_session?.timings_ms} />
+          <TimingStrip
+            timings={viewState.effectiveAudioStatus?.latest_voice_session?.timings_ms}
+            session={viewState.effectiveAudioStatus?.latest_voice_session}
+          />
 
           {viewState.effectiveAudioStatus?.latest_voice_session && (
             <RuntimeDiagnosticsPanel
@@ -3031,26 +3086,32 @@ function VoiceCommandCenterPanel({
               summaryItems={
                 [
                   {
-                    label: t("voice.controls.systemVoiceRuntime"),
-                    value: formatRuntimeSummaryLabel(
-                      viewState.effectiveAudioStatus.runtime_snapshot?.provider
-                        ?? viewState.effectiveAudioStatus.runtime_snapshot?.runtime_id,
-                      viewState.effectiveAudioStatus.runtime_snapshot?.model_name,
+                    label: t("voice.controls.liveRuntime"),
+                    value: formatVoiceRuntimeTuple(
+                      runtimeStateView.active.runtimeId,
+                      runtimeStateView.active.modelName,
                     ),
                     tone: "neutral",
                   },
                   {
-                    label: t("voice.controls.responseRuntime"),
-                    value: (() => {
-                      const tuple = formatRuntimeSummaryLabel(
-                        viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_provider,
-                        viewState.effectiveAudioStatus.latest_voice_session?.audio_runtime_model,
-                      );
-                      return viewState.effectiveAudioStatus.runtime_alignment?.response_runtime_fresh === false
-                        ? `${tuple} (${t("voice.controls.previousSession")})`
-                        : tuple;
-                    })(),
+                    label: t("voice.controls.sessionRuntime"),
+                    value: runtimeStateView.response.fresh
+                      ? formatVoiceRuntimeTuple(
+                        runtimeStateView.response.runtimeId,
+                        runtimeStateView.response.modelName,
+                      )
+                      : `${formatVoiceRuntimeTuple(
+                        runtimeStateView.response.runtimeId,
+                        runtimeStateView.response.modelName,
+                      )} (${t("voice.controls.previousSession")})`,
                     tone: "neutral",
+                  },
+                  {
+                    label: t("voice.controls.pipelineMode"),
+                    value: viewState.effectiveAudioStatus.latest_voice_session.voice_pipeline_mode
+                      ?? inferVoiceSessionTimingMode(viewState.effectiveAudioStatus.latest_voice_session),
+                    tone: "neutral",
+                    hint: `${t("voice.controls.nativeAudio")} ${viewState.effectiveAudioStatus.latest_voice_session.native_audio_ms != null ? "yes" : "no"}`,
                   },
                   {
                     label: t("runtime.diagnostics.policy"),
@@ -3080,6 +3141,9 @@ function VoiceCommandCenterPanel({
                 ] as RuntimeSummaryItem[]
               }
               trace={viewState.effectiveAudioStatus.latest_voice_session.execution_trace ?? []}
+              traceAnnotations={
+                viewState.effectiveAudioStatus.latest_voice_session.execution_trace_annotations ?? []
+              }
               componentSnapshot={viewState.effectiveAudioStatus.latest_voice_session.component_snapshot ?? []}
               degradationReasons={viewState.effectiveAudioStatus.latest_voice_session.degradation_reasons ?? []}
               className="border-white/10 bg-white/[0.02]"

@@ -124,6 +124,7 @@ Z poziomu roota repo możesz użyć:
 - `web-next/components/voice/*` to dedykowany ekran voice dla `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, `VoiceOrb3D`, okna dialogowe, hooki metryk i overlaye orba.
 - Orb ma już ścieżkę renderowania w `react-three` (`VoiceOrb3D` z `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) oraz fallback CSS, gdy WebGL lub tryb 3D są niedostępne.
 - Panele statusowe `/voice` powinny jasno pokazywać aktywny tor audio: `whisper_llm_piper` dla stabilnej ścieżki tekstowej oraz `multi_runtime_piper` dla natywnej ścieżki Gemma4, razem z powodem fallbacku, gdy tor natywny nie jest użyty.
+- Kanoniczna prawda runtime na `/voice` powinna pochodzić z `runtime_state` (`selected`, `active`, `response`, `switch`), a nie z mieszania lokalnych stanów komponentów.
 - `web-next/tests/voice-orb.spec.ts` pokrywa stabilność layoutu `/voice` i widoczność orba w smoke testach Playwright.
 - Ważne skrypty frontendowe dla tego stosu znajdują się w `web-next/scripts/`:
   - `run-e2e.mjs`

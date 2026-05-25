@@ -81,9 +81,7 @@ async def test_build_voice_runtime_snapshot_returns_none_for_non_ollama(monkeypa
 
 @pytest.mark.asyncio
 async def test_build_voice_runtime_snapshot_returns_pipeline_snapshot(monkeypatch):
-    main_module._voice_runtime_snapshot_cache["key"] = None
-    main_module._voice_runtime_snapshot_cache["snapshot"] = None
-    main_module._voice_runtime_snapshot_cache["captured_at"] = 0.0
+    main_module._voice_runtime_snapshot_cache["entry"] = None
     monkeypatch.setattr(
         main_module,
         "get_active_llm_runtime",
@@ -144,17 +142,17 @@ async def test_build_voice_runtime_snapshot_uses_fresh_cache(monkeypatch):
     cache_key = "|".join(
         [runtime.provider, runtime.model_name, runtime.endpoint, runtime.config_hash]
     )
-    main_module._voice_runtime_snapshot_cache["key"] = cache_key
-    main_module._voice_runtime_snapshot_cache["snapshot"] = {
-        "runtime_id": runtime.runtime_id,
-        "provider": runtime.provider,
-        "model_name": runtime.model_name,
-        "endpoint": runtime.endpoint,
-        "voice_pipeline": {"stt": "cached"},
+    main_module._voice_runtime_snapshot_cache["entry"] = {
+        "key": cache_key,
+        "snapshot": {
+            "runtime_id": runtime.runtime_id,
+            "provider": runtime.provider,
+            "model_name": runtime.model_name,
+            "endpoint": runtime.endpoint,
+            "voice_pipeline": {"stt": "cached"},
+        },
+        "captured_at": asyncio.get_running_loop().time(),
     }
-    main_module._voice_runtime_snapshot_cache["captured_at"] = (
-        asyncio.get_running_loop().time()
-    )
 
     probe_mock = AsyncMock()
     monkeypatch.setattr(main_module, "probe_ollama_runtime_capabilities", probe_mock)
@@ -180,15 +178,17 @@ async def test_build_voice_runtime_snapshot_returns_stale_snapshot_on_probe_fail
     cache_key = "|".join(
         [runtime.provider, runtime.model_name, runtime.endpoint, runtime.config_hash]
     )
-    main_module._voice_runtime_snapshot_cache["key"] = cache_key
-    main_module._voice_runtime_snapshot_cache["snapshot"] = {
-        "runtime_id": runtime.runtime_id,
-        "provider": runtime.provider,
-        "model_name": runtime.model_name,
-        "endpoint": runtime.endpoint,
-        "voice_pipeline": {"stt": "old"},
+    main_module._voice_runtime_snapshot_cache["entry"] = {
+        "key": cache_key,
+        "snapshot": {
+            "runtime_id": runtime.runtime_id,
+            "provider": runtime.provider,
+            "model_name": runtime.model_name,
+            "endpoint": runtime.endpoint,
+            "voice_pipeline": {"stt": "old"},
+        },
+        "captured_at": 0.0,
     }
-    main_module._voice_runtime_snapshot_cache["captured_at"] = 0.0
 
     monkeypatch.setattr(
         main_module, "OllamaClient", lambda endpoint: SimpleNamespace(endpoint=endpoint)

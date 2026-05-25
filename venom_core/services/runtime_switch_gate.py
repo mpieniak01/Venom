@@ -52,6 +52,7 @@ class _RuntimeSwitchGateState:
     from_runtime: str | None = None
     to_runtime: str | None = None
     started_at_utc: str | None = None
+    drain_completed_at_utc: str | None = None
     reason: str | None = None
 
 
@@ -95,6 +96,7 @@ def _clear_gate_unlocked() -> None:
     _STATE.from_runtime = None
     _STATE.to_runtime = None
     _STATE.started_at_utc = None
+    _STATE.drain_completed_at_utc = None
     _STATE.reason = None
 
 
@@ -103,11 +105,18 @@ def _recover_stale_gate_unlocked() -> bool:
         return False
     if _STATE.active_requests > 0:
         return False
+    drain_completed_at = _parse_iso_utc(_STATE.drain_completed_at_utc)
+    if drain_completed_at is None:
+        return False
     started_at = _parse_iso_utc(_STATE.started_at_utc)
     if started_at is None:
         return False
-    age_seconds = (datetime.now(UTC) - started_at).total_seconds()
+    now = datetime.now(UTC)
+    age_seconds = (now - started_at).total_seconds()
     if age_seconds < _STALE_SWITCH_SECONDS:
+        return False
+    drain_age_seconds = (now - drain_completed_at).total_seconds()
+    if drain_age_seconds < _STALE_SWITCH_SECONDS:
         return False
     stale_switch_id = _STATE.switch_id
     stale_source = _STATE.source
@@ -203,6 +212,7 @@ def begin_runtime_switch(
         _STATE.from_runtime = str(from_runtime or "").strip() or None
         _STATE.to_runtime = str(to_runtime or "").strip() or None
         _STATE.started_at_utc = _utc_now()
+        _STATE.drain_completed_at_utc = None
         _STATE.reason = str(reason or "").strip() or None
         snapshot = _snapshot_unlocked()
 
@@ -238,6 +248,10 @@ async def wait_for_runtime_requests_to_drain(
     while True:
         with _STATE_LOCK:
             active_requests = _STATE.active_requests
+            if active_requests <= 0 and _STATE.in_progress:
+                _STATE.drain_completed_at_utc = (
+                    _STATE.drain_completed_at_utc or _utc_now()
+                )
         if active_requests <= 0:
             return True
         if time.monotonic() >= deadline:
@@ -276,6 +290,8 @@ async def runtime_request_guard(
                 },
             )
         _STATE.active_requests += 1
+        if _STATE.in_progress:
+            _STATE.drain_completed_at_utc = None
         snapshot = _snapshot_unlocked()
     logger.info(
         "runtime_request_entered kind={} provider={} model={} active_requests={}",

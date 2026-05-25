@@ -228,12 +228,12 @@ def _should_use_ollama_native_fallback() -> bool:
         return True
     if active_server and active_server != "ollama":
         return False
-    # Legacy/local fallback contract: when LLM_SERVICE_TYPE=local and ACTIVE_LLM_SERVER
-    # is not explicitly set, keep Ollama-native fallback enabled.
-    if not active_server:
-        return True
+    # Legacy/local fallback contract:
+    # if ACTIVE_LLM_SERVER is unset, infer provider from local endpoint.
     raw_endpoint = getattr(SETTINGS, "LLM_LOCAL_ENDPOINT", "")
     endpoint = raw_endpoint.strip() if isinstance(raw_endpoint, str) else ""
+    if not endpoint:
+        return True
     return infer_local_provider(endpoint) == "ollama"
 
 
@@ -803,8 +803,14 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
                 temperature=_coerce_float(mode_prompt["temperature"], 0.7),
             )
-            fallback_text = _sanitize_voice_response(fallback_text)
-            if not fallback_text:
+            fallback_text, fallback_needs_retry = _normalize_voice_response(
+                fallback_text
+            )
+            if (
+                not fallback_text
+                or fallback_needs_retry
+                or _looks_like_voice_response_leak(fallback_text)
+            ):
                 return None
             self._append_to_history(input_text, fallback_text)
             logger.warning(

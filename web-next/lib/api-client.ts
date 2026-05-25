@@ -21,10 +21,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const shouldRetryRequest = (method: string, status: number): boolean =>
   method === "GET" && RETRYABLE_HTTP_STATUSES.has(status);
 
-const buildRequestHeaders = (headers?: HeadersInit): HeadersInit =>
-  headers
-    ? { "Content-Type": "application/json", ...headers }
-    : { "Content-Type": "application/json" };
+const buildRequestHeaders = (headers?: HeadersInit): Headers => {
+  const merged = new Headers(headers);
+  if (!merged.has("Content-Type")) {
+    merged.set("Content-Type", "application/json");
+  }
+  return merged;
+};
 
 const shouldRetryNetworkError = (
   method: string,

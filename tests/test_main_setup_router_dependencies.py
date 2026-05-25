@@ -279,14 +279,16 @@ async def test_build_voice_runtime_snapshot_ollama_cache_hit(monkeypatch):
     cache_key = "|".join(
         [runtime.provider, runtime.model_name, runtime.endpoint, runtime.config_hash]
     )
-    main_module._voice_runtime_snapshot_cache["key"] = cache_key
-    main_module._voice_runtime_snapshot_cache["snapshot"] = {
-        "runtime_id": runtime.runtime_id,
-        "provider": runtime.provider,
-        "model_name": runtime.model_name,
-        "voice_pipeline": {"stt": "cached"},
+    main_module._voice_runtime_snapshot_cache["entry"] = {
+        "key": cache_key,
+        "snapshot": {
+            "runtime_id": runtime.runtime_id,
+            "provider": runtime.provider,
+            "model_name": runtime.model_name,
+            "voice_pipeline": {"stt": "cached"},
+        },
+        "captured_at": 10**9,
     }
-    main_module._voice_runtime_snapshot_cache["captured_at"] = 10**9
 
     probe_mock = AsyncMock()
     monkeypatch.setattr(main_module, "probe_ollama_runtime_capabilities", probe_mock)
@@ -315,14 +317,16 @@ async def test_build_voice_runtime_snapshot_ollama_stale_fallback(monkeypatch):
     cache_key = "|".join(
         [runtime.provider, runtime.model_name, runtime.endpoint, runtime.config_hash]
     )
-    main_module._voice_runtime_snapshot_cache["key"] = cache_key
-    main_module._voice_runtime_snapshot_cache["snapshot"] = {
-        "runtime_id": runtime.runtime_id,
-        "provider": runtime.provider,
-        "model_name": runtime.model_name,
-        "voice_pipeline": {"stt": "old"},
+    main_module._voice_runtime_snapshot_cache["entry"] = {
+        "key": cache_key,
+        "snapshot": {
+            "runtime_id": runtime.runtime_id,
+            "provider": runtime.provider,
+            "model_name": runtime.model_name,
+            "voice_pipeline": {"stt": "old"},
+        },
+        "captured_at": 0.0,
     }
-    main_module._voice_runtime_snapshot_cache["captured_at"] = 0.0
 
     monkeypatch.setattr(
         main_module, "OllamaClient", lambda endpoint: SimpleNamespace(endpoint=endpoint)

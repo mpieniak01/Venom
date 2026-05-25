@@ -208,9 +208,7 @@ runtime_exclusive_guard = None
 
 _VOICE_RUNTIME_SNAPSHOT_CACHE_TTL_SECONDS = 30.0
 _voice_runtime_snapshot_cache: dict[str, object] = {
-    "key": None,
-    "snapshot": None,
-    "captured_at": 0.0,
+    "entry": None,
 }
 _voice_runtime_snapshot_lock = asyncio.Lock()
 
@@ -485,6 +483,11 @@ async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
                 stale_snapshot = dict(previous_snapshot)
                 stale_snapshot["stale"] = True
                 stale_snapshot["stale_reason"] = str(exc)
+                _voice_runtime_snapshot_cache_store(
+                    cache_key=cache_key,
+                    snapshot=stale_snapshot,
+                    captured_at=now,
+                )
                 return stale_snapshot
             raise
 
@@ -503,9 +506,12 @@ def _voice_runtime_snapshot_cache_key(runtime: Any) -> str:
 def _voice_runtime_snapshot_if_fresh(
     *, cache_key: str, now: float
 ) -> dict[str, object] | None:
-    cached_key = _voice_runtime_snapshot_cache.get("key")
-    cached_snapshot = _voice_runtime_snapshot_cache.get("snapshot")
-    cached_at = float(_voice_runtime_snapshot_cache.get("captured_at") or 0.0)
+    entry = _voice_runtime_snapshot_cache.get("entry")
+    if not isinstance(entry, dict):
+        return None
+    cached_key = entry.get("key")
+    cached_snapshot = entry.get("snapshot")
+    cached_at = float(entry.get("captured_at") or 0.0)
     if cached_key != cache_key or not isinstance(cached_snapshot, dict):
         return None
     if (now - cached_at) > _VOICE_RUNTIME_SNAPSHOT_CACHE_TTL_SECONDS:
@@ -514,8 +520,11 @@ def _voice_runtime_snapshot_if_fresh(
 
 
 def _voice_runtime_snapshot_previous(*, cache_key: str) -> dict[str, object] | None:
-    cached_key = _voice_runtime_snapshot_cache.get("key")
-    cached_snapshot = _voice_runtime_snapshot_cache.get("snapshot")
+    entry = _voice_runtime_snapshot_cache.get("entry")
+    if not isinstance(entry, dict):
+        return None
+    cached_key = entry.get("key")
+    cached_snapshot = entry.get("snapshot")
     if cached_key == cache_key and isinstance(cached_snapshot, dict):
         return dict(cached_snapshot)
     return None
@@ -524,9 +533,11 @@ def _voice_runtime_snapshot_previous(*, cache_key: str) -> dict[str, object] | N
 def _voice_runtime_snapshot_cache_store(
     *, cache_key: str, snapshot: dict[str, object], captured_at: float
 ) -> None:
-    _voice_runtime_snapshot_cache["key"] = cache_key
-    _voice_runtime_snapshot_cache["snapshot"] = snapshot
-    _voice_runtime_snapshot_cache["captured_at"] = captured_at
+    _voice_runtime_snapshot_cache["entry"] = {
+        "key": cache_key,
+        "snapshot": snapshot,
+        "captured_at": float(captured_at),
+    }
 
 
 async def _probe_ollama_voice_runtime_snapshot(runtime: Any) -> dict[str, object]:

@@ -103,6 +103,7 @@ def test_get_snapshot_recovers_stale_switch_gate_without_active_requests():
             from_runtime="ollama",
             to_runtime="multi_runtime",
             started_at_utc="2000-01-01T00:00:00+00:00",
+            drain_completed_at_utc="2000-01-01T00:00:00+00:00",
             reason="set_active_llm_server",
         )
 
@@ -110,6 +111,26 @@ def test_get_snapshot_recovers_stale_switch_gate_without_active_requests():
 
     assert snapshot.in_progress is False
     assert snapshot.switch_id is None
+
+
+def test_get_snapshot_does_not_recover_without_drain_marker():
+    with gate._STATE_LOCK:  # noqa: SLF001
+        gate._STATE = gate._RuntimeSwitchGateState(  # noqa: SLF001
+            in_progress=True,
+            active_requests=0,
+            switch_id="stale-switch",
+            source="ui",
+            from_runtime="ollama",
+            to_runtime="multi_runtime",
+            started_at_utc="2000-01-01T00:00:00+00:00",
+            drain_completed_at_utc=None,
+            reason="set_active_llm_server",
+        )
+
+    snapshot = gate.get_runtime_switch_gate_snapshot()
+
+    assert snapshot.in_progress is True
+    assert snapshot.switch_id == "stale-switch"
 
 
 def test_parse_iso_utc_handles_invalid_and_naive_values():

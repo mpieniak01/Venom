@@ -256,6 +256,21 @@ async def _drain_inflight_requests(timeout_seconds: float) -> None:
         await asyncio.sleep(_INFLIGHT_DRAIN_POLL_SECONDS)
 
 
+async def _acquire_lifecycle_lock_after_drain(timeout_seconds: float) -> asyncio.Lock:
+    """Acquire lifecycle lock only after confirming no inflight inference.
+
+    Re-check is required because new inference may start between drain completion
+    and lock acquisition attempt.
+    """
+    while True:
+        await _drain_inflight_requests(timeout_seconds)
+        lock = _lifecycle_lock
+        await lock.acquire()
+        if _respond_inflight_requests <= 0:
+            return lock
+        lock.release()
+
+
 def _resolve_startup_runtime_params() -> dict[str, object]:
     """Resolve startup runtime params with safe defaults for constrained VRAM.
 
@@ -840,12 +855,14 @@ async def daemon_reload() -> SoftReloadResponse:
     if not daemon.is_ready():
         raise HTTPException(status_code=503, detail="Target model is not loaded")
 
-    await _drain_inflight_requests(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
-    async with _lifecycle_lock:
+    lock = await _acquire_lifecycle_lock_after_drain(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
+    try:
         try:
             reason = await asyncio.to_thread(daemon.soft_reload)
         except ModelLoadError as e:
             raise HTTPException(status_code=500, detail=f"Soft reload failed: {e}")
+    finally:
+        lock.release()
 
     return SoftReloadResponse(
         reason=reason,
@@ -860,13 +877,15 @@ async def daemon_restart() -> RestartResponse:
 
     The OS process manager (Docker, systemd) is expected to restart the service.
     """
-    await _drain_inflight_requests(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
-    async with _lifecycle_lock:
+    lock = await _acquire_lifecycle_lock_after_drain(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
+    try:
         try:
             daemon = get_daemon()
             daemon.unload_all()
         except RuntimeError:
             pass  # Not initialized — still proceed with restart
+    finally:
+        lock.release()
 
     async def _do_restart():
         await asyncio.sleep(0.2)
@@ -882,13 +901,15 @@ async def daemon_restart() -> RestartResponse:
 @app.post("/v1/daemon/unload")
 async def daemon_unload() -> dict[str, Any]:
     """Unload all currently loaded models without restarting the daemon process."""
-    await _drain_inflight_requests(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
-    async with _lifecycle_lock:
+    lock = await _acquire_lifecycle_lock_after_drain(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
+    try:
         try:
             daemon = get_daemon()
             await asyncio.to_thread(daemon.unload_all)
         except RuntimeError:
             raise HTTPException(status_code=503, detail="Daemon not initialized")
+    finally:
+        lock.release()
     return {"status": "ok", "message": "All models unloaded."}
 
 
@@ -981,9 +1002,9 @@ async def respond(request: Request) -> RespondResponse:
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    if not engine.is_loaded():
-        raise HTTPException(status_code=503, detail="Model not loaded")
     try:
+        if not engine.is_loaded():
+            raise HTTPException(status_code=503, detail="Model not loaded")
         (
             request_payload,
             audio_bytes,

@@ -395,7 +395,7 @@ describe("VoiceStatusSidebar", () => {
       fireEvent.click(screen.getByRole("button", { name: "Zastosuj runtime" }));
     });
     assert.ok(await screen.findByText("Runtime systemowy voice"));
-    assert.ok(postAttempts >= 0);
+    assert.equal(postAttempts, 0);
   });
 
   it("keeps the active and response runtime labels distinct", async () => {

@@ -289,3 +289,45 @@ async def test_chat_completions_does_not_decrement_inflight_when_increment_fails
         await runtime_main.chat_completions(payload)
 
     assert called["decrement"] == 0
+
+
+@pytest.mark.asyncio
+async def test_respond_decrements_inflight_when_model_not_loaded(monkeypatch) -> None:
+    class EngineStub:
+        def is_loaded(self) -> bool:
+            return False
+
+    class DaemonStub:
+        def active_engine(self):
+            return EngineStub()
+
+    monkeypatch.setattr(runtime_main, "get_daemon", lambda: DaemonStub())
+
+    calls = {"inc": 0, "dec": 0}
+
+    async def _increment_ok() -> None:
+        calls["inc"] += 1
+
+    async def _decrement_ok() -> int:
+        calls["dec"] += 1
+        return 0
+
+    monkeypatch.setattr(runtime_main, "_increment_respond_inflight", _increment_ok)
+    monkeypatch.setattr(runtime_main, "_decrement_respond_inflight", _decrement_ok)
+
+    request = runtime_main.Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/respond",
+            "headers": [],
+            "query_string": b"",
+        }
+    )
+
+    with pytest.raises(runtime_main.HTTPException) as exc_info:
+        await runtime_main.respond(request)
+
+    assert exc_info.value.status_code == 503
+    assert calls["inc"] == 1
+    assert calls["dec"] == 1

@@ -1464,7 +1464,7 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
                 json=lambda: {
                     "text": "25",
                     "transcription": "Ile to pięć razy pięć?",
-                    "transcription_used_for_generation": "Ile to jest 5 × 5?",
+                    "transcription_used_for_generation": "Ile to jest 5 x 5?",
                     "request_id": "req-123",
                     "trace_id": "trace-123",
                     "model": "google/gemma-4-E2B-it",
@@ -1479,7 +1479,7 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
 
     assert result["text"] == "Ile to pięć razy pięć?"
     assert result["transcription"] == "Ile to pięć razy pięć?"
-    assert result["transcription_used_for_generation"] == "Ile to jest 5 × 5?"
+    assert result["transcription_used_for_generation"] == "Ile to jest 5 x 5?"
     assert result["response_text"] == "25"
     assert result["trace_id"] == "trace-123"
     assert result["request_id"] == "req-123"
@@ -1916,7 +1916,7 @@ async def test_process_native_multi_runtime_pipeline_reports_error_on_native_fai
         4, session_dir, wav_path, timings_ms, 0.0, MagicMock()
     )
 
-    assert result is True
+    assert result is False
     assert any(item.get("type") == "error" for item in sent_json)
     assert update_calls[0]["audio_input_status"] == "failed"
     assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"
@@ -1944,7 +1944,7 @@ async def test_process_native_multi_runtime_pipeline_reports_error_without_audio
         5, session_dir, wav_path, {}, 0.0, MagicMock()
     )
 
-    assert result is True
+    assert result is False
     assert sent_json[0]["type"] == "error"
     assert "Audio engine not available" in sent_json[0]["message"]
 
@@ -1997,7 +1997,7 @@ async def test_process_native_multi_runtime_pipeline_reports_incomplete_result(
         6, session_dir, wav_path, timings_ms, 0.0, MagicMock()
     )
 
-    assert result is True
+    assert result is False
     assert any(item.get("type") == "error" for item in sent_json)
     assert update_calls[0]["audio_input_status"] == "failed"
     assert update_calls[0]["fallback_reason"] == ""

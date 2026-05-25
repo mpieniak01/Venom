@@ -1276,8 +1276,14 @@ def _extract_transcription_and_answer_from_generation(
             continue
         if not isinstance(payload, dict):
             continue
-        transcription = str(payload.get("transcription") or "").strip()
-        answer = str(payload.get("answer") or payload.get("response") or "").strip()
+        transcription_raw = payload.get("transcription")
+        answer_raw = (
+            payload["answer"] if "answer" in payload else payload.get("response")
+        )
+        transcription = (
+            "" if transcription_raw is None else str(transcription_raw).strip()
+        )
+        answer = "" if answer_raw is None else str(answer_raw).strip()
         if answer or transcription:
             return (transcription or None), answer
 

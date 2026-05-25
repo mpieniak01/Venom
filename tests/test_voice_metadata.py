@@ -498,7 +498,7 @@ async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result
         await handler._process_native_multi_runtime_pipeline(
             5, session_dir, wav_path, {}, 0.0, MagicMock()
         )
-        is True
+        is False
     )
     assert sent_json[0]["type"] == "error"
 
@@ -529,7 +529,7 @@ async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result
         await handler._process_native_multi_runtime_pipeline(
             6, session_dir, wav_path, {}, 0.0, MagicMock()
         )
-        is True
+        is False
     )
     assert any(item.get("type") == "error" for item in sent_json)
     assert update_calls[0]["audio_input_status"] == "failed"
@@ -676,7 +676,7 @@ async def test_process_native_multi_runtime_pipeline_reports_native_failure(
         15, session_dir, wav_path, timings_ms, 0.0, MagicMock()
     )
 
-    assert result is True
+    assert result is False
     assert any(item.get("type") == "error" for item in sent_json)
     assert update_calls[0]["audio_input_status"] == "failed"
     assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"

@@ -1218,7 +1218,7 @@ class AudioStreamHandler:
         if not self._multi_runtime_runtime_selected():
             return False
         if not await self._ensure_native_audio_engine_available(connection_id):
-            return True
+            return False
 
         snapshot = self._multi_runtime_runtime_snapshot()
         if not await self._multi_runtime_health_ok():
@@ -1263,7 +1263,7 @@ class AudioStreamHandler:
                         "message": "Gemma4 native audio pipeline failed. Check runtime status.",
                     },
                 )
-                return True
+                return False
 
             timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
             transcription = _coerce_str(
@@ -1289,7 +1289,7 @@ class AudioStreamHandler:
                         "message": "Gemma4 native audio pipeline returned an incomplete result.",
                     },
                 )
-                return True
+                return False
             insights = _build_voice_session_insights_payload(
                 transcript=transcription,
                 response=response_text,
@@ -1528,10 +1528,6 @@ class AudioStreamHandler:
             self._update_voice_session_metadata(
                 session_dir,
                 {
-                    "pipeline_id": "whisper_llm_piper",
-                    "audio_input_status": "fallback",
-                    "decoder_source": "faster_whisper",
-                    "decoder_effective": decoder_plan["effective"],
                     "decoder_fallback_reason": decoder_plan["fallback_reason"],
                     "fallback_reason": decoder_plan["fallback_reason"],
                 },
@@ -1613,6 +1609,18 @@ class AudioStreamHandler:
             # STT
             if not self.audio_engine:
                 logger.warning("AudioEngine nie jest dostępny")
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                    },
+                )
                 await self._send_json(
                     connection_id,
                     {
@@ -1623,11 +1631,28 @@ class AudioStreamHandler:
                 return
 
             stt_started_at = time.perf_counter()
-            transcription = await self.audio_engine.listen(
-                normalized_audio,
-                language="pl",
-                sample_rate=sample_rate,
-            )
+            try:
+                transcription = await self.audio_engine.listen(
+                    normalized_audio,
+                    language="pl",
+                    sample_rate=sample_rate,
+                )
+            except Exception:
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                        "timings_ms": timings_ms,
+                        "voice_mode": self._connection_voice_mode(connection_id),
+                    },
+                )
+                raise
             timings_ms["stt_ms"] = self._elapsed_ms(stt_started_at)
             self._update_voice_session_metadata(
                 session_dir,
@@ -1637,7 +1662,11 @@ class AudioStreamHandler:
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
                     "voice_mode": self._connection_voice_mode(connection_id),
-                    "audio_input_status": "verified",
+                    "audio_input_status": (
+                        "fallback"
+                        if not decoder_plan["should_try_native"]
+                        else "verified"
+                    ),
                     "decoder_source": "faster_whisper",
                     "decoder_selected": decoder_plan["selected"],
                     "decoder_effective": "faster_whisper",
@@ -1727,6 +1756,19 @@ class AudioStreamHandler:
 
             if not self.audio_engine:
                 logger.warning("AudioEngine nie jest dostępny")
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                        "timings_ms": timings_ms,
+                    },
+                )
                 await self._send_json(
                     connection_id,
                     {"type": "error", "message": "Audio engine not available"},
@@ -1737,11 +1779,27 @@ class AudioStreamHandler:
                 connection_id, {"type": "processing", "status": "stt"}
             )
             stt_started_at = time.perf_counter()
-            transcription = await asyncio.to_thread(
-                self.audio_engine.transcribe_file,
-                str(wav_path),
-                "pl",
-            )
+            try:
+                transcription = await asyncio.to_thread(
+                    self.audio_engine.transcribe_file,
+                    str(wav_path),
+                    "pl",
+                )
+            except Exception:
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                        "timings_ms": timings_ms,
+                    },
+                )
+                raise
             timings_ms["stt_ms"] = self._elapsed_ms(stt_started_at)
             self._update_voice_session_metadata(
                 session_dir,
@@ -1750,7 +1808,11 @@ class AudioStreamHandler:
                     "transcription": transcription,
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
-                    "audio_input_status": "verified",
+                    "audio_input_status": (
+                        "fallback"
+                        if not decoder_plan["should_try_native"]
+                        else "verified"
+                    ),
                     "decoder_source": "faster_whisper",
                     "decoder_selected": decoder_plan["selected"],
                     "decoder_effective": "faster_whisper",

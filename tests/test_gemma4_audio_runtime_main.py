@@ -85,6 +85,18 @@ def test_extract_transcription_and_answer_from_generation_accepts_empty_answer_j
     assert answer == ""
 
 
+def test_extract_transcription_and_answer_from_generation_preserves_falsey_values() -> (
+    None
+):
+    transcription, answer = (
+        runtime_main._extract_transcription_and_answer_from_generation(  # noqa: SLF001
+            '{"transcription":0,"response":false}'
+        )
+    )
+    assert transcription == "0"
+    assert answer == "False"
+
+
 def test_build_voice_session_record_exposes_native_audio_contract():
     record = audio_stream_mod._build_voice_session_record(
         Path("session-a"),
@@ -270,7 +282,7 @@ async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result
         await handler._process_native_multi_runtime_pipeline(
             5, session_dir, wav_path, {}, 0.0, MagicMock()
         )
-        is True
+        is False
     )
     assert sent_json[0]["type"] == "error"
 
@@ -301,7 +313,7 @@ async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result
         await handler._process_native_multi_runtime_pipeline(
             6, session_dir, wav_path, {}, 0.0, MagicMock()
         )
-        is True
+        is False
     )
     assert any(item.get("type") == "error" for item in sent_json)
     assert update_calls[0]["audio_input_status"] == "failed"

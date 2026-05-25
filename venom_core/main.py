@@ -2239,19 +2239,47 @@ async def update_audio_route_profile(
     _require_localhost_request(request)
     current = _voice_route_config_snapshot()
 
-    voice_route_profile = _normalize_voice_route_profile(
-        payload.voice_route_profile
-        if payload.voice_route_profile is not None
-        else current["voice_route_profile"]
-    )
-    audio_decoder_profile = _normalize_audio_decoder_profile(
-        payload.audio_decoder_profile
-        if payload.audio_decoder_profile is not None
-        else current["audio_decoder_profile"]
-    )
+    if payload.voice_route_profile is None:
+        voice_route_profile = str(current["voice_route_profile"])
+    else:
+        voice_route_profile = str(payload.voice_route_profile).strip().lower()
+        if voice_route_profile not in _VOICE_ROUTE_PROFILES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported voice_route_profile: {payload.voice_route_profile}"
+                ),
+            )
+
+    if payload.audio_decoder_profile is None:
+        audio_decoder_profile = str(current["audio_decoder_profile"])
+    else:
+        audio_decoder_profile = str(payload.audio_decoder_profile).strip().lower()
+        if audio_decoder_profile not in _AUDIO_DECODER_PROFILES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported audio_decoder_profile: "
+                    f"{payload.audio_decoder_profile}"
+                ),
+            )
+
     if payload.audio_decoder_chain is None:
         audio_decoder_chain = list(current["audio_decoder_chain"])
     else:
+        invalid_decoders = [
+            str(item).strip()
+            for item in payload.audio_decoder_chain
+            if str(item).strip() and not _normalize_audio_decoder_id(item)
+        ]
+        if invalid_decoders:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported audio_decoder_chain entries: "
+                    + ", ".join(invalid_decoders)
+                ),
+            )
         audio_decoder_chain = _normalize_audio_decoder_chain(
             payload.audio_decoder_chain
         )

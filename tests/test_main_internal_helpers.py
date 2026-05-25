@@ -880,6 +880,48 @@ async def test_update_audio_route_profile_rejects_local_route_native_chain(monke
 
 
 @pytest.mark.asyncio
+async def test_update_audio_route_profile_rejects_unknown_profile_and_decoder(
+    monkeypatch,
+):
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    bad_profile = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="gemmaX",
+        audio_decoder_profile="auto",
+        audio_decoder_chain=[],
+    )
+    with pytest.raises(main_module.HTTPException) as exc_profile:
+        await main_module.update_audio_route_profile(bad_profile, request)
+    assert exc_profile.value.status_code == 400
+    assert "Unsupported voice_route_profile" in str(exc_profile.value.detail)
+
+    bad_decoder = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="auto",
+        audio_decoder_profile="decoderX",
+        audio_decoder_chain=[],
+    )
+    with pytest.raises(main_module.HTTPException) as exc_decoder:
+        await main_module.update_audio_route_profile(bad_decoder, request)
+    assert exc_decoder.value.status_code == 400
+    assert "Unsupported audio_decoder_profile" in str(exc_decoder.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_update_audio_route_profile_rejects_unknown_decoder_chain_entries(
+    monkeypatch,
+):
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="auto",
+        audio_decoder_profile="auto",
+        audio_decoder_chain=["faster_whisper", "unknown_decoder"],
+    )
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        await main_module.update_audio_route_profile(payload, request)
+    assert excinfo.value.status_code == 400
+    assert "Unsupported audio_decoder_chain entries" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_list_audio_tts_models_falls_back_to_settings(monkeypatch):
     monkeypatch.setattr(main_module, "_list_available_tts_models", lambda: [])
     monkeypatch.setattr(main_module, "audio_engine", None)

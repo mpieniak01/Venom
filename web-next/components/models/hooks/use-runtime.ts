@@ -237,7 +237,9 @@ export function useRuntime() {
     );
 
     useEffect(() => {
-        if (selectedServer) return;
+        if (selectedServer) {
+            return;
+        }
         const active = activeServer.data?.active_server;
         if (active) {
             setSelectedServer(active);
@@ -271,7 +273,9 @@ export function useRuntime() {
         }
         const activeModel = activeServer.data?.active_model || activeRuntime?.model;
         if (activeModel && availableModelsForServer.some((model) => model.name === activeModel)) {
-            setSelectedModel(activeModel);
+            if (selectedModel !== activeModel) {
+                setSelectedModel(activeModel);
+            }
             return;
         }
         setSelectedModel(availableModelsForServer[0].name);
@@ -301,6 +305,12 @@ export function useRuntime() {
                 installed.refresh(),
                 runtimeOptions.refresh(),
             ]);
+            if (targetServer) {
+                setSelectedServer(targetServer);
+            }
+            if (resolvedModel) {
+                setSelectedModel(resolvedModel);
+            }
             return response;
         },
         [

@@ -11,7 +11,7 @@ from semantic_kernel.contents import ChatHistory
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.hardware_pi import HardwareBridge
-from venom_core.utils.llm_runtime import get_active_llm_runtime
+from venom_core.utils.llm_runtime import get_active_llm_runtime, infer_local_provider
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -212,7 +212,29 @@ def _is_ollama_runtime_active() -> bool:
 
 
 def _should_use_ollama_native_fallback() -> bool:
-    return SETTINGS.LLM_SERVICE_TYPE == "local" or _is_ollama_runtime_active()
+    if _is_ollama_runtime_active():
+        return True
+    raw_service_type = getattr(SETTINGS, "LLM_SERVICE_TYPE", "")
+    service_type = (
+        raw_service_type.strip().lower() if isinstance(raw_service_type, str) else ""
+    )
+    if service_type != "local":
+        return False
+    raw_active_server = getattr(SETTINGS, "ACTIVE_LLM_SERVER", "")
+    active_server = (
+        raw_active_server.strip().lower() if isinstance(raw_active_server, str) else ""
+    )
+    if active_server == "ollama":
+        return True
+    if active_server and active_server != "ollama":
+        return False
+    # Legacy/local fallback contract: when LLM_SERVICE_TYPE=local and ACTIVE_LLM_SERVER
+    # is not explicitly set, keep Ollama-native fallback enabled.
+    if not active_server:
+        return True
+    raw_endpoint = getattr(SETTINGS, "LLM_LOCAL_ENDPOINT", "")
+    endpoint = raw_endpoint.strip() if isinstance(raw_endpoint, str) else ""
+    return infer_local_provider(endpoint) == "ollama"
 
 
 def _ollama_extra_body() -> dict[str, Any] | None:
@@ -706,6 +728,32 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
 
         except Exception as e:
             logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
+            if _should_use_ollama_native_fallback():
+                try:
+                    mode_prompt = self._get_voice_mode_prompt(mode)
+                    fallback_history = self._build_voice_chat_history(
+                        input_text=input_text,
+                        mode=mode,
+                        mode_prompt=mode_prompt,
+                        voice_context=voice_context,
+                    )
+                    fallback_text = await _ollama_native_call(
+                        chat_history=fallback_history,
+                        max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
+                        temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+                    )
+                    fallback_text = _sanitize_voice_response(fallback_text)
+                    if fallback_text:
+                        self._append_to_history(input_text, fallback_text)
+                        logger.warning(
+                            "Voice response recovered via native Ollama fallback after exception"
+                        )
+                        return fallback_text
+                except Exception as fallback_exc:
+                    logger.error(
+                        "Native Ollama fallback after exception failed: %s",
+                        fallback_exc,
+                    )
             return "Przepraszam, wystąpił błąd. Spróbuj ponownie."
 
     def _resolve_chat_service_id(self) -> str:

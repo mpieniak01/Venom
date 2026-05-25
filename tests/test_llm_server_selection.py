@@ -118,8 +118,24 @@ def _skip_real_shutdown_wait(monkeypatch):
         return True
 
     monkeypatch.setattr(system_routes, "_await_server_shutdown", _fake_shutdown)
-    # Also patch the orchestrator's probe function to prevent real network calls.
-    monkeypatch.setattr(runtime_switch_service, "probe_until_shutdown", _fake_shutdown)
+
+
+@pytest.fixture(autouse=True)
+def _stub_single_model_policy(monkeypatch):
+    async def _noop_single_model_policy(*, endpoint=None, selected_model=None):
+        return {
+            "base_url": endpoint,
+            "keep_model": selected_model,
+            "before": [],
+            "unloaded": [],
+            "after": [selected_model] if selected_model else [],
+        }
+
+    monkeypatch.setattr(
+        system_routes,
+        "enforce_single_loaded_ollama_model",
+        _noop_single_model_policy,
+    )
 
 
 @pytest.mark.asyncio
@@ -235,6 +251,19 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
         "_installed_local_servers",
         lambda: {"ollama", "vllm"},
     )
+    single_model_enforcement_calls: list[tuple[str | None, str | None]] = []
+
+    async def _enforce_single_model(
+        *, endpoint: str | None, selected_model: str | None
+    ):
+        single_model_enforcement_calls.append((endpoint, selected_model))
+        return {"after": [selected_model]}
+
+    monkeypatch.setattr(
+        system_routes,
+        "enforce_single_loaded_ollama_model",
+        _enforce_single_model,
+    )
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"
@@ -247,6 +276,9 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
     assert response["active_model"] == "phi3:mini"
     assert response["shutdown_results"]["vllm"]["ok"] is True
     assert updates["LLM_MODEL_NAME"] == "phi3:mini"
+    assert single_model_enforcement_calls == [
+        ("http://localhost:11434/v1", "phi3:mini")
+    ]
 
     _restore_settings(original)
 

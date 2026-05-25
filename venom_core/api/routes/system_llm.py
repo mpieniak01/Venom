@@ -43,6 +43,7 @@ from venom_core.services.feedback_loop_policy import (
     resolve_feedback_loop_model,
 )
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
+from venom_core.services.ollama_runtime_policy import enforce_single_loaded_ollama_model
 from venom_core.services.runtime_switch_gate import (
     begin_runtime_switch,
     finish_runtime_switch,
@@ -2772,6 +2773,20 @@ async def _set_active_llm_server_impl(
         switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
 
         runtime = get_active_llm_runtime()
+        if server_name == "ollama":
+            try:
+                await enforce_single_loaded_ollama_model(
+                    endpoint=endpoint,
+                    selected_model=selected_model,
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Nie udało się zastosować polityki pojedynczego modelu "
+                        f"Ollama: {exc}"
+                    ),
+                ) from exc
         _trace_switch(
             request_tracer,
             request.trace_id,

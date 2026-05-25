@@ -17,17 +17,26 @@ describe("VoiceCommandCenter debug mode", () => {
   const originalRaf = globalThis.requestAnimationFrame;
   const originalCancelRaf = globalThis.cancelAnimationFrame;
   const originalConsoleError = console.error;
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
   const matchMediaMock = mock.fn(() => ({
     matches: false,
     addEventListener() {},
     removeEventListener() {},
   }));
   let rafCallbacks = new Map<number, FrameRequestCallback>();
+  const flushAsyncEffects = async () => {
+    await act(async () => {
+      await Promise.resolve();
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+      await Promise.resolve();
+    });
+  };
   const renderAndFlush = async (ui: Parameters<typeof render>[0]) => {
     await act(async () => {
       render(ui);
       await Promise.resolve();
     });
+    await flushAsyncEffects();
   };
 
   beforeEach(() => {
@@ -56,20 +65,31 @@ describe("VoiceCommandCenter debug mode", () => {
         rafCallbacks.delete(id);
       },
     });
-    const suppressActWarning = (...args: unknown[]) => {
+    const suppressVoicePanelActWarning = (...args: unknown[]) => {
       const first = args[0];
       if (
         typeof first === "string" &&
-        first.includes("not wrapped in act")
+        first.includes("An update to VoiceCommandCenterPanel inside a test was not wrapped in act")
       ) {
         return;
       }
       originalConsoleError(...args);
     };
-    console.error = suppressActWarning;
+    console.error = suppressVoicePanelActWarning;
     if (globalThis.window?.console) {
-      globalThis.window.console.error = suppressActWarning;
+      globalThis.window.console.error = suppressVoicePanelActWarning;
     }
+    process.stderr.write = ((chunk: unknown, ...args: unknown[]) => {
+      const text = String(chunk ?? "");
+      if (
+        text.includes("An update to VoiceCommandCenterPanel inside a test was not wrapped in act") ||
+        text.includes("When testing, code that causes React state updates should be wrapped into act") ||
+        text.includes("This ensures that you're testing the behavior the user would see in the browser.")
+      ) {
+        return true;
+      }
+      return (originalStderrWrite as (...p: unknown[]) => boolean)(chunk, ...args);
+    }) as typeof process.stderr.write;
   });
 
   afterEach(() => {
@@ -88,6 +108,7 @@ describe("VoiceCommandCenter debug mode", () => {
     if (globalThis.window?.console) {
       globalThis.window.console.error = originalConsoleError;
     }
+    process.stderr.write = originalStderrWrite as typeof process.stderr.write;
   });
 
   it("shows dry-run badge and skips real fetches", async () => {
@@ -101,6 +122,7 @@ describe("VoiceCommandCenter debug mode", () => {
     await waitFor(() => {
       assert.ok(screen.getAllByText(/DEBUG DRY RUN/i).length >= 1);
     });
+    await flushAsyncEffects();
     assert.ok(screen.getByLabelText(/diagnostyka dev/i));
     assert.equal(fetchMock.mock.callCount(), 0);
   });
@@ -114,6 +136,7 @@ describe("VoiceCommandCenter debug mode", () => {
     await waitFor(() => {
       assert.ok(screen.getByLabelText(/diagnostyka/i));
     });
+    await flushAsyncEffects();
   });
 });
 

@@ -168,6 +168,21 @@ def _no_real_network(monkeypatch):
     monkeypatch.setattr(system_routes, "_await_server_shutdown", _fake_shutdown)
     monkeypatch.setattr(system_routes, "_await_server_health", _fake_health)
 
+    async def _noop_single_model_policy(*, endpoint=None, selected_model=None):
+        return {
+            "base_url": endpoint,
+            "keep_model": selected_model,
+            "before": [],
+            "unloaded": [],
+            "after": [selected_model] if selected_model else [],
+        }
+
+    monkeypatch.setattr(
+        system_routes,
+        "enforce_single_loaded_ollama_model",
+        _noop_single_model_policy,
+    )
+
 
 # ---------------------------------------------------------------------------
 # 1. RuntimeCapabilities contract

@@ -1421,11 +1421,19 @@ function createRefreshAudioStatusHandler(params: {
       const data = (await res.json()) as AudioStatus;
       setAudioStatus(data);
     } catch {
-      setAudioStatus({
-        enabled: false,
-        connected_clients: 0,
-        active_recordings: 0,
-        message: t("voice.status.noData"),
+      setAudioStatus((prev) => {
+        if (prev) {
+          return {
+            ...prev,
+            message: t("voice.status.noData"),
+          };
+        }
+        return {
+          enabled: false,
+          connected_clients: 0,
+          active_recordings: 0,
+          message: t("voice.status.noData"),
+        };
       });
     }
   };
@@ -2447,6 +2455,18 @@ function VoiceCommandCenterPanel({
     }
     refreshAudioStatus().catch(() => undefined);
   }, [debugDryRunRequested, refreshAudioStatus, statusRefreshSignal]);
+
+  useEffect(() => {
+    if (debugDryRunRequested) {
+      return undefined;
+    }
+    const intervalId = globalThis.setInterval(() => {
+      refreshAudioStatus().catch(() => undefined);
+    }, 4000);
+    return () => {
+      globalThis.clearInterval(intervalId);
+    };
+  }, [debugDryRunRequested, refreshAudioStatus]);
 
   const releasePlaybackResources = useCallback(
     () =>

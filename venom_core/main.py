@@ -206,6 +206,14 @@ benchmark_service = None
 coding_benchmark_service = None
 runtime_exclusive_guard = None
 
+_VOICE_RUNTIME_SNAPSHOT_CACHE_TTL_SECONDS = 30.0
+_voice_runtime_snapshot_cache: dict[str, object] = {
+    "key": None,
+    "snapshot": None,
+    "captured_at": 0.0,
+}
+_voice_runtime_snapshot_lock = asyncio.Lock()
+
 
 def _get_latest_voice_session_record() -> dict[str, object] | None:
     """Zwraca najnowszą sesję voice wraz ze ścieżkami lokalnymi."""
@@ -451,22 +459,70 @@ async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
     if runtime.provider != "ollama" or not runtime.model_name or not runtime.endpoint:
         return None
 
-    client = OllamaClient(endpoint=runtime.endpoint)
-    runtime_capabilities = await probe_ollama_runtime_capabilities(
-        client=client,
-        model_name=runtime.model_name,
-        endpoint=runtime.endpoint,
+    cache_key = "|".join(
+        [
+            str(runtime.provider or ""),
+            str(runtime.model_name or ""),
+            str(runtime.endpoint or ""),
+            str(runtime.config_hash or ""),
+        ]
     )
-    voice_pipeline = resolve_voice_pipeline(runtime_capabilities)
-    return {
-        "runtime_id": runtime.runtime_id,
-        "provider": runtime.provider,
-        "model_name": runtime.model_name,
-        "endpoint": runtime.endpoint,
-        "config_hash": runtime.config_hash,
-        "runtime_capabilities": runtime_capabilities.to_dict(),
-        "voice_pipeline": voice_pipeline.to_dict(),
-    }
+    now = asyncio.get_running_loop().time()
+    cached_key = _voice_runtime_snapshot_cache.get("key")
+    cached_snapshot = _voice_runtime_snapshot_cache.get("snapshot")
+    cached_at = float(_voice_runtime_snapshot_cache.get("captured_at") or 0.0)
+    cache_fresh = (
+        cached_key == cache_key
+        and isinstance(cached_snapshot, dict)
+        and (now - cached_at) <= _VOICE_RUNTIME_SNAPSHOT_CACHE_TTL_SECONDS
+    )
+    if cache_fresh:
+        return dict(cached_snapshot)
+
+    async with _voice_runtime_snapshot_lock:
+        now = asyncio.get_running_loop().time()
+        cached_key = _voice_runtime_snapshot_cache.get("key")
+        cached_snapshot = _voice_runtime_snapshot_cache.get("snapshot")
+        cached_at = float(_voice_runtime_snapshot_cache.get("captured_at") or 0.0)
+        cache_fresh = (
+            cached_key == cache_key
+            and isinstance(cached_snapshot, dict)
+            and (now - cached_at) <= _VOICE_RUNTIME_SNAPSHOT_CACHE_TTL_SECONDS
+        )
+        if cache_fresh:
+            return dict(cached_snapshot)
+
+        previous_snapshot = None
+        if cached_key == cache_key and isinstance(cached_snapshot, dict):
+            previous_snapshot = dict(cached_snapshot)
+        try:
+            client = OllamaClient(endpoint=runtime.endpoint)
+            runtime_capabilities = await probe_ollama_runtime_capabilities(
+                client=client,
+                model_name=runtime.model_name,
+                endpoint=runtime.endpoint,
+            )
+            voice_pipeline = resolve_voice_pipeline(runtime_capabilities)
+            snapshot = {
+                "runtime_id": runtime.runtime_id,
+                "provider": runtime.provider,
+                "model_name": runtime.model_name,
+                "endpoint": runtime.endpoint,
+                "config_hash": runtime.config_hash,
+                "runtime_capabilities": runtime_capabilities.to_dict(),
+                "voice_pipeline": voice_pipeline.to_dict(),
+            }
+            _voice_runtime_snapshot_cache["key"] = cache_key
+            _voice_runtime_snapshot_cache["snapshot"] = snapshot
+            _voice_runtime_snapshot_cache["captured_at"] = now
+            return snapshot
+        except Exception as exc:
+            if previous_snapshot is not None:
+                stale_snapshot = dict(previous_snapshot)
+                stale_snapshot["stale"] = True
+                stale_snapshot["stale_reason"] = str(exc)
+                return stale_snapshot
+            raise
 
 
 # Inicjalizacja Model Registry (dla endpointów models)

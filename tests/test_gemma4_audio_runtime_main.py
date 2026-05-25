@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import services.multi_runtime.main as runtime_main
@@ -249,3 +250,42 @@ def test_chat_completions_rejects_streaming(monkeypatch) -> None:
 
     assert response.status_code == 400
     assert "Streaming is not supported" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_does_not_decrement_inflight_when_increment_fails(
+    monkeypatch,
+) -> None:
+    class EngineStub:
+        model_id = "google/gemma-4-E2B-it"
+
+        def is_loaded(self) -> bool:
+            return True
+
+        def respond(self, _audio, **kwargs):
+            return "ok", 0.01
+
+    daemon = _make_test_daemon(EngineStub())
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+
+    async def _increment_fail() -> None:
+        raise RuntimeError("increment failed")
+
+    called = {"decrement": 0}
+
+    async def _decrement_track() -> int:
+        called["decrement"] += 1
+        return 0
+
+    monkeypatch.setattr(runtime_main, "_increment_respond_inflight", _increment_fail)
+    monkeypatch.setattr(runtime_main, "_decrement_respond_inflight", _decrement_track)
+
+    payload = runtime_main.ChatCompletionRequest(
+        model="google/gemma-4-E2B-it",
+        messages=[runtime_main.ChatCompletionMessage(role="user", content="hej")],
+    )
+
+    with pytest.raises(RuntimeError, match="increment failed"):
+        await runtime_main.chat_completions(payload)
+
+    assert called["decrement"] == 0

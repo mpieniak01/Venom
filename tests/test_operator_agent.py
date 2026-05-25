@@ -617,6 +617,7 @@ class TestGenerateVoiceResponseGuards:
         mock_settings.OLLAMA_ENABLE_THINK = False
         mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
         mock_settings.LLM_MODEL_NAME = "test-model"
+        mock_settings.ACTIVE_LLM_SERVER = ""
         return mock_settings
 
     @pytest.mark.asyncio
@@ -836,6 +837,41 @@ class TestGenerateVoiceResponseGuards:
 
         assert response == "Dwa razy dwa to cztery."
         assert native_mock.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_generate_voice_response_recovers_from_exception_with_native_fallback(
+        self, mock_kernel, monkeypatch
+    ):
+        monkeypatch.setattr(op_module, "SETTINGS", self._make_settings("openai"))
+        monkeypatch.setattr(
+            op_module,
+            "get_active_llm_runtime",
+            lambda: MagicMock(provider="ollama"),
+        )
+        agent = OperatorAgent(kernel=mock_kernel)
+        agent._invoke_chat_with_fallbacks = AsyncMock(side_effect=RuntimeError("boom"))
+        native_mock = AsyncMock(return_value="Odzyskana odpowiedź.")
+        monkeypatch.setattr(op_module, "_ollama_native_call", native_mock)
+
+        response = await agent._generate_voice_response("Ile to dwa?")
+
+        assert response == "Odzyskana odpowiedź."
+        assert native_mock.await_count == 1
+
+
+def test_should_use_ollama_native_fallback_prefers_active_server_flag(monkeypatch):
+    settings = MagicMock()
+    settings.LLM_SERVICE_TYPE = "local"
+    settings.ACTIVE_LLM_SERVER = "ollama"
+    settings.LLM_LOCAL_ENDPOINT = "http://localhost:8014/v1"
+    monkeypatch.setattr(op_module, "SETTINGS", settings)
+    monkeypatch.setattr(
+        op_module,
+        "get_active_llm_runtime",
+        lambda: MagicMock(provider="multi_runtime"),
+    )
+
+    assert op_module._should_use_ollama_native_fallback() is True
 
 
 class TestVoiceResponseNormalization:

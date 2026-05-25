@@ -266,6 +266,84 @@ async def test_build_voice_runtime_snapshot_gemma4_audio_metadata_only(monkeypat
     assert snapshot["voice_pipeline"]["stt"] == "faster_whisper"
 
 
+@pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_ollama_cache_hit(monkeypatch):
+    runtime = SimpleNamespace(
+        runtime_id="ollama@localhost",
+        provider="ollama",
+        model_name="qwen2.5-coder:3b",
+        endpoint="http://localhost:11434",
+        config_hash="cfg-hit",
+    )
+    monkeypatch.setattr(main_module, "get_active_llm_runtime", lambda: runtime)
+    cache_key = "|".join(
+        [runtime.provider, runtime.model_name, runtime.endpoint, runtime.config_hash]
+    )
+    main_module._voice_runtime_snapshot_cache["key"] = cache_key
+    main_module._voice_runtime_snapshot_cache["snapshot"] = {
+        "runtime_id": runtime.runtime_id,
+        "provider": runtime.provider,
+        "model_name": runtime.model_name,
+        "voice_pipeline": {"stt": "cached"},
+    }
+    main_module._voice_runtime_snapshot_cache["captured_at"] = 10**9
+
+    probe_mock = AsyncMock()
+    monkeypatch.setattr(main_module, "probe_ollama_runtime_capabilities", probe_mock)
+    monkeypatch.setattr(
+        main_module.asyncio,
+        "get_running_loop",
+        lambda: SimpleNamespace(time=lambda: 10**9),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+
+    assert snapshot["voice_pipeline"]["stt"] == "cached"
+    probe_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_build_voice_runtime_snapshot_ollama_stale_fallback(monkeypatch):
+    runtime = SimpleNamespace(
+        runtime_id="ollama@localhost",
+        provider="ollama",
+        model_name="qwen2.5-coder:3b",
+        endpoint="http://localhost:11434",
+        config_hash="cfg-stale",
+    )
+    monkeypatch.setattr(main_module, "get_active_llm_runtime", lambda: runtime)
+    cache_key = "|".join(
+        [runtime.provider, runtime.model_name, runtime.endpoint, runtime.config_hash]
+    )
+    main_module._voice_runtime_snapshot_cache["key"] = cache_key
+    main_module._voice_runtime_snapshot_cache["snapshot"] = {
+        "runtime_id": runtime.runtime_id,
+        "provider": runtime.provider,
+        "model_name": runtime.model_name,
+        "voice_pipeline": {"stt": "old"},
+    }
+    main_module._voice_runtime_snapshot_cache["captured_at"] = 0.0
+
+    monkeypatch.setattr(
+        main_module, "OllamaClient", lambda endpoint: SimpleNamespace(endpoint=endpoint)
+    )
+    monkeypatch.setattr(
+        main_module,
+        "probe_ollama_runtime_capabilities",
+        AsyncMock(side_effect=RuntimeError("probe down")),
+    )
+    monkeypatch.setattr(
+        main_module.asyncio,
+        "get_running_loop",
+        lambda: SimpleNamespace(time=lambda: 1000.0),
+    )
+
+    snapshot = await main_module._build_voice_runtime_snapshot()
+
+    assert snapshot["stale"] is True
+    assert snapshot["stale_reason"] == "probe down"
+
+
 def _patch_setup_routes(monkeypatch):
     def make_dummy():
         return SimpleNamespace(

@@ -78,3 +78,19 @@ async def test_enforce_single_loaded_ollama_model_raises_when_extra_models_remai
             endpoint="http://localhost:11434/v1",
             selected_model="qwen2.5-coder:3b",
         )
+
+
+def test_resolve_ollama_base_url_defaults_and_trims():
+    assert policy._resolve_ollama_base_url(None) == "http://localhost:11434"  # noqa: SLF001
+    assert (
+        policy._resolve_ollama_base_url("http://localhost:11434/v1/")
+        == "http://localhost:11434"
+    )  # noqa: SLF001
+
+
+def test_extract_loaded_model_names_handles_invalid_payload_shape():
+    assert policy._extract_loaded_model_names(None) == []  # noqa: SLF001
+    assert policy._extract_loaded_model_names({"models": {}}) == []  # noqa: SLF001
+    assert policy._extract_loaded_model_names({"models": [None, {"name": "a"}]}) == [
+        "a"
+    ]  # noqa: SLF001

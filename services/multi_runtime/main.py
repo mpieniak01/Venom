@@ -1785,8 +1785,10 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
 
     daemon_status = daemon.status()
     daemon_params = daemon_status["params"]
-    await _increment_respond_inflight()
+    inflight_incremented = False
     try:
+        await _increment_respond_inflight()
+        inflight_incremented = True
         text, _ = await asyncio.to_thread(
             engine.respond,
             None,
@@ -1801,7 +1803,8 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
             cache_implementation=daemon_params["cache_implementation"],
         )
     finally:
-        await _decrement_respond_inflight()
+        if inflight_incremented:
+            await _decrement_respond_inflight()
 
     now = int(time.time())
     completion_tokens = max(1, len(text) // 4)

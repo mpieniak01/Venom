@@ -110,3 +110,13 @@ def test_get_snapshot_recovers_stale_switch_gate_without_active_requests():
 
     assert snapshot.in_progress is False
     assert snapshot.switch_id is None
+
+
+def test_parse_iso_utc_handles_invalid_and_naive_values():
+    assert gate._parse_iso_utc(None) is None  # noqa: SLF001
+    assert gate._parse_iso_utc("") is None  # noqa: SLF001
+    assert gate._parse_iso_utc("not-a-date") is None  # noqa: SLF001
+
+    parsed = gate._parse_iso_utc("2026-05-24T10:00:00")  # noqa: SLF001
+    assert parsed is not None
+    assert parsed.tzinfo is not None

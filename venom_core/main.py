@@ -1858,7 +1858,7 @@ async def audio_websocket_endpoint(websocket: WebSocket):
 
 
 def _safe_last_runtime_switch_event() -> dict[str, object] | None:
-    switch_event = get_last_runtime_switch_event() or {}
+    switch_event = get_last_runtime_switch_event()
     return switch_event if isinstance(switch_event, dict) else None
 
 

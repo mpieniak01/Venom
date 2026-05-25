@@ -12,6 +12,7 @@ Covers the 7 backend test cases from the spec (section 2.3):
 
 from __future__ import annotations
 
+import json
 import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -1474,6 +1475,100 @@ class TestMainRespondEndpoint:
         assert r.status_code == 200
         body = r.json()
         assert body["text"] == "generated text"
+
+    def test_respond_multipart_audio_reads_uploaded_audio(self, monkeypatch):
+        monkeypatch.setattr(runtime_main, "_daemon", self._make_respond_daemon())
+        calls = {"audio_from_bytes": 0, "audio_from_file": 0}
+
+        def _audio_from_bytes(_payload):
+            calls["audio_from_bytes"] += 1
+            return np.zeros(16000, dtype=np.float32), 16000
+
+        def _audio_from_file(_path):
+            calls["audio_from_file"] += 1
+            raise AssertionError(
+                "audio_from_file should not be used for multipart audio"
+            )
+
+        monkeypatch.setattr(runtime_main, "audio_from_bytes", _audio_from_bytes)
+        monkeypatch.setattr(runtime_main, "audio_from_file", _audio_from_file)
+
+        client = TestClient(runtime_main.app)
+        request_payload = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "audio", "path": "recording.wav"},
+                        {"type": "text", "text": "Przepisz audio"},
+                    ],
+                }
+            ]
+        }
+        response = client.post(
+            "/v1/respond",
+            files={
+                "request": (None, json.dumps(request_payload), "application/json"),
+                "audio": ("recording.wav", b"fake-audio", "audio/wav"),
+            },
+        )
+
+        assert response.status_code == 200
+        assert calls["audio_from_bytes"] == 1
+        assert calls["audio_from_file"] == 0
+
+    def test_chat_completions_lazy_loads_target_when_unloaded(self, monkeypatch):
+        class _Engine:
+            model_id = "google/gemma-4-E2B-it"
+
+            def __init__(self):
+                self.loaded = False
+
+            def is_loaded(self):
+                return self.loaded
+
+            def respond(self, *_args, **_kwargs):
+                return "ok", 1.0
+
+        class _Daemon:
+            def __init__(self):
+                self.engine = _Engine()
+                self.load_calls = 0
+
+            def is_ready(self):
+                return self.engine.loaded
+
+            def active_engine(self):
+                if not self.engine.loaded:
+                    raise RuntimeError("Daemon target model is not loaded")
+                return self.engine
+
+            def load_target(self):
+                self.load_calls += 1
+                self.engine.loaded = True
+
+            def status(self):
+                return {
+                    "params": {
+                        "enable_thinking": False,
+                        "cache_implementation": None,
+                    }
+                }
+
+        daemon = _Daemon()
+        monkeypatch.setattr(runtime_main, "_daemon", daemon)
+        client = TestClient(runtime_main.app)
+
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "google/gemma-4-E2B-it",
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+        )
+
+        assert response.status_code == 200
+        assert daemon.load_calls == 1
 
     def test_respond_returns_400_when_no_content(self, monkeypatch):
         monkeypatch.setattr(runtime_main, "_daemon", self._make_respond_daemon())

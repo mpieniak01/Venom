@@ -45,4 +45,28 @@ describe("RuntimeDiagnosticsPanel", () => {
     assert.ok(screen.getByText("main_model"));
     assert.ok(screen.getByText("retrieval fallback"));
   });
+
+  it("renders annotated audio-only trace semantics", () => {
+    render(
+      <RuntimeDiagnosticsPanel
+        title="Runtime diagnostics"
+        trace={["input_router", "image_preprocessor", "ocr_or_vision", "retrieval", "main_generation", "assistant_postprocess", "audio_output"]}
+        traceAnnotations={[
+          { label: "Input router", status: "active", note: "audio input routed" },
+          { label: "Image preprocessor", status: "no-op", note: "audio-only voice session" },
+          { label: "OCR / vision", status: "no-op", note: "audio-only voice session" },
+          { label: "Retrieval", status: "no-op", note: "audio-only voice session" },
+          { label: "Main generation", status: "active", note: "Gemma response" },
+          { label: "Assistant postprocess", status: "active", note: "response shaping" },
+          { label: "Audio output", status: "active", note: "tts output" },
+        ]}
+      />,
+    );
+
+    assert.ok(screen.getByText(/Image preprocessor · no-op/i));
+    assert.ok(screen.getByText(/OCR \/ vision · no-op/i));
+    assert.ok(screen.getByText(/Retrieval · no-op/i));
+    assert.ok(screen.getByText(/Main generation · active/i));
+    assert.ok(screen.getByText(/audio-only voice session/i));
+  });
 });

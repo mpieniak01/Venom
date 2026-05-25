@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { useTranslation } from "@/lib/i18n";
 import { isMultiRuntime } from "@/lib/runtime-id";
+import { buildVoiceRuntimeStateView } from "@/lib/voice-runtime-state";
 import {
   VoiceCommandCenter,
   type VoiceModePreset,
@@ -148,10 +149,11 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
 
   const sttReady = toReadiness(status.stt_ready);
   const ttsReady = toReadiness(status.tts_ready);
-  const runtimeProvider = String(status.runtime_snapshot?.provider ?? "").trim();
-  const runtimeModel = String(status.runtime_snapshot?.model_name ?? "").trim();
-  const sessionRuntimeProvider = String(status.latest_voice_session?.audio_runtime_provider ?? "").trim();
-  const sessionRuntimeModel = String(status.latest_voice_session?.audio_runtime_model ?? "").trim();
+  const runtimeState = buildVoiceRuntimeStateView(status);
+  const runtimeProvider = runtimeState.active.runtimeId;
+  const runtimeModel = runtimeState.active.modelName;
+  const sessionRuntimeProvider = runtimeState.response.runtimeId;
+  const sessionRuntimeModel = runtimeState.response.modelName;
   const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
   const hasRuntimeFromSnapshot = runtimeProvider.length > 0 && runtimeModel.length > 0;
   const hasRuntimeFromLatestSession = sessionRuntimeProvider.length > 0 && sessionRuntimeModel.length > 0;

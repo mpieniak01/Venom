@@ -8,6 +8,9 @@ import { Gemma4RuntimeControl } from "@/components/gemma4/gemma4-runtime-control
 import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center";
 import { useTranslation } from "@/lib/i18n";
 import { canonicalRuntimeId, isMultiRuntime } from "@/lib/runtime-id";
+import {
+  formatVoiceRuntimeTuple,
+} from "@/lib/voice-runtime-state";
 import { resolveRuntimeActivationErrorMessage, useRuntime } from "@/components/models/hooks/use-runtime";
 
 type VoiceStatusSidebarProps = Readonly<{
@@ -38,11 +41,6 @@ function formatConfidence(value?: number | null): string | null {
     return null;
   }
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
-}
-
-function formatRuntimeTuple(provider: string | null | undefined, model: string | null | undefined): string {
-  const normalizedProvider = canonicalRuntimeId(provider ?? "") || "—";
-  return `${normalizedProvider} / ${model ?? "—"}`;
 }
 
 function isGenericFailureResponse(text: string): boolean {
@@ -187,12 +185,20 @@ function RuntimeSwitchCard({
   const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedRuntime = runtime.selectedServer ?? "";
   const selectedModel = runtime.selectedModel ?? "";
-  const selectedRuntimeSummary = formatRuntimeTuple(selectedRuntime, selectedModel);
-  const activeRuntimeSummary = formatRuntimeTuple(
-    runtime.activeServer.data?.active_server ?? null,
-    runtime.activeServer.data?.active_model ?? null,
+  const runtimeStateView = runtime.runtimeState;
+  const selectedRuntimeSummary = formatVoiceRuntimeTuple(
+    runtimeStateView.selected.runtimeId,
+    runtimeStateView.selected.modelName,
   );
-  const gateSwitching = runtime.runtimeSwitchInProgress;
+  const activeRuntimeId =
+    runtimeStateView.active.runtimeId || runtime.activeServer.data?.active_server || null;
+  const activeRuntimeModel =
+    runtimeStateView.active.modelName || runtime.activeServer.data?.active_model || null;
+  const activeRuntimeSummary = formatVoiceRuntimeTuple(
+    activeRuntimeId,
+    activeRuntimeModel,
+  );
+  const gateSwitching = runtimeStateView.switch.state === "switching" || runtime.runtimeSwitchInProgress;
   const applyDisabled = pending || gateSwitching || !selectedRuntime || !selectedModel;
   const runtimeError = runtime.activeServer.error ?? runtime.llmServers.error;
   const serversLoading = runtime.llmServers.loading ?? false;
@@ -310,8 +316,8 @@ function RuntimeSwitchCard({
         {gateSwitching && (
           <p className="text-[11px] text-amber-300">
             {t("voice.controls.runtimeSwitchInProgress")
-              .replace("{{from}}", runtime.runtimeSwitchGate?.from_runtime || "—")
-              .replace("{{to}}", runtime.runtimeSwitchGate?.to_runtime || "—")}
+              .replace("{{from}}", runtimeStateView.switch.fromRuntime || "—")
+              .replace("{{to}}", runtimeStateView.switch.toRuntime || "—")}
           </p>
         )}
         {!gateSwitching && runtime.lastRuntimeSwitch?.at_utc && (
@@ -324,6 +330,10 @@ function RuntimeSwitchCard({
         )}
         <Row label={t("voice.controls.selectedRuntime")} value={selectedRuntimeSummary} />
         <Row label={t("voice.controls.systemVoiceRuntime")} value={activeRuntimeSummary} />
+        <Row
+          label={t("voice.controls.runtimeState")}
+          value={runtimeStateView.switch.state}
+        />
 
         {applied && (
           <p className="text-[11px] text-emerald-400">{t("voice.controls.runtimeApplied")}</p>
@@ -359,7 +369,7 @@ function RuntimeOverviewCard({
   const model = runtime?.model_name ?? null;
   const endpoint = runtime?.endpoint ?? null;
   const probeStatus = runtime?.runtime_capabilities?.probe_status ?? null;
-  const activeVoiceRuntime = provider || model ? formatRuntimeTuple(provider, model) : null;
+  const activeVoiceRuntime = provider || model ? formatVoiceRuntimeTuple(provider, model) : null;
   const runtimeProvider = String(provider ?? "").trim().toLowerCase();
   const isNativeVoiceRuntime =
     isMultiRuntime(runtimeProvider);
@@ -380,7 +390,7 @@ function RuntimeOverviewCard({
         <>
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-sm font-semibold text-white truncate">
-              {formatRuntimeTuple(provider, model ?? t("voice.controls.unknownModel"))}
+              {formatVoiceRuntimeTuple(provider, model ?? t("voice.controls.unknownModel"))}
             </span>
             {probeStatus && (
               <Badge tone={probeTone} className="shrink-0 text-[10px]">
@@ -448,8 +458,8 @@ function VoiceSessionCard({
           label={t("voice.controls.responseRuntime")}
           value={
             runtimeAlignment?.response_runtime_fresh === false
-              ? `${formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)} (${t("voice.controls.previousSession")})`
-              : formatRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)
+              ? `${formatVoiceRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)} (${t("voice.controls.previousSession")})`
+              : formatVoiceRuntimeTuple(session.audio_runtime_provider, session.audio_runtime_model)
           }
         />
       )}
@@ -481,6 +491,23 @@ function VoiceSessionCard({
       {session.transcription && (
         <Row label={t("voice.controls.transcription")} value={session.transcription} />
       )}
+      {session.voice_pipeline_mode && (
+        <Row label={t("voice.controls.pipelineMode")} value={session.voice_pipeline_mode} />
+      )}
+      {session.native_audio_ms != null && (
+        <Row
+          label={t("voice.controls.nativeAudio")}
+          value={`${(session.native_audio_ms / 1000).toFixed(2)}s`}
+        />
+      )}
+      {session.execution_trace_annotations?.length ? (
+        <Row
+          label={t("voice.controls.traceSemantics")}
+          value={session.execution_trace_annotations
+            .map((item) => `${item.label ?? item.stage ?? t("voice.controls.stage")}:${item.status ?? t("common.unknown")}`)
+            .join(" · ")}
+        />
+      ) : null}
       {responseText && (
         <Row label={t("voice.controls.response")} value={responseText} />
       )}

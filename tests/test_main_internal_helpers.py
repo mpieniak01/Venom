@@ -63,7 +63,9 @@ def test_select_startup_model_priority_chain():
 
 
 @pytest.mark.asyncio
-async def test_build_voice_runtime_snapshot_returns_none_for_non_ollama(monkeypatch):
+async def test_build_voice_runtime_snapshot_returns_whisper_fallback_for_non_ollama(
+    monkeypatch,
+):
     monkeypatch.setattr(
         main_module,
         "get_active_llm_runtime",
@@ -76,7 +78,11 @@ async def test_build_voice_runtime_snapshot_returns_none_for_non_ollama(monkeypa
         ),
     )
 
-    assert await main_module._build_voice_runtime_snapshot() is None
+    snapshot = await main_module._build_voice_runtime_snapshot()
+    assert snapshot is not None
+    assert snapshot["provider"] == "vllm"
+    assert snapshot["voice_pipeline"]["profile"] == "whisper_llm_piper_fallback"
+    assert snapshot["voice_pipeline"]["stt"] == "faster_whisper"
 
 
 @pytest.mark.asyncio
@@ -323,6 +329,8 @@ async def test_audio_status_endpoint_includes_latest_session_download_url(monkey
     assert status["runtime_alignment"]["active_provider"] == "ollama"
     assert status["runtime_alignment"]["active_model"] == "gemma4:latest"
     assert status["runtime_alignment"]["response_runtime_fresh"] is True
+    assert status["runtime_state"]["active"]["runtime_id"] == "ollama@localhost"
+    assert status["runtime_state"]["switch"]["state"] == "idle"
 
 
 @pytest.mark.asyncio
@@ -343,6 +351,7 @@ async def test_audio_status_endpoint_returns_disabled_state_without_handler(
     assert status["enabled"] is False
     assert status["message"] == "Audio interface is disabled or not initialized."
     assert status["runtime_snapshot"]["runtime_id"] == "ollama@localhost"
+    assert status["runtime_state"]["active"]["runtime_id"] == "ollama@localhost"
 
 
 @pytest.mark.asyncio
@@ -463,6 +472,68 @@ def test_build_voice_runtime_alignment_without_latest_session(monkeypatch):
     assert alignment["response_runtime_matches_active"] is None
 
 
+def test_whisper_fallback_runtime_helpers_expose_expected_contract():
+    capabilities = main_module._build_whisper_fallback_runtime_capabilities("vllm")
+    pipeline = main_module._build_whisper_fallback_voice_pipeline("vllm")
+    snapshot = main_module._build_whisper_fallback_voice_runtime_snapshot(
+        SimpleNamespace(
+            runtime_id="vllm@localhost",
+            provider="vllm",
+            model_name="qwen3.5:latest",
+            endpoint="http://localhost:8000",
+            config_hash="abc",
+        )
+    )
+
+    assert capabilities["compatibility_profile"] == "whisper_llm_piper_fallback"
+    assert capabilities["fallbacks"]["voice_fallback_pipeline"] == "whisper_llm_piper"
+    assert capabilities["probes"]["voice_contract"]["status"] == "metadata_only"
+    assert pipeline["stt"] == "faster_whisper"
+    assert pipeline["tts"] == "piper"
+    assert snapshot["voice_pipeline"]["profile"] == "whisper_llm_piper_fallback"
+    assert snapshot["runtime_capabilities"]["fallbacks"]["tts"] == "piper"
+
+
+def test_build_voice_runtime_state_reports_switching_and_failure():
+    runtime_snapshot = {
+        "runtime_id": "ollama@localhost",
+        "provider": "ollama",
+        "model_name": "qwen3.5:latest",
+    }
+    latest_session = {
+        "audio_runtime_provider": "ollama",
+        "audio_runtime_model": "qwen3.5:latest",
+        "pipeline_id": "whisper_llm_piper",
+        "created_at": "2026-05-24T09:12:00+00:00",
+    }
+    runtime_alignment = main_module._build_voice_runtime_alignment(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+    )
+
+    switching_state = main_module._build_voice_runtime_state(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+        runtime_alignment=runtime_alignment,
+        runtime_switch_gate={"in_progress": True, "to_runtime": "multi_runtime"},
+        last_runtime_switch={"reason": "manual switch"},
+    )
+
+    failed_state = main_module._build_voice_runtime_state(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+        runtime_alignment=runtime_alignment,
+        runtime_switch_gate={"in_progress": False},
+        last_runtime_switch={"reason": "switch error: denied"},
+    )
+
+    assert switching_state["switch"]["state"] == "switching"
+    assert switching_state["selected"]["source"] == "switch_target"
+    assert switching_state["response"]["pipeline_id"] == "whisper_llm_piper"
+    assert switching_state["response"]["matches_active"] is True
+    assert failed_state["switch"]["state"] == "failed"
+
+
 @pytest.mark.asyncio
 async def test_audio_status_endpoint_includes_runtime_alignment_for_matching_session(
     monkeypatch,
@@ -510,6 +581,7 @@ async def test_audio_status_endpoint_includes_runtime_alignment_for_matching_ses
     assert status["runtime_alignment"]["latest_session_before_runtime_switch"] is False
     assert status["runtime_alignment"]["response_runtime_fresh"] is True
     assert status["runtime_alignment"]["response_runtime_matches_active"] is True
+    assert status["runtime_state"]["response"]["matches_active"] is True
 
 
 @pytest.mark.asyncio

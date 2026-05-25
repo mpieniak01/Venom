@@ -5,12 +5,15 @@ from __future__ import annotations
 import gc
 import logging
 import re
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
+from pathlib import Path
 from typing import Any, Optional, cast
 
 import numpy as np
+import soundfile as sf
 from PIL import Image
 
 from .audio import get_audio_duration, normalize_audio
@@ -265,8 +268,10 @@ class MultiRuntimeEngine:
             )
         if task == "transcribe":
             return (
-                "Transcribe the speech in the audio. "
-                "Return only the transcription, with no bullets and no extra commentary."
+                "Transcribe the following speech segment in Polish into Polish text. "
+                "Follow these specific instructions for formatting the answer:\n"
+                "* Only output the transcription, with no newlines.\n"
+                "* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
             )
         if question and question.strip():
             return (
@@ -311,32 +316,37 @@ class MultiRuntimeEngine:
         effective_prompt = self._build_prompt_for_task(task, question, prompt)
 
         user_content: list[dict[str, Any]] = []
-        if audio_normalized is not None:
-            user_content.append(
-                {"type": "audio", "array": audio_normalized, "sample_rate": sr}
-            )
-        if images:
-            for image in images:
-                user_content.append({"type": "image", "image": image})
-        user_content.append({"type": "text", "text": effective_prompt})
-
-        messages = [
-            {
-                "role": "user",
-                "content": user_content,
-            }
-        ]
-
-        if system_prompt:
-            messages.insert(
-                0,
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": system_prompt}],
-                },
-            )
-
+        audio_tempdir: tempfile.TemporaryDirectory[str] | None = None
+        audio_input_path: Path | None = None
         try:
+            if audio_normalized is not None:
+                audio_tempdir = tempfile.TemporaryDirectory(
+                    prefix="multi_runtime_audio_"
+                )
+                audio_input_path = Path(audio_tempdir.name) / "audio.wav"
+                sf.write(str(audio_input_path), audio_normalized, sr, subtype="FLOAT")
+                user_content.append({"type": "audio", "path": str(audio_input_path)})
+            if images:
+                for image in images:
+                    user_content.append({"type": "image", "image": image})
+            user_content.append({"type": "text", "text": effective_prompt})
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": user_content,
+                }
+            ]
+
+            if system_prompt:
+                messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": system_prompt}],
+                    },
+                )
+
             apply_template_kwargs: dict[str, Any] = {
                 "add_generation_prompt": True,
                 "tokenize": True,
@@ -409,9 +419,11 @@ class MultiRuntimeEngine:
             )
 
             return generated_text, duration_sec
-
         except Exception as e:
             raise InferenceError(f"Inference failed: {e}") from e
+        finally:
+            if audio_tempdir is not None:
+                audio_tempdir.cleanup()
 
     @staticmethod
     def load_image_from_bytes(payload: bytes) -> Image.Image:

@@ -16,6 +16,8 @@ EmotionLabel = Literal[
 ]
 EmotionSource = Literal["none", "transcript", "response", "hybrid"]
 ReasoningStatus = Literal["disabled", "summary", "raw_available"]
+VoiceSessionMode = Literal["native_audio", "whisper_llm_piper", "unknown"]
+VoiceTraceStageStatus = Literal["active", "no-op", "disabled", "unknown"]
 
 EMOTION_BASELINE_SCORES: dict[EmotionLabel, float] = {
     "neutral": 0.1,
@@ -98,6 +100,94 @@ def _resolve_emotion_source(transcript_text: str, response_text: str) -> Emotion
     if transcript_text:
         return "transcript"
     return "response"
+
+
+def infer_voice_session_mode(
+    *,
+    voice_pipeline_mode: str | None = None,
+    pipeline_id: str | None = None,
+    decoder_source: str | None = None,
+    native_audio_ms: float | None = None,
+) -> VoiceSessionMode:
+    pipeline_mode = _normalize_text(voice_pipeline_mode)
+    if pipeline_mode == "native_multi_runtime":
+        return "native_audio"
+    if pipeline_mode == "whisper_llm_piper":
+        return "whisper_llm_piper"
+
+    pipeline = _normalize_text(pipeline_id)
+    decoder = _normalize_text(decoder_source)
+    if pipeline == "multi_runtime_piper" or decoder == "multi_runtime":
+        return "native_audio"
+    if pipeline == "whisper_llm_piper" or decoder == "faster_whisper":
+        return "whisper_llm_piper"
+    if native_audio_ms is not None:
+        return "native_audio"
+    return "unknown"
+
+
+def _voice_trace_stage_label(stage: str) -> str:
+    return {
+        "input_router": "Input router",
+        "image_preprocessor": "Image preprocessor",
+        "ocr_or_vision": "OCR / vision",
+        "retrieval": "Retrieval",
+        "main_generation": "Main generation",
+        "assistant_postprocess": "Assistant postprocess",
+        "audio_output": "Audio output",
+    }.get(stage, stage.replace("_", " ").title())
+
+
+def build_voice_trace_annotations(
+    execution_trace: list[str] | tuple[str, ...] | None = None,
+    *,
+    voice_pipeline_mode: str | None = None,
+    pipeline_id: str | None = None,
+    decoder_source: str | None = None,
+    native_audio_ms: float | None = None,
+) -> list[dict[str, Any]]:
+    """Build readable trace annotations for voice-only sessions."""
+
+    trace = [
+        str(stage or "").strip()
+        for stage in (execution_trace or [])
+        if str(stage or "").strip()
+    ]
+    if not trace:
+        return []
+
+    mode = infer_voice_session_mode(
+        voice_pipeline_mode=voice_pipeline_mode,
+        pipeline_id=pipeline_id,
+        decoder_source=decoder_source,
+        native_audio_ms=native_audio_ms,
+    )
+    audio_only = mode in {"native_audio", "whisper_llm_piper"}
+    annotations: list[dict[str, Any]] = []
+    for stage in trace:
+        status: VoiceTraceStageStatus = "active"
+        note: str | None = None
+        if audio_only and stage in {"image_preprocessor", "ocr_or_vision", "retrieval"}:
+            status = "no-op"
+            note = "audio-only voice session"
+        elif audio_only and stage == "input_router":
+            note = "audio input routed"
+        elif stage == "main_generation":
+            note = "model response"
+        elif stage == "assistant_postprocess":
+            note = "response shaping"
+        elif stage == "audio_output":
+            note = "tts output"
+
+        annotations.append(
+            {
+                "stage": stage,
+                "label": _voice_trace_stage_label(stage),
+                "status": status,
+                "note": note,
+            }
+        )
+    return annotations
 
 
 def _apply_keyword_scores(combined: str, scores: dict[EmotionLabel, float]) -> None:

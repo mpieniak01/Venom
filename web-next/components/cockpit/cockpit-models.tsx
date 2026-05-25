@@ -9,7 +9,12 @@ import Link from "next/link";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { useTranslation } from "@/lib/i18n";
-import type { ActiveLlmServerResponse, LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
+import type { LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
+import type { ActiveRuntimeInfo } from "@/lib/cockpit-runtime-selection";
+import {
+  buildRuntimeStateViewFromActiveServer,
+  formatVoiceRuntimeTuple,
+} from "@/lib/voice-runtime-state";
 
 type Gemma4AudioRuntimeInfo = Pick<
   LlmRuntimeTargetOption,
@@ -40,7 +45,7 @@ type CockpitModelsProps = Readonly<{
   onServerSessionReset: () => void;
   onClearSessionMemory: () => void;
   onClearGlobalMemory: () => void;
-  activeServerInfo?: ActiveLlmServerResponse | null;
+  activeServerInfo?: ActiveRuntimeInfo;
   activeServerName?: string | null;
   llmActionPending: string | null;
   onActivateServer: () => void;
@@ -72,24 +77,24 @@ export function CockpitModels({
   gemma4AudioRuntimeInfo,
 }: CockpitModelsProps) {
   const t = useTranslation();
+  const runtimeState = buildRuntimeStateViewFromActiveServer(activeServerInfo ?? null, {
+    runtimeId: selectedLlmServer,
+    modelName: selectedLlmModel,
+  });
   const runtimeSwitchGate = activeServerInfo?.runtime_switch_gate;
   const lastRuntimeSwitch = activeServerInfo?.last_runtime_switch;
-  const gateSwitching = runtimeSwitchGate?.in_progress === true;
-  const normalizedSelectedServer = normalizeRuntimeValue(selectedLlmServer);
+  const gateSwitching = runtimeState.switch.state === "switching";
+  const normalizedSelectedServer = normalizeRuntimeValue(runtimeState.selected.runtimeId);
   const normalizedActiveServer = normalizeRuntimeValue(
-    activeServerName ?? activeServerInfo?.active_server,
+    runtimeState.active.runtimeId || activeServerName,
   );
-  const selectedModelTrimmed = String(selectedLlmModel ?? "").trim();
-  const activeModelTrimmed = String(activeServerInfo?.active_model ?? "").trim();
+  const selectedModelTrimmed = String(runtimeState.selected.modelName ?? "").trim();
+  const activeModelTrimmed = String(runtimeState.active.modelName ?? "").trim();
   const runtimeSelectionApplied =
     Boolean(normalizedSelectedServer) &&
     normalizedSelectedServer === normalizedActiveServer &&
     (!selectedModelTrimmed || selectedModelTrimmed === activeModelTrimmed);
-  const runtimeSwitchFailedHint =
-    !gateSwitching &&
-    !runtimeSelectionApplied &&
-    Boolean(selectedServerEntry?.error_message) &&
-    Boolean(selectedServerEntry?.status && selectedServerEntry.status !== "online");
+  const runtimeSwitchFailedHint = runtimeState.switch.state === "failed";
   let activateServerLabel = "Aktywuj serwer";
   if (gateSwitching || llmActionPending === `activate:${selectedLlmServer}`) {
     activateServerLabel = "Aktywuję...";
@@ -153,8 +158,8 @@ export function CockpitModels({
             />
             {gateSwitching && (
               <p className="text-xs text-amber-300">
-                {`Trwa przełączanie runtime: ${runtimeSwitchGate?.from_runtime || "—"} -> ${
-                  runtimeSwitchGate?.to_runtime || "—"
+                {`Trwa przełączanie runtime: ${runtimeState.switch.fromRuntime || "—"} -> ${
+                  runtimeState.switch.toRuntime || "—"
                 }`}
               </p>
             )}
@@ -166,7 +171,12 @@ export function CockpitModels({
             )}
             {!gateSwitching && runtimeSwitchFailedHint && (
               <p className="text-xs text-rose-300">
-                {`Przełączenie runtime nieudane: ${selectedServerEntry?.error_message ?? "brak szczegółów"}`}
+                {`Przełączenie runtime nieudane: ${
+                  runtimeSwitchGate?.reason ||
+                  lastRuntimeSwitch?.reason ||
+                  selectedServerEntry?.error_message ||
+                  "brak szczegółów"
+                }`}
               </p>
             )}
             {!gateSwitching && !runtimeSelectionApplied && !runtimeSwitchFailedHint && (
@@ -248,8 +258,13 @@ export function CockpitModels({
               </Button>
             </span>
             <span>
-              Aktywny: {activeServerInfo?.active_model ?? "—"} @{" "}
-              {activeServerName || "—"}
+              Aktywny: {formatVoiceRuntimeTuple(runtimeState.active.runtimeId, runtimeState.active.modelName)}
+            </span>
+            <span>
+              Wybrany: {formatVoiceRuntimeTuple(runtimeState.selected.runtimeId, runtimeState.selected.modelName)}
+            </span>
+            <span>
+              Stan switcha: {runtimeState.switch.state}
             </span>
           </div>
           <Button

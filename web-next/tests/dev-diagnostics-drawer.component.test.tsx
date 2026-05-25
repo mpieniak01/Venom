@@ -136,7 +136,7 @@ describe("DevDiagnosticsDrawer", () => {
     assert.ok(screen.getAllByText("Kanał gotowy").length >= 2);
     assert.ok(screen.getByText("Tryb toru: native_multi_runtime"));
     assert.ok(screen.getAllByText("Native audio: 1.20s").length >= 1);
-    assert.ok(screen.getByText(/Trace semantics: Image preprocessor:no-op/i));
+    assert.ok(screen.getByText(/Semantyka śladu: Image preprocessor:no-op/i));
     assert.ok(screen.getByText("Kopiuj runtime JSON"));
     assert.ok(screen.getByText("Kopiuj sesję JSON"));
 

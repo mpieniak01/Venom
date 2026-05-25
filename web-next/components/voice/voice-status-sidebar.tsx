@@ -502,9 +502,9 @@ function VoiceSessionCard({
       )}
       {session.execution_trace_annotations?.length ? (
         <Row
-          label="Trace semantics"
+          label={t("voice.controls.traceSemantics")}
           value={session.execution_trace_annotations
-            .map((item) => `${item.label ?? item.stage ?? "stage"}:${item.status ?? "unknown"}`)
+            .map((item) => `${item.label ?? item.stage ?? t("voice.controls.stage")}:${item.status ?? t("common.unknown")}`)
             .join(" · ")}
         />
       ) : null}

@@ -1047,7 +1047,7 @@ class AudioStreamHandler:
             transcription = _coerce_str(
                 runtime_result.get("transcription"), ""
             ) or _coerce_str(runtime_result.get("text"), "")
-            response_text = runtime_result.get("response_text") or transcription
+            response_text = _coerce_str(runtime_result.get("response_text"), "")
             if not transcription or not response_text:
                 timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
                 self._update_voice_session_metadata(

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 import numpy as np
+import soundfile as sf
 from PIL import Image
 
 from .audio import get_audio_duration, normalize_audio
@@ -317,132 +318,112 @@ class MultiRuntimeEngine:
         user_content: list[dict[str, Any]] = []
         audio_tempdir: tempfile.TemporaryDirectory[str] | None = None
         audio_input_path: Path | None = None
-        if audio_normalized is not None:
-            try:
-                import soundfile as sf
-
+        try:
+            if audio_normalized is not None:
                 audio_tempdir = tempfile.TemporaryDirectory(
                     prefix="multi_runtime_audio_"
                 )
                 audio_input_path = Path(audio_tempdir.name) / "audio.wav"
                 sf.write(str(audio_input_path), audio_normalized, sr, subtype="FLOAT")
                 user_content.append({"type": "audio", "path": str(audio_input_path)})
-            except Exception as e:
-                if audio_tempdir is not None:
-                    audio_tempdir.cleanup()
-                raise InferenceError(
-                    f"Failed to prepare audio input for processor: {e}"
-                ) from e
-        if images:
-            for image in images:
-                user_content.append({"type": "image", "image": image})
-        user_content.append({"type": "text", "text": effective_prompt})
+            if images:
+                for image in images:
+                    user_content.append({"type": "image", "image": image})
+            user_content.append({"type": "text", "text": effective_prompt})
 
-        messages = [
-            {
-                "role": "user",
-                "content": user_content,
-            }
-        ]
-
-        if system_prompt:
-            messages.insert(
-                0,
+            messages = [
                 {
-                    "role": "system",
-                    "content": [{"type": "text", "text": system_prompt}],
-                },
+                    "role": "user",
+                    "content": user_content,
+                }
+            ]
+
+            if system_prompt:
+                messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": system_prompt}],
+                    },
+                )
+
+            apply_template_kwargs: dict[str, Any] = {
+                "add_generation_prompt": True,
+                "tokenize": True,
+                "return_dict": True,
+                "return_tensors": "pt",
+            }
+            if enable_thinking:
+                apply_template_kwargs["enable_thinking"] = True
+
+            try:
+                inputs = self.processor.apply_chat_template(
+                    messages,
+                    **apply_template_kwargs,
+                )
+            except TypeError:
+                apply_template_kwargs.pop("enable_thinking", None)
+                inputs = self.processor.apply_chat_template(
+                    messages,
+                    **apply_template_kwargs,
+                )
+
+            if hasattr(inputs, "to"):
+                inputs = inputs.to(self.model.device)
+
+            generate_kwargs: dict[str, Any] = {
+                "max_new_tokens": max_new_tokens or self.default_max_new_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "do_sample": do_sample if do_sample is not None else False,
+            }
+            if cache_implementation is not _UNSET and cache_implementation is not None:
+                generate_kwargs["cache_implementation"] = cache_implementation
+
+            try:
+                outputs = self.model.generate(**inputs, **generate_kwargs)
+            except TypeError:
+                generate_kwargs.pop("cache_implementation", None)
+                outputs = self.model.generate(**inputs, **generate_kwargs)
+
+            input_len = 0
+            if hasattr(inputs, "input_ids"):
+                try:
+                    input_len = int(inputs.input_ids.shape[-1])
+                except Exception:
+                    pass
+
+            if hasattr(outputs, "__getitem__") and len(outputs) > 0 and input_len > 0:
+                output_ids = outputs[0][input_len:]
+            else:
+                output_ids = (
+                    outputs[0]
+                    if hasattr(outputs, "__getitem__") and len(outputs) > 0
+                    else outputs
+                )
+
+            generated_text = self.processor.decode(
+                output_ids,
+                skip_special_tokens=False,
+                clean_up_tokenization_spaces=False,
             )
 
-        try:
-            try:
-                apply_template_kwargs: dict[str, Any] = {
-                    "add_generation_prompt": True,
-                    "tokenize": True,
-                    "return_dict": True,
-                    "return_tensors": "pt",
-                }
-                if enable_thinking:
-                    apply_template_kwargs["enable_thinking"] = True
+            self._last_raw_thinking_available = self._detect_raw_thinking_emission(
+                generated_text
+            )
+            generated_text = self._clean_generated_text(generated_text)
+            duration_sec = (
+                get_audio_duration(audio_normalized, sr)
+                if audio_normalized is not None
+                else 0.0
+            )
 
-                try:
-                    inputs = self.processor.apply_chat_template(
-                        messages,
-                        **apply_template_kwargs,
-                    )
-                except TypeError:
-                    apply_template_kwargs.pop("enable_thinking", None)
-                    inputs = self.processor.apply_chat_template(
-                        messages,
-                        **apply_template_kwargs,
-                    )
-
-                if hasattr(inputs, "to"):
-                    inputs = inputs.to(self.model.device)
-
-                generate_kwargs: dict[str, Any] = {
-                    "max_new_tokens": max_new_tokens or self.default_max_new_tokens,
-                    "temperature": temperature,
-                    "top_p": top_p,
-                    "do_sample": do_sample if do_sample is not None else False,
-                }
-                if (
-                    cache_implementation is not _UNSET
-                    and cache_implementation is not None
-                ):
-                    generate_kwargs["cache_implementation"] = cache_implementation
-
-                try:
-                    outputs = self.model.generate(**inputs, **generate_kwargs)
-                except TypeError:
-                    generate_kwargs.pop("cache_implementation", None)
-                    outputs = self.model.generate(**inputs, **generate_kwargs)
-
-                input_len = 0
-                if hasattr(inputs, "input_ids"):
-                    try:
-                        input_len = int(inputs.input_ids.shape[-1])
-                    except Exception:
-                        pass
-
-                if (
-                    hasattr(outputs, "__getitem__")
-                    and len(outputs) > 0
-                    and input_len > 0
-                ):
-                    output_ids = outputs[0][input_len:]
-                else:
-                    output_ids = (
-                        outputs[0]
-                        if hasattr(outputs, "__getitem__") and len(outputs) > 0
-                        else outputs
-                    )
-
-                generated_text = self.processor.decode(
-                    output_ids,
-                    skip_special_tokens=False,
-                    clean_up_tokenization_spaces=False,
-                )
-
-                self._last_raw_thinking_available = self._detect_raw_thinking_emission(
-                    generated_text
-                )
-                generated_text = self._clean_generated_text(generated_text)
-                duration_sec = (
-                    get_audio_duration(audio_normalized, sr)
-                    if audio_normalized is not None
-                    else 0.0
-                )
-
-                return generated_text, duration_sec
-            finally:
-                if audio_tempdir is not None:
-                    audio_tempdir.cleanup()
-
+            return generated_text, duration_sec
         except Exception as e:
+            raise InferenceError(f"Inference failed: {e}") from e
+        finally:
             if audio_tempdir is not None:
                 audio_tempdir.cleanup()
-            raise InferenceError(f"Inference failed: {e}") from e
 
     @staticmethod
     def load_image_from_bytes(payload: bytes) -> Image.Image:

@@ -393,14 +393,14 @@ function LatestRecordingSection({
         )}
         {latestVoiceSession.execution_trace_annotations?.length ? (
           <p>
-            Trace semantics:{" "}
+            {t("voice.controls.traceSemantics")}:{" "}
             {latestVoiceSession.execution_trace_annotations
-              .map((item) => `${item.label ?? item.stage ?? "stage"}:${item.status ?? "unknown"}`)
+              .map((item) => `${item.label ?? item.stage ?? t("voice.controls.stage")}:${item.status ?? t("common.unknown")}`)
               .join(" · ")}
           </p>
         ) : null}
         {latestVoiceSession.audio_input_status && (
-          <p>Audio input: {latestVoiceSession.audio_input_status}</p>
+          <p>{t("voice.controls.audioInput")}: {latestVoiceSession.audio_input_status}</p>
         )}
         {latestVoiceSession.fallback_reason && (
           <p className="text-amber-400">Fallback: {latestVoiceSession.fallback_reason}</p>

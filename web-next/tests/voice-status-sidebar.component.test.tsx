@@ -325,7 +325,7 @@ describe("VoiceStatusSidebar", () => {
     assert.ok(screen.getByText(/curious/i));
     assert.ok(screen.getByText("Tryb toru"));
     assert.ok(screen.getByText("Native audio"));
-    assert.ok(screen.getByText("Trace semantics"));
+    assert.ok(screen.getByText("Semantyka śladu"));
     assert.ok(screen.getByText(/Image preprocessor:no-op/i));
   });
 

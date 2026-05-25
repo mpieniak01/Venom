@@ -77,6 +77,15 @@ function healthLabel(t: ReturnType<typeof useTranslation>, health?: string | nul
   return t("runtime.diagnostics.unknown");
 }
 
+function traceStatusTone(
+  status?: RuntimeTraceAnnotationItem["status"],
+): "success" | "warning" | "danger" | "neutral" {
+  if (status === "active") return "success";
+  if (status === "no-op") return "neutral";
+  if (status === "disabled") return "warning";
+  return "neutral";
+}
+
 export function RuntimeDiagnosticsPanel({
   title,
   description,
@@ -143,14 +152,7 @@ export function RuntimeDiagnosticsPanel({
               <p className="text-caption">{t("runtime.diagnostics.executionTrace")}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {traceAnnotations?.map((item) => {
-                  const tone =
-                    item.status === "active"
-                      ? "success"
-                      : item.status === "no-op"
-                        ? "neutral"
-                        : item.status === "disabled"
-                          ? "warning"
-                          : "neutral";
+                  const tone = traceStatusTone(item.status);
                   return (
                     <Badge key={`${item.stage ?? item.label ?? "trace"}-${item.status ?? "unknown"}`} tone={tone}>
                       {item.label ?? item.stage ?? t("runtime.diagnostics.unknown")}

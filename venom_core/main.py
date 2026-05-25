@@ -524,11 +524,35 @@ def _build_voice_runtime_state(
         runtime_switch_gate=runtime_switch_gate,
         last_runtime_switch=last_runtime_switch,
     )
+    return {
+        "selected": _build_voice_runtime_selected_state(
+            runtime_snapshot=runtime_snapshot,
+            runtime_switch_gate=runtime_switch_gate,
+            last_runtime_switch=last_runtime_switch,
+        ),
+        "active": _build_voice_runtime_active_state(runtime_snapshot=runtime_snapshot),
+        "response": _build_voice_runtime_response_state(
+            latest_session=latest_session,
+            runtime_alignment=runtime_alignment,
+        ),
+        "switch": _build_voice_runtime_switch_payload(
+            runtime_switch_gate=runtime_switch_gate,
+            last_runtime_switch=last_runtime_switch,
+            switch_state=switch_state,
+        ),
+    }
+
+
+def _build_voice_runtime_selected_state(
+    *,
+    runtime_snapshot: dict[str, object] | None,
+    runtime_switch_gate: dict[str, object] | None,
+    last_runtime_switch: dict[str, object] | None,
+) -> dict[str, object]:
     active_runtime_id = str((runtime_snapshot or {}).get("runtime_id") or "").strip()
     active_provider = str((runtime_snapshot or {}).get("provider") or "").strip()
     active_model = str((runtime_snapshot or {}).get("model_name") or "").strip()
     active_identity = active_runtime_id or active_provider
-
     selected_runtime = str((runtime_switch_gate or {}).get("to_runtime") or "").strip()
     selected_model = str((last_runtime_switch or {}).get("model") or "").strip()
     selected_source = "switch_target"
@@ -536,7 +560,32 @@ def _build_voice_runtime_state(
         selected_runtime = active_identity
         selected_model = active_model
         selected_source = "active_runtime"
+    return {
+        "runtime_id": selected_runtime or None,
+        "model_name": selected_model or None,
+        "source": selected_source,
+    }
 
+
+def _build_voice_runtime_active_state(
+    *, runtime_snapshot: dict[str, object] | None
+) -> dict[str, object]:
+    active_runtime_id = str((runtime_snapshot or {}).get("runtime_id") or "").strip()
+    active_provider = str((runtime_snapshot or {}).get("provider") or "").strip()
+    active_model = str((runtime_snapshot or {}).get("model_name") or "").strip()
+    active_identity = active_runtime_id or active_provider
+    return {
+        "runtime_id": active_identity or None,
+        "provider": active_provider or None,
+        "model_name": active_model or None,
+    }
+
+
+def _build_voice_runtime_response_state(
+    *,
+    latest_session: dict[str, object] | None,
+    runtime_alignment: dict[str, object] | None,
+) -> dict[str, object]:
     response_provider = str(
         (latest_session or {}).get("audio_runtime_provider") or ""
     ).strip()
@@ -551,40 +600,35 @@ def _build_voice_runtime_state(
     response_matches_active = (runtime_alignment or {}).get(
         "response_runtime_matches_active"
     )
-
     return {
-        "selected": {
-            "runtime_id": selected_runtime or None,
-            "model_name": selected_model or None,
-            "source": selected_source,
-        },
-        "active": {
-            "runtime_id": active_identity or None,
-            "provider": active_provider or None,
-            "model_name": active_model or None,
-        },
-        "response": {
-            "provider": response_provider or None,
-            "model_name": response_model or None,
-            "pipeline_id": response_pipeline or None,
-            "created_at": response_created_at or None,
-            "fresh": response_runtime_fresh,
-            "matches_active": response_matches_active,
-        },
-        "switch": {
-            "state": switch_state,
-            "switch_id": (runtime_switch_gate or {}).get("switch_id"),
-            "from_runtime": (runtime_switch_gate or {}).get("from_runtime")
-            or (last_runtime_switch or {}).get("from_runtime"),
-            "to_runtime": (runtime_switch_gate or {}).get("to_runtime")
-            or (last_runtime_switch or {}).get("to_runtime"),
-            "started_at_utc": (runtime_switch_gate or {}).get("started_at_utc"),
-            "finished_at_utc": (last_runtime_switch or {}).get("at_utc"),
-            "reason": (runtime_switch_gate or {}).get("reason")
-            or (last_runtime_switch or {}).get("reason"),
-            "source": (runtime_switch_gate or {}).get("source")
-            or (last_runtime_switch or {}).get("source"),
-        },
+        "provider": response_provider or None,
+        "model_name": response_model or None,
+        "pipeline_id": response_pipeline or None,
+        "created_at": response_created_at or None,
+        "fresh": response_runtime_fresh,
+        "matches_active": response_matches_active,
+    }
+
+
+def _build_voice_runtime_switch_payload(
+    *,
+    runtime_switch_gate: dict[str, object] | None,
+    last_runtime_switch: dict[str, object] | None,
+    switch_state: str,
+) -> dict[str, object]:
+    return {
+        "state": switch_state,
+        "switch_id": (runtime_switch_gate or {}).get("switch_id"),
+        "from_runtime": (runtime_switch_gate or {}).get("from_runtime")
+        or (last_runtime_switch or {}).get("from_runtime"),
+        "to_runtime": (runtime_switch_gate or {}).get("to_runtime")
+        or (last_runtime_switch or {}).get("to_runtime"),
+        "started_at_utc": (runtime_switch_gate or {}).get("started_at_utc"),
+        "finished_at_utc": (last_runtime_switch or {}).get("at_utc"),
+        "reason": (runtime_switch_gate or {}).get("reason")
+        or (last_runtime_switch or {}).get("reason"),
+        "source": (runtime_switch_gate or {}).get("source")
+        or (last_runtime_switch or {}).get("source"),
     }
 
 
@@ -1813,44 +1857,80 @@ async def audio_websocket_endpoint(websocket: WebSocket):
         logger.error(f"Audio WebSocket error: {e}")
 
 
+def _safe_last_runtime_switch_event() -> dict[str, object] | None:
+    switch_event = get_last_runtime_switch_event() or {}
+    return switch_event if isinstance(switch_event, dict) else None
+
+
+async def _safe_voice_runtime_snapshot() -> dict[str, object]:
+    try:
+        runtime_snapshot = await _build_voice_runtime_snapshot()
+    except Exception as exc:  # pragma: no cover - best effort diagnostics
+        logger.warning("Nie udało się pobrać runtime snapshot: %s", exc)
+        return {"error": str(exc)}
+    return runtime_snapshot if isinstance(runtime_snapshot, dict) else {}
+
+
+def _attach_voice_runtime_state(
+    *,
+    status: dict[str, object],
+    runtime_snapshot: dict[str, object] | None,
+    latest_session: dict[str, object] | None,
+    runtime_switch_gate: dict[str, object] | None,
+    last_runtime_switch: dict[str, object] | None,
+) -> None:
+    runtime_alignment = _build_voice_runtime_alignment(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+    )
+    status["runtime_alignment"] = runtime_alignment
+    status["runtime_state"] = _build_voice_runtime_state(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+        runtime_alignment=runtime_alignment
+        if isinstance(runtime_alignment, dict)
+        else None,
+        runtime_switch_gate=runtime_switch_gate,
+        last_runtime_switch=last_runtime_switch,
+    )
+
+
+def _audio_disabled_status_payload(
+    *,
+    runtime_switch_gate: dict[str, object] | None,
+    last_runtime_switch: dict[str, object] | None,
+    runtime_snapshot: dict[str, object],
+) -> dict[str, object]:
+    status: dict[str, object] = {
+        "enabled": False,
+        "connected_clients": 0,
+        "active_recordings": 0,
+        "message": "Audio interface is disabled or not initialized.",
+        "runtime_switch_gate": runtime_switch_gate,
+        "runtime_snapshot": runtime_snapshot,
+    }
+    _attach_voice_runtime_state(
+        status=status,
+        runtime_snapshot=runtime_snapshot,
+        latest_session=None,
+        runtime_switch_gate=runtime_switch_gate,
+        last_runtime_switch=last_runtime_switch,
+    )
+    return status
+
+
 @app.get("/api/v1/audio/status")
 async def audio_status_endpoint(request: Request):
     """Zwraca stan kanału audio i gotowość stacka STT/TTS."""
     runtime_switch_gate = get_runtime_switch_gate_status()
-    last_runtime_switch = get_last_runtime_switch_event() or {}
+    last_runtime_switch = _safe_last_runtime_switch_event()
     if not audio_stream_handler:
-        runtime_snapshot = None
-        try:
-            runtime_snapshot = await _build_voice_runtime_snapshot()
-        except Exception as exc:  # pragma: no cover - best effort diagnostics
-            logger.warning("Nie udało się pobrać runtime snapshot: %s", exc)
-            runtime_snapshot = {"error": str(exc)}
-        runtime_alignment = _build_voice_runtime_alignment(
-            runtime_snapshot=runtime_snapshot
-            if isinstance(runtime_snapshot, dict)
-            else None,
-            latest_session=None,
+        runtime_snapshot = await _safe_voice_runtime_snapshot()
+        return _audio_disabled_status_payload(
+            runtime_switch_gate=runtime_switch_gate,
+            last_runtime_switch=last_runtime_switch,
+            runtime_snapshot=runtime_snapshot,
         )
-        return {
-            "enabled": False,
-            "connected_clients": 0,
-            "active_recordings": 0,
-            "message": "Audio interface is disabled or not initialized.",
-            "runtime_switch_gate": runtime_switch_gate,
-            "runtime_snapshot": runtime_snapshot,
-            "runtime_alignment": runtime_alignment,
-            "runtime_state": _build_voice_runtime_state(
-                runtime_snapshot=runtime_snapshot
-                if isinstance(runtime_snapshot, dict)
-                else None,
-                latest_session=None,
-                runtime_alignment=runtime_alignment,
-                runtime_switch_gate=runtime_switch_gate,
-                last_runtime_switch=last_runtime_switch
-                if isinstance(last_runtime_switch, dict)
-                else None,
-            ),
-        }
 
     status = audio_stream_handler.get_status(operator_agent=operator_agent)
     status["runtime_switch_gate"] = runtime_switch_gate
@@ -1867,33 +1947,14 @@ async def audio_status_endpoint(request: Request):
             request.url_for("download_latest_voice_session")
         )
     status["latest_voice_session"] = latest_session
-    try:
-        runtime_snapshot = await _build_voice_runtime_snapshot()
-        status["runtime_snapshot"] = runtime_snapshot
-    except Exception as exc:  # pragma: no cover - best effort diagnostics
-        logger.warning("Nie udało się pobrać runtime snapshot: %s", exc)
-        runtime_snapshot = {
-            "error": str(exc),
-        }
-        status["runtime_snapshot"] = runtime_snapshot
-    status["runtime_alignment"] = _build_voice_runtime_alignment(
-        runtime_snapshot=runtime_snapshot
-        if isinstance(runtime_snapshot, dict)
-        else None,
+    runtime_snapshot = await _safe_voice_runtime_snapshot()
+    status["runtime_snapshot"] = runtime_snapshot
+    _attach_voice_runtime_state(
+        status=status,
+        runtime_snapshot=runtime_snapshot,
         latest_session=latest_session if isinstance(latest_session, dict) else None,
-    )
-    status["runtime_state"] = _build_voice_runtime_state(
-        runtime_snapshot=runtime_snapshot
-        if isinstance(runtime_snapshot, dict)
-        else None,
-        latest_session=latest_session if isinstance(latest_session, dict) else None,
-        runtime_alignment=status["runtime_alignment"]
-        if isinstance(status["runtime_alignment"], dict)
-        else None,
         runtime_switch_gate=runtime_switch_gate,
-        last_runtime_switch=last_runtime_switch
-        if isinstance(last_runtime_switch, dict)
-        else None,
+        last_runtime_switch=last_runtime_switch,
     )
     return status
 

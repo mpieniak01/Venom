@@ -150,7 +150,7 @@ def build_voice_trace_annotations(
 
     trace = [
         str(stage or "").strip()
-        for stage in list(execution_trace or [])
+        for stage in (execution_trace or [])
         if str(stage or "").strip()
     ]
     if not trace:

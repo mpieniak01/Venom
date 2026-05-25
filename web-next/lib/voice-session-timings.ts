@@ -45,29 +45,29 @@ export function buildVoiceTimingEntries(
   session?: VoiceSessionTimingInput | null,
 ): VoiceTimingEntry[] {
   const mode = inferVoiceSessionTimingMode(session);
-  const entries: VoiceTimingEntry[] = [
+  const baseEntries: VoiceTimingEntry[] = [
     { key: "decode_ms", label: "Decode", value: timings?.decode_ms ?? null },
   ];
-
-  if (mode === "native_audio") {
-    entries.push({
+  const modeEntries: VoiceTimingEntry[] = mode === "native_audio"
+    ? [{
       key: "native_audio_ms",
       label: "Native audio",
       value: session?.native_audio_ms ?? timings?.native_audio_ms ?? null,
       accent: true,
-    });
-  } else {
-    entries.push({ key: "stt_ms", label: "STT", value: timings?.stt_ms ?? null });
-    entries.push({ key: "llm_ms", label: "LLM", value: timings?.llm_ms ?? null });
-  }
-
-  entries.push({ key: "tts_ms", label: "TTS", value: timings?.tts_ms ?? null });
-  entries.push({
+    }]
+    : [
+      { key: "stt_ms", label: "STT", value: timings?.stt_ms ?? null },
+      { key: "llm_ms", label: "LLM", value: timings?.llm_ms ?? null },
+    ];
+  const tailEntries: VoiceTimingEntry[] = [{
+    key: "tts_ms",
+    label: "TTS",
+    value: timings?.tts_ms ?? null,
+  }, {
     key: "total_backend_ms",
     label: "Total",
     value: timings?.total_backend_ms ?? null,
     accent: true,
-  });
-
-  return entries;
+  }];
+  return [...baseEntries, ...modeEntries, ...tailEntries];
 }

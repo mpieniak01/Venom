@@ -970,22 +970,11 @@ class AudioStreamHandler:
     ) -> bool:
         if not self._multi_runtime_runtime_selected():
             return False
-        if not self.audio_engine:
-            logger.error(
-                "AudioEngine nie jest dostępny dla natywnego toru multi_runtime"
-            )
-            await self._send_json(
-                connection_id,
-                {
-                    "type": "error",
-                    "message": "Audio engine not available for native multi_runtime pipeline",
-                },
-            )
+        if not await self._ensure_native_audio_engine_available(connection_id):
             return True
 
         snapshot = self._multi_runtime_runtime_snapshot()
-        health_ok = await self._multi_runtime_health_ok()
-        if not health_ok:
+        if not await self._multi_runtime_health_ok():
             logger.warning(
                 "multi_runtime health precheck failed for connection_id=%s; attempting native pipeline anyway",
                 connection_id,
@@ -1007,27 +996,12 @@ class AudioStreamHandler:
                 )
             except Exception as exc:
                 timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        **snapshot,
-                        "pipeline_id": "multi_runtime_piper",
-                        "audio_input_status": "failed",
-                        "decoder_source": "multi_runtime",
-                        "fallback_reason": "",
-                        "native_audio_ms": timings_ms["native_audio_ms"],
-                        **_build_voice_session_insights_payload(
-                            transcript="",
-                            response="",
-                            voice_mode=self._connection_voice_mode(connection_id),
-                            pipeline_id="multi_runtime_piper",
-                            **_multi_runtime_voice_flags(),
-                            raw_thinking_available=False,
-                        ),
-                        "timings_ms": timings_ms,
-                        "runtime": self._build_runtime_metadata(operator_agent),
-                        **self._voice_contract_payload(connection_id),
-                    },
+                self._persist_native_runtime_failure(
+                    connection_id=connection_id,
+                    session_dir=session_dir,
+                    snapshot=snapshot,
+                    timings_ms=timings_ms,
+                    operator_agent=operator_agent,
                 )
                 logger.warning(
                     "Gemma4 audio runtime failed for connection_id=%s: %s",
@@ -1049,52 +1023,15 @@ class AudioStreamHandler:
             ) or _coerce_str(runtime_result.get("text"), "")
             response_text = _coerce_str(runtime_result.get("response_text"), "")
             if not transcription or not response_text:
-                timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        **snapshot,
-                        "pipeline_id": "multi_runtime_piper",
-                        "audio_input_status": "failed",
-                        "decoder_source": "multi_runtime",
-                        "fallback_reason": "",
-                        "native_audio_ms": timings_ms["native_audio_ms"],
-                        "transcription": transcription,
-                        "transcription_length": len(transcription or ""),
-                        "response_text": response_text,
-                        "response_length": len(response_text or ""),
-                        "execution_trace": runtime_result.get("execution_trace") or [],
-                        "selected_policy": runtime_result.get("selected_policy"),
-                        "selected_image_strategy": runtime_result.get(
-                            "selected_image_strategy"
-                        ),
-                        "retrieval_used": runtime_result.get("retrieval_used"),
-                        "retrieval_context_items": runtime_result.get(
-                            "retrieval_context_items"
-                        ),
-                        "retrieval_route": runtime_result.get("retrieval_route"),
-                        "assistant_used": runtime_result.get("assistant_used"),
-                        "economy_mode_activated": runtime_result.get(
-                            "economy_mode_activated"
-                        ),
-                        "degradation_reasons": runtime_result.get("degradation_reasons")
-                        or [],
-                        "component_snapshot": runtime_result.get("component_snapshot")
-                        or [],
-                        **_build_voice_session_insights_payload(
-                            transcript=transcription,
-                            response=response_text,
-                            voice_mode=self._connection_voice_mode(connection_id),
-                            pipeline_id="multi_runtime_piper",
-                            **_multi_runtime_voice_flags(),
-                            raw_thinking_available=bool(
-                                runtime_result.get("raw_thinking_available", False)
-                            ),
-                        ),
-                        "timings_ms": timings_ms,
-                        "runtime": self._build_runtime_metadata(operator_agent),
-                        **self._voice_contract_payload(connection_id),
-                    },
+                self._persist_native_runtime_incomplete_result(
+                    connection_id=connection_id,
+                    session_dir=session_dir,
+                    snapshot=snapshot,
+                    timings_ms=timings_ms,
+                    runtime_result=runtime_result,
+                    transcription=transcription,
+                    response_text=response_text,
+                    operator_agent=operator_agent,
                 )
                 await self._send_json(
                     connection_id,
@@ -1182,6 +1119,113 @@ class AudioStreamHandler:
 
         await self._send_json(connection_id, {"type": "complete"})
         return True
+
+    async def _ensure_native_audio_engine_available(self, connection_id: int) -> bool:
+        if self.audio_engine:
+            return True
+        logger.error("AudioEngine nie jest dostępny dla natywnego toru multi_runtime")
+        await self._send_json(
+            connection_id,
+            {
+                "type": "error",
+                "message": "Audio engine not available for native multi_runtime pipeline",
+            },
+        )
+        return False
+
+    def _base_native_runtime_metadata(
+        self,
+        *,
+        snapshot: dict[str, Any],
+        connection_id: int,
+        timings_ms: dict[str, float],
+        operator_agent,
+    ) -> dict[str, Any]:
+        return {
+            **snapshot,
+            "pipeline_id": "multi_runtime_piper",
+            "decoder_source": "multi_runtime",
+            "fallback_reason": "",
+            "native_audio_ms": timings_ms.get("native_audio_ms"),
+            "timings_ms": timings_ms,
+            "runtime": self._build_runtime_metadata(operator_agent),
+            **self._voice_contract_payload(connection_id),
+        }
+
+    def _persist_native_runtime_failure(
+        self,
+        *,
+        connection_id: int,
+        session_dir: Path,
+        snapshot: dict[str, Any],
+        timings_ms: dict[str, float],
+        operator_agent,
+    ) -> None:
+        payload = {
+            **self._base_native_runtime_metadata(
+                snapshot=snapshot,
+                connection_id=connection_id,
+                timings_ms=timings_ms,
+                operator_agent=operator_agent,
+            ),
+            "audio_input_status": "failed",
+            **_build_voice_session_insights_payload(
+                transcript="",
+                response="",
+                voice_mode=self._connection_voice_mode(connection_id),
+                pipeline_id="multi_runtime_piper",
+                **_multi_runtime_voice_flags(),
+                raw_thinking_available=False,
+            ),
+        }
+        self._update_voice_session_metadata(session_dir, payload)
+
+    def _persist_native_runtime_incomplete_result(
+        self,
+        *,
+        connection_id: int,
+        session_dir: Path,
+        snapshot: dict[str, Any],
+        timings_ms: dict[str, float],
+        runtime_result: dict[str, Any],
+        transcription: str,
+        response_text: str,
+        operator_agent,
+    ) -> None:
+        payload = {
+            **self._base_native_runtime_metadata(
+                snapshot=snapshot,
+                connection_id=connection_id,
+                timings_ms=timings_ms,
+                operator_agent=operator_agent,
+            ),
+            "audio_input_status": "failed",
+            "transcription": transcription,
+            "transcription_length": len(transcription),
+            "response_text": response_text,
+            "response_length": len(response_text),
+            "execution_trace": runtime_result.get("execution_trace") or [],
+            "selected_policy": runtime_result.get("selected_policy"),
+            "selected_image_strategy": runtime_result.get("selected_image_strategy"),
+            "retrieval_used": runtime_result.get("retrieval_used"),
+            "retrieval_context_items": runtime_result.get("retrieval_context_items"),
+            "retrieval_route": runtime_result.get("retrieval_route"),
+            "assistant_used": runtime_result.get("assistant_used"),
+            "economy_mode_activated": runtime_result.get("economy_mode_activated"),
+            "degradation_reasons": runtime_result.get("degradation_reasons") or [],
+            "component_snapshot": runtime_result.get("component_snapshot") or [],
+            **_build_voice_session_insights_payload(
+                transcript=transcription,
+                response=response_text,
+                voice_mode=self._connection_voice_mode(connection_id),
+                pipeline_id="multi_runtime_piper",
+                **_multi_runtime_voice_flags(),
+                raw_thinking_available=bool(
+                    runtime_result.get("raw_thinking_available", False)
+                ),
+            ),
+        }
+        self._update_voice_session_metadata(session_dir, payload)
 
     async def _process_audio_buffer(
         self,

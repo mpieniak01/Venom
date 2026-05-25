@@ -28,6 +28,7 @@ logger = get_logger(__name__)
 _HTTP_409_RUNTIME_SWITCH_IN_PROGRESS = 409
 _DRAIN_TIMEOUT_SECONDS = 30.0
 _DRAIN_POLL_INTERVAL_SECONDS = 0.05
+_STALE_SWITCH_SECONDS = 90.0
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class _RuntimeSwitchGateState:
     from_runtime: str | None = None
     to_runtime: str | None = None
     started_at_utc: str | None = None
+    drain_completed_at_utc: str | None = None
     reason: str | None = None
 
 
@@ -75,6 +77,63 @@ def _snapshot_unlocked() -> RuntimeSwitchGateSnapshot:
     )
 
 
+def _parse_iso_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _clear_gate_unlocked() -> None:
+    _STATE.in_progress = False
+    _STATE.switch_id = None
+    _STATE.source = None
+    _STATE.from_runtime = None
+    _STATE.to_runtime = None
+    _STATE.started_at_utc = None
+    _STATE.drain_completed_at_utc = None
+    _STATE.reason = None
+
+
+def _recover_stale_gate_unlocked() -> bool:
+    if not _STATE.in_progress:
+        return False
+    if _STATE.active_requests > 0:
+        return False
+    drain_completed_at = _parse_iso_utc(_STATE.drain_completed_at_utc)
+    if drain_completed_at is None:
+        return False
+    started_at = _parse_iso_utc(_STATE.started_at_utc)
+    if started_at is None:
+        return False
+    now = datetime.now(UTC)
+    age_seconds = (now - started_at).total_seconds()
+    if age_seconds < _STALE_SWITCH_SECONDS:
+        return False
+    drain_age_seconds = (now - drain_completed_at).total_seconds()
+    if drain_age_seconds < _STALE_SWITCH_SECONDS:
+        return False
+    stale_switch_id = _STATE.switch_id
+    stale_source = _STATE.source
+    stale_from = _STATE.from_runtime
+    stale_to = _STATE.to_runtime
+    _clear_gate_unlocked()
+    logger.warning(
+        "runtime_switch_gate_stale_recovered switch_id={} source={} from={} to={} age_seconds={:.1f}",
+        stale_switch_id,
+        stale_source,
+        stale_from,
+        stale_to,
+        age_seconds,
+    )
+    return True
+
+
 def get_runtime_switch_gate_status() -> dict[str, Any]:
     snapshot = get_runtime_switch_gate_snapshot()
     return {
@@ -91,6 +150,7 @@ def get_runtime_switch_gate_status() -> dict[str, Any]:
 
 def get_runtime_switch_gate_snapshot() -> RuntimeSwitchGateSnapshot:
     with _STATE_LOCK:
+        _recover_stale_gate_unlocked()
         return _snapshot_unlocked()
 
 
@@ -126,6 +186,7 @@ def begin_runtime_switch(
     reason: str | None = None,
 ) -> RuntimeSwitchGateSnapshot:
     with _STATE_LOCK:
+        _recover_stale_gate_unlocked()
         if _STATE.in_progress:
             snapshot = _snapshot_unlocked()
             raise HTTPException(
@@ -151,6 +212,7 @@ def begin_runtime_switch(
         _STATE.from_runtime = str(from_runtime or "").strip() or None
         _STATE.to_runtime = str(to_runtime or "").strip() or None
         _STATE.started_at_utc = _utc_now()
+        _STATE.drain_completed_at_utc = None
         _STATE.reason = str(reason or "").strip() or None
         snapshot = _snapshot_unlocked()
 
@@ -173,13 +235,7 @@ def finish_runtime_switch(*, switch_id: str | None) -> None:
                 switch_id,
             )
             return
-        _STATE.in_progress = False
-        _STATE.switch_id = None
-        _STATE.source = None
-        _STATE.from_runtime = None
-        _STATE.to_runtime = None
-        _STATE.started_at_utc = None
-        _STATE.reason = None
+        _clear_gate_unlocked()
         _STATE.active_requests = max(0, _STATE.active_requests)
 
     logger.info("runtime_switch_gate_closed switch_id={}", switch_id)
@@ -192,6 +248,10 @@ async def wait_for_runtime_requests_to_drain(
     while True:
         with _STATE_LOCK:
             active_requests = _STATE.active_requests
+            if active_requests <= 0 and _STATE.in_progress:
+                _STATE.drain_completed_at_utc = (
+                    _STATE.drain_completed_at_utc or _utc_now()
+                )
         if active_requests <= 0:
             return True
         if time.monotonic() >= deadline:
@@ -209,6 +269,7 @@ async def runtime_request_guard(
     *, request_kind: str, provider: str | None = None, model: str | None = None
 ) -> AsyncIterator[RuntimeSwitchGateSnapshot]:
     with _STATE_LOCK:
+        _recover_stale_gate_unlocked()
         if _STATE.in_progress:
             snapshot = _snapshot_unlocked()
             raise HTTPException(
@@ -229,6 +290,8 @@ async def runtime_request_guard(
                 },
             )
         _STATE.active_requests += 1
+        if _STATE.in_progress:
+            _STATE.drain_completed_at_utc = None
         snapshot = _snapshot_unlocked()
     logger.info(
         "runtime_request_entered kind={} provider={} model={} active_requests={}",

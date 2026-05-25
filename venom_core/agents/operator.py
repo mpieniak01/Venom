@@ -11,7 +11,7 @@ from semantic_kernel.contents import ChatHistory
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.hardware_pi import HardwareBridge
-from venom_core.utils.llm_runtime import get_active_llm_runtime
+from venom_core.utils.llm_runtime import get_active_llm_runtime, infer_local_provider
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -212,7 +212,29 @@ def _is_ollama_runtime_active() -> bool:
 
 
 def _should_use_ollama_native_fallback() -> bool:
-    return SETTINGS.LLM_SERVICE_TYPE == "local" or _is_ollama_runtime_active()
+    if _is_ollama_runtime_active():
+        return True
+    raw_service_type = getattr(SETTINGS, "LLM_SERVICE_TYPE", "")
+    service_type = (
+        raw_service_type.strip().lower() if isinstance(raw_service_type, str) else ""
+    )
+    if service_type != "local":
+        return False
+    raw_active_server = getattr(SETTINGS, "ACTIVE_LLM_SERVER", "")
+    active_server = (
+        raw_active_server.strip().lower() if isinstance(raw_active_server, str) else ""
+    )
+    if active_server == "ollama":
+        return True
+    if active_server and active_server != "ollama":
+        return False
+    # Legacy/local fallback contract:
+    # if ACTIVE_LLM_SERVER is unset, infer provider from local endpoint.
+    raw_endpoint = getattr(SETTINGS, "LLM_LOCAL_ENDPOINT", "")
+    endpoint = raw_endpoint.strip() if isinstance(raw_endpoint, str) else ""
+    if not endpoint:
+        return True
+    return infer_local_provider(endpoint) == "ollama"
 
 
 def _ollama_extra_body() -> dict[str, Any] | None:
@@ -609,81 +631,33 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             Odpowiedź zoptymalizowana dla TTS
         """
         try:
-            mode_prompt = self._get_voice_mode_prompt(mode)
-            temp_history = self._build_voice_chat_history(
-                input_text=input_text,
-                mode=mode,
-                mode_prompt=mode_prompt,
-                voice_context=voice_context,
+            mode_prompt, temp_history, chat_service, settings = (
+                self._prepare_voice_response_context(
+                    input_text=input_text,
+                    mode=mode,
+                    voice_context=voice_context,
+                )
             )
-            service_id = self._resolve_chat_service_id()
-
-            # Ustawienia wykonania
-            settings = OpenAIChatPromptExecutionSettings(
-                service_id=service_id,
-                max_tokens=_coerce_int(mode_prompt["max_tokens"], 0),
-                temperature=_coerce_float(mode_prompt["temperature"], 0.7),
-                extra_body=_ollama_extra_body(),
-            )
-
-            # Pobierz usługę czatu
-            chat_service: Any = self.kernel.get_service(service_id=service_id)
-
-            # Wygeneruj odpowiedź
-            response = await self._invoke_chat_with_fallbacks(
+            (
+                assistant_message,
+                needs_retry,
+            ) = await self._invoke_voice_once_with_fallback(
                 chat_service=chat_service,
                 chat_history=temp_history,
                 settings=settings,
-                enable_functions=False,
+                mode_prompt=mode_prompt,
+                input_text=input_text,
             )
-
-            assistant_message, needs_retry = _normalize_voice_response(response)
-            if not assistant_message and _should_use_ollama_native_fallback():
-                # Ollama's OpenAI-compat endpoint ignores think:false for some
-                # thinking models (gemma4, qwen3, deepseek-r1). Fall back to the
-                # native /api/chat endpoint which reliably disables thinking.
-                logger.warning(
-                    "SK returned empty content (thinking model?), falling back to "
-                    "native Ollama API for input: %s",
-                    input_text[:80],
-                )
-                assistant_message, needs_retry = _normalize_voice_response(
-                    await _ollama_native_call(
-                        chat_history=temp_history,
-                        max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
-                        temperature=_coerce_float(mode_prompt["temperature"], 0.7),
-                    )
-                )
-
-            if needs_retry:
-                logger.warning(
-                    "Voice response looks like prompt leakage; retrying with a "
-                    "minimal history for input: %s",
-                    input_text[:80],
-                )
-                retry_history = _build_voice_retry_history(
-                    input_text=input_text,
-                    mode_prompt=mode_prompt,
-                    voice_context=voice_context,
-                    mode=mode,
-                )
-                retry_response = await self._invoke_chat_with_fallbacks(
-                    chat_service=chat_service,
-                    chat_history=retry_history,
-                    settings=settings,
-                    enable_functions=False,
-                )
-                assistant_message, needs_retry = _normalize_voice_response(
-                    retry_response
-                )
-                if not assistant_message and _should_use_ollama_native_fallback():
-                    assistant_message, needs_retry = _normalize_voice_response(
-                        await _ollama_native_call(
-                            chat_history=retry_history,
-                            max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
-                            temperature=_coerce_float(mode_prompt["temperature"], 0.7),
-                        )
-                    )
+            assistant_message, needs_retry = await self._retry_voice_response_if_needed(
+                assistant_message=assistant_message,
+                needs_retry=needs_retry,
+                chat_service=chat_service,
+                settings=settings,
+                mode_prompt=mode_prompt,
+                input_text=input_text,
+                mode=mode,
+                voice_context=voice_context,
+            )
 
             if not assistant_message:
                 logger.warning(
@@ -699,14 +673,156 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                 )
                 return "Przepraszam, model nie zwrócił odpowiedzi. Spróbuj ponownie."
 
-            self._append_to_history(input_text, assistant_message)
-
-            logger.info(f"OperatorAgent odpowiedź: {assistant_message}")
-            return assistant_message
-
+            return self._finalize_voice_response(
+                input_text=input_text, assistant_message=assistant_message
+            )
         except Exception as e:
             logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
+            fallback_text = await self._recover_voice_response_after_exception(
+                input_text=input_text,
+                mode=mode,
+                voice_context=voice_context,
+            )
+            if fallback_text:
+                return fallback_text
             return "Przepraszam, wystąpił błąd. Spróbuj ponownie."
+
+    def _prepare_voice_response_context(
+        self,
+        *,
+        input_text: str,
+        mode: str,
+        voice_context: Optional[dict[str, Any]],
+    ) -> tuple[dict[str, Any], ChatHistory, Any, OpenAIChatPromptExecutionSettings]:
+        mode_prompt = self._get_voice_mode_prompt(mode)
+        temp_history = self._build_voice_chat_history(
+            input_text=input_text,
+            mode=mode,
+            mode_prompt=mode_prompt,
+            voice_context=voice_context,
+        )
+        service_id = self._resolve_chat_service_id()
+        settings = OpenAIChatPromptExecutionSettings(
+            service_id=service_id,
+            max_tokens=_coerce_int(mode_prompt["max_tokens"], 0),
+            temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+            extra_body=_ollama_extra_body(),
+        )
+        chat_service: Any = self.kernel.get_service(service_id=service_id)
+        return mode_prompt, temp_history, chat_service, settings
+
+    async def _invoke_voice_once_with_fallback(
+        self,
+        *,
+        chat_service: Any,
+        chat_history: ChatHistory,
+        settings: OpenAIChatPromptExecutionSettings,
+        mode_prompt: dict[str, Any],
+        input_text: str,
+    ) -> tuple[str, bool]:
+        response = await self._invoke_chat_with_fallbacks(
+            chat_service=chat_service,
+            chat_history=chat_history,
+            settings=settings,
+            enable_functions=False,
+        )
+        assistant_message, needs_retry = _normalize_voice_response(response)
+        if assistant_message or not _should_use_ollama_native_fallback():
+            return assistant_message, needs_retry
+        logger.warning(
+            "SK returned empty content (thinking model?), falling back to "
+            "native Ollama API for input: %s",
+            input_text[:80],
+        )
+        fallback_response = await _ollama_native_call(
+            chat_history=chat_history,
+            max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
+            temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+        )
+        return _normalize_voice_response(fallback_response)
+
+    async def _retry_voice_response_if_needed(
+        self,
+        *,
+        assistant_message: str,
+        needs_retry: bool,
+        chat_service: Any,
+        settings: OpenAIChatPromptExecutionSettings,
+        mode_prompt: dict[str, Any],
+        input_text: str,
+        mode: str,
+        voice_context: Optional[dict[str, Any]],
+    ) -> tuple[str, bool]:
+        if not needs_retry:
+            return assistant_message, needs_retry
+        logger.warning(
+            "Voice response looks like prompt leakage; retrying with a "
+            "minimal history for input: %s",
+            input_text[:80],
+        )
+        retry_history = _build_voice_retry_history(
+            input_text=input_text,
+            mode_prompt=mode_prompt,
+            voice_context=voice_context,
+            mode=mode,
+        )
+        return await self._invoke_voice_once_with_fallback(
+            chat_service=chat_service,
+            chat_history=retry_history,
+            settings=settings,
+            mode_prompt=mode_prompt,
+            input_text=input_text,
+        )
+
+    def _finalize_voice_response(
+        self, *, input_text: str, assistant_message: str
+    ) -> str:
+        self._append_to_history(input_text, assistant_message)
+        logger.info(f"OperatorAgent odpowiedź: {assistant_message}")
+        return assistant_message
+
+    async def _recover_voice_response_after_exception(
+        self,
+        *,
+        input_text: str,
+        mode: str,
+        voice_context: Optional[dict[str, Any]],
+    ) -> str | None:
+        if not _should_use_ollama_native_fallback():
+            return None
+        try:
+            mode_prompt = self._get_voice_mode_prompt(mode)
+            fallback_history = self._build_voice_chat_history(
+                input_text=input_text,
+                mode=mode,
+                mode_prompt=mode_prompt,
+                voice_context=voice_context,
+            )
+            fallback_text = await _ollama_native_call(
+                chat_history=fallback_history,
+                max_tokens=_coerce_int(mode_prompt["max_tokens"], 150),
+                temperature=_coerce_float(mode_prompt["temperature"], 0.7),
+            )
+            fallback_text, fallback_needs_retry = _normalize_voice_response(
+                fallback_text
+            )
+            if (
+                not fallback_text
+                or fallback_needs_retry
+                or _looks_like_voice_response_leak(fallback_text)
+            ):
+                return None
+            self._append_to_history(input_text, fallback_text)
+            logger.warning(
+                "Voice response recovered via native Ollama fallback after exception"
+            )
+            return fallback_text
+        except Exception as fallback_exc:
+            logger.error(
+                "Native Ollama fallback after exception failed: %s",
+                fallback_exc,
+            )
+            return None
 
     def _resolve_chat_service_id(self) -> str:
         """Wybiera dostępny serwis czatu w kernelu OperatorAgent."""

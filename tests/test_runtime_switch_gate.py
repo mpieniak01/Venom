@@ -91,3 +91,53 @@ def test_finish_runtime_switch_ignores_mismatched_switch_id():
     closed = gate.get_runtime_switch_gate_snapshot()
     assert closed.in_progress is False
     assert closed.switch_id is None
+
+
+def test_get_snapshot_recovers_stale_switch_gate_without_active_requests():
+    with gate._STATE_LOCK:  # noqa: SLF001
+        gate._STATE = gate._RuntimeSwitchGateState(  # noqa: SLF001
+            in_progress=True,
+            active_requests=0,
+            switch_id="stale-switch",
+            source="ui",
+            from_runtime="ollama",
+            to_runtime="multi_runtime",
+            started_at_utc="2000-01-01T00:00:00+00:00",
+            drain_completed_at_utc="2000-01-01T00:00:00+00:00",
+            reason="set_active_llm_server",
+        )
+
+    snapshot = gate.get_runtime_switch_gate_snapshot()
+
+    assert snapshot.in_progress is False
+    assert snapshot.switch_id is None
+
+
+def test_get_snapshot_does_not_recover_without_drain_marker():
+    with gate._STATE_LOCK:  # noqa: SLF001
+        gate._STATE = gate._RuntimeSwitchGateState(  # noqa: SLF001
+            in_progress=True,
+            active_requests=0,
+            switch_id="stale-switch",
+            source="ui",
+            from_runtime="ollama",
+            to_runtime="multi_runtime",
+            started_at_utc="2000-01-01T00:00:00+00:00",
+            drain_completed_at_utc=None,
+            reason="set_active_llm_server",
+        )
+
+    snapshot = gate.get_runtime_switch_gate_snapshot()
+
+    assert snapshot.in_progress is True
+    assert snapshot.switch_id == "stale-switch"
+
+
+def test_parse_iso_utc_handles_invalid_and_naive_values():
+    assert gate._parse_iso_utc(None) is None  # noqa: SLF001
+    assert gate._parse_iso_utc("") is None  # noqa: SLF001
+    assert gate._parse_iso_utc("not-a-date") is None  # noqa: SLF001
+
+    parsed = gate._parse_iso_utc("2026-05-24T10:00:00")  # noqa: SLF001
+    assert parsed is not None
+    assert parsed.tzinfo is not None

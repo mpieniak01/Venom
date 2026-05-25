@@ -1336,7 +1336,7 @@ class AudioStreamHandler:
         runtime_metadata = self._build_runtime_metadata(operator_agent)
         async with runtime_request_guard(
             request_kind="voice_fallback_llm",
-            provider=_coerce_str(runtime_metadata.get("llm_service_id"), ""),
+            provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
             model=_coerce_str(runtime_metadata.get("llm_model"), ""),
         ):
             response_text = await _invoke_operator_agent(
@@ -1363,7 +1363,7 @@ class AudioStreamHandler:
                     "timings_ms": timings_ms,
                     # In fallback whisper->LLM path, this pair must reflect the LLM that
                     # actually generated the response, not the native multi_runtime daemon.
-                    "audio_runtime_provider": runtime_metadata.get("llm_service_id"),
+                    "audio_runtime_provider": runtime_metadata.get("llm_provider"),
                     "audio_runtime_model": runtime_metadata.get("llm_model"),
                     "runtime": runtime_metadata,
                     **self._voice_contract_payload(connection_id),
@@ -1599,9 +1599,17 @@ class AudioStreamHandler:
                 service_id = operator_agent._resolve_chat_service_id()
             except Exception:
                 service_id = None
+        runtime_provider = _coerce_str(
+            getattr(SETTINGS, "ACTIVE_LLM_SERVER", ""),
+            "",
+        )
         runtime_model = getattr(SETTINGS, "LLM_MODEL_NAME", None)
         try:
             runtime = get_active_llm_runtime()
+            runtime_provider = _coerce_str(
+                getattr(runtime, "provider", ""),
+                runtime_provider,
+            )
             runtime_model = getattr(runtime, "model_name", runtime_model)
         except Exception as exc:
             logger.debug(
@@ -1613,6 +1621,7 @@ class AudioStreamHandler:
             "stt_device": getattr(whisper, "device", None),
             "stt_compute_type": getattr(whisper, "compute_type", None),
             "llm_service_id": service_id,
+            "llm_provider": runtime_provider,
             "llm_model": runtime_model,
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),

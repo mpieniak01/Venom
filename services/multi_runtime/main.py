@@ -220,6 +220,8 @@ _warming: bool = False
 _startup_error: Optional[str] = None
 _lifecycle_lock: asyncio.Lock = asyncio.Lock()
 _respond_inflight_requests: int = 0
+_INFLIGHT_DRAIN_TIMEOUT_SECONDS = 30.0
+_INFLIGHT_DRAIN_POLL_SECONDS = 0.05
 
 
 async def _increment_respond_inflight() -> None:
@@ -233,6 +235,40 @@ async def _decrement_respond_inflight() -> int:
     async with _lifecycle_lock:
         _respond_inflight_requests = max(0, _respond_inflight_requests - 1)
         return _respond_inflight_requests
+
+
+async def _drain_inflight_requests(timeout_seconds: float) -> None:
+    """Wait until no request uses active engine to avoid unload/generate race."""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        async with _lifecycle_lock:
+            inflight = _respond_inflight_requests
+        if inflight <= 0:
+            return
+        if time.monotonic() >= deadline:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Cannot apply lifecycle action while inference is in progress "
+                    f"(inflight={inflight})"
+                ),
+            )
+        await asyncio.sleep(_INFLIGHT_DRAIN_POLL_SECONDS)
+
+
+async def _acquire_lifecycle_lock_after_drain(timeout_seconds: float) -> asyncio.Lock:
+    """Acquire lifecycle lock only after confirming no inflight inference.
+
+    Re-check is required because new inference may start between drain completion
+    and lock acquisition attempt.
+    """
+    while True:
+        await _drain_inflight_requests(timeout_seconds)
+        lock = _lifecycle_lock
+        await lock.acquire()
+        if _respond_inflight_requests <= 0:
+            return lock
+        lock.release()
 
 
 def _resolve_startup_runtime_params() -> dict[str, object]:
@@ -819,11 +855,14 @@ async def daemon_reload() -> SoftReloadResponse:
     if not daemon.is_ready():
         raise HTTPException(status_code=503, detail="Target model is not loaded")
 
-    async with _lifecycle_lock:
+    lock = await _acquire_lifecycle_lock_after_drain(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
+    try:
         try:
             reason = await asyncio.to_thread(daemon.soft_reload)
         except ModelLoadError as e:
             raise HTTPException(status_code=500, detail=f"Soft reload failed: {e}")
+    finally:
+        lock.release()
 
     return SoftReloadResponse(
         reason=reason,
@@ -838,12 +877,15 @@ async def daemon_restart() -> RestartResponse:
 
     The OS process manager (Docker, systemd) is expected to restart the service.
     """
-    async with _lifecycle_lock:
+    lock = await _acquire_lifecycle_lock_after_drain(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
+    try:
         try:
             daemon = get_daemon()
             daemon.unload_all()
         except RuntimeError:
             pass  # Not initialized — still proceed with restart
+    finally:
+        lock.release()
 
     async def _do_restart():
         await asyncio.sleep(0.2)
@@ -859,12 +901,15 @@ async def daemon_restart() -> RestartResponse:
 @app.post("/v1/daemon/unload")
 async def daemon_unload() -> dict[str, Any]:
     """Unload all currently loaded models without restarting the daemon process."""
-    async with _lifecycle_lock:
+    lock = await _acquire_lifecycle_lock_after_drain(_INFLIGHT_DRAIN_TIMEOUT_SECONDS)
+    try:
         try:
             daemon = get_daemon()
             await asyncio.to_thread(daemon.unload_all)
         except RuntimeError:
             raise HTTPException(status_code=503, detail="Daemon not initialized")
+    finally:
+        lock.release()
     return {"status": "ok", "message": "All models unloaded."}
 
 
@@ -948,81 +993,84 @@ async def daemon_fallback() -> FallbackResponse:
 
 @app.post("/v1/respond", response_model=RespondResponse)
 async def respond(request: Request) -> RespondResponse:
+    inflight_incremented = False
     try:
         daemon = get_daemon()
         engine = daemon.active_engine()
+        await _increment_respond_inflight()
+        inflight_incremented = True
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    if not engine.is_loaded():
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    request_payload, audio_bytes, uploaded_image_bytes = await _parse_respond_request(
-        request
-    )
-
-    audio_array = None
-    sample_rate = 16000
-    text_content = None
-    images: list[Image.Image] = []
-
-    if audio_bytes is not None:
-        try:
-            audio_array, sample_rate = await asyncio.to_thread(
-                audio_from_bytes, audio_bytes
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Failed to process uploaded audio: {e}"
-            )
-    else:
-        for message in request_payload.messages:
-            for content in message.content:
-                if content.type == "audio" and content.path:
-                    audio_path = Path(content.path)
-                    try:
-                        audio_array, sample_rate = await asyncio.to_thread(
-                            audio_from_file, audio_path
-                        )
-                    except Exception as e:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Failed to load audio from {content.path}: {e}",
-                        )
-                elif content.type == "text" and content.text:
-                    text_content = content.text
-                elif content.type == "image":
-                    try:
-                        if content.data:
-                            images.append(_image_from_data_field(content.data))
-                        elif content.path:
-                            images.append(_image_from_path(content.path))
-                        elif content.url:
-                            images.append(await _image_from_url(content.url))
-                    except Exception as e:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Failed to load image input: {e}",
-                        )
-
-    for image_bytes in uploaded_image_bytes:
-        try:
-            with Image.open(BytesIO(image_bytes)) as image:
-                images.append(image.convert("RGB"))
-        except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Failed to process uploaded image: {e}"
-            )
-
-    if audio_array is None and not text_content and not images:
-        raise HTTPException(
-            status_code=400, detail="No audio, text, or image content provided"
-        )
-
-    daemon_status = daemon.status()
-
-    await _increment_respond_inflight()
     try:
+        if not engine.is_loaded():
+            raise HTTPException(status_code=503, detail="Model not loaded")
+        (
+            request_payload,
+            audio_bytes,
+            uploaded_image_bytes,
+        ) = await _parse_respond_request(request)
+
+        audio_array = None
+        sample_rate = 16000
+        text_content = None
+        images: list[Image.Image] = []
+
+        if audio_bytes is not None:
+            try:
+                audio_array, sample_rate = await asyncio.to_thread(
+                    audio_from_bytes, audio_bytes
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Failed to process uploaded audio: {e}"
+                )
+        else:
+            for message in request_payload.messages:
+                for content in message.content:
+                    if content.type == "audio" and content.path:
+                        audio_path = Path(content.path)
+                        try:
+                            audio_array, sample_rate = await asyncio.to_thread(
+                                audio_from_file, audio_path
+                            )
+                        except Exception as e:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Failed to load audio from {content.path}: {e}",
+                            )
+                    elif content.type == "text" and content.text:
+                        text_content = content.text
+                    elif content.type == "image":
+                        try:
+                            if content.data:
+                                images.append(_image_from_data_field(content.data))
+                            elif content.path:
+                                images.append(_image_from_path(content.path))
+                            elif content.url:
+                                images.append(await _image_from_url(content.url))
+                        except Exception as e:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Failed to load image input: {e}",
+                            )
+
+        for image_bytes in uploaded_image_bytes:
+            try:
+                with Image.open(BytesIO(image_bytes)) as image:
+                    images.append(image.convert("RGB"))
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Failed to process uploaded image: {e}"
+                )
+
+        if audio_array is None and not text_content and not images:
+            raise HTTPException(
+                status_code=400, detail="No audio, text, or image content provided"
+            )
+
+        daemon_status = daemon.status()
+
         try:
             pipeline_result = await asyncio.to_thread(
                 MultiRuntimePipeline(engine, daemon).execute,
@@ -1038,7 +1086,8 @@ async def respond(request: Request) -> RespondResponse:
         except InferenceError as e:
             raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
     finally:
-        await _decrement_respond_inflight()
+        if inflight_incremented:
+            await _decrement_respond_inflight()
 
     daemon_params = daemon_status["params"]
     generated_text = pipeline_result.generated_text
@@ -1757,19 +1806,26 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
 
     daemon_status = daemon.status()
     daemon_params = daemon_status["params"]
-    text, _ = await asyncio.to_thread(
-        engine.respond,
-        None,
-        sample_rate=16000,
-        prompt=prompt,
-        images=images or None,
-        max_new_tokens=max_tokens,
-        temperature=float(temperature_raw) if temperature_raw is not None else None,
-        top_p=float(top_p_raw) if top_p_raw is not None else None,
-        do_sample=bool(temperature_raw is not None or top_p_raw is not None),
-        enable_thinking=bool(daemon_params["enable_thinking"]),
-        cache_implementation=daemon_params["cache_implementation"],
-    )
+    inflight_incremented = False
+    try:
+        await _increment_respond_inflight()
+        inflight_incremented = True
+        text, _ = await asyncio.to_thread(
+            engine.respond,
+            None,
+            sample_rate=16000,
+            prompt=prompt,
+            images=images or None,
+            max_new_tokens=max_tokens,
+            temperature=float(temperature_raw) if temperature_raw is not None else None,
+            top_p=float(top_p_raw) if top_p_raw is not None else None,
+            do_sample=bool(temperature_raw is not None or top_p_raw is not None),
+            enable_thinking=bool(daemon_params["enable_thinking"]),
+            cache_implementation=daemon_params["cache_implementation"],
+        )
+    finally:
+        if inflight_incremented:
+            await _decrement_respond_inflight()
 
     now = int(time.time())
     completion_tokens = max(1, len(text) // 4)

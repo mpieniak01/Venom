@@ -1311,6 +1311,16 @@ class TestMainDaemonControlEndpoints:
         assert r.status_code == 200
         assert reload_called
 
+    def test_daemon_reload_returns_409_when_inflight(self, monkeypatch):
+        monkeypatch.setattr(runtime_main, "_warming", False)
+        monkeypatch.setattr(runtime_main, "_daemon", _ready_daemon())
+        monkeypatch.setattr(runtime_main, "_respond_inflight_requests", 1)
+        monkeypatch.setattr(runtime_main, "_INFLIGHT_DRAIN_TIMEOUT_SECONDS", 0.0)
+        client = TestClient(runtime_main.app)
+        r = client.post("/v1/daemon/reload")
+        assert r.status_code == 409
+        assert "inference is in progress" in r.json()["detail"]
+
     def test_daemon_restart_success(self, monkeypatch):
         monkeypatch.setattr(runtime_main, "_daemon", _ready_daemon())
         monkeypatch.setattr("asyncio.sleep", lambda _: None)
@@ -1320,6 +1330,15 @@ class TestMainDaemonControlEndpoints:
         r = client.post("/v1/daemon/restart")
         assert r.status_code == 200
         assert r.json()["status"] == "restarting"
+
+    def test_daemon_unload_returns_409_when_inflight(self, monkeypatch):
+        monkeypatch.setattr(runtime_main, "_daemon", _ready_daemon())
+        monkeypatch.setattr(runtime_main, "_respond_inflight_requests", 1)
+        monkeypatch.setattr(runtime_main, "_INFLIGHT_DRAIN_TIMEOUT_SECONDS", 0.0)
+        client = TestClient(runtime_main.app)
+        r = client.post("/v1/daemon/unload")
+        assert r.status_code == 409
+        assert "inference is in progress" in r.json()["detail"]
 
     def test_daemon_assistant_attach_success(self, monkeypatch):
         daemon = _ready_daemon()

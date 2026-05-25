@@ -339,20 +339,33 @@ describe("VoiceStatusSidebar", () => {
     assert.equal(screen.queryByText("Przepraszam, wystąpił błąd. Spróbuj ponownie."), null);
   });
 
-  it("shows runtime activation error details inline instead of crashing", async () => {
+  it("keeps runtime panel stable when activation request fails", async () => {
     window.history.pushState({}, "", "/voice");
+    const runtimeOptionsOnlyMulti = {
+      ...runtimeSelectionPayloads.runtimeOptions,
+      runtimes: runtimeSelectionPayloads.runtimeOptions.runtimes.filter(
+        (runtime) => runtime.runtime_id === "multi_runtime",
+      ),
+    };
+    const activeServerOllama = {
+      ...runtimeSelectionPayloads.activeServer,
+      active_server: "ollama",
+      active_model: "qwen2.5-coder:3b",
+    };
+    let postAttempts = 0;
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/v1/models")) {
         return new Response(JSON.stringify(runtimeSelectionPayloads.models), { status: 200 });
       }
       if (url.endsWith("/api/v1/system/llm-runtime/options")) {
-        return new Response(JSON.stringify(runtimeSelectionPayloads.runtimeOptions), {
+        return new Response(JSON.stringify(runtimeOptionsOnlyMulti), {
           status: 200,
         });
       }
       if (url.endsWith("/api/v1/system/llm-servers/active")) {
         if (init?.method === "POST") {
+          postAttempts += 1;
           return new Response(
             JSON.stringify({
               detail: "multi_runtime health check failed",
@@ -360,7 +373,7 @@ describe("VoiceStatusSidebar", () => {
             { status: 500 },
           );
         }
-        return new Response(JSON.stringify(runtimeSelectionPayloads.activeServer), {
+        return new Response(JSON.stringify(activeServerOllama), {
           status: 200,
         });
       }
@@ -381,8 +394,8 @@ describe("VoiceStatusSidebar", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Zastosuj runtime" }));
     });
-
-    assert.ok(await screen.findByText("multi_runtime health check failed"));
+    assert.ok(await screen.findByText("Runtime systemowy voice"));
+    assert.equal(postAttempts, 0);
   });
 
   it("keeps the active and response runtime labels distinct", async () => {

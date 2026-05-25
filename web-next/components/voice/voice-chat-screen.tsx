@@ -146,16 +146,22 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
   const t = useTranslation();
   if (!status) return null;
 
-  const sttOk = status.stt_ready === true;
-  const ttsOk = status.tts_ready === true;
+  const sttReady = toReadiness(status.stt_ready);
+  const ttsReady = toReadiness(status.tts_ready);
   const runtimeProvider = String(status.runtime_snapshot?.provider ?? "").trim();
   const runtimeModel = String(status.runtime_snapshot?.model_name ?? "").trim();
+  const sessionRuntimeProvider = String(status.latest_voice_session?.audio_runtime_provider ?? "").trim();
+  const sessionRuntimeModel = String(status.latest_voice_session?.audio_runtime_model ?? "").trim();
   const probeStatus = status.runtime_snapshot?.runtime_capabilities?.probe_status ?? null;
-  const llmOk = runtimeProvider.length > 0 && runtimeModel.length > 0;
+  const hasRuntimeFromSnapshot = runtimeProvider.length > 0 && runtimeModel.length > 0;
+  const hasRuntimeFromLatestSession = sessionRuntimeProvider.length > 0 && sessionRuntimeModel.length > 0;
+  const llmReady = hasRuntimeFromSnapshot || hasRuntimeFromLatestSession ? "ready" : "unknown";
   const isNativeVoiceRuntime = isMultiRuntime(runtimeProvider);
   const voiceProbeFailed = probeStatus === "failed";
   const voiceProbeBlocking = voiceProbeFailed && isNativeVoiceRuntime;
-  const allOk = sttOk && ttsOk && llmOk && !voiceProbeBlocking;
+  const hasHardFailure = sttReady === "not_ready" || ttsReady === "not_ready" || voiceProbeBlocking;
+  const hasPositiveSignal = llmReady === "ready" || sttReady === "ready" || ttsReady === "ready";
+  const allOk = !hasHardFailure && hasPositiveSignal;
   const voiceProbeToneClass = resolveVoiceProbeToneClass(voiceProbeFailed, voiceProbeBlocking);
   const voiceProbeDotClass = resolveVoiceProbeDotClass(voiceProbeFailed, voiceProbeBlocking);
   const containerClass = allOk
@@ -170,18 +176,18 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
         {allOk ? t("voice.status.systemReady") : t("voice.status.systemPartial")}
       </span>
       <span className="flex items-center gap-3">
-        <span className={`flex items-center gap-1 ${llmOk ? "text-emerald-400" : "text-zinc-600"}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${llmOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+        <span className={`flex items-center gap-1 ${resolveReadinessToneClass(llmReady)}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${resolveReadinessDotClass(llmReady)}`} />
           {" "}
           LLM
         </span>
-        <span className={`flex items-center gap-1 ${sttOk ? "text-emerald-400" : "text-zinc-600"}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${sttOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+        <span className={`flex items-center gap-1 ${resolveReadinessToneClass(sttReady)}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${resolveReadinessDotClass(sttReady)}`} />
           {" "}
           STT
         </span>
-        <span className={`flex items-center gap-1 ${ttsOk ? "text-emerald-400" : "text-zinc-600"}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${ttsOk ? "bg-emerald-400" : "bg-zinc-600"}`} />
+        <span className={`flex items-center gap-1 ${resolveReadinessToneClass(ttsReady)}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${resolveReadinessDotClass(ttsReady)}`} />
           {" "}
           TTS
         </span>
@@ -195,6 +201,26 @@ function VoiceSystemStatusBar({ status }: Readonly<{ status: VoiceStatusUpdate |
       </span>
     </div>
   );
+}
+
+type Readiness = "ready" | "not_ready" | "unknown";
+
+function toReadiness(flag: boolean | null | undefined): Readiness {
+  if (flag === true) return "ready";
+  if (flag === false) return "not_ready";
+  return "unknown";
+}
+
+function resolveReadinessToneClass(readiness: Readiness): string {
+  if (readiness === "ready") return "text-emerald-400";
+  if (readiness === "not_ready") return "text-rose-400";
+  return "text-zinc-600";
+}
+
+function resolveReadinessDotClass(readiness: Readiness): string {
+  if (readiness === "ready") return "bg-emerald-400";
+  if (readiness === "not_ready") return "bg-rose-400";
+  return "bg-zinc-600";
 }
 
 function resolveVoiceProbeToneClass(

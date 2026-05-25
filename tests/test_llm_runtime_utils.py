@@ -555,6 +555,15 @@ def test_runtime_drift_helper_branches(monkeypatch):
         is None
     )
     assert (
+        llm_runtime._build_multi_runtime_daemon_status_url(  # noqa: SLF001
+            DummySettings(
+                endpoint="http://localhost:8014/v1",
+                gemma4_endpoint="http://localhost:8014/v1",
+            )
+        )
+        == "http://localhost:8014/v1/daemon/status"
+    )
+    assert (
         llm_runtime._collect_runtime_provider_issue(  # noqa: SLF001
             service_type="local",
             active_server="local",

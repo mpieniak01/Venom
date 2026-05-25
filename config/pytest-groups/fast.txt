@@ -279,6 +279,7 @@ tests/test_models_introspection_api.py
 tests/test_models_registry_ops_onnx.py
 tests/test_models_remote_api.py
 tests/test_models_remote_contracts.py
+tests/test_models_switch_single_model_policy.py
 tests/test_models_translation_api.py
 tests/test_models_utils_security.py
 tests/test_module_data_policy.py
@@ -294,6 +295,7 @@ tests/test_nodes_utility_contracts.py
 tests/test_notifier.py
 tests/test_ollama_agent_loop.py
 tests/test_ollama_runtime_capabilities.py
+tests/test_ollama_runtime_policy.py
 tests/test_ollama_runtime_probe.py
 tests/test_ollama_tuning.py
 tests/test_onnx_llm_client.py
@@ -362,6 +364,7 @@ tests/test_runtime_provider_ops.py
 tests/test_runtime_registry_contracts.py
 tests/test_runtime_registry_translation_contracts.py
 tests/test_runtime_service_helpers.py
+tests/test_runtime_switch_gate.py
 tests/test_runtime_switch_service_branches.py
 tests/test_runtime_switch_telemetry.py
 tests/test_scenario_weaver.py

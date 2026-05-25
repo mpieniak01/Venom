@@ -31,6 +31,7 @@ from venom_core.services.feedback_loop_policy import (
     is_feedback_loop_alias,
     resolve_feedback_loop_model,
 )
+from venom_core.services.ollama_runtime_policy import enforce_single_loaded_ollama_model
 from venom_core.services.runtime_switch_telemetry import (
     assert_runtime_switch_ownership_token,
     assert_runtime_switch_source_allowed,
@@ -724,6 +725,20 @@ async def switch_model(request: ModelSwitchRequest):
                 runtime=active_provider,
                 model=request.name,
             )
+            if active_provider == "ollama":
+                try:
+                    await enforce_single_loaded_ollama_model(
+                        endpoint=getattr(runtime_info, "endpoint", None),
+                        selected_model=request.name,
+                    )
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "Nie udało się zastosować polityki pojedynczego modelu "
+                            f"Ollama: {exc}"
+                        ),
+                    ) from exc
             return {
                 "success": True,
                 "message": f"Model {request.name} został aktywowany",

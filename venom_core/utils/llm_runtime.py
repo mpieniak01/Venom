@@ -478,7 +478,7 @@ def _build_multi_runtime_daemon_status_url(settings) -> str | None:
     base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
     if not base:
         return None
-    return f"{base}/daemon/status"
+    return f"{base}/v1/daemon/status"
 
 
 def _build_inferred_provider(*, service_type: str, endpoint: str) -> str:

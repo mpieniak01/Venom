@@ -185,8 +185,6 @@ function RuntimeSwitchCard({
   const [applied, setApplied] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
   const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const didAutoSelectPreferredRuntime = useRef(false);
-  const nativeVoiceRuntimeIds = useMemo(() => new Set(["multi_runtime"]), []);
   const selectedRuntime = runtime.selectedServer ?? "";
   const selectedModel = runtime.selectedModel ?? "";
   const selectedRuntimeSummary = formatRuntimeTuple(selectedRuntime, selectedModel);
@@ -213,34 +211,6 @@ function RuntimeSwitchCard({
     () => runtime.modelOptions.map((item) => ({ value: item.value, label: item.label })),
     [runtime.modelOptions],
   );
-
-  const preferredNativeRuntime = useMemo(
-    () =>
-      serverOptions.find((option) => nativeVoiceRuntimeIds.has(canonicalRuntimeId(String(option.value)))) ??
-      null,
-    [nativeVoiceRuntimeIds, serverOptions],
-  );
-
-  useEffect(() => {
-    if (didAutoSelectPreferredRuntime.current) {
-      return;
-    }
-    if (!preferredNativeRuntime) {
-      return;
-    }
-    const normalizedSelectedRuntime = canonicalRuntimeId(selectedRuntime);
-    const normalizedPreferredRuntime = canonicalRuntimeId(String(preferredNativeRuntime.value));
-    if (normalizedSelectedRuntime === normalizedPreferredRuntime) {
-      didAutoSelectPreferredRuntime.current = true;
-      return;
-    }
-    if (normalizedSelectedRuntime && nativeVoiceRuntimeIds.has(normalizedSelectedRuntime)) {
-      didAutoSelectPreferredRuntime.current = true;
-      return;
-    }
-    runtime.setSelectedServer(String(preferredNativeRuntime.value));
-    didAutoSelectPreferredRuntime.current = true;
-  }, [nativeVoiceRuntimeIds, preferredNativeRuntime, runtime, selectedRuntime]);
 
   useEffect(() => {
     return () => {
@@ -276,11 +246,6 @@ function RuntimeSwitchCard({
 
   return (
     <StatusCard title={t("voice.controls.runtime")}>
-      {preferredNativeRuntime && selectedRuntime !== preferredNativeRuntime.value && (
-        <p className="mb-2 text-[11px] text-amber-300">
-          {t("voice.controls.voiceRuntimePriority", { runtime: preferredNativeRuntime.label })}
-        </p>
-      )}
       <div className="space-y-2.5">
         <div>
           <p className="text-caption mb-1">{t("voice.controls.provider")}</p>

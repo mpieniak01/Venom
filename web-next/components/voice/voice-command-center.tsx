@@ -2910,7 +2910,7 @@ function VoiceCommandCenterPanel({
     [stopRecording],
   );
 
-  const onVoiceModeToggle = useCallback(() => {
+  const onVoiceModeToggle = () => {
     toggleVoiceMode({
       debugDryRunActive,
       isVoiceModeEnabled,
@@ -2918,7 +2918,7 @@ function VoiceCommandCenterPanel({
       setStatusMessage,
       t,
     });
-  }, [debugDryRunActive, isVoiceModeEnabled, setIsVoiceModeEnabled, setStatusMessage, t]);
+  };
 
   return (
     <>

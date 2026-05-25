@@ -9,7 +9,6 @@ import type { VoiceStatusUpdate } from "@/components/voice/voice-command-center"
 import { useTranslation } from "@/lib/i18n";
 import { canonicalRuntimeId, isMultiRuntime } from "@/lib/runtime-id";
 import {
-  buildVoiceRuntimeStateView,
   formatVoiceRuntimeTuple,
 } from "@/lib/voice-runtime-state";
 import { resolveRuntimeActivationErrorMessage, useRuntime } from "@/components/models/hooks/use-runtime";

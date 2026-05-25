@@ -226,6 +226,20 @@ def test_multi_runtime_voice_flags_reflect_settings(monkeypatch):
     }
 
 
+def test_multi_runtime_transcribe_url_follows_service_origin(monkeypatch):
+    handler = _make_handler()
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_service_origin",
+        lambda: "http://localhost:8014",
+    )
+
+    assert (
+        handler._multi_runtime_transcribe_url()
+        == "http://localhost:8014/audio/transcribe"
+    )
+
+
 @pytest.mark.asyncio
 async def test_invoke_operator_agent_passes_mode_and_voice_context():
     class DummyAgent:
@@ -1442,6 +1456,27 @@ async def test_invoke_multi_runtime_raises_when_transcribe_fails(monkeypatch, tm
 
 
 @pytest.mark.asyncio
+async def test_invoke_multi_runtime_raises_when_transcribe_or_respond_urls_missing(
+    monkeypatch, tmp_path
+):
+    handler = _make_handler()
+    wav_path = tmp_path / "recording.wav"
+    wav_path.write_bytes(b"RIFF....WAVEfmt ")
+
+    monkeypatch.setattr(handler, "_multi_runtime_respond_url", lambda: "")
+    monkeypatch.setattr(handler, "_multi_runtime_transcribe_url", lambda: "")
+
+    with pytest.raises(RuntimeError, match="audio endpoint is not configured"):
+        await handler._invoke_multi_runtime(wav_path, 17)
+
+    monkeypatch.setattr(
+        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
+    )
+    with pytest.raises(RuntimeError, match="transcription endpoint is not configured"):
+        await handler._invoke_multi_runtime(wav_path, 17)
+
+
+@pytest.mark.asyncio
 async def test_invoke_multi_runtime_uses_message_content_when_other_fields_empty(
     monkeypatch, tmp_path
 ):
@@ -1746,6 +1781,87 @@ async def test_process_native_multi_runtime_pipeline_reports_error_on_native_fai
     assert any(item.get("type") == "error" for item in sent_json)
     assert update_calls[0]["audio_input_status"] == "failed"
     assert update_calls[0]["pipeline_id"] == "multi_runtime_piper"
+
+
+@pytest.mark.asyncio
+async def test_process_native_multi_runtime_pipeline_reports_error_without_audio_engine(
+    monkeypatch, tmp_path
+):
+    handler = _make_handler()
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    wav_path = session_dir / "recording.wav"
+    wav_path.write_bytes(b"wav")
+    sent_json = []
+
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
+    monkeypatch.setattr(
+        handler,
+        "_send_json",
+        AsyncMock(side_effect=lambda _cid, payload: sent_json.append(payload)),
+    )
+
+    result = await handler._process_native_multi_runtime_pipeline(
+        5, session_dir, wav_path, {}, 0.0, MagicMock()
+    )
+
+    assert result is True
+    assert sent_json[0]["type"] == "error"
+    assert "Audio engine not available" in sent_json[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_process_native_multi_runtime_pipeline_reports_incomplete_result(
+    monkeypatch, tmp_path
+):
+    handler = _make_handler()
+    handler.audio_engine = MagicMock()
+    handler.audio_engine.speak = AsyncMock(
+        return_value=np.array([1, 2], dtype=np.int16)
+    )
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    wav_path = session_dir / "recording.wav"
+    wav_path.write_bytes(b"wav")
+    timings_ms = {}
+    sent_json = []
+    update_calls = []
+
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_runtime_snapshot",
+        lambda: {"audio_runtime_provider": "multi_runtime"},
+    )
+    monkeypatch.setattr(
+        handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(
+        handler,
+        "_invoke_multi_runtime",
+        AsyncMock(return_value={"text": "", "response_text": ""}),
+    )
+    monkeypatch.setattr(
+        handler,
+        "_update_voice_session_metadata",
+        lambda _dir, payload: update_calls.append(payload),
+    )
+    monkeypatch.setattr(handler, "_build_runtime_metadata", lambda _agent: {"llm": "x"})
+    monkeypatch.setattr(
+        handler,
+        "_send_json",
+        AsyncMock(side_effect=lambda _cid, payload: sent_json.append(payload)),
+    )
+    monkeypatch.setattr(handler, "_send_audio", AsyncMock())
+
+    result = await handler._process_native_multi_runtime_pipeline(
+        6, session_dir, wav_path, timings_ms, 0.0, MagicMock()
+    )
+
+    assert result is True
+    assert any(item.get("type") == "error" for item in sent_json)
+    assert update_calls[0]["audio_input_status"] == "failed"
+    assert update_calls[0]["fallback_reason"] == ""
 
 
 # ---------------------------------------------------------------------------

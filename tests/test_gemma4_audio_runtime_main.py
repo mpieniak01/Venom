@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 import services.multi_runtime.main as runtime_main
+import venom_core.api.audio_stream as audio_stream_mod
+import venom_core.main as core_main
 from services.multi_runtime.engine import MultiRuntimeDaemon
 
 
@@ -44,6 +48,227 @@ def test_extract_image_urls_from_openai_messages() -> None:
         "https://example.test/a.png",
         "https://example.test/b.png",
     ]
+
+
+def test_build_voice_session_record_exposes_native_audio_contract():
+    record = audio_stream_mod._build_voice_session_record(
+        Path("session-a"),
+        {
+            "voice_pipeline_mode": "native_multi_runtime",
+            "pipeline_id": "multi_runtime_piper",
+            "decoder_source": "multi_runtime",
+            "native_audio_ms": 123.0,
+            "execution_trace": [
+                "input_router",
+                "image_preprocessor",
+                "main_generation",
+                "audio_output",
+            ],
+        },
+    )
+
+    assert record["voice_session_mode"] == "native_audio"
+    assert record["execution_trace_mode"] == "audio_only"
+    assert record["execution_trace_annotations"][1]["status"] == "no-op"
+    assert record["execution_trace_annotations"][2]["note"] == "Gemma response"
+
+
+def test_whisper_fallback_helpers_expose_runtime_contract():
+    capabilities = core_main._build_whisper_fallback_runtime_capabilities("vllm")
+    pipeline = core_main._build_whisper_fallback_voice_pipeline("vllm")
+    snapshot = core_main._build_whisper_fallback_voice_runtime_snapshot(
+        SimpleNamespace(
+            runtime_id="vllm@localhost",
+            provider="vllm",
+            model_name="qwen3.5:latest",
+            endpoint="http://localhost:8000",
+            config_hash="abc",
+        )
+    )
+
+    assert capabilities["compatibility_profile"] == "whisper_llm_piper_fallback"
+    assert capabilities["fallbacks"]["voice_fallback_pipeline"] == "whisper_llm_piper"
+    assert pipeline["stt"] == "faster_whisper"
+    assert pipeline["tts"] == "piper"
+    assert snapshot["voice_pipeline"]["profile"] == "whisper_llm_piper_fallback"
+
+
+def test_build_voice_runtime_state_reports_switching_and_failed():
+    runtime_snapshot = {
+        "runtime_id": "ollama@localhost",
+        "provider": "ollama",
+        "model_name": "qwen3.5:latest",
+    }
+    latest_session = {
+        "audio_runtime_provider": "ollama",
+        "audio_runtime_model": "qwen3.5:latest",
+        "pipeline_id": "whisper_llm_piper",
+        "created_at": "2026-05-24T09:12:00+00:00",
+    }
+    runtime_alignment = core_main._build_voice_runtime_alignment(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+    )
+
+    switching_state = core_main._build_voice_runtime_state(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+        runtime_alignment=runtime_alignment,
+        runtime_switch_gate={"in_progress": True, "to_runtime": "multi_runtime"},
+        last_runtime_switch={"reason": "manual switch"},
+    )
+
+    failed_state = core_main._build_voice_runtime_state(
+        runtime_snapshot=runtime_snapshot,
+        latest_session=latest_session,
+        runtime_alignment=runtime_alignment,
+        runtime_switch_gate={"in_progress": False},
+        last_runtime_switch={"reason": "switch error: denied"},
+    )
+
+    assert switching_state["switch"]["state"] == "switching"
+    assert switching_state["response"]["matches_active"] is True
+    assert failed_state["switch"]["state"] == "failed"
+
+
+def test_multi_runtime_transcribe_url_follows_service_origin(monkeypatch):
+    handler = audio_stream_mod.AudioStreamHandler()
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_service_origin",
+        lambda: "http://localhost:8014",
+    )
+
+    assert (
+        handler._multi_runtime_transcribe_url()
+        == "http://localhost:8014/audio/transcribe"
+    )
+
+
+@pytest.mark.asyncio
+async def test_invoke_multi_runtime_rejects_missing_urls(monkeypatch, tmp_path):
+    handler = audio_stream_mod.AudioStreamHandler()
+    wav_path = tmp_path / "recording.wav"
+    wav_path.write_bytes(b"RIFF....WAVEfmt ")
+
+    monkeypatch.setattr(handler, "_multi_runtime_respond_url", lambda: "")
+    monkeypatch.setattr(handler, "_multi_runtime_transcribe_url", lambda: "")
+
+    with pytest.raises(RuntimeError, match="audio endpoint is not configured"):
+        await handler._invoke_multi_runtime(wav_path, 17)
+
+    monkeypatch.setattr(
+        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
+    )
+
+    with pytest.raises(RuntimeError, match="transcription endpoint is not configured"):
+        await handler._invoke_multi_runtime(wav_path, 18)
+
+
+@pytest.mark.asyncio
+async def test_audio_status_endpoint_includes_runtime_state(monkeypatch):
+    class DummyHandler:
+        def get_status(self, operator_agent=None):
+            return {
+                "enabled": True,
+                "connected_clients": 1,
+                "active_recordings": 0,
+                "message": "ok",
+            }
+
+        def get_latest_voice_session(self):
+            return {
+                "session_id": "session-1",
+                "created_at": "2026-05-24T09:12:00+00:00",
+                "audio_runtime_provider": "ollama",
+                "audio_runtime_model": "qwen3.5:latest",
+            }
+
+    monkeypatch.setattr(core_main, "audio_stream_handler", DummyHandler())
+    monkeypatch.setattr(core_main, "operator_agent", object())
+    monkeypatch.setattr(
+        core_main,
+        "_build_voice_runtime_snapshot",
+        AsyncMock(
+            return_value={
+                "runtime_id": "ollama@localhost",
+                "provider": "ollama",
+                "model_name": "qwen3.5:latest",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        core_main,
+        "get_last_runtime_switch_event",
+        lambda: {"at_utc": "2026-05-24T09:00:00+00:00"},
+    )
+    request = SimpleNamespace(url_for=lambda name: f"https://example.test/{name}")
+
+    status = await core_main.audio_status_endpoint(request)
+
+    assert status["runtime_alignment"]["response_runtime_fresh"] is True
+    assert status["runtime_state"]["response"]["matches_active"] is True
+    assert status["runtime_state"]["switch"]["state"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result(
+    monkeypatch, tmp_path
+):
+    handler = audio_stream_mod.AudioStreamHandler()
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    wav_path = session_dir / "recording.wav"
+    wav_path.write_bytes(b"wav")
+    sent_json = []
+    update_calls = []
+
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
+    monkeypatch.setattr(
+        handler,
+        "_send_json",
+        AsyncMock(side_effect=lambda _cid, payload: sent_json.append(payload)),
+    )
+
+    assert (
+        await handler._process_native_multi_runtime_pipeline(
+            5, session_dir, wav_path, {}, 0.0, MagicMock()
+        )
+        is True
+    )
+    assert sent_json[0]["type"] == "error"
+
+    handler.audio_engine = MagicMock()
+    handler.audio_engine.speak = AsyncMock(return_value=b"audio")
+    monkeypatch.setattr(
+        handler,
+        "_multi_runtime_runtime_snapshot",
+        lambda: {"audio_runtime_provider": "multi_runtime"},
+    )
+    monkeypatch.setattr(
+        handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(
+        handler,
+        "_invoke_multi_runtime",
+        AsyncMock(return_value={"text": "", "response_text": ""}),
+    )
+    monkeypatch.setattr(
+        handler,
+        "_update_voice_session_metadata",
+        lambda _dir, payload: update_calls.append(payload),
+    )
+    monkeypatch.setattr(handler, "_build_runtime_metadata", lambda _agent: {"llm": "x"})
+    sent_json.clear()
+
+    assert (
+        await handler._process_native_multi_runtime_pipeline(
+            6, session_dir, wav_path, {}, 0.0, MagicMock()
+        )
+        is True
+    )
+    assert any(item.get("type") == "error" for item in sent_json)
+    assert update_calls[0]["audio_input_status"] == "failed"
 
 
 def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> None:

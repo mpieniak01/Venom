@@ -243,7 +243,7 @@ def _resolve_trace_inconsistent_flag(
     trace_inconsistent = metadata.get("trace_inconsistent")
     if isinstance(trace_inconsistent, bool):
         return trace_inconsistent
-    if not transcription or not transcription_used_for_generation:
+    if not transcription and not transcription_used_for_generation:
         return False
     return transcription.strip() != transcription_used_for_generation.strip()
 
@@ -976,6 +976,23 @@ class AudioStreamHandler:
             )
         return ""
 
+    def _build_audio_decoder_plan(
+        self,
+        *,
+        chain: list[str],
+        selected: str,
+        effective: str,
+        should_try_native: bool,
+        fallback_reason: str,
+    ) -> dict[str, Any]:
+        return {
+            "chain": chain,
+            "selected": selected,
+            "effective": effective,
+            "should_try_native": should_try_native,
+            "fallback_reason": fallback_reason,
+        }
+
     def _resolve_audio_decoder_plan(self) -> dict[str, Any]:
         profile = self._voice_route_profile()
         runtime_selected = self._multi_runtime_runtime_selected()
@@ -988,62 +1005,60 @@ class AudioStreamHandler:
                 else ["faster_whisper"]
             )
             selected = chain[0]
+            fallback_reason = (
+                "voice input override: chat_tekstowy profile bypassed for "
+                "audio transcription"
+            )
             if selected == "gemma_native" and runtime_selected:
-                return {
-                    "chain": chain,
-                    "selected": selected,
-                    "effective": "gemma_native",
-                    "should_try_native": True,
-                    "fallback_reason": (
-                        "voice input override: chat_tekstowy profile bypassed for "
-                        "audio transcription"
-                    ),
-                }
-            return {
-                "chain": chain,
-                "selected": selected,
-                "effective": "faster_whisper",
-                "should_try_native": False,
-                "fallback_reason": (
-                    "voice input override: chat_tekstowy profile bypassed for "
-                    "audio transcription"
-                ),
-            }
+                return self._build_audio_decoder_plan(
+                    chain=chain,
+                    selected=selected,
+                    effective="gemma_native",
+                    should_try_native=True,
+                    fallback_reason=fallback_reason,
+                )
+            return self._build_audio_decoder_plan(
+                chain=chain,
+                selected=selected,
+                effective="faster_whisper",
+                should_try_native=False,
+                fallback_reason=fallback_reason,
+            )
 
         contract_error = self._voice_route_contract_error()
         if contract_error:
-            return {
-                "chain": [],
-                "selected": "",
-                "effective": "none",
-                "should_try_native": False,
-                "fallback_reason": contract_error,
-            }
+            return self._build_audio_decoder_plan(
+                chain=[],
+                selected="",
+                effective="none",
+                should_try_native=False,
+                fallback_reason=contract_error,
+            )
         chain = self._audio_decoder_chain() or ["faster_whisper"]
         selected = chain[0]
         if selected == "gemma_native" and runtime_selected:
-            return {
-                "chain": chain,
-                "selected": selected,
-                "effective": "gemma_native",
-                "should_try_native": True,
-                "fallback_reason": "",
-            }
+            return self._build_audio_decoder_plan(
+                chain=chain,
+                selected=selected,
+                effective="gemma_native",
+                should_try_native=True,
+                fallback_reason="",
+            )
         if selected == "gemma_native":
-            return {
-                "chain": chain,
-                "selected": selected,
-                "effective": "faster_whisper",
-                "should_try_native": False,
-                "fallback_reason": self._voice_pipeline_fallback_reason(),
-            }
-        return {
-            "chain": chain,
-            "selected": selected,
-            "effective": "faster_whisper",
-            "should_try_native": False,
-            "fallback_reason": "audio decoder profile forced faster_whisper",
-        }
+            return self._build_audio_decoder_plan(
+                chain=chain,
+                selected=selected,
+                effective="faster_whisper",
+                should_try_native=False,
+                fallback_reason=self._voice_pipeline_fallback_reason(),
+            )
+        return self._build_audio_decoder_plan(
+            chain=chain,
+            selected=selected,
+            effective="faster_whisper",
+            should_try_native=False,
+            fallback_reason="audio decoder profile forced faster_whisper",
+        )
 
     def _voice_pipeline_fallback_reason(self) -> str:
         active_server = ""
@@ -1127,10 +1142,11 @@ class AudioStreamHandler:
 
         data = response.json()
         transcription = _coerce_str(data.get("transcription"), "")
+        transcription_used_for_generation = _coerce_str(
+            data.get("transcription_used_for_generation"), ""
+        )
         if not transcription:
-            transcription = _coerce_str(
-                data.get("transcription_used_for_generation"), ""
-            )
+            transcription = transcription_used_for_generation
         if not transcription:
             raise RuntimeError(
                 "Gemma4 audio runtime returned an empty transcription in /v1/respond"
@@ -1150,7 +1166,9 @@ class AudioStreamHandler:
         return {
             "text": transcription,
             "transcription": transcription,
-            "transcription_used_for_generation": transcription,
+            "transcription_used_for_generation": (
+                transcription_used_for_generation or transcription
+            ),
             "response_text": response_text,
             "model": _coerce_str(
                 data.get("model")
@@ -1556,17 +1574,18 @@ class AudioStreamHandler:
                     },
                 )
 
-            if decoder_plan["should_try_native"]:
-                if await self._process_native_multi_runtime_pipeline(
-                    connection_id,
-                    session_dir,
-                    session_dir / VOICE_SESSION_WAV_FILENAME,
-                    timings_ms,
-                    total_started_at,
-                    operator_agent,
-                    decoder_selected=decoder_plan["selected"],
-                ):
-                    return
+            if decoder_plan[
+                "should_try_native"
+            ] and await self._process_native_multi_runtime_pipeline(
+                connection_id,
+                session_dir,
+                session_dir / VOICE_SESSION_WAV_FILENAME,
+                timings_ms,
+                total_started_at,
+                operator_agent,
+                decoder_selected=decoder_plan["selected"],
+            ):
+                return
 
             # STT
             if not self.audio_engine:
@@ -1703,17 +1722,18 @@ class AudioStreamHandler:
                     },
                 )
 
-            if decoder_plan["should_try_native"]:
-                if await self._process_native_multi_runtime_pipeline(
-                    connection_id,
-                    session_dir,
-                    wav_path,
-                    timings_ms,
-                    total_started_at,
-                    operator_agent,
-                    decoder_selected=decoder_plan["selected"],
-                ):
-                    return
+            if decoder_plan[
+                "should_try_native"
+            ] and await self._process_native_multi_runtime_pipeline(
+                connection_id,
+                session_dir,
+                wav_path,
+                timings_ms,
+                total_started_at,
+                operator_agent,
+                decoder_selected=decoder_plan["selected"],
+            ):
+                return
 
             if not self.audio_engine:
                 logger.warning("AudioEngine nie jest dostępny")

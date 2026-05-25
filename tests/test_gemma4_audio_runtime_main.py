@@ -73,6 +73,18 @@ def test_extract_transcription_and_answer_from_generation_falls_back_to_raw_text
     assert answer == "To jest zwykła odpowiedź."
 
 
+def test_extract_transcription_and_answer_from_generation_accepts_empty_answer_json() -> (
+    None
+):
+    transcription, answer = (
+        runtime_main._extract_transcription_and_answer_from_generation(  # noqa: SLF001
+            '{"transcription":"Ile to dwa razy dwa?","answer":""}'
+        )
+    )
+    assert transcription == "Ile to dwa razy dwa?"
+    assert answer == ""
+
+
 def test_build_voice_session_record_exposes_native_audio_contract():
     record = audio_stream_mod._build_voice_session_record(
         Path("session-a"),

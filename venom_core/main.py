@@ -278,7 +278,7 @@ def _normalize_audio_decoder_chain(raw: object) -> list[str]:
         return []
     values: list[object]
     if isinstance(raw, str):
-        values = [part for part in raw.split(",")]
+        values = list(raw.split(","))
     elif isinstance(raw, list):
         values = raw
     else:
@@ -2223,7 +2223,13 @@ async def get_audio_route_profile():
     return _voice_route_config_snapshot()
 
 
-@app.post("/api/v1/audio/routes/profile")
+@app.post(
+    "/api/v1/audio/routes/profile",
+    responses={
+        400: {"description": "Invalid voice route profile or audio decoder contract."},
+        403: {"description": "Endpoint only available from localhost."},
+    },
+)
 async def update_audio_route_profile(
     payload: AudioRouteProfileUpdateRequest,
     request: Request,
@@ -2263,7 +2269,19 @@ async def update_audio_route_profile(
 
     from venom_core.services.config_manager import config_manager
 
-    config_manager.update_config(updates)
+    update_result = config_manager.update_config(updates)
+    if not isinstance(update_result, dict) or not bool(update_result.get("success")):
+        raise HTTPException(
+            status_code=500,
+            detail=str(
+                (
+                    update_result.get("message")
+                    if isinstance(update_result, dict)
+                    else ""
+                )
+                or "Failed to persist audio route configuration."
+            ),
+        )
     SETTINGS.VOICE_ROUTE_PROFILE = voice_route_profile
     SETTINGS.AUDIO_DECODER_PROFILE = audio_decoder_profile
     SETTINGS.AUDIO_DECODER_CHAIN = ",".join(audio_decoder_chain)

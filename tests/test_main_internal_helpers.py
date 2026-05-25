@@ -788,9 +788,13 @@ async def test_get_audio_route_profile_returns_snapshot(monkeypatch):
 @pytest.mark.asyncio
 async def test_update_audio_route_profile_updates_config_and_settings(monkeypatch):
     updates: list[dict[str, object]] = []
-    fake_config_manager = SimpleNamespace(
-        update_config=lambda payload: updates.append(payload)
-    )
+    fake_config_manager = SimpleNamespace()
+
+    def _update_config(payload):
+        updates.append(payload)
+        return {"success": True, "message": "ok"}
+
+    fake_config_manager.update_config = _update_config
     import venom_core.services.config_manager as config_manager_module
 
     monkeypatch.setattr(config_manager_module, "config_manager", fake_config_manager)
@@ -813,6 +817,36 @@ async def test_update_audio_route_profile_updates_config_and_settings(monkeypatc
     assert updates[-1]["AUDIO_DECODER_CHAIN"] == "gemma_native,faster_whisper"
     assert main_module.SETTINGS.VOICE_ROUTE_PROFILE == "gemma4"
     assert main_module.SETTINGS.AUDIO_DECODER_PROFILE == "hybrid"
+
+
+@pytest.mark.asyncio
+async def test_update_audio_route_profile_returns_500_on_config_persist_failure(
+    monkeypatch,
+):
+    fake_config_manager = SimpleNamespace(
+        update_config=lambda _payload: {"success": False, "message": "write failed"}
+    )
+    import venom_core.services.config_manager as config_manager_module
+
+    monkeypatch.setattr(config_manager_module, "config_manager", fake_config_manager)
+    monkeypatch.setattr(main_module.SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    monkeypatch.setattr(main_module.SETTINGS, "AUDIO_DECODER_PROFILE", "auto")
+    monkeypatch.setattr(main_module.SETTINGS, "AUDIO_DECODER_CHAIN", "")
+
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="gemma4",
+        audio_decoder_profile="hybrid",
+        audio_decoder_chain=["gemma_native", "faster_whisper"],
+    )
+
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        await main_module.update_audio_route_profile(payload, request)
+
+    assert excinfo.value.status_code == 500
+    assert main_module.SETTINGS.VOICE_ROUTE_PROFILE == "auto"
+    assert main_module.SETTINGS.AUDIO_DECODER_PROFILE == "auto"
+    assert main_module.SETTINGS.AUDIO_DECODER_CHAIN == ""
 
 
 @pytest.mark.asyncio

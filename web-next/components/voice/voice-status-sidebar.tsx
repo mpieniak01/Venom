@@ -188,7 +188,8 @@ function RuntimeSwitchCard({
   const [voiceRouteProfile, setVoiceRouteProfile] = useState("auto");
   const [audioDecoderProfile, setAudioDecoderProfile] = useState("auto");
   const [audioDecoderChain, setAudioDecoderChain] = useState("");
-  const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runtimeAppliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceRouteAppliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedRuntime = runtime.selectedServer ?? "";
   const selectedModel = runtime.selectedModel ?? "";
   const runtimeStateView = runtime.runtimeState;
@@ -226,8 +227,11 @@ function RuntimeSwitchCard({
 
   useEffect(() => {
     return () => {
-      if (appliedTimerRef.current) {
-        clearTimeout(appliedTimerRef.current);
+      if (runtimeAppliedTimerRef.current) {
+        clearTimeout(runtimeAppliedTimerRef.current);
+      }
+      if (voiceRouteAppliedTimerRef.current) {
+        clearTimeout(voiceRouteAppliedTimerRef.current);
       }
     };
   }, []);
@@ -278,12 +282,12 @@ function RuntimeSwitchCard({
       await runtime.activateRuntimeSelection(selectedRuntime, selectedModel);
       onRuntimeApplied?.();
       setApplied(true);
-      if (appliedTimerRef.current) {
-        clearTimeout(appliedTimerRef.current);
+      if (runtimeAppliedTimerRef.current) {
+        clearTimeout(runtimeAppliedTimerRef.current);
       }
-      appliedTimerRef.current = setTimeout(() => {
+      runtimeAppliedTimerRef.current = setTimeout(() => {
         setApplied(false);
-        appliedTimerRef.current = null;
+        runtimeAppliedTimerRef.current = null;
       }, 2500);
     } catch (error) {
       setActivationError(
@@ -316,12 +320,12 @@ function RuntimeSwitchCard({
         throw new Error(payload?.detail || `HTTP ${response.status}`);
       }
       setVoiceRouteApplied(true);
-      if (appliedTimerRef.current) {
-        clearTimeout(appliedTimerRef.current);
+      if (voiceRouteAppliedTimerRef.current) {
+        clearTimeout(voiceRouteAppliedTimerRef.current);
       }
-      appliedTimerRef.current = setTimeout(() => {
+      voiceRouteAppliedTimerRef.current = setTimeout(() => {
         setVoiceRouteApplied(false);
-        appliedTimerRef.current = null;
+        voiceRouteAppliedTimerRef.current = null;
       }, 2500);
       onRuntimeApplied?.();
     } catch (error) {

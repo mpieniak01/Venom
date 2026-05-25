@@ -1278,7 +1278,7 @@ def _extract_transcription_and_answer_from_generation(
             continue
         transcription = str(payload.get("transcription") or "").strip()
         answer = str(payload.get("answer") or payload.get("response") or "").strip()
-        if answer:
+        if answer or transcription:
             return (transcription or None), answer
 
     return None, raw

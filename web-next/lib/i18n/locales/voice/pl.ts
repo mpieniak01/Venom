@@ -32,7 +32,7 @@ export const voice = {
     audioDecoderChain: "Łańcuch dekoderów audio",
     decoderSelected: "Wybrany dekoder",
     decoderEffective: "Efektywny dekoder",
-    decoderFallbackReason: "Powód fallback dekodera",
+    decoderFallbackReason: "Powód fallbacku dekodera",
     applyVoiceRoute: "Zastosuj tor",
     voiceRouteApplied: "Tor voice zaktualizowany ✓",
     nativeAudio: "Native audio",

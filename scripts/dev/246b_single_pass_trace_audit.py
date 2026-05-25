@@ -110,7 +110,9 @@ def _run_once(
         transcription_used_for_generation=transcription_used,
         response_text=response_text,
         duration_ms=(
-            int(payload.get("duration_ms")) if payload.get("duration_ms") else None
+            int(payload.get("duration_ms"))
+            if payload.get("duration_ms") is not None
+            else None
         ),
         model=str(payload.get("model") or "").strip(),
     )
@@ -225,6 +227,9 @@ def main() -> int:
 
     respond_url = f"{args.api_base.rstrip('/')}/v1/respond"
     runs: list[AuditRun] = []
+    if args.runs < 1:
+        print("--runs must be >= 1", file=sys.stderr)
+        return 2
 
     timeout = httpx.Timeout(180.0, connect=10.0)
     with httpx.Client(timeout=timeout) as client:

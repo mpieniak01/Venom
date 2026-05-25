@@ -198,6 +198,25 @@ def test_coerce_str_returns_default_for_non_string_or_blank():
     assert audio_stream_mod._coerce_str(" value ", "fallback") == "value"
 
 
+def test_resolve_trace_inconsistent_flag_handles_partial_missing_transcription():
+    assert (
+        audio_stream_mod._resolve_trace_inconsistent_flag(  # noqa: SLF001
+            metadata={},
+            transcription="co to jest",
+            transcription_used_for_generation="",
+        )
+        is True
+    )
+    assert (
+        audio_stream_mod._resolve_trace_inconsistent_flag(  # noqa: SLF001
+            metadata={},
+            transcription="",
+            transcription_used_for_generation="",
+        )
+        is False
+    )
+
+
 def test_multi_runtime_voice_flags_reflect_settings(monkeypatch):
     monkeypatch.setattr(
         audio_stream_mod.SETTINGS,
@@ -1445,7 +1464,7 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
                 json=lambda: {
                     "text": "25",
                     "transcription": "Ile to pięć razy pięć?",
-                    "transcription_used_for_generation": "Ile to pięć razy pięć?",
+                    "transcription_used_for_generation": "Ile to jest 5 × 5?",
                     "request_id": "req-123",
                     "trace_id": "trace-123",
                     "model": "google/gemma-4-E2B-it",
@@ -1460,6 +1479,7 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
 
     assert result["text"] == "Ile to pięć razy pięć?"
     assert result["transcription"] == "Ile to pięć razy pięć?"
+    assert result["transcription_used_for_generation"] == "Ile to jest 5 × 5?"
     assert result["response_text"] == "25"
     assert result["trace_id"] == "trace-123"
     assert result["request_id"] == "req-123"
@@ -1527,7 +1547,7 @@ async def test_invoke_multi_runtime_prefers_alternate_text_fields(
                 status_code=200,
                 json=lambda: {
                     "transcription": "Dwa razy dwa",
-                    "transcription_used_for_generation": "Dwa razy dwa",
+                    "transcription_used_for_generation": "To jest to co model użył",
                     "response_text": "42",
                     "generated_text": "41",
                     "message": {"content": "40"},
@@ -1541,6 +1561,7 @@ async def test_invoke_multi_runtime_prefers_alternate_text_fields(
 
     assert result["text"] == "Dwa razy dwa"
     assert result["transcription"] == "Dwa razy dwa"
+    assert result["transcription_used_for_generation"] == "To jest to co model użył"
     assert result["response_text"] == "42"
 
 

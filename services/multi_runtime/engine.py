@@ -20,7 +20,7 @@ from .audio import get_audio_duration, normalize_audio
 
 try:
     import soundfile as sf
-except ImportError:  # pragma: no cover - exercised in CI environments without soundfile
+except (ImportError, OSError):  # pragma: no cover - missing module/libsndfile
     sf = None
 
 logger = logging.getLogger(__name__)

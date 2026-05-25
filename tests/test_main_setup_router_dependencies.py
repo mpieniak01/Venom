@@ -198,6 +198,141 @@ def test_select_startup_model_prefers_first_available_when_no_match():
     assert selected in {"model-a", "model-b"}
 
 
+def test_audio_decoder_chain_and_effective_profile_branches():
+    assert main_module._normalize_audio_decoder_chain(None) == []
+    assert main_module._normalize_audio_decoder_chain(123) == []
+    assert main_module._normalize_audio_decoder_chain(
+        ["gemma_native", "whisper", "unknown", "faster_whisper", "whisper"]
+    ) == ["gemma_native", "faster_whisper"]
+
+    assert (
+        main_module._effective_audio_decoder_chain("chat_tekstowy", "hybrid", []) == []
+    )
+    assert main_module._effective_audio_decoder_chain("auto", "gemma_native", []) == [
+        "gemma_native"
+    ]
+    assert main_module._effective_audio_decoder_chain("auto", "faster_whisper", []) == [
+        "faster_whisper"
+    ]
+    assert main_module._effective_audio_decoder_chain("auto", "hybrid", []) == [
+        "gemma_native",
+        "faster_whisper",
+    ]
+    assert main_module._effective_audio_decoder_chain("auto", "auto", []) == []
+    assert main_module._effective_audio_decoder_chain(
+        "runtime_lokalny", "hybrid", ["gemma_native", "faster_whisper"]
+    ) == ["faster_whisper"]
+    assert main_module._effective_audio_decoder_chain(
+        "venom-agent", "gemma_native", ["gemma_native"]
+    ) == ["faster_whisper"]
+
+
+def test_validate_voice_route_contract_all_error_branches():
+    with pytest.raises(main_module.HTTPException) as exc_chat:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="chat_tekstowy",
+            audio_decoder_profile="hybrid",
+            audio_decoder_chain=["gemma_native"],
+        )
+    assert exc_chat.value.status_code == 400
+
+    with pytest.raises(main_module.HTTPException) as exc_gemma_empty:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="gemma4",
+            audio_decoder_profile="auto",
+            audio_decoder_chain=[],
+        )
+    assert exc_gemma_empty.value.status_code == 400
+
+    with pytest.raises(main_module.HTTPException) as exc_gemma_first:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="gemma4",
+            audio_decoder_profile="faster_whisper",
+            audio_decoder_chain=["faster_whisper"],
+        )
+    assert exc_gemma_first.value.status_code == 400
+
+    with pytest.raises(main_module.HTTPException) as exc_local_profile:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="runtime_lokalny",
+            audio_decoder_profile="gemma_native",
+            audio_decoder_chain=["faster_whisper"],
+        )
+    assert exc_local_profile.value.status_code == 400
+
+    with pytest.raises(main_module.HTTPException) as exc_local_chain:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="venom-agent",
+            audio_decoder_profile="auto",
+            audio_decoder_chain=["gemma_native", "faster_whisper"],
+        )
+    assert exc_local_chain.value.status_code == 400
+
+    # happy path branch for contract validator
+    main_module._validate_voice_route_contract(
+        voice_route_profile="auto",
+        audio_decoder_profile="auto",
+        audio_decoder_chain=[],
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_audio_route_profile_uses_snapshot_defaults(monkeypatch):
+    updates: list[dict[str, object]] = []
+
+    def _update_config(payload):
+        updates.append(payload)
+        return {"success": True}
+
+    import venom_core.services.config_manager as config_manager_module
+
+    monkeypatch.setattr(
+        config_manager_module,
+        "config_manager",
+        SimpleNamespace(update_config=_update_config),
+    )
+    monkeypatch.setattr(main_module.SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    monkeypatch.setattr(main_module.SETTINGS, "AUDIO_DECODER_PROFILE", "hybrid")
+    monkeypatch.setattr(
+        main_module.SETTINGS, "AUDIO_DECODER_CHAIN", "gemma_native,faster_whisper"
+    )
+
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile=None,
+        audio_decoder_profile=None,
+        audio_decoder_chain=None,
+    )
+    result = await main_module.update_audio_route_profile(payload, request)
+
+    assert result["status"] == "success"
+    assert updates[-1]["VOICE_ROUTE_PROFILE"] == "auto"
+    assert updates[-1]["AUDIO_DECODER_PROFILE"] == "hybrid"
+    assert updates[-1]["AUDIO_DECODER_CHAIN"] == "gemma_native,faster_whisper"
+
+
+@pytest.mark.asyncio
+async def test_update_audio_route_profile_raises_500_on_non_dict_result(monkeypatch):
+    import venom_core.services.config_manager as config_manager_module
+
+    monkeypatch.setattr(
+        config_manager_module,
+        "config_manager",
+        SimpleNamespace(update_config=lambda _payload: None),
+    )
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="auto",
+        audio_decoder_profile="auto",
+        audio_decoder_chain=[],
+    )
+
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        await main_module.update_audio_route_profile(payload, request)
+
+    assert excinfo.value.status_code == 500
+
+
 @pytest.mark.asyncio
 async def test_build_voice_runtime_snapshot_gemma4_audio_enabled(monkeypatch):
     monkeypatch.setattr(

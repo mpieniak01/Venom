@@ -2228,6 +2228,7 @@ async def get_audio_route_profile():
     responses={
         400: {"description": "Invalid voice route profile or audio decoder contract."},
         403: {"description": "Endpoint only available from localhost."},
+        500: {"description": "Failed to persist audio route configuration."},
     },
 )
 async def update_audio_route_profile(

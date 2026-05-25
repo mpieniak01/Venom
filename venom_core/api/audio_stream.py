@@ -1495,6 +1495,62 @@ class AudioStreamHandler:
         }
         self._update_voice_session_metadata(session_dir, payload)
 
+    async def _handle_decoder_plan_pre_stt(
+        self,
+        *,
+        connection_id: int,
+        session_dir: Path,
+        wav_path: Path,
+        timings_ms: dict[str, float],
+        total_started_at: float,
+        operator_agent,
+        decoder_plan: dict[str, Any],
+    ) -> bool:
+        if decoder_plan["effective"] == "none":
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    "pipeline_id": "none",
+                    "audio_input_status": "failed",
+                    "decoder_source": "none",
+                    "decoder_effective": "none",
+                    "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                    "fallback_reason": decoder_plan["fallback_reason"],
+                },
+            )
+            await self._send_json(
+                connection_id,
+                {"type": "error", "message": decoder_plan["fallback_reason"]},
+            )
+            return True
+
+        if not decoder_plan["should_try_native"]:
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    "pipeline_id": "whisper_llm_piper",
+                    "audio_input_status": "fallback",
+                    "decoder_source": "faster_whisper",
+                    "decoder_effective": decoder_plan["effective"],
+                    "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                    "fallback_reason": decoder_plan["fallback_reason"],
+                },
+            )
+
+        if decoder_plan[
+            "should_try_native"
+        ] and await self._process_native_multi_runtime_pipeline(
+            connection_id,
+            session_dir,
+            wav_path,
+            timings_ms,
+            total_started_at,
+            operator_agent,
+            decoder_selected=decoder_plan["selected"],
+        ):
+            return True
+        return False
+
     async def _process_audio_buffer(
         self,
         connection_id: int,
@@ -1543,47 +1599,14 @@ class AudioStreamHandler:
             )
             logger.info(f"Zapisano sesję audio: {session_dir}")
 
-            if decoder_plan["effective"] == "none":
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "none",
-                        "audio_input_status": "failed",
-                        "decoder_source": "none",
-                        "decoder_effective": "none",
-                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
-                        "fallback_reason": decoder_plan["fallback_reason"],
-                    },
-                )
-                await self._send_json(
-                    connection_id,
-                    {"type": "error", "message": decoder_plan["fallback_reason"]},
-                )
-                return
-
-            if not decoder_plan["should_try_native"]:
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "audio_input_status": "fallback",
-                        "decoder_source": "faster_whisper",
-                        "decoder_effective": decoder_plan["effective"],
-                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
-                        "fallback_reason": decoder_plan["fallback_reason"],
-                    },
-                )
-
-            if decoder_plan[
-                "should_try_native"
-            ] and await self._process_native_multi_runtime_pipeline(
-                connection_id,
-                session_dir,
-                session_dir / VOICE_SESSION_WAV_FILENAME,
-                timings_ms,
-                total_started_at,
-                operator_agent,
-                decoder_selected=decoder_plan["selected"],
+            if await self._handle_decoder_plan_pre_stt(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                wav_path=session_dir / VOICE_SESSION_WAV_FILENAME,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                decoder_plan=decoder_plan,
             ):
                 return
 
@@ -1691,47 +1714,14 @@ class AudioStreamHandler:
             )
             logger.info(f"Zapisano sesję audio MediaRecorder: {session_dir}")
 
-            if decoder_plan["effective"] == "none":
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "none",
-                        "audio_input_status": "failed",
-                        "decoder_source": "none",
-                        "decoder_effective": "none",
-                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
-                        "fallback_reason": decoder_plan["fallback_reason"],
-                    },
-                )
-                await self._send_json(
-                    connection_id,
-                    {"type": "error", "message": decoder_plan["fallback_reason"]},
-                )
-                return
-
-            if not decoder_plan["should_try_native"]:
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "audio_input_status": "fallback",
-                        "decoder_source": "faster_whisper",
-                        "decoder_effective": decoder_plan["effective"],
-                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
-                        "fallback_reason": decoder_plan["fallback_reason"],
-                    },
-                )
-
-            if decoder_plan[
-                "should_try_native"
-            ] and await self._process_native_multi_runtime_pipeline(
-                connection_id,
-                session_dir,
-                wav_path,
-                timings_ms,
-                total_started_at,
-                operator_agent,
-                decoder_selected=decoder_plan["selected"],
+            if await self._handle_decoder_plan_pre_stt(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                wav_path=wav_path,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                decoder_plan=decoder_plan,
             ):
                 return
 

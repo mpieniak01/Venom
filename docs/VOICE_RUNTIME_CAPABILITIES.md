@@ -21,7 +21,7 @@ Two operational answer tracks are now documented explicitly:
 1. text-only fallback path: `whisper_llm_piper` - Whisper transcribes the audio, the active text model generates the answer from text, and Piper speaks the response,
 2. Gemma4 native-audio path: `multi_runtime_piper` - Gemma4 receives audio directly, returns the transcription plus response text, and Piper speaks that response,
 3. both tracks end in the same TTS layer, so spoken output stays consistent even when the answer source changes,
-4. when the native path is not selected or fails health checks, the backend falls back to the text-only track and records the fallback reason in session metadata.
+4. when the native path is not selected, the backend uses the text-only track and records the selected path in session metadata; native health-check warnings are diagnostic and do not force an automatic fallback before the native attempt.
 
 ### PR246 runtime truth contract
 

@@ -21,7 +21,7 @@ Dwa operacyjne tory odpowiedzi są teraz opisane wprost:
 1. tekstowy fallback `whisper_llm_piper` - Whisper robi transkrypcję, aktywny model tekstowy generuje odpowiedź z tekstu, a Piper odczytuje wynik,
 2. natywny tor Gemma4 `multi_runtime_piper` - Gemma4 dostaje audio bezpośrednio, zwraca transkrypcję i tekst odpowiedzi, a Piper odczytuje tę odpowiedź,
 3. oba tory kończą się w tej samej warstwie TTS, więc efekt głosowy pozostaje spójny nawet wtedy, gdy zmienia się źródło odpowiedzi,
-4. gdy tor natywny nie jest wybrany albo nie przechodzi health check, backend wraca do toru tekstowego i zapisuje powód fallbacku w metadanych sesji.
+4. gdy tor natywny nie jest wybrany, backend używa toru tekstowego i zapisuje wybraną ścieżkę w metadanych sesji; ostrzeżenia z health check toru natywnego są diagnostyczne i nie wymuszają automatycznego fallbacku przed próbą natywną.
 
 ### Kontrakt prawdy runtime po PR246
 

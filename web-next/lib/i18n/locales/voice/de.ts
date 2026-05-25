@@ -66,6 +66,7 @@ export const voice = {
     quality: "Qualität",
     timings: "Zeiten",
     runtime: "Runtime",
+    runtimeState: "Runtime-Status",
     runtimeSnapshot: "Aktive Verbindung",
     noRuntimeSnapshot: "Noch kein Runtime-Snapshot. Status nach Backend-Start aktualisieren.",
     unknownModel: "Unbekanntes Modell",

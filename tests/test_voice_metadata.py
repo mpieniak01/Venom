@@ -195,7 +195,7 @@ def test_build_voice_trace_annotations_marks_audio_only_no_ops():
         "no-op",
         "no-op",
     ]
-    assert annotations[4]["note"] == "Gemma response"
+    assert annotations[4]["note"] == "model response"
     assert annotations[5]["note"] == "response shaping"
     assert annotations[6]["note"] == "tts output"
 

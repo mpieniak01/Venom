@@ -163,10 +163,9 @@ export function RuntimeDiagnosticsPanel({
               </div>
               {traceAnnotations?.some((item) => item.note) && (
                 <p className="mt-2 text-[11px] text-zinc-400">
-                  {traceAnnotations
-                    ?.map((item) => item.note)
-                    .filter(Boolean)
-                    .join(" · ")}
+                  {Array.from(
+                    new Set(traceAnnotations?.map((item) => item.note).filter(Boolean)),
+                  ).join(" · ")}
                 </p>
               )}
             </div>

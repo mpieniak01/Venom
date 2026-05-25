@@ -331,7 +331,7 @@ function RuntimeSwitchCard({
         <Row label={t("voice.controls.selectedRuntime")} value={selectedRuntimeSummary} />
         <Row label={t("voice.controls.systemVoiceRuntime")} value={activeRuntimeSummary} />
         <Row
-          label={`${t("voice.controls.runtime")} state`}
+          label={t("voice.controls.runtimeState")}
           value={runtimeStateView.switch.state}
         />
 

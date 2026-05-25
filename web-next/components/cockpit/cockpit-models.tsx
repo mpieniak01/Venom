@@ -94,13 +94,7 @@ export function CockpitModels({
     Boolean(normalizedSelectedServer) &&
     normalizedSelectedServer === normalizedActiveServer &&
     (!selectedModelTrimmed || selectedModelTrimmed === activeModelTrimmed);
-  const runtimeSwitchFailedHint =
-    runtimeState.switch.state === "failed" &&
-    Boolean(
-      runtimeSwitchGate?.reason ||
-      lastRuntimeSwitch?.reason ||
-      selectedServerEntry?.error_message,
-    );
+  const runtimeSwitchFailedHint = runtimeState.switch.state === "failed";
   let activateServerLabel = "Aktywuj serwer";
   if (gateSwitching || llmActionPending === `activate:${selectedLlmServer}`) {
     activateServerLabel = "Aktywuję...";

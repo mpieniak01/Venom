@@ -173,7 +173,7 @@ def build_voice_trace_annotations(
         elif audio_only and stage == "input_router":
             note = "audio input routed"
         elif stage == "main_generation":
-            note = "Gemma response"
+            note = "model response"
         elif stage == "assistant_postprocess":
             note = "response shaping"
         elif stage == "audio_output":

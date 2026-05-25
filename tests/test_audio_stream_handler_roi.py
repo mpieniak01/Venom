@@ -68,6 +68,7 @@ def _live_gemma4_audio_enabled() -> bool:
     return bool(
         os.environ.get("GEMMA4_LIVE_AUDIO_TESTS") == "1"
         and _VOICE_FIXTURE_WAV.exists()
+        and _VOICE_FIXTURE_WEBM.exists()
         and any(_GEMMA4_LIVE_AUDIO_MODEL_CACHE.glob("*"))
     )
 

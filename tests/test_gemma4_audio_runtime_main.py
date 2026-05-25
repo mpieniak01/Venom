@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -50,6 +51,52 @@ def test_extract_image_urls_from_openai_messages() -> None:
     ]
 
 
+def test_extract_transcription_and_answer_from_generation_parses_json_payload() -> None:
+    transcription, answer = (
+        runtime_main._extract_transcription_and_answer_from_generation(  # noqa: SLF001
+            '{"transcription":"Co to jest prostokąt?","answer":"Prostokąt to czworokąt."}'
+        )
+    )
+    assert transcription == "Co to jest prostokąt?"
+    assert answer == "Prostokąt to czworokąt."
+
+
+def test_extract_transcription_and_answer_from_generation_falls_back_to_raw_text() -> (
+    None
+):
+    transcription, answer = (
+        runtime_main._extract_transcription_and_answer_from_generation(  # noqa: SLF001
+            "To jest zwykła odpowiedź."
+        )
+    )
+    assert transcription is None
+    assert answer == "To jest zwykła odpowiedź."
+
+
+def test_extract_transcription_and_answer_from_generation_accepts_empty_answer_json() -> (
+    None
+):
+    transcription, answer = (
+        runtime_main._extract_transcription_and_answer_from_generation(  # noqa: SLF001
+            '{"transcription":"Ile to dwa razy dwa?","answer":""}'
+        )
+    )
+    assert transcription == "Ile to dwa razy dwa?"
+    assert answer == ""
+
+
+def test_extract_transcription_and_answer_from_generation_preserves_falsey_values() -> (
+    None
+):
+    transcription, answer = (
+        runtime_main._extract_transcription_and_answer_from_generation(  # noqa: SLF001
+            '{"transcription":0,"response":false}'
+        )
+    )
+    assert transcription == "0"
+    assert answer == "False"
+
+
 def test_build_voice_session_record_exposes_native_audio_contract():
     record = audio_stream_mod._build_voice_session_record(
         Path("session-a"),
@@ -58,6 +105,11 @@ def test_build_voice_session_record_exposes_native_audio_contract():
             "pipeline_id": "multi_runtime_piper",
             "decoder_source": "multi_runtime",
             "native_audio_ms": 123.0,
+            "transcription": "Co to?",
+            "transcription_used_for_generation": "Co to?",
+            "request_id": "req-1",
+            "trace_id": "trace-1",
+            "audio_hash": "hash-1",
             "execution_trace": [
                 "input_router",
                 "image_preprocessor",
@@ -70,7 +122,11 @@ def test_build_voice_session_record_exposes_native_audio_contract():
     assert record["voice_session_mode"] == "native_audio"
     assert record["execution_trace_mode"] == "audio_only"
     assert record["execution_trace_annotations"][1]["status"] == "no-op"
-    assert record["execution_trace_annotations"][2]["note"] == "Gemma response"
+    assert record["execution_trace_annotations"][2]["note"] == "model response"
+    assert record["trace_inconsistent"] is False
+    assert record["request_id"] == "req-1"
+    assert record["trace_id"] == "trace-1"
+    assert record["audio_hash"] == "hash-1"
 
 
 def test_whisper_fallback_helpers_expose_runtime_contract():
@@ -152,17 +208,9 @@ async def test_invoke_multi_runtime_rejects_missing_urls(monkeypatch, tmp_path):
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
 
     monkeypatch.setattr(handler, "_multi_runtime_respond_url", lambda: "")
-    monkeypatch.setattr(handler, "_multi_runtime_transcribe_url", lambda: "")
 
     with pytest.raises(RuntimeError, match="audio endpoint is not configured"):
         await handler._invoke_multi_runtime(wav_path, 17)
-
-    monkeypatch.setattr(
-        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
-    )
-
-    with pytest.raises(RuntimeError, match="transcription endpoint is not configured"):
-        await handler._invoke_multi_runtime(wav_path, 18)
 
 
 @pytest.mark.asyncio
@@ -234,7 +282,7 @@ async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result
         await handler._process_native_multi_runtime_pipeline(
             5, session_dir, wav_path, {}, 0.0, MagicMock()
         )
-        is True
+        is False
     )
     assert sent_json[0]["type"] == "error"
 
@@ -265,7 +313,7 @@ async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result
         await handler._process_native_multi_runtime_pipeline(
             6, session_dir, wav_path, {}, 0.0, MagicMock()
         )
-        is True
+        is False
     )
     assert any(item.get("type") == "error" for item in sent_json)
     assert update_calls[0]["audio_input_status"] == "failed"
@@ -478,7 +526,7 @@ def test_chat_completions_rejects_streaming(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_completions_does_not_decrement_inflight_when_increment_fails(
+async def test_chat_completions_does_not_decrement_inflight_when_reservation_fails(
     monkeypatch,
 ) -> None:
     class EngineStub:
@@ -493,8 +541,10 @@ async def test_chat_completions_does_not_decrement_inflight_when_increment_fails
     daemon = _make_test_daemon(EngineStub())
     monkeypatch.setattr(runtime_main, "_daemon", daemon)
 
-    async def _increment_fail() -> None:
-        raise RuntimeError("increment failed")
+    @asynccontextmanager
+    async def _reserve_fail(_daemon):
+        raise RuntimeError("reservation failed")
+        yield None  # pragma: no cover
 
     called = {"decrement": 0}
 
@@ -502,7 +552,7 @@ async def test_chat_completions_does_not_decrement_inflight_when_increment_fails
         called["decrement"] += 1
         return 0
 
-    monkeypatch.setattr(runtime_main, "_increment_respond_inflight", _increment_fail)
+    monkeypatch.setattr(runtime_main, "_reserve_ready_engine", _reserve_fail)
     monkeypatch.setattr(runtime_main, "_decrement_respond_inflight", _decrement_track)
 
     payload = runtime_main.ChatCompletionRequest(
@@ -510,7 +560,7 @@ async def test_chat_completions_does_not_decrement_inflight_when_increment_fails
         messages=[runtime_main.ChatCompletionMessage(role="user", content="hej")],
     )
 
-    with pytest.raises(RuntimeError, match="increment failed"):
+    with pytest.raises(runtime_main.HTTPException, match="reservation failed"):
         await runtime_main.chat_completions(payload)
 
     assert called["decrement"] == 0

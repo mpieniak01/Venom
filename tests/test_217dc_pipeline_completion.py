@@ -440,6 +440,17 @@ def test_engine_build_load_kwargs_bnb_fallback_to_float16_when_unavailable() -> 
     assert kwargs.get("torch_dtype") == torch.float16
 
 
+def test_engine_write_audio_wav_fallback_without_soundfile(tmp_path) -> None:
+    from services.multi_runtime.engine import MultiRuntimeEngine
+
+    out = tmp_path / "fallback.wav"
+    audio = [0.0, 0.25, -0.25, 1.0, -1.0]
+    with patch("services.multi_runtime.engine.sf", None):
+        MultiRuntimeEngine._write_audio_wav(out, audio, 16000)
+    assert out.exists()
+    assert out.stat().st_size > 44
+
+
 def test_daemon_params_defaults_precision() -> None:
     from services.multi_runtime.engine import DaemonParams
 

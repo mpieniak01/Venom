@@ -42,6 +42,20 @@ multi-runtime-hygiene:
 	@echo "🧹 Higiena Multi-Runtime (stop + cleanup daemon state)..."
 	@bash scripts/llm/multi_runtime_service.sh stop
 
+voice-route-profile-show:
+	@echo "🧭 Aktywny profil toru voice"
+	@$(PYTHON_BIN) scripts/dev/246b_voice_route_profile.py show
+
+voice-route-profile-set:
+	@echo "🧭 Ustawiam profil toru voice/dekodera"
+	@VOICE_ROUTE_PROFILE="$${VOICE_ROUTE_PROFILE:-auto}" \
+		AUDIO_DECODER_PROFILE="$${AUDIO_DECODER_PROFILE:-auto}" \
+		AUDIO_DECODER_CHAIN="$${AUDIO_DECODER_CHAIN:-}" \
+		$(PYTHON_BIN) scripts/dev/246b_voice_route_profile.py set \
+			--voice-route-profile "$$VOICE_ROUTE_PROFILE" \
+			--audio-decoder-profile "$$AUDIO_DECODER_PROFILE" \
+			--audio-decoder-chain "$$AUDIO_DECODER_CHAIN"
+
 local-first-start:
 	@echo "🚀 Local-first start (Ollama + preload modelu)"
 	@MODEL="$${MODEL:-qwen2.5-coder:7b}" KEEPALIVE="$${KEEPALIVE:--1}" bash scripts/dev/233a_local_first_runtime.sh start

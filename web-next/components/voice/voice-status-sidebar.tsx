@@ -181,8 +181,15 @@ function RuntimeSwitchCard({
   const runtime = useRuntime();
   const [pending, setPending] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [voiceRoutePending, setVoiceRoutePending] = useState(false);
+  const [voiceRouteApplied, setVoiceRouteApplied] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
-  const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [voiceRouteError, setVoiceRouteError] = useState<string | null>(null);
+  const [voiceRouteProfile, setVoiceRouteProfile] = useState("auto");
+  const [audioDecoderProfile, setAudioDecoderProfile] = useState("auto");
+  const [audioDecoderChain, setAudioDecoderChain] = useState("");
+  const runtimeAppliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceRouteAppliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedRuntime = runtime.selectedServer ?? "";
   const selectedModel = runtime.selectedModel ?? "";
   const runtimeStateView = runtime.runtimeState;
@@ -220,11 +227,52 @@ function RuntimeSwitchCard({
 
   useEffect(() => {
     return () => {
-      if (appliedTimerRef.current) {
-        clearTimeout(appliedTimerRef.current);
+      if (runtimeAppliedTimerRef.current) {
+        clearTimeout(runtimeAppliedTimerRef.current);
+      }
+      if (voiceRouteAppliedTimerRef.current) {
+        clearTimeout(voiceRouteAppliedTimerRef.current);
       }
     };
   }, []);
+
+  useEffect(() => {
+    const loadVoiceRoute = async () => {
+      try {
+        const response = await fetch("/api/v1/audio/routes/profile");
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          voice_route_profile?: string;
+          audio_decoder_profile?: string;
+          audio_decoder_chain?: string[];
+        };
+        const loadedVoiceRouteProfile = payload.voice_route_profile ?? "auto";
+        const loadedAudioDecoderProfile = payload.audio_decoder_profile ?? "auto";
+        const loadedAudioDecoderChain = payload.audio_decoder_chain ?? [];
+        setVoiceRouteProfile(loadedVoiceRouteProfile);
+        setAudioDecoderProfile(loadedAudioDecoderProfile);
+        setAudioDecoderChain(loadedAudioDecoderChain.join(","));
+
+        if (loadedVoiceRouteProfile === "chat_tekstowy") {
+          const fallbackVoiceRouteProfile = "auto";
+          setVoiceRouteProfile(fallbackVoiceRouteProfile);
+          await fetch("/api/v1/audio/routes/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              voice_route_profile: fallbackVoiceRouteProfile,
+              audio_decoder_profile: loadedAudioDecoderProfile,
+              audio_decoder_chain: loadedAudioDecoderChain,
+            }),
+          });
+          onRuntimeApplied?.();
+        }
+      } catch {
+        // Best effort diagnostics panel. Runtime controls remain usable.
+      }
+    };
+    loadVoiceRoute().catch(() => undefined);
+  }, [onRuntimeApplied]);
 
   const handleApply = async () => {
     if (applyDisabled) return;
@@ -234,12 +282,12 @@ function RuntimeSwitchCard({
       await runtime.activateRuntimeSelection(selectedRuntime, selectedModel);
       onRuntimeApplied?.();
       setApplied(true);
-      if (appliedTimerRef.current) {
-        clearTimeout(appliedTimerRef.current);
+      if (runtimeAppliedTimerRef.current) {
+        clearTimeout(runtimeAppliedTimerRef.current);
       }
-      appliedTimerRef.current = setTimeout(() => {
+      runtimeAppliedTimerRef.current = setTimeout(() => {
         setApplied(false);
-        appliedTimerRef.current = null;
+        runtimeAppliedTimerRef.current = null;
       }, 2500);
     } catch (error) {
       setActivationError(
@@ -247,6 +295,43 @@ function RuntimeSwitchCard({
       );
     } finally {
       setPending(false);
+    }
+  };
+
+  const handleVoiceRouteApply = async () => {
+    setVoiceRoutePending(true);
+    setVoiceRouteError(null);
+    try {
+      const chain = audioDecoderChain
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const response = await fetch("/api/v1/audio/routes/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice_route_profile: voiceRouteProfile,
+          audio_decoder_profile: audioDecoderProfile,
+          audio_decoder_chain: chain,
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(payload?.detail || `HTTP ${response.status}`);
+      }
+      setVoiceRouteApplied(true);
+      if (voiceRouteAppliedTimerRef.current) {
+        clearTimeout(voiceRouteAppliedTimerRef.current);
+      }
+      voiceRouteAppliedTimerRef.current = setTimeout(() => {
+        setVoiceRouteApplied(false);
+        voiceRouteAppliedTimerRef.current = null;
+      }, 2500);
+      onRuntimeApplied?.();
+    } catch (error) {
+      setVoiceRouteError(String(error instanceof Error ? error.message : error));
+    } finally {
+      setVoiceRoutePending(false);
     }
   };
 
@@ -350,6 +435,60 @@ function RuntimeSwitchCard({
             {String(runtimeError)}
           </p>
         )}
+
+        <div className="border-t border-white/[0.06] pt-2">
+          <p className="text-caption mb-1">{t("voice.controls.voiceRouteProfile")}</p>
+          <SelectMenu
+            value={voiceRouteProfile}
+            options={[
+              { value: "auto", label: "auto" },
+              { value: "gemma4", label: "gemma4" },
+              { value: "runtime_lokalny", label: "runtime_lokalny" },
+              { value: "venom-agent", label: "venom-agent" },
+              { value: "chat_tekstowy", label: "chat_tekstowy" },
+            ]}
+            onChange={(value) => setVoiceRouteProfile(value || "auto")}
+            className="w-full"
+            disabled={voiceRoutePending}
+          />
+          <p className="text-caption mt-2 mb-1">{t("voice.controls.audioDecoderProfile")}</p>
+          <SelectMenu
+            value={audioDecoderProfile}
+            options={[
+              { value: "auto", label: "auto" },
+              { value: "gemma_native", label: "gemma_native" },
+              { value: "faster_whisper", label: "faster_whisper" },
+              { value: "hybrid", label: "hybrid" },
+            ]}
+            onChange={(value) => setAudioDecoderProfile(value || "auto")}
+            className="w-full"
+            disabled={voiceRoutePending}
+          />
+          <p className="text-caption mt-2 mb-1">{t("voice.controls.audioDecoderChain")}</p>
+          <input
+            value={audioDecoderChain}
+            onChange={(event) => setAudioDecoderChain(event.target.value)}
+            className="w-full rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)]"
+            placeholder="gemma_native,faster_whisper"
+            disabled={voiceRoutePending}
+          />
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={handleVoiceRouteApply}
+            disabled={voiceRoutePending}
+            className="mt-2 w-full"
+          >
+            {voiceRoutePending ? t("voice.controls.refreshing") : t("voice.controls.applyVoiceRoute")}
+          </Button>
+          {voiceRouteApplied ? (
+            <p className="text-[11px] text-emerald-400">{t("voice.controls.voiceRouteApplied")}</p>
+          ) : null}
+          {voiceRouteError ? (
+            <p className="text-[11px] text-rose-300">{voiceRouteError}</p>
+          ) : null}
+        </div>
       </div>
     </StatusCard>
   );
@@ -491,8 +630,43 @@ function VoiceSessionCard({
       {session.transcription && (
         <Row label={t("voice.controls.transcription")} value={session.transcription} />
       )}
+      {session.transcription_used_for_generation && (
+        <Row
+          label={t("voice.controls.transcriptionUsedForGeneration")}
+          value={session.transcription_used_for_generation}
+        />
+      )}
+      {session.trace_inconsistent ? (
+        <p className="text-[11px] text-rose-300">
+          {t("voice.controls.traceInconsistent")}
+        </p>
+      ) : null}
+      {session.request_id && (
+        <Row label={t("voice.controls.requestId")} value={session.request_id} />
+      )}
+      {session.trace_id && (
+        <Row label={t("voice.controls.traceId")} value={session.trace_id} />
+      )}
+      {session.audio_hash && (
+        <Row label={t("voice.controls.audioHash")} value={session.audio_hash} />
+      )}
       {session.voice_pipeline_mode && (
         <Row label={t("voice.controls.pipelineMode")} value={session.voice_pipeline_mode} />
+      )}
+      {session.voice_route_profile && (
+        <Row label={t("voice.controls.voiceRouteProfile")} value={session.voice_route_profile} />
+      )}
+      {session.audio_decoder_profile && (
+        <Row label={t("voice.controls.audioDecoderProfile")} value={session.audio_decoder_profile} />
+      )}
+      {session.decoder_selected && (
+        <Row label={t("voice.controls.decoderSelected")} value={session.decoder_selected} />
+      )}
+      {session.decoder_effective && (
+        <Row label={t("voice.controls.decoderEffective")} value={session.decoder_effective} />
+      )}
+      {session.decoder_fallback_reason && (
+        <Row label={t("voice.controls.decoderFallbackReason")} value={session.decoder_fallback_reason} />
       )}
       {session.native_audio_ms != null && (
         <Row

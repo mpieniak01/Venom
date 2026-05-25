@@ -62,7 +62,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		test-202d-lora-onnx-deploy test-202d-lora-onnx-smoke test-202d-all \
 		test-duration-audit test-light-coverage test-llm-manual \
 		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check \
-		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart multi-runtime-start multi-runtime-stop multi-runtime-restart multi-runtime-hygiene \
+		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart multi-runtime-start multi-runtime-stop multi-runtime-restart multi-runtime-hygiene voice-route-profile-show voice-route-profile-set \
 		local-first-start local-first-status local-first-codex local-first-stop local-first-unload local-first-unload-all \
 		local-repo-status local-repo-status-json \
 		local-first-repo-truth-agent \

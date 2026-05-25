@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import hashlib
 import importlib.util
 import inspect
 import json
@@ -59,6 +60,27 @@ VOICE_SESSION_WAV_FILENAME = "recording.wav"
 VOICE_SESSION_METADATA_FILENAME = "metadata.json"
 GEMMA4_AUDIO_HEALTH_TIMEOUT_SEC = 5.0
 GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC = 120.0
+_VOICE_ROUTE_PROFILES = {
+    "auto",
+    "gemma4",
+    "runtime_lokalny",
+    "venom-agent",
+    "chat_tekstowy",
+}
+_AUDIO_DECODER_ALIASES = {
+    "gemma_native": "gemma_native",
+    "native_audio": "gemma_native",
+    "multi_runtime": "gemma_native",
+    "faster_whisper": "faster_whisper",
+    "whisper": "faster_whisper",
+    "stt_whisper": "faster_whisper",
+}
+_AUDIO_DECODER_PROFILES = {
+    "auto",
+    "gemma_native",
+    "faster_whisper",
+    "hybrid",
+}
 
 
 def _load_voice_session_metadata(metadata_path: Path) -> dict[str, Any]:
@@ -97,6 +119,16 @@ def _build_voice_session_record(
     decoder_source = metadata.get("decoder_source")
     native_audio_ms = metadata.get("native_audio_ms")
     execution_trace = metadata.get("execution_trace") or []
+    transcription = _coerce_str(metadata.get("transcription"), "")
+    transcription_used_for_generation = _coerce_str(
+        metadata.get("transcription_used_for_generation"),
+        transcription,
+    )
+    trace_inconsistent = _resolve_trace_inconsistent_flag(
+        metadata=metadata,
+        transcription=transcription,
+        transcription_used_for_generation=transcription_used_for_generation,
+    )
     return {
         "session_id": session_dir.name,
         "created_at": metadata.get("created_at"),
@@ -119,6 +151,12 @@ def _build_voice_session_record(
         "audio_runtime_model": metadata.get("audio_runtime_model"),
         "audio_input_status": metadata.get("audio_input_status"),
         "decoder_source": metadata.get("decoder_source"),
+        "voice_route_profile": metadata.get("voice_route_profile"),
+        "audio_decoder_profile": metadata.get("audio_decoder_profile"),
+        "audio_decoder_chain": metadata.get("audio_decoder_chain") or [],
+        "decoder_selected": metadata.get("decoder_selected"),
+        "decoder_effective": metadata.get("decoder_effective"),
+        "decoder_fallback_reason": metadata.get("decoder_fallback_reason"),
         "fallback_reason": metadata.get("fallback_reason"),
         "native_audio_ms": metadata.get("native_audio_ms"),
         "voice_session_mode": metadata.get("voice_session_mode")
@@ -140,7 +178,12 @@ def _build_voice_session_record(
         "emotion_source": metadata.get("emotion_source"),
         "emotion_label": metadata.get("emotion_label"),
         "emotion_confidence": metadata.get("emotion_confidence"),
-        "transcription": metadata.get("transcription") or "",
+        "transcription": transcription,
+        "transcription_used_for_generation": transcription_used_for_generation,
+        "trace_inconsistent": trace_inconsistent,
+        "request_id": _coerce_str(metadata.get("request_id"), ""),
+        "trace_id": _coerce_str(metadata.get("trace_id"), ""),
+        "audio_hash": _coerce_str(metadata.get("audio_hash"), ""),
         "response_text": metadata.get("response_text") or "",
         "execution_trace": execution_trace,
         "execution_trace_annotations": metadata.get("execution_trace_annotations")
@@ -191,6 +234,20 @@ def _coerce_str(value: Any, default: str) -> str:
     return text or default
 
 
+def _resolve_trace_inconsistent_flag(
+    *,
+    metadata: dict[str, Any],
+    transcription: str,
+    transcription_used_for_generation: str,
+) -> bool:
+    trace_inconsistent = metadata.get("trace_inconsistent")
+    if isinstance(trace_inconsistent, bool):
+        return trace_inconsistent
+    if not transcription and not transcription_used_for_generation:
+        return False
+    return transcription.strip() != transcription_used_for_generation.strip()
+
+
 def _multi_runtime_setting(name: str, default: Any) -> Any:
     return getattr(SETTINGS, name, default)
 
@@ -210,6 +267,33 @@ def _multi_runtime_voice_flags() -> dict[str, bool]:
             )
         ),
     }
+
+
+def _normalize_voice_route_profile(raw: Any) -> str:
+    profile = _coerce_str(raw, "auto").lower()
+    return profile if profile in _VOICE_ROUTE_PROFILES else "auto"
+
+
+def _normalize_audio_decoder_id(raw: Any) -> str:
+    decoder = _coerce_str(raw, "").lower()
+    return _AUDIO_DECODER_ALIASES.get(decoder, "")
+
+
+def _normalize_audio_decoder_profile(raw: Any) -> str:
+    profile = _coerce_str(raw, "auto").lower()
+    return profile if profile in _AUDIO_DECODER_PROFILES else "auto"
+
+
+def _parse_audio_decoder_chain(raw: Any) -> list[str]:
+    if not isinstance(raw, str):
+        return []
+    chain: list[str] = []
+    for part in raw.split(","):
+        decoder = _normalize_audio_decoder_id(part)
+        if not decoder or decoder in chain:
+            continue
+        chain.append(decoder)
+    return chain
 
 
 def _build_voice_session_insights_payload(
@@ -810,10 +894,170 @@ class AudioStreamHandler:
         - multi_runtime (Gemma4): native voice pipeline allowed.
         - ollama/vllm/onnx/other: always local intermediary STT -> LLM -> TTS.
         """
+        decoder_plan = self._resolve_audio_decoder_plan()
         return (
             "native_multi_runtime"
-            if self._multi_runtime_runtime_selected()
+            if decoder_plan["effective"] == "gemma_native"
             else "intermediary_local_stt"
+        )
+
+    def _voice_route_profile(self) -> str:
+        return _normalize_voice_route_profile(
+            _multi_runtime_setting("VOICE_ROUTE_PROFILE", "auto")
+        )
+
+    def _audio_decoder_profile(self) -> str:
+        return _normalize_audio_decoder_profile(
+            _multi_runtime_setting("AUDIO_DECODER_PROFILE", "auto")
+        )
+
+    def _audio_decoder_chain(self) -> list[str]:
+        route_profile = self._voice_route_profile()
+        configured_chain = _parse_audio_decoder_chain(
+            _multi_runtime_setting("AUDIO_DECODER_CHAIN", "")
+        )
+        if configured_chain:
+            if route_profile in {"runtime_lokalny", "venom-agent"}:
+                return [
+                    item for item in configured_chain if item == "faster_whisper"
+                ] or ["faster_whisper"]
+            return configured_chain
+        profile = self._audio_decoder_profile()
+        if profile == "gemma_native":
+            return (
+                ["faster_whisper"]
+                if route_profile in {"runtime_lokalny", "venom-agent"}
+                else ["gemma_native"]
+            )
+        if profile == "faster_whisper":
+            return ["faster_whisper"]
+        if profile == "hybrid":
+            return (
+                ["faster_whisper"]
+                if route_profile in {"runtime_lokalny", "venom-agent"}
+                else ["gemma_native", "faster_whisper"]
+            )
+        if route_profile in {"runtime_lokalny", "venom-agent"}:
+            return ["faster_whisper"]
+        if self._multi_runtime_runtime_selected():
+            return ["gemma_native", "faster_whisper"]
+        return ["faster_whisper"]
+
+    def _voice_route_runtime_config(self) -> dict[str, Any]:
+        profile = self._voice_route_profile()
+        decoder_profile = self._audio_decoder_profile()
+        chain = self._audio_decoder_chain()
+        return {
+            "voice_route_profile": profile,
+            "audio_decoder_profile": decoder_profile,
+            "audio_decoder_chain": chain,
+        }
+
+    def _voice_route_contract_error(self) -> str:
+        config = self._voice_route_runtime_config()
+        profile = str(config["voice_route_profile"])
+        chain = list(config["audio_decoder_chain"])
+        if profile == "gemma4" and not chain:
+            return (
+                "voice route contract invalid: gemma4 requires non-empty audio "
+                "decoder chain"
+            )
+        if profile == "gemma4" and chain[0] != "gemma_native":
+            return (
+                "voice route contract invalid: gemma4 requires gemma_native as "
+                "the first decoder"
+            )
+        if profile in {"runtime_lokalny", "venom-agent"} and any(
+            decoder != "faster_whisper" for decoder in chain
+        ):
+            return (
+                f"voice route contract invalid: {profile} supports only "
+                "faster_whisper decoder"
+            )
+        return ""
+
+    def _build_audio_decoder_plan(
+        self,
+        *,
+        chain: list[str],
+        selected: str,
+        effective: str,
+        should_try_native: bool,
+        fallback_reason: str,
+    ) -> dict[str, Any]:
+        return {
+            "chain": chain,
+            "selected": selected,
+            "effective": effective,
+            "should_try_native": should_try_native,
+            "fallback_reason": fallback_reason,
+        }
+
+    def _resolve_audio_decoder_plan(self) -> dict[str, Any]:
+        profile = self._voice_route_profile()
+        runtime_selected = self._multi_runtime_runtime_selected()
+        if profile == "chat_tekstowy":
+            # Voice input should remain processable even when text-chat profile is staged.
+            # We override to a safe decoder path instead of hard-failing the session.
+            chain = (
+                ["gemma_native", "faster_whisper"]
+                if runtime_selected
+                else ["faster_whisper"]
+            )
+            selected = chain[0]
+            fallback_reason = (
+                "voice input override: chat_tekstowy profile bypassed for "
+                "audio transcription"
+            )
+            if selected == "gemma_native" and runtime_selected:
+                return self._build_audio_decoder_plan(
+                    chain=chain,
+                    selected=selected,
+                    effective="gemma_native",
+                    should_try_native=True,
+                    fallback_reason=fallback_reason,
+                )
+            return self._build_audio_decoder_plan(
+                chain=chain,
+                selected=selected,
+                effective="faster_whisper",
+                should_try_native=False,
+                fallback_reason=fallback_reason,
+            )
+
+        contract_error = self._voice_route_contract_error()
+        if contract_error:
+            return self._build_audio_decoder_plan(
+                chain=[],
+                selected="",
+                effective="none",
+                should_try_native=False,
+                fallback_reason=contract_error,
+            )
+        chain = self._audio_decoder_chain() or ["faster_whisper"]
+        selected = chain[0]
+        if selected == "gemma_native" and runtime_selected:
+            return self._build_audio_decoder_plan(
+                chain=chain,
+                selected=selected,
+                effective="gemma_native",
+                should_try_native=True,
+                fallback_reason="",
+            )
+        if selected == "gemma_native":
+            return self._build_audio_decoder_plan(
+                chain=chain,
+                selected=selected,
+                effective="faster_whisper",
+                should_try_native=False,
+                fallback_reason=self._voice_pipeline_fallback_reason(),
+            )
+        return self._build_audio_decoder_plan(
+            chain=chain,
+            selected=selected,
+            effective="faster_whisper",
+            should_try_native=False,
+            fallback_reason="audio decoder profile forced faster_whisper",
         )
 
     def _voice_pipeline_fallback_reason(self) -> str:
@@ -853,9 +1097,6 @@ class AudioStreamHandler:
         respond_url = self._multi_runtime_respond_url()
         if not respond_url:
             raise RuntimeError("Gemma4 audio endpoint is not configured")
-        transcribe_url = self._multi_runtime_transcribe_url()
-        if not transcribe_url:
-            raise RuntimeError("Gemma4 transcription endpoint is not configured")
 
         prompt = (
             "Odpowiedz po polsku na wypowiedź użytkownika z nagrania. "
@@ -884,29 +1125,11 @@ class AudioStreamHandler:
         timeout = httpx.Timeout(GEMMA4_AUDIO_REQUEST_TIMEOUT_SEC, connect=5.0)
         async with await anyio.open_file(wav_path, "rb") as audio_file:
             audio_bytes = await audio_file.read()
+            audio_hash = hashlib.sha256(audio_bytes).hexdigest()
             files = {
                 "audio": (wav_path.name, audio_bytes, "audio/wav"),
             }
             async with httpx.AsyncClient(timeout=timeout) as client:
-                transcribe_response = await client.post(
-                    transcribe_url,
-                    files=files,
-                )
-                if transcribe_response.status_code >= 400:
-                    raise RuntimeError(
-                        "Gemma4 audio runtime returned HTTP "
-                        f"{transcribe_response.status_code} from /audio/transcribe: "
-                        f"{transcribe_response.text}"
-                    )
-                transcription = _coerce_str(
-                    transcribe_response.json().get("text"),
-                    "",
-                )
-                if not transcription:
-                    raise RuntimeError(
-                        "Gemma4 audio runtime returned an empty transcription"
-                    )
-
                 data = {
                     "request": json.dumps(payload, ensure_ascii=False),
                 }
@@ -918,6 +1141,16 @@ class AudioStreamHandler:
             )
 
         data = response.json()
+        transcription = _coerce_str(data.get("transcription"), "")
+        transcription_used_for_generation = _coerce_str(
+            data.get("transcription_used_for_generation"), ""
+        )
+        if not transcription:
+            transcription = transcription_used_for_generation
+        if not transcription:
+            raise RuntimeError(
+                "Gemma4 audio runtime returned an empty transcription in /v1/respond"
+            )
         response_text = _coerce_str(data.get("text"), "")
         if not response_text:
             response_text = _coerce_str(data.get("response_text"), "")
@@ -933,12 +1166,24 @@ class AudioStreamHandler:
         return {
             "text": transcription,
             "transcription": transcription,
+            "transcription_used_for_generation": (
+                transcription_used_for_generation or transcription
+            ),
             "response_text": response_text,
             "model": _coerce_str(
                 data.get("model")
                 or _multi_runtime_setting("GEMMA4_AUDIO_MODEL_ID", ""),
                 "",
             ),
+            "request_id": _coerce_str(
+                data.get("request_id"),
+                _coerce_str(data.get("trace_id"), ""),
+            ),
+            "trace_id": _coerce_str(
+                data.get("trace_id"),
+                _coerce_str(data.get("request_id"), ""),
+            ),
+            "audio_hash": audio_hash,
             "duration_ms": data.get("duration_ms"),
             "connection_id": connection_id,
             "reasoning_summary": data.get("reasoning_summary"),
@@ -967,11 +1212,13 @@ class AudioStreamHandler:
         timings_ms: dict[str, float],
         total_started_at: float,
         operator_agent,
+        *,
+        decoder_selected: str = "gemma_native",
     ) -> bool:
         if not self._multi_runtime_runtime_selected():
             return False
         if not await self._ensure_native_audio_engine_available(connection_id):
-            return True
+            return False
 
         snapshot = self._multi_runtime_runtime_snapshot()
         if not await self._multi_runtime_health_ok():
@@ -1002,6 +1249,7 @@ class AudioStreamHandler:
                     snapshot=snapshot,
                     timings_ms=timings_ms,
                     operator_agent=operator_agent,
+                    decoder_selected=decoder_selected,
                 )
                 logger.warning(
                     "Gemma4 audio runtime failed for connection_id=%s: %s",
@@ -1015,7 +1263,7 @@ class AudioStreamHandler:
                         "message": "Gemma4 native audio pipeline failed. Check runtime status.",
                     },
                 )
-                return True
+                return False
 
             timings_ms["native_audio_ms"] = self._elapsed_ms(native_started_at)
             transcription = _coerce_str(
@@ -1032,6 +1280,7 @@ class AudioStreamHandler:
                     transcription=transcription,
                     response_text=response_text,
                     operator_agent=operator_agent,
+                    decoder_selected=decoder_selected,
                 )
                 await self._send_json(
                     connection_id,
@@ -1040,7 +1289,7 @@ class AudioStreamHandler:
                         "message": "Gemma4 native audio pipeline returned an incomplete result.",
                     },
                 )
-                return True
+                return False
             insights = _build_voice_session_insights_payload(
                 transcript=transcription,
                 response=response_text,
@@ -1061,7 +1310,18 @@ class AudioStreamHandler:
                     "audio_runtime_model": _coerce_str(runtime_result.get("model"), ""),
                     "audio_input_status": "verified",
                     "decoder_source": "multi_runtime",
+                    "decoder_selected": decoder_selected,
+                    "decoder_effective": "gemma_native",
+                    "decoder_fallback_reason": "",
                     "fallback_reason": "",
+                    "request_id": _coerce_str(runtime_result.get("request_id"), ""),
+                    "trace_id": _coerce_str(runtime_result.get("trace_id"), ""),
+                    "audio_hash": _coerce_str(runtime_result.get("audio_hash"), ""),
+                    "transcription_used_for_generation": _coerce_str(
+                        runtime_result.get("transcription_used_for_generation"),
+                        "",
+                    )
+                    or transcription,
                     "native_audio_ms": timings_ms["native_audio_ms"],
                     "transcription": transcription,
                     "transcription_length": len(transcription or ""),
@@ -1140,11 +1400,15 @@ class AudioStreamHandler:
         connection_id: int,
         timings_ms: dict[str, float],
         operator_agent,
+        decoder_selected: str = "gemma_native",
     ) -> dict[str, Any]:
         return {
             **snapshot,
             "pipeline_id": "multi_runtime_piper",
             "decoder_source": "multi_runtime",
+            "decoder_selected": decoder_selected,
+            "decoder_effective": "gemma_native",
+            "decoder_fallback_reason": "",
             "fallback_reason": "",
             "native_audio_ms": timings_ms.get("native_audio_ms"),
             "timings_ms": timings_ms,
@@ -1160,6 +1424,7 @@ class AudioStreamHandler:
         snapshot: dict[str, Any],
         timings_ms: dict[str, float],
         operator_agent,
+        decoder_selected: str = "gemma_native",
     ) -> None:
         payload = {
             **self._base_native_runtime_metadata(
@@ -1167,6 +1432,7 @@ class AudioStreamHandler:
                 connection_id=connection_id,
                 timings_ms=timings_ms,
                 operator_agent=operator_agent,
+                decoder_selected=decoder_selected,
             ),
             "audio_input_status": "failed",
             **_build_voice_session_insights_payload(
@@ -1191,6 +1457,7 @@ class AudioStreamHandler:
         transcription: str,
         response_text: str,
         operator_agent,
+        decoder_selected: str = "gemma_native",
     ) -> None:
         payload = {
             **self._base_native_runtime_metadata(
@@ -1198,6 +1465,7 @@ class AudioStreamHandler:
                 connection_id=connection_id,
                 timings_ms=timings_ms,
                 operator_agent=operator_agent,
+                decoder_selected=decoder_selected,
             ),
             "audio_input_status": "failed",
             "transcription": transcription,
@@ -1226,6 +1494,58 @@ class AudioStreamHandler:
             ),
         }
         self._update_voice_session_metadata(session_dir, payload)
+
+    async def _handle_decoder_plan_pre_stt(
+        self,
+        *,
+        connection_id: int,
+        session_dir: Path,
+        wav_path: Path,
+        timings_ms: dict[str, float],
+        total_started_at: float,
+        operator_agent,
+        decoder_plan: dict[str, Any],
+    ) -> bool:
+        if decoder_plan["effective"] == "none":
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    "pipeline_id": "none",
+                    "audio_input_status": "failed",
+                    "decoder_source": "none",
+                    "decoder_effective": "none",
+                    "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                    "fallback_reason": decoder_plan["fallback_reason"],
+                },
+            )
+            await self._send_json(
+                connection_id,
+                {"type": "error", "message": decoder_plan["fallback_reason"]},
+            )
+            return True
+
+        if not decoder_plan["should_try_native"]:
+            self._update_voice_session_metadata(
+                session_dir,
+                {
+                    "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                    "fallback_reason": decoder_plan["fallback_reason"],
+                },
+            )
+
+        if decoder_plan[
+            "should_try_native"
+        ] and await self._process_native_multi_runtime_pipeline(
+            connection_id,
+            session_dir,
+            wav_path,
+            timings_ms,
+            total_started_at,
+            operator_agent,
+            decoder_selected=decoder_plan["selected"],
+        ):
+            return True
+        return False
 
     async def _process_audio_buffer(
         self,
@@ -1260,39 +1580,47 @@ class AudioStreamHandler:
                 sample_rate=sample_rate,
                 audio_stats=audio_stats,
             )
+            route_config = self._voice_route_runtime_config()
+            decoder_plan = self._resolve_audio_decoder_plan()
             self._update_voice_session_metadata(
                 session_dir,
                 {
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_pipeline_mode": self._voice_pipeline_mode(),
+                    "voice_route_profile": route_config["voice_route_profile"],
+                    "audio_decoder_profile": route_config["audio_decoder_profile"],
+                    "audio_decoder_chain": route_config["audio_decoder_chain"],
+                    "decoder_selected": decoder_plan["selected"],
                 },
             )
             logger.info(f"Zapisano sesję audio: {session_dir}")
 
-            if not self._multi_runtime_runtime_selected():
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "audio_input_status": "fallback",
-                        "decoder_source": "faster_whisper",
-                        "fallback_reason": self._voice_pipeline_fallback_reason(),
-                    },
-                )
-
-            if await self._process_native_multi_runtime_pipeline(
-                connection_id,
-                session_dir,
-                session_dir / VOICE_SESSION_WAV_FILENAME,
-                timings_ms,
-                total_started_at,
-                operator_agent,
+            if await self._handle_decoder_plan_pre_stt(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                wav_path=session_dir / VOICE_SESSION_WAV_FILENAME,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                decoder_plan=decoder_plan,
             ):
                 return
 
             # STT
             if not self.audio_engine:
                 logger.warning("AudioEngine nie jest dostępny")
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                    },
+                )
                 await self._send_json(
                     connection_id,
                     {
@@ -1303,11 +1631,28 @@ class AudioStreamHandler:
                 return
 
             stt_started_at = time.perf_counter()
-            transcription = await self.audio_engine.listen(
-                normalized_audio,
-                language="pl",
-                sample_rate=sample_rate,
-            )
+            try:
+                transcription = await self.audio_engine.listen(
+                    normalized_audio,
+                    language="pl",
+                    sample_rate=sample_rate,
+                )
+            except Exception:
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                        "timings_ms": timings_ms,
+                        "voice_mode": self._connection_voice_mode(connection_id),
+                    },
+                )
+                raise
             timings_ms["stt_ms"] = self._elapsed_ms(stt_started_at)
             self._update_voice_session_metadata(
                 session_dir,
@@ -1317,8 +1662,15 @@ class AudioStreamHandler:
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
                     "voice_mode": self._connection_voice_mode(connection_id),
-                    "audio_input_status": "verified",
+                    "audio_input_status": (
+                        "fallback"
+                        if not decoder_plan["should_try_native"]
+                        else "verified"
+                    ),
                     "decoder_source": "faster_whisper",
+                    "decoder_selected": decoder_plan["selected"],
+                    "decoder_effective": "faster_whisper",
+                    "decoder_fallback_reason": decoder_plan["fallback_reason"],
                     "runtime_log_path": _coerce_str(
                         _multi_runtime_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),
@@ -1368,6 +1720,8 @@ class AudioStreamHandler:
             audio, audio_stats = self._normalize_recorded_audio(audio)
             self._write_wav(wav_path, audio, sample_rate)
             timings_ms["normalize_ms"] = self._elapsed_ms(normalize_started_at)
+            route_config = self._voice_route_runtime_config()
+            decoder_plan = self._resolve_audio_decoder_plan()
             self._update_voice_session_metadata(
                 session_dir,
                 {
@@ -1381,33 +1735,40 @@ class AudioStreamHandler:
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_mode": self._connection_voice_mode(connection_id),
                     "voice_pipeline_mode": self._voice_pipeline_mode(),
+                    "voice_route_profile": route_config["voice_route_profile"],
+                    "audio_decoder_profile": route_config["audio_decoder_profile"],
+                    "audio_decoder_chain": route_config["audio_decoder_chain"],
+                    "decoder_selected": decoder_plan["selected"],
                 },
             )
             logger.info(f"Zapisano sesję audio MediaRecorder: {session_dir}")
 
-            if not self._multi_runtime_runtime_selected():
-                self._update_voice_session_metadata(
-                    session_dir,
-                    {
-                        "pipeline_id": "whisper_llm_piper",
-                        "audio_input_status": "fallback",
-                        "decoder_source": "faster_whisper",
-                        "fallback_reason": self._voice_pipeline_fallback_reason(),
-                    },
-                )
-
-            if await self._process_native_multi_runtime_pipeline(
-                connection_id,
-                session_dir,
-                wav_path,
-                timings_ms,
-                total_started_at,
-                operator_agent,
+            if await self._handle_decoder_plan_pre_stt(
+                connection_id=connection_id,
+                session_dir=session_dir,
+                wav_path=wav_path,
+                timings_ms=timings_ms,
+                total_started_at=total_started_at,
+                operator_agent=operator_agent,
+                decoder_plan=decoder_plan,
             ):
                 return
 
             if not self.audio_engine:
                 logger.warning("AudioEngine nie jest dostępny")
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                        "timings_ms": timings_ms,
+                    },
+                )
                 await self._send_json(
                     connection_id,
                     {"type": "error", "message": "Audio engine not available"},
@@ -1418,11 +1779,27 @@ class AudioStreamHandler:
                 connection_id, {"type": "processing", "status": "stt"}
             )
             stt_started_at = time.perf_counter()
-            transcription = await asyncio.to_thread(
-                self.audio_engine.transcribe_file,
-                str(wav_path),
-                "pl",
-            )
+            try:
+                transcription = await asyncio.to_thread(
+                    self.audio_engine.transcribe_file,
+                    str(wav_path),
+                    "pl",
+                )
+            except Exception:
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "whisper_llm_piper",
+                        "audio_input_status": "failed",
+                        "decoder_source": "faster_whisper",
+                        "decoder_selected": decoder_plan["selected"],
+                        "decoder_effective": "faster_whisper",
+                        "decoder_fallback_reason": decoder_plan["fallback_reason"],
+                        "fallback_reason": decoder_plan["fallback_reason"],
+                        "timings_ms": timings_ms,
+                    },
+                )
+                raise
             timings_ms["stt_ms"] = self._elapsed_ms(stt_started_at)
             self._update_voice_session_metadata(
                 session_dir,
@@ -1431,8 +1808,15 @@ class AudioStreamHandler:
                     "transcription": transcription,
                     "transcription_length": len(transcription or ""),
                     "timings_ms": timings_ms,
-                    "audio_input_status": "verified",
+                    "audio_input_status": (
+                        "fallback"
+                        if not decoder_plan["should_try_native"]
+                        else "verified"
+                    ),
                     "decoder_source": "faster_whisper",
+                    "decoder_selected": decoder_plan["selected"],
+                    "decoder_effective": "faster_whisper",
+                    "decoder_fallback_reason": decoder_plan["fallback_reason"],
                     "runtime_log_path": _coerce_str(
                         _multi_runtime_setting("GEMMA4_AUDIO_LOG_PATH", ""), ""
                     ),

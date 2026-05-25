@@ -99,6 +99,16 @@ class RespondResponse(BaseModel):
     model: str = Field(..., description="Model ID used for inference")
     task: Optional[str] = Field(None, description="Task executed")
     text: str = Field(..., description="Generated text response")
+    transcription: Optional[str] = Field(
+        None, description="Transcription extracted from the same generation pass"
+    )
+    transcription_used_for_generation: Optional[str] = Field(
+        None,
+        description="Transcription string used as source context for final answer",
+    )
+    request_id: Optional[str] = Field(
+        None, description="Request identifier (same value as trace_id)"
+    )
     duration_ms: int = Field(..., description="Total request duration in milliseconds")
     audio: Optional[AudioMetadata] = Field(
         None, description="Input audio metadata (present when audio was provided)"

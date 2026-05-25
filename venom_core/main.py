@@ -212,6 +212,27 @@ _voice_runtime_snapshot_cache: dict[str, object] = {
     "entry": None,
 }
 _voice_runtime_snapshot_lock = asyncio.Lock()
+_VOICE_ROUTE_PROFILES = {
+    "auto",
+    "gemma4",
+    "runtime_lokalny",
+    "venom-agent",
+    "chat_tekstowy",
+}
+_AUDIO_DECODER_PROFILES = {
+    "auto",
+    "gemma_native",
+    "faster_whisper",
+    "hybrid",
+}
+_AUDIO_DECODER_ALIASES = {
+    "gemma_native": "gemma_native",
+    "native_audio": "gemma_native",
+    "multi_runtime": "gemma_native",
+    "faster_whisper": "faster_whisper",
+    "whisper": "faster_whisper",
+    "stt_whisper": "faster_whisper",
+}
 
 
 def _get_latest_voice_session_record() -> dict[str, object] | None:
@@ -235,6 +256,140 @@ def _require_localhost_request(req: Request) -> None:
     client_host = req.client.host if req.client else "unknown"
     if client_host not in {"127.0.0.1", "::1"}:
         raise HTTPException(status_code=403, detail="Access denied")
+
+
+def _normalize_voice_route_profile(raw: object) -> str:
+    profile = str(raw or "auto").strip().lower()
+    return profile if profile in _VOICE_ROUTE_PROFILES else "auto"
+
+
+def _normalize_audio_decoder_profile(raw: object) -> str:
+    profile = str(raw or "auto").strip().lower()
+    return profile if profile in _AUDIO_DECODER_PROFILES else "auto"
+
+
+def _normalize_audio_decoder_id(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    return _AUDIO_DECODER_ALIASES.get(value, "")
+
+
+def _normalize_audio_decoder_chain(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    values: list[object]
+    if isinstance(raw, str):
+        values = list(raw.split(","))
+    elif isinstance(raw, list):
+        values = raw
+    else:
+        return []
+    normalized: list[str] = []
+    for value in values:
+        decoder = _normalize_audio_decoder_id(value)
+        if not decoder or decoder in normalized:
+            continue
+        normalized.append(decoder)
+    return normalized
+
+
+def _effective_audio_decoder_chain(
+    voice_route_profile: str, profile: str, chain: list[str]
+) -> list[str]:
+    if voice_route_profile == "chat_tekstowy":
+        return []
+    if chain:
+        effective_chain = list(chain)
+    elif profile == "gemma_native":
+        effective_chain = ["gemma_native"]
+    elif profile == "faster_whisper":
+        effective_chain = ["faster_whisper"]
+    elif profile == "hybrid":
+        effective_chain = ["gemma_native", "faster_whisper"]
+    else:
+        effective_chain = []
+    if voice_route_profile in {"runtime_lokalny", "venom-agent"}:
+        return [item for item in effective_chain if item == "faster_whisper"] or [
+            "faster_whisper"
+        ]
+    return effective_chain
+
+
+def _voice_route_config_snapshot() -> dict[str, object]:
+    voice_route_profile = _normalize_voice_route_profile(
+        getattr(SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    )
+    audio_decoder_profile = _normalize_audio_decoder_profile(
+        getattr(SETTINGS, "AUDIO_DECODER_PROFILE", "auto")
+    )
+    audio_decoder_chain = _normalize_audio_decoder_chain(
+        getattr(SETTINGS, "AUDIO_DECODER_CHAIN", "")
+    )
+    return {
+        "voice_route_profile": voice_route_profile,
+        "audio_decoder_profile": audio_decoder_profile,
+        "audio_decoder_chain": audio_decoder_chain,
+        "audio_decoder_chain_effective": _effective_audio_decoder_chain(
+            voice_route_profile,
+            audio_decoder_profile,
+            audio_decoder_chain,
+        ),
+    }
+
+
+def _validate_voice_route_contract(
+    *,
+    voice_route_profile: str,
+    audio_decoder_profile: str,
+    audio_decoder_chain: list[str],
+) -> None:
+    effective_chain = _effective_audio_decoder_chain(
+        voice_route_profile,
+        audio_decoder_profile,
+        audio_decoder_chain,
+    )
+    if voice_route_profile == "chat_tekstowy" and (
+        audio_decoder_profile != "auto" or bool(audio_decoder_chain)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "voice_route_profile=chat_tekstowy must not define audio decoder "
+                "chain/profile."
+            ),
+        )
+    if voice_route_profile == "gemma4" and not effective_chain:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "voice_route_profile=gemma4 requires a non-empty audio decoder "
+                "chain (gemma_native or hybrid)."
+            ),
+        )
+    if voice_route_profile == "gemma4" and effective_chain[0] != "gemma_native":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "voice_route_profile=gemma4 requires gemma_native as the first "
+                "decoder in chain."
+            ),
+        )
+    if voice_route_profile in {"runtime_lokalny", "venom-agent"}:
+        if audio_decoder_profile in {"gemma_native", "hybrid"}:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"voice_route_profile={voice_route_profile} does not allow "
+                    f"audio_decoder_profile={audio_decoder_profile}."
+                ),
+            )
+        if any(decoder != "faster_whisper" for decoder in audio_decoder_chain):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"voice_route_profile={voice_route_profile} supports only "
+                    "faster_whisper decoder."
+                ),
+            )
 
 
 def _get_piper_models_root() -> Path:
@@ -287,8 +442,22 @@ class AudioTtsModelUpdateRequest(BaseModel):
     model: str
 
 
+class AudioRouteProfileUpdateRequest(BaseModel):
+    voice_route_profile: str | None = None
+    audio_decoder_profile: str | None = None
+    audio_decoder_chain: list[str] | None = None
+
+
 def _gemma4_audio_enabled() -> bool:
     return bool(getattr(SETTINGS, "GEMMA4_AUDIO_ENABLED", False))
+
+
+def _voice_route_profile() -> str:
+    return str(getattr(SETTINGS, "VOICE_ROUTE_PROFILE", "auto") or "auto").strip()
+
+
+def _audio_decoder_profile() -> str:
+    return str(getattr(SETTINGS, "AUDIO_DECODER_PROFILE", "auto") or "auto").strip()
 
 
 def _build_gemma4_runtime_capabilities() -> dict[str, object]:
@@ -334,7 +503,9 @@ def _build_gemma4_runtime_capabilities() -> dict[str, object]:
 def _build_gemma4_voice_pipeline() -> dict[str, object]:
     return {
         "profile": "multi_runtime_native",
-        "stt": "native_audio" if _gemma4_audio_enabled() else "faster_whisper",
+        "stt": "native_audio"
+        if _audio_decoder_profile() != "faster_whisper" and _gemma4_audio_enabled()
+        else "faster_whisper",
         "reasoning": "native_audio_model",
         "reasoning_summary": (
             "enabled"
@@ -349,7 +520,10 @@ def _build_gemma4_voice_pipeline() -> dict[str, object]:
         "tools": "disabled",
         "vision": "disabled",
         "tts": "piper",
-        "notes": [],
+        "notes": [
+            f"voice_route_profile={_voice_route_profile()}",
+            f"audio_decoder_profile={_audio_decoder_profile()}",
+        ],
     }
 
 
@@ -413,6 +587,8 @@ def _build_whisper_fallback_voice_pipeline(provider: str) -> dict[str, object]:
         "notes": [
             "native Gemma4 voice path is reserved for multi_runtime",
             f"{runtime_provider} voice requests use whisper_llm_piper",
+            f"voice_route_profile={_voice_route_profile()}",
+            f"audio_decoder_profile={_audio_decoder_profile()}",
         ],
     }
 
@@ -1906,6 +2082,7 @@ def _audio_disabled_status_payload(
         "connected_clients": 0,
         "active_recordings": 0,
         "message": "Audio interface is disabled or not initialized.",
+        "voice_route_config": _voice_route_config_snapshot(),
         "runtime_switch_gate": runtime_switch_gate,
         "runtime_snapshot": runtime_snapshot,
     }
@@ -1933,6 +2110,7 @@ async def audio_status_endpoint(request: Request):
         )
 
     status = audio_stream_handler.get_status(operator_agent=operator_agent)
+    status["voice_route_config"] = _voice_route_config_snapshot()
     status["runtime_switch_gate"] = runtime_switch_gate
     status["last_runtime_switch"] = last_runtime_switch
     if not status.get("message"):
@@ -2036,6 +2214,110 @@ async def update_audio_tts_model(payload: AudioTtsModelUpdateRequest, request: R
         "effective_tts_model_path": effective_model_path,
         "reload_state": reload_state,
         "handler_reload_state": handler_reload_state,
+    }
+
+
+@app.get("/api/v1/audio/routes/profile")
+async def get_audio_route_profile():
+    """Zwraca aktywną konfigurację toru voice i dekoderów audio."""
+    return _voice_route_config_snapshot()
+
+
+@app.post(
+    "/api/v1/audio/routes/profile",
+    responses={
+        400: {"description": "Invalid voice route profile or audio decoder contract."},
+        403: {"description": "Endpoint only available from localhost."},
+        500: {"description": "Failed to persist audio route configuration."},
+    },
+)
+async def update_audio_route_profile(
+    payload: AudioRouteProfileUpdateRequest,
+    request: Request,
+):
+    """Aktualizuje konfigurację toru voice i dekoderów audio."""
+    _require_localhost_request(request)
+    current = _voice_route_config_snapshot()
+
+    if payload.voice_route_profile is None:
+        voice_route_profile = str(current["voice_route_profile"])
+    else:
+        voice_route_profile = str(payload.voice_route_profile).strip().lower()
+        if voice_route_profile not in _VOICE_ROUTE_PROFILES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported voice_route_profile: {payload.voice_route_profile}"
+                ),
+            )
+
+    if payload.audio_decoder_profile is None:
+        audio_decoder_profile = str(current["audio_decoder_profile"])
+    else:
+        audio_decoder_profile = str(payload.audio_decoder_profile).strip().lower()
+        if audio_decoder_profile not in _AUDIO_DECODER_PROFILES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported audio_decoder_profile: "
+                    f"{payload.audio_decoder_profile}"
+                ),
+            )
+
+    if payload.audio_decoder_chain is None:
+        audio_decoder_chain = list(current["audio_decoder_chain"])
+    else:
+        invalid_decoders = [
+            str(item).strip()
+            for item in payload.audio_decoder_chain
+            if str(item).strip() and not _normalize_audio_decoder_id(item)
+        ]
+        if invalid_decoders:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported audio_decoder_chain entries: "
+                    + ", ".join(invalid_decoders)
+                ),
+            )
+        audio_decoder_chain = _normalize_audio_decoder_chain(
+            payload.audio_decoder_chain
+        )
+
+    _validate_voice_route_contract(
+        voice_route_profile=voice_route_profile,
+        audio_decoder_profile=audio_decoder_profile,
+        audio_decoder_chain=audio_decoder_chain,
+    )
+
+    updates = {
+        "VOICE_ROUTE_PROFILE": voice_route_profile,
+        "AUDIO_DECODER_PROFILE": audio_decoder_profile,
+        "AUDIO_DECODER_CHAIN": ",".join(audio_decoder_chain),
+    }
+
+    from venom_core.services.config_manager import config_manager
+
+    update_result = config_manager.update_config(updates)
+    if not isinstance(update_result, dict) or not bool(update_result.get("success")):
+        raise HTTPException(
+            status_code=500,
+            detail=str(
+                (
+                    update_result.get("message")
+                    if isinstance(update_result, dict)
+                    else ""
+                )
+                or "Failed to persist audio route configuration."
+            ),
+        )
+    SETTINGS.VOICE_ROUTE_PROFILE = voice_route_profile
+    SETTINGS.AUDIO_DECODER_PROFILE = audio_decoder_profile
+    SETTINGS.AUDIO_DECODER_CHAIN = ",".join(audio_decoder_chain)
+
+    return {
+        "status": "success",
+        "updated": _voice_route_config_snapshot(),
     }
 
 

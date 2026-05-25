@@ -1140,6 +1140,11 @@ async def respond(request: Request) -> RespondResponse:
 
     daemon_params = daemon_status["params"]
     generated_text = pipeline_result.generated_text
+    trace_id = str(uuid4())
+    (
+        transcription_used_for_generation,
+        final_response_text,
+    ) = _extract_transcription_and_answer_from_generation(generated_text)
     duration = pipeline_result.audio_duration_sec
     active_precision = str(daemon_params.get("precision", "auto"))
     post_response_cleanup = "none"
@@ -1163,8 +1168,8 @@ async def respond(request: Request) -> RespondResponse:
 
     total_duration_ms = pipeline_result.total_duration_ms
     voice_insights = build_voice_session_insights(
-        transcript=text_content or "",
-        response=generated_text,
+        transcript=transcription_used_for_generation or text_content or "",
+        response=final_response_text,
         voice_mode="multi_runtime",
         pipeline_id="multi_runtime_native",
         reasoning_summary_enabled=bool(daemon_params["reasoning_summary_enabled"]),
@@ -1178,7 +1183,11 @@ async def respond(request: Request) -> RespondResponse:
     return RespondResponse(
         model=engine.model_id,
         task=request_payload.task,
-        text=generated_text,
+        text=final_response_text,
+        transcription=transcription_used_for_generation,
+        transcription_used_for_generation=transcription_used_for_generation,
+        request_id=trace_id,
+        trace_id=trace_id,
         duration_ms=total_duration_ms,
         audio=(
             AudioMetadata(sample_rate=sample_rate, duration_sec=duration)
@@ -1240,6 +1249,39 @@ def _extract_text_prompt_from_openai_messages(messages: list[dict]) -> str:
                     if text:
                         return text
     return "Hello"
+
+
+def _extract_transcription_and_answer_from_generation(
+    generated_text: str,
+) -> tuple[str | None, str]:
+    """Extract single-pass voice payload from model output.
+
+    Expected shape:
+    {"transcription":"...","answer":"..."}
+    """
+    raw = str(generated_text or "").strip()
+    if not raw:
+        return None, ""
+
+    candidates = [raw]
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        candidates.append(raw[start : end + 1])
+
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        transcription = str(payload.get("transcription") or "").strip()
+        answer = str(payload.get("answer") or payload.get("response") or "").strip()
+        if answer:
+            return (transcription or None), answer
+
+    return None, raw
 
 
 def _extract_image_urls_from_openai_messages(messages: list[dict]) -> list[str]:

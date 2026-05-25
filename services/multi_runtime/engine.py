@@ -6,6 +6,7 @@ import gc
 import logging
 import re
 import tempfile
+import wave
 from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
@@ -13,10 +14,14 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 import numpy as np
-import soundfile as sf
 from PIL import Image
 
 from .audio import get_audio_duration, normalize_audio
+
+try:
+    import soundfile as sf
+except ImportError:  # pragma: no cover - exercised in CI environments without soundfile
+    sf = None
 
 logger = logging.getLogger(__name__)
 _UNSET = object()
@@ -281,6 +286,24 @@ class MultiRuntimeEngine:
             )
         return default_prompt
 
+    @staticmethod
+    def _write_audio_wav(path: Path, audio: np.ndarray, sample_rate: int) -> None:
+        """Write WAV file using soundfile when available, otherwise stdlib fallback."""
+        if sf is not None:
+            sf.write(str(path), audio, sample_rate, subtype="FLOAT")
+            return
+
+        # Fallback for environments without soundfile (e.g. CI minimal images).
+        pcm = np.asarray(audio, dtype=np.float32)
+        pcm = np.nan_to_num(pcm, nan=0.0, posinf=1.0, neginf=-1.0)
+        pcm = np.clip(pcm, -1.0, 1.0)
+        pcm_i16 = (pcm * 32767.0).astype(np.int16)
+        with wave.open(str(path), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(int(sample_rate))
+            wav_file.writeframes(pcm_i16.tobytes())
+
     def respond(
         self,
         audio_array: Optional[np.ndarray],
@@ -324,7 +347,7 @@ class MultiRuntimeEngine:
                     prefix="multi_runtime_audio_"
                 )
                 audio_input_path = Path(audio_tempdir.name) / "audio.wav"
-                sf.write(str(audio_input_path), audio_normalized, sr, subtype="FLOAT")
+                self._write_audio_wav(audio_input_path, audio_normalized, sr)
                 user_content.append({"type": "audio", "path": str(audio_input_path)})
             if images:
                 for image in images:

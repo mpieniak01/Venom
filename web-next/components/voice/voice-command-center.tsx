@@ -189,6 +189,11 @@ type VoiceSessionDiagnostics = {
   emotion_label?: string | null;
   emotion_confidence?: number | null;
   transcription?: string;
+  transcription_used_for_generation?: string;
+  trace_inconsistent?: boolean | null;
+  request_id?: string | null;
+  trace_id?: string | null;
+  audio_hash?: string | null;
   response_text?: string;
   download_url?: string | null;
   pipeline_id?: string | null;
@@ -219,6 +224,12 @@ type VoiceSessionDiagnostics = {
   audio_runtime_model?: string | null;
   audio_input_status?: string | null;
   decoder_source?: string | null;
+  voice_route_profile?: string | null;
+  audio_decoder_profile?: string | null;
+  audio_decoder_chain?: string[] | null;
+  decoder_selected?: string | null;
+  decoder_effective?: string | null;
+  decoder_fallback_reason?: string | null;
   fallback_reason?: string | null;
   native_audio_ms?: number | null;
   runtime_log_path?: string | null;
@@ -809,10 +820,12 @@ const handleVoiceError = (
   setPlaybackState: (value: PlaybackState) => void,
   setStatusMessage: (value: string | null) => void,
   setLastAudioSignal: (value: string) => void,
+  setProcessingStatus?: (value: string | null) => void,
 ) => {
   setPlaybackState("error");
   setStatusMessage(toPrimitiveString(data.message) ?? t("voice.status.channelError"));
   setLastAudioSignal("error");
+  setProcessingStatus?.(null);
 };
 
 const connectVoiceSocket = (deps: VoiceSocketDeps): (() => void) => {
@@ -1730,7 +1743,14 @@ function createHandleAudioMessageHandler(params: {
       return;
     }
     if (messageType === "error") {
-      handleVoiceError(t, data, setPlaybackState, setStatusMessage, setLastAudioSignal);
+      handleVoiceError(
+        t,
+        data,
+        setPlaybackState,
+        setStatusMessage,
+        setLastAudioSignal,
+        setProcessingStatus,
+      );
       refreshAudioStatus().catch(() => undefined);
     }
   };

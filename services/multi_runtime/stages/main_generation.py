@@ -44,6 +44,16 @@ class MainGenerationStage:
         if retrieval_context:
             prompt = f"{prompt}\n\n[retrieval_context]\n{retrieval_context}"
 
+        # Single-pass voice contract for audio requests:
+        # ask the model to return one payload containing both transcript and answer.
+        if context.audio_array is not None and request_payload.task != "transcribe":
+            prompt = (
+                f"{prompt}\n\n"
+                "Return STRICT JSON only with two keys:\n"
+                '{"transcription":"<exact speech transcription>","answer":"<final Polish answer>"}\n'
+                "No markdown, no extra keys, no commentary."
+            )
+
         generated_text, duration = self._engine.respond(
             context.audio_array,
             sample_rate=context.sample_rate,

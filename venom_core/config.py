@@ -220,6 +220,11 @@ class Settings(BaseSettings):
     GEMMA4_AUDIO_LOG_PATH: str = "logs/gemma4_audio_service.log"  # Plik logu
     GEMMA4_AUDIO_PID_PATH: str = ".venom_runtime/gemma4_audio.pid"  # Plik PID
     LAST_MODEL_GEMMA4_AUDIO: str = ""  # Ostatnio wybrany model
+    VOICE_ROUTE_PROFILE: str = (
+        "auto"  # auto|gemma4|runtime_lokalny|venom-agent|chat_tekstowy
+    )
+    AUDIO_DECODER_PROFILE: str = "auto"  # auto|gemma_native|faster_whisper|hybrid
+    AUDIO_DECODER_CHAIN: str = ""  # Opcjonalny override kolejności dekoderów, np. "gemma_native,faster_whisper"
 
     # Czy w trybach LOCAL/ECO zawsze wymuszać darmowe źródła (np. DuckDuckGo)
     LOW_COST_FORCE_DDG: bool = False

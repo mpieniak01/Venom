@@ -212,6 +212,11 @@ def test_build_voice_session_record_exposes_native_audio_contract():
             "pipeline_id": "multi_runtime_piper",
             "decoder_source": "multi_runtime",
             "native_audio_ms": 123.0,
+            "transcription": "Ile to?",
+            "transcription_used_for_generation": "Ile to?",
+            "request_id": "req-voice-1",
+            "trace_id": "trace-voice-1",
+            "audio_hash": "hash-voice-1",
             "execution_trace": [
                 "input_router",
                 "image_preprocessor",
@@ -224,6 +229,10 @@ def test_build_voice_session_record_exposes_native_audio_contract():
     assert record["voice_session_mode"] == "native_audio"
     assert record["execution_trace_mode"] == "audio_only"
     assert record["execution_trace_annotations"][1]["status"] == "no-op"
+    assert record["trace_inconsistent"] is False
+    assert record["request_id"] == "req-voice-1"
+    assert record["trace_id"] == "trace-voice-1"
+    assert record["audio_hash"] == "hash-voice-1"
 
 
 def test_whisper_fallback_helpers_expose_runtime_contract():
@@ -461,17 +470,9 @@ async def test_invoke_multi_runtime_rejects_missing_urls(monkeypatch, tmp_path):
     wav_path.write_bytes(b"RIFF....WAVEfmt ")
 
     monkeypatch.setattr(handler, "_multi_runtime_respond_url", lambda: "")
-    monkeypatch.setattr(handler, "_multi_runtime_transcribe_url", lambda: "")
 
     with pytest.raises(RuntimeError, match="audio endpoint is not configured"):
         await handler._invoke_multi_runtime(wav_path, 17)
-
-    monkeypatch.setattr(
-        handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
-    )
-
-    with pytest.raises(RuntimeError, match="transcription endpoint is not configured"):
-        await handler._invoke_multi_runtime(wav_path, 18)
 
 
 @pytest.mark.asyncio
@@ -545,11 +546,6 @@ async def test_invoke_multi_runtime_covers_http_and_text_fallback_branches(
     monkeypatch.setattr(
         handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
-    monkeypatch.setattr(
-        handler,
-        "_multi_runtime_transcribe_url",
-        lambda: "http://runtime/audio/transcribe",
-    )
 
     class _AsyncBinaryFile:
         async def read(self):
@@ -578,24 +574,18 @@ async def test_invoke_multi_runtime_covers_http_and_text_fallback_branches(
             return False
 
         async def post(self, url, data=None, files=None):
-            if url.endswith("/audio/transcribe"):
-                return SimpleNamespace(status_code=500, json=lambda: {}, text="down")
-            return SimpleNamespace(
-                status_code=200, json=lambda: {"text": "ok"}, text=""
-            )
+            return SimpleNamespace(status_code=503, json=lambda: {}, text="down")
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _TranscribeErrorClient)
-    with pytest.raises(RuntimeError, match="audio/transcribe"):
+    with pytest.raises(RuntimeError, match="Gemma4 audio runtime HTTP 503: down"):
         await handler._invoke_multi_runtime(wav_path, 11)
 
     class _EmptyTranscribeClient(_TranscribeErrorClient):
         async def post(self, url, data=None, files=None):
-            if url.endswith("/audio/transcribe"):
-                return SimpleNamespace(
-                    status_code=200, json=lambda: {"text": "   "}, text=""
-                )
             return SimpleNamespace(
-                status_code=200, json=lambda: {"text": "ok"}, text=""
+                status_code=200,
+                json=lambda: {"text": "ok", "transcription": "   "},
+                text="",
             )
 
     monkeypatch.setattr(audio_stream_mod.httpx, "AsyncClient", _EmptyTranscribeClient)
@@ -604,13 +594,14 @@ async def test_invoke_multi_runtime_covers_http_and_text_fallback_branches(
 
     class _GeneratedTextClient(_TranscribeErrorClient):
         async def post(self, url, data=None, files=None):
-            if url.endswith("/audio/transcribe"):
-                return SimpleNamespace(
-                    status_code=200, json=lambda: {"text": "Ile?"}, text=""
-                )
             return SimpleNamespace(
                 status_code=200,
-                json=lambda: {"generated_text": "42", "message": {"content": "40"}},
+                json=lambda: {
+                    "transcription": "Ile?",
+                    "transcription_used_for_generation": "Ile?",
+                    "generated_text": "42",
+                    "message": {"content": "40"},
+                },
                 text="",
             )
 
@@ -621,13 +612,11 @@ async def test_invoke_multi_runtime_covers_http_and_text_fallback_branches(
 
     class _MessageContentClient(_TranscribeErrorClient):
         async def post(self, url, data=None, files=None):
-            if url.endswith("/audio/transcribe"):
-                return SimpleNamespace(
-                    status_code=200, json=lambda: {"text": "Co to?"}, text=""
-                )
             return SimpleNamespace(
                 status_code=200,
                 json=lambda: {
+                    "transcription": "Co to?",
+                    "transcription_used_for_generation": "Co to?",
                     "response_text": "",
                     "generated_text": "",
                     "message": {"content": "40"},

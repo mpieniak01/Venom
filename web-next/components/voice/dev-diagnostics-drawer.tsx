@@ -36,6 +36,11 @@ type AudioStatus = {
     timings_ms?: Record<string, number | null | undefined>;
     download_url?: string | null;
     transcription?: string;
+    transcription_used_for_generation?: string;
+    trace_inconsistent?: boolean | null;
+    request_id?: string | null;
+    trace_id?: string | null;
+    audio_hash?: string | null;
     runtime?: {
       stt_model?: string | null;
       stt_device?: string | null;
@@ -55,6 +60,12 @@ type AudioStatus = {
     audio_runtime_model?: string | null;
     audio_input_status?: string | null;
     decoder_source?: string | null;
+    voice_route_profile?: string | null;
+    audio_decoder_profile?: string | null;
+    audio_decoder_chain?: string[] | null;
+    decoder_selected?: string | null;
+    decoder_effective?: string | null;
+    decoder_fallback_reason?: string | null;
     fallback_reason?: string | null;
     native_audio_ms?: number | null;
     runtime_log_path?: string | null;
@@ -368,8 +379,35 @@ function LatestRecordingSection({
           </p>
         )}
         {latestVoiceSession.transcription && <p>STT: {latestVoiceSession.transcription}</p>}
+        {latestVoiceSession.transcription_used_for_generation && (
+          <p>STT used for generation: {latestVoiceSession.transcription_used_for_generation}</p>
+        )}
+        {latestVoiceSession.trace_inconsistent ? (
+          <p className="text-rose-300">Trace inconsistent: transcription mismatch</p>
+        ) : null}
+        {latestVoiceSession.request_id && <p>Request ID: {latestVoiceSession.request_id}</p>}
+        {latestVoiceSession.trace_id && <p>Trace ID: {latestVoiceSession.trace_id}</p>}
+        {latestVoiceSession.audio_hash && <p>Audio hash: {latestVoiceSession.audio_hash}</p>}
         {latestVoiceSession.voice_pipeline_mode && (
           <p>{t("voice.controls.pipelineMode")}: {latestVoiceSession.voice_pipeline_mode}</p>
+        )}
+        {latestVoiceSession.voice_route_profile && (
+          <p>Voice route profile: {latestVoiceSession.voice_route_profile}</p>
+        )}
+        {latestVoiceSession.audio_decoder_profile && (
+          <p>Audio decoder profile: {latestVoiceSession.audio_decoder_profile}</p>
+        )}
+        {latestVoiceSession.audio_decoder_chain?.length ? (
+          <p>Audio decoder chain: {latestVoiceSession.audio_decoder_chain.join(" -> ")}</p>
+        ) : null}
+        {latestVoiceSession.decoder_selected && (
+          <p>Decoder selected: {latestVoiceSession.decoder_selected}</p>
+        )}
+        {latestVoiceSession.decoder_effective && (
+          <p>Decoder effective: {latestVoiceSession.decoder_effective}</p>
+        )}
+        {latestVoiceSession.decoder_fallback_reason && (
+          <p>Decoder fallback reason: {latestVoiceSession.decoder_fallback_reason}</p>
         )}
         {latestVoiceSession.pipeline_id && (
           <p>Pipeline: {latestVoiceSession.pipeline_id}</p>

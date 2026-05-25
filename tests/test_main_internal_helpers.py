@@ -46,6 +46,7 @@ def test_main_app_includes_runtime_and_system_routes():
     assert "/api/v1/system/llm-servers/active" in paths
     assert "/api/v1/system/llm-runtime/options" in paths
     assert "/api/v1/audio/status" in paths
+    assert "/api/v1/audio/routes/profile" in paths
 
 
 def test_select_startup_model_priority_chain():
@@ -60,6 +61,56 @@ def test_select_startup_model_priority_chain():
         main_module._select_startup_model({"model-x"}, "missing", "missing")
         == "model-x"
     )
+
+
+def test_voice_route_config_snapshot_normalizes_values(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "VOICE_ROUTE_PROFILE", "GEMMA4")
+    monkeypatch.setattr(main_module.SETTINGS, "AUDIO_DECODER_PROFILE", "HYBRID")
+    monkeypatch.setattr(
+        main_module.SETTINGS,
+        "AUDIO_DECODER_CHAIN",
+        "gemma_native,faster_whisper",
+    )
+
+    snapshot = main_module._voice_route_config_snapshot()
+
+    assert snapshot["voice_route_profile"] == "gemma4"
+    assert snapshot["audio_decoder_profile"] == "hybrid"
+    assert snapshot["audio_decoder_chain"] == ["gemma_native", "faster_whisper"]
+    assert snapshot["audio_decoder_chain_effective"] == [
+        "gemma_native",
+        "faster_whisper",
+    ]
+
+
+def test_validate_voice_route_contract_rejects_chat_text_with_decoder_chain():
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="chat_tekstowy",
+            audio_decoder_profile="hybrid",
+            audio_decoder_chain=["gemma_native", "faster_whisper"],
+        )
+    assert excinfo.value.status_code == 400
+
+
+def test_validate_voice_route_contract_rejects_gemma4_without_native_first_decoder():
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="gemma4",
+            audio_decoder_profile="faster_whisper",
+            audio_decoder_chain=["faster_whisper"],
+        )
+    assert excinfo.value.status_code == 400
+
+
+def test_validate_voice_route_contract_rejects_local_route_native_profile():
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        main_module._validate_voice_route_contract(
+            voice_route_profile="runtime_lokalny",
+            audio_decoder_profile="gemma_native",
+            audio_decoder_chain=[],
+        )
+    assert excinfo.value.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -714,6 +765,84 @@ async def test_list_audio_tts_models_prefers_audio_engine_model_path(monkeypatch
 
     assert payload["models"][0]["id"] == "m1"
     assert payload["current_model_path"] == "/tmp/runtime.onnx"
+
+
+@pytest.mark.asyncio
+async def test_get_audio_route_profile_returns_snapshot(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    monkeypatch.setattr(main_module.SETTINGS, "AUDIO_DECODER_PROFILE", "hybrid")
+    monkeypatch.setattr(
+        main_module.SETTINGS, "AUDIO_DECODER_CHAIN", "gemma_native,faster_whisper"
+    )
+
+    payload = await main_module.get_audio_route_profile()
+
+    assert payload["voice_route_profile"] == "auto"
+    assert payload["audio_decoder_profile"] == "hybrid"
+    assert payload["audio_decoder_chain_effective"] == [
+        "gemma_native",
+        "faster_whisper",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_audio_route_profile_updates_config_and_settings(monkeypatch):
+    updates: list[dict[str, object]] = []
+    fake_config_manager = SimpleNamespace(
+        update_config=lambda payload: updates.append(payload)
+    )
+    import venom_core.services.config_manager as config_manager_module
+
+    monkeypatch.setattr(config_manager_module, "config_manager", fake_config_manager)
+    monkeypatch.setattr(main_module.SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    monkeypatch.setattr(main_module.SETTINGS, "AUDIO_DECODER_PROFILE", "auto")
+    monkeypatch.setattr(main_module.SETTINGS, "AUDIO_DECODER_CHAIN", "")
+
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="gemma4",
+        audio_decoder_profile="hybrid",
+        audio_decoder_chain=["gemma_native", "faster_whisper"],
+    )
+
+    result = await main_module.update_audio_route_profile(payload, request)
+
+    assert result["status"] == "success"
+    assert updates[-1]["VOICE_ROUTE_PROFILE"] == "gemma4"
+    assert updates[-1]["AUDIO_DECODER_PROFILE"] == "hybrid"
+    assert updates[-1]["AUDIO_DECODER_CHAIN"] == "gemma_native,faster_whisper"
+    assert main_module.SETTINGS.VOICE_ROUTE_PROFILE == "gemma4"
+    assert main_module.SETTINGS.AUDIO_DECODER_PROFILE == "hybrid"
+
+
+@pytest.mark.asyncio
+async def test_update_audio_route_profile_rejects_invalid_contract(monkeypatch):
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="chat_tekstowy",
+        audio_decoder_profile="hybrid",
+        audio_decoder_chain=["gemma_native"],
+    )
+
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        await main_module.update_audio_route_profile(payload, request)
+
+    assert excinfo.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_audio_route_profile_rejects_local_route_native_chain(monkeypatch):
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    payload = main_module.AudioRouteProfileUpdateRequest(
+        voice_route_profile="runtime_lokalny",
+        audio_decoder_profile="auto",
+        audio_decoder_chain=["gemma_native", "faster_whisper"],
+    )
+
+    with pytest.raises(main_module.HTTPException) as excinfo:
+        await main_module.update_audio_route_profile(payload, request)
+
+    assert excinfo.value.status_code == 400
 
 
 @pytest.mark.asyncio

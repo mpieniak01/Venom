@@ -27,7 +27,7 @@ type OrbVisual = {
 
 const ORB_VISUALS: Record<VoiceOrbState, OrbVisual> = {
   offline: { coreColor: "bg-zinc-700", glowColor: "bg-zinc-600/20", ringAnimation: "", coreAnimation: "" },
-  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/12", ringAnimation: "", coreAnimation: "" },
+  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/12", ringAnimation: "animate-orb-breath", coreAnimation: "animate-orb-fluid-idle" },
   recording: { coreColor: "bg-emerald-500", glowColor: "bg-emerald-400/30", ringAnimation: "", coreAnimation: "" },
   stt: { coreColor: "bg-amber-500", glowColor: "bg-amber-400/25", ringAnimation: "animate-spin", coreAnimation: "animate-pulse" },
   thinking: { coreColor: "bg-violet-600", glowColor: "bg-violet-500/25", ringAnimation: "animate-orb-thinking", coreAnimation: "" },
@@ -64,6 +64,7 @@ const PARTICLE_COLORS: Partial<Record<VoiceOrbState, string>> = {
 };
 
 const ORB_PARTICLE_COUNT = 6;
+const INTERACTIVE_STATES: ReadonlySet<VoiceOrbState> = new Set(["ready", "recording", "thinking", "tts", "complete"]);
 
 const ORB_SIZE = 160;
 const CORE_SIZE = 96;
@@ -471,6 +472,351 @@ type VoiceOrbProps = Readonly<{
   metricsRef?: RefObject<OrbMetrics>;
 }>;
 
+type OrbShockwave = Readonly<{ id: number; x: number; y: number }>;
+
+type OrbInteractions = Readonly<{
+  shouldInteract: boolean;
+  shouldApplyTilt: boolean;
+  shouldApplyInteractiveGlow: boolean;
+  shockwaves: readonly OrbShockwave[];
+  handleMouseMove: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  handleMouseLeave: () => void;
+  handleClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  handleKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
+  handleTouchStart: (e: React.TouchEvent<HTMLButtonElement>) => void;
+  handleShockwaveAnimationEnd: (e: React.AnimationEvent<HTMLDivElement>) => void;
+}>;
+
+function isInteractiveOrbState(state: VoiceOrbState): boolean {
+  return INTERACTIVE_STATES.has(state);
+}
+
+function useOrbInteractions(
+  state: VoiceOrbState,
+  cfg: OrbEffectsConfig,
+  noAnim: boolean,
+  containerRef: RefObject<HTMLButtonElement>,
+): OrbInteractions {
+  const [shockwaves, setShockwaves] = useState<readonly OrbShockwave[]>([]);
+  const shockwaveIdRef = useRef(0);
+
+  const shouldInteract = !noAnim && isInteractiveOrbState(state);
+  const shouldApplyTilt = shouldInteract && cfg.parallaxTilt;
+  const shouldApplyInteractiveGlow = shouldInteract && cfg.interactiveGlow;
+
+  const spawnShockwave = (
+    container: HTMLButtonElement,
+    clientX: number | undefined,
+    clientY: number | undefined,
+  ) => {
+    if (!shouldInteract || !cfg.clickShockwave) return;
+
+    const rect = container.getBoundingClientRect();
+    const x = typeof clientX === "number" ? clientX - rect.left : rect.width / 2;
+    const y = typeof clientY === "number" ? clientY - rect.top : rect.height / 2;
+
+    const id = shockwaveIdRef.current++;
+    setShockwaves((current) => [...current, { id, x, y }]);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!shouldInteract || !containerRef.current) return;
+    if (!cfg.parallaxTilt && !cfg.interactiveGlow) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const width = rect.width || ORB_SIZE;
+    const height = rect.height || ORB_SIZE;
+    const centerX = rect.left + width / 2;
+    const centerY = rect.top + height / 2;
+
+    const x = (e.clientX - centerX) / (width / 2);
+    const y = (e.clientY - centerY) / (height / 2);
+
+    const clampedX = Math.max(-1, Math.min(1, x));
+    const clampedY = Math.max(-1, Math.min(1, y));
+
+    containerRef.current.style.setProperty("--mouse-x", clampedX.toFixed(3));
+    containerRef.current.style.setProperty("--mouse-y", clampedY.toFixed(3));
+  };
+
+  const handleMouseLeave = () => {
+    if (!containerRef.current) return;
+    containerRef.current.style.setProperty("--mouse-x", "0");
+    containerRef.current.style.setProperty("--mouse-y", "0");
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    spawnShockwave(e.currentTarget, e.clientX, e.clientY);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLButtonElement>) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    spawnShockwave(e.currentTarget, touch.clientX, touch.clientY);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    spawnShockwave(e.currentTarget, undefined, undefined);
+  };
+
+  const handleShockwaveAnimationEnd = (e: React.AnimationEvent<HTMLDivElement>) => {
+    const rawId = e.currentTarget.dataset.shockwaveId;
+    if (!rawId) return;
+
+    const id = Number(rawId);
+    if (!Number.isFinite(id)) return;
+
+    setShockwaves((current) => current.filter((sw) => sw.id !== id));
+  };
+
+  return {
+    shouldInteract,
+    shouldApplyTilt,
+    shouldApplyInteractiveGlow,
+    shockwaves,
+    handleMouseMove,
+    handleMouseLeave,
+    handleClick,
+    handleKeyDown,
+    handleTouchStart,
+    handleShockwaveAnimationEnd,
+  };
+}
+
+type VoiceOrbSceneProps = Readonly<{
+  visual: OrbVisual;
+  cfg: OrbEffectsConfig;
+  noAnim: boolean;
+  effectiveState: VoiceOrbState;
+  containerRef: RefObject<HTMLButtonElement>;
+  interactions: OrbInteractions;
+  glowShadow: string | undefined;
+  ringAnimation: string;
+  glowClassName: string;
+  showRipple: boolean;
+  rippleColors: [string, string, string] | undefined;
+  showFreqRing: boolean;
+  activeAnalyser: RefObject<AnalyserNode | null> | undefined;
+  fftColor: string;
+  showBurst: boolean;
+  burstKey: number;
+  audioLevel: number;
+  coreScale: number;
+  hasMotion: boolean;
+  coreAnimation: string;
+  blobClass: string;
+  flashClass: string;
+  showAmbientMotion: boolean;
+  showParticles: boolean;
+  particles: ReturnType<typeof useOrbParticles>;
+  particleColor: string;
+  showMetricsBars: boolean;
+  metricsRef: RefObject<OrbMetrics> | undefined;
+}>;
+
+function VoiceOrbScene({
+  visual,
+  cfg,
+  noAnim,
+  effectiveState,
+  containerRef,
+  interactions,
+  glowShadow,
+  ringAnimation,
+  glowClassName,
+  showRipple,
+  rippleColors,
+  showFreqRing,
+  activeAnalyser,
+  fftColor,
+  showBurst,
+  burstKey,
+  audioLevel,
+  coreScale,
+  hasMotion,
+  coreAnimation,
+  blobClass,
+  flashClass,
+  showAmbientMotion,
+  showParticles,
+  particles,
+  particleColor,
+  showMetricsBars,
+  metricsRef,
+}: VoiceOrbSceneProps) {
+  return (
+    <button
+      ref={containerRef}
+      type="button"
+      onMouseMove={interactions.handleMouseMove}
+      onMouseLeave={interactions.handleMouseLeave}
+      onClick={interactions.handleClick}
+      onKeyDown={interactions.handleKeyDown}
+      onTouchStart={interactions.handleTouchStart}
+      tabIndex={cfg.clickShockwave && interactions.shouldInteract ? 0 : -1}
+      aria-disabled={!cfg.clickShockwave || !interactions.shouldInteract}
+      aria-label="Trigger voice orb effect"
+      className="group relative flex appearance-none items-center justify-center border-0 bg-transparent p-0 text-inherit"
+      style={{
+        width: ORB_SIZE,
+        height: ORB_SIZE,
+        borderRadius: "50%",
+        boxShadow: glowShadow,
+        transition: noAnim ? "box-shadow 220ms ease" : "box-shadow 220ms ease, transform 150ms ease-out",
+        transform: interactions.shouldApplyTilt ? "perspective(600px) rotateX(calc(var(--mouse-y, 0) * -8deg)) rotateY(calc(var(--mouse-x, 0) * 8deg)) translate3d(calc(var(--mouse-x, 0) * 6px), calc(var(--mouse-y, 0) * 6px), 0)" : undefined,
+        willChange: interactions.shouldApplyTilt ? "transform" : undefined,
+      }}
+    >
+      {cfg.clickShockwave && interactions.shouldInteract &&
+        interactions.shockwaves.map((sw) => (
+          <div
+            key={sw.id}
+            data-shockwave-id={sw.id}
+            onAnimationEnd={interactions.handleShockwaveAnimationEnd}
+            className="pointer-events-none absolute rounded-full border border-white/40 animate-orb-shockwave"
+            style={{
+              left: sw.x - 24,
+              top: sw.y - 24,
+              width: 48,
+              height: 48,
+            }}
+          />
+        ))}
+
+      {showRipple && rippleColors && (
+        <>
+          <div className={`absolute inset-0 rounded-full ${rippleColors[0]} animate-orb-ripple`} style={{ animationDelay: "0s" }} />
+          <div className={`absolute inset-1 rounded-full ${rippleColors[1]} animate-orb-ripple`} style={{ animationDelay: "0.44s" }} />
+        </>
+      )}
+
+      {cfg.glow && (
+        <div className={`absolute inset-0 rounded-full ${glowClassName} transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
+      )}
+
+      {showFreqRing && activeAnalyser && (
+        <OrbFrequencyRing analyserRef={activeAnalyser} active={showFreqRing} color={fftColor} size={ORB_SIZE} />
+      )}
+
+      {effectiveState === "stt" && !noAnim && (
+        <div className="absolute inset-4 rounded-full border-2 border-amber-400/40 border-t-amber-400 animate-spin" />
+      )}
+
+      {showBurst && (
+        <div
+          key={burstKey}
+          className="pointer-events-none absolute inset-0 rounded-full border-2 border-teal-400/70 animate-orb-burst"
+        />
+      )}
+
+      {effectiveState === "recording" && (
+        <div
+          className={`absolute -inset-2 rounded-full border border-emerald-400/20 ${
+            noAnim ? "" : "transition-all duration-300"
+          } ${
+            audioLevel > 0.05 && !noAnim
+              ? "border-emerald-400/60 scale-[1.04] shadow-[0_0_12px_rgba(52,211,153,0.3)]"
+              : "scale-100"
+          }`}
+          style={{ pointerEvents: "none" }}
+        />
+      )}
+
+      <div
+        data-testid="voice-orb-core"
+        className={`relative overflow-hidden rounded-full shadow-lg transition-colors duration-300 ${visual.coreColor} ${coreAnimation} ${blobClass} ${flashClass}`}
+        style={{
+          width: CORE_SIZE,
+          height: CORE_SIZE,
+          transform: `scale(${formatCoreScale(coreScale)})`,
+          willChange: hasMotion ? "transform" : undefined,
+          transition: noAnim
+            ? "background-color 300ms, border-radius 400ms"
+            : "transform 80ms linear, background-color 300ms, border-radius 400ms ease-in-out",
+        }}
+      >
+        {cfg.coreTexture && (
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: "radial-gradient(circle at 33% 28%, rgba(255,255,255,0.22) 0%, transparent 58%)",
+            }}
+          />
+        )}
+
+        {cfg.coreTexture && interactions.shouldApplyInteractiveGlow && (
+          <div
+            className="pointer-events-none absolute inset-0 transition-transform duration-150 ease-out"
+            style={{
+              background: "radial-gradient(circle at center, rgba(255,255,255,0.18) 0%, transparent 60%)",
+              mixBlendMode: "overlay",
+              transform: "translate3d(calc(var(--mouse-x, 0) * 16px), calc(var(--mouse-y, 0) * 16px), 0)",
+              willChange: "transform",
+            }}
+          />
+        )}
+
+        {cfg.coreTexture && !noAnim && effectiveState === "thinking" && (
+          <div className="pointer-events-none absolute inset-0 animate-orb-plasma-gradient" />
+        )}
+
+        {cfg.coreTexture && showAmbientMotion && (
+          <>
+            <div
+              className="pointer-events-none absolute rounded-full opacity-[0.18] animate-orb-plasma-slow"
+              style={{
+                width: "58%",
+                height: "58%",
+                top: "21%",
+                left: "21%",
+                border: "1px solid rgba(255,255,255,0.5)",
+              }}
+            />
+            <div
+              className="pointer-events-none absolute rounded-full opacity-[0.13] animate-orb-plasma-fast"
+              style={{
+                width: "80%",
+                height: "80%",
+                top: "10%",
+                left: "10%",
+                border: "1px solid rgba(255,255,255,0.3)",
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {showParticles &&
+        particles.map((particle) => {
+          const rad = (particle.angle * Math.PI) / 180;
+          const x = ORB_SIZE / 2 + particle.offset * Math.cos(rad);
+          const y = ORB_SIZE / 2 + particle.offset * Math.sin(rad);
+          return (
+            <div
+              key={particle.id}
+              className="pointer-events-none absolute rounded-full animate-orb-particle-rise"
+              style={{
+                width: particle.size,
+                height: particle.size,
+                left: x - particle.size / 2,
+                top: y - particle.size / 2,
+                backgroundColor: particleColor,
+                animationDuration: `${particle.duration.toFixed(2)}s`,
+                animationDelay: `${particle.delay.toFixed(2)}s`,
+              }}
+            />
+          );
+        })}
+
+      {showMetricsBars && (
+        <OrbMetricsBars2D metricsRef={metricsRef} orbSize={ORB_SIZE} colorMode />
+      )}
+    </button>
+  );
+}
+
 export function VoiceOrb({
   state,
   inputLevel: inputLevelProp,
@@ -496,7 +842,13 @@ export function VoiceOrb({
     particles: true,
     stateLabel: true,
     orbMetricsBars: false,
+    parallaxTilt: true,
+    interactiveGlow: true,
+    clickShockwave: true,
   };
+  const containerRef = useRef<HTMLButtonElement>(null);
+
+  const interactions = useOrbInteractions(effectiveState, cfg, noAnim, containerRef);
 
   // Audio level is computed here so the parent does not re-render at 60fps.
   const fallbackRef = useRef<AnalyserNode | null>(null);
@@ -519,7 +871,10 @@ export function VoiceOrb({
   const coreScale = noAnim ? 1 : 1 + Math.min(1, audioLevel) * 0.35;
   const hasMotion = coreScale !== 1;
   const glowShadow = getOrbGlowShadow(cfg.glow, noAnim, effectiveState, audioLevel);
-  const ringAnimation = showAmbientMotion ? getMotionClass(noAnim, visual.ringAnimation) : "";
+  const ringAnimation =
+    !noAnim && (effectiveState === "ready" || showAmbientMotion)
+      ? getMotionClass(noAnim, visual.ringAnimation)
+      : "";
   const coreAnimation = getMotionClass(noAnim, visual.coreAnimation);
   const blobClass = showBlob ? "animate-orb-blob" : "";
   const rippleColors = RIPPLE_COLORS[effectiveState];
@@ -535,117 +890,36 @@ export function VoiceOrb({
       className="flex flex-col items-center gap-3 py-2"
       style={{ minHeight: "220px" }}
     >
-      <div
-        className="relative flex items-center justify-center"
-        style={{
-          width: ORB_SIZE,
-          height: ORB_SIZE,
-          borderRadius: "50%",
-          boxShadow: glowShadow,
-          transition: "box-shadow 220ms ease",
-        }}
-      >
-        {showRipple && rippleColors && (
-          <>
-            <div className={`absolute inset-0 rounded-full ${rippleColors[0]} animate-orb-ripple`} style={{ animationDelay: "0s" }} />
-            <div className={`absolute inset-1 rounded-full ${rippleColors[1]} animate-orb-ripple`} style={{ animationDelay: "0.44s" }} />
-          </>
-        )}
-
-        {cfg.glow && (
-          <div className={`absolute inset-0 rounded-full ${glowClassName} transition-colors duration-500 ${visual.glowColor} ${ringAnimation}`} />
-        )}
-
-        {showFreqRing && activeAnalyser && (
-          <OrbFrequencyRing analyserRef={activeAnalyser} active={showFreqRing} color={fftColor} size={ORB_SIZE} />
-        )}
-
-        {effectiveState === "stt" && !noAnim && (
-          <div className="absolute inset-4 rounded-full border-2 border-amber-400/40 border-t-amber-400 animate-spin" />
-        )}
-
-        {showBurst && (
-          <div
-            key={burstKey}
-            className="absolute inset-0 rounded-full border-2 border-teal-400/70 animate-orb-burst"
-            style={{ pointerEvents: "none" }}
-          />
-        )}
-
-        <div
-          data-testid="voice-orb-core"
-          className={`relative overflow-hidden rounded-full shadow-lg transition-colors duration-300 ${visual.coreColor} ${coreAnimation} ${blobClass} ${flashClass}`}
-          style={{
-            width: CORE_SIZE,
-            height: CORE_SIZE,
-            transform: `scale(${formatCoreScale(coreScale)})`,
-            willChange: hasMotion ? "transform" : undefined,
-            transition: noAnim
-              ? "background-color 300ms, border-radius 400ms"
-              : "transform 80ms linear, background-color 300ms, border-radius 400ms ease-in-out",
-          }}
-        >
-          {cfg.coreTexture && (
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background: "radial-gradient(circle at 33% 28%, rgba(255,255,255,0.22) 0%, transparent 58%)",
-              }}
-            />
-          )}
-
-          {cfg.coreTexture && showAmbientMotion && (
-            <>
-              <div
-                className="animate-orb-plasma-slow pointer-events-none absolute rounded-full opacity-[0.18]"
-                style={{
-                  width: "58%",
-                  height: "58%",
-                  top: "21%",
-                  left: "21%",
-                  border: "1px solid rgba(255,255,255,0.5)",
-                }}
-              />
-              <div
-                className="animate-orb-plasma-fast pointer-events-none absolute rounded-full opacity-[0.13]"
-                style={{
-                  width: "80%",
-                  height: "80%",
-                  top: "10%",
-                  left: "10%",
-                  border: "1px solid rgba(255,255,255,0.3)",
-                }}
-              />
-            </>
-          )}
-        </div>
-
-        {showParticles &&
-          particles.map((particle) => {
-            const rad = (particle.angle * Math.PI) / 180;
-            const x = ORB_SIZE / 2 + particle.offset * Math.cos(rad);
-            const y = ORB_SIZE / 2 + particle.offset * Math.sin(rad);
-            return (
-              <div
-                key={particle.id}
-                className="pointer-events-none absolute rounded-full animate-orb-particle-rise"
-                style={{
-                  width: particle.size,
-                  height: particle.size,
-                  left: x - particle.size / 2,
-                  top: y - particle.size / 2,
-                  backgroundColor: particleColor,
-                  animationDuration: `${particle.duration.toFixed(2)}s`,
-                  animationDelay: `${particle.delay.toFixed(2)}s`,
-                }}
-              />
-            );
-          })}
-
-        {showMetricsBars && (
-          <OrbMetricsBars2D metricsRef={metricsRef} orbSize={ORB_SIZE} colorMode />
-        )}
-      </div>
+      <VoiceOrbScene
+        visual={visual}
+        cfg={cfg}
+        noAnim={noAnim}
+        effectiveState={effectiveState}
+        containerRef={containerRef}
+        interactions={interactions}
+        glowShadow={glowShadow}
+        ringAnimation={ringAnimation}
+        glowClassName={glowClassName}
+        showRipple={showRipple}
+        rippleColors={rippleColors}
+        showFreqRing={showFreqRing}
+        activeAnalyser={activeAnalyser}
+        fftColor={fftColor}
+        showBurst={showBurst}
+        burstKey={burstKey}
+        audioLevel={audioLevel}
+        coreScale={coreScale}
+        hasMotion={hasMotion}
+        coreAnimation={coreAnimation}
+        blobClass={blobClass}
+        flashClass={flashClass}
+        showAmbientMotion={showAmbientMotion}
+        showParticles={showParticles}
+        particles={particles}
+        particleColor={particleColor}
+        showMetricsBars={showMetricsBars}
+        metricsRef={metricsRef}
+      />
 
       {cfg.stateLabel && (
         <p

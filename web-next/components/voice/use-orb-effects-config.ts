@@ -14,6 +14,10 @@ export type OrbEffectsConfig = {
   stateLabel: boolean;
   // PR 208B — live system metrics bars radiating from orb center
   orbMetricsBars: boolean;
+  // PR 248A — interactive hover/click low-GPU effects
+  parallaxTilt: boolean;
+  interactiveGlow: boolean;
+  clickShockwave: boolean;
 };
 
 const ALL_OFF: OrbEffectsConfig = {
@@ -26,6 +30,9 @@ const ALL_OFF: OrbEffectsConfig = {
   particles: false,
   stateLabel: false,
   orbMetricsBars: false,
+  parallaxTilt: false,
+  interactiveGlow: false,
+  clickShockwave: false,
 };
 
 const MINIMAL_PROFILE: OrbEffectsConfig = {
@@ -38,6 +45,9 @@ const MINIMAL_PROFILE: OrbEffectsConfig = {
   particles: false,
   stateLabel: true,
   orbMetricsBars: false,
+  parallaxTilt: false,
+  interactiveGlow: false,
+  clickShockwave: false,
 };
 
 // Next.js replaces NEXT_PUBLIC_* vars at build time only when referenced by
@@ -61,6 +71,10 @@ export function useOrbEffectsConfig(): OrbEffectsConfig {
       stateLabel:          !isOff(process.env.NEXT_PUBLIC_ORB_STATE_LABEL),
       // PR 208B — metrics bars default to false (opt-in)
       orbMetricsBars:      process.env.NEXT_PUBLIC_ORB_METRICS_BARS === "true",
+      // PR 248A — interactive effects
+      parallaxTilt:        !isOff(process.env.NEXT_PUBLIC_ORB_PARALLAX_TILT),
+      interactiveGlow:     !isOff(process.env.NEXT_PUBLIC_ORB_INTERACTIVE_GLOW),
+      clickShockwave:      !isOff(process.env.NEXT_PUBLIC_ORB_CLICK_SHOCKWAVE),
     };
     const profile = (process.env.NEXT_PUBLIC_ORB_EFFECT_PROFILE ?? "balanced").toLowerCase();
     if (profile === "minimal") {

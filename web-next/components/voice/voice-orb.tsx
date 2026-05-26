@@ -27,7 +27,7 @@ type OrbVisual = {
 
 const ORB_VISUALS: Record<VoiceOrbState, OrbVisual> = {
   offline: { coreColor: "bg-zinc-700", glowColor: "bg-zinc-600/20", ringAnimation: "", coreAnimation: "" },
-  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/12", ringAnimation: "", coreAnimation: "" },
+  ready: { coreColor: "bg-indigo-600", glowColor: "bg-indigo-500/12", ringAnimation: "animate-orb-breath", coreAnimation: "animate-orb-fluid-idle" },
   recording: { coreColor: "bg-emerald-500", glowColor: "bg-emerald-400/30", ringAnimation: "", coreAnimation: "" },
   stt: { coreColor: "bg-amber-500", glowColor: "bg-amber-400/25", ringAnimation: "animate-spin", coreAnimation: "animate-pulse" },
   thinking: { coreColor: "bg-violet-600", glowColor: "bg-violet-500/25", ringAnimation: "animate-orb-thinking", coreAnimation: "" },
@@ -519,7 +519,10 @@ export function VoiceOrb({
   const coreScale = noAnim ? 1 : 1 + Math.min(1, audioLevel) * 0.35;
   const hasMotion = coreScale !== 1;
   const glowShadow = getOrbGlowShadow(cfg.glow, noAnim, effectiveState, audioLevel);
-  const ringAnimation = showAmbientMotion ? getMotionClass(noAnim, visual.ringAnimation) : "";
+  const ringAnimation =
+    !noAnim && (effectiveState === "ready" || showAmbientMotion)
+      ? getMotionClass(noAnim, visual.ringAnimation)
+      : "";
   const coreAnimation = getMotionClass(noAnim, visual.coreAnimation);
   const blobClass = showBlob ? "animate-orb-blob" : "";
   const rippleColors = RIPPLE_COLORS[effectiveState];
@@ -572,6 +575,19 @@ export function VoiceOrb({
           />
         )}
 
+        {effectiveState === "recording" && (
+          <div
+            className={`absolute -inset-2 rounded-full border border-emerald-400/20 ${
+              noAnim ? "" : "transition-all duration-300"
+            } ${
+              audioLevel > 0.05 && !noAnim
+                ? "border-emerald-400/60 scale-[1.04] shadow-[0_0_12px_rgba(52,211,153,0.3)]"
+                : "scale-100"
+            }`}
+            style={{ pointerEvents: "none" }}
+          />
+        )}
+
         <div
           data-testid="voice-orb-core"
           className={`relative overflow-hidden rounded-full shadow-lg transition-colors duration-300 ${visual.coreColor} ${coreAnimation} ${blobClass} ${flashClass}`}
@@ -592,6 +608,10 @@ export function VoiceOrb({
                 background: "radial-gradient(circle at 33% 28%, rgba(255,255,255,0.22) 0%, transparent 58%)",
               }}
             />
+          )}
+
+          {cfg.coreTexture && effectiveState === "thinking" && (
+            <div className="absolute inset-0 animate-orb-plasma-gradient pointer-events-none" />
           )}
 
           {cfg.coreTexture && showAmbientMotion && (

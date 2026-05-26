@@ -274,4 +274,45 @@ describe("VoiceOrb", () => {
       );
     });
   });
+
+  describe("ergonomic enhancements", () => {
+    it("applies ambient breath and fluid idle animations in ready state", () => {
+      const { container } = render(
+        <VoiceOrb state="ready" inputLevel={0} outputLevel={0} />,
+      );
+      assert.ok(container.innerHTML.includes("animate-orb-breath"), "should include animate-orb-breath");
+      assert.ok(container.innerHTML.includes("animate-orb-fluid-idle"), "should include animate-orb-fluid-idle");
+    });
+
+    it("applies inner plasma gradient in thinking state", () => {
+      const { container } = render(
+        <VoiceOrb state="thinking" inputLevel={0} outputLevel={0} />,
+      );
+      assert.ok(container.innerHTML.includes("animate-orb-plasma-gradient"), "should include animate-orb-plasma-gradient");
+    });
+
+    it("applies dynamic VAD ring scaling during recording state based on input level", () => {
+      const active = render(
+        <VoiceOrb state="recording" inputLevel={0.15} outputLevel={0} />,
+      );
+      assert.ok(active.container.innerHTML.includes("border-emerald-400/60"), "should include border active class");
+      assert.ok(active.container.innerHTML.includes("scale-[1.04]"), "should scale VAD ring");
+      active.unmount();
+
+      const quiet = render(
+        <VoiceOrb state="recording" inputLevel={0} outputLevel={0} />,
+      );
+      assert.ok(!quiet.container.innerHTML.includes("border-emerald-400/60"), "should not include border active class when quiet");
+      assert.ok(quiet.container.innerHTML.includes("scale-100"), "should scale to 100 when quiet");
+      quiet.unmount();
+    });
+
+    it("respects reducedMotion by disabling ready state animations", () => {
+      const { container } = render(
+        <VoiceOrb state="ready" inputLevel={0} outputLevel={0} reducedMotion />,
+      );
+      assert.ok(!container.innerHTML.includes("animate-orb-breath"), "should disable breath animation");
+      assert.ok(!container.innerHTML.includes("animate-orb-fluid-idle"), "should disable fluid idle animation");
+    });
+  });
 });

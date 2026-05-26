@@ -930,3 +930,27 @@ html[data-theme="venom-light"] body::after {
   from { transform: translateY(40px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+
+/* Ergonomic Orb enhancements (To-Be plan in PR 248) */
+@keyframes orb-breath {
+  0%, 100% { opacity: 0.16; transform: scale(0.96); }
+  50% { opacity: 0.32; transform: scale(1.04); }
+}
+.animate-orb-breath { animation: orb-breath 6.5s ease-in-out infinite; }
+
+@keyframes orb-fluid-idle {
+  0%, 100% { border-radius: 50%; }
+  33% { border-radius: 52% 48% 51% 49% / 49% 51% 52% 48%; }
+  66% { border-radius: 49% 51% 48% 52% / 51% 49% 52% 48%; }
+}
+.animate-orb-fluid-idle { animation: orb-fluid-idle 8s ease-in-out infinite; }
+
+@keyframes orb-plasma-gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.animate-orb-plasma-gradient {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.08) 100%);
+  background-size: 200% 200%;
+  animation: orb-plasma-gradient 6s ease infinite;
+}

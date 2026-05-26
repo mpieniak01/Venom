@@ -659,6 +659,10 @@ async def status() -> StatusResponse:
             model_info=model_info,
             timestamp_ms=int(time.time() * 1000),
             component_snapshot=list(snapshot_payload["components"]),
+            component_snapshot_timestamp_ms=int(
+                snapshot_payload["snapshot_timestamp_ms"]
+            ),
+            component_snapshot_version=str(snapshot_payload["snapshot_version"]),
         )
     except RuntimeError:
         return StatusResponse(

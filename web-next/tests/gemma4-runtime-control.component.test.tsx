@@ -646,7 +646,7 @@ describe("Gemma4RuntimeControl — thinking toggle", () => {
       }),
     }));
 
-    const thinkingLabel = screen.getByText("Thinking");
+    const thinkingLabel = screen.getByText(/Thinking|Myślenie|Denken/i);
     const row = thinkingLabel.closest("div");
     assert.ok(row);
     assert.ok(row.textContent?.includes("Nie"));
@@ -729,6 +729,10 @@ describe("Gemma4RuntimeControl — transitional precision/runtime semantics", ()
     assert.ok(
       document.body.textContent?.includes("Wersja snapshotu")
       || document.body.textContent?.includes("Snapshot version"),
+    );
+    assert.ok(
+      document.body.textContent?.includes("2025-04-30 21:58:56 UTC"),
+      "Component snapshot timestamp should be rendered",
     );
   });
 });

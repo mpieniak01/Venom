@@ -245,9 +245,7 @@ def build_component_snapshot_payload(
         request_overrides=request_overrides,
     )
     snapshot_timestamp_ms = (
-        int(captured_at_ms)
-        if isinstance(captured_at_ms, int)
-        else int(time.time() * 1000)
+        int(captured_at_ms) if captured_at_ms is not None else int(time.time() * 1000)
     )
     return {
         "components": components,

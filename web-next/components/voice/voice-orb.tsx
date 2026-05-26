@@ -64,6 +64,7 @@ const PARTICLE_COLORS: Partial<Record<VoiceOrbState, string>> = {
 };
 
 const ORB_PARTICLE_COUNT = 6;
+const INTERACTIVE_STATES: readonly VoiceOrbState[] = ["ready", "recording", "thinking", "tts", "complete"];
 
 const ORB_SIZE = 160;
 const CORE_SIZE = 96;
@@ -471,6 +472,119 @@ type VoiceOrbProps = Readonly<{
   metricsRef?: RefObject<OrbMetrics>;
 }>;
 
+type OrbShockwave = Readonly<{ id: number; x: number; y: number }>;
+
+type OrbInteractions = Readonly<{
+  shouldInteract: boolean;
+  shouldApplyTilt: boolean;
+  shouldApplyInteractiveGlow: boolean;
+  shockwaves: readonly OrbShockwave[];
+  handleMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
+  handleMouseLeave: () => void;
+  handleClick: (e: React.MouseEvent<HTMLDivElement>) => void;
+  handleKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  handleTouchStart: (e: React.TouchEvent<HTMLDivElement>) => void;
+  handleShockwaveAnimationEnd: (e: React.AnimationEvent<HTMLDivElement>) => void;
+}>;
+
+function isInteractiveOrbState(state: VoiceOrbState): boolean {
+  return INTERACTIVE_STATES.includes(state);
+}
+
+function useOrbInteractions(
+  state: VoiceOrbState,
+  cfg: OrbEffectsConfig,
+  noAnim: boolean,
+  containerRef: RefObject<HTMLDivElement>,
+): OrbInteractions {
+  const [shockwaves, setShockwaves] = useState<readonly OrbShockwave[]>([]);
+  const shockwaveIdRef = useRef(0);
+
+  const shouldInteract = !noAnim && isInteractiveOrbState(state);
+  const shouldApplyTilt = shouldInteract && cfg.parallaxTilt;
+  const shouldApplyInteractiveGlow = shouldInteract && cfg.interactiveGlow;
+
+  const spawnShockwave = (
+    container: HTMLDivElement,
+    clientX: number | undefined,
+    clientY: number | undefined,
+  ) => {
+    if (!shouldInteract || !cfg.clickShockwave) return;
+
+    const rect = container.getBoundingClientRect();
+    const x = typeof clientX === "number" ? clientX - rect.left : rect.width / 2;
+    const y = typeof clientY === "number" ? clientY - rect.top : rect.height / 2;
+
+    const id = shockwaveIdRef.current++;
+    setShockwaves((current) => [...current, { id, x, y }]);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!shouldInteract || !containerRef.current) return;
+    if (!cfg.parallaxTilt && !cfg.interactiveGlow) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const width = rect.width || ORB_SIZE;
+    const height = rect.height || ORB_SIZE;
+    const centerX = rect.left + width / 2;
+    const centerY = rect.top + height / 2;
+
+    const x = (e.clientX - centerX) / (width / 2);
+    const y = (e.clientY - centerY) / (height / 2);
+
+    const clampedX = Math.max(-1, Math.min(1, x));
+    const clampedY = Math.max(-1, Math.min(1, y));
+
+    containerRef.current.style.setProperty("--mouse-x", clampedX.toFixed(3));
+    containerRef.current.style.setProperty("--mouse-y", clampedY.toFixed(3));
+  };
+
+  const handleMouseLeave = () => {
+    if (!containerRef.current) return;
+    containerRef.current.style.setProperty("--mouse-x", "0");
+    containerRef.current.style.setProperty("--mouse-y", "0");
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    spawnShockwave(e.currentTarget, e.clientX, e.clientY);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    spawnShockwave(e.currentTarget, touch.clientX, touch.clientY);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    spawnShockwave(e.currentTarget, undefined, undefined);
+  };
+
+  const handleShockwaveAnimationEnd = (e: React.AnimationEvent<HTMLDivElement>) => {
+    const rawId = e.currentTarget.dataset.shockwaveId;
+    if (!rawId) return;
+
+    const id = Number(rawId);
+    if (!Number.isFinite(id)) return;
+
+    setShockwaves((current) => current.filter((sw) => sw.id !== id));
+  };
+
+  return {
+    shouldInteract,
+    shouldApplyTilt,
+    shouldApplyInteractiveGlow,
+    shockwaves,
+    handleMouseMove,
+    handleMouseLeave,
+    handleClick,
+    handleKeyDown,
+    handleTouchStart,
+    handleShockwaveAnimationEnd,
+  };
+}
+
 export function VoiceOrb({
   state,
   inputLevel: inputLevelProp,
@@ -500,54 +614,9 @@ export function VoiceOrb({
     interactiveGlow: true,
     clickShockwave: true,
   };
-
   const containerRef = useRef<HTMLDivElement>(null);
-  const [shockwaves, setShockwaves] = useState<readonly { id: number; x: number; y: number }[]>([]);
-  const shockwaveIdRef = useRef(0);
 
-  const isInteractiveState = !["offline", "error"].includes(effectiveState);
-  const shouldInteract = !noAnim && isInteractiveState;
-  const shouldApplyTilt = shouldInteract && cfg.parallaxTilt;
-  const shouldApplyInteractiveGlow = shouldInteract && cfg.interactiveGlow;
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!shouldInteract || !containerRef.current) return;
-    if (!cfg.parallaxTilt && !cfg.interactiveGlow) return;
-
-    const rect = containerRef.current.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-
-    const x = (e.clientX - centerX) / (rect.width / 2);
-    const y = (e.clientY - centerY) / (rect.height / 2);
-
-    const clampedX = Math.max(-1, Math.min(1, x));
-    const clampedY = Math.max(-1, Math.min(1, y));
-
-    containerRef.current.style.setProperty("--mouse-x", clampedX.toFixed(3));
-    containerRef.current.style.setProperty("--mouse-y", clampedY.toFixed(3));
-  };
-
-  const handleMouseLeave = () => {
-    if (!containerRef.current) return;
-    containerRef.current.style.setProperty("--mouse-x", "0");
-    containerRef.current.style.setProperty("--mouse-y", "0");
-  };
-
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!shouldInteract || !cfg.clickShockwave) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const id = shockwaveIdRef.current++;
-    setShockwaves((current) => [...current, { id, x, y }]);
-
-    setTimeout(() => {
-      setShockwaves((current) => current.filter((sw) => sw.id !== id));
-    }, 600);
-  };
+  const interactions = useOrbInteractions(effectiveState, cfg, noAnim, containerRef);
 
   // Audio level is computed here so the parent does not re-render at 60fps.
   const fallbackRef = useRef<AnalyserNode | null>(null);
@@ -591,9 +660,15 @@ export function VoiceOrb({
     >
       <div
         ref={containerRef}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onClick={handleClick}
+        onMouseMove={interactions.handleMouseMove}
+        onMouseLeave={interactions.handleMouseLeave}
+        onClick={interactions.handleClick}
+        onKeyDown={interactions.handleKeyDown}
+        onTouchStart={interactions.handleTouchStart}
+        role="button"
+        tabIndex={cfg.clickShockwave && interactions.shouldInteract ? 0 : -1}
+        aria-disabled={!cfg.clickShockwave || !interactions.shouldInteract}
+        aria-label="Trigger voice orb effect"
         className="relative flex items-center justify-center group"
         style={{
           width: ORB_SIZE,
@@ -601,14 +676,16 @@ export function VoiceOrb({
           borderRadius: "50%",
           boxShadow: glowShadow,
           transition: noAnim ? "box-shadow 220ms ease" : "box-shadow 220ms ease, transform 150ms ease-out",
-          transform: shouldApplyTilt ? "perspective(600px) rotateX(calc(var(--mouse-y, 0) * -8deg)) rotateY(calc(var(--mouse-x, 0) * 8deg)) translate3d(calc(var(--mouse-x, 0) * 6px), calc(var(--mouse-y, 0) * 6px), 0)" : undefined,
-          willChange: shouldApplyTilt ? "transform" : undefined,
+          transform: interactions.shouldApplyTilt ? "perspective(600px) rotateX(calc(var(--mouse-y, 0) * -8deg)) rotateY(calc(var(--mouse-x, 0) * 8deg)) translate3d(calc(var(--mouse-x, 0) * 6px), calc(var(--mouse-y, 0) * 6px), 0)" : undefined,
+          willChange: interactions.shouldApplyTilt ? "transform" : undefined,
         }}
       >
-        {cfg.clickShockwave &&
-          shockwaves.map((sw) => (
+        {cfg.clickShockwave && interactions.shouldInteract &&
+          interactions.shockwaves.map((sw) => (
             <div
               key={sw.id}
+              data-shockwave-id={sw.id}
+              onAnimationEnd={interactions.handleShockwaveAnimationEnd}
               className="absolute rounded-full border border-white/40 animate-orb-shockwave pointer-events-none"
               style={{
                 left: sw.x - 24,
@@ -681,7 +758,7 @@ export function VoiceOrb({
             />
           )}
 
-          {cfg.coreTexture && shouldApplyInteractiveGlow && (
+          {cfg.coreTexture && interactions.shouldApplyInteractiveGlow && (
             <div
               className="pointer-events-none absolute inset-0 transition-transform duration-150 ease-out"
               style={{
@@ -693,7 +770,7 @@ export function VoiceOrb({
             />
           )}
 
-          {cfg.coreTexture && effectiveState === "thinking" && (
+          {cfg.coreTexture && !noAnim && effectiveState === "thinking" && (
             <div className="absolute inset-0 animate-orb-plasma-gradient pointer-events-none" />
           )}
 

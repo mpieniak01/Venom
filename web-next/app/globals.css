@@ -953,4 +953,8 @@ html[data-theme="venom-light"] body::after {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.08) 100%);
   background-size: 200% 200%;
   animation: orb-plasma-gradient 6s ease infinite;
+  transition: animation-duration 0.4s ease, opacity 0.4s ease;
+}
+.group:hover .animate-orb-plasma-gradient {
+  animation-duration: 2.5s;
 }

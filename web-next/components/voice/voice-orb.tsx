@@ -496,6 +496,57 @@ export function VoiceOrb({
     particles: true,
     stateLabel: true,
     orbMetricsBars: false,
+    parallaxTilt: true,
+    interactiveGlow: true,
+    clickShockwave: true,
+  };
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [shockwaves, setShockwaves] = useState<readonly { id: number; x: number; y: number }[]>([]);
+  const shockwaveIdRef = useRef(0);
+
+  const isInteractiveState = !["offline", "error"].includes(effectiveState);
+  const shouldInteract = !noAnim && isInteractiveState;
+  const shouldApplyTilt = shouldInteract && cfg.parallaxTilt;
+  const shouldApplyInteractiveGlow = shouldInteract && cfg.interactiveGlow;
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!shouldInteract || !containerRef.current) return;
+    if (!cfg.parallaxTilt && !cfg.interactiveGlow) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const x = (e.clientX - centerX) / (rect.width / 2);
+    const y = (e.clientY - centerY) / (rect.height / 2);
+
+    const clampedX = Math.max(-1, Math.min(1, x));
+    const clampedY = Math.max(-1, Math.min(1, y));
+
+    containerRef.current.style.setProperty("--mouse-x", clampedX.toFixed(3));
+    containerRef.current.style.setProperty("--mouse-y", clampedY.toFixed(3));
+  };
+
+  const handleMouseLeave = () => {
+    if (!containerRef.current) return;
+    containerRef.current.style.setProperty("--mouse-x", "0");
+    containerRef.current.style.setProperty("--mouse-y", "0");
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!shouldInteract || !cfg.clickShockwave) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const id = shockwaveIdRef.current++;
+    setShockwaves((current) => [...current, { id, x, y }]);
+
+    setTimeout(() => {
+      setShockwaves((current) => current.filter((sw) => sw.id !== id));
+    }, 600);
   };
 
   // Audio level is computed here so the parent does not re-render at 60fps.
@@ -539,15 +590,35 @@ export function VoiceOrb({
       style={{ minHeight: "220px" }}
     >
       <div
-        className="relative flex items-center justify-center"
+        ref={containerRef}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        onClick={handleClick}
+        className="relative flex items-center justify-center group"
         style={{
           width: ORB_SIZE,
           height: ORB_SIZE,
           borderRadius: "50%",
           boxShadow: glowShadow,
-          transition: "box-shadow 220ms ease",
+          transition: noAnim ? "box-shadow 220ms ease" : "box-shadow 220ms ease, transform 150ms ease-out",
+          transform: shouldApplyTilt ? "perspective(600px) rotateX(calc(var(--mouse-y, 0) * -8deg)) rotateY(calc(var(--mouse-x, 0) * 8deg)) translate3d(calc(var(--mouse-x, 0) * 6px), calc(var(--mouse-y, 0) * 6px), 0)" : undefined,
+          willChange: shouldApplyTilt ? "transform" : undefined,
         }}
       >
+        {cfg.clickShockwave &&
+          shockwaves.map((sw) => (
+            <div
+              key={sw.id}
+              className="absolute rounded-full border border-white/40 animate-orb-shockwave pointer-events-none"
+              style={{
+                left: sw.x - 24,
+                top: sw.y - 24,
+                width: 48,
+                height: 48,
+              }}
+            />
+          ))}
+
         {showRipple && rippleColors && (
           <>
             <div className={`absolute inset-0 rounded-full ${rippleColors[0]} animate-orb-ripple`} style={{ animationDelay: "0s" }} />
@@ -606,6 +677,18 @@ export function VoiceOrb({
               className="pointer-events-none absolute inset-0"
               style={{
                 background: "radial-gradient(circle at 33% 28%, rgba(255,255,255,0.22) 0%, transparent 58%)",
+              }}
+            />
+          )}
+
+          {cfg.coreTexture && shouldApplyInteractiveGlow && (
+            <div
+              className="pointer-events-none absolute inset-0 transition-transform duration-150 ease-out"
+              style={{
+                background: "radial-gradient(circle at center, rgba(255,255,255,0.18) 0%, transparent 60%)",
+                mixBlendMode: "overlay",
+                transform: "translate3d(calc(var(--mouse-x, 0) * 16px), calc(var(--mouse-y, 0) * 16px), 0)",
+                willChange: "transform",
               }}
             />
           )}

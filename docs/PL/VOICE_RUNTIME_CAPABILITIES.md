@@ -39,9 +39,11 @@ Aktualny kontrakt runtime dla `/api/v1/audio/status`:
 Ta gałąź traktuje też orb voice jako osobny stos UI, a nie luźny widget:
 
 1. `VoiceCommandCenter` zarządza stanem ekranu `/voice` i podpina orb do reszty strony,
-2. `VoiceOrb3D` to ścieżka renderowania `react-three` dla orba, gdy włączone są wizualizacje 3D,
-3. CSS orb pozostaje bezpiecznym fallbackiem, gdy WebGL jest niedostępny albo 3D jest wyłączone,
-4. smoke coverage dla voice siedzi w `web-next/tests/voice-orb.spec.ts`.
+2. po PR 215 `VoiceOrb` używa niskokosztowego stosu 2D CSS/HTML/SVG (baseline Calm Idle) jako domyślnej architektury renderowania,
+3. PR 248A dodaje opcjonalne efekty interaktywne (`parallaxTilt`, `interactiveGlow`, `clickShockwave`) sterowane configiem i stanem runtime,
+4. efekty interaktywne działają tylko w `ready`, `recording`, `thinking`, `tts`, `complete` i są wyłączone w `offline` oraz `error`,
+5. `reducedMotion` wyłącza efekty interakcji myszą i utrzymuje orb w stanie statycznym,
+6. pokrycie testowe voice obejmuje teraz `web-next/tests/voice-orb.spec.ts` (smoke) i `web-next/tests/voice-orb.component.test.tsx` (zachowanie interakcji).
 
 ### Aktualny baseline STT
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, fireEvent } from "@testing-library/react";
 import type { OrbEffectsConfig } from "../components/voice/use-orb-effects-config";
 import { VoiceOrb, type VoiceOrbState } from "../components/voice/voice-orb";
 
@@ -27,6 +27,9 @@ const METRICS_ENABLED_CONFIG: OrbEffectsConfig = {
   particles: false,
   stateLabel: false,
   orbMetricsBars: true,
+  parallaxTilt: false,
+  interactiveGlow: false,
+  clickShockwave: false,
 };
 
 const NO_GLOW_CONFIG: OrbEffectsConfig = {
@@ -39,6 +42,9 @@ const NO_GLOW_CONFIG: OrbEffectsConfig = {
   particles: false,
   stateLabel: true,
   orbMetricsBars: false,
+  parallaxTilt: false,
+  interactiveGlow: false,
+  clickShockwave: false,
 };
 
 const BLOB_ENABLED_CONFIG: OrbEffectsConfig = {
@@ -51,6 +57,9 @@ const BLOB_ENABLED_CONFIG: OrbEffectsConfig = {
   particles: false,
   stateLabel: false,
   orbMetricsBars: false,
+  parallaxTilt: false,
+  interactiveGlow: false,
+  clickShockwave: false,
 };
 
 const PARTICLES_ENABLED_CONFIG: OrbEffectsConfig = {
@@ -63,6 +72,9 @@ const PARTICLES_ENABLED_CONFIG: OrbEffectsConfig = {
   particles: true,
   stateLabel: false,
   orbMetricsBars: false,
+  parallaxTilt: false,
+  interactiveGlow: false,
+  clickShockwave: false,
 };
 
 describe("VoiceOrb", () => {
@@ -313,6 +325,84 @@ describe("VoiceOrb", () => {
       );
       assert.ok(!container.innerHTML.includes("animate-orb-breath"), "should disable breath animation");
       assert.ok(!container.innerHTML.includes("animate-orb-fluid-idle"), "should disable fluid idle animation");
+    });
+  });
+
+  describe("PR248A — interactive effects", () => {
+    it("registers mouse move and updates CSS variables for tilt when enabled", () => {
+      const { getByRole } = render(
+        <VoiceOrb state="ready" inputLevel={0} outputLevel={0} />
+      );
+      const orb = getByRole("img");
+      const wrapper = orb.firstChild as HTMLElement;
+
+      // Initially --mouse-x and --mouse-y are not set on style
+      assert.equal(wrapper.style.getPropertyValue("--mouse-x"), "");
+
+      // Trigger mousemove
+      fireEvent.mouseMove(wrapper, { clientX: 100, clientY: 100 });
+
+      // Should have set CSS variables (non-empty string)
+      const mx = wrapper.style.getPropertyValue("--mouse-x");
+      const my = wrapper.style.getPropertyValue("--mouse-y");
+      assert.ok(mx !== "", "should set --mouse-x");
+      assert.ok(my !== "", "should set --mouse-y");
+
+      // Trigger mouseleave
+      fireEvent.mouseLeave(wrapper);
+      assert.equal(wrapper.style.getPropertyValue("--mouse-x"), "0");
+      assert.equal(wrapper.style.getPropertyValue("--mouse-y"), "0");
+    });
+
+    it("does not track mouse or apply transform in offline state", () => {
+      const { getByRole } = render(
+        <VoiceOrb state="offline" inputLevel={0} outputLevel={0} />
+      );
+      const orb = getByRole("img");
+      const wrapper = orb.firstChild as HTMLElement;
+
+      fireEvent.mouseMove(wrapper, { clientX: 100, clientY: 100 });
+      assert.equal(wrapper.style.getPropertyValue("--mouse-x"), "");
+      assert.ok(!wrapper.style.transform.includes("perspective"), "should not have 3D perspective transform");
+    });
+
+    it("renders spotlight only when interactiveGlow is enabled and state is not offline", () => {
+      const glowConfigEnabled: OrbEffectsConfig = {
+        ripple: false, blob: false, glow: false, transitions: false,
+        frequencyRing: false, coreTexture: true, particles: false,
+        stateLabel: false, orbMetricsBars: false,
+        parallaxTilt: false, interactiveGlow: true, clickShockwave: false
+      };
+      const { container, unmount } = render(
+        <VoiceOrb state="ready" inputLevel={0} outputLevel={0} effectsConfig={glowConfigEnabled} />
+      );
+      assert.ok(container.innerHTML.includes("mix-blend-mode: overlay"), "should render spotlight");
+      unmount();
+
+      const offline = render(
+        <VoiceOrb state="offline" inputLevel={0} outputLevel={0} effectsConfig={glowConfigEnabled} />
+      );
+      assert.ok(!offline.container.innerHTML.includes("mix-blend-mode: overlay"), "should not render spotlight in offline");
+      offline.unmount();
+    });
+
+    it("spawns shockwave on click when clickShockwave is enabled", () => {
+      const clickConfigEnabled: OrbEffectsConfig = {
+        ripple: false, blob: false, glow: false, transitions: false,
+        frequencyRing: false, coreTexture: false, particles: false,
+        stateLabel: false, orbMetricsBars: false,
+        parallaxTilt: false, interactiveGlow: false, clickShockwave: true
+      };
+      const { container, getByRole } = render(
+        <VoiceOrb state="ready" inputLevel={0} outputLevel={0} effectsConfig={clickConfigEnabled} />
+      );
+      const orb = getByRole("img");
+      const wrapper = orb.firstChild as HTMLElement;
+
+      assert.ok(!container.innerHTML.includes("animate-orb-shockwave"), "no shockwave initially");
+
+      fireEvent.click(wrapper, { clientX: 50, clientY: 50 });
+      assert.ok(container.innerHTML.includes("animate-orb-shockwave"), "shockwave rendered after click");
     });
   });
 });

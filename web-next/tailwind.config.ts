@@ -62,6 +62,10 @@ const config: Config = {
           "0%": { transform: "scale(1)", opacity: "0.75" },
           "100%": { transform: "scale(2.4)", opacity: "0" },
         },
+        "orb-shockwave": {
+          "0%": { transform: "scale(1)", opacity: "0.75" },
+          "100%": { transform: "scale(2.2)", opacity: "0" },
+        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -78,6 +82,7 @@ const config: Config = {
         "orb-blob": "orb-blob 3.2s ease-in-out infinite",
         "orb-flash": "orb-flash 0.32s ease-out forwards",
         "orb-burst": "orb-burst 0.58s ease-out forwards",
+        "orb-shockwave": "orb-shockwave 0.6s ease-out forwards",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },

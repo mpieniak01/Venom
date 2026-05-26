@@ -120,17 +120,22 @@ From repository root, you can use:
 - UI language (PL/EN/DE) is sent as `preferred_language` in `/api/v1/tasks` and backend translates response if different language detected.
 - Calculation results (e.g. JSON/arrays) are formatted in chat to tables/lists; when formulas detected we render KaTeX.
 
-### 0.6 Voice screen and `react-three` orb stack
-- `web-next/components/voice/*` is the dedicated voice surface for `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, `VoiceOrb3D`, dialog windows, metrics hooks, and orb-specific overlays.
-- The orb now has a `react-three` rendering path (`VoiceOrb3D` with `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) plus a CSS fallback when WebGL or 3D mode is unavailable.
+### 0.6 Voice screen and low-GPU orb stack
+- `web-next/components/voice/*` is the dedicated voice surface for `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, dialog windows, metrics hooks, and orb-specific overlays.
+- After PR 215, the orb is rendered by a 2D CSS/HTML/SVG stack (Calm Idle baseline) instead of `react-three`.
+- PR 248A adds low-GPU interactive effects behind `OrbEffectsConfig`: `parallaxTilt`, `interactiveGlow`, and `clickShockwave`.
+- The new effects can be toggled via `NEXT_PUBLIC_ORB_PARALLAX_TILT`, `NEXT_PUBLIC_ORB_INTERACTIVE_GLOW`, and `NEXT_PUBLIC_ORB_CLICK_SHOCKWAVE`.
+- Interactive effects are active only in operational states (`ready`, `recording`, `thinking`, `tts`, `complete`) and are disabled in `offline`/`error`.
+- `reducedMotion` disables mouse-driven interactions and shockwave animations to keep a static fallback.
 - The `/voice` status panels should make the active audio route explicit: `whisper_llm_piper` for the stable text-only path and `multi_runtime_piper` for the Gemma4 native-audio path, including the fallback reason when the native route is not used.
 - Runtime truth on `/voice` should come from `runtime_state` (`selected`, `active`, `response`, `switch`) and not from ad-hoc field mixing between local component states.
 - `web-next/tests/voice-orb.spec.ts` covers `/voice` layout stability and orb visibility in smoke-style Playwright checks.
+- `web-next/tests/voice-orb.component.test.tsx` covers PR248A interaction behavior (CSS variables on mouse move, offline guardrails, spotlight gating, click shockwave).
 - Frontend helper scripts that matter for this stack live in `web-next/scripts/`:
   - `run-e2e.mjs`
   - `e2e-quality-gate.mjs`
   - `check-dev-turbo.mjs`
-- When adding new voice visuals, document them as part of the orb stack first; treat CSS-only variants as fallback, not as the primary architecture.
+- When adding new voice visuals, document them as part of the primary 2D orb stack and keep GPU-heavy paths optional and explicitly guarded.
 
 ### 0.7 Inspector / Model Introspection
 - Route: `/inspector/model-introspection`.

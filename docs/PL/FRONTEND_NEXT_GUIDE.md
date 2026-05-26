@@ -120,17 +120,22 @@ Z poziomu roota repo możesz użyć:
 - Język UI (PL/EN/DE) jest przesyłany jako `preferred_language` w `/api/v1/tasks` i backend tłumaczy odpowiedź, jeśli wykryje inny język.
 - Wyniki obliczeń (np. JSON/tablice) są formatowane w czacie do tabel/list; przy wykryciu formuł renderujemy KaTeX.
 
-### 0.6 Ekran voice i stos orba `react-three`
-- `web-next/components/voice/*` to dedykowany ekran voice dla `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, `VoiceOrb3D`, okna dialogowe, hooki metryk i overlaye orba.
-- Orb ma już ścieżkę renderowania w `react-three` (`VoiceOrb3D` z `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`) oraz fallback CSS, gdy WebGL lub tryb 3D są niedostępne.
+### 0.6 Ekran voice i niskokosztowy stos orba
+- `web-next/components/voice/*` to dedykowany ekran voice dla `/voice`: `VoiceCommandCenter`, `OrbZone`, `VoiceOrb`, okna dialogowe, hooki metryk i overlaye orba.
+- Po PR 215 orb jest renderowany przez stos 2D CSS/HTML/SVG (baseline Calm Idle), a nie przez `react-three`.
+- PR 248A dodaje interaktywne efekty low-GPU sterowane przez `OrbEffectsConfig`: `parallaxTilt`, `interactiveGlow`, `clickShockwave`.
+- Nowe efekty można przełączać przez `NEXT_PUBLIC_ORB_PARALLAX_TILT`, `NEXT_PUBLIC_ORB_INTERACTIVE_GLOW` i `NEXT_PUBLIC_ORB_CLICK_SHOCKWAVE`.
+- Interaktywne efekty są aktywne tylko w stanach operacyjnych (`ready`, `recording`, `thinking`, `tts`, `complete`) i są wyłączone w `offline`/`error`.
+- `reducedMotion` wyłącza interakcje myszą i animacje shockwave, utrzymując statyczny fallback.
 - Panele statusowe `/voice` powinny jasno pokazywać aktywny tor audio: `whisper_llm_piper` dla stabilnej ścieżki tekstowej oraz `multi_runtime_piper` dla natywnej ścieżki Gemma4, razem z powodem fallbacku, gdy tor natywny nie jest użyty.
 - Kanoniczna prawda runtime na `/voice` powinna pochodzić z `runtime_state` (`selected`, `active`, `response`, `switch`), a nie z mieszania lokalnych stanów komponentów.
 - `web-next/tests/voice-orb.spec.ts` pokrywa stabilność layoutu `/voice` i widoczność orba w smoke testach Playwright.
+- `web-next/tests/voice-orb.component.test.tsx` pokrywa zachowanie interakcji z PR248A (CSS variables po ruchu myszy, guardy offline, spotlight, click shockwave).
 - Ważne skrypty frontendowe dla tego stosu znajdują się w `web-next/scripts/`:
   - `run-e2e.mjs`
   - `e2e-quality-gate.mjs`
   - `check-dev-turbo.mjs`
-- Przy dodawaniu nowych efektów voice dokumentuj je najpierw jako część stosu orba; wariant CSS traktuj jako fallback, nie jako główną architekturę.
+- Przy dodawaniu nowych efektów voice dokumentuj je najpierw jako część głównego stosu 2D orba, a ścieżki GPU-heavy trzymaj jako opcjonalne i jawnie ograniczane.
 
 ### 0.7 Inspector / Model Introspection
 - Route: `/inspector/model-introspection`.

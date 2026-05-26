@@ -242,7 +242,8 @@ const buildVoiceDebugSteps = (
 export function useVoiceDebugMode(t: Translator): VoiceDebugSnapshot {
   const readLocationSearch = () =>
     globalThis.location === undefined ? "" : globalThis.location.search;
-  const [hydrated, setHydrated] = useState(globalThis.location !== undefined);
+  // Keep the first client render aligned with SSR output; enable debug mode after mount sync.
+  const [hydrated, setHydrated] = useState(false);
   const [urlSearch, setUrlSearch] = useState(() => readLocationSearch());
   const requested = globalThis.location !== undefined && parseVoiceDebugEnabled(readLocationSearch());
 

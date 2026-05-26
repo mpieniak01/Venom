@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
-from .components import build_component_snapshot
+from .components import build_component_snapshot_payload
 from .diagnostics import ExecutionDiagnostics
 from .policies import RuntimePolicyResolver
 from .stages import (
@@ -72,7 +72,7 @@ class MultiRuntimePipeline:
             has_audio=request.audio_array is not None,
             free_vram_mb=free_vram_mb,
         )
-        diagnostics.component_snapshot = build_component_snapshot(
+        snapshot_payload = build_component_snapshot_payload(
             daemon_status,
             request_overrides={
                 "retrieval_mode": policy.retrieval_mode,
@@ -80,6 +80,13 @@ class MultiRuntimePipeline:
                 "assistant_mode": policy.assistant_mode,
                 "image_strategy": policy.image_strategy,
             },
+        )
+        diagnostics.component_snapshot = list(snapshot_payload["components"])
+        diagnostics.component_snapshot_timestamp_ms = int(
+            snapshot_payload["snapshot_timestamp_ms"]
+        )
+        diagnostics.component_snapshot_version = str(
+            snapshot_payload["snapshot_version"]
         )
         diagnostics.selected_policy = policy.policy_name()
         diagnostics.selected_image_strategy = policy.image_strategy

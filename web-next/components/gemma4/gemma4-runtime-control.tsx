@@ -573,6 +573,11 @@ function RuntimeProfileControls({
     : "—";
   const runtimeConfigDrift = hasRuntimeConfigDrift(stagedRuntimeLine, activeRuntimeLine);
   const quantizationInactiveReason = getQuantizationInactiveReason(daemonStatus);
+  const modelNotLoadedTransition = daemonStatus?.target_loaded === false
+    && (
+      daemonStatus?.effective_precision_mode === "unknown"
+      || daemonStatus?.effective_config_reason === "model_not_loaded"
+    );
 
   const handleApplyPolicy = async () => {
     await applyUpdate({
@@ -769,9 +774,14 @@ function RuntimeProfileControls({
               <Badge variant="secondary">{t("runtime.profile.notAppliedYet")}</Badge>
             </div>
           )}
-          {quantizationInactiveReason && (
+          {quantizationInactiveReason && !modelNotLoadedTransition && (
             <p className="text-[10px] text-amber-300">
               {t("runtime.profile.quantizationEffectiveNo")}: {quantizationInactiveReason}
+            </p>
+          )}
+          {modelNotLoadedTransition && (
+            <p className="text-[10px] text-amber-300">
+              {t("runtime.profile.modelNotLoadedTransition")}
             </p>
           )}
         </div>
@@ -885,6 +895,15 @@ function getQuantizationInactiveReason(
 ): string | null {
   if (daemonStatus?.quantization_effective !== false) return null;
   return daemonStatus.quantization_effective_reason ?? null;
+}
+
+function formatSnapshotTimestamp(timestampMs: number | null | undefined): string {
+  if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs) || timestampMs <= 0) {
+    return "—";
+  }
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toISOString().replace("T", " ").replace(".000Z", " UTC");
 }
 
 function RuntimeProfileRow({
@@ -1323,33 +1342,119 @@ function Gemma4RuntimeControlPanel({
   }
 
   return (
-    <DaemonCard variant={variant}>
-      {/* Header row — model + mode badges */}
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-white truncate">
-            {status?.target_model ?? "—"}
-          </p>
-          <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-            {t("voice.daemon.targetModel")}
-          </p>
-        </div>
-        <div className="flex gap-1 flex-shrink-0">
-          {status?.target_loaded === false && (
-            <Badge tone="warning" className="text-[10px]">{t("voice.daemon.warming")}</Badge>
-          )}
-          {status?.mode === "target_with_assistant" && (
-            <Badge tone="success" className="text-[10px]">
-              {t("voice.daemon.assistantActive")}
-            </Badge>
-          )}
-          {status?.supports_image_input && (
-            <Badge tone="neutral" className="text-[10px]">image</Badge>
-          )}
-        </div>
-      </div>
+    <Gemma4RuntimeControlPanelContent
+      daemon={daemon}
+      variant={variant}
+      status={status}
+      runtimeSnapshot={runtimeSnapshot}
+      assistantModels={assistantModels}
+      busy={busy}
+      actionPending={actionPending}
+      vram={vram}
+      vramPercent={vramPercent}
+      effectiveThinking={effectiveThinking}
+      localThinking={localThinking}
+      setLocalThinking={setLocalThinking}
+      responseShapingToggles={responseShapingToggles}
+      effectiveTokens={effectiveTokens}
+      setLocalTokens={setLocalTokens}
+      effectiveImageBudget={effectiveImageBudget}
+      setLocalImageBudget={setLocalImageBudget}
+      effectiveCache={effectiveCache}
+      cacheOptions={cacheOptions}
+      setLocalCache={setLocalCache}
+      showDrafter={showDrafter}
+      setShowDrafter={setShowDrafter}
+      drafterInput={drafterInput}
+      setDrafterInput={setDrafterInput}
+      showDrafterInput={showDrafterInput}
+      setShowDrafterInput={setShowDrafterInput}
+      handleAttach={handleAttach}
+      handleApply={handleApply}
+      hasLocalChanges={hasLocalChanges}
+      error={error}
+    />
+  );
+}
 
-      {/* Pending reload banner */}
+type ResponseShapingToggle = Readonly<{
+  label: string;
+  checked: boolean;
+  set: (value: boolean) => void;
+  ariaLabel: string;
+}>;
+
+type Gemma4RuntimeControlPanelContentProps = Readonly<{
+  daemon: Gemma4DaemonState;
+  variant: Variant;
+  status: DaemonStatus | null;
+  runtimeSnapshot: RuntimeSnapshotLike;
+  assistantModels: string[];
+  busy: boolean;
+  actionPending: string | null;
+  vram: VramInfo | null | undefined;
+  vramPercent: number | null;
+  effectiveThinking: boolean;
+  localThinking: boolean | null;
+  setLocalThinking: (value: boolean) => void;
+  responseShapingToggles: readonly ResponseShapingToggle[];
+  effectiveTokens: string;
+  setLocalTokens: (value: string) => void;
+  effectiveImageBudget: string;
+  setLocalImageBudget: (value: string) => void;
+  effectiveCache: string;
+  cacheOptions: readonly SelectMenuOption[];
+  setLocalCache: (value: string) => void;
+  showDrafter: boolean;
+  setShowDrafter: (value: boolean) => void;
+  drafterInput: string;
+  setDrafterInput: (value: string) => void;
+  showDrafterInput: boolean;
+  setShowDrafterInput: (value: boolean) => void;
+  handleAttach: () => void;
+  handleApply: () => void;
+  hasLocalChanges: boolean;
+  error: string | null;
+}>;
+
+function Gemma4RuntimeControlPanelContent({
+  daemon,
+  variant,
+  status,
+  runtimeSnapshot,
+  assistantModels,
+  busy,
+  actionPending,
+  vram,
+  vramPercent,
+  effectiveThinking,
+  localThinking,
+  setLocalThinking,
+  responseShapingToggles,
+  effectiveTokens,
+  setLocalTokens,
+  effectiveImageBudget,
+  setLocalImageBudget,
+  effectiveCache,
+  cacheOptions,
+  setLocalCache,
+  showDrafter,
+  setShowDrafter,
+  drafterInput,
+  setDrafterInput,
+  showDrafterInput,
+  setShowDrafterInput,
+  handleAttach,
+  handleApply,
+  hasLocalChanges,
+  error,
+}: Gemma4RuntimeControlPanelContentProps) {
+  const t = useTranslation();
+  const hasComponentSnapshot = Boolean(status?.component_snapshot?.length);
+  const isReloadSignal = daemon.lastAppliedSignal && daemon.lastAppliedSignal !== "none";
+  return (
+    <DaemonCard variant={variant}>
+      <RuntimeControlHeader status={status} />
       {status?.pending_reload && (
         <div
           data-testid="reload-banner"
@@ -1368,129 +1473,270 @@ function Gemma4RuntimeControlPanel({
         />
       )}
 
-      {/* Params */}
-      <div className="space-y-2.5 mb-3">
-        {/* Reasoning / emotion shaping — thinking + response shaping group */}
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.responseShaping")}</p>
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
-          {/* Thinking — first item in group */}
-          <div className="flex items-center justify-between gap-2">
-            <label className="text-xs text-zinc-400">{t("voice.daemon.thinking")}</label>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={effectiveThinking}
-                onCheckedChange={(v) => setLocalThinking(v)}
-                disabled={busy}
-                aria-label={t("voice.daemon.thinking")}
-              />
-              {status && (
-                <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
-              )}
-            </div>
-          </div>
-          <div className="border-t border-white/[0.05]" />
-          {responseShapingToggles.map((toggle) => (
-            <div key={toggle.ariaLabel} className="flex items-center justify-between gap-2">
-              <label className="text-xs text-zinc-400">{toggle.label}</label>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={toggle.checked}
-                  onCheckedChange={(value) => toggle.set(value)}
-                  disabled={busy}
-                  aria-label={toggle.ariaLabel}
-                />
-                <ToggleStateLabel enabled={toggle.checked} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Generation params */}
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.generationParams")}</p>
-
-        {/* Max tokens */}
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-xs text-zinc-400">{t("voice.daemon.maxTokens")}</label>
-          <input
-            type="number"
-            min={1}
-            max={4096}
-            value={effectiveTokens}
-            onChange={(e) => setLocalTokens(e.target.value)}
-            disabled={busy}
-            className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-right text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-            aria-label={t("voice.daemon.maxTokens")}
-          />
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-xs text-zinc-400">{t("voice.daemon.imageTokenBudget")}</label>
-          <input
-            type="number"
-            min={70}
-            max={1120}
-            step={70}
-            value={effectiveImageBudget}
-            onChange={(e) => setLocalImageBudget(e.target.value)}
-            disabled={busy}
-            className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-right text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-            aria-label={t("voice.daemon.imageTokenBudget")}
-          />
-        </div>
-
-        {/* Cache strategy */}
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-xs text-zinc-400">{t("voice.daemon.cacheStrategy")}</label>
-          <SelectMenu
-            value={effectiveCache}
-            options={cacheOptions}
-            onChange={(v) => setLocalCache(v)}
-            disabled={busy}
-            ariaLabel={t("voice.daemon.cacheStrategy")}
-          />
-        </div>
-        </div>
+      <RuntimeControlDraftSection
+        status={status}
+        busy={busy}
+        effectiveThinking={effectiveThinking}
+        localThinking={localThinking}
+        setLocalThinking={setLocalThinking}
+        responseShapingToggles={responseShapingToggles}
+        effectiveTokens={effectiveTokens}
+        setLocalTokens={setLocalTokens}
+        effectiveImageBudget={effectiveImageBudget}
+        setLocalImageBudget={setLocalImageBudget}
+        effectiveCache={effectiveCache}
+        cacheOptions={cacheOptions}
+        setLocalCache={setLocalCache}
+      />
 
       <RuntimeProfileControls daemonStatus={status ?? null} />
+      {vram && <VramSection vram={vram} vramPercent={vramPercent} />}
 
-      {/* VRAM */}
-      {vram && (
-        <VramSection vram={vram} vramPercent={vramPercent} />
+      <RuntimeControlDrafterSection
+        daemon={daemon}
+        assistantModel={status?.assistant_model ?? null}
+        assistantModels={assistantModels}
+        busy={busy}
+        actionPending={actionPending}
+        drafterInput={drafterInput}
+        setDrafterInput={setDrafterInput}
+        showDrafter={showDrafter}
+        setShowDrafter={setShowDrafter}
+        showDrafterInput={showDrafterInput}
+        setShowDrafterInput={setShowDrafterInput}
+        onAttach={handleAttach}
+      />
+
+      <RuntimeControlActionsSection
+        daemon={daemon}
+        busy={busy}
+        actionPending={actionPending}
+        hasLocalChanges={hasLocalChanges}
+        onApply={handleApply}
+      />
+
+      {isReloadSignal && (
+        <p className="mt-2 text-[10px] text-amber-300">
+          {daemon.lastAppliedSignal === "soft_reload"
+            ? t("voice.daemon.signalReload")
+            : t("voice.daemon.signalRestart")}
+        </p>
       )}
+      {error && <p className="mt-2 text-[10px] text-rose-400 truncate">{error}</p>}
+      {hasComponentSnapshot && <RuntimeComponentSnapshotSection status={status} />}
+    </DaemonCard>
+  );
+}
 
-      {/* Drafter — collapsible, collapsed by default */}
-      <div className="mb-3">
-        <button
-          type="button"
-          data-testid="drafter-accordion-toggle"
-          onClick={() => setShowDrafter(!showDrafter)}
-          className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          <span>{t("voice.daemon.assistantDrafter")}</span>
-          <span className="text-zinc-600">{showDrafter ? "▲" : "▼"}</span>
-        </button>
-        {showDrafter && (
-          <DrafterBox
-            daemon={daemon}
-            assistantModel={status?.assistant_model ?? null}
-            assistantModels={assistantModels}
-            busy={busy}
-            actionPending={actionPending}
-            drafterInput={drafterInput}
-            setDrafterInput={setDrafterInput}
-            showDrafterInput={showDrafterInput}
-            setShowDrafterInput={setShowDrafterInput}
-            onAttach={handleAttach}
-          />
+function RuntimeControlHeader({ status }: Readonly<{ status: DaemonStatus | null }>) {
+  const t = useTranslation();
+  return (
+    <div className="flex items-start justify-between gap-2 mb-3">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-white truncate">{status?.target_model ?? "—"}</p>
+        <p className="text-[10px] text-zinc-500 truncate mt-0.5">{t("voice.daemon.targetModel")}</p>
+      </div>
+      <div className="flex gap-1 flex-shrink-0">
+        {status?.target_loaded === false && (
+          <Badge tone="warning" className="text-[10px]">{t("voice.daemon.warming")}</Badge>
+        )}
+        {status?.mode === "target_with_assistant" && (
+          <Badge tone="success" className="text-[10px]">{t("voice.daemon.assistantActive")}</Badge>
+        )}
+        {status?.supports_image_input && (
+          <Badge tone="neutral" className="text-[10px]">image</Badge>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Actions */}
-      <div className="space-y-2">
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500">
-          {t("runtime.profile.manualOverrides")}
-        </p>
-        <div className="flex flex-wrap gap-2">
+function RuntimeControlDraftSection({
+  status,
+  busy,
+  effectiveThinking,
+  localThinking,
+  setLocalThinking,
+  responseShapingToggles,
+  effectiveTokens,
+  setLocalTokens,
+  effectiveImageBudget,
+  setLocalImageBudget,
+  effectiveCache,
+  cacheOptions,
+  setLocalCache,
+}: Readonly<{
+  status: DaemonStatus | null;
+  busy: boolean;
+  effectiveThinking: boolean;
+  localThinking: boolean | null;
+  setLocalThinking: (value: boolean) => void;
+  responseShapingToggles: readonly ResponseShapingToggle[];
+  effectiveTokens: string;
+  setLocalTokens: (value: string) => void;
+  effectiveImageBudget: string;
+  setLocalImageBudget: (value: string) => void;
+  effectiveCache: string;
+  cacheOptions: readonly SelectMenuOption[];
+  setLocalCache: (value: string) => void;
+}>) {
+  const t = useTranslation();
+  return (
+    <div className="space-y-2.5 mb-3">
+      <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.responseShaping")}</p>
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs text-zinc-400">{t("voice.daemon.thinking")}</label>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={effectiveThinking}
+              onCheckedChange={(value) => setLocalThinking(value)}
+              disabled={busy}
+              aria-label={t("voice.daemon.thinking")}
+            />
+            {status && (
+              <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
+            )}
+            <span className="text-[10px] text-zinc-500">{t("runtime.profile.applyModeLabel")}:</span>
+            <ProfileModeBadge mode="live" />
+          </div>
+        </div>
+        <div className="border-t border-white/[0.05]" />
+        {responseShapingToggles.map((toggle) => (
+          <div key={toggle.ariaLabel} className="flex items-center justify-between gap-2">
+            <label className="text-xs text-zinc-400">{toggle.label}</label>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={toggle.checked}
+                onCheckedChange={(value) => toggle.set(value)}
+                disabled={busy}
+                aria-label={toggle.ariaLabel}
+              />
+              <ToggleStateLabel enabled={toggle.checked} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[10px] uppercase tracking-widest text-zinc-500">{t("voice.daemon.generationParams")}</p>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs text-zinc-400">{t("voice.daemon.maxTokens")}</label>
+        <input
+          type="number"
+          min={1}
+          max={4096}
+          value={effectiveTokens}
+          onChange={(e) => setLocalTokens(e.target.value)}
+          disabled={busy}
+          className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-right text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          aria-label={t("voice.daemon.maxTokens")}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs text-zinc-400">{t("voice.daemon.imageTokenBudget")}</label>
+        <input
+          type="number"
+          min={70}
+          max={1120}
+          step={70}
+          value={effectiveImageBudget}
+          onChange={(e) => setLocalImageBudget(e.target.value)}
+          disabled={busy}
+          className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-right text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+          aria-label={t("voice.daemon.imageTokenBudget")}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs text-zinc-400">{t("voice.daemon.cacheStrategy")}</label>
+        <SelectMenu
+          value={effectiveCache}
+          options={cacheOptions}
+          onChange={(value) => setLocalCache(value)}
+          disabled={busy}
+          ariaLabel={t("voice.daemon.cacheStrategy")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function RuntimeControlDrafterSection({
+  daemon,
+  assistantModel,
+  assistantModels,
+  busy,
+  actionPending,
+  drafterInput,
+  setDrafterInput,
+  showDrafter,
+  setShowDrafter,
+  showDrafterInput,
+  setShowDrafterInput,
+  onAttach,
+}: Readonly<{
+  daemon: Gemma4DaemonState;
+  assistantModel: string | null;
+  assistantModels: string[];
+  busy: boolean;
+  actionPending: string | null;
+  drafterInput: string;
+  setDrafterInput: (value: string) => void;
+  showDrafter: boolean;
+  setShowDrafter: (value: boolean) => void;
+  showDrafterInput: boolean;
+  setShowDrafterInput: (value: boolean) => void;
+  onAttach: () => void;
+}>) {
+  const t = useTranslation();
+  return (
+    <div className="mb-3">
+      <button
+        type="button"
+        data-testid="drafter-accordion-toggle"
+        onClick={() => setShowDrafter(!showDrafter)}
+        className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
+      >
+        <span>{t("voice.daemon.assistantDrafter")}</span>
+        <span className="text-zinc-600">{showDrafter ? "▲" : "▼"}</span>
+      </button>
+      {showDrafter && (
+        <DrafterBox
+          daemon={daemon}
+          assistantModel={assistantModel}
+          assistantModels={assistantModels}
+          busy={busy}
+          actionPending={actionPending}
+          drafterInput={drafterInput}
+          setDrafterInput={setDrafterInput}
+          showDrafterInput={showDrafterInput}
+          setShowDrafterInput={setShowDrafterInput}
+          onAttach={onAttach}
+        />
+      )}
+    </div>
+  );
+}
+
+function RuntimeControlActionsSection({
+  daemon,
+  busy,
+  actionPending,
+  hasLocalChanges,
+  onApply,
+}: Readonly<{
+  daemon: Gemma4DaemonState;
+  busy: boolean;
+  actionPending: string | null;
+  hasLocalChanges: boolean;
+  onApply: () => void;
+}>) {
+  const t = useTranslation();
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+        {t("runtime.profile.manualOverrides")}
+      </p>
+      <div className="flex flex-wrap gap-2">
         {buildDaemonConfirmActions({ t, daemon }).map((action) => (
           <DaemonConfirmActionButton
             key={action.key}
@@ -1508,7 +1754,6 @@ function Gemma4RuntimeControlPanel({
             testId={action.testId}
           />
         ))}
-
         <Button
           size="xs"
           variant="ghost"
@@ -1518,69 +1763,70 @@ function Gemma4RuntimeControlPanel({
         >
           {actionPending === "fallback" ? t("voice.daemon.busy") : t("voice.daemon.fallback")}
         </Button>
-        </div>
-        <p className="text-[10px] text-zinc-500">
-          {t("runtime.profile.manualOverridesHint")}
-        </p>
-        <details className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-          <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors">
-            {t("runtime.profile.advancedActions")}
-          </summary>
-          <div className="mt-2">
-            <Button
-              size="xs"
-              variant="primary"
-              onClick={handleApply}
-              disabled={busy || !hasLocalChanges}
-              data-testid="apply-button"
-            >
-              {actionPending === "config"
-                ? t("voice.daemon.applying")
-                : t("runtime.profile.applyLegacyConfig")}
-            </Button>
-          </div>
-        </details>
       </div>
+      <p className="text-[10px] text-zinc-500">{t("runtime.profile.manualOverridesHint")}</p>
+      <details className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+        <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors">
+          {t("runtime.profile.advancedActions")}
+        </summary>
+        <div className="mt-2">
+          <Button
+            size="xs"
+            variant="primary"
+            onClick={onApply}
+            disabled={busy || !hasLocalChanges}
+            data-testid="apply-button"
+          >
+            {actionPending === "config"
+              ? t("voice.daemon.applying")
+              : t("runtime.profile.applyLegacyConfig")}
+          </Button>
+        </div>
+      </details>
+    </div>
+  );
+}
 
-      {/* Last signal feedback */}
-      {daemon.lastAppliedSignal && daemon.lastAppliedSignal !== "none" && (
-        <p className="mt-2 text-[10px] text-amber-300">
-          {daemon.lastAppliedSignal === "soft_reload"
-            ? t("voice.daemon.signalReload")
-            : t("voice.daemon.signalRestart")}
+function RuntimeComponentSnapshotSection({
+  status,
+}: Readonly<{ status: DaemonStatus | null }>) {
+  const t = useTranslation();
+  if (!status?.component_snapshot?.length) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+      <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+        {t("runtime.profile.componentSnapshot")}
+      </p>
+      {(status.component_snapshot_version || status.component_snapshot_timestamp_ms) && (
+        <p className="mb-2 text-[10px] text-zinc-500">
+          {status.component_snapshot_version
+            ? `${t("runtime.diagnostics.snapshotVersion")} ${status.component_snapshot_version}`
+            : ""}
+          {status.component_snapshot_version && status.component_snapshot_timestamp_ms ? " · " : ""}
+          {status.component_snapshot_timestamp_ms
+            ? `${t("runtime.diagnostics.snapshotCapturedAt")} ${formatSnapshotTimestamp(status.component_snapshot_timestamp_ms)}`
+            : ""}
         </p>
       )}
-
-      {error && (
-        <p className="mt-2 text-[10px] text-rose-400 truncate">{error}</p>
-      )}
-
-      {status?.component_snapshot && status.component_snapshot.length > 0 && (
-        <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
-            {t("runtime.profile.componentSnapshot")}
-          </p>
-          <div className="space-y-1.5">
-            {status.component_snapshot.slice(0, 7).map((component) => (
-              <div
-                key={component.component_id}
-                className="flex items-center justify-between gap-2 text-[10px]"
-              >
-                <span className="text-zinc-300 truncate">
-                  {resolveRuntimeComponentLabel(component.component_id, t)}
-                </span>
-                <Badge
-                  tone={resolveRuntimeComponentHealthTone(component.health)}
-                  className="truncate text-[10px] uppercase tracking-wide"
-                >
-                  {resolveRuntimeComponentHealthLabel(component.health, t)}
-                </Badge>
-              </div>
-            ))}
+      <div className="space-y-1.5">
+        {status.component_snapshot.slice(0, 7).map((component) => (
+          <div
+            key={component.component_id}
+            className="flex items-center justify-between gap-2 text-[10px]"
+          >
+            <span className="text-zinc-300 truncate">
+              {resolveRuntimeComponentLabel(component.component_id, t)}
+            </span>
+            <Badge
+              tone={resolveRuntimeComponentHealthTone(component.health)}
+              className="truncate text-[10px] uppercase tracking-wide"
+            >
+              {resolveRuntimeComponentHealthLabel(component.health, t)}
+            </Badge>
           </div>
-        </div>
-      )}
-    </DaemonCard>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1591,10 +1837,8 @@ function ThinkingStatusLabel({
   enabled,
 }: Readonly<{ localThinking: boolean | null; enabled: boolean }>) {
   const t = useTranslation();
-  if (localThinking !== null) {
-    return <span className="text-[10px] text-zinc-500">{t("voice.daemon.signalLive")}</span>;
-  }
-  const label = enabled ? t("common.yes") : t("common.no");
+  const effectiveEnabled = localThinking ?? enabled;
+  const label = effectiveEnabled ? t("common.yes") : t("common.no");
   return <span className="text-[10px] text-zinc-500">{label}</span>;
 }
 

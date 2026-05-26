@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -219,3 +222,33 @@ def build_component_snapshot(
         ),
     ]
     return [asdict(component) for component in components]
+
+
+def _snapshot_version(components: list[dict[str, object]]) -> str:
+    payload = json.dumps(
+        components,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def build_component_snapshot_payload(
+    daemon_status: dict[str, Any],
+    *,
+    request_overrides: dict[str, Any] | None = None,
+    captured_at_ms: int | None = None,
+) -> dict[str, object]:
+    components = build_component_snapshot(
+        daemon_status,
+        request_overrides=request_overrides,
+    )
+    snapshot_timestamp_ms = (
+        int(captured_at_ms) if captured_at_ms is not None else int(time.time() * 1000)
+    )
+    return {
+        "components": components,
+        "snapshot_timestamp_ms": snapshot_timestamp_ms,
+        "snapshot_version": _snapshot_version(components),
+    }

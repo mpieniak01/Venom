@@ -18,6 +18,7 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && printf \"\\033[32m✔ Lint OK\\033[0m\\n\"",
     "test:unit": "node --import tsx --test --test-reporter=dot tests/*.test.ts",
     "test:unit:components": "node --import tsx --import ./tests/component-test-setup.ts --test --test-concurrency=1 --test-reporter=spec tests/*.component.test.tsx",
+    "test:unit:voice-runtime-contracts": "node --import tsx --import ./tests/component-test-setup.ts --test --test-concurrency=1 --test-reporter=spec tests/voice-status-sidebar.component.test.tsx tests/gemma4-runtime-control.component.test.tsx tests/runtime-diagnostics-panel.test.tsx",
     "test:unit:coverage": "npx --yes c8@10.1.3 --reporter=lcov --reporter=text --reports-dir coverage node --import tsx --test tests/*.test.ts",
     "test:unit:ci-lite": "npm run test:unit && npm run test:unit:components",
     "codegen:api-types": "npx --yes openapi-typescript@7.10.1 ../openapi/openapi.json -o lib/generated/api-types.d.ts",

@@ -276,6 +276,9 @@ test-duration-audit:
 test-web-unit:
 	$(NPM) --prefix $(WEB_DIR) run test:unit
 
+test-web-voice-runtime-contracts:
+	$(NPM) --prefix $(WEB_DIR) run test:unit:voice-runtime-contracts
+
 test-web-e2e:
 	$(NPM) --prefix $(WEB_DIR) run test:e2e
 

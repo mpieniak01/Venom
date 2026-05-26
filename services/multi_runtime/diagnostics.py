@@ -25,6 +25,8 @@ class ExecutionDiagnostics:
     economy_mode_activated: bool = False
     degradation_reasons: list[str] = field(default_factory=list)
     component_snapshot: list[dict[str, object]] = field(default_factory=list)
+    component_snapshot_timestamp_ms: int | None = None
+    component_snapshot_version: str | None = None
 
     def push_trace(
         self, stage_name: str, started_at: float, outcome: str = "ok"

@@ -217,6 +217,59 @@ const runtimeSelectionPayloads = {
   },
 } as const;
 
+const makeDaemonStatusPayload = (overrides: Record<string, unknown> = {}) => ({
+  target_model: "google/gemma-4-E2B-it",
+  assistant_model: null,
+  mode: "target_only",
+  target_loaded: true,
+  assistant_loaded: false,
+  params: {
+    max_new_tokens: 128,
+    enable_thinking: false,
+    image_token_budget: 280,
+    reasoning_summary_enabled: false,
+    emotion_detection_enabled: false,
+    emotion_response_style_enabled: false,
+    cache_implementation: null,
+    execution_mode: "balanced",
+    image_strategy: "vlm_only",
+    retrieval_mode: "off",
+    audio_output_mode: "off",
+    assistant_mode: "off",
+    economy_mode: "off",
+  },
+  active_runtime_config: {
+    precision: "float16",
+    quantization_backend: null,
+    device_target: "cuda",
+  },
+  staged_runtime_config: {
+    precision: "float16",
+    quantization_backend: null,
+    device_target: "cuda",
+  },
+  effective_precision_mode: "explicit_float16",
+  effective_config_reason: null,
+  vram: {
+    backend: "cpu",
+    allocated_mb: 0,
+    reserved_mb: 0,
+    total_mb: 0,
+    free_mb: 0,
+  },
+  raw_thinking_available: false,
+  reasoning_summary_status: "disabled",
+  reasoning_summary: null,
+  emotion_label: null,
+  emotion_confidence: null,
+  emotion_source: null,
+  pending_reload: false,
+  reload_reason: null,
+  supports_image_input: true,
+  component_snapshot: [],
+  ...overrides,
+});
+
 describe("VoiceStatusSidebar", () => {
   const renderAndFlush = async (ui: Parameters<typeof render>[0]) => {
     await act(async () => {
@@ -245,48 +298,7 @@ describe("VoiceStatusSidebar", () => {
     globalThis.fetch = async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/v1/daemon/status")) {
-        return new Response(
-          JSON.stringify({
-            target_model: "google/gemma-4-E2B-it",
-            assistant_model: null,
-            mode: "target_only",
-            target_loaded: true,
-            assistant_loaded: false,
-            params: {
-              max_new_tokens: 128,
-              enable_thinking: false,
-              image_token_budget: 280,
-              reasoning_summary_enabled: false,
-              emotion_detection_enabled: false,
-              emotion_response_style_enabled: false,
-              cache_implementation: null,
-              execution_mode: "balanced",
-              image_strategy: "vlm_only",
-              retrieval_mode: "off",
-              audio_output_mode: "off",
-              assistant_mode: "off",
-              economy_mode: "off",
-            },
-            vram: {
-              backend: "cpu",
-              allocated_mb: 0,
-              reserved_mb: 0,
-              total_mb: 0,
-              free_mb: 0,
-            },
-            raw_thinking_available: false,
-            reasoning_summary_status: "disabled",
-            reasoning_summary: null,
-            emotion_label: null,
-            emotion_confidence: null,
-            emotion_source: null,
-            pending_reload: false,
-            reload_reason: null,
-            supports_image_input: true,
-            component_snapshot: [],
-          }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify(makeDaemonStatusPayload()), { status: 200 });
       }
       if (url.includes("/api/v1/runtime/multi-runtime/profile")) {
         return new Response(JSON.stringify(gemma4RuntimeProfile), { status: 200 });
@@ -327,6 +339,113 @@ describe("VoiceStatusSidebar", () => {
     assert.ok(screen.getByText("Native audio"));
     assert.ok(screen.getByText("Semantyka śladu"));
     assert.ok(screen.getByText(/Image preprocessor:no-op/i));
+  });
+
+  it("shows model-not-loaded transition note in voice sidebar runtime block", async () => {
+    window.history.pushState({}, "", "/voice");
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v1/daemon/status")) {
+        return new Response(
+          JSON.stringify(
+            makeDaemonStatusPayload({
+              target_loaded: false,
+              effective_precision_mode: "unknown",
+              effective_config_reason: "model_not_loaded",
+            }),
+          ),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/v1/runtime/multi-runtime/profile")) {
+        return new Response(JSON.stringify(gemma4RuntimeProfile), { status: 200 });
+      }
+      if (url.includes("/api/v1/models/operations")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.modelOperations), {
+          status: 200,
+        });
+      }
+      if (url.endsWith("/api/v1/models")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.models), { status: 200 });
+      }
+      if (url.endsWith("/api/v1/system/llm-runtime/options")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.runtimeOptions), {
+          status: 200,
+        });
+      }
+      if (url.endsWith("/api/v1/system/llm-servers/active")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.activeServer), {
+          status: 200,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    };
+
+    await renderAndFlush(
+      <ToastProvider>
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
+      </ToastProvider>,
+    );
+
+    assert.ok(
+      document.body.textContent?.includes("Model niezaładowany")
+      || document.body.textContent?.includes("Model not loaded"),
+    );
+  });
+
+  it("hides model-not-loaded transition note when runtime reports loaded target", async () => {
+    window.history.pushState({}, "", "/voice");
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v1/daemon/status")) {
+        return new Response(
+          JSON.stringify(
+            makeDaemonStatusPayload({
+              target_loaded: true,
+              effective_precision_mode: "explicit_float16",
+              effective_config_reason: null,
+            }),
+          ),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/v1/runtime/multi-runtime/profile")) {
+        return new Response(JSON.stringify(gemma4RuntimeProfile), { status: 200 });
+      }
+      if (url.includes("/api/v1/models/operations")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.modelOperations), {
+          status: 200,
+        });
+      }
+      if (url.endsWith("/api/v1/models")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.models), { status: 200 });
+      }
+      if (url.endsWith("/api/v1/system/llm-runtime/options")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.runtimeOptions), {
+          status: 200,
+        });
+      }
+      if (url.endsWith("/api/v1/system/llm-servers/active")) {
+        return new Response(JSON.stringify(runtimeSelectionPayloads.activeServer), {
+          status: 200,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    };
+
+    await renderAndFlush(
+      <ToastProvider>
+        <VoiceStatusSidebar status={gemma4VoiceStatus as never} isDevMode={false} />
+      </ToastProvider>,
+    );
+
+    assert.equal(
+      Boolean(
+        document.body.textContent?.includes("Model niezaładowany")
+        || document.body.textContent?.includes("Model not loaded"),
+      ),
+      false,
+    );
   });
 
   it("normalizes generic backend apology in latest session response", async () => {

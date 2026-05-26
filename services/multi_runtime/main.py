@@ -43,7 +43,7 @@ from venom_core.services.multi_runtime_profile_service import (
 from venom_core.utils.voice_metadata import build_voice_session_insights
 
 from .audio import audio_from_bytes, audio_from_file, get_audio_duration
-from .components import build_component_snapshot
+from .components import build_component_snapshot_payload
 from .engine import (
     InferenceError,
     ModelLoadError,
@@ -651,14 +651,18 @@ async def status() -> StatusResponse:
             )
 
         status_val = "warming" if _warming else ("running" if is_loaded else "error")
-        component_snapshot = build_component_snapshot(daemon.status())
+        snapshot_payload = build_component_snapshot_payload(daemon.status())
         return StatusResponse(
             service="multi_runtime",
             status=status_val,
             model_loaded=is_loaded,
             model_info=model_info,
             timestamp_ms=int(time.time() * 1000),
-            component_snapshot=component_snapshot,
+            component_snapshot=list(snapshot_payload["components"]),
+            component_snapshot_timestamp_ms=int(
+                snapshot_payload["snapshot_timestamp_ms"]
+            ),
+            component_snapshot_version=str(snapshot_payload["snapshot_version"]),
         )
     except RuntimeError:
         return StatusResponse(
@@ -719,7 +723,7 @@ async def daemon_status() -> DaemonStatusResponse:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
 
     raw = daemon.status()
-    component_snapshot = build_component_snapshot(raw)
+    snapshot_payload = build_component_snapshot_payload(raw)
     return DaemonStatusResponse(
         target_model=raw["target_model"],
         assistant_model=raw["assistant_model"],
@@ -748,7 +752,9 @@ async def daemon_status() -> DaemonStatusResponse:
         pending_reload=raw["pending_reload"],
         reload_reason=raw["reload_reason"],
         supports_image_input=bool(raw.get("supports_image_input", True)),
-        component_snapshot=component_snapshot,
+        component_snapshot=list(snapshot_payload["components"]),
+        component_snapshot_timestamp_ms=int(snapshot_payload["snapshot_timestamp_ms"]),
+        component_snapshot_version=str(snapshot_payload["snapshot_version"]),
     )
 
 
@@ -760,10 +766,11 @@ async def components() -> ComponentListResponse:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
 
     raw = daemon.status()
+    snapshot_payload = build_component_snapshot_payload(raw)
     return ComponentListResponse(
         runtime_id="multi_runtime",
         timestamp_ms=int(time.time() * 1000),
-        components=build_component_snapshot(raw),
+        components=list(snapshot_payload["components"]),
     )
 
 
@@ -1226,6 +1233,12 @@ async def respond(request: Request) -> RespondResponse:
         economy_mode_activated=pipeline_result.diagnostics.economy_mode_activated,
         degradation_reasons=pipeline_result.diagnostics.degradation_reasons,
         component_snapshot=pipeline_result.diagnostics.component_snapshot,
+        component_snapshot_timestamp_ms=getattr(
+            pipeline_result.diagnostics, "component_snapshot_timestamp_ms", None
+        ),
+        component_snapshot_version=getattr(
+            pipeline_result.diagnostics, "component_snapshot_version", None
+        ),
         audio_output_bytes=pipeline_result.audio_bytes,
         audio_output_sample_rate=pipeline_result.audio_sample_rate,
         active_precision=active_precision,

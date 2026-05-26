@@ -68,6 +68,8 @@ export type AudioStatus = {
   tts_model_path?: string | null;
   tts_fallback?: boolean | null;
   dependencies?: Record<string, boolean>;
+  live_component_snapshot_version?: string | null;
+  live_component_snapshot_timestamp_ms?: number | null;
   latest_voice_session?: VoiceSessionDiagnostics | null;
   message?: string;
   runtime_snapshot?: {
@@ -220,6 +222,8 @@ type VoiceSessionDiagnostics = {
     backend?: string | null;
     available?: boolean | null;
   }> | null;
+  component_snapshot_timestamp_ms?: number | null;
+  component_snapshot_version?: string | null;
   audio_runtime_provider?: string | null;
   audio_runtime_model?: string | null;
   audio_input_status?: string | null;
@@ -3165,6 +3169,19 @@ function VoiceCommandCenterPanel({
                 viewState.effectiveAudioStatus.latest_voice_session.execution_trace_annotations ?? []
               }
               componentSnapshot={viewState.effectiveAudioStatus.latest_voice_session.component_snapshot ?? []}
+              componentSnapshotCaption={t("voice.controls.previousSession")}
+              componentSnapshotVersion={
+                viewState.effectiveAudioStatus.latest_voice_session.component_snapshot_version ?? null
+              }
+              componentSnapshotTimestampMs={
+                viewState.effectiveAudioStatus.latest_voice_session.component_snapshot_timestamp_ms ?? null
+              }
+              liveComponentSnapshotVersion={
+                viewState.effectiveAudioStatus.live_component_snapshot_version ?? null
+              }
+              liveComponentSnapshotTimestampMs={
+                viewState.effectiveAudioStatus.live_component_snapshot_timestamp_ms ?? null
+              }
               degradationReasons={viewState.effectiveAudioStatus.latest_voice_session.degradation_reasons ?? []}
               className="border-white/10 bg-white/[0.02]"
             />

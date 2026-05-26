@@ -18,6 +18,7 @@ help:
 	@echo "  make test                     - backend testy (clean artifacts)"
 	@echo "  make test-data                - backend testy (preserve artifacts)"
 	@echo "  make test-web-unit            - frontend unit"
+	@echo "  make test-web-voice-runtime-contracts - frontend voice runtime contracts (246C)"
 	@echo "  make test-web-e2e             - frontend e2e"
 	@echo "  make test-web-turbo-smoke     - smoke dev:turbo"
 	@echo "  make test-web-turbo-smoke-clean - smoke dev:turbo + clean .next"

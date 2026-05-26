@@ -182,6 +182,8 @@ function makeStatus(overrides: Partial<DaemonStatus> = {}): DaemonStatus {
         last_error: null,
       },
     ],
+    component_snapshot_timestamp_ms: 1_746_050_336_000,
+    component_snapshot_version: "f5a5c0de1234abcd",
     ...overrides,
   };
 }
@@ -622,6 +624,35 @@ describe("Gemma4RuntimeControl — thinking toggle", () => {
     assert.ok(sw);
     assert.equal(sw.getAttribute("aria-checked"), "true");
   });
+
+  it("shows boolean Thinking state label instead of apply-mode token", () => {
+    renderControl(makeState({
+      status: makeStatus({
+        params: {
+          max_new_tokens: 128,
+          enable_thinking: false,
+          image_token_budget: 280,
+          reasoning_summary_enabled: false,
+          emotion_detection_enabled: false,
+          emotion_response_style_enabled: false,
+          cache_implementation: null,
+          execution_mode: "balanced",
+          image_strategy: "vlm_only",
+          retrieval_mode: "off",
+          audio_output_mode: "off",
+          assistant_mode: "off",
+          economy_mode: "off",
+        },
+      }),
+    }));
+
+    const thinkingLabel = screen.getByText("Thinking");
+    const row = thinkingLabel.closest("div");
+    assert.ok(row);
+    assert.ok(row.textContent?.includes("Nie"));
+    assert.ok(/Na żywo|Live/i.test(row.textContent ?? ""));
+    assert.equal(row.textContent?.includes("live"), false);
+  });
 });
 
 describe("Gemma4RuntimeControl — active model detection", () => {
@@ -630,5 +661,74 @@ describe("Gemma4RuntimeControl — active model detection", () => {
       status: makeStatus({ target_model: "google/gemma-4-E4B-it" }),
     }));
     assert.ok(screen.getByText("google/gemma-4-E4B-it"));
+  });
+});
+
+describe("Gemma4RuntimeControl — transitional precision/runtime semantics", () => {
+  it("shows model-not-loaded transition note for active/staged runtime with unknown effective precision", async () => {
+    renderControl(makeState({
+      status: makeStatus({
+        target_loaded: false,
+        effective_precision_mode: "unknown",
+        effective_config_reason: "model_not_loaded",
+        active_runtime_config: {
+          ...makeStatus().params,
+          precision: "float16",
+          quantization_backend: null,
+          device_target: "cuda",
+        },
+        staged_runtime_config: {
+          ...makeStatus().params,
+          precision: "float16",
+          quantization_backend: null,
+          device_target: "cuda",
+        },
+      }),
+    }));
+
+    await screen.findByTestId("runtime-profile-inline");
+    assert.ok(
+      document.body.textContent?.includes("Model niezaładowany")
+      || document.body.textContent?.includes("Model not loaded"),
+    );
+  });
+
+  it("does not show model-not-loaded transition note when model is loaded with explicit precision", () => {
+    renderControl(makeState({
+      status: makeStatus({
+        target_loaded: true,
+        effective_precision_mode: "explicit_float16",
+        effective_config_reason: null,
+        active_runtime_config: {
+          ...makeStatus().params,
+          precision: "float16",
+          quantization_backend: null,
+          device_target: "cuda",
+        },
+        staged_runtime_config: {
+          ...makeStatus().params,
+          precision: "float16",
+          quantization_backend: null,
+          device_target: "cuda",
+        },
+      }),
+    }));
+
+    assert.equal(
+      Boolean(
+        document.body.textContent?.includes("Model niezaładowany")
+        || document.body.textContent?.includes("Model not loaded"),
+      ),
+      false,
+    );
+  });
+
+  it("renders live component snapshot version and timestamp", () => {
+    renderControl(makeState());
+    assert.ok(document.body.textContent?.includes("f5a5c0de1234abcd"));
+    assert.ok(
+      document.body.textContent?.includes("Wersja snapshotu")
+      || document.body.textContent?.includes("Snapshot version"),
+    );
   });
 });

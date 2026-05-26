@@ -545,6 +545,10 @@ class MultiRuntimeDaemon:
         )
         self._target_engine.load()
         self._active_runtime_config = DaemonParams(**self._params.__dict__)
+        # Target model was successfully loaded with current staged params.
+        # Clear stale soft-reload markers so status does not report a pending
+        # reload after a completed load/reload cycle.
+        self._reload_reason = None
         self._quantization_effective, self._quantization_effective_reason = (
             self._compute_quantization_effectiveness(
                 active=self._active_runtime_config,

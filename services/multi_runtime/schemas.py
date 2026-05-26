@@ -187,6 +187,14 @@ class RespondResponse(BaseModel):
         default_factory=list,
         description="Runtime component snapshot captured during execution",
     )
+    component_snapshot_timestamp_ms: Optional[int] = Field(
+        None,
+        description="Timestamp (ms) for the component snapshot used in this response",
+    )
+    component_snapshot_version: Optional[str] = Field(
+        None,
+        description="Deterministic fingerprint of component snapshot contents",
+    )
     audio_output_bytes: Optional[str] = Field(
         None,
         description="Base64-encoded WAV audio synthesis output (present when TTS succeeded)",
@@ -246,6 +254,14 @@ class StatusResponse(BaseModel):
     component_snapshot: list[dict[str, object]] = Field(
         default_factory=list,
         description="Current runtime component snapshot",
+    )
+    component_snapshot_timestamp_ms: Optional[int] = Field(
+        None,
+        description="Timestamp (ms) for current component snapshot",
+    )
+    component_snapshot_version: Optional[str] = Field(
+        None,
+        description="Deterministic fingerprint of current component snapshot",
     )
 
 
@@ -345,6 +361,14 @@ class DaemonStatusResponse(BaseModel):
     component_snapshot: list[dict[str, object]] = Field(
         default_factory=list,
         description="Current runtime component snapshot",
+    )
+    component_snapshot_timestamp_ms: Optional[int] = Field(
+        None,
+        description="Timestamp (ms) for current component snapshot",
+    )
+    component_snapshot_version: Optional[str] = Field(
+        None,
+        description="Deterministic fingerprint of current component snapshot",
     )
 
 

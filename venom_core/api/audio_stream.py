@@ -215,6 +215,10 @@ def _build_voice_session_record(
         "economy_mode_activated": metadata.get("economy_mode_activated"),
         "degradation_reasons": metadata.get("degradation_reasons") or [],
         "component_snapshot": metadata.get("component_snapshot") or [],
+        "component_snapshot_timestamp_ms": metadata.get(
+            "component_snapshot_timestamp_ms"
+        ),
+        "component_snapshot_version": metadata.get("component_snapshot_version"),
         "execution_context": metadata.get("execution_context"),
         "history_scope": metadata.get("history_scope"),
     }
@@ -431,6 +435,10 @@ class AudioStreamHandler:
         self.vad_threshold = vad_threshold
         self.silence_duration = silence_duration
         self.active_connections: Dict[int, AudioStreamHandler._ConnectionState] = {}
+        self._daemon_snapshot_meta_cache: dict[str, Any] = {
+            "captured_at": 0.0,
+            "payload": {},
+        }
         logger.info("AudioStreamHandler zainicjalizowany")
 
     class _ConnectionState(TypedDict):
@@ -822,6 +830,7 @@ class AudioStreamHandler:
         endpoint = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
         log_path = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_LOG_PATH", ""), "")
         pid_path = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_PID_PATH", ""), "")
+        daemon_snapshot_meta = self._multi_runtime_daemon_snapshot_meta()
         return {
             "audio_runtime_provider": MULTI_RUNTIME_ID,
             "audio_runtime_model": _coerce_str(
@@ -848,7 +857,51 @@ class AudioStreamHandler:
             "assistant_models": multi_runtime_available_models(role="assistant"),
             "audio_runtime_log_path": log_path,
             "audio_runtime_pid_path": pid_path,
+            **daemon_snapshot_meta,
         }
+
+    def _multi_runtime_daemon_snapshot_meta(self) -> dict[str, Any]:
+        origin = self._multi_runtime_service_origin()
+        if not origin:
+            return {}
+
+        now = time.monotonic()
+        cached_at = float(self._daemon_snapshot_meta_cache.get("captured_at") or 0.0)
+        cached_payload = self._daemon_snapshot_meta_cache.get("payload")
+        if now - cached_at <= 3.0 and isinstance(cached_payload, dict):
+            return dict(cached_payload)
+
+        status_url = f"{origin}/v1/daemon/status"
+        payload: dict[str, Any] = {}
+        try:
+            with httpx.Client(timeout=2.0) as client:
+                response = client.get(status_url)
+                response.raise_for_status()
+                data = response.json()
+            if isinstance(data, dict):
+                version = _coerce_str(data.get("component_snapshot_version"), "")
+                timestamp_ms = _coerce_int(
+                    data.get("component_snapshot_timestamp_ms"),
+                    0,
+                )
+                payload = {
+                    "live_component_snapshot_version": version or None,
+                    "live_component_snapshot_timestamp_ms": (
+                        timestamp_ms if timestamp_ms > 0 else None
+                    ),
+                }
+        except Exception as exc:
+            logger.debug(
+                "Nie udało się pobrać live component snapshot metadata z %s: %s",
+                status_url,
+                exc,
+            )
+
+        self._daemon_snapshot_meta_cache = {
+            "captured_at": now,
+            "payload": payload,
+        }
+        return dict(payload)
 
     def _multi_runtime_service_origin(self) -> str:
         endpoint = _coerce_str(_multi_runtime_setting("GEMMA4_AUDIO_ENDPOINT", ""), "")
@@ -1345,6 +1398,12 @@ class AudioStreamHandler:
                     or [],
                     "component_snapshot": runtime_result.get("component_snapshot")
                     or [],
+                    "component_snapshot_timestamp_ms": runtime_result.get(
+                        "component_snapshot_timestamp_ms"
+                    ),
+                    "component_snapshot_version": runtime_result.get(
+                        "component_snapshot_version"
+                    ),
                     **insights,
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
@@ -1482,6 +1541,12 @@ class AudioStreamHandler:
             "economy_mode_activated": runtime_result.get("economy_mode_activated"),
             "degradation_reasons": runtime_result.get("degradation_reasons") or [],
             "component_snapshot": runtime_result.get("component_snapshot") or [],
+            "component_snapshot_timestamp_ms": runtime_result.get(
+                "component_snapshot_timestamp_ms"
+            ),
+            "component_snapshot_version": runtime_result.get(
+                "component_snapshot_version"
+            ),
             **_build_voice_session_insights_payload(
                 transcript=transcription,
                 response=response_text,

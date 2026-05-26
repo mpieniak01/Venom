@@ -39,11 +39,25 @@ type RuntimeDiagnosticsPanelProps = Readonly<{
   trace?: string[] | null;
   traceAnnotations?: RuntimeTraceAnnotationItem[] | null;
   componentSnapshot?: RuntimeComponentSnapshotItem[] | null;
+  componentSnapshotCaption?: string;
+  componentSnapshotVersion?: string | null;
+  componentSnapshotTimestampMs?: number | null;
+  liveComponentSnapshotVersion?: string | null;
+  liveComponentSnapshotTimestampMs?: number | null;
   degradationReasons?: string[] | null;
   emptyStateTitle?: string;
   emptyStateDescription?: string;
   className?: string;
 }>;
+
+function formatSnapshotTimestamp(timestampMs?: number | null): string | null {
+  if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs) || timestampMs <= 0) {
+    return null;
+  }
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString();
+}
 
 function toneClass(tone?: RuntimeSummaryItem["tone"]): string {
   switch (tone) {
@@ -93,6 +107,11 @@ export function RuntimeDiagnosticsPanel({
   trace,
   traceAnnotations,
   componentSnapshot,
+  componentSnapshotCaption,
+  componentSnapshotVersion,
+  componentSnapshotTimestampMs,
+  liveComponentSnapshotVersion,
+  liveComponentSnapshotTimestampMs,
   degradationReasons,
   emptyStateTitle,
   emptyStateDescription,
@@ -106,6 +125,11 @@ export function RuntimeDiagnosticsPanel({
   const hasTrace = Boolean(trace && trace.length > 0);
   const hasTraceAnnotations = Boolean(traceAnnotations && traceAnnotations.length > 0);
   const hasComponents = Boolean(componentSnapshot && componentSnapshot.length > 0);
+  const snapshotTimestampLabel = formatSnapshotTimestamp(componentSnapshotTimestampMs);
+  const liveSnapshotTimestampLabel = formatSnapshotTimestamp(liveComponentSnapshotTimestampMs);
+  const hasSnapshotParity = Boolean(componentSnapshotVersion && liveComponentSnapshotVersion);
+  const snapshotParityMatches = hasSnapshotParity
+    && String(componentSnapshotVersion) === String(liveComponentSnapshotVersion);
   const hasDegradations = Boolean(degradationReasons && degradationReasons.length > 0);
   const hasAny = hasSummary || hasTrace || hasTraceAnnotations || hasComponents || hasDegradations;
 
@@ -174,6 +198,34 @@ export function RuntimeDiagnosticsPanel({
           {hasComponents && (
             <div className="space-y-2">
               <p className="text-caption">{t("runtime.diagnostics.runtimeComponents")}</p>
+              {componentSnapshotCaption && (
+                <p className="text-[11px] text-zinc-500">{componentSnapshotCaption}</p>
+              )}
+              {(componentSnapshotVersion || snapshotTimestampLabel) && (
+                <p className="text-[11px] text-zinc-500">
+                  {componentSnapshotVersion ? `${t("runtime.diagnostics.snapshotVersion")} ${componentSnapshotVersion}` : ""}
+                  {componentSnapshotVersion && snapshotTimestampLabel ? " · " : ""}
+                  {snapshotTimestampLabel ? `${t("runtime.diagnostics.snapshotCapturedAt")} ${snapshotTimestampLabel}` : ""}
+                </p>
+              )}
+              {(liveComponentSnapshotVersion || liveSnapshotTimestampLabel) && (
+                <p className="text-[11px] text-zinc-500">
+                  {liveComponentSnapshotVersion
+                    ? `${t("runtime.diagnostics.snapshotLiveVersion")} ${liveComponentSnapshotVersion}`
+                    : ""}
+                  {liveComponentSnapshotVersion && liveSnapshotTimestampLabel ? " · " : ""}
+                  {liveSnapshotTimestampLabel
+                    ? `${t("runtime.diagnostics.snapshotCapturedAt")} ${liveSnapshotTimestampLabel}`
+                    : ""}
+                </p>
+              )}
+              {hasSnapshotParity && (
+                <Badge tone={snapshotParityMatches ? "success" : "warning"}>
+                  {snapshotParityMatches
+                    ? t("runtime.diagnostics.snapshotParityMatch")
+                    : t("runtime.diagnostics.snapshotParityMismatch")}
+                </Badge>
+              )}
               <div className="grid gap-2 xl:grid-cols-2">
                 {componentSnapshot?.map((component) => {
                   const componentHealth = healthTone(component.health);

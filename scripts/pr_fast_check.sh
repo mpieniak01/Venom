@@ -110,6 +110,7 @@ fi
 if [[ "$frontend_changed" -eq 1 ]]; then
   echo "▶ Frontend fast lane: lint + ci-lite unit tests"
   npm --prefix web-next run lint
+  npm --prefix web-next run test:unit:voice-runtime-contracts
   npm --prefix web-next run test:unit:ci-lite
 fi
 

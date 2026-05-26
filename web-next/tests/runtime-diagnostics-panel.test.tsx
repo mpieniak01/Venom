@@ -46,6 +46,36 @@ describe("RuntimeDiagnosticsPanel", () => {
     assert.ok(screen.getByText("retrieval fallback"));
   });
 
+  it("renders component snapshot caption when provided", () => {
+    render(
+      <RuntimeDiagnosticsPanel
+        title="Runtime diagnostics"
+        componentSnapshot={[
+          {
+            component_id: "main_model",
+            component_type: "model",
+            enabled: true,
+            available: true,
+            backend: "cuda",
+            model_id: "google/gemma-4-E2B-it",
+            device_target: "cuda",
+            health: "ok",
+            last_error: null,
+          },
+        ]}
+        componentSnapshotCaption="Ostatnia sesja"
+        componentSnapshotVersion="deadbeef12345678"
+        componentSnapshotTimestampMs={1_746_050_336_000}
+        liveComponentSnapshotVersion="deadbeef12345678"
+        liveComponentSnapshotTimestampMs={1_746_050_337_000}
+      />,
+    );
+
+    assert.ok(screen.getByText("Ostatnia sesja"));
+    assert.ok(screen.getAllByText(/deadbeef12345678/i).length >= 2);
+    assert.ok(screen.getByText(/zgodny z live|matches live|entspricht live/i));
+  });
+
   it("renders annotated audio-only trace semantics", () => {
     render(
       <RuntimeDiagnosticsPanel

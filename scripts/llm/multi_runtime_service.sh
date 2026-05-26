@@ -15,6 +15,23 @@ LOG_FILE="$LOG_DIR/multi_runtime_service.log"
 ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
 ENV_FILE="$(env_contract_resolve_file "$ENV_FILE_RAW" "$ROOT_DIR")"
 
+# Optional explicit paths from env contract. Keep defaults aligned with
+# multi_runtime naming, but allow overriding from .env.dev.
+PID_FILE_RAW="$(env_contract_get GEMMA4_AUDIO_PID_PATH "$PID_FILE" "$ENV_FILE")"
+LOG_FILE_RAW="$(env_contract_get GEMMA4_AUDIO_LOG_PATH "$LOG_FILE" "$ENV_FILE")"
+if [[ "$PID_FILE_RAW" = /* ]]; then
+  PID_FILE="$PID_FILE_RAW"
+else
+  PID_FILE="$ROOT_DIR/$PID_FILE_RAW"
+fi
+if [[ "$LOG_FILE_RAW" = /* ]]; then
+  LOG_FILE="$LOG_FILE_RAW"
+else
+  LOG_FILE="$ROOT_DIR/$LOG_FILE_RAW"
+fi
+RUNTIME_DIR="$(dirname "$PID_FILE")"
+LOG_DIR="$(dirname "$LOG_FILE")"
+
 # Configuration from env
 MODEL_ID="$(env_contract_get GEMMA4_AUDIO_MODEL_ID "google/gemma-4-E2B-it" "$ENV_FILE")"
 HOST="$(env_contract_get GEMMA4_AUDIO_HOST "127.0.0.1" "$ENV_FILE")"

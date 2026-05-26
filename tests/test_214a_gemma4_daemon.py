@@ -104,6 +104,36 @@ class TestTargetModelSelection:
         assert load_calls == ["google/gemma-4-E2B-it"]
         assert daemon.is_ready()
 
+    def test_load_target_clears_stale_reload_reason(self, monkeypatch):
+        daemon = MultiRuntimeDaemon(cache_dir="models_cache/hf")
+        daemon._reload_reason = "device_target changed to 'cuda'"  # noqa: SLF001
+
+        class FakeEngine:
+            model_id = "google/gemma-4-E2B-it"
+            model_class_name = None
+            default_max_new_tokens = 128
+
+            def load(self):
+                return None
+
+            def is_loaded(self):
+                return True
+
+            def unload(self):
+                return None
+
+        monkeypatch.setattr(
+            "services.multi_runtime.engine.MultiRuntimeEngine",
+            lambda **_: FakeEngine(),
+        )
+
+        daemon.load_target()
+
+        st = daemon.status()
+        assert daemon._reload_reason is None  # noqa: SLF001
+        assert st["pending_reload"] is False
+        assert st["reload_reason"] is None
+
     def test_status_reports_target_model(self):
         daemon = _make_daemon()
         st = daemon.status()

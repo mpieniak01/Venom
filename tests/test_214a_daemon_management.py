@@ -108,6 +108,16 @@ def test_daemon_status_includes_vram_field():
     assert data["vram"]["backend"] in ("cpu", "cuda")
 
 
+def test_daemon_status_includes_component_snapshot_metadata():
+    stub = _daemon_stub()
+    client = _client_with(stub)
+    data = client.get("/v1/daemon/status").json()
+    assert isinstance(data.get("component_snapshot_version"), str)
+    assert data["component_snapshot_version"]
+    assert isinstance(data.get("component_snapshot_timestamp_ms"), int)
+    assert data["component_snapshot_timestamp_ms"] > 0
+
+
 def test_daemon_status_no_daemon_returns_503():
     runtime_main._daemon = None  # noqa: SLF001
     runtime_main._warming = False

@@ -192,6 +192,48 @@ def test_get_status_reports_loaded_backends_and_dependencies(monkeypatch):
     }
 
 
+def test_get_status_includes_live_component_snapshot_metadata(monkeypatch):
+    """audio/status should expose live daemon snapshot metadata for voice UI parity checks."""
+    handler = _make_handler()
+    monkeypatch.setattr(
+        audio_stream_mod.SETTINGS,
+        "GEMMA4_AUDIO_ENDPOINT",
+        "http://localhost:8014/v1",
+        raising=False,
+    )
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "component_snapshot_version": "f5a5c0de1234abcd",
+                "component_snapshot_timestamp_ms": 1_746_050_336_000,
+            }
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def get(self, url):
+            assert url.endswith("/v1/daemon/status")
+            return _Response()
+
+    monkeypatch.setattr(audio_stream_mod.httpx, "Client", _Client)
+
+    status = handler.get_status(operator_agent=object())
+
+    assert status["live_component_snapshot_version"] == "f5a5c0de1234abcd"
+    assert status["live_component_snapshot_timestamp_ms"] == 1_746_050_336_000
+
+
 def test_coerce_str_returns_default_for_non_string_or_blank():
     assert audio_stream_mod._coerce_str(None, "fallback") == "fallback"
     assert audio_stream_mod._coerce_str("   ", "fallback") == "fallback"

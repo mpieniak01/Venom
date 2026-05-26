@@ -573,6 +573,11 @@ function RuntimeProfileControls({
     : "—";
   const runtimeConfigDrift = hasRuntimeConfigDrift(stagedRuntimeLine, activeRuntimeLine);
   const quantizationInactiveReason = getQuantizationInactiveReason(daemonStatus);
+  const modelNotLoadedTransition = daemonStatus?.target_loaded === false
+    && (
+      daemonStatus?.effective_precision_mode === "unknown"
+      || daemonStatus?.effective_config_reason === "model_not_loaded"
+    );
 
   const handleApplyPolicy = async () => {
     await applyUpdate({
@@ -774,6 +779,11 @@ function RuntimeProfileControls({
               {t("runtime.profile.quantizationEffectiveNo")}: {quantizationInactiveReason}
             </p>
           )}
+          {modelNotLoadedTransition && (
+            <p className="text-[10px] text-amber-300">
+              {t("runtime.profile.modelNotLoadedTransition")}
+            </p>
+          )}
         </div>
         {daemonStatus?.vram_interpretation_hint && (
           <p className="text-[10px] text-zinc-500">
@@ -885,6 +895,15 @@ function getQuantizationInactiveReason(
 ): string | null {
   if (daemonStatus?.quantization_effective !== false) return null;
   return daemonStatus.quantization_effective_reason ?? null;
+}
+
+function formatSnapshotTimestamp(timestampMs: number | null | undefined): string {
+  if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs) || timestampMs <= 0) {
+    return "—";
+  }
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString();
 }
 
 function RuntimeProfileRow({
@@ -1386,6 +1405,8 @@ function Gemma4RuntimeControlPanel({
               {status && (
                 <ThinkingStatusLabel localThinking={localThinking} enabled={status.params.enable_thinking} />
               )}
+              <span className="text-[10px] text-zinc-500">{t("runtime.profile.applyModeLabel")}:</span>
+              <ProfileModeBadge mode="live" />
             </div>
           </div>
           <div className="border-t border-white/[0.05]" />
@@ -1560,6 +1581,17 @@ function Gemma4RuntimeControlPanel({
           <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
             {t("runtime.profile.componentSnapshot")}
           </p>
+          {(status.component_snapshot_version || status.component_snapshot_timestamp_ms) && (
+            <p className="mb-2 text-[10px] text-zinc-500">
+              {status.component_snapshot_version
+                ? `${t("runtime.diagnostics.snapshotVersion")} ${status.component_snapshot_version}`
+                : ""}
+              {status.component_snapshot_version && status.component_snapshot_timestamp_ms ? " · " : ""}
+              {status.component_snapshot_timestamp_ms
+                ? `${t("runtime.diagnostics.snapshotCapturedAt")} ${formatSnapshotTimestamp(status.component_snapshot_timestamp_ms)}`
+                : ""}
+            </p>
+          )}
           <div className="space-y-1.5">
             {status.component_snapshot.slice(0, 7).map((component) => (
               <div
@@ -1591,10 +1623,8 @@ function ThinkingStatusLabel({
   enabled,
 }: Readonly<{ localThinking: boolean | null; enabled: boolean }>) {
   const t = useTranslation();
-  if (localThinking !== null) {
-    return <span className="text-[10px] text-zinc-500">{t("voice.daemon.signalLive")}</span>;
-  }
-  const label = enabled ? t("common.yes") : t("common.no");
+  const effectiveEnabled = localThinking ?? enabled;
+  const label = effectiveEnabled ? t("common.yes") : t("common.no");
   return <span className="text-[10px] text-zinc-500">{label}</span>;
 }
 

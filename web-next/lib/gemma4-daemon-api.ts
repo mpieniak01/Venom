@@ -68,6 +68,8 @@ export type DaemonStatus = {
   reload_reason: string | null;
   supports_image_input: boolean;
   component_snapshot: RuntimeComponentSnapshotItem[];
+  component_snapshot_timestamp_ms?: number | null;
+  component_snapshot_version?: string | null;
 };
 
 export type ReloadSignal = "none" | "soft_reload" | "hard_restart";
@@ -124,6 +126,8 @@ export type DaemonRespondResponse = {
   economy_mode_activated: boolean;
   degradation_reasons: string[];
   component_snapshot: RuntimeComponentSnapshotItem[];
+  component_snapshot_timestamp_ms?: number | null;
+  component_snapshot_version?: string | null;
   audio_output_bytes?: string | null;
   audio_output_sample_rate?: number | null;
   active_precision?: string | null;

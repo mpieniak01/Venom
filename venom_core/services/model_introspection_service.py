@@ -382,6 +382,16 @@ def _resolve_native_statuses(
     return package_pressure, layer_status, probe_status, reuse_status
 
 
+def _public_source_path(path: str) -> str:
+    path_obj = Path(path)
+    parts = path_obj.parts
+    if len(parts) >= 2:
+        return str(Path(parts[-2]) / parts[-1])
+    if parts:
+        return parts[-1]
+    return "config.json"
+
+
 def _normalize_layer_types(
     layer_types: list[str] | tuple[str, ...] | None,
     layer_count: int,
@@ -436,6 +446,7 @@ def _build_native_architecture_graph_snapshot(
     runtime_manifest = _read_json_file(architecture_source["manifest_path"])
     base_model = str(runtime_manifest.get("base_model") or runtime["model"])
     runtime_path = str(architecture_source["config_path"])
+    runtime_path_public = _public_source_path(runtime_path)
 
     nodes: list[dict[str, Any]] = [
         {
@@ -462,7 +473,7 @@ def _build_native_architecture_graph_snapshot(
                 "architecture": architecture_name,
                 "model_type": model_type,
                 "hidden_size": hidden_size,
-                "source_path": runtime_path,
+                "source_path": runtime_path_public,
             },
         },
     ]
@@ -487,7 +498,7 @@ def _build_native_architecture_graph_snapshot(
                     "key_value_heads": kv_head_count,
                     "head_dim": head_dim,
                     "sliding_window": sliding_window,
-                    "source_path": runtime_path,
+                    "source_path": runtime_path_public,
                 },
             }
         )
@@ -503,7 +514,23 @@ def _build_native_architecture_graph_snapshot(
                 "group": "exit",
                 "metadata": {
                     "analysis_mode": "native",
-                    "source_path": runtime_path,
+                    "source_path": runtime_path_public,
+                },
+            },
+            {
+                "id": "mlp",
+                "label": "Response synthesis",
+                "kind": "mlp",
+                "status": layer_status,
+                "layer_index": layer_count,
+                "role": "mlp",
+                "group": "synthesis",
+                "metadata": {
+                    "architecture": architecture_name,
+                    "model_type": model_type,
+                    "intermediate_size": intermediate_size,
+                    "head_dim": head_dim,
+                    "source_path": runtime_path_public,
                 },
             },
             {
@@ -517,7 +544,7 @@ def _build_native_architecture_graph_snapshot(
                 "metadata": {
                     "probe_status": probe_health.get("status"),
                     "probe_enabled": bool(probe_health.get("enabled")),
-                    "source_path": runtime_path,
+                    "source_path": runtime_path_public,
                 },
             },
             {
@@ -531,7 +558,7 @@ def _build_native_architecture_graph_snapshot(
                 "metadata": {
                     "brain_available": bool(reuse.get("brain", {}).get("available")),
                     "diagnostic_paths": len(reuse.get("diagnostics") or []),
-                    "source_path": runtime_path,
+                    "source_path": runtime_path_public,
                 },
             },
         ]
@@ -578,6 +605,14 @@ def _build_native_architecture_graph_snapshot(
             },
             {
                 "from": f"layer_{layer_count}",
+                "to": "mlp",
+                "label": "synthesis path",
+                "kind": "mlp",
+                "direction": "forward",
+                "weight": 0.9,
+            },
+            {
+                "from": "mlp",
                 "to": "residual",
                 "label": "residual path",
                 "kind": "residual",
@@ -621,7 +656,7 @@ def _build_native_architecture_graph_snapshot(
             "generated_at": generated_at,
             "fidelity": "native",
             "source": runtime_source,
-            "source_path": runtime_path,
+            "source_path": runtime_path_public,
             "base_model": base_model,
         },
     }

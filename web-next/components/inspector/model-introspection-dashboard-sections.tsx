@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
@@ -3012,62 +3012,47 @@ function getArchitectureGraphLayoutOptions(
   };
 }
 
-export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
-  const {
-    snapshot,
-    readiness,
-    layerInternalsPayload,
-    title,
-    description,
-    typeHintText,
-  } = props;
-  const t = useTranslation();
-  const graph = getArchitectureGraph(snapshot);
-  const nodes = useMemo(() => getArchitectureGraphNodes(snapshot), [snapshot]);
-  const edges = useMemo(() => getArchitectureGraphEdges(snapshot), [snapshot]);
-  const summary = useMemo(() => getArchitectureGraphSummary(snapshot), [snapshot]);
-  const overview = useMemo(() => getArchitectureGraphOverview(snapshot), [snapshot]);
-  const transitions = useMemo(() => getArchitectureGraphTransitions(snapshot), [snapshot]);
-  const layerInternals = useMemo(
-    () => getAnalysisLayerInternals(layerInternalsPayload),
-    [layerInternalsPayload],
-  );
-  const activationPath = useMemo(
-    () => getAnalysisActivationPath(layerInternalsPayload),
-    [layerInternalsPayload],
-  );
-  const mlpActivation = useMemo(
-    () => getAnalysisMlpActivation(layerInternalsPayload),
-    [layerInternalsPayload],
-  );
-  const architectureBlocks = useMemo(
-    () => layerInternalsPayload?.architecture_blocks ?? [],
-    [layerInternalsPayload],
-  );
-  const progressCheckpoints = useMemo(
-    () => getArchitectureGraphProgressCheckpoints(snapshot, transitions, summary, overview),
-    [overview, snapshot, summary, transitions],
-  );
-  const outcome = useMemo(
-    () => getArchitectureGraphOutcome(readiness, overview, summary, transitions),
-    [readiness, overview, summary, transitions],
-  );
-  const readinessTone = getReadinessTone(readiness.status);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(nodes[0]?.id ?? null);
+function useArchitectureGraphSelectionState({
+  nodes,
+  transitions,
+  layerInternals,
+  activationPath,
+}: {
+  nodes: ArchitectureGraphNode[];
+  transitions: ArchitectureGraphTransition[];
+  layerInternals: ReturnType<typeof getAnalysisLayerInternals>;
+  activationPath: ReturnType<typeof getAnalysisActivationPath> | null;
+}) {
+  const [selectedNodeIdState, setSelectedNodeId] = useState<string | null>(nodes[0]?.id ?? null);
   const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(
     transitions[0]?.id ?? null,
   );
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
+  const [selectedLayerIdState, setSelectedLayerId] = useState<string | null>(
     layerInternals[0]?.id ?? null,
   );
-  const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
-    [nodes, selectedNodeId],
-  );
-  const selectedTransition = useMemo(
-    () => transitions.find((transition) => transition.id === selectedTransitionId) ?? null,
-    [selectedTransitionId, transitions],
-  );
+
+  const selectedNodeId = useMemo(() => {
+    if (selectedNodeIdState && nodes.some((node) => node.id === selectedNodeIdState)) {
+      return selectedNodeIdState;
+    }
+    return nodes[0]?.id ?? null;
+  }, [nodes, selectedNodeIdState]);
+  const selectedTransitionIdResolved = useMemo(() => {
+    if (
+      selectedTransitionId &&
+      transitions.some((transition) => transition.id === selectedTransitionId)
+    ) {
+      return selectedTransitionId;
+    }
+    return transitions[0]?.id ?? null;
+  }, [selectedTransitionId, transitions]);
+  const selectedLayerId = useMemo(() => {
+    if (selectedLayerIdState && layerInternals.some((layer) => layer.id === selectedLayerIdState)) {
+      return selectedLayerIdState;
+    }
+    return layerInternals[0]?.id ?? null;
+  }, [layerInternals, selectedLayerIdState]);
+
   const selectedLayer = useMemo(
     () => layerInternals.find((layer) => layer.id === selectedLayerId) ?? null,
     [layerInternals, selectedLayerId],
@@ -3082,6 +3067,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
       null
     );
   }, [activationPath, selectedLayer]);
+
   const selectedActivationTransition = useMemo(() => {
     if (!activationPath) {
       return null;
@@ -3092,50 +3078,32 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
       ) ?? activationPath.transitions[0] ?? null
     );
   }, [activationPath, selectedActivationLayer]);
-  const selectedDominantSignals = useMemo(
-    () => getArchitectureLayerDominantSignals(selectedLayer),
-    [selectedLayer],
-  );
-  const selectedNodeDetails = useMemo(
-    () => getArchitectureGraphNodeDetails(snapshot, selectedNode),
-    [selectedNode, snapshot],
-  );
 
-  const cyRef = useRef<HTMLDivElement | null>(null);
-  const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  return {
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedTransitionId: selectedTransitionIdResolved,
+    setSelectedTransitionId,
+    selectedLayerId,
+    setSelectedLayerId,
+    selectedActivationLayer,
+    selectedActivationTransition,
+  };
+}
 
-  useEffect(() => {
-    if (!selectedNodeId && nodes.length > 0) {
-      setSelectedNodeId(nodes[0]?.id ?? null);
-    }
-  }, [nodes, selectedNodeId]);
-
-  useEffect(() => {
-    if (!selectedTransitionId && transitions.length > 0) {
-      setSelectedTransitionId(transitions[0]?.id ?? null);
-    }
-  }, [selectedTransitionId, transitions]);
-
-  useEffect(() => {
-    const hasSelection = selectedLayerId
-      ? layerInternals.some((layer) => layer.id === selectedLayerId)
-      : false;
-    if (layerInternals.length > 0 && !hasSelection) {
-      setSelectedLayerId(layerInternals[0]?.id ?? null);
-    }
-  }, [layerInternals, selectedLayerId]);
-
-  useEffect(() => {
-    if (
-      selectedNode?.role === "layer" &&
-      selectedNode.id !== selectedLayerId &&
-      layerInternals.some((layer) => layer.id === selectedNode.id)
-    ) {
-      setSelectedLayerId(selectedNode.id);
-    }
-  }, [layerInternals, selectedNode, selectedLayerId]);
-
+function useArchitectureGraphCytoscape({
+  graph,
+  cyRef,
+  cyInstanceRef,
+  resizeObserverRef,
+  setSelectedNodeId,
+}: {
+  graph: ModelArchitectureGraph | null;
+  cyRef: MutableRefObject<HTMLDivElement | null>;
+  cyInstanceRef: MutableRefObject<cytoscapeType.Core | null>;
+  resizeObserverRef: MutableRefObject<ResizeObserver | null>;
+  setSelectedNodeId: (nodeId: string | null) => void;
+}) {
   useEffect(() => {
     let cancelled = false;
     let cy: cytoscapeType.Core | null = null;
@@ -3285,7 +3253,106 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
         cyInstanceRef.current = null;
       }
     };
-  }, [graph]);
+  }, [cyInstanceRef, cyRef, graph, resizeObserverRef, setSelectedNodeId]);
+}
+
+export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
+  const {
+    snapshot,
+    readiness,
+    layerInternalsPayload,
+    title,
+    description,
+    typeHintText,
+  } = props;
+  const t = useTranslation();
+  const graph = getArchitectureGraph(snapshot);
+  const nodes = useMemo(() => getArchitectureGraphNodes(snapshot), [snapshot]);
+  const edges = useMemo(() => getArchitectureGraphEdges(snapshot), [snapshot]);
+  const summary = useMemo(() => getArchitectureGraphSummary(snapshot), [snapshot]);
+  const overview = useMemo(() => getArchitectureGraphOverview(snapshot), [snapshot]);
+  const transitions = useMemo(() => getArchitectureGraphTransitions(snapshot), [snapshot]);
+  const layerInternals = useMemo(
+    () => getAnalysisLayerInternals(layerInternalsPayload),
+    [layerInternalsPayload],
+  );
+  const activationPath = useMemo(
+    () => getAnalysisActivationPath(layerInternalsPayload),
+    [layerInternalsPayload],
+  );
+  const mlpActivation = useMemo(
+    () => getAnalysisMlpActivation(layerInternalsPayload),
+    [layerInternalsPayload],
+  );
+  const architectureBlocks = useMemo(
+    () => layerInternalsPayload?.architecture_blocks ?? [],
+    [layerInternalsPayload],
+  );
+  const progressCheckpoints = useMemo(
+    () => getArchitectureGraphProgressCheckpoints(snapshot, transitions, summary, overview),
+    [overview, snapshot, summary, transitions],
+  );
+  const outcome = useMemo(
+    () => getArchitectureGraphOutcome(readiness, overview, summary, transitions),
+    [readiness, overview, summary, transitions],
+  );
+  const readinessTone = getReadinessTone(readiness.status);
+  const selection = useArchitectureGraphSelectionState({
+    nodes,
+    transitions,
+    layerInternals,
+    activationPath,
+  });
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedTransitionId,
+    setSelectedTransitionId,
+    selectedLayerId,
+    setSelectedLayerId,
+    selectedActivationLayer,
+    selectedActivationTransition,
+  } = selection;
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [nodes, selectedNodeId],
+  );
+  const selectedTransition = useMemo(
+    () => transitions.find((transition) => transition.id === selectedTransitionId) ?? null,
+    [selectedTransitionId, transitions],
+  );
+  const selectedLayer = useMemo(
+    () => layerInternals.find((layer) => layer.id === selectedLayerId) ?? null,
+    [layerInternals, selectedLayerId],
+  );
+  useEffect(() => {
+    if (
+      selectedNode?.role === "layer" &&
+      selectedNode.id !== selectedLayerId &&
+      layerInternals.some((layer) => layer.id === selectedNode.id)
+    ) {
+      setSelectedLayerId(selectedNode.id);
+    }
+  }, [layerInternals, selectedLayerId, selectedNode, setSelectedLayerId]);
+  const selectedDominantSignals = useMemo(
+    () => getArchitectureLayerDominantSignals(selectedLayer),
+    [selectedLayer],
+  );
+  const selectedNodeDetails = useMemo(
+    () => getArchitectureGraphNodeDetails(snapshot, selectedNode),
+    [selectedNode, snapshot],
+  );
+
+  const cyRef = useRef<HTMLDivElement | null>(null);
+  const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  useArchitectureGraphCytoscape({
+    graph,
+    cyRef,
+    cyInstanceRef,
+    resizeObserverRef,
+    setSelectedNodeId,
+  });
 
   if (!graph) {
     return null;

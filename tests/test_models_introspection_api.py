@@ -85,8 +85,8 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
-def test_model_introspection_includes_runtime_packages() -> None:
-    models_dir = Path("tests/.tmp-model-introspection-models")
+def test_model_introspection_includes_runtime_packages(tmp_path: Path) -> None:
+    models_dir = tmp_path / "model-introspection-models"
     models_dir.mkdir(parents=True, exist_ok=True)
     _write_native_architecture_fixture(models_dir)
     dummy_manager = DummyModelManager(models_dir=models_dir)
@@ -149,8 +149,10 @@ def test_model_introspection_includes_runtime_packages() -> None:
     assert snapshot["architecture_graph"]["summary"]["block_count"] == 3
 
 
-def test_model_introspection_falls_back_to_derived_for_model_mismatch() -> None:
-    models_dir = Path("tests/.tmp-model-introspection-models")
+def test_model_introspection_falls_back_to_derived_for_model_mismatch(
+    tmp_path: Path,
+) -> None:
+    models_dir = tmp_path / "model-introspection-models"
     models_dir.mkdir(parents=True, exist_ok=True)
     _write_native_architecture_fixture(models_dir)
     dummy_manager = DummyModelManager(models_dir=models_dir)

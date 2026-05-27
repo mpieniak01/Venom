@@ -231,6 +231,14 @@ export async function processAnalysisStream(params: {
   const context: SseDispatchContext = { onSetLiveResult, onPatchLiveResult };
   let pendingFinalResult: AnalysisResult | null = null;
 
+  const flushPendingFinalResult = () => {
+    if (!pendingFinalResult) {
+      return;
+    }
+    onSetLiveResult(pendingFinalResult);
+    pendingFinalResult = null;
+  };
+
   try {
     for await (const block of readSseBlocks(reader)) {
       const parsed = parseSseBlock(block);
@@ -247,12 +255,14 @@ export async function processAnalysisStream(params: {
         },
       });
     }
-    if (pendingFinalResult) {
-      onSetLiveResult(pendingFinalResult);
-    }
+    flushPendingFinalResult();
     if (state.streamErrorMessage && !state.sawAnalysisDone) {
+      flushPendingFinalResult();
       throw new Error(state.streamErrorMessage);
     }
+  } catch (streamError) {
+    flushPendingFinalResult();
+    throw streamError;
   } finally {
     reader.releaseLock();
   }

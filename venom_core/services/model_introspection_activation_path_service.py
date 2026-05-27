@@ -481,6 +481,64 @@ def _build_mlp_notes(architecture_graph: dict[str, Any] | None) -> list[str]:
     return notes
 
 
+def _resolve_mlp_probe_layers(
+    *,
+    probe_payload: dict[str, Any],
+    runtime_label: str | None,
+) -> tuple[dict[int, dict[str, Any]], str | None, dict[str, Any] | None]:
+    runtime_label_str = str(runtime_label) if runtime_label else None
+    probe = probe_payload.get("probe")
+    if not isinstance(probe, dict):
+        return (
+            {},
+            runtime_label_str,
+            _build_mlp_probe_shape_error_payload(runtime_label=runtime_label_str),
+        )
+
+    raw_layers = probe.get("layers")
+    if not isinstance(raw_layers, list):
+        return (
+            {},
+            runtime_label_str,
+            _build_mlp_probe_shape_error_payload(runtime_label=runtime_label_str),
+        )
+
+    return _index_hidden_probe_layers(raw_layers), runtime_label_str, None
+
+
+def _resolve_transition_descriptors(
+    transition: dict[str, Any] | None,
+) -> tuple[str, str, float]:
+    if isinstance(transition, dict):
+        return (
+            transition["summary"],
+            transition["impact"],
+            float(transition["delta_norm"]),
+        )
+    return (
+        "No residual comparison captured for this MLP activation.",
+        "Residual comparison unavailable for this activation slice.",
+        0.0,
+    )
+
+
+def _is_distinct_residual_entry(
+    *,
+    mlp_layer_index: int,
+    residual_layer_index: int | None,
+    mlp_hidden_slice: list[float],
+    residual_entry: dict[str, Any] | None,
+) -> bool:
+    if residual_entry is None or residual_layer_index is None:
+        return False
+    residual_hidden_slice = _safe_slice(residual_entry.get("hidden_slice"))
+    if not residual_hidden_slice:
+        return False
+    if residual_layer_index != mlp_layer_index:
+        return True
+    return residual_hidden_slice != mlp_hidden_slice
+
+
 async def build_activation_path_payload(
     *,
     prompt: str,
@@ -617,15 +675,12 @@ async def build_mlp_activation_payload(
             runtime_label=runtime_label_str,
         )
 
-    probe = probe_payload.get("probe")
-    if not isinstance(probe, dict):
-        return _build_mlp_probe_shape_error_payload(runtime_label=runtime_label_str)
-
-    raw_layers = probe.get("layers")
-    if not isinstance(raw_layers, list):
-        return _build_mlp_probe_shape_error_payload(runtime_label=runtime_label_str)
-
-    raw_layers_by_index = _index_hidden_probe_layers(raw_layers)
+    raw_layers_by_index, runtime_label_str, shape_error = _resolve_mlp_probe_layers(
+        probe_payload=probe_payload,
+        runtime_label=runtime_label,
+    )
+    if shape_error is not None:
+        return shape_error
 
     mlp_layer_raw = raw_layers_by_index.get(mlp_layer_index)
     if not isinstance(mlp_layer_raw, dict):
@@ -660,6 +715,14 @@ async def build_mlp_activation_payload(
         architecture_graph=architecture_graph,
     )
 
+    if not _is_distinct_residual_entry(
+        mlp_layer_index=mlp_layer_index,
+        residual_layer_index=residual_layer_index,
+        mlp_hidden_slice=mlp_hidden_slice,
+        residual_entry=residual_entry,
+    ):
+        residual_entry = None
+
     transition: dict[str, Any] | None = None
     if residual_entry is not None:
         transition = _build_transition(
@@ -669,7 +732,9 @@ async def build_mlp_activation_payload(
 
     notes = _build_mlp_notes(architecture_graph)
 
-    max_delta_norm = transition["delta_norm"] if isinstance(transition, dict) else 0.0
+    transition_summary, transition_impact, max_delta_norm = (
+        _resolve_transition_descriptors(transition)
+    )
     average_norm_inputs = [mlp_metrics["norm"]]
     if residual_entry is not None:
         average_norm_inputs.append(float(residual_entry["metrics"]["norm"]))
@@ -677,16 +742,6 @@ async def build_mlp_activation_payload(
         round(sum(average_norm_inputs) / len(average_norm_inputs), 6)
         if average_norm_inputs
         else 0.0
-    )
-    transition_summary = (
-        transition["summary"]
-        if isinstance(transition, dict)
-        else "No residual comparison captured for this MLP activation."
-    )
-    transition_impact = (
-        transition["impact"]
-        if isinstance(transition, dict)
-        else "Residual comparison unavailable for this activation slice."
     )
     tensor_activation = _build_tensor_activation_contract(
         mlp_layer=mlp_entry,

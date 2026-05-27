@@ -63,8 +63,9 @@ export function useModelIntrospectionSnapshot(
       const loadedSnapshot = data.snapshot;
       if (requestId === latestRequestIdRef.current) {
         setSnapshot(loadedSnapshot);
+        return loadedSnapshot;
       }
-      return loadedSnapshot;
+      return null;
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Request failed";
       if (requestId === latestRequestIdRef.current) {

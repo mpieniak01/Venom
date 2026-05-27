@@ -762,7 +762,7 @@ async def test_analysis_stream_emits_progressive_events(
     assert "Saliency probe" in timeline_labels
     assert analysis_done["analysis"]["logit_lens"]["status"] == "ok"
     assert "interpretability" in analysis_done["analysis"]["logit_lens"]
-    assert analysis_done["analysis"]["layer_internals"]["status"] == "ok"
+    assert analysis_done["analysis"]["layer_internals"]["status"] == "available"
     assert analysis_done["analysis"]["layer_internals"]["summary"]["block_count"] == 4
     assert (
         analysis_done["analysis"]["layer_internals"]["summary"][
@@ -793,8 +793,11 @@ async def test_analysis_stream_emits_progressive_events(
         analysis_done["analysis"]["layer_internals"]["summary"]["saliency_token_count"]
         == 3
     )
-    assert len(analysis_done["analysis"]["layer_internals"]["layers"]) == 3
-    assert analysis_done["analysis"]["layer_internals"]["layers"][0]["blocks"]
+    assert len(analysis_done["analysis"]["layer_internals"]["layers"]) == 5
+    assert any(
+        layer.get("blocks")
+        for layer in analysis_done["analysis"]["layer_internals"]["layers"]
+    )
     assert analysis_done["analysis"]["layer_internals"]["layers"][0]["response_linkage"]
     assert (
         analysis_done["analysis"]["layer_internals"]["layers"][0]["response_linkage"][
@@ -879,7 +882,7 @@ async def test_analysis_stream_flushes_sse_tail_and_emits_done(
     done_payload = json.loads(events[-1][1])
     assert done_payload["analysis"]["response"] == "A"
     assert done_payload["analysis"]["logit_lens"]["status"] == "ok"
-    assert done_payload["analysis"]["layer_internals"]["status"] == "ok"
+    assert done_payload["analysis"]["layer_internals"]["status"] == "available"
     assert done_payload["analysis"]["layer_internals"]["summary"]["block_count"] >= 1
     assert done_payload["analysis"]["layer_internals"]["architecture_blocks"]
 

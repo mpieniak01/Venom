@@ -136,10 +136,13 @@ function deriveDashboardRuntimeInternalsContext(args: {
   analysisStreaming: boolean;
   t: ReturnType<typeof useTranslation>;
 }): DashboardRuntimeInternalsContext {
-  const {
-    allInternalsUnavailable,
-    anyInternalsAvailable,
-  } = resolveInternalsAvailability(args.attention, args.saliency, args.logitLens);
+  const unavailableInternalsRows = args.internalsCapabilityRows.filter(
+    (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
+  );
+  const availableInternalsCount =
+    args.internalsCapabilityRows.length - unavailableInternalsRows.length;
+  const allInternalsUnavailable = availableInternalsCount <= 0;
+  const anyInternalsAvailable = availableInternalsCount > 0;
   const runtimeProviderNormalized = String(
     args.analysisResult?.analysis?.provider ?? args.snapshot?.runtime?.provider ?? "",
   ).toLowerCase();
@@ -153,14 +156,9 @@ function deriveDashboardRuntimeInternalsContext(args: {
   const internalsHowToFull = isOllamaLiteRuntime
     ? args.t("inspector.modelIntrospection.dashboard.results.internalsHowToFull")
     : null;
-  const unavailableInternalsRows = args.internalsCapabilityRows.filter(
-    (row) => row.availabilityClass === "unavailable" || row.availabilityClass === "failed",
-  );
   const proxyInternalsRows = args.internalsCapabilityRows.filter(
     (row) => row.availabilityClass === "proxy_ok",
   );
-  const availableInternalsCount =
-    args.internalsCapabilityRows.length - unavailableInternalsRows.length;
   const internalsProcessing = args.analysisLoading || args.analysisStreaming;
   return {
     allInternalsUnavailable,
@@ -687,35 +685,6 @@ function ResultStepContainer({
   );
 }
 
-function resolveInternalsAvailability(
-  attention: ReturnType<typeof buildAttentionModel> | null,
-  saliency: ReturnType<typeof buildSaliencyModel> | null,
-  logitLens: ReturnType<typeof buildLogitLensModel> | null,
-): {
-  attentionAvailable: boolean;
-  saliencyAvailable: boolean;
-  logitLensAvailable: boolean;
-  allInternalsUnavailable: boolean;
-  anyInternalsAvailable: boolean;
-} {
-  const attentionAvailable = Boolean(attention?.status === "ok" && attention.layers.length > 0);
-  const saliencyAvailable = Boolean(
-    saliency?.status === "ok" && saliency.token_weights.length > 0,
-  );
-  const logitLensAvailable = Boolean(
-    (logitLens?.status === "ok" && logitLens.checkpoints.length > 0) ||
-      ((logitLens?.raw_input_tokens.length ?? 0) > 0) ||
-      ((logitLens?.raw_output_tokens.length ?? 0) > 0),
-  );
-  return {
-    attentionAvailable,
-    saliencyAvailable,
-    logitLensAvailable,
-    allInternalsUnavailable: !attentionAvailable && !saliencyAvailable && !logitLensAvailable,
-    anyInternalsAvailable: attentionAvailable || saliencyAvailable || logitLensAvailable,
-  };
-}
-
 function buildRunTrends(payload: unknown): RunTrends | null {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -966,6 +935,7 @@ function useDashboardDerivedState(args: {
   const analysisRunning = analysisResult?.status === "running";
   const analysisActive = analysisResult?.status === "running";
   const analysisCompleted = analysisResult?.status === "completed" && analysisVisible;
+  const refreshedSnapshot = analysisResult?.snapshot_after ?? snapshot;
   const analysisComparison = useMemo(() => {
     return buildSnapshotComparison({
       snapshot,
@@ -1030,7 +1000,7 @@ function useDashboardDerivedState(args: {
   const attention = buildAttentionModel(analysisResult?.analysis?.attention ?? null);
   const saliency = buildSaliencyModel(analysisResult?.analysis?.saliency ?? null);
   const analysisLayerInternalsPayload = analysisResult?.analysis?.layer_internals ?? null;
-  const architectureGraphReadiness = buildModelArchitectureGraphReadiness(snapshot);
+  const architectureGraphReadiness = buildModelArchitectureGraphReadiness(refreshedSnapshot);
   const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
   const introspectionLevel = resolveIntrospectionLevel({
     analysisLevel: analysisResult?.analysis?.introspection_level,

@@ -49,4 +49,48 @@ if (!("cancelAnimationFrame" in globalThis)) {
   globalThis.cancelAnimationFrame = (id: number) => window.clearTimeout(id);
 }
 
+window.HTMLCanvasElement.prototype.getContext = function getContext() {
+  return {
+    canvas: this,
+    clearRect() {},
+    fillRect() {},
+    getImageData() {
+      return { data: [] };
+    },
+    putImageData() {},
+    createImageData() {
+      return [];
+    },
+    setTransform() {},
+    drawImage() {},
+    save() {},
+    restore() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    closePath() {},
+    stroke() {},
+    fillText() {},
+    strokeText() {},
+    translate() {},
+    scale() {},
+    rotate() {},
+    arc() {},
+    fill() {},
+    measureText() {
+      return { width: 0 };
+    },
+    setLineDash() {},
+    getLineDash() {
+      return [];
+    },
+    transform() {},
+    rect() {},
+    clip() {},
+    font: "10px sans-serif",
+    textAlign: "start",
+    textBaseline: "alphabetic",
+  } as unknown as CanvasRenderingContext2D;
+};
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

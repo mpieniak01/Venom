@@ -71,6 +71,110 @@ def _build_snapshot() -> dict[str, object]:
             "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
             "introspection_ready": True,
         },
+        "architecture_graph": {
+            "nodes": [
+                {
+                    "id": "input",
+                    "label": "Prompt input",
+                    "kind": "input",
+                    "status": "ready",
+                    "layer_index": 0,
+                    "role": "input",
+                },
+                {
+                    "id": "layer",
+                    "label": "Layer 1",
+                    "kind": "layer",
+                    "status": "ready",
+                    "layer_index": 1,
+                    "role": "layer",
+                },
+                {
+                    "id": "attention",
+                    "label": "Attention probe",
+                    "kind": "attention",
+                    "status": "ready",
+                    "layer_index": 2,
+                    "role": "attention",
+                },
+                {
+                    "id": "mlp",
+                    "label": "Response synthesis",
+                    "kind": "mlp",
+                    "status": "ready",
+                    "layer_index": 3,
+                    "role": "mlp",
+                },
+                {
+                    "id": "residual",
+                    "label": "Reuse path",
+                    "kind": "residual",
+                    "status": "ready",
+                    "layer_index": 3,
+                    "role": "residual",
+                },
+                {
+                    "id": "output",
+                    "label": "Answer output",
+                    "kind": "output",
+                    "status": "ready",
+                    "layer_index": 4,
+                    "role": "output",
+                },
+            ],
+            "edges": [
+                {
+                    "from": "input",
+                    "to": "layer",
+                    "label": "enter model",
+                    "direction": "forward",
+                },
+                {
+                    "from": "layer",
+                    "to": "attention",
+                    "label": "probe path",
+                    "direction": "forward",
+                },
+                {
+                    "from": "layer",
+                    "to": "mlp",
+                    "label": "synthesis path",
+                    "direction": "forward",
+                },
+                {
+                    "from": "attention",
+                    "to": "residual",
+                    "label": "merge",
+                    "direction": "forward",
+                },
+                {
+                    "from": "mlp",
+                    "to": "residual",
+                    "label": "merge",
+                    "direction": "forward",
+                },
+                {
+                    "from": "residual",
+                    "to": "output",
+                    "label": "decode",
+                    "direction": "forward",
+                },
+            ],
+            "summary": {
+                "nodes": 6,
+                "edges": 6,
+                "layer_count": 4,
+                "block_count": 2,
+            },
+            "meta": {
+                "runtime": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+                "model": "google/gemma-4-E2B-it",
+                "provider": "multi_runtime",
+                "generated_at": "2026-05-27T10:00:00Z",
+                "fidelity": "native",
+                "source": "native hf cache config",
+            },
+        },
     }
 
 
@@ -115,6 +219,194 @@ def _build_logit_lens_stub() -> dict[str, object]:
             "total_top_tokens": 5,
         },
         "diagnostics": {"elapsed_ms": 17.4},
+    }
+
+
+def _build_attention_stub() -> dict[str, object]:
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": None,
+        "message": "Attention payload ready",
+        "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+        "tokens": ["Co", "to", "jest", "słońce", "?"],
+        "layers": [
+            {
+                "layer": 4,
+                "heads": [
+                    {
+                        "head": 0,
+                        "top_links": [
+                            {
+                                "from_index": 0,
+                                "to_index": 3,
+                                "from_token": "Co",
+                                "to_token": "Słońce",
+                                "weight": 0.812,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        "diagnostics": {"elapsed_ms": 8.1},
+    }
+
+
+def _build_hidden_state_stub() -> dict[str, object]:
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": None,
+        "message": "Activation path ready",
+        "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+        "selected_layers": [0, 4],
+        "layers": [
+            {
+                "layer": 0,
+                "label": "Prompt input",
+                "role_hint": "input",
+                "hidden_slice": [0.12, -0.24, 0.31, -0.18],
+                "metrics": {
+                    "mean": 0.0025,
+                    "norm": 0.4235,
+                    "max_abs": 0.31,
+                    "top_dimensions": [
+                        {"index": 2, "value": 0.31, "abs_value": 0.31},
+                        {"index": 1, "value": -0.24, "abs_value": 0.24},
+                    ],
+                },
+                "summary": "norm 0.424; mean 0.003; top dims 2, 1",
+                "evidence": ["slice[0]=0.120", "slice len=4"],
+            },
+            {
+                "layer": 4,
+                "label": "Layer 4",
+                "role_hint": "layer",
+                "hidden_slice": [0.18, -0.11, 0.44, -0.07],
+                "metrics": {
+                    "mean": 0.11,
+                    "norm": 0.495923,
+                    "max_abs": 0.44,
+                    "top_dimensions": [
+                        {"index": 2, "value": 0.44, "abs_value": 0.44},
+                        {"index": 0, "value": 0.18, "abs_value": 0.18},
+                    ],
+                },
+                "summary": "norm 0.496; mean 0.110; top dims 2, 0",
+                "evidence": ["slice[0]=0.180", "slice len=4"],
+            },
+        ],
+        "transitions": [
+            {
+                "from_layer": 0,
+                "to_layer": 4,
+                "before": "Prompt input",
+                "after": "Layer 4",
+                "delta_norm": 0.271664,
+                "mean_shift": 0.1075,
+                "max_abs_shift": 0.13,
+                "summary": "Hidden-state delta norm 0.272; mean shift 0.108; peak shift 0.130.",
+                "impact": "The activation path changes most strongly across this transition.",
+                "evidence": ["ΔL2 0.272", "Δmean 0.108", "peak |Δ| 0.130"],
+            }
+        ],
+        "summary": {
+            "selected_layer_count": 2,
+            "transition_count": 1,
+            "focus_layer": 4,
+            "max_delta_norm": 0.271664,
+            "average_norm": 0.459712,
+        },
+        "notes": [
+            "Source data comes from hidden.hidden_slice for selected layers.",
+            "This is a probe slice, not a full tensor dump.",
+        ],
+    }
+
+
+def _build_mlp_activation_stub() -> dict[str, object]:
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": None,
+        "message": "MLP activation ready",
+        "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+        "selected_layers": [3],
+        "mlp_layer": {
+            "layer": 3,
+            "label": "Response synthesis",
+            "role_hint": "mlp",
+            "hidden_slice": [0.09, -0.15, 0.38, -0.04],
+            "metrics": {
+                "mean": 0.07,
+                "norm": 0.416533,
+                "max_abs": 0.38,
+                "top_dimensions": [
+                    {"index": 2, "value": 0.38, "abs_value": 0.38},
+                    {"index": 1, "value": -0.15, "abs_value": 0.15},
+                ],
+            },
+            "summary": "norm 0.417; mean 0.070; top dims 2, 1",
+            "evidence": ["slice[0]=0.090", "slice len=4"],
+        },
+        "residual_layer": None,
+        "transition": None,
+        "tensor_activation": {
+            "source": "probe_runtime.hidden.hidden_slice",
+            "status": "ok",
+            "slice_kind": "hidden_state_slice",
+            "focus_layer": 3,
+            "residual_layer": None,
+            "vector_length": 4,
+            "mlp_vector": [0.09, -0.15, 0.38, -0.04],
+            "residual_vector": None,
+            "delta_vector": None,
+            "norms": {
+                "mlp_l2": 0.416533,
+                "residual_l2": None,
+                "delta_l2": None,
+                "cosine_similarity": None,
+            },
+            "top_delta_dimensions": [],
+            "notes": [
+                "Contract exposes hidden-state slice vectors for activation analysis.",
+                "This payload is not a full tensor dump of the MLP block.",
+            ],
+        },
+        "summary": {
+            "selected_layer_count": 1,
+            "focus_layer": 3,
+            "residual_layer": None,
+            "hidden_dimension_count": 4,
+            "max_delta_norm": 0.0,
+            "average_norm": 0.416533,
+            "transition_summary": None,
+            "transition_impact": None,
+        },
+        "notes": [
+            "Source data comes from hidden.hidden_slice for the selected MLP layer.",
+            "This is a probe slice, not a full tensor dump.",
+        ],
+    }
+
+
+def _build_saliency_stub() -> dict[str, object]:
+    return {
+        "source": "probe_runtime",
+        "status": "ok",
+        "code": None,
+        "message": "Saliency payload ready",
+        "runtime_label": "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+        "method": "logits_proxy",
+        "target_output_token_index": 0,
+        "target_output_token": "Słońce",
+        "token_weights": [
+            {"token": "Słońce", "token_index": 0, "weight": 0.91},
+            {"token": "gwiazda", "token_index": 1, "weight": 0.42},
+            {"token": "to", "token_index": 2, "weight": 0.21},
+        ],
+        "diagnostics": {"elapsed_ms": 6.7},
     }
 
 
@@ -177,6 +469,26 @@ async def test_analysis_collects_streamed_answer(
         "_collect_logit_lens_payload_safe",
         lambda **_kwargs: _async_return(_build_logit_lens_stub()),
     )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_attention_payload_safe",
+        lambda **_kwargs: _async_return(_build_attention_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_activation_path_payload_safe",
+        lambda **_kwargs: _async_return(_build_hidden_state_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_mlp_activation_payload_safe",
+        lambda **_kwargs: _async_return(_build_mlp_activation_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_saliency_payload_safe",
+        lambda **_kwargs: _async_return(_build_saliency_stub()),
+    )
 
     result = await analysis_service.analyze_model_with_optional_live_run(
         prompt="Co to jest slonce?",
@@ -221,9 +533,12 @@ async def test_analysis_collects_streamed_answer(
     assert "rag_profile" in result["analysis"]
     assert "logit_profile" in result["analysis"]
     assert "analysis_capabilities" in result["analysis"]
-    assert result["analysis"]["analysis_capabilities"]["total_count"] == 3
+    assert result["analysis"]["analysis_capabilities"]["total_count"] == 4
     assert result["analysis"]["analysis_capabilities"]["probe_profile"] == "dev"
     assert result["analysis"]["analysis_capabilities"]["limits"]["max_head_count"] == 32
+    assert (
+        result["analysis"]["analysis_capabilities"]["hidden_state"]["available"] is True
+    )
     assert result["analysis"]["introspection_level"] in {"full", "lite", "none"}
     assert "run_trends" in result["analysis"]
 
@@ -329,6 +644,26 @@ async def test_analysis_includes_request_trace_summary(
         "_collect_logit_lens_payload_safe",
         lambda **_kwargs: _async_return(_build_logit_lens_stub()),
     )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_attention_payload_safe",
+        lambda **_kwargs: _async_return(_build_attention_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_activation_path_payload_safe",
+        lambda **_kwargs: _async_return(_build_hidden_state_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_mlp_activation_payload_safe",
+        lambda **_kwargs: _async_return(_build_mlp_activation_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_saliency_payload_safe",
+        lambda **_kwargs: _async_return(_build_saliency_stub()),
+    )
 
     result = await analysis_service.analyze_model_with_optional_live_run(
         prompt="Co to jest slonce?",
@@ -376,6 +711,26 @@ async def test_analysis_stream_emits_progressive_events(
         "_collect_logit_lens_payload_safe",
         lambda **_kwargs: _async_return(_build_logit_lens_stub()),
     )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_attention_payload_safe",
+        lambda **_kwargs: _async_return(_build_attention_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_activation_path_payload_safe",
+        lambda **_kwargs: _async_return(_build_hidden_state_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_mlp_activation_payload_safe",
+        lambda **_kwargs: _async_return(_build_mlp_activation_stub()),
+    )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_saliency_payload_safe",
+        lambda **_kwargs: _async_return(_build_saliency_stub()),
+    )
 
     chunks: list[str] = []
     async for chunk in analysis_service.stream_model_introspection_analysis(
@@ -407,6 +762,69 @@ async def test_analysis_stream_emits_progressive_events(
     assert "Saliency probe" in timeline_labels
     assert analysis_done["analysis"]["logit_lens"]["status"] == "ok"
     assert "interpretability" in analysis_done["analysis"]["logit_lens"]
+    assert analysis_done["analysis"]["layer_internals"]["status"] == "ok"
+    assert analysis_done["analysis"]["layer_internals"]["summary"]["block_count"] == 4
+    assert (
+        analysis_done["analysis"]["layer_internals"]["summary"][
+            "architecture_block_count"
+        ]
+        >= 1
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["summary"][
+            "activation_layer_count"
+        ]
+        == 2
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["summary"][
+            "activation_transition_count"
+        ]
+        == 1
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["summary"]["checkpoint_count"] == 2
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["summary"]["attention_layer_count"]
+        == 1
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["summary"]["saliency_token_count"]
+        == 3
+    )
+    assert len(analysis_done["analysis"]["layer_internals"]["layers"]) == 3
+    assert analysis_done["analysis"]["layer_internals"]["layers"][0]["blocks"]
+    assert analysis_done["analysis"]["layer_internals"]["layers"][0]["response_linkage"]
+    assert (
+        analysis_done["analysis"]["layer_internals"]["layers"][0]["response_linkage"][
+            "linked_fragment_count"
+        ]
+        >= 0
+    )
+    assert analysis_done["analysis"]["layer_internals"]["layers"][0][
+        "response_linkage"
+    ]["impact"]
+    assert analysis_done["analysis"]["layer_internals"]["architecture_blocks"]
+    assert (
+        analysis_done["analysis"]["layer_internals"]["activation_path"]["status"]
+        == "ok"
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["mlp_activation"]["status"] == "ok"
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["mlp_activation"][
+            "tensor_activation"
+        ]["status"]
+        == "ok"
+    )
+    assert (
+        analysis_done["analysis"]["layer_internals"]["mlp_activation"]["summary"][
+            "focus_layer"
+        ]
+        == 3
+    )
     assert analysis_done["analysis"]["rag_focus"]["source"] == "graph_fallback"
     assert "answer_evidence_links" in analysis_done["analysis"]["rag_focus"]
     assert analysis_done["analysis"]["stream_profile"]["chunk_count"] == 2
@@ -440,6 +858,11 @@ async def test_analysis_stream_flushes_sse_tail_and_emits_done(
         "_collect_logit_lens_payload_safe",
         lambda **_kwargs: _async_return(_build_logit_lens_stub()),
     )
+    monkeypatch.setattr(
+        analysis_service,
+        "_collect_activation_path_payload_safe",
+        lambda **_kwargs: _async_return(_build_hidden_state_stub()),
+    )
 
     chunks: list[str] = []
     async for chunk in analysis_service.stream_model_introspection_analysis(
@@ -456,6 +879,9 @@ async def test_analysis_stream_flushes_sse_tail_and_emits_done(
     done_payload = json.loads(events[-1][1])
     assert done_payload["analysis"]["response"] == "A"
     assert done_payload["analysis"]["logit_lens"]["status"] == "ok"
+    assert done_payload["analysis"]["layer_internals"]["status"] == "ok"
+    assert done_payload["analysis"]["layer_internals"]["summary"]["block_count"] >= 1
+    assert done_payload["analysis"]["layer_internals"]["architecture_blocks"]
 
 
 @pytest.mark.asyncio
@@ -1002,6 +1428,7 @@ def test_extract_system_prompt_text_handles_missing_user_marker() -> None:
 
 def test_analysis_capabilities_marks_proxy_as_partial_not_full() -> None:
     payload = analysis_service._build_analysis_capabilities_payload(
+        hidden_state={"source": "probe_runtime", "status": "ok"},
         attention={
             "source": "probe_runtime",
             "status": "ok",
@@ -1011,10 +1438,11 @@ def test_analysis_capabilities_marks_proxy_as_partial_not_full() -> None:
         logit_lens={"source": "probe_runtime", "status": "ok"},
         probe_health={"enabled": True, "healthy": True, "runtime_supported": True},
     )
-    assert payload["available_count"] == 3
-    assert payload["native_available_count"] == 2
+    assert payload["available_count"] == 4
+    assert payload["native_available_count"] == 3
     assert payload["proxy_active"] is True
     assert payload["internals_verdict"] == "partial"
+    assert payload["hidden_state"]["availability_class"] == "native_ok"
     assert payload["attention"]["availability_class"] == "proxy_ok"
     assert payload["saliency"]["availability_class"] == "native_ok"
     assert payload["logit_lens"]["availability_class"] == "native_ok"
@@ -1022,15 +1450,17 @@ def test_analysis_capabilities_marks_proxy_as_partial_not_full() -> None:
 
 def test_analysis_capabilities_marks_native_runtime_as_full() -> None:
     payload = analysis_service._build_analysis_capabilities_payload(
+        hidden_state={"source": "probe_runtime", "status": "ok"},
         attention={"source": "probe_runtime", "status": "ok"},
         saliency={"source": "probe_runtime", "status": "ok"},
         logit_lens={"source": "probe_runtime", "status": "ok"},
         probe_health={"enabled": True, "healthy": True, "runtime_supported": True},
     )
-    assert payload["available_count"] == 3
-    assert payload["native_available_count"] == 3
+    assert payload["available_count"] == 4
+    assert payload["native_available_count"] == 4
     assert payload["proxy_active"] is False
     assert payload["internals_verdict"] == "full"
+    assert payload["hidden_state"]["availability_class"] == "native_ok"
     assert payload["attention"]["availability_class"] == "native_ok"
     assert payload["saliency"]["availability_class"] == "native_ok"
     assert payload["logit_lens"]["availability_class"] == "native_ok"
@@ -1038,6 +1468,7 @@ def test_analysis_capabilities_marks_native_runtime_as_full() -> None:
 
 def test_analysis_capabilities_marks_failed_and_unavailable_classes() -> None:
     payload = analysis_service._build_analysis_capabilities_payload(
+        hidden_state={"source": "probe_unavailable", "status": "probe_unavailable"},
         attention={
             "source": "probe_runtime",
             "status": "failed",
@@ -1047,6 +1478,7 @@ def test_analysis_capabilities_marks_failed_and_unavailable_classes() -> None:
         logit_lens={"source": "probe_runtime", "status": "ok"},
         probe_health={"enabled": True, "healthy": True, "runtime_supported": True},
     )
+    assert payload["hidden_state"]["availability_class"] == "unavailable"
     assert payload["attention"]["availability_class"] == "failed"
     assert payload["saliency"]["availability_class"] == "unavailable"
     assert payload["logit_lens"]["availability_class"] == "native_ok"
@@ -1054,6 +1486,7 @@ def test_analysis_capabilities_marks_failed_and_unavailable_classes() -> None:
 
 def test_analysis_capabilities_marks_probe_lite_as_available_proxy() -> None:
     payload = analysis_service._build_analysis_capabilities_payload(
+        hidden_state={"source": "probe_unavailable", "status": "probe_unavailable"},
         attention={"source": "probe_unavailable", "status": "probe_unavailable"},
         saliency={"source": "probe_unavailable", "status": "probe_unavailable"},
         logit_lens={

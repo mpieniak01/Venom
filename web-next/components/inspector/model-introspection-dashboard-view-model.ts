@@ -10,6 +10,7 @@ import type {
   IntrospectionSnapshot,
   LogitLensModel,
   OperatorConclusionModel,
+  ModelArchitectureGraphReadiness,
   RagFocusGrounding,
   RagFocusModel,
   RagFocusStepStatus,
@@ -92,7 +93,6 @@ export function getAnalysisPhase(args: {
   analysisVisible: boolean;
   analysisLoading: boolean;
   analysisStatus: string | undefined;
-  timelineHasResponseFinalized: boolean;
   firstChunkMs: number | null;
   chunkCount: number;
 }): AnalysisPhase {
@@ -100,12 +100,11 @@ export function getAnalysisPhase(args: {
     analysisVisible,
     analysisLoading,
     analysisStatus,
-    timelineHasResponseFinalized,
     firstChunkMs,
     chunkCount,
   } = args;
   if (analysisVisible) {
-    if (analysisStatus === "completed" || timelineHasResponseFinalized) {
+    if (analysisStatus === "completed") {
       return "completed";
     }
     if (analysisStatus === "running") {
@@ -204,8 +203,12 @@ export function computeAnalysisProgress(args: {
   if (!analysisVisible) {
     return 0;
   }
+  const capProgress = (value: number): number => {
+    const cappedValue = analysisStatus === "completed" ? value : Math.min(value, 90);
+    return clampPercent(cappedValue);
+  };
   if (analysisTimelineProgress > 0) {
-    return clampPercent(analysisTimelineProgress);
+    return capProgress(analysisTimelineProgress);
   }
   const estimatedProgress = Math.min(
     100,
@@ -214,12 +217,12 @@ export function computeAnalysisProgress(args: {
   const noChunkYet = chunkCount === 0 && firstChunkMs == null;
   if (analysisStatus === "running" && noChunkYet) {
     const waitingProgress = 30 + Math.min(50, elapsedMs / 250);
-    return clampPercent(Math.max(estimatedProgress, waitingProgress));
+    return capProgress(Math.max(estimatedProgress, waitingProgress));
   }
   if (noChunkYet) {
-    return clampPercent(Math.min(estimatedProgress, 30));
+    return capProgress(Math.min(estimatedProgress, 30));
   }
-  return clampPercent(estimatedProgress);
+  return capProgress(estimatedProgress);
 }
 
 export function getOrbSubtitle(args: {
@@ -1400,6 +1403,9 @@ export function getTypeHintText(kind: string): string {
   if (kind === "package") {
     return "Package drilldown uses the same snapshot as runtime health, so it is safe to inspect without triggering extra probes.";
   }
+  if (kind === "architecture") {
+    return "Architecture graph drilldown should use layer-level nodes and edges instead of runtime/package metadata.";
+  }
   if (kind === "probe") {
     return "Probe drilldown shows runtime probe readiness, profile and limits for model internals.";
   }
@@ -1418,6 +1424,88 @@ function formatElapsedDetails(args: {
     return `${analysisElapsedMs.toFixed(1)} ms`;
   }
   return "—";
+}
+
+export function buildModelArchitectureGraphReadiness(
+  snapshot: IntrospectionSnapshot | null,
+): ModelArchitectureGraphReadiness {
+  const architectureGraph = snapshot?.architecture_graph ?? null;
+  const hasArchitecturePayload = Boolean(
+    architectureGraph?.nodes?.length || architectureGraph?.edges?.length,
+  );
+  const diagnosticGraph = snapshot?.graph ?? null;
+  const hasDiagnosticGraph = Boolean(diagnosticGraph?.nodes?.length || diagnosticGraph?.edges?.length);
+  const layerCount = architectureGraph?.summary.layer_count ?? 0;
+  const blockCount = architectureGraph?.summary.block_count ?? 0;
+  const fidelity = architectureGraph?.meta.fidelity ?? "unknown";
+  const source = architectureGraph?.meta.source ?? "diagnostic snapshot";
+  const generatedAt = architectureGraph?.meta.generated_at ?? null;
+
+  if (hasArchitecturePayload) {
+    const hasStructuralFields =
+      architectureGraph?.nodes.length > 0 &&
+      architectureGraph?.edges.length > 0 &&
+      layerCount > 0 &&
+      blockCount > 0;
+    const status =
+      fidelity === "native" && hasStructuralFields
+        ? "available"
+        : "partial";
+    const missingSignals: string[] = [];
+    if (!architectureGraph?.nodes.length) {
+      missingSignals.push("architecture nodes missing");
+    }
+    if (!architectureGraph?.edges.length) {
+      missingSignals.push("architecture edges missing");
+    }
+    if (fidelity !== "native") {
+      missingSignals.push(`architecture graph fidelity ${fidelity}`);
+    }
+    if (!architectureGraph?.meta.generated_at) {
+      missingSignals.push("generation timestamp missing");
+    }
+    return {
+      status,
+      hasArchitecturePayload,
+      hasDiagnosticGraph,
+      fidelity,
+      source,
+      generatedAt,
+      nodeCount: architectureGraph?.nodes.length ?? 0,
+      edgeCount: architectureGraph?.edges.length ?? 0,
+      layerCount,
+      blockCount,
+      missingSignals,
+      recommendedNextStep:
+        status === "available"
+          ? "Native architecture graph payload is ready for Cytoscape rendering."
+          : "Derived architecture graph is available, but native layer/block metadata still needs to be supplied before treating it as final.",
+    };
+  }
+
+  const missingSignals = [
+    "architecture_graph payload missing",
+    "current graph is diagnostic-only",
+    "layer and block metadata still need to be produced",
+  ];
+  if (!hasDiagnosticGraph) {
+    missingSignals.push("snapshot graph missing");
+  }
+  return {
+    status: "missing",
+    hasArchitecturePayload: false,
+    hasDiagnosticGraph,
+    fidelity: "unknown",
+    source: "diagnostic snapshot",
+    generatedAt: null,
+    nodeCount: diagnosticGraph?.nodes?.length ?? 0,
+    edgeCount: diagnosticGraph?.edges?.length ?? 0,
+    layerCount: 0,
+    blockCount: 0,
+    missingSignals,
+    recommendedNextStep:
+      "Add a dedicated architecture_graph payload with layer, block and edge metadata before switching the panel to a model architecture graph.",
+  };
 }
 
 function getRuntimeGraphNodeDetails(snapshot: IntrospectionSnapshot): GraphNodeDetails {

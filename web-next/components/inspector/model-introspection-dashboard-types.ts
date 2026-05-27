@@ -7,8 +7,60 @@ export type PackageProbe = {
   version: string | null;
 };
 
+export type ModelArchitectureGraphNodeRole =
+  | "input"
+  | "embedding"
+  | "layer"
+  | "attention"
+  | "mlp"
+  | "residual"
+  | "output"
+  | "diagnostic"
+  | "unknown";
+
+export type ModelArchitectureGraphNode = {
+  id: string;
+  label: string;
+  kind: string;
+  status: string;
+  layer_index?: number | null;
+  role?: ModelArchitectureGraphNodeRole;
+  group?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type ModelArchitectureGraphEdge = {
+  from: string;
+  to: string;
+  label: string;
+  kind?: string | null;
+  direction?: "forward" | "backward" | "bidirectional" | "unknown";
+  weight?: number | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type ModelArchitectureGraph = {
+  nodes: ModelArchitectureGraphNode[];
+  edges: ModelArchitectureGraphEdge[];
+  summary: {
+    nodes: number;
+    edges: number;
+    layer_count: number;
+    block_count: number;
+  };
+  meta: {
+    runtime: string;
+    model: string;
+    provider: string;
+    generated_at: string | null;
+    fidelity: "native" | "derived" | "proxy" | "unknown";
+    source: string;
+  };
+};
+
 export type IntrospectionSnapshot = {
   introspection_level?: "full" | "lite" | "none";
+  architecture_graph?: ModelArchitectureGraph | null;
   runtime: {
     provider: string;
     model: string;
@@ -85,6 +137,234 @@ export type IntrospectionSnapshot = {
       drift_issues: number;
     };
   };
+};
+
+export type ModelArchitectureGraphReadiness = {
+  status: "available" | "partial" | "missing";
+  hasArchitecturePayload: boolean;
+  hasDiagnosticGraph: boolean;
+  fidelity: "native" | "derived" | "proxy" | "unknown";
+  source: string;
+  generatedAt: string | null;
+  nodeCount: number;
+  edgeCount: number;
+  layerCount: number;
+  blockCount: number;
+  missingSignals: string[];
+  recommendedNextStep: string;
+};
+
+export type AnalysisLayerInternalsSignal = {
+  source: "logit_lens" | "attention" | "saliency" | "process" | "timeline";
+  label: string;
+  detail: string;
+  evidence: string[];
+};
+
+export type AnalysisActivationPathTransition = {
+  from_layer: number;
+  to_layer: number;
+  before: string;
+  after: string;
+  delta_norm: number;
+  mean_shift: number;
+  max_abs_shift: number;
+  summary: string;
+  impact: string;
+  evidence: string[];
+};
+
+export type AnalysisActivationPathLayer = {
+  layer: number;
+  label: string;
+  role_hint?: string | null;
+  hidden_slice: number[];
+  metrics: {
+    mean: number;
+    norm: number;
+    max_abs: number;
+    top_dimensions: Array<{
+      index: number;
+      value: number;
+      abs_value: number;
+    }>;
+  };
+  summary: string;
+  evidence: string[];
+};
+
+export type AnalysisActivationPathPayload = {
+  source: string;
+  status: string;
+  code?: string | null;
+  message?: string | null;
+  runtime_label?: string | null;
+  selected_layers: number[];
+  layers: AnalysisActivationPathLayer[];
+  transitions: AnalysisActivationPathTransition[];
+  summary: {
+    selected_layer_count: number;
+    transition_count: number;
+    focus_layer: number | null;
+    max_delta_norm: number;
+    average_norm: number;
+  };
+  notes: string[];
+};
+
+export type AnalysisMlpActivationPayload = {
+  source: string;
+  status: string;
+  code?: string | null;
+  message?: string | null;
+  runtime_label?: string | null;
+  selected_layers: number[];
+  mlp_layer: {
+    layer: number;
+    label: string;
+    role_hint?: string | null;
+    hidden_slice: number[];
+    metrics: {
+      mean: number;
+      norm: number;
+      max_abs: number;
+      top_dimensions: Array<{
+        index: number;
+        value: number;
+        abs_value: number;
+      }>;
+    };
+    summary: string;
+    evidence: string[];
+  } | null;
+  residual_layer: {
+    layer: number;
+    label: string;
+    role_hint?: string | null;
+    hidden_slice: number[];
+    metrics: {
+      mean: number;
+      norm: number;
+      max_abs: number;
+      top_dimensions: Array<{
+        index: number;
+        value: number;
+        abs_value: number;
+      }>;
+    };
+    summary: string;
+    evidence: string[];
+  } | null;
+  transition: {
+    from_layer: number;
+    to_layer: number;
+    before: string;
+    after: string;
+    delta_norm: number;
+    mean_shift: number;
+    max_abs_shift: number;
+    summary: string;
+    impact: string;
+    evidence: string[];
+  } | null;
+  tensor_activation?: {
+    source: string;
+    status: string;
+    slice_kind: string;
+    focus_layer: number | null;
+    residual_layer: number | null;
+    vector_length: number;
+    mlp_vector: number[];
+    residual_vector: number[] | null;
+    delta_vector: number[] | null;
+    norms: {
+      mlp_l2: number;
+      residual_l2: number | null;
+      delta_l2: number | null;
+      cosine_similarity: number | null;
+    };
+    top_delta_dimensions: Array<{
+      index: number;
+      value: number;
+      abs_value: number;
+    }>;
+    notes: string[];
+  } | null;
+  summary: {
+    selected_layer_count: number;
+    focus_layer: number | null;
+    residual_layer: number | null;
+    hidden_dimension_count: number;
+    max_delta_norm: number;
+    average_norm: number;
+    transition_summary: string | null;
+    transition_impact: string | null;
+  };
+  notes: string[];
+};
+
+export type AnalysisLayerInternalsBlock = {
+  kind: "logit_lens" | "attention" | "saliency" | "mlp" | "residual";
+  label: string;
+  summary: string;
+  detail: string;
+  impact: string;
+  evidence: string[];
+  heads?: Array<{
+    head: number;
+    summary: string;
+    detail: string;
+    evidence: string[];
+  }>;
+};
+
+export type AnalysisLayerInternalsEntry = {
+  id: string;
+  layer: number;
+  label: string;
+  status: "observed" | "changed" | "stable" | "inspection";
+  summary: string;
+  state_delta: string;
+  blocks: AnalysisLayerInternalsBlock[];
+  signals: AnalysisLayerInternalsSignal[];
+  response_linkage?: {
+    status: string;
+    layer_id: number;
+    layer_label: string;
+    coverage_percent: number;
+    fragment_count: number;
+    linked_fragment_count: number;
+    linked_fragments: string[];
+    evidence_links: string[];
+    dominant_signals: string[];
+    summary: string;
+    impact: string;
+    evidence: string[];
+  } | null;
+  evidence: string[];
+};
+
+export type AnalysisLayerInternalsPayload = {
+  source: string;
+  status: string;
+  mode: string;
+  summary: {
+    layer_count: number;
+    block_count: number;
+    architecture_block_count: number;
+    activation_layer_count: number;
+    activation_transition_count: number;
+    checkpoint_count: number;
+    attention_layer_count: number;
+    saliency_token_count: number;
+    process_step_count: number;
+    timeline_step_count: number;
+  };
+  layers: AnalysisLayerInternalsEntry[];
+  architecture_blocks: AnalysisLayerInternalsBlock[];
+  activation_path?: AnalysisActivationPathPayload | null;
+  mlp_activation?: AnalysisMlpActivationPayload | null;
+  notes: string[];
 };
 
 export type SnapshotResponse = {
@@ -503,7 +783,9 @@ export type AnalysisResult = {
       evidence_coverage_percent?: number;
       token_noise_ratio?: number;
     } | null;
+    layer_internals?: AnalysisLayerInternalsPayload | null;
     analysis_capabilities?: {
+      hidden_state?: AnalysisCapabilityPayload;
       attention?: AnalysisCapabilityPayload;
       saliency?: AnalysisCapabilityPayload;
       logit_lens?: AnalysisCapabilityPayload;

@@ -12,13 +12,16 @@ import { cn } from "@/lib/utils";
 import { useModelIntrospectionMechanism } from "@/components/inspector/model-introspection-mechanism";
 import type {
   AnalysisTimelineEntry,
+  AnalysisLayerInternalsPayload,
   BadgeTone,
   GraphNodeDetails,
   IntrospectionSnapshot,
+  ModelArchitectureGraphReadiness,
   SnapshotComparison,
 } from "@/components/inspector/model-introspection-dashboard-types";
 import {
   buildAttentionModel,
+  buildModelArchitectureGraphReadiness,
   buildOperatorConclusion,
   buildLogitLensModel,
   buildSaliencyModel,
@@ -44,6 +47,7 @@ import {
   RagFocusPanel,
   AnalysisResultsPanel,
   GraphPanel,
+  ArchitectureGraphPanel,
   SnapshotComparisonPanel,
 } from "@/components/inspector/model-introspection-dashboard-sections";
 
@@ -270,6 +274,8 @@ type TechnicalLayerPanelProps = Readonly<{
   snapshot: IntrospectionSnapshot | null;
   graphLayerOpen: boolean;
   analysisActive: boolean;
+  architectureGraphReadiness: ModelArchitectureGraphReadiness;
+  analysisLayerInternalsPayload: AnalysisLayerInternalsPayload | null;
   selectedGraphNodeIdEffective: string | null;
   selectedGraphNode: { id: string; label: string; kind: string; status: string } | null;
   selectedGraphNodeDetails: GraphNodeDetails | null;
@@ -283,6 +289,8 @@ function TechnicalLayerPanel({
   snapshot,
   graphLayerOpen,
   analysisActive,
+  architectureGraphReadiness,
+  analysisLayerInternalsPayload,
   selectedGraphNodeIdEffective,
   selectedGraphNode,
   selectedGraphNodeDetails,
@@ -314,6 +322,54 @@ function TechnicalLayerPanel({
             : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
         </Button>
       </div>
+      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            tone={
+              architectureGraphReadiness.status === "available"
+                ? "success"
+                : architectureGraphReadiness.status === "partial"
+                  ? "warning"
+                  : "neutral"
+            }
+          >
+            model graph {architectureGraphReadiness.status}
+          </Badge>
+          <Badge tone="neutral">
+            payload {architectureGraphReadiness.hasArchitecturePayload ? "present" : "missing"}
+          </Badge>
+          <Badge tone="neutral">fidelity {architectureGraphReadiness.fidelity}</Badge>
+          <Badge tone="neutral">
+            source {architectureGraphReadiness.source}
+          </Badge>
+          <Badge tone="neutral">layers {formatCount(architectureGraphReadiness.layerCount)}</Badge>
+          <Badge tone="neutral">blocks {formatCount(architectureGraphReadiness.blockCount)}</Badge>
+        </div>
+        <p className="mt-2 text-sm text-cyan-50/90">
+          {architectureGraphReadiness.recommendedNextStep}
+        </p>
+        {architectureGraphReadiness.missingSignals.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {architectureGraphReadiness.missingSignals.map((signal) => (
+              <Badge key={signal} tone="neutral">
+                {signal}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {snapshot.architecture_graph ? (
+        <div className="mt-4">
+      <ArchitectureGraphPanel
+            snapshot={snapshot}
+            readiness={architectureGraphReadiness}
+            layerInternalsPayload={analysisLayerInternalsPayload}
+            title={t("inspector.modelIntrospection.dashboard.graph.architectureTitle")}
+            description={t("inspector.modelIntrospection.dashboard.graph.architectureDescription")}
+            typeHintText={t("inspector.modelIntrospection.dashboard.graph.architectureTypeHint")}
+          />
+        </div>
+      ) : null}
       {graphLayerOpen ? (
         <div className="mt-4">
           <GraphPanel
@@ -928,10 +984,11 @@ function useDashboardDerivedState(args: {
     analysisResult?.analysis?.timeline_step_count ?? analysisTimeline.length;
   const analysisTimelineFirstChunk =
     analysisTimeline.find((entry) => entry.id === "first_chunk") ?? null;
-  const analysisTimelineResponseFinalized =
-    analysisTimeline.find((entry) => entry.id === "response_finalized") ?? null;
   const analysisTimelineProgress = analysisTimeline.reduce((current, entry) => {
-    return typeof entry.progress === "number" ? entry.progress : current;
+    if (typeof entry.progress !== "number") {
+      return current;
+    }
+    return Math.max(current, entry.progress);
   }, 0);
   const analysisFirstChunkMs =
     analysisProcess?.first_chunk_ms ??
@@ -945,7 +1002,6 @@ function useDashboardDerivedState(args: {
     analysisVisible,
     analysisLoading,
     analysisStatus: analysisResult?.status,
-    timelineHasResponseFinalized: analysisTimelineResponseFinalized != null,
     firstChunkMs: analysisFirstChunkMs,
     chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
   });
@@ -969,6 +1025,8 @@ function useDashboardDerivedState(args: {
   const logitLens = buildLogitLensModel(analysisResult?.analysis?.logit_lens ?? null);
   const attention = buildAttentionModel(analysisResult?.analysis?.attention ?? null);
   const saliency = buildSaliencyModel(analysisResult?.analysis?.saliency ?? null);
+  const analysisLayerInternalsPayload = analysisResult?.analysis?.layer_internals ?? null;
+  const architectureGraphReadiness = buildModelArchitectureGraphReadiness(snapshot);
   const analysisCapabilities = analysisResult?.analysis?.analysis_capabilities ?? null;
   const introspectionLevel = resolveIntrospectionLevel({
     analysisLevel: analysisResult?.analysis?.introspection_level,
@@ -990,6 +1048,7 @@ function useDashboardDerivedState(args: {
   const internalsCapabilityRows = useMemo(() => {
     const payload = analysisCapabilities;
     return [
+      buildInternalsCapabilityRow("hidden state", payload?.hidden_state),
       buildInternalsCapabilityRow("attention", payload?.attention),
       buildInternalsCapabilityRow("saliency", payload?.saliency),
       buildInternalsCapabilityRow("logit lens", payload?.logit_lens),
@@ -1009,7 +1068,7 @@ function useDashboardDerivedState(args: {
       return null;
     }
     const availableCount = Number(analysisCapabilities.available_count ?? 0);
-    const totalCount = Number(analysisCapabilities.total_count ?? 3);
+    const totalCount = Number(analysisCapabilities.total_count ?? 4);
     const probeGateDetails = [
       `probe_status:${String(analysisCapabilities.probe_status ?? "unknown")}`,
       `probe_enabled:${analysisCapabilities.probe_enabled ? "yes" : "no"}`,
@@ -1131,6 +1190,7 @@ function useDashboardDerivedState(args: {
     logitLens,
     attention,
     saliency,
+    analysisLayerInternalsPayload,
     analysisCapabilities,
     introspectionLevel,
     internalsProbeElapsedMs,
@@ -1146,6 +1206,7 @@ function useDashboardDerivedState(args: {
     runTrends,
     operatorChecklist,
     visualMetrics,
+    architectureGraphReadiness,
     selectedGraphNodeIdEffective,
     selectedGraphNode,
     selectedGraphNodeDetails,
@@ -1156,7 +1217,9 @@ function useDashboardDerivedState(args: {
 export function ModelIntrospectionDashboard() {
   const t = useTranslation();
   const { enabled: analysisMechanismEnabled } = useModelIntrospectionMechanism();
-  const { snapshot, loading, error, loadSnapshot } = useModelIntrospectionSnapshot();
+  const { snapshot, loading, error, loadSnapshot } = useModelIntrospectionSnapshot({
+    autoLoad: false,
+  });
   const [analysisPrompt, setAnalysisPrompt] = useState(
     t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder"),
   );
@@ -1191,6 +1254,7 @@ export function ModelIntrospectionDashboard() {
     logitLens,
     attention,
     saliency,
+    analysisLayerInternalsPayload,
     analysisCapabilities,
     introspectionLevel,
     internalsProbeElapsedMs,
@@ -1206,6 +1270,7 @@ export function ModelIntrospectionDashboard() {
     runTrends,
     operatorChecklist,
     visualMetrics,
+    architectureGraphReadiness,
     selectedGraphNodeIdEffective,
     selectedGraphNode,
     selectedGraphNodeDetails,
@@ -1224,9 +1289,12 @@ export function ModelIntrospectionDashboard() {
     loadSnapshot().catch(() => undefined);
   }, [loadSnapshot]);
 
-  const handleRunAnalysis = useCallback(() => {
-    runAnalysis().catch(() => undefined);
-  }, [runAnalysis]);
+  const handleRunAnalysis = useCallback(async () => {
+    if (!snapshot) {
+      await loadSnapshot();
+    }
+    await runAnalysis();
+  }, [loadSnapshot, runAnalysis, snapshot]);
 
   const handleResetPrompt = useCallback(() => {
     setAnalysisPrompt(
@@ -1297,58 +1365,55 @@ export function ModelIntrospectionDashboard() {
       <SnapshotLoadingPanel snapshot={snapshot} loading={loading} t={t} />
       <SnapshotErrorPanel error={error} t={t} />
 
-      {snapshot && (
-        <Panel
-          eyebrow="// analysis"
-          title={t("inspector.modelIntrospection.dashboard.analysis.title")}
-          description={t("inspector.modelIntrospection.dashboard.analysis.description")}
-        >
-          <div className="grid gap-4 lg:grid-cols-2">
-            <AnalysisInputPanel
-              prompt={analysisPrompt}
-              onPromptChange={setAnalysisPrompt}
-              onRunAnalysis={handleRunAnalysis}
-              onResetPrompt={handleResetPrompt}
-              analysisLoading={analysisLoading}
-              analysisMechanismEnabled={analysisMechanismEnabled}
-              snapshotReady={Boolean(snapshot)}
-              analysisError={analysisError}
-              skipped={analysisResult?.status === "skipped"}
-              promptLabel={t("inspector.modelIntrospection.dashboard.analysis.promptLabel")}
-              promptPlaceholder={t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder")}
-              runLabel={t("inspector.modelIntrospection.dashboard.analysis.run")}
-              runningLabel={t("inspector.modelIntrospection.dashboard.analysis.running")}
-              resetLabel={t("inspector.modelIntrospection.dashboard.analysis.reset")}
-              disabledLabel={t("inspector.modelIntrospection.dashboard.analysis.disabled")}
-              skippedLabel={t("inspector.modelIntrospection.dashboard.analysis.skipped")}
+      <Panel
+        eyebrow="// analysis"
+        title={t("inspector.modelIntrospection.dashboard.analysis.title")}
+        description={t("inspector.modelIntrospection.dashboard.analysis.description")}
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AnalysisInputPanel
+            prompt={analysisPrompt}
+            onPromptChange={setAnalysisPrompt}
+            onRunAnalysis={handleRunAnalysis}
+            onResetPrompt={handleResetPrompt}
+            analysisLoading={analysisLoading}
+            analysisMechanismEnabled={analysisMechanismEnabled}
+            analysisError={analysisError}
+            skipped={analysisResult?.status === "skipped"}
+            promptLabel={t("inspector.modelIntrospection.dashboard.analysis.promptLabel")}
+            promptPlaceholder={t("inspector.modelIntrospection.dashboard.analysis.promptPlaceholder")}
+            runLabel={t("inspector.modelIntrospection.dashboard.analysis.run")}
+            runningLabel={t("inspector.modelIntrospection.dashboard.analysis.running")}
+            resetLabel={t("inspector.modelIntrospection.dashboard.analysis.reset")}
+            disabledLabel={t("inspector.modelIntrospection.dashboard.analysis.disabled")}
+            skippedLabel={t("inspector.modelIntrospection.dashboard.analysis.skipped")}
+          />
+          <div className="space-y-4">
+            <AnalysisOrbPanel
+              active={analysisActive}
+              phase={analysisPhase}
+              packageCoverage={visualMetrics.packageCoverage}
+              chunks={analysisVisible ? analysisResult?.analysis?.chunk_count ?? 0 : 0}
+              elapsedMs={analysisVisible ? analysisResult?.analysis?.elapsed_ms ?? 0 : 0}
+              firstChunkMs={analysisFirstChunkMs}
+              traceId={analysisTraceId}
+              stepCount={analysisStepCount}
+              charsPerSecond={analysisProcess?.chars_per_second ?? null}
+              progress={visualMetrics.analysisProgress}
+              subtitle={getOrbSubtitle({
+                analysisStatus: analysisResult?.status,
+                analysisActive,
+                chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
+                analysisStepCount,
+                idleLabel: t("inspector.modelIntrospection.dashboard.analysis.orbIdle"),
+                chunksLabel: t("inspector.modelIntrospection.dashboard.analysis.chunksLabel"),
+                stepsLabel: t("inspector.modelIntrospection.dashboard.analysis.stepsLabel"),
+                completedLabel: t("inspector.modelIntrospection.dashboard.analysis.completedLabel"),
+              })}
             />
-            <div className="space-y-4">
-              <AnalysisOrbPanel
-                active={analysisActive}
-                phase={analysisPhase}
-                packageCoverage={visualMetrics.packageCoverage}
-                chunks={analysisVisible ? analysisResult?.analysis?.chunk_count ?? 0 : 0}
-                elapsedMs={analysisVisible ? analysisResult?.analysis?.elapsed_ms ?? 0 : 0}
-                firstChunkMs={analysisFirstChunkMs}
-                traceId={analysisTraceId}
-                stepCount={analysisStepCount}
-                charsPerSecond={analysisProcess?.chars_per_second ?? null}
-                progress={visualMetrics.analysisProgress}
-                subtitle={getOrbSubtitle({
-                  analysisStatus: analysisResult?.status,
-                  analysisActive,
-                  chunkCount: analysisResult?.analysis?.chunk_count ?? 0,
-                  analysisStepCount,
-                  idleLabel: t("inspector.modelIntrospection.dashboard.analysis.orbIdle"),
-                  chunksLabel: t("inspector.modelIntrospection.dashboard.analysis.chunksLabel"),
-                  stepsLabel: t("inspector.modelIntrospection.dashboard.analysis.stepsLabel"),
-                  completedLabel: t("inspector.modelIntrospection.dashboard.analysis.completedLabel"),
-                })}
-              />
-            </div>
           </div>
-        </Panel>
-      )}
+        </div>
+      </Panel>
 
       {snapshot && (
         <Panel
@@ -1651,6 +1716,8 @@ export function ModelIntrospectionDashboard() {
         snapshot={snapshot}
         graphLayerOpen={graphLayerOpen}
         analysisActive={analysisActive}
+        architectureGraphReadiness={architectureGraphReadiness}
+        analysisLayerInternalsPayload={analysisLayerInternalsPayload}
         selectedGraphNodeIdEffective={selectedGraphNodeIdEffective}
         selectedGraphNode={selectedGraphNode}
         selectedGraphNodeDetails={selectedGraphNodeDetails}

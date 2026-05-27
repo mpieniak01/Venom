@@ -11,6 +11,12 @@ function encode(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
+
 function makeRunningResult(): AnalysisResult {
   return {
     status: "running",
@@ -103,6 +109,57 @@ describe("model introspection stream processor", () => {
     const finalResult = collected.at(-1);
     assert.ok(finalResult);
     assert.equal(finalResult?.status, "completed");
+  });
+
+  it("applies analysis_done only after the stream finishes", async () => {
+    let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controllerRef = controller;
+          controller.enqueue(encode(`event: analysis_start\ndata: ${JSON.stringify(makeRunningResult())}\n\n`));
+          controller.enqueue(encode("event: done\ndata: {}\n\n"));
+          controller.enqueue(
+            encode(
+              `event: analysis_done\ndata: ${JSON.stringify({
+                ...makeRunningResult(),
+                status: "completed",
+                analysis: {
+                  ...makeRunningResult().analysis!,
+                  response: "Slonce",
+                  chunk_count: 1,
+                  events: ["done"],
+                },
+              })}\n\n`,
+            ),
+          );
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    );
+
+    const collected: AnalysisResult[] = [];
+    let liveResult: AnalysisResult | null = null;
+    const processing = processAnalysisStream({
+      response,
+      streamStartedAt: performance.now(),
+      onSetLiveResult: (result) => {
+        liveResult = result;
+        collected.push(result);
+      },
+      onPatchLiveResult: (updater) => {
+        liveResult = updateLiveAnalysisResult(liveResult, updater);
+      },
+    });
+
+    await delay(20);
+    assert.ok(collected.length >= 1);
+    assert.equal(collected.at(-1)?.status, "running");
+
+    controllerRef?.close();
+    await processing;
+
+    assert.equal(collected.at(-1)?.status, "completed");
   });
 
   it("throws when error arrives without analysis_done", async () => {

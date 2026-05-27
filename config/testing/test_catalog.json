@@ -1040,8 +1040,8 @@
     {
       "path": "tests/test_audio_stream_handler_roi.py",
       "domain": "runtime",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "gate",
+      "intent": "gate",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -3467,7 +3467,7 @@
     },
     {
       "path": "tests/test_main_setup_router_dependencies.py",
-      "domain": "misc",
+      "domain": "environment",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -3705,6 +3705,18 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_model_introspection_activation_path_service.py",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
     },
     {
       "path": "tests/test_model_introspection_analysis_api.py",
@@ -6307,7 +6319,7 @@
     },
     {
       "path": "tests/test_voice_metadata.py",
-      "domain": "misc",
+      "domain": "api",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",

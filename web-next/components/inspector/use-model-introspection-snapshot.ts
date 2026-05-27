@@ -14,6 +14,10 @@ type SnapshotHookResult = {
   loadSnapshot: () => Promise<void>;
 };
 
+type UseModelIntrospectionSnapshotOptions = {
+  autoLoad?: boolean;
+};
+
 function readErrorMessage(data: SnapshotResponse & { detail?: string }): string {
   if (typeof data === "object" && data && "detail" in data) {
     return String(data.detail ?? "Request failed");
@@ -21,9 +25,12 @@ function readErrorMessage(data: SnapshotResponse & { detail?: string }): string 
   return "Request failed";
 }
 
-export function useModelIntrospectionSnapshot(): SnapshotHookResult {
+export function useModelIntrospectionSnapshot(
+  options?: UseModelIntrospectionSnapshotOptions,
+): SnapshotHookResult {
+  const autoLoad = options?.autoLoad ?? true;
   const [snapshot, setSnapshot] = useState<IntrospectionSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(autoLoad);
   const [error, setError] = useState<string | null>(null);
   const latestRequestIdRef = useRef(0);
 
@@ -70,8 +77,11 @@ export function useModelIntrospectionSnapshot(): SnapshotHookResult {
   }, []);
 
   useEffect(() => {
+    if (!autoLoad) {
+      return;
+    }
     loadSnapshot().catch(() => undefined);
-  }, [loadSnapshot]);
+  }, [autoLoad, loadSnapshot]);
 
   return { snapshot, loading, error, loadSnapshot };
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
@@ -49,6 +50,12 @@ def _resolve_storage_path(settings: Any | None = None) -> Path:
     return root / namespace / _TRENDS_FILENAME
 
 
+def _is_finite_float(val: Any) -> bool:
+    if not isinstance(val, (int, float)):
+        return False
+    return math.isfinite(float(val))
+
+
 def _normalize_record(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -56,7 +63,11 @@ def _normalize_record(raw: Any) -> dict[str, Any] | None:
     if not request_id:
         return None
     ts_ms_value = raw.get("ts_ms")
-    ts_ms = int(ts_ms_value) if isinstance(ts_ms_value, (int, float)) else 0
+    ts_ms = (
+        int(ts_ms_value)
+        if isinstance(ts_ms_value, (int, float)) and math.isfinite(float(ts_ms_value))
+        else 0
+    )
     record: dict[str, Any] = {
         "request_id": request_id,
         "ts_ms": ts_ms if ts_ms > 0 else int(time.time() * 1000),
@@ -66,16 +77,24 @@ def _normalize_record(raw: Any) -> dict[str, Any] | None:
         "coverage_percent": None,
         "first_content_ms": None,
         "token_noise_ratio": None,
+        "mlp_l2": None,
+        "residual_l2": None,
+        "delta_l2": None,
+        "cosine_similarity": None,
     }
     coverage_percent = raw.get("coverage_percent")
-    if isinstance(coverage_percent, (int, float)):
+    if _is_finite_float(coverage_percent):
         record["coverage_percent"] = float(coverage_percent)
     first_content_ms = raw.get("first_content_ms")
-    if isinstance(first_content_ms, (int, float)):
+    if _is_finite_float(first_content_ms):
         record["first_content_ms"] = float(first_content_ms)
     token_noise_ratio = raw.get("token_noise_ratio")
-    if isinstance(token_noise_ratio, (int, float)):
+    if _is_finite_float(token_noise_ratio):
         record["token_noise_ratio"] = float(token_noise_ratio)
+    for field in ["mlp_l2", "residual_l2", "delta_l2", "cosine_similarity"]:
+        val = raw.get(field)
+        if _is_finite_float(val):
+            record[field] = float(val)
     return record
 
 
@@ -126,13 +145,22 @@ def _file_lock(path: Path) -> Iterator[None]:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
+_TRENDS_TTL_MS = 30 * 24 * 60 * 60 * 1000  # 30 days in milliseconds
+
+
 def _upsert_record(
     records: list[dict[str, Any]],
     record: dict[str, Any],
     max_records: int = _MAX_STORED_RUNS,
 ) -> list[dict[str, Any]]:
     request_id = record["request_id"]
-    filtered = [entry for entry in records if entry.get("request_id") != request_id]
+    now_ms = int(time.time() * 1000)
+    cutoff_ms = now_ms - _TRENDS_TTL_MS
+    filtered = [
+        entry
+        for entry in records
+        if entry.get("request_id") != request_id and entry.get("ts_ms", 0) >= cutoff_ms
+    ]
     return [record, *filtered][:max_records]
 
 
@@ -188,6 +216,24 @@ def compute_run_trends(
     avg_noise_ratio = (
         round(sum(noise_values) / len(noise_values), 4) if noise_values else None
     )
+    mlp_l2_values = [
+        float(entry["mlp_l2"])
+        for entry in sample
+        if isinstance(entry.get("mlp_l2"), (int, float))
+    ]
+    cosine_similarity_values = [
+        float(entry["cosine_similarity"])
+        for entry in sample
+        if isinstance(entry.get("cosine_similarity"), (int, float))
+    ]
+    avg_mlp_l2 = (
+        round(sum(mlp_l2_values) / len(mlp_l2_values), 4) if mlp_l2_values else None
+    )
+    avg_cosine_similarity = (
+        round(sum(cosine_similarity_values) / len(cosine_similarity_values), 4)
+        if cosine_similarity_values
+        else None
+    )
     probe_runtime_rate = _compute_rate(
         sample,
         lambda entry: entry.get("probe_source") == "probe_runtime",
@@ -216,6 +262,8 @@ def compute_run_trends(
         "avg_first_content_ms": avg_first_content_ms,
         "first_chunk_p95_ms": first_chunk_p95_ms,
         "avg_noise_ratio": avg_noise_ratio,
+        "avg_mlp_l2": avg_mlp_l2,
+        "avg_cosine_similarity": avg_cosine_similarity,
     }
 
 
@@ -364,6 +412,13 @@ def evaluate_persisted_slo_windows(
     )
 
 
+def get_operator_run_records(settings: Any = None) -> list[dict[str, Any]]:
+    path = _resolve_storage_path(settings=settings)
+    with _STORE_LOCK:
+        with _file_lock(path):
+            return _read_records(path)
+
+
 def record_operator_run(
     *,
     request_id: str,
@@ -373,6 +428,10 @@ def record_operator_run(
     coverage_percent: float | None,
     first_content_ms: float | None,
     token_noise_ratio: float | None,
+    mlp_l2: float | None = None,
+    residual_l2: float | None = None,
+    delta_l2: float | None = None,
+    cosine_similarity: float | None = None,
     settings: Any = None,
 ) -> dict[str, Any] | None:
     if not request_id.strip():
@@ -388,6 +447,10 @@ def record_operator_run(
             "coverage_percent": coverage_percent,
             "first_content_ms": first_content_ms,
             "token_noise_ratio": token_noise_ratio,
+            "mlp_l2": mlp_l2,
+            "residual_l2": residual_l2,
+            "delta_l2": delta_l2,
+            "cosine_similarity": cosine_similarity,
         }
     )
     if record is None:

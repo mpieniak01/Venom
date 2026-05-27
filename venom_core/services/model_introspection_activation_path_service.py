@@ -17,7 +17,10 @@ _SLICE_EMPTY_LABEL = "slice empty"
 
 def _safe_float(value: Any) -> float | None:
     try:
-        return float(value)
+        val = float(value)
+        if math.isfinite(val):
+            return val
+        return None
     except (TypeError, ValueError):
         return None
 
@@ -190,6 +193,7 @@ def _build_tensor_activation_contract(
     mlp_layer: dict[str, Any],
     residual_layer: dict[str, Any] | None,
     transition: dict[str, Any] | None,
+    settings: Any = None,
 ) -> dict[str, Any]:
     mlp_hidden_slice = _safe_slice(mlp_layer.get("hidden_slice"))
     residual_hidden_slice = (
@@ -220,6 +224,94 @@ def _build_tensor_activation_contract(
         )
         cosine_similarity = round(dot_product / (mlp_norm * residual_norm), 6)
 
+    from venom_core.services.model_introspection_operator_trends_service import (
+        get_operator_run_records,
+    )
+
+    try:
+        past_runs = get_operator_run_records(settings=settings)
+    except Exception:
+        past_runs = []
+
+    mlp_norm_val = round(mlp_norm, 6)
+    residual_norm_val = round(residual_norm, 6) if residual_hidden_slice else None
+    delta_norm_val = (
+        transition.get("delta_norm") if isinstance(transition, dict) else None
+    )
+    cosine_similarity_val = cosine_similarity
+
+    comparisons = []
+    for r in past_runs:
+        past_mlp_l2 = r.get("mlp_l2")
+        past_cos = r.get("cosine_similarity")
+        mlp_l2_diff = None
+        if past_mlp_l2 is not None:
+            mlp_l2_diff = round(mlp_norm_val - past_mlp_l2, 6)
+        cosine_similarity_diff = None
+        if past_cos is not None and cosine_similarity_val is not None:
+            cosine_similarity_diff = round(cosine_similarity_val - past_cos, 6)
+
+        comparisons.append(
+            {
+                "request_id": r.get("request_id"),
+                "ts_ms": r.get("ts_ms"),
+                "mlp_l2": past_mlp_l2,
+                "cosine_similarity": past_cos,
+                "mlp_l2_diff": mlp_l2_diff,
+                "cosine_similarity_diff": cosine_similarity_diff,
+            }
+        )
+
+    all_mlp_l2 = [mlp_norm_val] + [
+        r["mlp_l2"] for r in past_runs if r.get("mlp_l2") is not None
+    ]
+    all_cos = []
+    if cosine_similarity_val is not None:
+        all_cos.append(cosine_similarity_val)
+    all_cos += [
+        r["cosine_similarity"]
+        for r in past_runs
+        if r.get("cosine_similarity") is not None
+    ]
+
+    mlp_l2_variance = 0.0
+    if len(all_mlp_l2) > 1:
+        mean_mlp = sum(all_mlp_l2) / len(all_mlp_l2)
+        mlp_l2_variance = sum((x - mean_mlp) ** 2 for x in all_mlp_l2) / (
+            len(all_mlp_l2) - 1
+        )
+
+    cos_mean = None
+    if all_cos:
+        cos_mean = sum(all_cos) / len(all_cos)
+
+    is_stable = True
+    status_label = "stable"
+    if len(all_mlp_l2) > 1:
+        if mlp_l2_variance > 0.05:
+            is_stable = False
+            status_label = "unstable_variance"
+        elif cos_mean is not None and cos_mean < 0.8:
+            is_stable = False
+            status_label = "low_similarity"
+    else:
+        status_label = "single_run_baseline"
+
+    stability = {
+        "stable": is_stable,
+        "status_label": status_label,
+        "mlp_l2_variance": round(mlp_l2_variance, 6),
+        "cosine_similarity_mean": round(cos_mean, 6) if cos_mean is not None else None,
+    }
+
+    evidence = [
+        f"computed from {len(all_mlp_l2)} historical run(s)",
+        "trends store path: operator_run_trends.json",
+        f"current run L2 norm: {mlp_norm_val:.4f}",
+    ]
+    if cosine_similarity_val is not None:
+        evidence.append(f"current cosine similarity: {cosine_similarity_val:.4f}")
+
     return {
         "source": "probe_runtime.hidden.hidden_slice",
         "status": "ok",
@@ -233,14 +325,15 @@ def _build_tensor_activation_contract(
         "residual_vector": residual_hidden_slice if residual_hidden_slice else None,
         "delta_vector": delta_vector if delta_vector else None,
         "norms": {
-            "mlp_l2": round(mlp_norm, 6),
-            "residual_l2": round(residual_norm, 6) if residual_hidden_slice else None,
-            "delta_l2": transition.get("delta_norm")
-            if isinstance(transition, dict)
-            else None,
-            "cosine_similarity": cosine_similarity,
+            "mlp_l2": mlp_norm_val,
+            "residual_l2": residual_norm_val,
+            "delta_l2": delta_norm_val,
+            "cosine_similarity": cosine_similarity_val,
         },
         "top_delta_dimensions": top_delta_dimensions,
+        "comparisons": comparisons,
+        "stability": stability,
+        "evidence": evidence,
         "notes": [
             "Contract exposes hidden-state slice vectors for activation analysis.",
             "This payload is not a full tensor dump of the MLP block.",
@@ -693,6 +786,7 @@ async def build_mlp_activation_payload(
     *,
     prompt: str,
     architecture_graph: dict[str, Any] | None = None,
+    settings: Any = None,
 ) -> dict[str, Any]:
     mlp_node = _find_graph_node_by_role(architecture_graph, "mlp")
     if mlp_node is None:
@@ -785,6 +879,7 @@ async def build_mlp_activation_payload(
         mlp_layer=mlp_entry,
         residual_layer=residual_entry,
         transition=transition,
+        settings=settings,
     )
     return {
         "source": "probe_runtime",

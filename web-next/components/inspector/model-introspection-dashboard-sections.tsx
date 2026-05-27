@@ -39,6 +39,7 @@ import type {
   RagFocusModel,
   SaliencyModel,
   SnapshotComparison,
+  AnalysisLayerInternalsBlock,
 } from "@/components/inspector/model-introspection-dashboard-types";
 
 type AnalysisOrbProps = Readonly<{
@@ -151,6 +152,8 @@ type AnalysisResultsPanelProps = Readonly<{
         liveStreamingRate: number;
         avgFirstContentMs: number | null;
         avgNoiseRatio: number | null;
+        avgMlpL2: number | null;
+        avgCosineSimilarity: number | null;
       }
     | null
     | undefined;
@@ -1208,6 +1211,8 @@ type AnalysisRunTrendsCardProps = Readonly<{
         liveStreamingRate: number;
         avgFirstContentMs: number | null;
         avgNoiseRatio: number | null;
+        avgMlpL2: number | null;
+        avgCosineSimilarity: number | null;
       }
     | null
     | undefined;
@@ -1272,6 +1277,18 @@ function AnalysisRunTrendsCard(props: AnalysisRunTrendsCardProps) {
           runTrends.avgNoiseRatio,
           t("inspector.modelIntrospection.common.na"),
         )}
+      </Badge>
+      <Badge tone="neutral">
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.avgMlpL2")}{" "}
+        {runTrends.avgMlpL2 !== null
+          ? runTrends.avgMlpL2.toFixed(4)
+          : t("inspector.modelIntrospection.common.na")}
+      </Badge>
+      <Badge tone="neutral">
+        {t("inspector.modelIntrospection.dashboard.results.runTrends.avgCosineSimilarity")}{" "}
+        {runTrends.avgCosineSimilarity !== null
+          ? runTrends.avgCosineSimilarity.toFixed(4)
+          : t("inspector.modelIntrospection.common.na")}
       </Badge>
       <Badge tone="neutral">
         {t("inspector.modelIntrospection.dashboard.results.runTrends.window")}{" "}
@@ -2273,7 +2290,7 @@ type ArchitectureMlpActivation = Readonly<{
     impact: string;
     evidence: string[];
   } | null;
-  tensorActivation: {
+  tensorActivation?: {
     source: string;
     status: string;
     sliceKind: string;
@@ -2294,6 +2311,21 @@ type ArchitectureMlpActivation = Readonly<{
       value: number;
       absValue: number;
     }>;
+    comparisons: Array<{
+      requestId: string | null;
+      tsMs: number | null;
+      mlpL2: number | null;
+      cosineSimilarity: number | null;
+      mlpL2Diff: number | null;
+      cosineSimilarityDiff: number | null;
+    }>;
+    stability: {
+      stable: boolean;
+      statusLabel: string;
+      mlpL2Variance: number;
+      cosineSimilarityMean: number | null;
+    } | null;
+    evidence: string[];
     notes: string[];
   } | null;
   summary: {
@@ -2880,6 +2912,23 @@ function getAnalysisMlpActivation(
               absValue: dimension.abs_value,
             }),
           ),
+          comparisons: (mlpActivation.tensor_activation.comparisons ?? []).map((comp) => ({
+            requestId: comp.request_id,
+            tsMs: comp.ts_ms,
+            mlpL2: comp.mlp_l2,
+            cosineSimilarity: comp.cosine_similarity,
+            mlpL2Diff: comp.mlp_l2_diff,
+            cosineSimilarityDiff: comp.cosine_similarity_diff,
+          })),
+          stability: mlpActivation.tensor_activation.stability
+            ? {
+                stable: mlpActivation.tensor_activation.stability.stable,
+                statusLabel: mlpActivation.tensor_activation.stability.status_label,
+                mlpL2Variance: mlpActivation.tensor_activation.stability.mlp_l2_variance,
+                cosineSimilarityMean: mlpActivation.tensor_activation.stability.cosine_similarity_mean,
+              }
+            : null,
+          evidence: mlpActivation.tensor_activation.evidence ?? [],
           notes: mlpActivation.tensor_activation.notes ?? [],
         }
       : null,
@@ -3093,6 +3142,120 @@ function useArchitectureGraphSelectionState({
   };
 }
 
+function buildCytoscapeElements(
+  graph: ModelArchitectureGraph,
+  containerWidth: number,
+  containerHeight: number,
+) {
+  return {
+    nodes: graph.nodes.map((node, index) => ({
+      data: {
+        id: node.id,
+        label: node.label,
+        kind: node.kind,
+        role: node.role ?? "unknown",
+        status: node.status,
+        layer_index: node.layer_index ?? null,
+        group: node.group ?? null,
+      },
+      ...((containerWidth <= 0 || containerHeight <= 0)
+        ? {
+            position: {
+              x: 140 + (node.layer_index ?? index) * 160,
+              y: 120 + index * 90,
+            },
+          }
+        : {}),
+    })),
+    edges: graph.edges.map((edge, index) => ({
+      data: {
+        id: `${edge.from}->${edge.to}:${index}`,
+        source: edge.from,
+        target: edge.to,
+        label: edge.label,
+        kind: edge.kind ?? "relation",
+        direction: edge.direction ?? "unknown",
+        weight: edge.weight ?? null,
+      },
+    })),
+  };
+}
+
+function getCytoscapeStyle(): cytoscapeType.StylesheetStyle[] {
+  return [
+    {
+      selector: "node",
+      style: {
+        label: "data(label)",
+        "background-color": (ele: cytoscapeType.NodeSingular) =>
+          getArchitectureGraphColor(String(ele.data("role") || "unknown")),
+        color: "#fff",
+        "font-size": 10,
+        "text-opacity": 0.85,
+        "text-valign": "center",
+        "text-halign": "center",
+      },
+    },
+    { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#67e8f9" } },
+    {
+      selector: "edge",
+      style: {
+        label: "data(label)",
+        "font-size": 9,
+        color: "#cbd5e1",
+        "text-background-color": "#09090b",
+        "text-background-opacity": 0.85,
+        "text-background-padding": "2px",
+        "curve-style": "bezier",
+        "target-arrow-shape": "triangle",
+        width: 2,
+        "line-color": "#475569",
+      },
+    },
+  ];
+}
+
+function setupResizeObserver(
+  resizeObserverRef: MutableRefObject<ResizeObserver | null>,
+  cyRef: MutableRefObject<HTMLDivElement | null>,
+  getCy: () => cytoscapeType.Core | null,
+) {
+  if (typeof ResizeObserver === "undefined" || !cyRef.current) return;
+  if (resizeObserverRef.current) {
+    resizeObserverRef.current.disconnect();
+  }
+  resizeObserverRef.current = new ResizeObserver(() => {
+    const cy = getCy();
+    if (!cy || cy.destroyed()) return;
+    cy.resize();
+    cy.fit(undefined, ARCHITECTURE_GRAPH_PADDING_PX);
+  });
+  resizeObserverRef.current.observe(cyRef.current);
+}
+
+function registerCytoscapeEvents(
+  cy: cytoscapeType.Core,
+  setSelectedNodeId: (nodeId: string | null) => void,
+) {
+  cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
+    if (cy.destroyed()) return;
+    const node = evt.target;
+    const nodeId = String(node.id() || "");
+    if (!nodeId) return;
+    setSelectedNodeId(nodeId);
+    cy.nodes().removeClass("highlighted");
+    node.addClass("highlighted");
+  });
+
+  cy.on("tap", (evt: cytoscapeType.EventObject) => {
+    if (cy.destroyed()) return;
+    if (evt.target === cy) {
+      setSelectedNodeId(null);
+      cy.nodes().removeClass("highlighted");
+    }
+  });
+}
+
 function useArchitectureGraphCytoscape({
   graph,
   cyRef,
@@ -3121,91 +3284,18 @@ function useArchitectureGraphCytoscape({
         cyInstanceRef.current.destroy();
       }
       cyInstanceRef.current = null;
-      const elements = {
-        nodes: graph.nodes.map((node, index) => ({
-          data: {
-            id: node.id,
-            label: node.label,
-            kind: node.kind,
-            role: node.role ?? "unknown",
-            status: node.status,
-            layer_index: node.layer_index ?? null,
-            group: node.group ?? null,
-          },
-          ...((containerWidth <= 0 || containerHeight <= 0)
-            ? {
-                position: {
-                  x: 140 + (node.layer_index ?? index) * 160,
-                  y: 120 + index * 90,
-                },
-              }
-            : {}),
-        })),
-        edges: graph.edges.map((edge, index) => ({
-          data: {
-            id: `${edge.from}->${edge.to}:${index}`,
-            source: edge.from,
-            target: edge.to,
-            label: edge.label,
-            kind: edge.kind ?? "relation",
-            direction: edge.direction ?? "unknown",
-            weight: edge.weight ?? null,
-          },
-        })),
-      };
+      const elements = buildCytoscapeElements(graph, containerWidth, containerHeight);
 
       cy = cytoscape({
         container: cyRef.current,
         elements,
-        style: [
-          {
-            selector: "node",
-            style: {
-              label: "data(label)",
-              "background-color": (ele: cytoscapeType.NodeSingular) =>
-                getArchitectureGraphColor(String(ele.data("role") || "unknown")),
-              color: "#fff",
-              "font-size": 10,
-              "text-opacity": 0.85,
-              "text-valign": "center",
-              "text-halign": "center",
-            },
-          },
-          { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#67e8f9" } },
-          {
-            selector: "edge",
-            style: {
-              label: "data(label)",
-              "font-size": 9,
-              color: "#cbd5e1",
-              "text-background-color": "#09090b",
-              "text-background-opacity": 0.85,
-              "text-background-padding": "2px",
-              "curve-style": "bezier",
-              "target-arrow-shape": "triangle",
-              width: 2,
-              "line-color": "#475569",
-            },
-          },
-        ],
+        style: getCytoscapeStyle(),
         layout: getArchitectureGraphLayoutOptions(graph, containerWidth, containerHeight),
       });
 
-      if (cancelled || !cyRef.current) {
-        return;
-      }
+      if (cancelled || !cyRef.current) return;
 
-      if (typeof ResizeObserver !== "undefined") {
-        if (resizeObserverRef.current) {
-          resizeObserverRef.current.disconnect();
-        }
-        resizeObserverRef.current = new ResizeObserver(() => {
-          if (!cy || cy.destroyed()) return;
-          cy.resize();
-          cy.fit(undefined, ARCHITECTURE_GRAPH_PADDING_PX);
-        });
-        resizeObserverRef.current.observe(cyRef.current);
-      }
+      setupResizeObserver(resizeObserverRef, cyRef, () => cy);
 
       cy.resize();
       cy.fit(undefined, ARCHITECTURE_GRAPH_PADDING_PX);
@@ -3216,24 +3306,7 @@ function useArchitectureGraphCytoscape({
         return;
       }
 
-      cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
-        if (!cy || cy.destroyed()) return;
-        const node = evt.target;
-        const nodeId = String(node.id() || "");
-        if (!nodeId) return;
-        setSelectedNodeId(nodeId);
-        cy.nodes().removeClass("highlighted");
-        node.addClass("highlighted");
-      });
-
-      cy.on("tap", (evt: cytoscapeType.EventObject) => {
-        if (!cy || cy.destroyed()) return;
-        if (evt.target === cy) {
-          setSelectedNodeId(null);
-          cy.nodes().removeClass("highlighted");
-        }
-      });
-
+      registerCytoscapeEvents(cy, setSelectedNodeId);
       cyInstanceRef.current = cy;
     };
 
@@ -3256,6 +3329,1258 @@ function useArchitectureGraphCytoscape({
       }
     };
   }, [cyInstanceRef, cyRef, graph, resizeObserverRef, setSelectedNodeId]);
+}
+
+type TensorActivationDetailProps = {
+  tensorActivation: NonNullable<ArchitectureMlpActivation["tensorActivation"]>;
+  layerId: string;
+  t: (key: string) => string;
+};
+
+function TensorActivationDetail({ tensorActivation, layerId, t }: TensorActivationDetailProps) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivation")}
+        </Badge>
+        <Badge tone="neutral">
+          {tensorActivation.vectorLength} dims
+        </Badge>
+        <Badge tone="neutral">
+          {tensorActivation.sliceKind}
+        </Badge>
+      </div>
+      <p className="mt-2 text-sm text-zinc-300">
+        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationDescription")}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Badge tone="neutral">
+          L2 MLP {tensorActivation.norms.mlpL2.toFixed(3)}
+        </Badge>
+        {tensorActivation.norms.residualL2 === null ? null : (
+          <Badge tone="neutral">
+            L2 residual {tensorActivation.norms.residualL2.toFixed(3)}
+          </Badge>
+        )}
+        {tensorActivation.norms.deltaL2 === null ? null : (
+          <Badge tone="neutral">
+            L2 delta {tensorActivation.norms.deltaL2.toFixed(3)}
+          </Badge>
+        )}
+        {tensorActivation.norms.cosineSimilarity === null ? null : (
+          <Badge tone="neutral">
+            cos {tensorActivation.norms.cosineSimilarity.toFixed(3)}
+          </Badge>
+        )}
+      </div>
+      {tensorActivation.topDeltaDimensions.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {tensorActivation.topDeltaDimensions.slice(0, 6).map((dimension) => (
+            <Badge key={`${layerId}-tensor-delta-${dimension.index}`} tone="neutral">
+              delta dim {dimension.index}: {dimension.value.toFixed(3)}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+
+
+
+      {/* Stability section */}
+      {tensorActivation.stability ? (
+        <div className="mt-4 border-t border-white/10 pt-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationStability")}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Badge tone={tensorActivation.stability.stable ? "success" : "warning"}>
+              {tensorActivation.stability.stable
+                ? t("inspector.modelIntrospection.dashboard.graph.stability.stable")
+                : t("inspector.modelIntrospection.dashboard.graph.stability.unstable")}{" "}
+              ({t(`inspector.modelIntrospection.dashboard.graph.stability.status.${tensorActivation.stability.statusLabel}`)})
+            </Badge>
+            <Badge tone="neutral">
+              {t("inspector.modelIntrospection.dashboard.graph.stability.variance")}:{" "}
+              {typeof tensorActivation.stability.mlpL2Variance === "number" && !isNaN(tensorActivation.stability.mlpL2Variance)
+                ? tensorActivation.stability.mlpL2Variance.toFixed(6)
+                : t("inspector.modelIntrospection.common.na")}
+            </Badge>
+            {tensorActivation.stability.cosineSimilarityMean !== null && tensorActivation.stability.cosineSimilarityMean !== undefined ? (
+              <Badge tone="neutral">
+                {t("inspector.modelIntrospection.dashboard.graph.stability.meanCos")}:{" "}
+                {!isNaN(tensorActivation.stability.cosineSimilarityMean)
+                  ? tensorActivation.stability.cosineSimilarityMean.toFixed(4)
+                  : t("inspector.modelIntrospection.common.na")}
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Comparisons section */}
+      {tensorActivation.comparisons && tensorActivation.comparisons.length > 0 ? (
+        <div className="mt-4 border-t border-white/10 pt-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationComparisons")}
+          </p>
+          <div className="mt-2 max-h-40 overflow-auto space-y-2 pr-1">
+            {tensorActivation.comparisons.map((comp, index) => (
+              <div key={comp.requestId || index} className="rounded-lg border border-white/5 bg-black/40 p-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-1 text-zinc-400">
+                  <span className="font-mono">{comp.requestId ? comp.requestId.slice(0, 8) : "N/A"}</span>
+                  <span>{comp.tsMs ? new Date(comp.tsMs).toLocaleString() : "N/A"}</span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-2 text-zinc-300">
+                  <span>L2: {comp.mlpL2 !== null ? comp.mlpL2.toFixed(3) : "N/A"}
+                    {comp.mlpL2Diff !== null && (
+                      <span className={comp.mlpL2Diff >= 0 ? "text-red-400 ml-1" : "text-green-400 ml-1"}>
+                        ({comp.mlpL2Diff >= 0 ? "+" : ""}{comp.mlpL2Diff.toFixed(3)})
+                      </span>
+                    )}
+                  </span>
+                  <span>cos: {comp.cosineSimilarity !== null ? comp.cosineSimilarity.toFixed(3) : "N/A"}
+                    {comp.cosineSimilarityDiff !== null && (
+                      <span className={comp.cosineSimilarityDiff >= 0 ? "text-green-400 ml-1" : "text-red-400 ml-1"}>
+                        ({comp.cosineSimilarityDiff >= 0 ? "+" : ""}{comp.cosineSimilarityDiff.toFixed(3)})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Evidence section */}
+      {tensorActivation.evidence && tensorActivation.evidence.length > 0 ? (
+        <div className="mt-4 border-t border-white/10 pt-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationEvidence")}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {tensorActivation.evidence.map((line, idx) => (
+              <Badge key={idx} tone="neutral">
+                {line}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {tensorActivation.notes.length > 0 ? (
+        <div className="mt-3 border-t border-white/10 pt-2 flex flex-wrap gap-2">
+          {tensorActivation.notes.map((note) => (
+            <Badge key={`${layerId}-tensor-note-${note}`} tone="neutral">
+              {note}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type ArchitectureProgressCheckpointsProps = {
+  progressCheckpoints: ReturnType<typeof getArchitectureGraphProgressCheckpoints>;
+  t: (key: string) => string;
+};
+
+function ArchitectureProgressCheckpoints({ progressCheckpoints, t }: ArchitectureProgressCheckpointsProps) {
+  return (
+    <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureProgressTitle")}
+          </p>
+          <p className="mt-1 text-sm text-zinc-300">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureProgressDescription")}
+          </p>
+        </div>
+        <Badge tone="neutral">{progressCheckpoints.length} checkpoints</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        {progressCheckpoints.map((checkpoint) => (
+          <div key={checkpoint.id} className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">{checkpoint.title}</p>
+                <p className="mt-1 font-mono text-sm text-white">{checkpoint.stage}</p>
+              </div>
+              <Badge tone="neutral">{checkpoint.id}</Badge>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureProgressBefore")}
+                </p>
+                <p className="mt-1 text-sm text-zinc-300">{checkpoint.before}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureProgressAfter")}
+                </p>
+                <p className="mt-1 text-sm text-zinc-300">{checkpoint.after}</p>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureProgressChange")}
+                </p>
+                <p className="mt-1 text-sm text-zinc-300">{checkpoint.change}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureProgressResult")}
+                </p>
+                <p className="mt-1 text-sm text-zinc-300">{checkpoint.result}</p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureProgressEvidence")}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {checkpoint.evidence.map((line, index) => (
+                  <Badge key={`${checkpoint.id}-evidence-${index}-${line}`} tone="neutral">
+                    {line}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type ArchitectureOverviewProps = {
+  overview: ReturnType<typeof getArchitectureGraphOverview>;
+  summary: ReturnType<typeof getArchitectureGraphSummary>;
+  readiness: ModelArchitectureGraphReadiness;
+  t: (key: string) => string;
+};
+
+function ArchitectureOverview({ overview, summary, readiness, t }: ArchitectureOverviewProps) {
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewTitle")}
+          </p>
+          <p className="mt-1 text-sm text-zinc-300">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewDescription")}
+          </p>
+        </div>
+        <Badge tone={readiness.status === "available" ? "success" : "warning"}>
+          {readiness.fidelity}
+        </Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewFlow")}
+          </p>
+          <p className="mt-1 font-mono text-sm text-white">{overview.flowLabel}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewScale")}
+          </p>
+          <p className="mt-1 font-mono text-sm text-white">
+            {formatCount(summary.layer_count)} layers · {formatCount(summary.block_count)} blocks
+          </p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Nodes / edges</p>
+          <p className="mt-1 font-mono text-sm text-white">
+            {formatCount(summary.nodes)} nodes · {formatCount(summary.edges)} edges
+          </p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewOrigin")}
+          </p>
+          <p className="mt-1 font-mono text-sm text-white">{readiness.source}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ArchitectureTransitionsProps = {
+  transitions: ReturnType<typeof getArchitectureGraphTransitions>;
+  selectedTransitionId: string | null;
+  setSelectedTransitionId: (id: string | null) => void;
+  t: (key: string) => string;
+};
+
+function ArchitectureTransitions({
+  transitions,
+  selectedTransitionId,
+  setSelectedTransitionId,
+  t,
+}: ArchitectureTransitionsProps) {
+  return (
+    <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsTitle")}
+          </p>
+          <p className="mt-1 text-sm text-zinc-300">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsDescription")}
+          </p>
+        </div>
+        <Badge tone="neutral">
+          {transitions.length} {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsSelected")}
+        </Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {transitions.map((transition) => {
+          const isSelected = transition.id === selectedTransitionId;
+          return (
+            <button
+              key={transition.id}
+              type="button"
+              onClick={() => setSelectedTransitionId(transition.id)}
+              className={`rounded-xl border p-4 text-left transition-colors ${
+                isSelected
+                  ? "border-cyan-300 bg-cyan-500/15"
+                  : "border-white/10 bg-black/20 hover:border-cyan-300/40 hover:bg-white/10"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-sm text-white">
+                    {transition.sourceLabel} → {transition.targetLabel}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                    {transition.label}
+                  </p>
+                </div>
+                <Badge tone={getTransitionSignificanceTone(transition.significance)}>
+                  {transition.significance}
+                </Badge>
+              </div>
+              <p className="mt-3 text-sm text-zinc-300">{transition.effect}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type ArchitectureOutcomeProps = {
+  outcome: ReturnType<typeof getArchitectureGraphOutcome>;
+  readiness: ModelArchitectureGraphReadiness;
+  readinessTone: BadgeTone;
+  t: (key: string) => string;
+};
+
+function ArchitectureOutcome({ outcome, readiness, readinessTone, t }: ArchitectureOutcomeProps) {
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeTitle")}
+          </p>
+          <p className="mt-1 text-sm text-zinc-300">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeDescription")}
+          </p>
+        </div>
+        <Badge tone={readinessTone}>{readiness.status}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeResult")}
+          </p>
+          <p className="mt-2 text-sm text-zinc-300">{outcome.result}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomePrimaryPath")}
+          </p>
+          <p className="mt-2 font-mono text-sm text-white">{outcome.primaryPath}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeSummary")}
+          </p>
+          <p className="mt-2 text-sm text-zinc-300">{outcome.summary}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeEvidence")}
+          </p>
+          <div className="mt-2 space-y-1 text-sm text-zinc-300">
+            {outcome.evidence.map((line, index) => (
+              <p key={`outcome-evidence-${index}-${line}`}>{line}</p>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-4">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeSignals")}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {outcome.supportingSignals.map((signal, index) => (
+            <Badge key={`outcome-signal-${index}-${signal}`} tone="neutral">
+              {signal}
+            </Badge>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ArchitectureTransitionDetailProps = {
+  selectedTransition: ReturnType<typeof getArchitectureGraphTransitions>[number] | null;
+  t: (key: string) => string;
+};
+
+function ArchitectureTransitionDetail({ selectedTransition, t }: ArchitectureTransitionDetailProps) {
+  return (
+    <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDetailTitle")}
+        </p>
+        <Badge tone={selectedTransition ? "success" : "neutral"}>
+          {selectedTransition ? "transition selected" : "awaiting selection"}
+        </Badge>
+      </div>
+      {selectedTransition ? (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="neutral">{selectedTransition.sourceRole}</Badge>
+            <Badge tone="neutral">{selectedTransition.targetRole}</Badge>
+            <Badge tone="neutral">{selectedTransition.significance}</Badge>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Transition</p>
+            <p className="mt-1 font-mono text-sm text-white">
+              {selectedTransition.sourceLabel} → {selectedTransition.targetLabel}
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionBefore")}
+              </p>
+              <p className="mt-2 font-mono text-sm text-white">{selectedTransition.before}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionAfter")}
+              </p>
+              <p className="mt-2 font-mono text-sm text-white">{selectedTransition.after}</p>
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDelta")}
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">{selectedTransition.delta}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionImpact")}
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">{selectedTransition.impact}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionEffect")}
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">{selectedTransition.effect}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-zinc-300">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionEmpty")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+type ArchitectureDrilldownProps = {
+  selectedNode: ModelArchitectureGraphNode | null;
+  selectedNodeDetails: GraphNodeDetails;
+  typeHintText: string;
+};
+
+function ArchitectureDrilldown({ selectedNode, selectedNodeDetails, typeHintText }: ArchitectureDrilldownProps) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">Architecture drilldown</p>
+        <Badge tone={selectedNode ? "success" : "neutral"}>
+          {selectedNode ? "node selected" : "awaiting selection"}
+        </Badge>
+      </div>
+      {selectedNode ? (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="neutral">{selectedNode.role ?? "unknown"}</Badge>
+            <Badge tone="neutral">{selectedNode.status}</Badge>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Label</p>
+            <p className="mt-1 font-mono text-sm text-white">{selectedNode.label}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {selectedNodeDetails.title}
+            </p>
+            <div className="mt-2 space-y-1 text-sm text-zinc-300">
+              {selectedNodeDetails.lines.map((line, index) => (
+                <p key={`node-detail-${index}-${line}`}>{line}</p>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Type hint</p>
+            <p className="mt-1 text-sm text-zinc-300">{typeHintText}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-zinc-300">
+          Select a model layer, block or diagnostic node to inspect its architecture details.
+        </p>
+      )}
+    </div>
+  );
+}
+
+type ArchitectureRelationsProps = {
+  edges: ModelArchitectureGraphEdge[];
+};
+
+function ArchitectureRelations({ edges }: ArchitectureRelationsProps) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-wide text-zinc-500">Relations</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {edges.map((edge, index) => (
+          <Badge key={`${edge.from}-${edge.to}-${edge.label}-${index}`} tone="neutral">
+            {edge.from} → {edge.to} ({edge.label})
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type LayerInternalsDetailPanelProps = {
+  selectedLayer: ArchitectureLayerInternals | null;
+  selectedDominantSignals: ReturnType<typeof getArchitectureLayerDominantSignals>;
+  activationPath: ArchitectureActivationPath | null;
+  selectedActivationLayer: ArchitectureActivationPath["layers"][number] | null;
+  selectedActivationTransition: ArchitectureActivationPath["transitions"][number] | null;
+  architectureBlocks: AnalysisLayerInternalsBlock[];
+  mlpActivation: ArchitectureMlpActivation | null;
+  t: (key: string) => string;
+};
+
+function LayerInternalsDetailPanel({
+  selectedLayer,
+  selectedDominantSignals,
+  activationPath,
+  selectedActivationLayer,
+  selectedActivationTransition,
+  architectureBlocks,
+  mlpActivation,
+  t,
+}: LayerInternalsDetailPanelProps) {
+  if (!selectedLayer) {
+    return (
+      <p className="mt-3 text-sm text-zinc-300">
+        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsEmptySelection")}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">{selectedLayer.status}</Badge>
+        <Badge tone="neutral">layer {selectedLayer.layer}</Badge>
+      </div>
+      <div>
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsLabel")}
+        </p>
+        <p className="mt-1 font-mono text-sm text-white">{selectedLayer.label}</p>
+      </div>
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSummary")}
+        </p>
+        <p className="mt-2 text-sm text-zinc-300">{selectedLayer.summary}</p>
+      </div>
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsStateDelta")}
+        </p>
+        <p className="mt-2 text-sm text-zinc-300">{selectedLayer.stateDelta}</p>
+      </div>
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDominantSignals")}
+          </p>
+          <Badge tone={selectedDominantSignals.length > 0 ? "success" : "neutral"}>
+            {selectedDominantSignals.length}
+          </Badge>
+        </div>
+        <p className="mt-2 text-sm text-zinc-300">
+          {selectedDominantSignals.length > 0
+            ? t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDominantSignalsDescription")
+            : t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+        </p>
+        <div className="mt-3 space-y-2">
+          {selectedDominantSignals.length > 0
+            ? selectedDominantSignals.map((signal) => (
+                <div
+                  key={`${selectedLayer.id}-${signal.source}-${signal.label}`}
+                  className="rounded-lg border border-white/10 bg-black/20 p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={signal.dominant ? "success" : "neutral"}>
+                      {signal.dominant ? "dominant" : signal.source}
+                    </Badge>
+                    <Badge tone="neutral">{signal.source}</Badge>
+                    <Badge tone="neutral">{signal.label}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-300">{signal.detail}</p>
+                  {signal.evidence.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {signal.evidence.map((line, index) => (
+                        <Badge key={`${selectedLayer.id}-${signal.source}-${signal.label}-dominant-evidence-${index}-${line}`} tone="neutral">
+                          {line}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            : null}
+        </div>
+      </div>
+      {activationPath ? (
+        <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationPath")}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="neutral">
+                {activationPath.summary.selectedLayerCount}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayers")}
+              </Badge>
+              <Badge tone="neutral">
+                {activationPath.summary.transitionCount}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransitions")}
+              </Badge>
+            </div>
+          </div>
+          {activationPath.notes.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {activationPath.notes.slice(0, 2).map((note, index) => (
+                <Badge key={`${selectedLayer.id}-activation-note-${index}-${note}`} tone="neutral">
+                  {note}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+          {selectedActivationLayer ? (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayer")}
+                  </p>
+                  <p className="mt-1 font-mono text-sm text-white">
+                    {selectedActivationLayer.label}
+                  </p>
+                </div>
+                <Badge tone="neutral">layer {selectedActivationLayer.layer}</Badge>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge tone="neutral">
+                  mean {selectedActivationLayer.metrics.mean.toFixed(3)}
+                </Badge>
+                <Badge tone="neutral">
+                  norm {selectedActivationLayer.metrics.norm.toFixed(3)}
+                </Badge>
+                <Badge tone="neutral">
+                  max |x| {selectedActivationLayer.metrics.maxAbs.toFixed(3)}
+                </Badge>
+                {selectedActivationLayer.roleHint ? (
+                  <Badge tone="neutral">{selectedActivationLayer.roleHint}</Badge>
+                ) : null}
+              </div>
+              <p className="mt-3 text-sm text-zinc-300">
+                {selectedActivationLayer.summary}
+              </p>
+              {selectedActivationLayer.metrics.topDimensions.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedActivationLayer.metrics.topDimensions.map((dimension) => (
+                    <Badge
+                      key={`${selectedActivationLayer.layer}-${dimension.index}`}
+                      tone="neutral"
+                    >
+                      dim {dimension.index}: {dimension.value.toFixed(3)}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {selectedActivationTransition ? (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransition")}
+                </p>
+                <Badge tone="neutral">
+                  {selectedActivationTransition.fromLayer} → {selectedActivationTransition.toLayer}
+                </Badge>
+              </div>
+              <p className="mt-2 font-mono text-sm text-white">
+                {selectedActivationTransition.before} → {selectedActivationTransition.after}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge tone="neutral">
+                  ΔL2 {selectedActivationTransition.deltaNorm.toFixed(3)}
+                </Badge>
+                <Badge tone="neutral">
+                  Δmean {selectedActivationTransition.meanShift.toFixed(3)}
+                </Badge>
+                <Badge tone="neutral">
+                  peak |Δ| {selectedActivationTransition.maxAbsShift.toFixed(3)}
+                </Badge>
+              </div>
+              <p className="mt-3 text-sm text-zinc-300">
+                {selectedActivationTransition.summary}
+              </p>
+              <p className="mt-2 text-sm text-zinc-400">
+                {selectedActivationTransition.impact}
+              </p>
+              {selectedActivationTransition.evidence.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedActivationTransition.evidence.map((line, index) => (
+                    <Badge key={`${selectedLayer.id}-activation-transition-evidence-${index}-${line}`} tone="neutral">
+                      {line}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsBlocks")}
+        </p>
+        <div className="mt-2 space-y-2">
+          {selectedLayer.blocks.length > 0 ? (
+            selectedLayer.blocks.map((block) => (
+              <div key={`${selectedLayer.id}-${block.kind}-${block.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{block.kind}</Badge>
+                  <Badge tone="neutral">{block.label}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-zinc-300">{block.summary}</p>
+                <p className="mt-2 text-sm text-zinc-400">{block.detail}</p>
+                <p className="mt-2 text-sm text-zinc-400">{block.impact}</p>
+                {block.heads?.length ? (
+                  <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsHeads")}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {block.heads.map((head) => (
+                        <div key={`${selectedLayer.id}-${block.kind}-${block.label}-head-${head.head}`} className="rounded-md border border-white/10 bg-black/20 p-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge tone="neutral">head {head.head}</Badge>
+                            <Badge tone="neutral">{head.summary}</Badge>
+                          </div>
+                          <p className="mt-2 text-sm text-zinc-300">{head.detail}</p>
+                          {head.evidence.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {head.evidence.map((line, index) => (
+                                <Badge key={`${selectedLayer.id}-${block.label}-head-${head.head}-evidence-${index}-${line}`} tone="neutral">
+                                  {line}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {block.evidence.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {block.evidence.map((line, index) => (
+                      <Badge key={`${selectedLayer.id}-${block.label}-evidence-${index}-${line}`} tone="neutral">
+                        {line}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+            </p>
+          )}
+        </div>
+      </div>
+      {architectureBlocks.length > 0 ? (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsArchitectureBlocks")}
+          </p>
+          <div className="mt-3 space-y-2">
+            {architectureBlocks.map((block) => (
+              <div key={`${selectedLayer.id}-${block.kind}-${block.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{block.kind}</Badge>
+                  <Badge tone="neutral">{block.label}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-zinc-300">{block.summary}</p>
+                <p className="mt-2 text-sm text-zinc-400">{block.detail}</p>
+                <p className="mt-2 text-sm text-zinc-400">{block.impact}</p>
+                {block.evidence.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {block.evidence.map((line, index) => (
+                      <Badge key={`${selectedLayer.id}-${block.label}-arch-evidence-${index}-${line}`} tone="neutral">
+                        {line}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSignals")}
+        </p>
+        <div className="mt-2 space-y-2">
+          {selectedLayer.signals.length > 0 ? (
+            selectedLayer.signals.map((signal) => (
+              <div key={`${selectedLayer.id}-${signal.source}-${signal.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{signal.source}</Badge>
+                  <Badge tone="neutral">{signal.label}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-zinc-300">{signal.detail}</p>
+                {signal.evidence.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {signal.evidence.map((line, index) => (
+                      <Badge key={`${selectedLayer.id}-${signal.source}-${signal.label}-evidence-${index}-${line}`} tone="neutral">
+                        {line}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkage")}
+          </p>
+          {selectedLayer.responseLinkage ? (
+            <Badge tone={selectedLayer.responseLinkage.status === "linked" ? "success" : "warning"}>
+              {selectedLayer.responseLinkage.coveragePercent.toFixed(2)}%
+            </Badge>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm text-zinc-300">
+          {selectedLayer.responseLinkage
+            ? t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageDescription")
+            : t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+        </p>
+        {selectedLayer.responseLinkage ? (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="neutral">
+                {selectedLayer.responseLinkage.linkedFragmentCount}/{selectedLayer.responseLinkage.fragmentCount}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageFragments")}
+              </Badge>
+              <Badge tone="neutral">
+                {selectedLayer.responseLinkage.evidenceLinks.length}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageEvidence")}
+              </Badge>
+            </div>
+            <p className="text-sm text-zinc-300">{selectedLayer.responseLinkage.summary}</p>
+            <p className="text-sm text-zinc-400">{selectedLayer.responseLinkage.impact}</p>
+            {selectedLayer.responseLinkage.dominantSignals.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedLayer.responseLinkage.dominantSignals.map((signal) => (
+                  <Badge key={`${selectedLayer.id}-response-signal-${signal}`} tone="neutral">
+                    {signal}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+            {selectedLayer.responseLinkage.linkedFragments.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedLayer.responseLinkage.linkedFragments.map((fragment) => (
+                  <Badge key={`${selectedLayer.id}-response-fragment-${fragment}`} tone="neutral">
+                    {fragment}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+            {selectedLayer.responseLinkage.evidenceLinks.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedLayer.responseLinkage.evidenceLinks.map((link) => (
+                  <Badge key={`${selectedLayer.id}-response-link-${link}`} tone="neutral">
+                    {link}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {mlpActivation ? (
+        <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivation")}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={mlpActivation.status === "ok" ? "success" : "warning"}>
+                {mlpActivation.status}
+              </Badge>
+              <Badge tone="neutral">
+                {mlpActivation.summary.hiddenDimensionCount}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivationDimensions")}
+              </Badge>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-zinc-300">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivationDescription")}
+          </p>
+          <div className="mt-3 space-y-3">
+            {mlpActivation.mlpLayer ? (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{mlpActivation.mlpLayer.label}</Badge>
+                  <Badge tone="neutral">
+                    layer {mlpActivation.mlpLayer.layer}
+                  </Badge>
+                  {mlpActivation.mlpLayer.roleHint ? (
+                    <Badge tone="neutral">{mlpActivation.mlpLayer.roleHint}</Badge>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-sm text-zinc-300">
+                  {mlpActivation.mlpLayer.summary}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge tone="neutral">
+                    mean {mlpActivation.mlpLayer.metrics.mean.toFixed(3)}
+                  </Badge>
+                  <Badge tone="neutral">
+                    norm {mlpActivation.mlpLayer.metrics.norm.toFixed(3)}
+                  </Badge>
+                  <Badge tone="neutral">
+                    max |x| {mlpActivation.mlpLayer.metrics.maxAbs.toFixed(3)}
+                  </Badge>
+                </div>
+                {mlpActivation.mlpLayer.metrics.topDimensions.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {mlpActivation.mlpLayer.metrics.topDimensions.map((dimension) => (
+                      <Badge key={`${selectedLayer.id}-mlp-dim-${dimension.index}`} tone="neutral">
+                        dim {dimension.index}: {dimension.value.toFixed(3)}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+                {mlpActivation.mlpLayer.evidence.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {mlpActivation.mlpLayer.evidence.map((line) => (
+                      <Badge key={`${selectedLayer.id}-mlp-evidence-${line}`} tone="neutral">
+                        {line}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {mlpActivation.transition ? (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">
+                    {mlpActivation.transition.before} → {mlpActivation.transition.after}
+                  </Badge>
+                  <Badge tone="neutral">
+                    ΔL2 {mlpActivation.transition.deltaNorm.toFixed(3)}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm text-zinc-300">
+                  {mlpActivation.transition.summary}
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  {mlpActivation.transition.impact}
+                </p>
+                {mlpActivation.transition.evidence.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {mlpActivation.transition.evidence.map((line) => (
+                      <Badge key={`${selectedLayer.id}-mlp-transition-${line}`} tone="neutral">
+                        {line}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {mlpActivation.residualLayer ? (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{mlpActivation.residualLayer.label}</Badge>
+                  <Badge tone="neutral">
+                    layer {mlpActivation.residualLayer.layer}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm text-zinc-300">
+                  {mlpActivation.residualLayer.summary}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge tone="neutral">
+                    mean {mlpActivation.residualLayer.metrics.mean.toFixed(3)}
+                  </Badge>
+                  <Badge tone="neutral">
+                    norm {mlpActivation.residualLayer.metrics.norm.toFixed(3)}
+                  </Badge>
+                  <Badge tone="neutral">
+                    max |x| {mlpActivation.residualLayer.metrics.maxAbs.toFixed(3)}
+                  </Badge>
+                </div>
+              </div>
+            ) : null}
+            {mlpActivation.tensorActivation ? (
+              <TensorActivationDetail
+                tensorActivation={mlpActivation.tensorActivation}
+                layerId={selectedLayer.id}
+                t={t}
+              />
+            ) : null}
+          </div>
+          {mlpActivation.notes.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {mlpActivation.notes.slice(0, 3).map((note, index) => (
+                <Badge key={`${selectedLayer.id}-mlp-note-${index}-${note}`} tone="neutral">
+                  {note}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsEvidence")}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {selectedLayer.evidence.length > 0 ? (
+            selectedLayer.evidence.map((line, index) => (
+              <Badge key={`${selectedLayer.id}-layer-evidence-${index}-${line}`} tone="neutral">
+                {line}
+              </Badge>
+            ))
+          ) : (
+            <p className="text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ArchitectureLayerInternalsSectionProps = {
+  layerInternals: ArchitectureLayerInternals[];
+  layerInternalsPayload: AnalysisLayerInternalsPayload | null;
+  selectedLayerId: string | null;
+  setSelectedLayerId: (id: string | null) => void;
+  selectedLayer: ArchitectureLayerInternals | null;
+  selectedDominantSignals: ReturnType<typeof getArchitectureLayerDominantSignals>;
+  activationPath: ArchitectureActivationPath | null;
+  selectedActivationLayer: ArchitectureActivationPath["layers"][number] | null;
+  selectedActivationTransition: ArchitectureActivationPath["transitions"][number] | null;
+  architectureBlocks: AnalysisLayerInternalsBlock[];
+  mlpActivation: ArchitectureMlpActivation | null;
+  t: (key: string) => string;
+};
+
+function ArchitectureLayerInternalsSection({
+  layerInternals,
+  layerInternalsPayload,
+  selectedLayerId,
+  setSelectedLayerId,
+  selectedLayer,
+  selectedDominantSignals,
+  activationPath,
+  selectedActivationLayer,
+  selectedActivationTransition,
+  architectureBlocks,
+  mlpActivation,
+  t,
+}: ArchitectureLayerInternalsSectionProps) {
+  return (
+    <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTitle")}
+          </p>
+          <p className="mt-1 text-sm text-zinc-300">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDescription")}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="neutral">
+            {layerInternals.length} {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsCount")}
+          </Badge>
+          {layerInternalsPayload?.summary ? (
+            <>
+              <Badge tone="neutral">
+                {layerInternalsPayload.summary.checkpoint_count}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsCheckpoints")}
+              </Badge>
+              <Badge tone="neutral">
+                {layerInternalsPayload.summary.block_count}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsBlocks")}
+              </Badge>
+              <Badge tone="neutral">
+                {layerInternalsPayload.summary.architecture_block_count}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsArchitectureBlocks")}
+              </Badge>
+              <Badge tone="neutral">
+                {layerInternalsPayload.summary.activation_layer_count}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayers")}
+              </Badge>
+              <Badge tone="neutral">
+                {layerInternalsPayload.summary.activation_transition_count}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransitions")}
+              </Badge>
+              <Badge tone="neutral">
+                {layerInternalsPayload.summary.attention_layer_count}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsAttentionLayers")}
+              </Badge>
+              <Badge tone="neutral">
+                {layerInternalsPayload.summary.saliency_token_count}{" "}
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSaliencyTokens")}
+              </Badge>
+            </>
+          ) : null}
+          {layerInternalsPayload ? <Badge tone="neutral">{layerInternalsPayload.source}</Badge> : null}
+        </div>
+      </div>
+      {layerInternalsPayload?.notes?.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {layerInternalsPayload.notes.slice(0, 3).map((note, index) => (
+            <Badge key={`internals-note-${index}-${note}`} tone="neutral">
+              {note}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+      {layerInternals.length > 0 ? (
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsList")}
+            </p>
+            <div className="mt-3 max-h-80 space-y-2 overflow-auto pr-1">
+              {layerInternals.map((layer) => {
+                const isSelected = layer.id === selectedLayerId;
+                return (
+                  <button
+                    key={layer.id}
+                    type="button"
+                    onClick={() => setSelectedLayerId(layer.id)}
+                    className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                      isSelected
+                        ? "border-cyan-300 bg-cyan-500/15"
+                        : "border-white/10 bg-white/5 hover:border-cyan-300/40 hover:bg-white/10"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-mono text-sm text-white">{layer.label}</p>
+                        <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                          {layer.status}
+                        </p>
+                      </div>
+                      <Badge tone={isSelected ? "success" : "neutral"}>{layer.layer}</Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-300">{layer.summary}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSelected")}
+              </p>
+              <Badge tone={selectedLayer ? "success" : "neutral"}>
+                {selectedLayer ? "layer selected" : "awaiting selection"}
+              </Badge>
+            </div>
+            <LayerInternalsDetailPanel
+              selectedLayer={selectedLayer}
+              selectedDominantSignals={selectedDominantSignals}
+              activationPath={activationPath}
+              selectedActivationLayer={selectedActivationLayer}
+              selectedActivationTransition={selectedActivationTransition}
+              architectureBlocks={architectureBlocks}
+              mlpActivation={mlpActivation}
+              t={t}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+          <p className="text-sm text-zinc-300">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
@@ -3376,900 +4701,48 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
         <Badge tone="neutral">layers {formatCount(summary.layer_count)}</Badge>
         <Badge tone="neutral">blocks {formatCount(summary.block_count)}</Badge>
       </div>
-      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureProgressTitle")}
-            </p>
-            <p className="mt-1 text-sm text-zinc-300">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureProgressDescription")}
-            </p>
-          </div>
-          <Badge tone="neutral">{progressCheckpoints.length} checkpoints</Badge>
-        </div>
-        <div className="mt-4 grid gap-3 xl:grid-cols-2">
-          {progressCheckpoints.map((checkpoint) => (
-            <div key={checkpoint.id} className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">{checkpoint.title}</p>
-                  <p className="mt-1 font-mono text-sm text-white">{checkpoint.stage}</p>
-                </div>
-                <Badge tone="neutral">{checkpoint.id}</Badge>
-              </div>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressBefore")}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.before}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressAfter")}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.after}</p>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressChange")}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.change}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressResult")}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.result}</p>
-                </div>
-              </div>
-              <div className="mt-3">
-                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureProgressEvidence")}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {checkpoint.evidence.map((line) => (
-                    <Badge key={line} tone="neutral">
-                      {line}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTitle")}
-            </p>
-            <p className="mt-1 text-sm text-zinc-300">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDescription")}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="neutral">
-              {layerInternals.length} {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsCount")}
-            </Badge>
-            {layerInternalsPayload?.summary ? (
-              <>
-                <Badge tone="neutral">
-                  {layerInternalsPayload.summary.checkpoint_count}{" "}
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsCheckpoints")}
-                </Badge>
-                <Badge tone="neutral">
-                  {layerInternalsPayload.summary.block_count}{" "}
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsBlocks")}
-                </Badge>
-                <Badge tone="neutral">
-                  {layerInternalsPayload.summary.architecture_block_count}{" "}
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsArchitectureBlocks")}
-                </Badge>
-                <Badge tone="neutral">
-                  {layerInternalsPayload.summary.activation_layer_count}{" "}
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayers")}
-                </Badge>
-                <Badge tone="neutral">
-                  {layerInternalsPayload.summary.activation_transition_count}{" "}
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransitions")}
-                </Badge>
-                <Badge tone="neutral">
-                  {layerInternalsPayload.summary.attention_layer_count}{" "}
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsAttentionLayers")}
-                </Badge>
-                <Badge tone="neutral">
-                  {layerInternalsPayload.summary.saliency_token_count}{" "}
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSaliencyTokens")}
-                </Badge>
-              </>
-            ) : null}
-            {layerInternalsPayload ? <Badge tone="neutral">{layerInternalsPayload.source}</Badge> : null}
-          </div>
-        </div>
-        {layerInternalsPayload?.notes?.length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {layerInternalsPayload.notes.slice(0, 3).map((note) => (
-              <Badge key={note} tone="neutral">
-                {note}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
-        {layerInternals.length > 0 ? (
-          <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsList")}
-              </p>
-              <div className="mt-3 max-h-80 space-y-2 overflow-auto pr-1">
-                {layerInternals.map((layer) => {
-                  const isSelected = layer.id === selectedLayerId;
-                  return (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      onClick={() => setSelectedLayerId(layer.id)}
-                      className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
-                        isSelected
-                          ? "border-cyan-300 bg-cyan-500/15"
-                          : "border-white/10 bg-white/5 hover:border-cyan-300/40 hover:bg-white/10"
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="font-mono text-sm text-white">{layer.label}</p>
-                          <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                            {layer.status}
-                          </p>
-                        </div>
-                        <Badge tone={isSelected ? "success" : "neutral"}>{layer.layer}</Badge>
-                      </div>
-                      <p className="mt-2 text-sm text-zinc-300">{layer.summary}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSelected")}
-                </p>
-                <Badge tone={selectedLayer ? "success" : "neutral"}>
-                  {selectedLayer ? "layer selected" : "awaiting selection"}
-                </Badge>
-              </div>
-              {selectedLayer ? (
-                <div className="mt-3 space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone="neutral">{selectedLayer.status}</Badge>
-                    <Badge tone="neutral">layer {selectedLayer.layer}</Badge>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsLabel")}
-                    </p>
-                    <p className="mt-1 font-mono text-sm text-white">{selectedLayer.label}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSummary")}
-                    </p>
-                    <p className="mt-2 text-sm text-zinc-300">{selectedLayer.summary}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsStateDelta")}
-                    </p>
-                    <p className="mt-2 text-sm text-zinc-300">{selectedLayer.stateDelta}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDominantSignals")}
-                      </p>
-                      <Badge tone={selectedDominantSignals.length > 0 ? "success" : "neutral"}>
-                        {selectedDominantSignals.length}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-sm text-zinc-300">
-                      {selectedDominantSignals.length > 0
-                        ? t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDominantSignalsDescription")
-                        : t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
-                    </p>
-                    <div className="mt-3 space-y-2">
-                      {selectedDominantSignals.length > 0 ? (
-                        selectedDominantSignals.map((signal) => (
-                          <div
-                            key={`${selectedLayer.id}-${signal.source}-${signal.label}`}
-                            className="rounded-lg border border-white/10 bg-black/20 p-3"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge tone={signal.dominant ? "success" : "neutral"}>
-                                {signal.dominant ? "dominant" : signal.source}
-                              </Badge>
-                              <Badge tone="neutral">{signal.source}</Badge>
-                              <Badge tone="neutral">{signal.label}</Badge>
-                            </div>
-                            <p className="mt-2 text-sm text-zinc-300">{signal.detail}</p>
-                            {signal.evidence.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {signal.evidence.map((line) => (
-                                  <Badge key={line} tone="neutral">
-                                    {line}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))
-                      ) : null}
-                    </div>
-                  </div>
-                  {activationPath ? (
-                    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationPath")}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone="neutral">
-                            {activationPath.summary.selectedLayerCount}{" "}
-                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayers")}
-                          </Badge>
-                          <Badge tone="neutral">
-                            {activationPath.summary.transitionCount}{" "}
-                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransitions")}
-                          </Badge>
-                        </div>
-                      </div>
-                      {activationPath.notes.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {activationPath.notes.slice(0, 2).map((note) => (
-                            <Badge key={note} tone="neutral">
-                              {note}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : null}
-                      {selectedActivationLayer ? (
-                        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayer")}
-                              </p>
-                              <p className="mt-1 font-mono text-sm text-white">
-                                {selectedActivationLayer.label}
-                              </p>
-                            </div>
-                            <Badge tone="neutral">layer {selectedActivationLayer.layer}</Badge>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Badge tone="neutral">
-                              mean {selectedActivationLayer.metrics.mean.toFixed(3)}
-                            </Badge>
-                            <Badge tone="neutral">
-                              norm {selectedActivationLayer.metrics.norm.toFixed(3)}
-                            </Badge>
-                            <Badge tone="neutral">
-                              max |x| {selectedActivationLayer.metrics.maxAbs.toFixed(3)}
-                            </Badge>
-                            {selectedActivationLayer.roleHint ? (
-                              <Badge tone="neutral">{selectedActivationLayer.roleHint}</Badge>
-                            ) : null}
-                          </div>
-                          <p className="mt-3 text-sm text-zinc-300">
-                            {selectedActivationLayer.summary}
-                          </p>
-                          {selectedActivationLayer.metrics.topDimensions.length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {selectedActivationLayer.metrics.topDimensions.map((dimension) => (
-                                <Badge
-                                  key={`${selectedActivationLayer.layer}-${dimension.index}`}
-                                  tone="neutral"
-                                >
-                                  dim {dimension.index}: {dimension.value.toFixed(3)}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {selectedActivationTransition ? (
-                        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransition")}
-                            </p>
-                            <Badge tone="neutral">
-                              {selectedActivationTransition.fromLayer} → {selectedActivationTransition.toLayer}
-                            </Badge>
-                          </div>
-                          <p className="mt-2 font-mono text-sm text-white">
-                            {selectedActivationTransition.before} → {selectedActivationTransition.after}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Badge tone="neutral">
-                              ΔL2 {selectedActivationTransition.deltaNorm.toFixed(3)}
-                            </Badge>
-                            <Badge tone="neutral">
-                              Δmean {selectedActivationTransition.meanShift.toFixed(3)}
-                            </Badge>
-                            <Badge tone="neutral">
-                              peak |Δ| {selectedActivationTransition.maxAbsShift.toFixed(3)}
-                            </Badge>
-                          </div>
-                          <p className="mt-3 text-sm text-zinc-300">
-                            {selectedActivationTransition.summary}
-                          </p>
-                          <p className="mt-2 text-sm text-zinc-400">
-                            {selectedActivationTransition.impact}
-                          </p>
-                          {selectedActivationTransition.evidence.length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {selectedActivationTransition.evidence.map((line) => (
-                                <Badge key={line} tone="neutral">
-                                  {line}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsBlocks")}
-                    </p>
-                    <div className="mt-2 space-y-2">
-                      {selectedLayer.blocks.length > 0 ? (
-                        selectedLayer.blocks.map((block) => (
-                          <div key={`${selectedLayer.id}-${block.kind}-${block.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge tone="neutral">{block.kind}</Badge>
-                              <Badge tone="neutral">{block.label}</Badge>
-                            </div>
-                            <p className="mt-2 text-sm text-zinc-300">{block.summary}</p>
-                            <p className="mt-2 text-sm text-zinc-400">{block.detail}</p>
-                            <p className="mt-2 text-sm text-zinc-400">{block.impact}</p>
-                            {block.heads?.length ? (
-                              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3">
-                                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsHeads")}
-                                </p>
-                                <div className="mt-2 space-y-2">
-                                  {block.heads.map((head) => (
-                                    <div key={`${selectedLayer.id}-${block.kind}-${block.label}-head-${head.head}`} className="rounded-md border border-white/10 bg-black/20 p-2">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <Badge tone="neutral">head {head.head}</Badge>
-                                        <Badge tone="neutral">{head.summary}</Badge>
-                                      </div>
-                                      <p className="mt-2 text-sm text-zinc-300">{head.detail}</p>
-                                      {head.evidence.length > 0 ? (
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                          {head.evidence.map((line) => (
-                                            <Badge key={line} tone="neutral">
-                                              {line}
-                                            </Badge>
-                                          ))}
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                            {block.evidence.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {block.evidence.map((line) => (
-                                  <Badge key={line} tone="neutral">
-                                    {line}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-zinc-300">
-                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {architectureBlocks.length > 0 ? (
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsArchitectureBlocks")}
-                      </p>
-                      <div className="mt-3 space-y-2">
-                        {architectureBlocks.map((block) => (
-                          <div key={`${selectedLayer.id}-${block.kind}-${block.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge tone="neutral">{block.kind}</Badge>
-                              <Badge tone="neutral">{block.label}</Badge>
-                            </div>
-                            <p className="mt-2 text-sm text-zinc-300">{block.summary}</p>
-                            <p className="mt-2 text-sm text-zinc-400">{block.detail}</p>
-                            <p className="mt-2 text-sm text-zinc-400">{block.impact}</p>
-                            {block.evidence.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {block.evidence.map((line) => (
-                                  <Badge key={line} tone="neutral">
-                                    {line}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSignals")}
-                    </p>
-                    <div className="mt-2 space-y-2">
-                      {selectedLayer.signals.length > 0 ? (
-                        selectedLayer.signals.map((signal) => (
-                          <div key={`${selectedLayer.id}-${signal.source}-${signal.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge tone="neutral">{signal.source}</Badge>
-                              <Badge tone="neutral">{signal.label}</Badge>
-                            </div>
-                            <p className="mt-2 text-sm text-zinc-300">{signal.detail}</p>
-                            {signal.evidence.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {signal.evidence.map((line) => (
-                                  <Badge key={line} tone="neutral">
-                                    {line}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-zinc-300">
-                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkage")}
-                      </p>
-                      {selectedLayer.responseLinkage ? (
-                        <Badge tone={selectedLayer.responseLinkage.status === "linked" ? "success" : "warning"}>
-                          {selectedLayer.responseLinkage.coveragePercent.toFixed(2)}%
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-2 text-sm text-zinc-300">
-                      {selectedLayer.responseLinkage
-                        ? t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageDescription")
-                        : t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
-                    </p>
-                    {selectedLayer.responseLinkage ? (
-                      <div className="mt-3 space-y-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone="neutral">
-                            {selectedLayer.responseLinkage.linkedFragmentCount}/{selectedLayer.responseLinkage.fragmentCount}{" "}
-                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageFragments")}
-                          </Badge>
-                          <Badge tone="neutral">
-                            {selectedLayer.responseLinkage.evidenceLinks.length}{" "}
-                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageEvidence")}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-zinc-300">{selectedLayer.responseLinkage.summary}</p>
-                        <p className="text-sm text-zinc-400">{selectedLayer.responseLinkage.impact}</p>
-                        {selectedLayer.responseLinkage.dominantSignals.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {selectedLayer.responseLinkage.dominantSignals.map((signal) => (
-                              <Badge key={`${selectedLayer.id}-response-signal-${signal}`} tone="neutral">
-                                {signal}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : null}
-                        {selectedLayer.responseLinkage.linkedFragments.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {selectedLayer.responseLinkage.linkedFragments.map((fragment) => (
-                              <Badge key={`${selectedLayer.id}-response-fragment-${fragment}`} tone="neutral">
-                                {fragment}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : null}
-                        {selectedLayer.responseLinkage.evidenceLinks.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {selectedLayer.responseLinkage.evidenceLinks.map((link) => (
-                              <Badge key={`${selectedLayer.id}-response-link-${link}`} tone="neutral">
-                                {link}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                  {mlpActivation ? (
-                    <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivation")}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone={mlpActivation.status === "ok" ? "success" : "warning"}>
-                            {mlpActivation.status}
-                          </Badge>
-                          <Badge tone="neutral">
-                            {mlpActivation.summary.hiddenDimensionCount}{" "}
-                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivationDimensions")}
-                          </Badge>
-                        </div>
-                      </div>
-                      <p className="mt-2 text-sm text-zinc-300">
-                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivationDescription")}
-                      </p>
-                      <div className="mt-3 space-y-3">
-                        {mlpActivation.mlpLayer ? (
-                          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge tone="neutral">{mlpActivation.mlpLayer.label}</Badge>
-                              <Badge tone="neutral">
-                                layer {mlpActivation.mlpLayer.layer}
-                              </Badge>
-                              {mlpActivation.mlpLayer.roleHint ? (
-                                <Badge tone="neutral">{mlpActivation.mlpLayer.roleHint}</Badge>
-                              ) : null}
-                            </div>
-                            <p className="mt-2 text-sm text-zinc-300">
-                              {mlpActivation.mlpLayer.summary}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Badge tone="neutral">
-                                mean {mlpActivation.mlpLayer.metrics.mean.toFixed(3)}
-                              </Badge>
-                              <Badge tone="neutral">
-                                norm {mlpActivation.mlpLayer.metrics.norm.toFixed(3)}
-                              </Badge>
-                              <Badge tone="neutral">
-                                max |x| {mlpActivation.mlpLayer.metrics.maxAbs.toFixed(3)}
-                              </Badge>
-                            </div>
-                            {mlpActivation.mlpLayer.metrics.topDimensions.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {mlpActivation.mlpLayer.metrics.topDimensions.map((dimension) => (
-                                  <Badge key={`${selectedLayer.id}-mlp-dim-${dimension.index}`} tone="neutral">
-                                    dim {dimension.index}: {dimension.value.toFixed(3)}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                            {mlpActivation.mlpLayer.evidence.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {mlpActivation.mlpLayer.evidence.map((line) => (
-                                  <Badge key={`${selectedLayer.id}-mlp-evidence-${line}`} tone="neutral">
-                                    {line}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {mlpActivation.transition ? (
-                          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge tone="neutral">
-                                {mlpActivation.transition.before} → {mlpActivation.transition.after}
-                              </Badge>
-                              <Badge tone="neutral">
-                                ΔL2 {mlpActivation.transition.deltaNorm.toFixed(3)}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 text-sm text-zinc-300">
-                              {mlpActivation.transition.summary}
-                            </p>
-                            <p className="mt-2 text-sm text-zinc-400">
-                              {mlpActivation.transition.impact}
-                            </p>
-                            {mlpActivation.transition.evidence.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {mlpActivation.transition.evidence.map((line) => (
-                                  <Badge key={`${selectedLayer.id}-mlp-transition-${line}`} tone="neutral">
-                                    {line}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {mlpActivation.residualLayer ? (
-                          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge tone="neutral">{mlpActivation.residualLayer.label}</Badge>
-                              <Badge tone="neutral">
-                                layer {mlpActivation.residualLayer.layer}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 text-sm text-zinc-300">
-                              {mlpActivation.residualLayer.summary}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Badge tone="neutral">
-                                mean {mlpActivation.residualLayer.metrics.mean.toFixed(3)}
-                              </Badge>
-                              <Badge tone="neutral">
-                                norm {mlpActivation.residualLayer.metrics.norm.toFixed(3)}
-                              </Badge>
-                              <Badge tone="neutral">
-                                max |x| {mlpActivation.residualLayer.metrics.maxAbs.toFixed(3)}
-                              </Badge>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                      {mlpActivation.notes.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {mlpActivation.notes.slice(0, 3).map((note) => (
-                            <Badge key={`${selectedLayer.id}-mlp-note-${note}`} tone="neutral">
-                              {note}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : null}
-                      {mlpActivation.tensorActivation ? (
-                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge tone="neutral">
-                              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivation")}
-                            </Badge>
-                            <Badge tone="neutral">
-                              {mlpActivation.tensorActivation.vectorLength} dims
-                            </Badge>
-                            <Badge tone="neutral">
-                              {mlpActivation.tensorActivation.sliceKind}
-                            </Badge>
-                          </div>
-                          <p className="mt-2 text-sm text-zinc-300">
-                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationDescription")}
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Badge tone="neutral">
-                              L2 MLP {mlpActivation.tensorActivation.norms.mlpL2.toFixed(3)}
-                            </Badge>
-                            {mlpActivation.tensorActivation.norms.residualL2 === null ? null : (
-                              <Badge tone="neutral">
-                                L2 residual {mlpActivation.tensorActivation.norms.residualL2.toFixed(3)}
-                              </Badge>
-                            )}
-                            {mlpActivation.tensorActivation.norms.deltaL2 === null ? null : (
-                              <Badge tone="neutral">
-                                L2 delta {mlpActivation.tensorActivation.norms.deltaL2.toFixed(3)}
-                              </Badge>
-                            )}
-                            {mlpActivation.tensorActivation.norms.cosineSimilarity === null ? null : (
-                              <Badge tone="neutral">
-                                cos {mlpActivation.tensorActivation.norms.cosineSimilarity.toFixed(3)}
-                              </Badge>
-                            )}
-                          </div>
-                          {mlpActivation.tensorActivation.topDeltaDimensions.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {mlpActivation.tensorActivation.topDeltaDimensions.slice(0, 6).map((dimension) => (
-                                <Badge key={`${selectedLayer.id}-tensor-delta-${dimension.index}`} tone="neutral">
-                                  delta dim {dimension.index}: {dimension.value.toFixed(3)}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : null}
-                          {mlpActivation.tensorActivation.notes.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {mlpActivation.tensorActivation.notes.map((note) => (
-                                <Badge key={`${selectedLayer.id}-tensor-note-${note}`} tone="neutral">
-                                  {note}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsEvidence")}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selectedLayer.evidence.length > 0 ? (
-                        selectedLayer.evidence.map((line) => (
-                          <Badge key={line} tone="neutral">
-                            {line}
-                          </Badge>
-                        ))
-                      ) : (
-                        <p className="text-sm text-zinc-300">
-                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-zinc-300">
-                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsEmptySelection")}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-            <p className="text-sm text-zinc-300">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
-            </p>
-          </div>
-        )}
-      </div>
-      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewTitle")}
-            </p>
-            <p className="mt-1 text-sm text-zinc-300">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewDescription")}
-            </p>
-          </div>
-          <Badge tone={readiness.status === "available" ? "success" : "warning"}>
-            {readiness.fidelity}
-          </Badge>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewFlow")}
-            </p>
-            <p className="mt-1 font-mono text-sm text-white">{overview.flowLabel}</p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewScale")}
-            </p>
-            <p className="mt-1 font-mono text-sm text-white">
-              {formatCount(summary.layer_count)} layers · {formatCount(summary.block_count)} blocks
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Nodes / edges</p>
-            <p className="mt-1 font-mono text-sm text-white">
-              {formatCount(summary.nodes)} nodes · {formatCount(summary.edges)} edges
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewOrigin")}
-            </p>
-            <p className="mt-1 font-mono text-sm text-white">{readiness.source}</p>
-          </div>
-        </div>
-      </div>
-      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsTitle")}
-            </p>
-            <p className="mt-1 text-sm text-zinc-300">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsDescription")}
-            </p>
-          </div>
-          <Badge tone="neutral">
-            {transitions.length} {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsSelected")}
-          </Badge>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {transitions.map((transition) => {
-            const isSelected = transition.id === selectedTransitionId;
-            return (
-              <button
-                key={transition.id}
-                type="button"
-                onClick={() => setSelectedTransitionId(transition.id)}
-                className={`rounded-xl border p-4 text-left transition-colors ${isSelected
-                  ? "border-cyan-300 bg-cyan-500/15"
-                  : "border-white/10 bg-black/20 hover:border-cyan-300/40 hover:bg-white/10"
-                  }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-mono text-sm text-white">
-                      {transition.sourceLabel} → {transition.targetLabel}
-                    </p>
-                    <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                      {transition.label}
-                    </p>
-                  </div>
-                  <Badge tone={getTransitionSignificanceTone(transition.significance)}>
-                    {transition.significance}
-                  </Badge>
-                </div>
-                <p className="mt-3 text-sm text-zinc-300">{transition.effect}</p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeTitle")}
-            </p>
-            <p className="mt-1 text-sm text-zinc-300">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeDescription")}
-            </p>
-          </div>
-          <Badge
-            tone={readinessTone}
-          >
-            {readiness.status}
-          </Badge>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeResult")}
-            </p>
-            <p className="mt-2 text-sm text-zinc-300">{outcome.result}</p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomePrimaryPath")}
-            </p>
-            <p className="mt-2 font-mono text-sm text-white">{outcome.primaryPath}</p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeSummary")}
-            </p>
-            <p className="mt-2 text-sm text-zinc-300">{outcome.summary}</p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeEvidence")}
-            </p>
-            <div className="mt-2 space-y-1 text-sm text-zinc-300">
-              {outcome.evidence.map((line) => (
-                <p key={line}>{line}</p>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="mt-4">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeSignals")}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {outcome.supportingSignals.map((signal) => (
-              <Badge key={signal} tone="neutral">
-                {signal}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      </div>
+
+      <ArchitectureProgressCheckpoints
+        progressCheckpoints={progressCheckpoints}
+        t={t}
+      />
+
+      <ArchitectureLayerInternalsSection
+        layerInternals={layerInternals}
+        layerInternalsPayload={layerInternalsPayload}
+        selectedLayerId={selectedLayerId}
+        setSelectedLayerId={setSelectedLayerId}
+        selectedLayer={selectedLayer}
+        selectedDominantSignals={selectedDominantSignals}
+        activationPath={activationPath}
+        selectedActivationLayer={selectedActivationLayer}
+        selectedActivationTransition={selectedActivationTransition}
+        architectureBlocks={architectureBlocks}
+        mlpActivation={mlpActivation}
+        t={t}
+      />
+
+      <ArchitectureOverview
+        overview={overview}
+        summary={summary}
+        readiness={readiness}
+        t={t}
+      />
+
+      <ArchitectureTransitions
+        transitions={transitions}
+        selectedTransitionId={selectedTransitionId}
+        setSelectedTransitionId={setSelectedTransitionId}
+        t={t}
+      />
+
+      <ArchitectureOutcome
+        outcome={outcome}
+        readiness={readiness}
+        readinessTone={readinessTone}
+        t={t}
+      />
+
       <div className="mt-4 grid items-stretch gap-4 xl:grid-cols-[1.45fr_0.85fr]">
         <div className="min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-black/20">
           <div
@@ -4279,115 +4752,16 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
           />
         </div>
         <div className="flex h-full flex-col space-y-4">
-          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">
-                {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDetailTitle")}
-              </p>
-              <Badge tone={selectedTransition ? "success" : "neutral"}>
-                {selectedTransition ? "transition selected" : "awaiting selection"}
-              </Badge>
-            </div>
-            {selectedTransition ? (
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="neutral">{selectedTransition.sourceRole}</Badge>
-                  <Badge tone="neutral">{selectedTransition.targetRole}</Badge>
-                  <Badge tone="neutral">{selectedTransition.significance}</Badge>
-                </div>
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Transition</p>
-                  <p className="mt-1 font-mono text-sm text-white">
-                    {selectedTransition.sourceLabel} → {selectedTransition.targetLabel}
-                  </p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionBefore")}
-                    </p>
-                    <p className="mt-2 font-mono text-sm text-white">{selectedTransition.before}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionAfter")}
-                    </p>
-                    <p className="mt-2 font-mono text-sm text-white">{selectedTransition.after}</p>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDelta")}
-                  </p>
-                  <p className="mt-2 text-sm text-zinc-300">{selectedTransition.delta}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionImpact")}
-                  </p>
-                  <p className="mt-2 text-sm text-zinc-300">{selectedTransition.impact}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionEffect")}
-                  </p>
-                  <p className="mt-2 text-sm text-zinc-300">{selectedTransition.effect}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-zinc-300">
-                {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionEmpty")}
-              </p>
-            )}
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Architecture drilldown</p>
-              <Badge tone={selectedNode ? "success" : "neutral"}>
-                {selectedNode ? "node selected" : "awaiting selection"}
-              </Badge>
-            </div>
-            {selectedNode ? (
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="neutral">{selectedNode.role ?? "unknown"}</Badge>
-                  <Badge tone="neutral">{selectedNode.status}</Badge>
-                </div>
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Label</p>
-                  <p className="mt-1 font-mono text-sm text-white">{selectedNode.label}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    {selectedNodeDetails.title}
-                  </p>
-                  <div className="mt-2 space-y-1 text-sm text-zinc-300">
-                    {selectedNodeDetails.lines.map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Type hint</p>
-                  <p className="mt-1 text-sm text-zinc-300">{typeHintText}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-zinc-300">
-                Select a model layer, block or diagnostic node to inspect its architecture details.
-              </p>
-            )}
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Relations</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {edges.map((edge, index) => (
-                <Badge key={`${edge.from}-${edge.to}-${edge.label}-${index}`} tone="neutral">
-                  {edge.from} → {edge.to} ({edge.label})
-                </Badge>
-              ))}
-            </div>
-          </div>
+          <ArchitectureTransitionDetail
+            selectedTransition={selectedTransition}
+            t={t}
+          />
+          <ArchitectureDrilldown
+            selectedNode={selectedNode}
+            selectedNodeDetails={selectedNodeDetails}
+            typeHintText={typeHintText}
+          />
+          <ArchitectureRelations edges={edges} />
         </div>
       </div>
       <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-zinc-300">

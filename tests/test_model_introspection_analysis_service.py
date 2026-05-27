@@ -1577,3 +1577,89 @@ def test_operator_conclusion_uses_proxy_reason_code() -> None:
     assert "R3_PROBE_PROXY" in payload["reason_codes"]
     assert payload["partial"] is True
     assert payload["internals_quality"] == "proxy_probe"
+
+
+def test_tensor_activation_comparisons_and_stability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from venom_core.services.model_introspection_activation_path_service import (
+        _build_tensor_activation_contract,
+    )
+
+    past_runs = [
+        {
+            "request_id": "run-1",
+            "ts_ms": 1700000000000,
+            "mlp_l2": 0.40,
+            "cosine_similarity": 0.90,
+        },
+        {
+            "request_id": "run-2",
+            "ts_ms": 1700000010000,
+            "mlp_l2": 0.45,
+            "cosine_similarity": 0.85,
+        },
+    ]
+
+    monkeypatch.setattr(
+        "venom_core.services.model_introspection_operator_trends_service.get_operator_run_records",
+        lambda settings: past_runs,
+    )
+
+    mlp_layer = {
+        "layer": 4,
+        "hidden_slice": [0.09, -0.15, 0.38, -0.04],
+    }
+    residual_layer = {
+        "layer": 5,
+        "hidden_slice": [0.09, -0.15, 0.38, -0.04],
+    }
+    transition = {
+        "delta_norm": 0.0,
+    }
+
+    payload = _build_tensor_activation_contract(
+        mlp_layer=mlp_layer,
+        residual_layer=residual_layer,
+        transition=transition,
+    )
+
+    assert "comparisons" in payload
+    assert "stability" in payload
+    assert "evidence" in payload
+
+    comparisons = payload["comparisons"]
+    assert len(comparisons) == 2
+    assert comparisons[0]["request_id"] == "run-1"
+    assert comparisons[0]["mlp_l2_diff"] == round(0.420238 - 0.40, 6)
+    assert comparisons[0]["cosine_similarity_diff"] == round(1.0 - 0.90, 6)
+
+    stability = payload["stability"]
+    assert stability["stable"] is True
+    assert stability["status_label"] == "stable"
+    assert stability["mlp_l2_variance"] > 0.0
+
+    evidence = payload["evidence"]
+    assert len(evidence) == 4
+    assert "computed from 3 historical run(s)" in evidence[0]
+
+
+def test_operator_trends_stores_new_metrics() -> None:
+    from venom_core.services.model_introspection_operator_trends_service import (
+        _normalize_record,
+    )
+
+    raw = {
+        "request_id": "test-request",
+        "mlp_l2": 0.416533,
+        "residual_l2": 0.416533,
+        "delta_l2": 0.05,
+        "cosine_similarity": 0.95,
+    }
+
+    normalized = _normalize_record(raw)
+    assert normalized is not None
+    assert normalized["mlp_l2"] == 0.416533
+    assert normalized["residual_l2"] == 0.416533
+    assert normalized["delta_l2"] == 0.05
+    assert normalized["cosine_similarity"] == 0.95

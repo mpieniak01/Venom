@@ -97,7 +97,8 @@ def test_main_voice_route_helpers_for_coverage():
         )
 
 
-def test_main_runtime_state_helpers_for_coverage():
+def test_main_runtime_state_helpers_for_coverage(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("venom_core.main.get_last_runtime_switch_event", lambda: None)
     _require_localhost_request(
         SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
     )

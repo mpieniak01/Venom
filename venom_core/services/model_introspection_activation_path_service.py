@@ -760,9 +760,11 @@ async def build_mlp_activation_payload(
         "transition": transition,
         "tensor_activation": tensor_activation,
         "summary": {
-            "selected_layer_count": len(selected_layers),
+            "selected_layer_count": 1 + (1 if residual_entry is not None else 0),
             "focus_layer": mlp_layer_index,
-            "residual_layer": residual_layer_index,
+            "residual_layer": (
+                int(residual_entry["layer"]) if residual_entry is not None else None
+            ),
             "hidden_dimension_count": len(mlp_hidden_slice),
             "max_delta_norm": round(max_delta_norm, 6),
             "average_norm": average_norm,

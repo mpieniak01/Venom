@@ -60,6 +60,7 @@ _MODEL_DRIFT_DETECTED_ERROR = "MODEL_DRIFT_DETECTED"
 _DEGRADED_POLICY_BLOCK = "DEGRADED_POLICY_BLOCK"
 _DEGRADED_CIRCUIT_OPEN = "DEGRADED_CIRCUIT_OPEN"
 _DEGRADED_ENDPOINT_UNREACHABLE = "DEGRADED_ENDPOINT_UNREACHABLE"
+_NO_TRANSITION_DELTA_MESSAGE = "No transition delta captured for this layer."
 
 
 def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
@@ -652,55 +653,47 @@ def _build_architecture_blocks_payload(
             and edge.get("to") == to_id
         ]
 
-    blocks: list[dict[str, Any]] = []
-    mlp_node = _first_node("mlp")
-    if mlp_node is not None:
+    def _build_mlp_block() -> dict[str, Any] | None:
+        mlp_node = _first_node("mlp")
+        if mlp_node is None:
+            return None
         mlp_id = str(mlp_node.get("id") or "mlp")
         residual_node = _first_node("residual")
         residual_id = (
             str(residual_node.get("id") or "residual") if residual_node else "residual"
         )
-        blocks.append(
-            {
-                "kind": "mlp",
-                "label": str(mlp_node.get("label") or "Response synthesis"),
-                "summary": "MLP synthesizes hidden state into the residual path.",
-                "detail": f"Source node {mlp_id} is the native architecture synthesis block.",
-                "impact": "This block converts internal state into response-oriented synthesis.",
-                "evidence": [
-                    *(_edge_labels("layer", mlp_id)[:2]),
-                    *(_edge_labels(mlp_id, residual_id)[:2]),
-                ],
-            }
-        )
+        return {
+            "kind": "mlp",
+            "label": str(mlp_node.get("label") or "Response synthesis"),
+            "summary": "MLP synthesizes hidden state into the residual path.",
+            "detail": f"Source node {mlp_id} is the native architecture synthesis block.",
+            "impact": "This block converts internal state into response-oriented synthesis.",
+            "evidence": [
+                *(_edge_labels("layer", mlp_id)[:2]),
+                *(_edge_labels(mlp_id, residual_id)[:2]),
+            ],
+        }
 
-    residual_node = _first_node("residual")
-    if residual_node is not None:
+    def _build_residual_block() -> dict[str, Any] | None:
+        residual_node = _first_node("residual")
+        if residual_node is None:
+            return None
         residual_id = str(residual_node.get("id") or "residual")
-        blocks.append(
-            {
-                "kind": "residual",
-                "label": str(residual_node.get("label") or "Reuse path"),
-                "summary": "Residual merge keeps the active path reusable before decode.",
-                "detail": f"Source node {residual_id} merges probe and synthesis paths.",
-                "impact": "Residual flow keeps accumulated state available for the final decode.",
-                "evidence": [
-                    *(
-                        [
-                            str(
-                                edge.get("label")
-                                or f"{edge.get('from')} → {residual_id}"
-                            )
-                            for edge in edge_list
-                            if isinstance(edge, dict) and edge.get("to") == residual_id
-                        ][:2]
-                    ),
-                    *(_edge_labels(residual_id, "output")[:2]),
-                ],
-            }
-        )
+        incoming = [
+            str(edge.get("label") or f"{edge.get('from')} → {residual_id}")
+            for edge in edge_list
+            if isinstance(edge, dict) and edge.get("to") == residual_id
+        ][:2]
+        return {
+            "kind": "residual",
+            "label": str(residual_node.get("label") or "Reuse path"),
+            "summary": "Residual merge keeps the active path reusable before decode.",
+            "detail": f"Source node {residual_id} merges probe and synthesis paths.",
+            "impact": "Residual flow keeps accumulated state available for the final decode.",
+            "evidence": [*incoming, *(_edge_labels(residual_id, "output")[:2])],
+        }
 
-    return blocks
+    return [block for block in (_build_mlp_block(), _build_residual_block()) if block]
 
 
 def _build_layer_response_linkage_payload(
@@ -726,7 +719,7 @@ def _build_layer_response_linkage_payload(
     linked_fragment_count = min(len(answer_evidence_links), len(fragments))
     coverage_percent = float(evidence_coverage.get("coverage_percent") or 0.0)
     dominant_signal_labels = [signal["label"] for signal in signals[:3]]
-    linked_fragments = fragments[:3]
+    linked_fragments = fragments[:linked_fragment_count]
     summary = (
         f"{linked_fragment_count}/{len(fragments)} response fragment(s) are evidence-linked."
         if fragments
@@ -792,11 +785,11 @@ def _build_layer_internals_payload(
             if isinstance(layer, dict) and isinstance(layer.get("layer"), int)
         }
     )
-    saliency_anchor_layer = (
-        checkpoint_layers[-1]
-        if checkpoint_layers
-        else (attention_layer_ids[-1] if attention_layer_ids else None)
-    )
+    saliency_anchor_layer: int | None = None
+    if checkpoint_layers:
+        saliency_anchor_layer = checkpoint_layers[-1]
+    elif attention_layer_ids:
+        saliency_anchor_layer = attention_layer_ids[-1]
     layer_id_candidates = [*checkpoint_layers, *attention_layer_ids]
     if saliency_anchor_layer is not None:
         layer_id_candidates.append(saliency_anchor_layer)
@@ -944,7 +937,7 @@ def _build_layer_internals_payload(
             evidence.extend(token_weight_samples)
 
         blocks: list[dict[str, Any]] = []
-        state_delta = "No transition delta captured for this layer."
+        state_delta = _NO_TRANSITION_DELTA_MESSAGE
 
         if isinstance(checkpoint, dict):
             checkpoint_percent = checkpoint.get("percent")
@@ -1010,7 +1003,7 @@ def _build_layer_internals_payload(
             )
             if status == "observed":
                 status = "inspection"
-            if state_delta == "No transition delta captured for this layer.":
+            if state_delta == _NO_TRANSITION_DELTA_MESSAGE:
                 state_delta = f"Attention reshapes the active representation across {len(head_list)} head(s)."
 
         if saliency_anchor_layer is not None and layer_id == saliency_anchor_layer:
@@ -1028,7 +1021,7 @@ def _build_layer_internals_payload(
             )
             if status == "observed":
                 status = "inspection"
-            if state_delta == "No transition delta captured for this layer.":
+            if state_delta == _NO_TRANSITION_DELTA_MESSAGE:
                 state_delta = (
                     f"Saliency concentrates the explanation around {target_token}."
                 )
@@ -3164,22 +3157,26 @@ async def _collect_probe_payloads(
     architecture_graph: dict[str, Any] | None,
     ollama_lite_mode: bool,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
-    hidden_state = await _collect_activation_path_payload_safe(
-        prompt=prompt,
-        architecture_graph=architecture_graph,
-    )
     if ollama_lite_mode:
         logit_lens = _build_ollama_lite_logit_lens_payload(
             prompt=prompt,
             runtime=runtime,
             stream_payload=stream_payload,
         )
-        attention, saliency = await asyncio.gather(
+        hidden_state, attention, saliency = await asyncio.gather(
+            _collect_activation_path_payload_safe(
+                prompt=prompt,
+                architecture_graph=architecture_graph,
+            ),
             _collect_attention_payload_safe(prompt=prompt),
             _collect_saliency_payload_safe(prompt=prompt, response_text=response_text),
         )
         return hidden_state, logit_lens, attention, saliency
-    logit_lens, attention, saliency = await asyncio.gather(
+    hidden_state, logit_lens, attention, saliency = await asyncio.gather(
+        _collect_activation_path_payload_safe(
+            prompt=prompt,
+            architecture_graph=architecture_graph,
+        ),
         _collect_logit_lens_payload_safe(prompt=prompt, response_text=response_text),
         _collect_attention_payload_safe(prompt=prompt),
         _collect_saliency_payload_safe(prompt=prompt, response_text=response_text),

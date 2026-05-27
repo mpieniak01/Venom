@@ -1443,27 +1443,15 @@ export function buildModelArchitectureGraphReadiness(
 
   if (hasArchitecturePayload) {
     const hasStructuralFields =
-      architectureGraph?.nodes.length > 0 &&
-      architectureGraph?.edges.length > 0 &&
+      (architectureGraph?.nodes?.length ?? 0) > 0 &&
+      (architectureGraph?.edges?.length ?? 0) > 0 &&
       layerCount > 0 &&
       blockCount > 0;
     const status =
       fidelity === "native" && hasStructuralFields
         ? "available"
         : "partial";
-    const missingSignals: string[] = [];
-    if (!architectureGraph?.nodes.length) {
-      missingSignals.push("architecture nodes missing");
-    }
-    if (!architectureGraph?.edges.length) {
-      missingSignals.push("architecture edges missing");
-    }
-    if (fidelity !== "native") {
-      missingSignals.push(`architecture graph fidelity ${fidelity}`);
-    }
-    if (!architectureGraph?.meta.generated_at) {
-      missingSignals.push("generation timestamp missing");
-    }
+    const missingSignals = getArchitectureMissingSignals(architectureGraph, fidelity);
     return {
       status,
       hasArchitecturePayload,
@@ -1506,6 +1494,26 @@ export function buildModelArchitectureGraphReadiness(
     recommendedNextStep:
       "Add a dedicated architecture_graph payload with layer, block and edge metadata before switching the panel to a model architecture graph.",
   };
+}
+
+function getArchitectureMissingSignals(
+  architectureGraph: IntrospectionSnapshot["architecture_graph"],
+  fidelity: string,
+): string[] {
+  const missingSignals: string[] = [];
+  if (!architectureGraph?.nodes.length) {
+    missingSignals.push("architecture nodes missing");
+  }
+  if (!architectureGraph?.edges.length) {
+    missingSignals.push("architecture edges missing");
+  }
+  if (fidelity !== "native") {
+    missingSignals.push(`architecture graph fidelity ${fidelity}`);
+  }
+  if (!architectureGraph?.meta.generated_at) {
+    missingSignals.push("generation timestamp missing");
+  }
+  return missingSignals;
 }
 
 function getRuntimeGraphNodeDetails(snapshot: IntrospectionSnapshot): GraphNodeDetails {

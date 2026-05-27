@@ -26,6 +26,8 @@ _INTROSPECTION_PACKAGES: tuple[tuple[str, str], ...] = (
     ("sentence_transformers", "sentence-transformers"),
     ("graphrag", "graphrag"),
 )
+_RUNTIME_VLLM_MANIFEST_NAME = "venom_runtime_vllm.json"
+_NATIVE_RUNTIME_CONFIG_SOURCE = "native runtime config"
 
 
 def _resolve_snapshot_introspection_level(
@@ -149,12 +151,74 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_model_id(value: Any) -> str:
+    model_id = str(value or "").strip().lower()
+    return model_id
+
+
+def _config_matches_runtime_model(
+    *,
+    runtime_model: str,
+    config: dict[str, Any],
+    manifest: dict[str, Any],
+) -> bool:
+    runtime_model_normalized = _normalize_model_id(runtime_model)
+    if not runtime_model_normalized:
+        return True
+    runtime_leaf = runtime_model_normalized.split("/")[-1]
+    candidates = [
+        _normalize_model_id(config.get("_name_or_path")),
+        _normalize_model_id(config.get("model_name")),
+        _normalize_model_id(config.get("model_type")),
+        _normalize_model_id(manifest.get("base_model")),
+        _normalize_model_id(manifest.get("model")),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        candidate_leaf = candidate.split("/")[-1]
+        if candidate == runtime_model_normalized or candidate_leaf == runtime_leaf:
+            return True
+    return False
+
+
+def _append_native_candidate_if_matching(
+    *,
+    candidates: list[tuple[float, Path, dict[str, Any], dict[str, Any]]],
+    config_path: Path,
+    runtime_model: str,
+) -> None:
+    try:
+        config = _read_json_file(config_path)
+        runtime_dir = config_path.parent
+        manifest_path = runtime_dir / _RUNTIME_VLLM_MANIFEST_NAME
+        manifest = _read_json_file(manifest_path)
+        if not _config_matches_runtime_model(
+            runtime_model=runtime_model,
+            config=config,
+            manifest=manifest,
+        ):
+            return
+        candidates.append((config_path.stat().st_mtime, config_path, config, manifest))
+    except OSError:
+        return
+
+
 def _resolve_native_architecture_source(
     *,
     runtime: dict[str, Any],
     model_manager: Any,
 ) -> dict[str, Any] | None:
-    candidates: list[tuple[float, Path]] = []
+    candidates: list[tuple[float, Path, dict[str, Any], dict[str, Any]]] = []
     runtime_model = str(runtime.get("model") or "").strip()
     runtime_model_store = ""
     if "/" in runtime_model:
@@ -172,17 +236,18 @@ def _resolve_native_architecture_source(
         if not snapshots_root.exists():
             continue
         for config_path in snapshots_root.rglob("config.json"):
-            try:
-                candidates.append((config_path.stat().st_mtime, config_path))
-            except OSError:
-                continue
+            _append_native_candidate_if_matching(
+                candidates=candidates,
+                config_path=config_path,
+                runtime_model=runtime_model,
+            )
     if candidates:
-        _, config_path = max(candidates, key=lambda item: item[0])
+        _, config_path, config, _manifest = max(candidates, key=lambda item: item[0])
         runtime_dir = config_path.parent
         return {
             "config_path": config_path,
-            "config": _read_json_file(config_path),
-            "manifest_path": runtime_dir / "venom_runtime_vllm.json",
+            "config": config,
+            "manifest_path": runtime_dir / _RUNTIME_VLLM_MANIFEST_NAME,
             "source": "native hf cache config",
         }
 
@@ -206,8 +271,8 @@ def _resolve_native_architecture_source(
                 "config": _read_json_file(runtime_config),
                 "manifest_path": adapter_path.parent
                 / "runtime_vllm"
-                / "venom_runtime_vllm.json",
-                "source": "native runtime config",
+                / _RUNTIME_VLLM_MANIFEST_NAME,
+                "source": _NATIVE_RUNTIME_CONFIG_SOURCE,
             }
 
     models_dir = getattr(model_manager, "models_dir", None)
@@ -222,21 +287,22 @@ def _resolve_native_architecture_source(
         if not root.exists():
             continue
         for config_path in root.rglob("runtime_vllm/config.json"):
-            try:
-                candidates.append((config_path.stat().st_mtime, config_path))
-            except OSError:
-                continue
+            _append_native_candidate_if_matching(
+                candidates=candidates,
+                config_path=config_path,
+                runtime_model=runtime_model,
+            )
 
     if not candidates:
         return None
 
-    _, config_path = max(candidates, key=lambda item: item[0])
+    _, config_path, config, _manifest = max(candidates, key=lambda item: item[0])
     runtime_dir = config_path.parent
     return {
         "config_path": config_path,
-        "config": _read_json_file(config_path),
-        "manifest_path": runtime_dir / "venom_runtime_vllm.json",
-        "source": "native runtime config",
+        "config": config,
+        "manifest_path": runtime_dir / _RUNTIME_VLLM_MANIFEST_NAME,
+        "source": _NATIVE_RUNTIME_CONFIG_SOURCE,
     }
 
 
@@ -245,17 +311,11 @@ def _normalize_layer_types(
     layer_count: int,
 ) -> list[str]:
     if not layer_types:
-        return [
-            "sliding_attention" if index % 2 == 0 else "full_attention"
-            for index in range(layer_count)
-        ]
+        return ["unknown" for _ in range(layer_count)]
     normalized = [str(layer_type or "unknown") for layer_type in layer_types]
     if len(normalized) >= layer_count:
         return normalized[:layer_count]
-    fallback = [
-        "sliding_attention" if index % 2 == 0 else "full_attention"
-        for index in range(layer_count)
-    ]
+    fallback = ["unknown" for _ in range(layer_count)]
     for index, value in enumerate(normalized):
         fallback[index] = value
     return fallback
@@ -264,8 +324,6 @@ def _normalize_layer_types(
 def _build_native_architecture_graph_snapshot(
     *,
     runtime: dict[str, Any],
-    runtime_drift: dict[str, Any],
-    available_packages: list[str],
     missing_packages: list[str],
     model_manager: dict[str, Any],
     probe_health: dict[str, Any],
@@ -279,19 +337,19 @@ def _build_native_architecture_graph_snapshot(
     generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     architecture_name = str((config.get("architectures") or [runtime["model"]])[0])
     model_type = str(config.get("model_type") or architecture_name or runtime["model"])
-    layer_count = int(architecture_section.get("num_hidden_layers") or 0)
+    layer_count = _safe_int(architecture_section.get("num_hidden_layers"), 0)
     if layer_count <= 0:
         layer_count = max(1, len(architecture_section.get("layer_types") or []))
     layer_types = _normalize_layer_types(
         architecture_section.get("layer_types"),
         layer_count,
     )
-    head_count = int(architecture_section.get("num_attention_heads") or 0)
-    kv_head_count = int(architecture_section.get("num_key_value_heads") or 0)
-    hidden_size = int(architecture_section.get("hidden_size") or 0)
-    intermediate_size = int(architecture_section.get("intermediate_size") or 0)
-    head_dim = int(architecture_section.get("head_dim") or 0)
-    sliding_window = int(architecture_section.get("sliding_window") or 0)
+    head_count = _safe_int(architecture_section.get("num_attention_heads"), 0)
+    kv_head_count = _safe_int(architecture_section.get("num_key_value_heads"), 0)
+    hidden_size = _safe_int(architecture_section.get("hidden_size"), 0)
+    intermediate_size = _safe_int(architecture_section.get("intermediate_size"), 0)
+    head_dim = _safe_int(architecture_section.get("head_dim"), 0)
+    sliding_window = _safe_int(architecture_section.get("sliding_window"), 0)
     has_model_manager = bool(model_manager.get("available"))
     has_probe = bool(probe_health.get("healthy"))
     package_pressure = "degraded" if missing_packages else "ready"
@@ -303,7 +361,9 @@ def _build_native_architecture_graph_snapshot(
         or bool(reuse.get("diagnostics"))
         else "unknown"
     )
-    runtime_source = str(architecture_source.get("source") or "native runtime config")
+    runtime_source = str(
+        architecture_source.get("source") or _NATIVE_RUNTIME_CONFIG_SOURCE
+    )
     runtime_manifest = _read_json_file(architecture_source["manifest_path"])
     base_model = str(runtime_manifest.get("base_model") or runtime["model"])
     runtime_path = str(architecture_source["config_path"])
@@ -803,8 +863,6 @@ async def build_model_introspection_snapshot(
     if native_architecture_source is not None:
         architecture_graph = _build_native_architecture_graph_snapshot(
             runtime=runtime,
-            runtime_drift=runtime_drift,
-            available_packages=available_packages,
             missing_packages=missing_packages,
             model_manager=model_manager_snapshot,
             probe_health=probe_health,

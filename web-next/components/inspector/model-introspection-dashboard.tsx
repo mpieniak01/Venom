@@ -111,6 +111,18 @@ type DashboardRuntimeInternalsContext = {
   saliencyStepMarker: ResultStepMarker | null;
 };
 
+function getArchitectureReadinessTone(
+  status: ModelArchitectureGraphReadiness["status"],
+): BadgeTone {
+  if (status === "available") {
+    return "success";
+  }
+  if (status === "partial") {
+    return "warning";
+  }
+  return "neutral";
+}
+
 function deriveDashboardRuntimeInternalsContext(args: {
   analysisResult: ReturnType<typeof useModelIntrospectionAnalysisStream>["analysisResult"];
   snapshot: IntrospectionSnapshot | null;
@@ -324,15 +336,7 @@ function TechnicalLayerPanel({
       </div>
       <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            tone={
-              architectureGraphReadiness.status === "available"
-                ? "success"
-                : architectureGraphReadiness.status === "partial"
-                  ? "warning"
-                  : "neutral"
-            }
-          >
+          <Badge tone={getArchitectureReadinessTone(architectureGraphReadiness.status)}>
             model graph {architectureGraphReadiness.status}
           </Badge>
           <Badge tone="neutral">
@@ -1290,8 +1294,12 @@ export function ModelIntrospectionDashboard() {
   }, [loadSnapshot]);
 
   const handleRunAnalysis = useCallback(async () => {
+    let snapshotForAnalysis = snapshot;
     if (!snapshot) {
-      await loadSnapshot();
+      snapshotForAnalysis = await loadSnapshot();
+    }
+    if (!snapshotForAnalysis) {
+      return;
     }
     await runAnalysis();
   }, [loadSnapshot, runAnalysis, snapshot]);

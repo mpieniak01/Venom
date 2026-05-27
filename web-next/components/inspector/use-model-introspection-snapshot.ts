@@ -11,7 +11,7 @@ type SnapshotHookResult = {
   snapshot: IntrospectionSnapshot | null;
   loading: boolean;
   error: string | null;
-  loadSnapshot: () => Promise<void>;
+  loadSnapshot: () => Promise<IntrospectionSnapshot | null>;
 };
 
 type UseModelIntrospectionSnapshotOptions = {
@@ -60,15 +60,18 @@ export function useModelIntrospectionSnapshot(
       if (!data) {
         throw new Error("Request failed");
       }
+      const loadedSnapshot = data.snapshot;
       if (requestId === latestRequestIdRef.current) {
-        setSnapshot(data.snapshot);
+        setSnapshot(loadedSnapshot);
       }
+      return loadedSnapshot;
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Request failed";
       if (requestId === latestRequestIdRef.current) {
         setError(message);
         setSnapshot(null);
       }
+      return null;
     } finally {
       if (requestId === latestRequestIdRef.current) {
         setLoading(false);

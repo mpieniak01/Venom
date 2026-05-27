@@ -11,6 +11,8 @@ from venom_core.services.model_introspection_probe_service import (
 
 _ACTIVATION_PATH_LAYER_SELECTION = [0, 4, 8, 12, 16, 20, 24, 31]
 _ACTIVATION_PATH_TOP_DIMENSIONS = 4
+_INVALID_PROBE_SHAPE_MESSAGE = "Probe payload has invalid shape"
+_SLICE_EMPTY_LABEL = "slice empty"
 
 
 def _safe_float(value: Any) -> float | None:
@@ -30,6 +32,15 @@ def _safe_slice(raw_slice: Any) -> list[float]:
             continue
         values.append(round(value, 6))
     return values
+
+
+def _coerce_layer_index(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _slice_mean(values: list[float]) -> float:
@@ -281,6 +292,86 @@ def _build_transition(
     }
 
 
+def _build_probe_shape_error_payload(
+    *,
+    runtime_label: str | None,
+) -> dict[str, Any]:
+    return _build_unavailable_payload(
+        status="failed",
+        code="invalid_probe_shape",
+        message=_INVALID_PROBE_SHAPE_MESSAGE,
+        runtime_label=runtime_label,
+    )
+
+
+def _build_mlp_probe_shape_error_payload(
+    *,
+    runtime_label: str | None,
+) -> dict[str, Any]:
+    return _build_mlp_unavailable_payload(
+        status="failed",
+        code="invalid_probe_shape",
+        message=_INVALID_PROBE_SHAPE_MESSAGE,
+        runtime_label=runtime_label,
+    )
+
+
+def _build_hidden_slice_evidence(hidden_slice: list[float]) -> list[str]:
+    return [
+        f"slice[0]={hidden_slice[0]:.3f}" if hidden_slice else _SLICE_EMPTY_LABEL,
+        f"slice len={len(hidden_slice)}",
+    ]
+
+
+def _build_layer_payload(
+    *,
+    layer_index: int,
+    hidden_slice: list[float],
+    architecture_graph: dict[str, Any] | None,
+) -> dict[str, Any]:
+    layer_label = _resolve_layer_label(layer_index, architecture_graph)
+    layer_role = _resolve_layer_role(layer_index, architecture_graph)
+    top_dimensions = _slice_top_dimensions(hidden_slice)
+    mean_value = _slice_mean(hidden_slice)
+    norm_value = _slice_norm(hidden_slice)
+    max_abs_value = _slice_max_abs(hidden_slice)
+    return {
+        "layer": layer_index,
+        "label": layer_label,
+        "role_hint": layer_role,
+        "hidden_slice": hidden_slice,
+        "metrics": {
+            "mean": mean_value,
+            "norm": norm_value,
+            "max_abs": max_abs_value,
+            "top_dimensions": top_dimensions,
+        },
+        "summary": (
+            f"norm {norm_value:.3f}; "
+            f"mean {mean_value:.3f}; "
+            f"top dims {', '.join(str(dim['index']) for dim in top_dimensions[:3]) or 'n/a'}"
+        ),
+        "evidence": _build_hidden_slice_evidence(hidden_slice),
+    }
+
+
+def _extract_hidden_layers(raw_layers: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_layers, list):
+        return []
+    layers: list[dict[str, Any]] = []
+    for raw_layer in raw_layers:
+        if not isinstance(raw_layer, dict):
+            continue
+        layer_index = raw_layer.get("layer")
+        if not isinstance(layer_index, int):
+            continue
+        hidden_slice = _safe_slice(raw_layer.get("hidden_slice"))
+        if not hidden_slice:
+            continue
+        layers.append({"layer": layer_index, "hidden_slice": hidden_slice})
+    return layers
+
+
 async def build_activation_path_payload(
     *,
     prompt: str,
@@ -305,60 +396,20 @@ async def build_activation_path_payload(
 
     probe = probe_payload.get("probe")
     if not isinstance(probe, dict):
-        return _build_unavailable_payload(
-            status="failed",
-            code="invalid_probe_shape",
-            message="Probe payload has invalid shape",
-            runtime_label=runtime_label_str,
-        )
+        return _build_probe_shape_error_payload(runtime_label=runtime_label_str)
 
     raw_layers = probe.get("layers")
     if not isinstance(raw_layers, list):
-        return _build_unavailable_payload(
-            status="failed",
-            code="invalid_probe_shape",
-            message="Probe payload has invalid shape",
-            runtime_label=runtime_label_str,
-        )
+        return _build_probe_shape_error_payload(runtime_label=runtime_label_str)
 
-    layers: list[dict[str, Any]] = []
-    for raw_layer in raw_layers:
-        if not isinstance(raw_layer, dict):
-            continue
-        layer_index = raw_layer.get("layer")
-        if not isinstance(layer_index, int):
-            continue
-        hidden_slice = _safe_slice(raw_layer.get("hidden_slice"))
-        if not hidden_slice:
-            continue
-        layer_label = _resolve_layer_label(layer_index, architecture_graph)
-        layer_role = _resolve_layer_role(layer_index, architecture_graph)
-        top_dimensions = _slice_top_dimensions(hidden_slice)
-        layers.append(
-            {
-                "layer": layer_index,
-                "label": layer_label,
-                "role_hint": layer_role,
-                "hidden_slice": hidden_slice,
-                "metrics": {
-                    "mean": _slice_mean(hidden_slice),
-                    "norm": _slice_norm(hidden_slice),
-                    "max_abs": _slice_max_abs(hidden_slice),
-                    "top_dimensions": top_dimensions,
-                },
-                "summary": (
-                    f"norm {_slice_norm(hidden_slice):.3f}; "
-                    f"mean {_slice_mean(hidden_slice):.3f}; "
-                    f"top dims {', '.join(str(dim['index']) for dim in top_dimensions[:3]) or 'n/a'}"
-                ),
-                "evidence": [
-                    f"slice[0]={hidden_slice[0]:.3f}"
-                    if hidden_slice
-                    else "slice empty",
-                    f"slice len={len(hidden_slice)}",
-                ],
-            }
+    layers = [
+        _build_layer_payload(
+            layer_index=int(layer_data["layer"]),
+            hidden_slice=list(layer_data["hidden_slice"]),
+            architecture_graph=architecture_graph,
         )
+        for layer_data in _extract_hidden_layers(raw_layers)
+    ]
 
     transitions: list[dict[str, Any]] = []
     for previous_layer, current_layer in zip(layers, layers[1:]):
@@ -427,24 +478,23 @@ async def build_mlp_activation_payload(
             runtime_label=None,
         )
 
-    mlp_layer_index_raw = mlp_node.get("layer_index")
-    if not isinstance(mlp_layer_index_raw, int):
+    mlp_layer_index = _coerce_layer_index(mlp_node.get("layer_index"))
+    if mlp_layer_index is None:
         return _build_mlp_unavailable_payload(
             status="failed",
             code="invalid_graph_shape",
             message="MLP graph node is missing a valid layer index",
             runtime_label=None,
         )
-
-    mlp_layer_index = int(mlp_layer_index_raw)
     selected_layers = [mlp_layer_index]
     residual_layer_index: int | None = None
     if residual_node is not None:
-        residual_layer_index_raw = residual_node.get("layer_index")
-        if isinstance(residual_layer_index_raw, int):
-            residual_layer_index = int(residual_layer_index_raw)
-            if residual_layer_index not in selected_layers:
-                selected_layers.append(residual_layer_index)
+        residual_layer_index = _coerce_layer_index(residual_node.get("layer_index"))
+        if (
+            residual_layer_index is not None
+            and residual_layer_index not in selected_layers
+        ):
+            selected_layers.append(residual_layer_index)
 
     probe_payload = await run_model_introspection_probe(
         prompt=prompt,
@@ -465,21 +515,11 @@ async def build_mlp_activation_payload(
 
     probe = probe_payload.get("probe")
     if not isinstance(probe, dict):
-        return _build_mlp_unavailable_payload(
-            status="failed",
-            code="invalid_probe_shape",
-            message="Probe payload has invalid shape",
-            runtime_label=runtime_label_str,
-        )
+        return _build_mlp_probe_shape_error_payload(runtime_label=runtime_label_str)
 
     raw_layers = probe.get("layers")
     if not isinstance(raw_layers, list):
-        return _build_mlp_unavailable_payload(
-            status="failed",
-            code="invalid_probe_shape",
-            message="Probe payload has invalid shape",
-            runtime_label=runtime_label_str,
-        )
+        return _build_mlp_probe_shape_error_payload(runtime_label=runtime_label_str)
 
     raw_layers_by_index: dict[int, dict[str, Any]] = {}
     for raw_layer in raw_layers:
@@ -542,12 +582,7 @@ async def build_mlp_activation_payload(
             f"mean {mlp_metrics['mean']:.3f}; "
             f"top dims {', '.join(str(dim['index']) for dim in mlp_top_dimensions[:3]) or 'n/a'}"
         ),
-        "evidence": [
-            f"slice[0]={mlp_hidden_slice[0]:.3f}"
-            if mlp_hidden_slice
-            else "slice empty",
-            f"slice len={len(mlp_hidden_slice)}",
-        ],
+        "evidence": _build_hidden_slice_evidence(mlp_hidden_slice),
     }
 
     residual_entry: dict[str, Any] | None = None
@@ -571,12 +606,7 @@ async def build_mlp_activation_payload(
                 f"mean {_slice_mean(residual_hidden_slice):.3f}; "
                 f"top dims {', '.join(str(dim['index']) for dim in residual_top_dimensions[:3]) or 'n/a'}"
             ),
-            "evidence": [
-                f"slice[0]={residual_hidden_slice[0]:.3f}"
-                if residual_hidden_slice
-                else "slice empty",
-                f"slice len={len(residual_hidden_slice)}",
-            ],
+            "evidence": _build_hidden_slice_evidence(residual_hidden_slice),
         }
 
     transition: dict[str, Any] | None = None

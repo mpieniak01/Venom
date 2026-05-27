@@ -2103,6 +2103,34 @@ type ArchitectureGraphCheckpoint = Readonly<{
   evidence: string[];
 }>;
 
+type AnalysisActivationLayer =
+  | AnalysisMlpActivationPayload["mlp_layer"]
+  | AnalysisMlpActivationPayload["residual_layer"];
+
+function mapActivationLayer(layer: AnalysisActivationLayer) {
+  if (!layer) {
+    return null;
+  }
+  return {
+    layer: layer.layer,
+    label: layer.label,
+    roleHint: layer.role_hint ?? null,
+    hiddenSlice: layer.hidden_slice ?? [],
+    metrics: {
+      mean: layer.metrics.mean,
+      norm: layer.metrics.norm,
+      maxAbs: layer.metrics.max_abs,
+      topDimensions: (layer.metrics.top_dimensions ?? []).map((dimension) => ({
+        index: dimension.index,
+        value: dimension.value,
+        absValue: dimension.abs_value,
+      })),
+    },
+    summary: layer.summary,
+    evidence: layer.evidence ?? [],
+  };
+}
+
 type ArchitectureLayerInternals = Readonly<{
   id: string;
   label: string;
@@ -2329,7 +2357,7 @@ function getArchitectureGraphOverview(snapshot: IntrospectionSnapshot) {
     return left.label.localeCompare(right.label);
   });
   const entryNode = nodes.find((node) => node.role === "input") ?? sortedNodes[0] ?? null;
-  const exitNode = nodes.find((node) => node.role === "output") ?? sortedNodes[sortedNodes.length - 1] ?? null;
+  const exitNode = nodes.find((node) => node.role === "output") ?? sortedNodes.at(-1) ?? null;
 
   return {
     entryLabel: entryNode?.label ?? "n/a",
@@ -2373,6 +2401,38 @@ function getTransitionEffect(
   return `${sourceLabel} continues into ${targetLabel}.`;
 }
 
+function getTransitionImpact(significance: "key" | "supporting" | "repeat"): string {
+  if (significance === "key") {
+    return "High-impact transition that changes the active state.";
+  }
+  if (significance === "repeat") {
+    return "Repeated transition; useful for structure, not for major state change.";
+  }
+  return "Supporting transition that keeps the chain moving.";
+}
+
+function getReadinessTone(status: "available" | "partial" | "missing"): BadgeTone {
+  if (status === "available") {
+    return "success";
+  }
+  if (status === "partial") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function getTransitionSignificanceTone(
+  significance: "key" | "supporting" | "repeat",
+): BadgeTone {
+  if (significance === "key") {
+    return "success";
+  }
+  if (significance === "repeat") {
+    return "warning";
+  }
+  return "neutral";
+}
+
 function getTransitionDelta(
   sourceNode: ArchitectureGraphNode | null,
   targetNode: ArchitectureGraphNode | null,
@@ -2405,12 +2465,7 @@ function getTransitionDelta(
     delta = "Attention reshapes the active representation before it moves on.";
   }
 
-  const impact =
-    significance === "key"
-      ? "High-impact transition that changes the active state."
-      : significance === "repeat"
-        ? "Repeated transition; useful for structure, not for major state change."
-        : "Supporting transition that keeps the chain moving.";
+  const impact = getTransitionImpact(significance);
 
   return { before, after, delta, impact };
 }
@@ -2515,7 +2570,7 @@ function getArchitectureGraphProgressCheckpoints(
     .filter((node) => node.role === "layer")
     .sort((left, right) => (left.layer_index ?? Number.MAX_SAFE_INTEGER) - (right.layer_index ?? Number.MAX_SAFE_INTEGER));
   const firstLayerNode = layerNodes[0] ?? null;
-  const lastLayerNode = layerNodes[layerNodes.length - 1] ?? null;
+  const lastLayerNode = layerNodes.at(-1) ?? null;
   const probeNode = nodes.find((node) => String(node.label).toLowerCase().includes("probe")) ?? null;
   const residualNode = nodes.find((node) => node.role === "residual") ?? null;
   const outputNode = nodes.find((node) => node.role === "output") ?? null;
@@ -2528,7 +2583,7 @@ function getArchitectureGraphProgressCheckpoints(
   const stackTransitions = transitions.filter(
     (transition) => transition.sourceRole === "layer" && transition.targetRole === "layer",
   );
-  const probeTransitions = transitions.filter(
+  const probeTransition = transitions.find(
     (transition) =>
       transition.label.toLowerCase().includes("probe") ||
       transition.sourceRole === "attention" ||
@@ -2538,7 +2593,7 @@ function getArchitectureGraphProgressCheckpoints(
     transitions.find(
       (transition) =>
         transition.targetRole === "output" || transition.label.toLowerCase().includes("decode"),
-    ) ?? transitions[transitions.length - 1] ?? null;
+    ) ?? transitions.at(-1) ?? null;
   const mergeTransition =
     transitions.find(
       (transition) =>
@@ -2590,7 +2645,7 @@ function getArchitectureGraphProgressCheckpoints(
       before: lastLayerNode?.label ?? `layer_${summary.layer_count}`,
       after: probeNode?.label ?? residualNode?.label ?? "probe surface",
       change:
-        probeTransitions[0]?.effect ??
+        probeTransition?.effect ??
         mergeTransition?.effect ??
         "Internal signals become visible through the probe and residual paths.",
       result: "The internal state remains inspectable without replacing the main path.",
@@ -2779,31 +2834,6 @@ function getAnalysisMlpActivation(
   if (!mlpActivation) {
     return null;
   }
-  const mapActivationLayer = (
-    layer:
-      | AnalysisMlpActivationPayload["mlp_layer"]
-      | AnalysisMlpActivationPayload["residual_layer"],
-  ) =>
-    layer
-      ? {
-          layer: layer.layer,
-          label: layer.label,
-          roleHint: layer.role_hint ?? null,
-          hiddenSlice: layer.hidden_slice ?? [],
-          metrics: {
-            mean: layer.metrics.mean,
-            norm: layer.metrics.norm,
-            maxAbs: layer.metrics.max_abs,
-            topDimensions: (layer.metrics.top_dimensions ?? []).map((dimension) => ({
-              index: dimension.index,
-              value: dimension.value,
-              absValue: dimension.abs_value,
-            })),
-          },
-          summary: layer.summary,
-          evidence: layer.evidence ?? [],
-        }
-      : null;
 
   return {
     source: mlpActivation.source,
@@ -2890,12 +2920,12 @@ function getArchitectureGraphOutcome(
 ): ArchitectureGraphOutcome {
   const keyTransitions = transitions.filter((transition) => transition.significance === "key");
   const path = overview.flowLabel;
-  const result =
-    readiness.status === "available"
-      ? "Native architecture graph resolved."
-      : readiness.status === "partial"
-        ? "Architecture graph is partially resolved."
-        : "Architecture graph payload is missing.";
+  let result = "Architecture graph payload is missing.";
+  if (readiness.status === "available") {
+    result = "Native architecture graph resolved.";
+  } else if (readiness.status === "partial") {
+    result = "Architecture graph is partially resolved.";
+  }
   const summaryLine = `The graph captures ${formatCount(summary.layer_count)} layers, ${formatCount(summary.block_count)} blocks, ${formatCount(summary.nodes)} nodes and ${formatCount(summary.edges)} edges.`;
   const evidence = [
     `Source: ${readiness.source}`,
@@ -3267,15 +3297,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
         <p className="text-sm text-zinc-300">{description}</p>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Badge
-          tone={
-            readiness.status === "available"
-              ? "success"
-              : readiness.status === "partial"
-                ? "warning"
-                : "neutral"
-          }
-        >
+        <Badge tone={getReadinessTone(readiness.status)}>
           ready {readiness.status}
         </Badge>
         <Badge tone="neutral">nodes {formatCount(summary.nodes)}</Badge>
@@ -3957,21 +3979,21 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
                             <Badge tone="neutral">
                               L2 MLP {mlpActivation.tensorActivation.norms.mlpL2.toFixed(3)}
                             </Badge>
-                            {mlpActivation.tensorActivation.norms.residualL2 !== null ? (
+                            {mlpActivation.tensorActivation.norms.residualL2 === null ? null : (
                               <Badge tone="neutral">
                                 L2 residual {mlpActivation.tensorActivation.norms.residualL2.toFixed(3)}
                               </Badge>
-                            ) : null}
-                            {mlpActivation.tensorActivation.norms.deltaL2 !== null ? (
+                            )}
+                            {mlpActivation.tensorActivation.norms.deltaL2 === null ? null : (
                               <Badge tone="neutral">
                                 L2 delta {mlpActivation.tensorActivation.norms.deltaL2.toFixed(3)}
                               </Badge>
-                            ) : null}
-                            {mlpActivation.tensorActivation.norms.cosineSimilarity !== null ? (
+                            )}
+                            {mlpActivation.tensorActivation.norms.cosineSimilarity === null ? null : (
                               <Badge tone="neutral">
                                 cos {mlpActivation.tensorActivation.norms.cosineSimilarity.toFixed(3)}
                               </Badge>
-                            ) : null}
+                            )}
                           </div>
                           {mlpActivation.tensorActivation.topDeltaDimensions.length > 0 ? (
                             <div className="mt-2 flex flex-wrap gap-2">
@@ -4108,15 +4130,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
                       {transition.label}
                     </p>
                   </div>
-                  <Badge
-                    tone={
-                      transition.significance === "key"
-                        ? "success"
-                        : transition.significance === "repeat"
-                          ? "warning"
-                          : "neutral"
-                    }
-                  >
+                  <Badge tone={getTransitionSignificanceTone(transition.significance)}>
                     {transition.significance}
                   </Badge>
                 </div>

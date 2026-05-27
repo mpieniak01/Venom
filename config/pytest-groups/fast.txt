@@ -61,7 +61,6 @@ tests/test_architect_agent.py
 tests/test_artifact_strategy.py
 tests/test_assistant_skill.py
 tests/test_audio_engine.py
-tests/test_audio_stream_handler_roi.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
@@ -251,6 +250,7 @@ tests/test_metrics.py
 tests/test_metrics_routes.py
 tests/test_model_config_api.py
 tests/test_model_discovery.py
+tests/test_model_introspection_activation_path_service.py
 tests/test_model_introspection_analysis_api.py
 tests/test_model_introspection_analysis_service.py
 tests/test_model_introspection_attention_service.py

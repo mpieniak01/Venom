@@ -13,6 +13,10 @@ from uuid import UUID, uuid4
 
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.services.llm_simple_service import stream_simple_chat
+from venom_core.services.model_introspection_activation_path_service import (
+    build_activation_path_payload,
+    build_mlp_activation_payload,
+)
 from venom_core.services.model_introspection_attention_service import (
     build_attention_payload,
 )
@@ -56,6 +60,7 @@ _MODEL_DRIFT_DETECTED_ERROR = "MODEL_DRIFT_DETECTED"
 _DEGRADED_POLICY_BLOCK = "DEGRADED_POLICY_BLOCK"
 _DEGRADED_CIRCUIT_OPEN = "DEGRADED_CIRCUIT_OPEN"
 _DEGRADED_ENDPOINT_UNREACHABLE = "DEGRADED_ENDPOINT_UNREACHABLE"
+_NO_TRANSITION_DELTA_MESSAGE = "No transition delta captured for this layer."
 
 
 def _iter_sse_events(chunk_text: str) -> list[tuple[str, str]]:
@@ -617,6 +622,740 @@ def _build_logit_profile(
     }
 
 
+def _format_float(value: Any, digits: int = 3) -> str:
+    if not isinstance(value, (int, float)):
+        return "n/a"
+    return f"{float(value):.{digits}f}"
+
+
+def _first_architecture_node(
+    node_list: list[dict[str, Any]],
+    role: str,
+) -> dict[str, Any] | None:
+    for item in node_list:
+        if item.get("role") == role:
+            return item
+    return None
+
+
+def _architecture_edge_labels(
+    edge_list: list[dict[str, Any]],
+    from_id: str,
+    to_id: str,
+) -> list[str]:
+    return [
+        str(edge.get("label") or f"{from_id} → {to_id}")
+        for edge in edge_list
+        if edge.get("from") == from_id and edge.get("to") == to_id
+    ]
+
+
+def _build_mlp_architecture_block(
+    node_list: list[dict[str, Any]],
+    edge_list: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    mlp_node = _first_architecture_node(node_list, "mlp")
+    if mlp_node is None:
+        return None
+    mlp_id = str(mlp_node.get("id") or "mlp")
+    residual_node = _first_architecture_node(node_list, "residual")
+    residual_id = (
+        str(residual_node.get("id") or "residual") if residual_node else "residual"
+    )
+    return {
+        "kind": "mlp",
+        "label": str(mlp_node.get("label") or "Response synthesis"),
+        "summary": "MLP synthesizes hidden state into the residual path.",
+        "detail": f"Source node {mlp_id} is the native architecture synthesis block.",
+        "impact": "This block converts internal state into response-oriented synthesis.",
+        "evidence": [
+            *_architecture_edge_labels(edge_list, "layer", mlp_id)[:2],
+            *_architecture_edge_labels(edge_list, mlp_id, residual_id)[:2],
+        ],
+    }
+
+
+def _build_residual_architecture_block(
+    node_list: list[dict[str, Any]],
+    edge_list: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    residual_node = _first_architecture_node(node_list, "residual")
+    if residual_node is None:
+        return None
+    residual_id = str(residual_node.get("id") or "residual")
+    incoming = [
+        str(edge.get("label") or f"{edge.get('from')} → {residual_id}")
+        for edge in edge_list
+        if edge.get("to") == residual_id
+    ][:2]
+    return {
+        "kind": "residual",
+        "label": str(residual_node.get("label") or "Reuse path"),
+        "summary": "Residual merge keeps the active path reusable before decode.",
+        "detail": f"Source node {residual_id} merges probe and synthesis paths.",
+        "impact": "Residual flow keeps accumulated state available for the final decode.",
+        "evidence": [
+            *incoming,
+            *_architecture_edge_labels(edge_list, residual_id, "output")[:2],
+        ],
+    }
+
+
+def _build_architecture_blocks_payload(
+    architecture_graph: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(architecture_graph, dict):
+        return []
+    nodes = architecture_graph.get("nodes")
+    edges = architecture_graph.get("edges")
+    node_list = [
+        item
+        for item in (nodes if isinstance(nodes, list) else [])
+        if isinstance(item, dict)
+    ]
+    edge_list = [
+        item
+        for item in (edges if isinstance(edges, list) else [])
+        if isinstance(item, dict)
+    ]
+    blocks = [
+        _build_mlp_architecture_block(node_list, edge_list),
+        _build_residual_architecture_block(node_list, edge_list),
+    ]
+    return [block for block in blocks if block]
+
+
+def _build_layer_response_linkage_payload(
+    *,
+    layer_id: int,
+    layer_label: str,
+    signals: list[dict[str, Any]],
+    response_text: str,
+    rag_focus: dict[str, Any],
+    evidence_coverage: dict[str, Any],
+) -> dict[str, Any]:
+    fragments = _split_answer_fragments(response_text)
+    answer_evidence_links_raw = rag_focus.get("answer_evidence_links")
+    answer_evidence_links = (
+        [
+            str(link).strip()
+            for link in answer_evidence_links_raw
+            if isinstance(link, (str, int, float)) and str(link).strip()
+        ]
+        if isinstance(answer_evidence_links_raw, list)
+        else []
+    )
+    linked_fragment_count = min(len(answer_evidence_links), len(fragments))
+    coverage_percent = float(evidence_coverage.get("coverage_percent") or 0.0)
+    dominant_signal_labels = [signal["label"] for signal in signals[:3]]
+    linked_fragments = fragments[:linked_fragment_count]
+    summary = (
+        f"{linked_fragment_count}/{len(fragments)} response fragment(s) are evidence-linked."
+        if fragments
+        else "No response fragments were captured for linkage."
+    )
+    if dominant_signal_labels:
+        summary = f"{summary} Dominant signals: {', '.join(dominant_signal_labels)}."
+    impact = (
+        "This layer's signals align with response fragments that are grounded in evidence."
+        if linked_fragment_count > 0
+        else "This layer provides internal signals, but no response linkage was captured."
+    )
+    evidence = [
+        f"coverage {coverage_percent:.2f}%",
+        f"fragments {linked_fragment_count}/{len(fragments)}",
+        *dominant_signal_labels[:3],
+        *answer_evidence_links[:3],
+    ]
+    return {
+        "status": "linked" if linked_fragment_count > 0 else "partial",
+        "layer_id": layer_id,
+        "layer_label": layer_label,
+        "coverage_percent": coverage_percent,
+        "fragment_count": len(fragments),
+        "linked_fragment_count": linked_fragment_count,
+        "linked_fragments": linked_fragments,
+        "evidence_links": answer_evidence_links[:5],
+        "dominant_signals": dominant_signal_labels,
+        "summary": summary,
+        "impact": impact,
+        "evidence": evidence,
+    }
+
+
+def _collect_layer_ids(
+    *,
+    checkpoints: list[dict[str, Any]],
+    attention_layers: list[dict[str, Any]],
+    activation_layers: list[dict[str, Any]],
+    mlp_activation: dict[str, Any] | None,
+) -> tuple[list[int], list[int], int | None, list[int]]:
+    checkpoint_layers = sorted(
+        {
+            int(checkpoint.get("layer"))
+            for checkpoint in checkpoints
+            if isinstance(checkpoint.get("layer"), int)
+        }
+    )
+    attention_layer_ids = sorted(
+        {
+            int(layer.get("layer"))
+            for layer in attention_layers
+            if isinstance(layer.get("layer"), int)
+        }
+    )
+    saliency_anchor_layer = checkpoint_layers[-1] if checkpoint_layers else None
+    if saliency_anchor_layer is None and attention_layer_ids:
+        saliency_anchor_layer = attention_layer_ids[-1]
+    activation_layer_ids = sorted(
+        {
+            int(layer.get("layer"))
+            for layer in activation_layers
+            if isinstance(layer.get("layer"), int)
+        }
+    )
+    mlp_layer_ids: list[int] = []
+    if isinstance(mlp_activation, dict):
+        mlp_layer = mlp_activation.get("mlp_layer")
+        residual_layer = mlp_activation.get("residual_layer")
+        for candidate in (mlp_layer, residual_layer):
+            if isinstance(candidate, dict) and isinstance(candidate.get("layer"), int):
+                mlp_layer_ids.append(int(candidate["layer"]))
+
+    layer_id_candidates = [
+        *checkpoint_layers,
+        *attention_layer_ids,
+        *activation_layer_ids,
+        *mlp_layer_ids,
+    ]
+    if saliency_anchor_layer is not None:
+        layer_id_candidates.append(saliency_anchor_layer)
+    layer_ids = sorted(set(layer_id_candidates))
+    return checkpoint_layers, attention_layer_ids, saliency_anchor_layer, layer_ids
+
+
+def _build_layer_index(
+    items: list[dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    indexed: dict[int, dict[str, Any]] = {}
+    for item in items:
+        layer_id = item.get("layer")
+        if isinstance(layer_id, int):
+            indexed[layer_id] = item
+    return indexed
+
+
+def _is_probe_payload_available(payload: dict[str, Any] | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    status = str(payload.get("status") or "probe_unavailable")
+    return status == "ok"
+
+
+def _resolve_layer_internals_probe_status(
+    *,
+    logit_lens: dict[str, Any],
+    hidden_state: dict[str, Any],
+    attention: dict[str, Any],
+) -> tuple[str, str]:
+    probe_sources = [
+        ("logit_lens", logit_lens),
+        ("hidden_state", hidden_state),
+        ("attention", attention),
+    ]
+    available_sources: list[str] = []
+    for fallback_label, payload in probe_sources:
+        if not _is_probe_payload_available(payload):
+            continue
+        source_label = str(payload.get("source") or fallback_label).strip()
+        available_sources.append(source_label or fallback_label)
+    if not available_sources:
+        return "probe_unavailable", "probe_unavailable"
+    unique_sources = list(dict.fromkeys(available_sources))
+    return ", ".join(unique_sources), "available"
+
+
+def _build_checkpoint_layer_parts(
+    *,
+    layer_id: int,
+    checkpoint: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(checkpoint, dict):
+        return {
+            "signals": [],
+            "evidence": [],
+            "blocks": [],
+            "state_delta": _NO_TRANSITION_DELTA_MESSAGE,
+            "status": "observed",
+        }
+
+    top_k_raw = checkpoint.get("top_k")
+    top_k_list = top_k_raw if isinstance(top_k_raw, list) else []
+    top_token = str(checkpoint.get("top_token") or "n/a")
+    confidence = checkpoint.get("confidence")
+    checkpoint_percent = checkpoint.get("percent")
+    changed = bool(checkpoint.get("changed"))
+    checkpoint_label = f"checkpoint {checkpoint_percent}%"
+    checkpoint_evidence = [
+        f"{entry.get('token', '?')} ({_format_float(entry.get('score'))})"
+        for entry in top_k_list[:3]
+        if isinstance(entry, dict)
+    ]
+    signal = {
+        "source": "logit_lens",
+        "label": checkpoint_label,
+        "detail": (
+            f"top token {top_token}; confidence {_format_float(confidence, 2)}; "
+            f"changed {'yes' if changed else 'no'}"
+        ),
+        "evidence": checkpoint_evidence,
+    }
+    block = {
+        "kind": "logit_lens",
+        "label": checkpoint_label,
+        "summary": f"Top token {top_token} at checkpoint {checkpoint_percent}%.",
+        "detail": (
+            f"Confidence {_format_float(confidence, 2)}; "
+            f"{'changed token path' if changed else 'stable token path'}."
+        ),
+        "impact": (
+            "This checkpoint marks a structural change in the prediction path."
+            if changed
+            else "This checkpoint preserves the current prediction path."
+        ),
+        "evidence": checkpoint_evidence,
+    }
+    state_delta = (
+        f"Prediction path shifts toward {top_token} at checkpoint {checkpoint_percent}%."
+        if changed
+        else f"Prediction path stays centered on {top_token} at checkpoint {checkpoint_percent}%."
+    )
+    evidence = [
+        f"{checkpoint_label} layer {layer_id}: {top_token} ({_format_float(confidence, 2)})",
+        *checkpoint_evidence,
+    ]
+    return {
+        "signals": [signal],
+        "evidence": evidence,
+        "blocks": [block],
+        "state_delta": state_delta,
+        "status": "changed" if changed else "stable",
+    }
+
+
+def _build_attention_layer_parts(
+    *,
+    layer_id: int,
+    attention_layer: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(attention_layer, dict):
+        return {
+            "signals": [],
+            "evidence": [],
+            "blocks": [],
+            "state_delta": None,
+            "status": None,
+        }
+
+    heads_raw = attention_layer.get("heads")
+    head_list = heads_raw if isinstance(heads_raw, list) else []
+    head_entries: list[dict[str, Any]] = []
+    link_samples: list[str] = []
+    for head in head_list[:2]:
+        if not isinstance(head, dict):
+            continue
+        links_raw = head.get("top_links")
+        link_list = links_raw if isinstance(links_raw, list) else []
+        head_entries.append(
+            {
+                "head": int(head.get("head") or 0),
+                "summary": f"{len(link_list)} link(s)",
+                "detail": "Strong attention links from this head.",
+                "evidence": [
+                    f"{link.get('from_token', '?')} → {link.get('to_token', '?')} ({_format_float(link.get('weight'))})"
+                    for link in link_list[:4]
+                    if isinstance(link, dict)
+                ],
+            }
+        )
+        for link in link_list[:2]:
+            if not isinstance(link, dict):
+                continue
+            link_samples.append(
+                f"head {head.get('head', '?')}: {link.get('from_token', '?')} → {link.get('to_token', '?')} ({_format_float(link.get('weight'))})"
+            )
+
+    link_total = sum(
+        len(head.get("top_links") or []) for head in head_list if isinstance(head, dict)
+    )
+    summary = f"{len(head_list)} head(s) and {link_total} link(s) reshape the active representation."
+    return {
+        "signals": [
+            {
+                "source": "attention",
+                "label": f"attention layer {layer_id}",
+                "detail": f"{len(head_list)} head(s) with {link_total} link(s)",
+                "evidence": link_samples[:4],
+            }
+        ],
+        "evidence": [
+            f"attention layer {layer_id}: {len(head_list)} head(s)",
+            *link_samples[:4],
+        ],
+        "blocks": [
+            {
+                "kind": "attention",
+                "label": f"attention layer {layer_id}",
+                "summary": summary,
+                "detail": "Attention exposes the strongest links between the current tokens.",
+                "impact": "Attention shifts how the layer reads the current context.",
+                "heads": head_entries,
+                "evidence": link_samples[:4],
+            }
+        ],
+        "state_delta": f"Attention reshapes the active representation across {len(head_list)} head(s).",
+        "status": "inspection",
+    }
+
+
+def _build_saliency_layer_parts(
+    *,
+    layer_id: int,
+    saliency_anchor_layer: int | None,
+    saliency: dict[str, Any],
+    token_weights: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if saliency_anchor_layer is None or layer_id != saliency_anchor_layer:
+        return {
+            "signals": [],
+            "evidence": [],
+            "blocks": [],
+            "state_delta": None,
+            "status": None,
+        }
+    saliency_method = str(saliency.get("method") or "unknown")
+    target_token = str(saliency.get("target_output_token") or "n/a")
+    token_weight_samples = [
+        f"{entry.get('token', '?')} ({_format_float(entry.get('weight'))})"
+        for entry in token_weights[:5]
+        if isinstance(entry, dict)
+    ]
+    return {
+        "signals": [
+            {
+                "source": "saliency",
+                "label": f"saliency target {target_token}",
+                "detail": (
+                    f"method {saliency_method}; {len(token_weights)} weighted token(s)"
+                ),
+                "evidence": token_weight_samples,
+            }
+        ],
+        "evidence": [
+            f"saliency target {target_token} via {saliency_method}",
+            *token_weight_samples,
+        ],
+        "blocks": [
+            {
+                "kind": "saliency",
+                "label": f"saliency target {target_token}",
+                "summary": f"Saliency is anchored to {target_token} via {saliency_method}.",
+                "detail": f"{len(token_weights)} weighted token(s) highlight the target path.",
+                "impact": "Saliency makes the strongest supporting tokens visible.",
+                "evidence": token_weight_samples,
+            }
+        ],
+        "state_delta": f"Saliency concentrates the explanation around {target_token}.",
+        "status": "inspection",
+    }
+
+
+def _merge_layer_status(current_status: str, incoming_status: str | None) -> str:
+    if incoming_status is None:
+        return current_status
+    if current_status == "observed":
+        return incoming_status
+    return current_status
+
+
+def _build_layer_summary(
+    signals: list[dict[str, Any]],
+    blocks: list[dict[str, Any]],
+) -> str:
+    summary_parts = [signal["detail"] for signal in signals[:3]]
+    summary = (
+        "; ".join(summary_parts)
+        if summary_parts
+        else "No probe data captured for this layer."
+    )
+    if blocks:
+        return f"{summary} | {len(blocks)} block(s) resolved."
+    return summary
+
+
+def _resolve_layer_state_delta(
+    *,
+    checkpoint_state_delta: str,
+    attention_state_delta: str | None,
+    saliency_state_delta: str | None,
+) -> str:
+    if checkpoint_state_delta != _NO_TRANSITION_DELTA_MESSAGE:
+        return checkpoint_state_delta
+    if isinstance(attention_state_delta, str):
+        return attention_state_delta
+    if isinstance(saliency_state_delta, str):
+        return saliency_state_delta
+    return checkpoint_state_delta
+
+
+def _build_layer_entry_payload(
+    *,
+    layer_id: int,
+    checkpoint_parts: dict[str, Any],
+    attention_parts: dict[str, Any],
+    saliency_parts: dict[str, Any],
+    response_text: str,
+    rag_focus: dict[str, Any],
+    evidence_coverage: dict[str, Any],
+) -> dict[str, Any]:
+    signals = [
+        *checkpoint_parts["signals"],
+        *attention_parts["signals"],
+        *saliency_parts["signals"],
+    ]
+    evidence = [
+        *checkpoint_parts["evidence"],
+        *attention_parts["evidence"],
+        *saliency_parts["evidence"],
+    ]
+    blocks = [
+        *checkpoint_parts["blocks"],
+        *attention_parts["blocks"],
+        *saliency_parts["blocks"],
+    ]
+    status = checkpoint_parts["status"]
+    status = _merge_layer_status(status, attention_parts["status"])
+    status = _merge_layer_status(status, saliency_parts["status"])
+    state_delta = _resolve_layer_state_delta(
+        checkpoint_state_delta=checkpoint_parts["state_delta"],
+        attention_state_delta=attention_parts["state_delta"],
+        saliency_state_delta=saliency_parts["state_delta"],
+    )
+    response_linkage = _build_layer_response_linkage_payload(
+        layer_id=layer_id,
+        layer_label=f"Layer {layer_id}",
+        signals=signals,
+        response_text=response_text,
+        rag_focus=rag_focus,
+        evidence_coverage=evidence_coverage,
+    )
+    return {
+        "id": f"layer_{layer_id}",
+        "layer": layer_id,
+        "label": f"Layer {layer_id}",
+        "status": status,
+        "summary": _build_layer_summary(signals, blocks),
+        "state_delta": state_delta,
+        "blocks": blocks,
+        "signals": signals,
+        "response_linkage": response_linkage,
+        "evidence": evidence[:8],
+    }
+
+
+def _build_layer_internals_notes(
+    *,
+    process_steps_count: int,
+    timeline_step_count: int,
+    saliency_anchor_layer: int | None,
+) -> list[str]:
+    notes = [
+        "Source data comes from logit_lens.checkpoints, attention.layers and saliency.token_weights.",
+        "Hidden-state activation path is sourced separately from hidden.hidden_slice.",
+        f"Process trace steps: {process_steps_count}",
+        f"Timeline steps: {timeline_step_count}",
+    ]
+    if saliency_anchor_layer is not None:
+        notes.append(
+            f"Saliency is anchored to layer {saliency_anchor_layer} because the payload does not carry an explicit hidden-layer index."
+        )
+    return notes
+
+
+def _build_layer_internals_summary_payload(
+    *,
+    layers: list[dict[str, Any]],
+    architecture_blocks: list[dict[str, Any]],
+    activation_summary: dict[str, Any],
+    activation_layers: list[dict[str, Any]],
+    activation_transitions: list[dict[str, Any]],
+    checkpoints: list[dict[str, Any]],
+    attention_layers: list[dict[str, Any]],
+    token_weights: list[dict[str, Any]],
+    process_steps_count: int,
+    timeline_step_count: int,
+) -> dict[str, Any]:
+    return {
+        "layer_count": len(layers),
+        "block_count": sum(len(layer.get("blocks") or []) for layer in layers),
+        "architecture_block_count": len(architecture_blocks),
+        "activation_layer_count": int(
+            activation_summary.get("selected_layer_count") or len(activation_layers)
+        ),
+        "activation_transition_count": int(
+            activation_summary.get("transition_count") or len(activation_transitions)
+        ),
+        "checkpoint_count": len(checkpoints),
+        "attention_layer_count": len(attention_layers),
+        "saliency_token_count": len(token_weights),
+        "process_step_count": process_steps_count,
+        "timeline_step_count": timeline_step_count,
+    }
+
+
+def _build_layer_internals_payload(
+    *,
+    process_trace: dict[str, Any] | None,
+    analysis_timeline: list[dict[str, Any]],
+    hidden_state: dict[str, Any],
+    logit_lens: dict[str, Any],
+    attention: dict[str, Any],
+    saliency: dict[str, Any],
+    architecture_graph: dict[str, Any] | None,
+    rag_focus: dict[str, Any],
+    evidence_coverage: dict[str, Any],
+    response_text: str,
+    mlp_activation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    checkpoints_raw = logit_lens.get("checkpoints")
+    attention_layers_raw = attention.get("layers")
+    token_weights_raw = saliency.get("token_weights")
+    checkpoints = [
+        item
+        for item in (checkpoints_raw if isinstance(checkpoints_raw, list) else [])
+        if isinstance(item, dict)
+    ]
+    attention_layers = [
+        item
+        for item in (
+            attention_layers_raw if isinstance(attention_layers_raw, list) else []
+        )
+        if isinstance(item, dict)
+    ]
+    token_weights = [
+        item
+        for item in (token_weights_raw if isinstance(token_weights_raw, list) else [])
+        if isinstance(item, dict)
+    ]
+    activation_layers_raw = hidden_state.get("layers")
+    activation_layers = [
+        item
+        for item in (
+            activation_layers_raw if isinstance(activation_layers_raw, list) else []
+        )
+        if isinstance(item, dict)
+    ]
+    (
+        _checkpoint_layers,
+        _attention_layer_ids,
+        saliency_anchor_layer,
+        layer_ids,
+    ) = _collect_layer_ids(
+        checkpoints=checkpoints,
+        attention_layers=attention_layers,
+        activation_layers=activation_layers,
+        mlp_activation=mlp_activation,
+    )
+    checkpoint_by_layer = _build_layer_index(checkpoints)
+    attention_by_layer = _build_layer_index(attention_layers)
+
+    process_steps = (
+        process_trace.get("step_count") if isinstance(process_trace, dict) else None
+    )
+    process_steps_count = int(process_steps or 0)
+    timeline_step_count = len(analysis_timeline)
+    architecture_blocks = _build_architecture_blocks_payload(architecture_graph)
+    activation_transitions_raw = hidden_state.get("transitions")
+    activation_transitions = [
+        item
+        for item in (
+            activation_transitions_raw
+            if isinstance(activation_transitions_raw, list)
+            else []
+        )
+        if isinstance(item, dict)
+    ]
+    activation_summary_raw = hidden_state.get("summary")
+    activation_summary = (
+        activation_summary_raw if isinstance(activation_summary_raw, dict) else {}
+    )
+    layers: list[dict[str, Any]] = []
+
+    for layer_id in layer_ids:
+        checkpoint_parts = _build_checkpoint_layer_parts(
+            layer_id=layer_id,
+            checkpoint=checkpoint_by_layer.get(layer_id),
+        )
+        attention_parts = _build_attention_layer_parts(
+            layer_id=layer_id,
+            attention_layer=attention_by_layer.get(layer_id),
+        )
+        saliency_parts = _build_saliency_layer_parts(
+            layer_id=layer_id,
+            saliency_anchor_layer=saliency_anchor_layer,
+            saliency=saliency,
+            token_weights=token_weights,
+        )
+        layers.append(
+            _build_layer_entry_payload(
+                layer_id=layer_id,
+                checkpoint_parts=checkpoint_parts,
+                attention_parts=attention_parts,
+                saliency_parts=saliency_parts,
+                response_text=response_text,
+                rag_focus=rag_focus,
+                evidence_coverage=evidence_coverage,
+            )
+        )
+
+    notes = [
+        *_build_layer_internals_notes(
+            process_steps_count=process_steps_count,
+            timeline_step_count=timeline_step_count,
+            saliency_anchor_layer=saliency_anchor_layer,
+        )
+    ]
+
+    combined_source, combined_status = _resolve_layer_internals_probe_status(
+        logit_lens=logit_lens,
+        hidden_state=hidden_state,
+        attention=attention,
+    )
+
+    return {
+        "source": combined_source,
+        "status": combined_status,
+        "mode": "probe_runtime",
+        "summary": _build_layer_internals_summary_payload(
+            layers=layers,
+            architecture_blocks=architecture_blocks,
+            activation_summary=activation_summary,
+            activation_layers=activation_layers,
+            activation_transitions=activation_transitions,
+            checkpoints=checkpoints,
+            attention_layers=attention_layers,
+            token_weights=token_weights,
+            process_steps_count=process_steps_count,
+            timeline_step_count=timeline_step_count,
+        ),
+        "layers": layers,
+        "architecture_blocks": architecture_blocks,
+        "activation_path": hidden_state,
+        "mlp_activation": mlp_activation,
+        "notes": notes,
+    }
+
+
 def _build_operator_reason_codes(
     *,
     rag_source: str,
@@ -817,17 +1556,20 @@ def _resolve_internals_verdict(
 
 def _build_analysis_capabilities_payload(
     *,
+    hidden_state: dict[str, Any] | None,
     attention: dict[str, Any] | None,
     saliency: dict[str, Any] | None,
     logit_lens: dict[str, Any] | None,
     probe_health: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    hidden_state_capability = _capability_from_probe_payload(hidden_state)
     attention_capability = _capability_from_probe_payload(attention)
     saliency_capability = _capability_from_probe_payload(saliency)
     logit_lens_capability = _capability_from_probe_payload(logit_lens)
     available_count = sum(
         1
         for capability in (
+            hidden_state_capability,
             attention_capability,
             saliency_capability,
             logit_lens_capability,
@@ -837,6 +1579,7 @@ def _build_analysis_capabilities_payload(
     native_available_count = sum(
         1
         for capability in (
+            hidden_state_capability,
             attention_capability,
             saliency_capability,
             logit_lens_capability,
@@ -846,12 +1589,13 @@ def _build_analysis_capabilities_payload(
     proxy_active = any(
         bool(capability.get("proxy"))
         for capability in (
+            hidden_state_capability,
             attention_capability,
             saliency_capability,
             logit_lens_capability,
         )
     )
-    total_count = 3
+    total_count = 4
     probe_health_dict = probe_health if isinstance(probe_health, dict) else {}
     limits = probe_health_dict.get("limits")
     limits_dict = limits if isinstance(limits, dict) else {}
@@ -866,6 +1610,7 @@ def _build_analysis_capabilities_payload(
     elif available_count > 0:
         introspection_level = "lite"
     return {
+        "hidden_state": hidden_state_capability,
         "attention": attention_capability,
         "saliency": saliency_capability,
         "logit_lens": logit_lens_capability,
@@ -2105,6 +2850,74 @@ async def _collect_attention_payload_safe(
         }
 
 
+async def _collect_activation_path_payload_safe(
+    *,
+    prompt: str,
+    architecture_graph: dict[str, Any] | None,
+) -> dict[str, Any]:
+    try:
+        return await build_activation_path_payload(
+            prompt=prompt,
+            architecture_graph=architecture_graph,
+        )
+    except (RuntimeError, ValueError, TypeError):
+        logger.exception("Model introspection activation path probe failed")
+        return {
+            "source": "probe_unavailable",
+            "status": "probe_unavailable",
+            "code": "hidden_state_unavailable",
+            "message": "Activation path probe unavailable",
+            "runtime_label": None,
+            "selected_layers": [],
+            "layers": [],
+            "transitions": [],
+            "summary": {
+                "selected_layer_count": 0,
+                "transition_count": 0,
+                "focus_layer": None,
+                "max_delta_norm": 0.0,
+                "average_norm": 0.0,
+            },
+            "notes": [],
+        }
+
+
+async def _collect_mlp_activation_payload_safe(
+    *,
+    prompt: str,
+    architecture_graph: dict[str, Any] | None,
+) -> dict[str, Any]:
+    try:
+        return await build_mlp_activation_payload(
+            prompt=prompt,
+            architecture_graph=architecture_graph,
+        )
+    except (RuntimeError, ValueError, TypeError):
+        logger.exception("Model introspection MLP activation probe failed")
+        return {
+            "source": "probe_unavailable",
+            "status": "probe_unavailable",
+            "code": "mlp_activation_unavailable",
+            "message": "MLP activation probe unavailable",
+            "runtime_label": None,
+            "selected_layers": [],
+            "mlp_layer": None,
+            "residual_layer": None,
+            "transition": None,
+            "summary": {
+                "selected_layer_count": 0,
+                "focus_layer": None,
+                "residual_layer": None,
+                "hidden_dimension_count": 0,
+                "max_delta_norm": 0.0,
+                "average_norm": 0.0,
+                "transition_summary": None,
+                "transition_impact": None,
+            },
+            "notes": [],
+        }
+
+
 async def _collect_saliency_payload_safe(
     *,
     prompt: str,
@@ -2237,6 +3050,7 @@ class _CompletedAnalysisPayloadContext:
     snapshot_after_at_ms: float
     process_trace: dict[str, Any] | None
     rag_focus: dict[str, Any]
+    hidden_state: dict[str, Any]
     attention: dict[str, Any]
     saliency: dict[str, Any]
     rag_profile: dict[str, Any]
@@ -2248,6 +3062,9 @@ class _CompletedAnalysisPayloadContext:
     evidence_coverage: dict[str, Any]
     operator_conclusion: dict[str, Any]
     analysis_capabilities: dict[str, Any]
+    layer_internals: dict[str, Any] | None
+    architecture_blocks: list[dict[str, Any]] | None
+    mlp_activation: dict[str, Any] | None
     run_trends: dict[str, Any] | None
 
 
@@ -2264,9 +3081,11 @@ class _FinalizeCompletedAnalysisArgs:
     max_tokens: int | None
     temperature: float | None
     top_p: float | None
+    hidden_state: dict[str, Any]
     logit_lens: dict[str, Any]
     attention: dict[str, Any]
     saliency: dict[str, Any]
+    architecture_graph: dict[str, Any] | None = None
     model_manager: Any = None
     settings: Any = None
 
@@ -2290,6 +3109,7 @@ def _build_completed_analysis_payload(
         "snapshot_after_ms": context.snapshot_after_at_ms,
         "process": context.process_trace,
         "rag_focus": context.rag_focus,
+        "hidden_state": context.hidden_state,
         "attention": context.attention,
         "saliency": context.saliency,
         "rag_profile": context.rag_profile,
@@ -2301,6 +3121,9 @@ def _build_completed_analysis_payload(
         "evidence_coverage": context.evidence_coverage,
         "operator_conclusion": context.operator_conclusion,
         "analysis_capabilities": context.analysis_capabilities,
+        "layer_internals": context.layer_internals,
+        "architecture_blocks": context.architecture_blocks,
+        "mlp_activation": context.mlp_activation,
         "introspection_level": str(
             context.analysis_capabilities.get("introspection_level") or "none"
         ),
@@ -2379,12 +3202,24 @@ async def _finalize_completed_analysis(
     )
     rag_profile = _build_rag_profile(rag_focus=rag_focus)
     logit_profile = _build_logit_profile(logit_lens=args.logit_lens)
+    architecture_graph = refreshed_snapshot.get("architecture_graph")
+    if not isinstance(architecture_graph, dict):
+        architecture_graph = args.snapshot.get("architecture_graph")
+    hidden_state = args.hidden_state
+    mlp_activation = await _collect_mlp_activation_payload_safe(
+        prompt=args.prompt,
+        architecture_graph=architecture_graph
+        if isinstance(architecture_graph, dict)
+        else None,
+    )
     analysis_capabilities = _build_analysis_capabilities_payload(
+        hidden_state=hidden_state,
         attention=args.attention,
         saliency=args.saliency,
         logit_lens=args.logit_lens,
         probe_health=refreshed_snapshot.get("probe"),
     )
+    architecture_blocks = _build_architecture_blocks_payload(architecture_graph)
     operator_conclusion = _build_operator_conclusion_payload(
         rag_focus=rag_focus,
         logit_lens=args.logit_lens,
@@ -2417,6 +3252,21 @@ async def _finalize_completed_analysis(
         saliency_step=saliency_step,
         refreshed_snapshot=refreshed_snapshot,
     )
+    layer_internals = _build_layer_internals_payload(
+        process_trace=process_trace,
+        analysis_timeline=analysis_timeline,
+        hidden_state=hidden_state,
+        logit_lens=args.logit_lens,
+        attention=args.attention,
+        saliency=args.saliency,
+        architecture_graph=architecture_graph
+        if isinstance(architecture_graph, dict)
+        else None,
+        rag_focus=rag_focus,
+        evidence_coverage=evidence_coverage,
+        response_text=response_text,
+        mlp_activation=mlp_activation,
+    )
     payload = _build_completed_analysis_payload(
         _CompletedAnalysisPayloadContext(
             prompt=args.prompt,
@@ -2435,6 +3285,7 @@ async def _finalize_completed_analysis(
             ),
             process_trace=process_trace,
             rag_focus=rag_focus,
+            hidden_state=hidden_state,
             attention=args.attention,
             saliency=args.saliency,
             rag_profile=rag_profile,
@@ -2446,6 +3297,9 @@ async def _finalize_completed_analysis(
             evidence_coverage=evidence_coverage,
             operator_conclusion=operator_conclusion,
             analysis_capabilities=analysis_capabilities,
+            layer_internals=layer_internals,
+            architecture_blocks=architecture_blocks,
+            mlp_activation=mlp_activation,
             run_trends=run_trends,
         )
     )
@@ -2557,24 +3411,34 @@ async def _collect_probe_payloads(
     runtime: dict[str, Any],
     stream_payload: dict[str, Any],
     response_text: str,
+    architecture_graph: dict[str, Any] | None,
     ollama_lite_mode: bool,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     if ollama_lite_mode:
         logit_lens = _build_ollama_lite_logit_lens_payload(
             prompt=prompt,
             runtime=runtime,
             stream_payload=stream_payload,
         )
-        attention, saliency = await asyncio.gather(
+        hidden_state, attention, saliency = await asyncio.gather(
+            _collect_activation_path_payload_safe(
+                prompt=prompt,
+                architecture_graph=architecture_graph,
+            ),
             _collect_attention_payload_safe(prompt=prompt),
             _collect_saliency_payload_safe(prompt=prompt, response_text=response_text),
         )
-        return logit_lens, attention, saliency
-    return await asyncio.gather(
+        return hidden_state, logit_lens, attention, saliency
+    hidden_state, logit_lens, attention, saliency = await asyncio.gather(
+        _collect_activation_path_payload_safe(
+            prompt=prompt,
+            architecture_graph=architecture_graph,
+        ),
         _collect_logit_lens_payload_safe(prompt=prompt, response_text=response_text),
         _collect_attention_payload_safe(prompt=prompt),
         _collect_saliency_payload_safe(prompt=prompt, response_text=response_text),
     )
+    return hidden_state, logit_lens, attention, saliency
 
 
 async def stream_model_introspection_analysis(
@@ -2737,11 +3601,14 @@ async def stream_model_introspection_analysis(
         "content_event_times_ms": content_event_times_ms,
         "telemetry": telemetry_packets,
     }
-    logit_lens, attention, saliency = await _collect_probe_payloads(
+    hidden_state, logit_lens, attention, saliency = await _collect_probe_payloads(
         prompt=prompt,
         runtime=runtime,
         stream_payload=stream_payload,
         response_text=response_text,
+        architecture_graph=snapshot.get("architecture_graph")
+        if isinstance(snapshot.get("architecture_graph"), dict)
+        else None,
         ollama_lite_mode=ollama_lite_mode,
     )
     (
@@ -2761,6 +3628,7 @@ async def stream_model_introspection_analysis(
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
+            hidden_state=hidden_state,
             logit_lens=logit_lens,
             attention=attention,
             saliency=saliency,
@@ -2855,11 +3723,14 @@ async def analyze_model_with_optional_live_run(
         raise
     elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
     response_text = str(stream_payload.get("response_text") or "")
-    logit_lens, attention, saliency = await _collect_probe_payloads(
+    hidden_state, logit_lens, attention, saliency = await _collect_probe_payloads(
         prompt=prompt,
         runtime=runtime,
         stream_payload=stream_payload,
         response_text=response_text,
+        architecture_graph=snapshot.get("architecture_graph")
+        if isinstance(snapshot.get("architecture_graph"), dict)
+        else None,
         ollama_lite_mode=ollama_lite_mode,
     )
     (
@@ -2879,6 +3750,7 @@ async def analyze_model_with_optional_live_run(
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
+            hidden_state=hidden_state,
             logit_lens=logit_lens,
             attention=attention,
             saliency=saliency,

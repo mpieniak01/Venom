@@ -77,6 +77,111 @@ function makeGraphFixture() {
   };
 }
 
+function makeArchitectureGraphFixture() {
+  return {
+    nodes: [
+      {
+        id: "input",
+        label: "input embeddings",
+        kind: "input",
+        status: "ready",
+        role: "input",
+        layer_index: 0,
+        group: "entry",
+      },
+      {
+        id: "embedding",
+        label: "token embedding",
+        kind: "embedding",
+        status: "ready",
+        role: "embedding",
+        layer_index: 0,
+        group: "embedding",
+      },
+      {
+        id: "layer_1",
+        label: "transformer block 1",
+        kind: "layer",
+        status: "ready",
+        role: "layer",
+        layer_index: 1,
+        group: "sliding_attention",
+      },
+      {
+        id: "layer_2",
+        label: "transformer block 2",
+        kind: "layer",
+        status: "ready",
+        role: "layer",
+        layer_index: 2,
+        group: "full_attention",
+      },
+      {
+        id: "layer_3",
+        label: "transformer block 3",
+        kind: "layer",
+        status: "ready",
+        role: "layer",
+        layer_index: 3,
+        group: "sliding_attention",
+      },
+      {
+        id: "output",
+        label: "logits",
+        kind: "output",
+        status: "ready",
+        role: "output",
+        layer_index: 4,
+        group: "exit",
+      },
+      {
+        id: "probe",
+        label: "probe surface",
+        kind: "attention",
+        status: "ready",
+        role: "attention",
+        layer_index: 3,
+        group: "probe",
+      },
+      {
+        id: "residual",
+        label: "residual merge",
+        kind: "residual",
+        status: "ready",
+        role: "residual",
+        layer_index: 3,
+        group: "residual",
+      },
+    ],
+    edges: [
+      { from: "input", to: "embedding", label: "tokenize", direction: "forward" },
+      { from: "embedding", to: "layer_1", label: "enter stack", direction: "forward" },
+      { from: "layer_1", to: "layer_2", label: "full_attention", direction: "forward" },
+      { from: "layer_2", to: "layer_3", label: "sliding_attention", direction: "forward" },
+      { from: "layer_3", to: "probe", label: "probe path", direction: "forward" },
+      { from: "layer_3", to: "residual", label: "residual path", direction: "forward" },
+      { from: "probe", to: "residual", label: "merge", direction: "forward" },
+      { from: "residual", to: "output", label: "decode", direction: "forward" },
+    ],
+    summary: {
+      nodes: 8,
+      edges: 8,
+      layer_count: 3,
+      block_count: 3,
+    },
+    meta: {
+      runtime: "gemma-4-E2B-it · multi_runtime @ localhost:8014",
+      model: "google/gemma-4-E2B-it",
+      provider: "multi_runtime",
+      generated_at: "2026-05-27T10:00:00Z",
+      fidelity: "native",
+      source: "native runtime config",
+      source_path: "/home/ubuntu/venom/data/models/self_learning_test/runtime_vllm/config.json",
+      base_model: "google/gemma-3-4b-it",
+    },
+  };
+}
+
 function makeRuntimeFixture() {
   return {
     provider: "multi_runtime",
@@ -141,6 +246,7 @@ function makeSnapshotBeforeFixture() {
       introspection_ready: true,
     },
     graph: makeGraphFixture(),
+    architecture_graph: makeArchitectureGraphFixture(),
   };
 }
 
@@ -185,6 +291,7 @@ function makeSnapshotAfterFixture() {
       introspection_ready: true,
     },
     graph: makeGraphFixture(),
+    architecture_graph: makeArchitectureGraphFixture(),
   };
 }
 
@@ -404,7 +511,270 @@ function makeAnalysisCompletedPayload() {
         },
         diagnostics: { elapsed_ms: 12.4 },
       },
+      layer_internals: {
+        source: "probe_runtime",
+        status: "ok",
+        mode: "probe_runtime",
+        summary: {
+          layer_count: 1,
+          block_count: 3,
+          architecture_block_count: 2,
+          activation_layer_count: 2,
+          activation_transition_count: 1,
+          checkpoint_count: 1,
+          attention_layer_count: 1,
+          saliency_token_count: 3,
+          process_step_count: 4,
+          timeline_step_count: 7,
+        },
+        layers: [
+          {
+            id: "layer_4",
+            layer: 4,
+            label: "Layer 4",
+            status: "changed",
+            summary: "checkpoint 25% top token Słońce; attention layer 4; saliency target Słońce",
+            state_delta: "Prediction path shifts toward Słońce at checkpoint 25%.",
+            blocks: [
+              {
+                kind: "logit_lens",
+                label: "checkpoint 25%",
+                summary: "Top token Słońce at checkpoint 25%.",
+                detail: "Confidence 0.42; stable token path.",
+                impact: "This checkpoint preserves the current prediction path.",
+                evidence: ["Słońce (8.125)", "gwiazda (7.750)"],
+              },
+              {
+                kind: "attention",
+                label: "attention layer 4",
+                summary: "1 head(s) and 1 link(s) reshape the active representation.",
+                detail: "Attention exposes the strongest links between the current tokens.",
+                impact: "Attention shifts how the layer reads the current context.",
+                heads: [
+                  {
+                    head: 0,
+                    summary: "1 link(s)",
+                    detail: "Strong attention links from this head.",
+                    evidence: ["head 0: Co → Słońce (0.812)"],
+                  },
+                ],
+                evidence: ["head 0: Co → Słońce (0.812)"],
+              },
+              {
+                kind: "saliency",
+                label: "saliency target Słońce",
+                summary: "Saliency is anchored to Słońce via logits_proxy.",
+                detail: "3 weighted token(s) highlight the target path.",
+                impact: "Saliency makes the strongest supporting tokens visible.",
+                evidence: ["Słońce (0.910)", "gwiazda (0.420)", "to (0.210)"],
+              },
+            ],
+            signals: [
+              {
+                source: "logit_lens",
+                label: "checkpoint 25%",
+                detail: "top token Słońce; confidence 0.42; changed no",
+                evidence: ["Słońce (8.125)", "gwiazda (7.750)"],
+              },
+              {
+                source: "attention",
+                label: "attention layer 4",
+                detail: "1 head(s) with 1 link(s)",
+                evidence: ["head 0: Co → Słońce (0.812)"],
+              },
+              {
+                source: "saliency",
+                label: "saliency target Słońce",
+                detail: "method logits_proxy; 3 weighted token(s)",
+                evidence: ["Słońce (0.910)", "gwiazda (0.420)", "to (0.210)"],
+              },
+            ],
+            response_linkage: {
+              status: "linked",
+              layer_id: 4,
+              layer_label: "Layer 4",
+              coverage_percent: 80,
+              fragment_count: 5,
+              linked_fragment_count: 4,
+              linked_fragments: [
+                "Słońce to gwiazda.",
+                "Jest to ogromna, gorąca i bardzo jasna kula gazu.",
+                "Oto kluczowe informacje o Słońcu.",
+              ],
+              evidence_links: ["edge:1", "edge:2", "edge:3"],
+              dominant_signals: ["checkpoint 25%", "attention layer 4", "saliency target Słońce"],
+              summary:
+                "4/5 response fragment(s) are evidence-linked. Dominant signals: checkpoint 25%, attention layer 4, saliency target Słońce.",
+              impact:
+                "This layer's signals align with response fragments that are grounded in evidence.",
+              evidence: ["coverage 80.00%", "fragments 4/5", "checkpoint 25%", "attention layer 4"],
+            },
+            evidence: [
+              "checkpoint 25% layer 4: Słońce (0.42)",
+              "attention layer 4: 1 head(s)",
+              "head 0: Co → Słońce (0.812)",
+              "saliency target Słońce via logits_proxy",
+            ],
+          },
+        ],
+        architecture_blocks: [
+          {
+            kind: "mlp",
+            label: "Response synthesis",
+            summary: "MLP synthesizes hidden state into the residual path.",
+            detail: "Source node mlp is the native architecture synthesis block.",
+            impact: "This block converts internal state into response-oriented synthesis.",
+            evidence: ["enter model", "merge"],
+          },
+          {
+            kind: "residual",
+            label: "Reuse path",
+            summary: "Residual merge keeps the active path reusable before decode.",
+            detail: "Source node residual merges probe and synthesis paths.",
+            impact: "Residual flow keeps accumulated state available for the final decode.",
+            evidence: ["merge", "decode"],
+          },
+        ],
+        mlp_activation: {
+          source: "probe_runtime",
+          status: "ok",
+          selected_layers: [4],
+          mlp_layer: {
+            layer: 4,
+            label: "Response synthesis",
+            role_hint: "mlp",
+            hidden_slice: [0.09, -0.15, 0.38, -0.04],
+            metrics: {
+              mean: 0.07,
+              norm: 0.416533,
+              max_abs: 0.38,
+              top_dimensions: [
+                { index: 2, value: 0.38, abs_value: 0.38 },
+                { index: 1, value: -0.15, abs_value: 0.15 },
+              ],
+            },
+            summary: "norm 0.417; mean 0.070; top dims 2, 1",
+            evidence: ["slice[0]=0.090", "slice len=4"],
+          },
+          residual_layer: null,
+          transition: null,
+          tensor_activation: {
+            source: "probe_runtime.hidden.hidden_slice",
+            status: "ok",
+            slice_kind: "hidden_state_slice",
+            focus_layer: 4,
+            residual_layer: null,
+            vector_length: 4,
+            mlp_vector: [0.09, -0.15, 0.38, -0.04],
+            residual_vector: null,
+            delta_vector: null,
+            norms: {
+              mlp_l2: 0.416533,
+              residual_l2: null,
+              delta_l2: null,
+              cosine_similarity: null,
+            },
+            top_delta_dimensions: [],
+            notes: [
+              "Contract exposes hidden-state slice vectors for activation analysis.",
+              "This payload is not a full tensor dump of the MLP block.",
+            ],
+          },
+          summary: {
+            selected_layer_count: 1,
+            focus_layer: 4,
+            residual_layer: null,
+            hidden_dimension_count: 4,
+            max_delta_norm: 0,
+            average_norm: 0.416533,
+            transition_summary: null,
+            transition_impact: null,
+          },
+          notes: [
+            "Source data comes from hidden.hidden_slice for the selected MLP layer.",
+            "This is a probe slice, not a full tensor dump.",
+          ],
+        },
+        activation_path: {
+          source: "probe_runtime",
+          status: "ok",
+          selected_layers: [0, 4],
+          layers: [
+            {
+              layer: 0,
+              label: "Prompt input",
+              role_hint: "input",
+              hidden_slice: [0.12, -0.24, 0.31, -0.18],
+              metrics: {
+                mean: 0.0025,
+                norm: 0.4235,
+                max_abs: 0.31,
+                top_dimensions: [
+                  { index: 2, value: 0.31, abs_value: 0.31 },
+                  { index: 1, value: -0.24, abs_value: 0.24 },
+                ],
+              },
+              summary: "norm 0.424; mean 0.003; top dims 2, 1",
+              evidence: ["slice[0]=0.120", "slice len=4"],
+            },
+            {
+              layer: 4,
+              label: "Layer 4",
+              role_hint: "layer",
+              hidden_slice: [0.18, -0.11, 0.44, -0.07],
+              metrics: {
+                mean: 0.11,
+                norm: 0.495923,
+                max_abs: 0.44,
+                top_dimensions: [
+                  { index: 2, value: 0.44, abs_value: 0.44 },
+                  { index: 0, value: 0.18, abs_value: 0.18 },
+                ],
+              },
+              summary: "norm 0.496; mean 0.110; top dims 2, 0",
+              evidence: ["slice[0]=0.180", "slice len=4"],
+            },
+          ],
+          transitions: [
+            {
+              from_layer: 0,
+              to_layer: 4,
+              before: "Prompt input",
+              after: "Layer 4",
+              delta_norm: 0.271664,
+              mean_shift: 0.1075,
+              max_abs_shift: 0.13,
+              summary: "Hidden-state delta norm 0.272; mean shift 0.108; peak shift 0.130.",
+              impact: "The activation path changes most strongly across this transition.",
+              evidence: ["ΔL2 0.272", "Δmean 0.108", "peak |Δ| 0.130"],
+            },
+          ],
+          summary: {
+            selected_layer_count: 2,
+            transition_count: 1,
+            focus_layer: 4,
+            max_delta_norm: 0.271664,
+            average_norm: 0.459712,
+          },
+          notes: [
+            "Source data comes from hidden.hidden_slice for selected layers.",
+            "This is a probe slice, not a full tensor dump.",
+          ],
+        },
+        notes: [
+          "Source data comes from logit_lens.checkpoints, attention.layers and saliency.token_weights.",
+          "Hidden-state activation path is sourced separately from hidden.hidden_slice.",
+          "Process trace steps: 4",
+          "Timeline steps: 7",
+        ],
+      },
       analysis_capabilities: {
+        hidden_state: {
+          available: true,
+          source: "probe_runtime",
+          status: "ok",
+          reason: "ok",
+        },
         attention: {
           available: true,
           source: "probe_runtime",
@@ -423,8 +793,8 @@ function makeAnalysisCompletedPayload() {
           status: "ok",
           reason: "ok",
         },
-        available_count: 3,
-        total_count: 3,
+        available_count: 4,
+        total_count: 4,
         probe_profile: "dev",
         probe_enabled: true,
         probe_healthy: true,
@@ -581,11 +951,12 @@ function makeStableScreenCompletedPayload() {
         diagnostics: { elapsed_ms: 83.9 },
       },
       analysis_capabilities: {
+        hidden_state: { available: true, source: "probe_runtime", status: "ok", reason: "ok" },
         attention: { available: true, source: "probe_runtime", status: "ok", reason: "attention_proxy_logits" },
         saliency: { available: true, source: "probe_runtime", status: "ok", reason: "saliency_proxy_logits" },
         logit_lens: { available: true, source: "probe_runtime", status: "ok", reason: "ok" },
-        available_count: 3,
-        total_count: 3,
+        available_count: 4,
+        total_count: 4,
         probe_profile: "dev",
         probe_enabled: true,
         probe_healthy: true,
@@ -594,6 +965,262 @@ function makeStableScreenCompletedPayload() {
         model_whitelisted: true,
         limits: { timeout_seconds: 25, max_attempts: 2, max_top_k: 32, max_layer_count: 8, max_head_count: 32, max_prompt_tokens: 1024 },
         internals_verdict: "partial",
+      },
+      layer_internals: {
+        source: "probe_runtime",
+        status: "ok",
+        mode: "probe_runtime",
+        summary: {
+          layer_count: 1,
+          block_count: 3,
+          architecture_block_count: 2,
+          activation_layer_count: 2,
+          activation_transition_count: 1,
+          checkpoint_count: 1,
+          attention_layer_count: 1,
+          saliency_token_count: 1,
+          process_step_count: 4,
+          timeline_step_count: 9,
+        },
+        layers: [
+          {
+            id: "layer_4",
+            layer: 4,
+            label: "Layer 4",
+            status: "inspection",
+            summary: "checkpoint 25% top token Słońce; attention layer 0; saliency target Slonce",
+            state_delta: "Prediction path stays centered on Słońce at checkpoint 25%.",
+            blocks: [
+              {
+                kind: "logit_lens",
+                label: "checkpoint 25%",
+                summary: "Top token Słońce at checkpoint 25%.",
+                detail: "Confidence 0.22; stable token path.",
+                impact: "This checkpoint preserves the current prediction path.",
+                evidence: ["式 (6.094)", "<<- (6.031)"],
+              },
+              {
+                kind: "attention",
+                label: "attention layer 0",
+                summary: "1 head(s) and 1 link(s) reshape the active representation.",
+                detail: "Attention exposes the strongest links between the current tokens.",
+                impact: "Attention shifts how the layer reads the current context.",
+                heads: [
+                  {
+                    head: 0,
+                    summary: "1 link(s)",
+                    detail: "Strong attention links from this head.",
+                    evidence: ["head 0: ? → ? (61.750)"],
+                  },
+                ],
+                evidence: ["head 0: ? → ? (61.750)"],
+              },
+              {
+                kind: "saliency",
+                label: "saliency target Slonce",
+                summary: "Saliency is anchored to Slonce via logits_proxy.",
+                detail: "1 weighted token(s) highlight the target path.",
+                impact: "Saliency makes the strongest supporting tokens visible.",
+                evidence: ["автоматлары (42.750)"],
+              },
+            ],
+            signals: [
+              {
+                source: "logit_lens",
+                label: "checkpoint 25%",
+                detail: "top token Słońce; confidence 0.22; changed no",
+                evidence: ["式 (6.094)", "<<- (6.031)"],
+              },
+              {
+                source: "attention",
+                label: "attention layer 0",
+                detail: "1 head(s) with 1 link(s)",
+                evidence: ["head 0: ? → ? (61.750)"],
+              },
+              {
+                source: "saliency",
+                label: "saliency target Slonce",
+                detail: "method logits_proxy; 1 weighted token(s)",
+                evidence: ["автоматлары (42.750)"],
+              },
+            ],
+            response_linkage: {
+              status: "linked",
+              layer_id: 4,
+              layer_label: "Layer 4",
+              coverage_percent: 66.67,
+              fragment_count: 3,
+              linked_fragment_count: 2,
+              linked_fragments: [
+                "Słońce to gwiazda.",
+                "Jest to ogromna, gorąca i bardzo jasna kula gazu.",
+              ],
+              evidence_links: ["edge:1", "edge:2"],
+              dominant_signals: ["checkpoint 25%", "attention layer 0", "saliency target Slonce"],
+              summary:
+                "2/3 response fragment(s) are evidence-linked. Dominant signals: checkpoint 25%, attention layer 0, saliency target Slonce.",
+              impact:
+                "This layer's signals align with response fragments that are grounded in evidence.",
+              evidence: ["coverage 66.67%", "fragments 2/3", "checkpoint 25%", "attention layer 0"],
+            },
+            evidence: [
+              "checkpoint 25% layer 4: 式 (0.22)",
+              "attention layer 0: 1 head(s)",
+              "head 0: ? → ? (61.750)",
+              "saliency target Slonce via logits_proxy",
+            ],
+          },
+        ],
+        architecture_blocks: [
+          {
+            kind: "mlp",
+            label: "Response synthesis",
+            summary: "MLP synthesizes hidden state into the residual path.",
+            detail: "Source node mlp is the native architecture synthesis block.",
+            impact: "This block converts internal state into response-oriented synthesis.",
+            evidence: ["synthesis path", "merge"],
+          },
+          {
+            kind: "residual",
+            label: "Reuse path",
+            summary: "Residual merge keeps the active path reusable before decode.",
+            detail: "Source node residual merges probe and synthesis paths.",
+            impact: "Residual flow keeps accumulated state available for the final decode.",
+            evidence: ["merge", "decode"],
+          },
+        ],
+        mlp_activation: {
+          source: "probe_runtime",
+          status: "ok",
+          selected_layers: [4],
+          mlp_layer: {
+            layer: 4,
+            label: "Response synthesis",
+            role_hint: "mlp",
+            hidden_slice: [0.09, -0.15, 0.38, -0.04],
+            metrics: {
+              mean: 0.07,
+              norm: 0.416533,
+              max_abs: 0.38,
+              top_dimensions: [
+                { index: 2, value: 0.38, abs_value: 0.38 },
+                { index: 1, value: -0.15, abs_value: 0.15 },
+              ],
+            },
+            summary: "norm 0.417; mean 0.070; top dims 2, 1",
+            evidence: ["slice[0]=0.090", "slice len=4"],
+          },
+          residual_layer: null,
+          transition: null,
+          tensor_activation: {
+            source: "probe_runtime.hidden.hidden_slice",
+            status: "ok",
+            slice_kind: "hidden_state_slice",
+            focus_layer: 4,
+            residual_layer: null,
+            vector_length: 4,
+            mlp_vector: [0.09, -0.15, 0.38, -0.04],
+            residual_vector: null,
+            delta_vector: null,
+            norms: {
+              mlp_l2: 0.416533,
+              residual_l2: null,
+              delta_l2: null,
+              cosine_similarity: null,
+            },
+            top_delta_dimensions: [],
+            notes: [
+              "Contract exposes hidden-state slice vectors for activation analysis.",
+              "This payload is not a full tensor dump of the MLP block.",
+            ],
+          },
+          summary: {
+            selected_layer_count: 1,
+            focus_layer: 4,
+            residual_layer: null,
+            hidden_dimension_count: 4,
+            max_delta_norm: 0,
+            average_norm: 0.416533,
+            transition_summary: null,
+            transition_impact: null,
+          },
+          notes: [
+            "Source data comes from hidden.hidden_slice for the selected MLP layer.",
+            "This is a probe slice, not a full tensor dump.",
+          ],
+        },
+        activation_path: {
+          source: "probe_runtime",
+          status: "ok",
+          selected_layers: [0, 4],
+          layers: [
+            {
+              layer: 0,
+              label: "Prompt input",
+              role_hint: "input",
+              hidden_slice: [0.12, -0.24, 0.31, -0.18],
+              metrics: {
+                mean: 0.0025,
+                norm: 0.4235,
+                max_abs: 0.31,
+                top_dimensions: [
+                  { index: 2, value: 0.31, abs_value: 0.31 },
+                  { index: 1, value: -0.24, abs_value: 0.24 },
+                ],
+              },
+              summary: "norm 0.424; mean 0.003; top dims 2, 1",
+              evidence: ["slice[0]=0.120", "slice len=4"],
+            },
+            {
+              layer: 4,
+              label: "Layer 4",
+              role_hint: "layer",
+              hidden_slice: [0.18, -0.11, 0.44, -0.07],
+              metrics: {
+                mean: 0.11,
+                norm: 0.495923,
+                max_abs: 0.44,
+                top_dimensions: [
+                  { index: 2, value: 0.44, abs_value: 0.44 },
+                  { index: 0, value: 0.18, abs_value: 0.18 },
+                ],
+              },
+              summary: "norm 0.496; mean 0.110; top dims 2, 0",
+              evidence: ["slice[0]=0.180", "slice len=4"],
+            },
+          ],
+          transitions: [
+            {
+              from_layer: 0,
+              to_layer: 4,
+              before: "Prompt input",
+              after: "Layer 4",
+              delta_norm: 0.271664,
+              mean_shift: 0.1075,
+              max_abs_shift: 0.13,
+              summary: "Hidden-state delta norm 0.272; mean shift 0.108; peak shift 0.130.",
+              impact: "The activation path changes most strongly across this transition.",
+              evidence: ["ΔL2 0.272", "Δmean 0.108", "peak |Δ| 0.130"],
+            },
+          ],
+          summary: {
+            selected_layer_count: 2,
+            transition_count: 1,
+            focus_layer: 4,
+            max_delta_norm: 0.271664,
+            average_norm: 0.459712,
+          },
+          notes: [
+            "Source data comes from hidden.hidden_slice for selected layers.",
+            "This is a probe slice, not a full tensor dump.",
+          ],
+        },
+        notes: [
+          "Source data comes from logit_lens.checkpoints, attention.layers and saliency.token_weights.",
+          "Hidden-state activation path is sourced separately from hidden.hidden_slice.",
+          "Process trace steps: 4",
+          "Timeline steps: 9",
+        ],
       },
     },
   };
@@ -830,21 +1457,13 @@ describe("ModelIntrospectionDashboard", () => {
     });
     assert.ok(screen.getByRole("link", { name: "Open Knowledge Graph" }));
     assert.ok(screen.getByLabelText("Prompt"));
-    const technicalLayerToggle = screen.getByRole("button", {
-      name: /Show technical layer|Hide technical layer/i,
-    });
-    assert.ok(technicalLayerToggle);
-    fireEvent.click(technicalLayerToggle);
-    assert.ok(screen.getByText("Graph view"));
-    assert.ok(screen.getAllByText("Graph drilldown").length >= 1);
-    assert.ok(screen.getByRole("button", { name: "Select graph node gemma-4-E2B-it · multi_runtime @ localhost:8014" }));
+    assert.equal(screen.queryByText("Graph view"), null);
 
-    assert.ok(screen.getByText("Runtime details"));
-    assert.ok(screen.getByText("Provider: multi_runtime"));
-
-    fireEvent.click(screen.getByRole("button", { name: "Select graph node captum" }));
-    assert.ok(screen.getByText("Package details"));
-    assert.ok(screen.getByText("Package: captum"));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Refresh snapshot|Odśwież migawkę/i,
+      }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Run analysis" }));
 
@@ -884,13 +1503,62 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText("Delta"));
       assert.ok(screen.getAllByText("Slonce to gwiazda.").length >= 1);
     });
+  });
+
+  it("renders architecture graph when snapshot includes architecture payload", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes("/api/v1/models/introspection")) {
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }
+      if (url.includes("/api/v1/models/introspection/analyze/stream")) {
+        return createStreamingAnalysisResponse();
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: {
+            ...makeSnapshotBeforeFixture(),
+            architecture_graph: makeArchitectureGraphFixture(),
+          },
+        }),
+        { status: 200 },
+      );
+    };
+
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Refresh snapshot|Odśwież migawkę/i,
+      }),
+    );
 
     await waitFor(() => {
-      assert.ok(screen.getByText("Graph view"));
-      assert.ok(screen.getAllByText("Graph drilldown").length >= 1);
-      assert.ok(screen.getAllByText("Relations").length >= 1);
-      assert.ok(screen.getAllByText("captum").length >= 1);
+      assert.ok(screen.getByRole("heading", { name: /Architecture graph|Graf architektury/i }));
     });
+    assert.ok(screen.getByTestId("architecture-graph-container"));
+    assert.ok(screen.getByText("Architecture drilldown"));
+    assert.ok(screen.getByText(/Architecture overview|Przegląd architektury/i));
+    assert.ok(screen.getByText(/Important transitions|Ważne przejścia/i));
+    assert.ok(screen.getByText(/Progress checkpoints|Punkty kontrolne przebiegu/i));
+    assert.ok(screen.getByText(/Layer internals|Wnętrze warstwy/i));
+    assert.ok(screen.getAllByText(/Activation path|activation path/i).length >= 1);
+    assert.ok(screen.getAllByText(/transformer block 1/i).length >= 1);
+    assert.ok(screen.getByText(/Transition detail|Szczegóły przejścia/i));
+    assert.ok(screen.getByText(/Final outcome|Wynik końcowy/i));
+    assert.ok(screen.getAllByText(/Supporting signals|Sygnały wspierające/i).length >= 1);
+    assert.ok(screen.getAllByText(/Before|Przed/i).length >= 1);
+    assert.ok(screen.getAllByText(/After|Po/i).length >= 1);
+    assert.ok(screen.getAllByText(/Delta|Wpływ/i).length >= 1);
+    assert.ok(screen.getByText("ready available"));
+    assert.ok(screen.getByText("fidelity native"));
   });
 
   it("toggles normalized and raw token views in logit-lens panel", async () => {
@@ -955,11 +1623,20 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText("1 chunk(s) · 9 step(s) · completed"));
       assert.ok(screen.getAllByText(/Advanced internals/i).length >= 1);
       assert.ok(screen.getAllByText(/internals partial/i).length >= 1);
-      assert.ok(screen.getAllByText(/coverage 3\/3/i).length >= 1);
+      assert.ok(screen.getAllByText(/coverage 4\/4/i).length >= 1);
       assert.ok(screen.getAllByText(/attention: recovered via logits proxy/i).length >= 1);
       assert.ok(screen.getAllByText(/saliency: recovered via logits proxy/i).length >= 1);
       assert.ok(screen.getByText(/token flow/i));
-      assert.ok(screen.getByText(/checkpoints/i));
+      assert.ok(screen.getAllByText(/Progress checkpoints|Punkty kontrolne przebiegu/i).length >= 1);
+      assert.ok(screen.getAllByText(/Layer internals|Wnętrze warstwy/i).length >= 1);
+      assert.ok(screen.getAllByText(/Dominant signals|Dominujące sygnały/i).length >= 1);
+      assert.ok(screen.getAllByText(/Activation path|activation path/i).length >= 1);
+      assert.ok(screen.getAllByText(/Response linkage|Powiązanie z odpowiedzią/i).length >= 1);
+      assert.ok(screen.getAllByText(/State delta|Delta stanu/i).length >= 1);
+      assert.ok(screen.getAllByText(/blocks|bloków/i).length >= 1);
+      assert.ok(screen.getAllByText(/architecture blocks|bloków architektury/i).length >= 1);
+      assert.ok(screen.getAllByText(/Heads|Głowy/i).length >= 1);
+      assert.ok(screen.getAllByText(/Signals|Sygnały/i).length >= 1);
       assert.ok(screen.getByText(/25% · layer 4/i));
       assert.ok(screen.getAllByText(/Logit lens probe/i).length >= 1);
       assert.ok(screen.getAllByText(/Attention probe/i).length >= 1);
@@ -1058,11 +1735,12 @@ describe("ModelIntrospectionDashboard", () => {
             attention: { source: "probe_unavailable", status: "probe_unavailable", code: "runtime_not_supported", message: "not available", layers: [] },
             saliency: { source: "probe_unavailable", status: "probe_unavailable", code: "runtime_not_supported", message: "not available", token_weights: [] },
             analysis_capabilities: {
+              hidden_state: { available: false, source: "probe_unavailable", status: "probe_unavailable", reason: "runtime_not_supported", availability_class: "unavailable" },
               attention: { available: false, source: "probe_unavailable", status: "probe_unavailable", reason: "runtime_not_supported", availability_class: "unavailable" },
               saliency: { available: false, source: "probe_unavailable", status: "probe_unavailable", reason: "runtime_not_supported", availability_class: "unavailable" },
               logit_lens: { available: true, source: "probe_lite", status: "ok", reason: "ollama_logprobs_lite", availability_class: "proxy_ok" },
               available_count: 1,
-              total_count: 3,
+              total_count: 4,
               probe_profile: "legacy_text_only",
               probe_enabled: false,
               probe_healthy: false,

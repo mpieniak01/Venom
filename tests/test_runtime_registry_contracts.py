@@ -6,6 +6,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from venom_core.bootstrap import runtime_stack
 from venom_core.core import model_registry_providers, model_registry_runtime
@@ -14,7 +15,22 @@ from venom_core.core.orchestrator.task_pipeline.context_builder import (
     format_extra_context,
 )
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
-from venom_core.main import _extract_available_local_models, _select_startup_model
+from venom_core.main import (
+    _audio_disabled_status_payload,
+    _build_gemma4_runtime_capabilities,
+    _build_voice_runtime_alignment,
+    _build_voice_runtime_state,
+    _effective_audio_decoder_chain,
+    _extract_available_local_models,
+    _normalize_audio_decoder_chain,
+    _normalize_audio_decoder_id,
+    _normalize_audio_decoder_profile,
+    _normalize_voice_route_profile,
+    _require_localhost_request,
+    _runtime_switch_state_label,
+    _select_startup_model,
+    _validate_voice_route_contract,
+)
 from venom_core.services import module_registry
 
 
@@ -306,6 +322,138 @@ async def test_context_builder_preprocess_request_with_slash_reset(monkeypatch):
         "forced_route" in str(update[1])
         for update in orch.state_manager.context_updates
     )
+
+
+def test_main_voice_route_helpers_and_contracts():
+    assert _normalize_voice_route_profile("  venom-agent ") == "venom-agent"
+    assert _normalize_voice_route_profile("invalid") == "auto"
+
+    assert _normalize_audio_decoder_profile("hybrid") == "hybrid"
+    assert _normalize_audio_decoder_profile("unknown") == "auto"
+
+    assert _normalize_audio_decoder_id("whisper") == "faster_whisper"
+    assert _normalize_audio_decoder_id("invalid") == ""
+
+    assert _normalize_audio_decoder_chain("whisper, gemma_native, whisper") == [
+        "faster_whisper",
+        "gemma_native",
+    ]
+    assert _normalize_audio_decoder_chain(None) == []
+
+    assert (
+        _effective_audio_decoder_chain("chat_tekstowy", "hybrid", ["gemma_native"])
+        == []
+    )
+    assert _effective_audio_decoder_chain("auto", "hybrid", []) == [
+        "gemma_native",
+        "faster_whisper",
+    ]
+    assert _effective_audio_decoder_chain("runtime_lokalny", "hybrid", []) == [
+        "faster_whisper"
+    ]
+
+    _validate_voice_route_contract(
+        voice_route_profile="gemma4",
+        audio_decoder_profile="hybrid",
+        audio_decoder_chain=[],
+    )
+    with pytest.raises(HTTPException):
+        _validate_voice_route_contract(
+            voice_route_profile="chat_tekstowy",
+            audio_decoder_profile="hybrid",
+            audio_decoder_chain=[],
+        )
+    with pytest.raises(HTTPException):
+        _validate_voice_route_contract(
+            voice_route_profile="gemma4",
+            audio_decoder_profile="faster_whisper",
+            audio_decoder_chain=[],
+        )
+    with pytest.raises(HTTPException):
+        _validate_voice_route_contract(
+            voice_route_profile="runtime_lokalny",
+            audio_decoder_profile="gemma_native",
+            audio_decoder_chain=["faster_whisper"],
+        )
+
+
+def test_main_runtime_state_and_access_helpers(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("venom_core.main.get_last_runtime_switch_event", lambda: None)
+    req = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    _require_localhost_request(req)
+    with pytest.raises(HTTPException):
+        _require_localhost_request(
+            SimpleNamespace(client=SimpleNamespace(host="10.0.0.2"))
+        )
+
+    assert (
+        _runtime_switch_state_label(
+            runtime_switch_gate={"in_progress": True},
+            last_runtime_switch=None,
+        )
+        == "switching"
+    )
+    assert (
+        _runtime_switch_state_label(
+            runtime_switch_gate=None,
+            last_runtime_switch={"reason": "switch failed due to error"},
+        )
+        == "failed"
+    )
+    assert (
+        _runtime_switch_state_label(
+            runtime_switch_gate=None,
+            last_runtime_switch={"reason": "manual"},
+        )
+        == "ready"
+    )
+    assert (
+        _runtime_switch_state_label(runtime_switch_gate=None, last_runtime_switch=None)
+        == "idle"
+    )
+
+    runtime_alignment = _build_voice_runtime_alignment(
+        runtime_snapshot={"provider": "multi_runtime", "model_name": "m1"},
+        latest_session={
+            "audio_runtime_provider": "multi_runtime",
+            "audio_runtime_model": "m1",
+            "created_at": "2026-05-27T10:00:00+00:00",
+        },
+    )
+    state = _build_voice_runtime_state(
+        runtime_snapshot={
+            "runtime_id": "rt-1",
+            "provider": "multi_runtime",
+            "model_name": "m1",
+        },
+        latest_session={
+            "audio_runtime_provider": "multi_runtime",
+            "audio_runtime_model": "m1",
+            "pipeline_id": "voice-v1",
+            "created_at": "2026-05-27T10:00:00+00:00",
+        },
+        runtime_alignment=runtime_alignment,
+        runtime_switch_gate={"switch_id": "sw-1", "to_runtime": "multi_runtime"},
+        last_runtime_switch={
+            "reason": "manual",
+            "at_utc": "2026-05-27T09:59:00+00:00",
+        },
+    )
+    assert state["selected"]["runtime_id"] == "multi_runtime"
+    assert state["active"]["runtime_id"] == "rt-1"
+    assert state["response"]["fresh"] is True
+    assert state["switch"]["switch_id"] == "sw-1"
+
+    payload = _audio_disabled_status_payload(
+        runtime_switch_gate={"switch_id": "sw-1"},
+        last_runtime_switch={"reason": "manual"},
+        runtime_snapshot={"provider": "multi_runtime", "model_name": "m1"},
+    )
+    assert payload["enabled"] is False
+    assert payload["runtime_switch_gate"] == {"switch_id": "sw-1"}
+
+    caps = _build_gemma4_runtime_capabilities()
+    assert caps["compatibility_profile"] == "multi_runtime_native"
 
 
 @pytest.mark.asyncio

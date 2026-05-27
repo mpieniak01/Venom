@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildModelArchitectureGraphReadiness,
   buildOperatorConclusion,
   buildOperatorRunbookSteps,
   buildLogitLensModel,
@@ -48,12 +49,36 @@ describe("model introspection dashboard view-model", () => {
     assert.equal(progress, 0);
   });
 
-  it("maps phase to completed when timeline finalized", () => {
+  it("caps running progress below 100 until analysis is completed", () => {
+    const progress = computeAnalysisProgress({
+      analysisVisible: true,
+      analysisTimelineProgress: 100,
+      analysisStepCount: 9,
+      chunkCount: 1,
+      firstChunkMs: 10,
+      elapsedMs: 1200,
+      analysisStatus: "running",
+    });
+    assert.ok(progress < 100);
+    assert.ok(progress <= 90);
+  });
+
+  it("keeps phase streaming while analysis is still running", () => {
     const phase = getAnalysisPhase({
       analysisVisible: true,
       analysisLoading: false,
       analysisStatus: "running",
-      timelineHasResponseFinalized: true,
+      firstChunkMs: 10,
+      chunkCount: 1,
+    });
+    assert.equal(phase, "streaming");
+  });
+
+  it("maps phase to completed only after analysis completes", () => {
+    const phase = getAnalysisPhase({
+      analysisVisible: true,
+      analysisLoading: false,
+      analysisStatus: "completed",
       firstChunkMs: 10,
       chunkCount: 1,
     });
@@ -187,6 +212,223 @@ describe("model introspection dashboard view-model", () => {
     assert.equal(ragFocus?.answerEvidenceLinks.length, 0);
     assert.equal(ragFocus?.steps.length, 4);
     assert.equal(getRagGroundingTone(ragFocus?.grounding ?? "unknown"), "warning");
+  });
+
+  it("marks the current graph as diagnostic-only until architecture payload exists", () => {
+    const readiness = buildModelArchitectureGraphReadiness({
+      runtime: {
+        provider: "multi_runtime",
+        model: "gemma",
+        endpoint: "http://localhost:8014/v1",
+        service_type: "local",
+        mode: "LOCAL",
+        label: "gemma · multi_runtime",
+        config_hash: "abc",
+        runtime_id: "runtime-1",
+      },
+      runtime_drift: {
+        drift_detected: false,
+        active_server: "multi_runtime",
+        inferred_provider: "multi_runtime",
+        model_name: "gemma",
+        endpoint: "http://localhost:8014/v1",
+        issues: [],
+      },
+      packages: {},
+      available_packages: [],
+      missing_packages: [],
+      model_manager: { available: true, usage_metrics: null, error: null },
+      reuse: {
+        brain: { path: "/brain", available: true, purpose: "graph" },
+        diagnostics: [],
+      },
+      summary: {
+        active_model: "gemma",
+        provider: "multi_runtime",
+        runtime_label: "gemma · multi_runtime",
+        introspection_ready: true,
+      },
+      graph: {
+        nodes: [
+          { id: "runtime", label: "runtime", kind: "runtime", status: "ok" },
+          { id: "model", label: "model", kind: "model", status: "active" },
+          { id: "analysis", label: "analysis", kind: "analysis", status: "ready" },
+        ],
+        edges: [{ from: "runtime", to: "model", label: "active model" }],
+        summary: {
+          nodes: 3,
+          edges: 1,
+          available_packages: 0,
+          missing_packages: 0,
+          drift_issues: 0,
+        },
+      },
+    });
+
+    assert.equal(readiness.status, "missing");
+    assert.equal(readiness.hasArchitecturePayload, false);
+    assert.equal(readiness.hasDiagnosticGraph, true);
+    assert.equal(readiness.fidelity, "unknown");
+    assert.equal(readiness.source, "diagnostic snapshot");
+    assert.equal(readiness.generatedAt, null);
+    assert.ok(readiness.missingSignals.includes("architecture_graph payload missing"));
+    assert.ok(readiness.recommendedNextStep.includes("architecture_graph"));
+  });
+
+  it("marks derived architecture payload as partial until native layer metadata exists", () => {
+    const readiness = buildModelArchitectureGraphReadiness({
+      runtime: {
+        provider: "multi_runtime",
+        model: "gemma",
+        endpoint: "http://localhost:8014/v1",
+        service_type: "local",
+        mode: "LOCAL",
+        label: "gemma · multi_runtime",
+        config_hash: "abc",
+        runtime_id: "runtime-1",
+      },
+      runtime_drift: {
+        drift_detected: false,
+        active_server: "multi_runtime",
+        inferred_provider: "multi_runtime",
+        model_name: "gemma",
+        endpoint: "http://localhost:8014/v1",
+        issues: [],
+      },
+      packages: {},
+      available_packages: [],
+      missing_packages: [],
+      model_manager: { available: true, usage_metrics: null, error: null },
+      reuse: {
+        brain: { path: "/brain", available: true, purpose: "graph" },
+        diagnostics: [],
+      },
+      summary: {
+        active_model: "gemma",
+        provider: "multi_runtime",
+        runtime_label: "gemma · multi_runtime",
+        introspection_ready: true,
+      },
+      architecture_graph: {
+        nodes: [
+          { id: "input", label: "input", kind: "input", status: "ready", role: "input", layer_index: 0 },
+          { id: "layer", label: "layer", kind: "layer", status: "ready", role: "layer", layer_index: 1 },
+        ],
+        edges: [{ from: "input", to: "layer", label: "flow", direction: "forward" }],
+        summary: {
+          nodes: 2,
+          edges: 1,
+          layer_count: 2,
+          block_count: 1,
+        },
+        meta: {
+          runtime: "gemma · multi_runtime",
+          model: "gemma",
+          provider: "multi_runtime",
+          generated_at: "2026-05-27T10:00:00Z",
+          fidelity: "derived",
+          source: "derived snapshot",
+        },
+      },
+      graph: {
+        nodes: [{ id: "runtime", label: "runtime", kind: "runtime", status: "ok" }],
+        edges: [],
+        summary: {
+          nodes: 1,
+          edges: 0,
+          available_packages: 0,
+          missing_packages: 0,
+          drift_issues: 0,
+        },
+      },
+    });
+
+    assert.equal(readiness.status, "partial");
+    assert.equal(readiness.fidelity, "derived");
+    assert.equal(readiness.source, "derived snapshot");
+    assert.equal(readiness.generatedAt, "2026-05-27T10:00:00Z");
+    assert.ok(readiness.missingSignals.includes("architecture graph fidelity derived"));
+    assert.ok(readiness.recommendedNextStep.includes("Derived architecture graph"));
+  });
+
+  it("marks architecture payload as available when layer graph data exists", () => {
+    const readiness = buildModelArchitectureGraphReadiness({
+      runtime: {
+        provider: "multi_runtime",
+        model: "gemma",
+        endpoint: "http://localhost:8014/v1",
+        service_type: "local",
+        mode: "LOCAL",
+        label: "gemma · multi_runtime",
+        config_hash: "abc",
+        runtime_id: "runtime-1",
+      },
+      runtime_drift: {
+        drift_detected: false,
+        active_server: "multi_runtime",
+        inferred_provider: "multi_runtime",
+        model_name: "gemma",
+        endpoint: "http://localhost:8014/v1",
+        issues: [],
+      },
+      packages: {},
+      available_packages: [],
+      missing_packages: [],
+      model_manager: { available: true, usage_metrics: null, error: null },
+      reuse: {
+        brain: { path: "/brain", available: true, purpose: "graph" },
+        diagnostics: [],
+      },
+      summary: {
+        active_model: "gemma",
+        provider: "multi_runtime",
+        runtime_label: "gemma · multi_runtime",
+        introspection_ready: true,
+      },
+      architecture_graph: {
+        nodes: [
+          { id: "input", label: "input", kind: "input", status: "ok", role: "input", layer_index: 0 },
+          { id: "layer_1", label: "layer 1", kind: "layer", status: "ready", role: "layer", layer_index: 1 },
+        ],
+        edges: [{ from: "input", to: "layer_1", label: "flow", direction: "forward" }],
+        summary: {
+          nodes: 2,
+          edges: 1,
+          layer_count: 2,
+          block_count: 1,
+        },
+        meta: {
+          runtime: "gemma · multi_runtime",
+          model: "gemma",
+          provider: "multi_runtime",
+          generated_at: "2026-05-27T10:00:00Z",
+          fidelity: "native",
+          source: "backend",
+        },
+      },
+      graph: {
+        nodes: [{ id: "runtime", label: "runtime", kind: "runtime", status: "ok" }],
+        edges: [],
+        summary: {
+          nodes: 1,
+          edges: 0,
+          available_packages: 0,
+          missing_packages: 0,
+          drift_issues: 0,
+        },
+      },
+    });
+
+    assert.equal(readiness.status, "available");
+    assert.equal(readiness.hasArchitecturePayload, true);
+    assert.equal(readiness.nodeCount, 2);
+    assert.equal(readiness.edgeCount, 1);
+    assert.equal(readiness.layerCount, 2);
+    assert.equal(readiness.blockCount, 1);
+    assert.equal(readiness.fidelity, "native");
+    assert.equal(readiness.source, "backend");
+    assert.equal(readiness.generatedAt, "2026-05-27T10:00:00Z");
+    assert.deepEqual(readiness.missingSignals, []);
   });
 
   it("builds logit-lens model from payload", () => {

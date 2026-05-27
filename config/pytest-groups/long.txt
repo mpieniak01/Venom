@@ -9,6 +9,7 @@ tests/test_agents_release_integration_contracts.py
 tests/test_agents_routes_integration_regression.py
 tests/test_architecture_contracts_guard.py
 tests/test_audio_smoke_script.py
+tests/test_audio_stream_handler_roi.py
 tests/test_audit_lite_deps.py
 tests/test_browser_skill.py
 tests/test_external_discovery_integration.py

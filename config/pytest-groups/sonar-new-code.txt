@@ -164,6 +164,7 @@ tests/test_message_broker.py
 tests/test_metrics.py
 tests/test_metrics_routes.py
 tests/test_model_discovery.py
+tests/test_model_introspection_activation_path_service.py
 tests/test_model_introspection_analysis_api.py
 tests/test_model_introspection_analysis_service.py
 tests/test_model_introspection_attention_service.py

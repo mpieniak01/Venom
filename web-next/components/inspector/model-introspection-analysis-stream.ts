@@ -166,11 +166,19 @@ function dispatchAnalysisEvent(args: {
   dataText: string;
   state: SseDispatchState;
   context: SseDispatchContext;
+  onFinalResult: (result: AnalysisResult) => void;
 }) {
-  const { eventName, dataText, state, context } = args;
+  const { eventName, dataText, state, context, onFinalResult } = args;
   if (eventName === "analysis_start" || eventName === "analysis_done") {
     if (eventName === "analysis_done") {
       state.sawAnalysisDone = true;
+      const finalResult = JSON.parse(dataText) as AnalysisResult;
+      onFinalResult(finalResult);
+      context.onSetLiveResult({
+        ...finalResult,
+        status: "running",
+      });
+      return;
     }
     context.onSetLiveResult(JSON.parse(dataText) as AnalysisResult);
     return;
@@ -221,6 +229,15 @@ export async function processAnalysisStream(params: {
     streamErrorMessage: null,
   };
   const context: SseDispatchContext = { onSetLiveResult, onPatchLiveResult };
+  let pendingFinalResult: AnalysisResult | null = null;
+
+  const flushPendingFinalResult = () => {
+    if (!pendingFinalResult) {
+      return;
+    }
+    onSetLiveResult(pendingFinalResult);
+    pendingFinalResult = null;
+  };
 
   try {
     for await (const block of readSseBlocks(reader)) {
@@ -233,11 +250,19 @@ export async function processAnalysisStream(params: {
         dataText: parsed.data,
         state,
         context,
+        onFinalResult: (result) => {
+          pendingFinalResult = result;
+        },
       });
     }
+    flushPendingFinalResult();
     if (state.streamErrorMessage && !state.sawAnalysisDone) {
+      flushPendingFinalResult();
       throw new Error(state.streamErrorMessage);
     }
+  } catch (streamError) {
+    flushPendingFinalResult();
+    throw streamError;
   } finally {
     reader.releaseLock();
   }

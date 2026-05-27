@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
+import type cytoscapeType from "cytoscape";
 import {
   clampPercent,
   formatCount,
@@ -23,12 +24,18 @@ import type {
   AnalysisProcessTrace,
   AnalysisTimelinePath,
   AnalysisTimelineEntry,
+  AnalysisLayerInternalsPayload,
+  AnalysisMlpActivationPayload,
   AttentionModel,
   BadgeTone,
   GraphNodeDetails,
   IntrospectionSnapshot,
   LogitLensModel,
   OperatorConclusionModel,
+  ModelArchitectureGraph,
+  ModelArchitectureGraphEdge,
+  ModelArchitectureGraphNode,
+  ModelArchitectureGraphReadiness,
   RagFocusModel,
   SaliencyModel,
   SnapshotComparison,
@@ -55,7 +62,6 @@ type AnalysisInputPanelProps = Readonly<{
   onResetPrompt: () => void;
   analysisLoading: boolean;
   analysisMechanismEnabled: boolean;
-  snapshotReady: boolean;
   analysisError: string | null;
   skipped: boolean;
   promptLabel: string;
@@ -525,7 +531,6 @@ export function AnalysisInputPanel(props: AnalysisInputPanelProps) {
     onResetPrompt,
     analysisLoading,
     analysisMechanismEnabled,
-    snapshotReady,
     analysisError,
     skipped,
     promptLabel,
@@ -554,7 +559,7 @@ export function AnalysisInputPanel(props: AnalysisInputPanelProps) {
       <div className="flex flex-wrap items-center gap-2">
         <Button
           onClick={onRunAnalysis}
-          disabled={analysisLoading || !snapshotReady || !analysisMechanismEnabled}
+          disabled={analysisLoading || !analysisMechanismEnabled}
         >
           {analysisLoading ? runningLabel : runLabel}
         </Button>
@@ -2047,6 +2052,2347 @@ export function GraphPanel(props: GraphPanelProps) {
           analysisActive={analysisActive}
           nodeCount={analysisNodeCount}
         />
+      </div>
+    </div>
+  );
+}
+
+type ArchitectureGraphPanelProps = Readonly<{
+  snapshot: IntrospectionSnapshot;
+  readiness: ModelArchitectureGraphReadiness;
+  layerInternalsPayload: AnalysisLayerInternalsPayload | null;
+  title: string;
+  description: string;
+  typeHintText: string;
+}>;
+
+type ArchitectureGraphNode = ModelArchitectureGraphNode;
+type ArchitectureGraphEdge = ModelArchitectureGraphEdge;
+type TransitionSignificance = "key" | "supporting" | "repeat";
+
+type ArchitectureGraphTransition = Readonly<{
+  id: string;
+  sourceLabel: string;
+  targetLabel: string;
+  sourceRole: string;
+  targetRole: string;
+  label: string;
+  effect: string;
+  before: string;
+  after: string;
+  delta: string;
+  impact: string;
+  significance: TransitionSignificance;
+}>;
+
+type ArchitectureGraphOutcome = Readonly<{
+  result: string;
+  summary: string;
+  primaryPath: string;
+  evidence: string[];
+  supportingSignals: string[];
+}>;
+
+type ArchitectureGraphCheckpoint = Readonly<{
+  id: string;
+  title: string;
+  stage: string;
+  before: string;
+  after: string;
+  change: string;
+  result: string;
+  evidence: string[];
+}>;
+
+type AnalysisActivationLayer =
+  | AnalysisMlpActivationPayload["mlp_layer"]
+  | AnalysisMlpActivationPayload["residual_layer"];
+
+function mapActivationLayer(layer: AnalysisActivationLayer) {
+  if (!layer) {
+    return null;
+  }
+  return {
+    layer: layer.layer,
+    label: layer.label,
+    roleHint: layer.role_hint ?? null,
+    hiddenSlice: layer.hidden_slice ?? [],
+    metrics: {
+      mean: layer.metrics.mean,
+      norm: layer.metrics.norm,
+      maxAbs: layer.metrics.max_abs,
+      topDimensions: (layer.metrics.top_dimensions ?? []).map((dimension) => ({
+        index: dimension.index,
+        value: dimension.value,
+        absValue: dimension.abs_value,
+      })),
+    },
+    summary: layer.summary,
+    evidence: layer.evidence ?? [],
+  };
+}
+
+type ArchitectureLayerInternals = Readonly<{
+  id: string;
+  label: string;
+  layer: number;
+  status: string;
+  summary: string;
+  stateDelta: string;
+  blocks: Array<{
+    kind: string;
+    label: string;
+    summary: string;
+    detail: string;
+    impact: string;
+    evidence: string[];
+    heads?: Array<{
+      head: number;
+      summary: string;
+      detail: string;
+      evidence: string[];
+    }>;
+  }>;
+  signals: Array<{
+    source: string;
+    label: string;
+    detail: string;
+    evidence: string[];
+  }>;
+  responseLinkage: {
+    status: string;
+    layerId: number;
+    layerLabel: string;
+    coveragePercent: number;
+    fragmentCount: number;
+    linkedFragmentCount: number;
+    linkedFragments: string[];
+    evidenceLinks: string[];
+    dominantSignals: string[];
+    summary: string;
+    impact: string;
+    evidence: string[];
+  } | null;
+  mlpActivation: ArchitectureMlpActivation | null;
+  evidence: string[];
+}>;
+
+type ArchitectureActivationPath = Readonly<{
+  source: string;
+  status: string;
+  selectedLayers: number[];
+  layers: Array<{
+    layer: number;
+    label: string;
+    roleHint: string | null;
+    hiddenSlice: number[];
+    metrics: {
+      mean: number;
+      norm: number;
+      maxAbs: number;
+      topDimensions: Array<{
+        index: number;
+        value: number;
+        absValue: number;
+      }>;
+    };
+    summary: string;
+    evidence: string[];
+  }>;
+  transitions: Array<{
+    fromLayer: number;
+    toLayer: number;
+    before: string;
+    after: string;
+    deltaNorm: number;
+    meanShift: number;
+    maxAbsShift: number;
+    summary: string;
+    impact: string;
+    evidence: string[];
+  }>;
+  summary: {
+    selectedLayerCount: number;
+    transitionCount: number;
+    focusLayer: number | null;
+    maxDeltaNorm: number;
+    averageNorm: number;
+  };
+  notes: string[];
+}>;
+
+type ArchitectureMlpActivation = Readonly<{
+  source: string;
+  status: string;
+  selectedLayers: number[];
+  mlpLayer: {
+    layer: number;
+    label: string;
+    roleHint: string | null;
+    hiddenSlice: number[];
+    metrics: {
+      mean: number;
+      norm: number;
+      maxAbs: number;
+      topDimensions: Array<{
+        index: number;
+        value: number;
+        absValue: number;
+      }>;
+    };
+    summary: string;
+    evidence: string[];
+  } | null;
+  residualLayer: {
+    layer: number;
+    label: string;
+    roleHint: string | null;
+    hiddenSlice: number[];
+    metrics: {
+      mean: number;
+      norm: number;
+      maxAbs: number;
+      topDimensions: Array<{
+        index: number;
+        value: number;
+        absValue: number;
+      }>;
+    };
+    summary: string;
+    evidence: string[];
+  } | null;
+  transition: {
+    fromLayer: number;
+    toLayer: number;
+    before: string;
+    after: string;
+    deltaNorm: number;
+    meanShift: number;
+    maxAbsShift: number;
+    summary: string;
+    impact: string;
+    evidence: string[];
+  } | null;
+  tensorActivation: {
+    source: string;
+    status: string;
+    sliceKind: string;
+    focusLayer: number | null;
+    residualLayer: number | null;
+    vectorLength: number;
+    mlpVector: number[];
+    residualVector: number[] | null;
+    deltaVector: number[] | null;
+    norms: {
+      mlpL2: number;
+      residualL2: number | null;
+      deltaL2: number | null;
+      cosineSimilarity: number | null;
+    };
+    topDeltaDimensions: Array<{
+      index: number;
+      value: number;
+      absValue: number;
+    }>;
+    notes: string[];
+  } | null;
+  summary: {
+    selectedLayerCount: number;
+    focusLayer: number | null;
+    residualLayer: number | null;
+    hiddenDimensionCount: number;
+    maxDeltaNorm: number;
+    averageNorm: number;
+    transitionSummary: string | null;
+    transitionImpact: string | null;
+  };
+  notes: string[];
+}>;
+
+const ARCHITECTURE_NODE_COLORS: Record<string, string> = {
+  input: "#06b6d4",
+  embedding: "#8b5cf6",
+  layer: "#6366f1",
+  attention: "#f59e0b",
+  mlp: "#10b981",
+  residual: "#f97316",
+  output: "#22c55e",
+  diagnostic: "#ec4899",
+  unknown: "#64748b",
+};
+
+const ARCHITECTURE_GRAPH_PADDING_PX = 72;
+
+function getArchitectureGraph(snapshot: IntrospectionSnapshot): ModelArchitectureGraph | null {
+  return snapshot.architecture_graph ?? null;
+}
+
+function getArchitectureGraphNodes(snapshot: IntrospectionSnapshot): ArchitectureGraphNode[] {
+  return getArchitectureGraph(snapshot)?.nodes ?? [];
+}
+
+function getArchitectureGraphEdges(snapshot: IntrospectionSnapshot): ArchitectureGraphEdge[] {
+  return getArchitectureGraph(snapshot)?.edges ?? [];
+}
+
+function getArchitectureGraphSummary(snapshot: IntrospectionSnapshot) {
+  return (
+    getArchitectureGraph(snapshot)?.summary ?? {
+      nodes: 0,
+      edges: 0,
+      layer_count: 0,
+      block_count: 0,
+    }
+  );
+}
+
+function getArchitectureGraphOverview(snapshot: IntrospectionSnapshot) {
+  const graph = getArchitectureGraph(snapshot);
+  const nodes = graph?.nodes ?? [];
+  const sortedNodes = [...nodes].sort((left, right) => {
+    const leftLayer = left.layer_index ?? Number.MAX_SAFE_INTEGER;
+    const rightLayer = right.layer_index ?? Number.MAX_SAFE_INTEGER;
+    if (leftLayer !== rightLayer) {
+      return leftLayer - rightLayer;
+    }
+    return left.label.localeCompare(right.label);
+  });
+  const entryNode = nodes.find((node) => node.role === "input") ?? sortedNodes[0] ?? null;
+  const exitNode = nodes.find((node) => node.role === "output") ?? sortedNodes.at(-1) ?? null;
+
+  return {
+    entryLabel: entryNode?.label ?? "n/a",
+    exitLabel: exitNode?.label ?? "n/a",
+    flowLabel:
+      entryNode && exitNode ? `${entryNode.label} → ${exitNode.label}` : "n/a",
+  };
+}
+
+function getTransitionEffect(
+  sourceNode: ArchitectureGraphNode | null,
+  targetNode: ArchitectureGraphNode | null,
+  edge: ArchitectureGraphEdge,
+): string {
+  const sourceLabel = sourceNode?.label ?? edge.from;
+  const targetLabel = targetNode?.label ?? edge.to;
+  const sourceRole = sourceNode?.role ?? "unknown";
+  const targetRole = targetNode?.role ?? "unknown";
+  const edgeLabel = edge.label.toLowerCase();
+  if (sourceRole === "input" && targetRole === "embedding") {
+    return "Initial tokens enter embedding space.";
+  }
+  if (sourceRole === "embedding" && targetRole === "layer") {
+    return "The sequence enters the transformer stack.";
+  }
+  if (targetRole === "output") {
+    return "The accumulated state is decoded into the final output.";
+  }
+  if (edgeLabel.includes("probe")) {
+    return "An internal probe signal is exposed for inspection.";
+  }
+  if (edgeLabel.includes("merge") || edgeLabel.includes("residual")) {
+    return "Residual information is merged back into the active path.";
+  }
+  if (edgeLabel.includes("attention")) {
+    return "The state is transformed by an attention operation.";
+  }
+  if (sourceRole === "layer" && targetRole === "layer") {
+    return "The state is propagated into the next block.";
+  }
+  return `${sourceLabel} continues into ${targetLabel}.`;
+}
+
+function getTransitionImpact(significance: TransitionSignificance): string {
+  if (significance === "key") {
+    return "High-impact transition that changes the active state.";
+  }
+  if (significance === "repeat") {
+    return "Repeated transition; useful for structure, not for major state change.";
+  }
+  return "Supporting transition that keeps the chain moving.";
+}
+
+function getReadinessTone(status: "available" | "partial" | "missing"): BadgeTone {
+  if (status === "available") {
+    return "success";
+  }
+  if (status === "partial") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function getTransitionSignificanceTone(
+  significance: TransitionSignificance,
+): BadgeTone {
+  if (significance === "key") {
+    return "success";
+  }
+  if (significance === "repeat") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function getTransitionDelta(
+  sourceNode: ArchitectureGraphNode | null,
+  targetNode: ArchitectureGraphNode | null,
+  edge: ArchitectureGraphEdge,
+  effect: string,
+  significance: TransitionSignificance,
+) {
+  const sourceLabel = sourceNode?.label ?? edge.from;
+  const targetLabel = targetNode?.label ?? edge.to;
+  const sourceRole = sourceNode?.role ?? "unknown";
+  const targetRole = targetNode?.role ?? "unknown";
+  const before = `${sourceRole}: ${sourceLabel}`;
+  const after = `${targetRole}: ${targetLabel}`;
+  const label = edge.label.toLowerCase();
+
+  let delta = effect;
+  if (sourceRole === "input" && targetRole === "embedding") {
+    delta = "Tokens are converted into embedding vectors.";
+  } else if (sourceRole === "embedding" && targetRole === "layer") {
+    delta = "The representation enters the transformer stack.";
+  } else if (sourceRole === "layer" && targetRole === "layer") {
+    delta = "The active representation is refined in the next block.";
+  } else if (targetRole === "output") {
+    delta = "Intermediate state is compressed into final output.";
+  } else if (label.includes("probe")) {
+    delta = "A probe-specific visibility path is added without changing the main decode flow.";
+  } else if (label.includes("merge") || label.includes("residual")) {
+    delta = "Residual state is reintroduced into the active path.";
+  } else if (label.includes("attention")) {
+    delta = "Attention reshapes the active representation before it moves on.";
+  }
+
+  const impact = getTransitionImpact(significance);
+
+  return { before, after, delta, impact };
+}
+
+function getTransitionSignificance(
+  sourceNode: ArchitectureGraphNode | null,
+  targetNode: ArchitectureGraphNode | null,
+  edge: ArchitectureGraphEdge,
+): TransitionSignificance {
+  const edgeLabel = edge.label.toLowerCase();
+  if (
+    sourceNode?.role === "input" ||
+    targetNode?.role === "output" ||
+    edgeLabel.includes("probe") ||
+    edgeLabel.includes("merge") ||
+    edgeLabel.includes("decode")
+  ) {
+    return "key";
+  }
+  if (edgeLabel.includes("tokenize") || edgeLabel.includes("enter stack")) {
+    return "key";
+  }
+  if (sourceNode?.role === "layer" && targetNode?.role === "layer") {
+    return "supporting";
+  }
+  return "supporting";
+}
+
+function getArchitectureGraphTransitions(
+  snapshot: IntrospectionSnapshot,
+): ArchitectureGraphTransition[] {
+  const edges = getArchitectureGraphEdges(snapshot);
+  const nodesById = new Map(
+    getArchitectureGraphNodes(snapshot).map((node) => [node.id, node] as const),
+  );
+  const transitions = edges.map((edge, index) => {
+    const sourceNode = nodesById.get(edge.from) ?? null;
+    const targetNode = nodesById.get(edge.to) ?? null;
+    const significance = getTransitionSignificance(sourceNode, targetNode, edge);
+    const effect = getTransitionEffect(sourceNode, targetNode, edge);
+    const transitionDelta = getTransitionDelta(sourceNode, targetNode, edge, effect, significance);
+    return {
+      id: `${edge.from}->${edge.to}:${index}`,
+      sourceLabel: sourceNode?.label ?? edge.from,
+      targetLabel: targetNode?.label ?? edge.to,
+      sourceRole: sourceNode?.role ?? "unknown",
+      targetRole: targetNode?.role ?? "unknown",
+      label: edge.label,
+      effect,
+      before: transitionDelta.before,
+      after: transitionDelta.after,
+      delta: transitionDelta.delta,
+      impact: transitionDelta.impact,
+      significance,
+    };
+  });
+
+  const scoredTransitions = transitions
+    .map((transition, index) => ({
+      transition,
+      score:
+        (transition.significance === "key" ? 3 : 1) +
+        (transition.sourceRole === "input" ? 3 : 0) +
+        (transition.targetRole === "output" ? 3 : 0) +
+        (transition.label.toLowerCase().includes("probe") ? 2 : 0) +
+        (transition.label.toLowerCase().includes("merge") ? 2 : 0) +
+        (transition.label.toLowerCase().includes("decode") ? 2 : 0) +
+        Math.max(0, 2 - index * 0.1),
+    }))
+    .sort((left, right) => right.score - left.score);
+
+  const selected = scoredTransitions.slice(0, Math.min(4, scoredTransitions.length)).map((entry) => entry.transition);
+  if (selected.length > 0) {
+    return selected;
+  }
+  return transitions.slice(0, Math.min(3, transitions.length));
+}
+
+function getArchitectureGraphCheckpointEvidence(
+  transitions: ArchitectureGraphTransition[],
+  predicate: (transition: ArchitectureGraphTransition) => boolean,
+  fallback: string[],
+): string[] {
+  const evidence = transitions
+    .filter(predicate)
+    .slice(0, 3)
+    .map((transition) => `${transition.sourceLabel} → ${transition.targetLabel} (${transition.label})`);
+  return evidence.length > 0 ? evidence : fallback;
+}
+
+function getArchitectureGraphProgressCheckpoints(
+  snapshot: IntrospectionSnapshot,
+  transitions: ArchitectureGraphTransition[],
+  summary: ReturnType<typeof getArchitectureGraphSummary>,
+  overview: ReturnType<typeof getArchitectureGraphOverview>,
+): ArchitectureGraphCheckpoint[] {
+  const graph = getArchitectureGraph(snapshot);
+  const nodes = graph?.nodes ?? [];
+  const inputNode = nodes.find((node) => node.role === "input") ?? null;
+  const embeddingNode = nodes.find((node) => node.role === "embedding") ?? null;
+  const layerNodes = nodes
+    .filter((node) => node.role === "layer")
+    .sort((left, right) => (left.layer_index ?? Number.MAX_SAFE_INTEGER) - (right.layer_index ?? Number.MAX_SAFE_INTEGER));
+  const firstLayerNode = layerNodes[0] ?? null;
+  const lastLayerNode = layerNodes.at(-1) ?? null;
+  const probeNode = nodes.find((node) => String(node.label).toLowerCase().includes("probe")) ?? null;
+  const residualNode = nodes.find((node) => node.role === "residual") ?? null;
+  const outputNode = nodes.find((node) => node.role === "output") ?? null;
+
+  const entryTransition =
+    transitions.find(
+      (transition) =>
+        transition.sourceRole === "input" && transition.targetRole === "embedding",
+    ) ?? transitions[0] ?? null;
+  const stackTransitions = transitions.filter(
+    (transition) => transition.sourceRole === "layer" && transition.targetRole === "layer",
+  );
+  const probeTransition = transitions.find(
+    (transition) =>
+      transition.label.toLowerCase().includes("probe") ||
+      transition.sourceRole === "attention" ||
+      transition.targetRole === "diagnostic",
+  );
+  const exitTransition =
+    transitions.find(
+      (transition) =>
+        transition.targetRole === "output" || transition.label.toLowerCase().includes("decode"),
+    ) ?? transitions.at(-1) ?? null;
+  const mergeTransition =
+    transitions.find(
+      (transition) =>
+        transition.label.toLowerCase().includes("merge") ||
+        transition.label.toLowerCase().includes("residual"),
+    ) ?? null;
+
+  return [
+    {
+      id: "entry",
+      title: "Entry state",
+      stage: "input → embedding",
+      before: inputNode?.label ?? overview.entryLabel,
+      after: embeddingNode?.label ?? "embedding",
+      change:
+        entryTransition?.effect ??
+        "The prompt is tokenized and projected into the embedding space.",
+      result: "A structured token representation is established for the stack.",
+      evidence: getArchitectureGraphCheckpointEvidence(
+        transitions,
+        (transition) => transition.sourceRole === "input" && transition.targetRole === "embedding",
+        [`Entry path: ${overview.flowLabel}`],
+      ),
+    },
+    {
+      id: "stack",
+      title: "Stack progression",
+      stage: "embedding → layers",
+      before: embeddingNode?.label ?? "embedding",
+      after: firstLayerNode?.label ?? lastLayerNode?.label ?? `layer_${summary.layer_count}`,
+      change: `The representation is refined across ${formatCount(summary.layer_count)} layers and ${formatCount(summary.block_count)} blocks.`,
+      result: "Context is accumulated and transformed through the transformer stack.",
+      evidence: getArchitectureGraphCheckpointEvidence(
+        transitions,
+        (transition) => transition.sourceRole === "layer" && transition.targetRole === "layer",
+        [
+          ...stackTransitions.slice(0, 2).map(
+            (transition) => `${transition.sourceLabel} → ${transition.targetLabel} (${transition.label})`,
+          ),
+          `Stack depth: ${formatCount(summary.layer_count)} layers`,
+          `Block count: ${formatCount(summary.block_count)} blocks`,
+        ],
+      ),
+    },
+    {
+      id: "inspection",
+      title: "Inspection state",
+      stage: "probe and residual",
+      before: lastLayerNode?.label ?? `layer_${summary.layer_count}`,
+      after: probeNode?.label ?? residualNode?.label ?? "probe surface",
+      change:
+        probeTransition?.effect ??
+        mergeTransition?.effect ??
+        "Internal signals become visible through the probe and residual paths.",
+      result: "The internal state remains inspectable without replacing the main path.",
+      evidence: getArchitectureGraphCheckpointEvidence(
+        transitions,
+        (transition) =>
+          transition.label.toLowerCase().includes("probe") ||
+          transition.label.toLowerCase().includes("merge") ||
+          transition.label.toLowerCase().includes("residual"),
+        [
+          probeNode ? `Probe node: ${probeNode.label}` : "Probe path not exposed",
+          residualNode ? `Residual node: ${residualNode.label}` : "Residual path not exposed",
+        ],
+      ),
+    },
+    {
+      id: "exit",
+      title: "Exit state",
+      stage: "residual → output",
+      before: residualNode?.label ?? "residual merge",
+      after: outputNode?.label ?? overview.exitLabel,
+      change:
+        exitTransition?.effect ??
+        "The accumulated state is decoded into the final output.",
+      result: "The architecture resolves into the final answer text.",
+      evidence: getArchitectureGraphCheckpointEvidence(
+        transitions,
+        (transition) => transition.targetRole === "output" || transition.label.toLowerCase().includes("decode"),
+        [`Exit path: ${overview.flowLabel}`],
+      ),
+    },
+  ];
+}
+
+function getAnalysisLayerInternals(
+  payload: AnalysisLayerInternalsPayload | null | undefined,
+): ArchitectureLayerInternals[] {
+  const layers = payload?.layers ?? [];
+  const mlpActivationPayload = payload?.mlp_activation ?? null;
+  const mlpActivationFocusLayer = mlpActivationPayload?.summary.focus_layer ?? null;
+  const mapActivationLayer = (
+    layer:
+      | AnalysisMlpActivationPayload["mlp_layer"]
+      | AnalysisMlpActivationPayload["residual_layer"],
+  ) =>
+    layer
+      ? {
+          layer: layer.layer,
+          label: layer.label,
+          roleHint: layer.role_hint ?? null,
+          hiddenSlice: layer.hidden_slice ?? [],
+          metrics: {
+            mean: layer.metrics.mean,
+            norm: layer.metrics.norm,
+            maxAbs: layer.metrics.max_abs,
+            topDimensions: (layer.metrics.top_dimensions ?? []).map((dimension) => ({
+              index: dimension.index,
+              value: dimension.value,
+              absValue: dimension.abs_value,
+            })),
+          },
+          summary: layer.summary,
+          evidence: layer.evidence ?? [],
+          }
+      : null;
+  return layers.map((layer) => ({
+    id: layer.id,
+    label: layer.label,
+    layer: layer.layer,
+    status: layer.status,
+    summary: layer.summary,
+    stateDelta: layer.state_delta,
+    blocks: layer.blocks,
+    signals: layer.signals,
+    responseLinkage: layer.response_linkage
+      ? {
+          status: layer.response_linkage.status,
+          layerId: layer.response_linkage.layer_id,
+          layerLabel: layer.response_linkage.layer_label,
+          coveragePercent: layer.response_linkage.coverage_percent,
+          fragmentCount: layer.response_linkage.fragment_count,
+          linkedFragmentCount: layer.response_linkage.linked_fragment_count,
+          linkedFragments: layer.response_linkage.linked_fragments ?? [],
+          evidenceLinks: layer.response_linkage.evidence_links ?? [],
+          dominantSignals: layer.response_linkage.dominant_signals ?? [],
+          summary: layer.response_linkage.summary,
+          impact: layer.response_linkage.impact,
+          evidence: layer.response_linkage.evidence ?? [],
+        }
+      : null,
+    mlpActivation:
+      mlpActivationPayload && layer.layer === mlpActivationFocusLayer
+      ? {
+          source: mlpActivationPayload.source,
+          status: mlpActivationPayload.status,
+          selectedLayers: mlpActivationPayload.selected_layers ?? [],
+          mlpLayer: mapActivationLayer(mlpActivationPayload.mlp_layer),
+          residualLayer: mapActivationLayer(mlpActivationPayload.residual_layer),
+          transition: mlpActivationPayload.transition
+            ? {
+                fromLayer: mlpActivationPayload.transition.from_layer,
+                toLayer: mlpActivationPayload.transition.to_layer,
+                before: mlpActivationPayload.transition.before,
+                after: mlpActivationPayload.transition.after,
+                deltaNorm: mlpActivationPayload.transition.delta_norm,
+                meanShift: mlpActivationPayload.transition.mean_shift,
+                maxAbsShift: mlpActivationPayload.transition.max_abs_shift,
+                summary: mlpActivationPayload.transition.summary,
+                impact: mlpActivationPayload.transition.impact,
+                evidence: mlpActivationPayload.transition.evidence ?? [],
+              }
+            : null,
+          summary: {
+            selectedLayerCount: mlpActivationPayload.summary.selected_layer_count,
+            focusLayer: mlpActivationPayload.summary.focus_layer ?? null,
+            residualLayer: mlpActivationPayload.summary.residual_layer ?? null,
+            hiddenDimensionCount: mlpActivationPayload.summary.hidden_dimension_count,
+            maxDeltaNorm: mlpActivationPayload.summary.max_delta_norm,
+            averageNorm: mlpActivationPayload.summary.average_norm,
+            transitionSummary: mlpActivationPayload.summary.transition_summary ?? null,
+            transitionImpact: mlpActivationPayload.summary.transition_impact ?? null,
+          },
+          notes: mlpActivationPayload.notes ?? [],
+        }
+      : null,
+    evidence: layer.evidence,
+  }));
+}
+
+function getAnalysisActivationPath(
+  payload: AnalysisLayerInternalsPayload | null | undefined,
+): ArchitectureActivationPath | null {
+  const activationPath = payload?.activation_path;
+  if (!activationPath) {
+    return null;
+  }
+  return {
+    source: activationPath.source,
+    status: activationPath.status,
+    selectedLayers: activationPath.selected_layers ?? [],
+    layers: (activationPath.layers ?? []).map((layer) => ({
+      layer: layer.layer,
+      label: layer.label,
+      roleHint: layer.role_hint ?? null,
+      hiddenSlice: layer.hidden_slice ?? [],
+      metrics: {
+        mean: layer.metrics.mean,
+        norm: layer.metrics.norm,
+        maxAbs: layer.metrics.max_abs,
+        topDimensions: (layer.metrics.top_dimensions ?? []).map((dimension) => ({
+          index: dimension.index,
+          value: dimension.value,
+          absValue: dimension.abs_value,
+        })),
+      },
+      summary: layer.summary,
+      evidence: layer.evidence ?? [],
+    })),
+    transitions: (activationPath.transitions ?? []).map((transition) => ({
+      fromLayer: transition.from_layer,
+      toLayer: transition.to_layer,
+      before: transition.before,
+      after: transition.after,
+      deltaNorm: transition.delta_norm,
+      meanShift: transition.mean_shift,
+      maxAbsShift: transition.max_abs_shift,
+      summary: transition.summary,
+      impact: transition.impact,
+      evidence: transition.evidence ?? [],
+    })),
+    summary: {
+      selectedLayerCount: activationPath.summary.selected_layer_count,
+      transitionCount: activationPath.summary.transition_count,
+      focusLayer: activationPath.summary.focus_layer ?? null,
+      maxDeltaNorm: activationPath.summary.max_delta_norm,
+      averageNorm: activationPath.summary.average_norm,
+    },
+    notes: activationPath.notes ?? [],
+  };
+}
+
+function getAnalysisMlpActivation(
+  payload: AnalysisLayerInternalsPayload | null | undefined,
+): ArchitectureMlpActivation | null {
+  const mlpActivation = payload?.mlp_activation;
+  if (!mlpActivation) {
+    return null;
+  }
+
+  return {
+    source: mlpActivation.source,
+    status: mlpActivation.status,
+    selectedLayers: mlpActivation.selected_layers ?? [],
+    mlpLayer: mapActivationLayer(mlpActivation.mlp_layer),
+    residualLayer: mapActivationLayer(mlpActivation.residual_layer),
+    transition: mlpActivation.transition
+      ? {
+          fromLayer: mlpActivation.transition.from_layer,
+          toLayer: mlpActivation.transition.to_layer,
+          before: mlpActivation.transition.before,
+          after: mlpActivation.transition.after,
+          deltaNorm: mlpActivation.transition.delta_norm,
+          meanShift: mlpActivation.transition.mean_shift,
+          maxAbsShift: mlpActivation.transition.max_abs_shift,
+          summary: mlpActivation.transition.summary,
+          impact: mlpActivation.transition.impact,
+          evidence: mlpActivation.transition.evidence ?? [],
+        }
+      : null,
+    tensorActivation: mlpActivation.tensor_activation
+      ? {
+          source: mlpActivation.tensor_activation.source,
+          status: mlpActivation.tensor_activation.status,
+          sliceKind: mlpActivation.tensor_activation.slice_kind,
+          focusLayer: mlpActivation.tensor_activation.focus_layer,
+          residualLayer: mlpActivation.tensor_activation.residual_layer,
+          vectorLength: mlpActivation.tensor_activation.vector_length,
+          mlpVector: mlpActivation.tensor_activation.mlp_vector ?? [],
+          residualVector: mlpActivation.tensor_activation.residual_vector ?? null,
+          deltaVector: mlpActivation.tensor_activation.delta_vector ?? null,
+          norms: {
+            mlpL2: mlpActivation.tensor_activation.norms.mlp_l2,
+            residualL2: mlpActivation.tensor_activation.norms.residual_l2,
+            deltaL2: mlpActivation.tensor_activation.norms.delta_l2,
+            cosineSimilarity: mlpActivation.tensor_activation.norms.cosine_similarity,
+          },
+          topDeltaDimensions: (mlpActivation.tensor_activation.top_delta_dimensions ?? []).map(
+            (dimension) => ({
+              index: dimension.index,
+              value: dimension.value,
+              absValue: dimension.abs_value,
+            }),
+          ),
+          notes: mlpActivation.tensor_activation.notes ?? [],
+        }
+      : null,
+    summary: {
+      selectedLayerCount: mlpActivation.summary.selected_layer_count,
+      focusLayer: mlpActivation.summary.focus_layer ?? null,
+      residualLayer: mlpActivation.summary.residual_layer ?? null,
+      hiddenDimensionCount: mlpActivation.summary.hidden_dimension_count,
+      maxDeltaNorm: mlpActivation.summary.max_delta_norm,
+      averageNorm: mlpActivation.summary.average_norm,
+      transitionSummary: mlpActivation.summary.transition_summary ?? null,
+      transitionImpact: mlpActivation.summary.transition_impact ?? null,
+    },
+    notes: mlpActivation.notes ?? [],
+  };
+}
+
+function getArchitectureLayerDominantSignals(
+  layer: ArchitectureLayerInternals | null,
+): Array<
+  ArchitectureLayerInternals["signals"][number] & {
+    dominant: boolean;
+  }
+> {
+  if (!layer) {
+    return [];
+  }
+  return layer.signals.slice(0, 3).map((signal, index) => ({
+    ...signal,
+    dominant: index === 0,
+  }));
+}
+
+function getArchitectureGraphOutcome(
+  readiness: ModelArchitectureGraphReadiness,
+  overview: ReturnType<typeof getArchitectureGraphOverview>,
+  summary: ReturnType<typeof getArchitectureGraphSummary>,
+  transitions: ArchitectureGraphTransition[],
+): ArchitectureGraphOutcome {
+  const keyTransitions = transitions.filter((transition) => transition.significance === "key");
+  const path = overview.flowLabel;
+  let result = "Architecture graph payload is missing.";
+  if (readiness.status === "available") {
+    result = "Native architecture graph resolved.";
+  } else if (readiness.status === "partial") {
+    result = "Architecture graph is partially resolved.";
+  }
+  const summaryLine = `The graph captures ${formatCount(summary.layer_count)} layers, ${formatCount(summary.block_count)} blocks, ${formatCount(summary.nodes)} nodes and ${formatCount(summary.edges)} edges.`;
+  const evidence = [
+    `Source: ${readiness.source}`,
+    `Fidelity: ${readiness.fidelity}`,
+    `Generated: ${readiness.generatedAt ?? "n/a"}`,
+    `Entry to exit: ${path}`,
+  ];
+  const supportingSignals = [
+    readiness.fidelity === "native" ? "native payload" : `fidelity ${readiness.fidelity}`,
+    `${formatCount(keyTransitions.length)} key transition(s)`,
+    ...keyTransitions.slice(0, 3).map((transition) => `${transition.sourceLabel} → ${transition.targetLabel}`),
+    `source: ${readiness.source}`,
+  ];
+  return {
+    result,
+    summary: summaryLine,
+    primaryPath: path,
+    evidence,
+    supportingSignals,
+  };
+}
+
+function getArchitectureGraphNodeDetails(
+  snapshot: IntrospectionSnapshot,
+  selectedNode: ArchitectureGraphNode | null,
+): GraphNodeDetails {
+  if (!selectedNode) {
+    return {
+      title: "Architecture details",
+      lines: ["No architecture node selected."],
+    };
+  }
+  const graph = getArchitectureGraph(snapshot);
+  return {
+    title: "Architecture details",
+    lines: [
+      `Role: ${selectedNode.role ?? "unknown"}`,
+      `Kind: ${selectedNode.kind}`,
+      `Status: ${selectedNode.status}`,
+      `Layer index: ${selectedNode.layer_index ?? "n/a"}`,
+      `Group: ${selectedNode.group ?? "n/a"}`,
+      `Graph source: ${graph?.meta.source ?? "n/a"}`,
+      `Fidelity: ${graph?.meta.fidelity ?? "unknown"}`,
+      `Provider: ${graph?.meta.provider ?? snapshot.runtime.provider}`,
+      `Model: ${graph?.meta.model ?? snapshot.runtime.model}`,
+    ],
+  };
+}
+
+function getArchitectureGraphColor(role: string | undefined): string {
+  if (!role) return ARCHITECTURE_NODE_COLORS.unknown;
+  return ARCHITECTURE_NODE_COLORS[role] ?? ARCHITECTURE_NODE_COLORS.unknown;
+}
+
+function getArchitectureGraphLayoutOptions(
+  graph: ModelArchitectureGraph,
+  containerWidth: number,
+  containerHeight: number,
+): cytoscapeType.LayoutOptions {
+  const usePresetLayout = containerWidth <= 0 || containerHeight <= 0;
+  const roots = graph.nodes.find((node) => node.role === "input")?.id;
+  const canUseBreadthFirst = !usePresetLayout && graph.nodes.length > 1;
+  if (!canUseBreadthFirst) {
+    return {
+      name: "preset",
+      animate: false,
+      fit: true,
+      padding: ARCHITECTURE_GRAPH_PADDING_PX,
+    };
+  }
+  return {
+    name: "breadthfirst",
+    animate: false,
+    fit: true,
+    padding: ARCHITECTURE_GRAPH_PADDING_PX,
+    directed: true,
+    circle: false,
+    spacingFactor: graph.nodes.length >= 8 ? 1.5 : 1.35,
+    avoidOverlap: true,
+    nodeDimensionsIncludeLabels: true,
+    orientation: "horizontal",
+    roots: roots ? `#${roots}` : undefined,
+  };
+}
+
+function useArchitectureGraphSelectionState({
+  nodes,
+  transitions,
+  layerInternals,
+  activationPath,
+}: {
+  nodes: ArchitectureGraphNode[];
+  transitions: ArchitectureGraphTransition[];
+  layerInternals: ReturnType<typeof getAnalysisLayerInternals>;
+  activationPath: ReturnType<typeof getAnalysisActivationPath> | null;
+}) {
+  const [selectedNodeIdState, setSelectedNodeIdState] = useState<string | null>(
+    nodes[0]?.id ?? null,
+  );
+  const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(
+    transitions[0]?.id ?? null,
+  );
+  const [selectedLayerIdState, setSelectedLayerIdState] = useState<string | null>(
+    layerInternals[0]?.id ?? null,
+  );
+
+  const selectedNodeId = useMemo(() => {
+    if (selectedNodeIdState && nodes.some((node) => node.id === selectedNodeIdState)) {
+      return selectedNodeIdState;
+    }
+    return nodes[0]?.id ?? null;
+  }, [nodes, selectedNodeIdState]);
+  const selectedTransitionIdResolved = useMemo(() => {
+    if (
+      selectedTransitionId &&
+      transitions.some((transition) => transition.id === selectedTransitionId)
+    ) {
+      return selectedTransitionId;
+    }
+    return transitions[0]?.id ?? null;
+  }, [selectedTransitionId, transitions]);
+  const selectedLayerId = useMemo(() => {
+    if (selectedLayerIdState && layerInternals.some((layer) => layer.id === selectedLayerIdState)) {
+      return selectedLayerIdState;
+    }
+    return layerInternals[0]?.id ?? null;
+  }, [layerInternals, selectedLayerIdState]);
+
+  const selectedLayer = useMemo(
+    () => layerInternals.find((layer) => layer.id === selectedLayerId) ?? null,
+    [layerInternals, selectedLayerId],
+  );
+  const selectedActivationLayer = useMemo(() => {
+    if (!activationPath) {
+      return null;
+    }
+    return (
+      activationPath.layers.find((entry) => entry.layer === selectedLayer?.layer) ??
+      activationPath.layers[0] ??
+      null
+    );
+  }, [activationPath, selectedLayer]);
+
+  const selectedActivationTransition = useMemo(() => {
+    if (!activationPath) {
+      return null;
+    }
+    return (
+      activationPath.transitions.find(
+        (transition) => transition.toLayer === selectedActivationLayer?.layer,
+      ) ?? activationPath.transitions[0] ?? null
+    );
+  }, [activationPath, selectedActivationLayer]);
+
+  return {
+    selectedNodeId,
+    setSelectedNodeId: setSelectedNodeIdState,
+    selectedTransitionId: selectedTransitionIdResolved,
+    setSelectedTransitionId,
+    selectedLayerId,
+    setSelectedLayerId: setSelectedLayerIdState,
+    selectedActivationLayer,
+    selectedActivationTransition,
+  };
+}
+
+function useArchitectureGraphCytoscape({
+  graph,
+  cyRef,
+  cyInstanceRef,
+  resizeObserverRef,
+  setSelectedNodeId,
+}: {
+  graph: ModelArchitectureGraph | null;
+  cyRef: MutableRefObject<HTMLDivElement | null>;
+  cyInstanceRef: MutableRefObject<cytoscapeType.Core | null>;
+  resizeObserverRef: MutableRefObject<ResizeObserver | null>;
+  setSelectedNodeId: (nodeId: string | null) => void;
+}) {
+  useEffect(() => {
+    let cancelled = false;
+    let cy: cytoscapeType.Core | null = null;
+
+    const setup = async () => {
+      if (cancelled || !cyRef.current || !graph?.nodes?.length) return;
+      const cytoscape = (await import("cytoscape")).default;
+      if (cancelled || !cyRef.current) return;
+      const containerWidth = cyRef.current.clientWidth;
+      const containerHeight = cyRef.current.clientHeight;
+
+      if (cyInstanceRef.current && !cyInstanceRef.current.destroyed()) {
+        cyInstanceRef.current.destroy();
+      }
+      cyInstanceRef.current = null;
+      const elements = {
+        nodes: graph.nodes.map((node, index) => ({
+          data: {
+            id: node.id,
+            label: node.label,
+            kind: node.kind,
+            role: node.role ?? "unknown",
+            status: node.status,
+            layer_index: node.layer_index ?? null,
+            group: node.group ?? null,
+          },
+          ...((containerWidth <= 0 || containerHeight <= 0)
+            ? {
+                position: {
+                  x: 140 + (node.layer_index ?? index) * 160,
+                  y: 120 + index * 90,
+                },
+              }
+            : {}),
+        })),
+        edges: graph.edges.map((edge, index) => ({
+          data: {
+            id: `${edge.from}->${edge.to}:${index}`,
+            source: edge.from,
+            target: edge.to,
+            label: edge.label,
+            kind: edge.kind ?? "relation",
+            direction: edge.direction ?? "unknown",
+            weight: edge.weight ?? null,
+          },
+        })),
+      };
+
+      cy = cytoscape({
+        container: cyRef.current,
+        elements,
+        style: [
+          {
+            selector: "node",
+            style: {
+              label: "data(label)",
+              "background-color": (ele: cytoscapeType.NodeSingular) =>
+                getArchitectureGraphColor(String(ele.data("role") || "unknown")),
+              color: "#fff",
+              "font-size": 10,
+              "text-opacity": 0.85,
+              "text-valign": "center",
+              "text-halign": "center",
+            },
+          },
+          { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#67e8f9" } },
+          {
+            selector: "edge",
+            style: {
+              label: "data(label)",
+              "font-size": 9,
+              color: "#cbd5e1",
+              "text-background-color": "#09090b",
+              "text-background-opacity": 0.85,
+              "text-background-padding": "2px",
+              "curve-style": "bezier",
+              "target-arrow-shape": "triangle",
+              width: 2,
+              "line-color": "#475569",
+            },
+          },
+        ],
+        layout: getArchitectureGraphLayoutOptions(graph, containerWidth, containerHeight),
+      });
+
+      if (cancelled || !cyRef.current) {
+        return;
+      }
+
+      if (typeof ResizeObserver !== "undefined") {
+        if (resizeObserverRef.current) {
+          resizeObserverRef.current.disconnect();
+        }
+        resizeObserverRef.current = new ResizeObserver(() => {
+          if (!cy || cy.destroyed()) return;
+          cy.resize();
+          cy.fit(undefined, ARCHITECTURE_GRAPH_PADDING_PX);
+        });
+        resizeObserverRef.current.observe(cyRef.current);
+      }
+
+      cy.resize();
+      cy.fit(undefined, ARCHITECTURE_GRAPH_PADDING_PX);
+
+      if (cancelled) {
+        cy.destroy();
+        cy = null;
+        return;
+      }
+
+      cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
+        if (!cy || cy.destroyed()) return;
+        const node = evt.target;
+        const nodeId = String(node.id() || "");
+        if (!nodeId) return;
+        setSelectedNodeId(nodeId);
+        cy.nodes().removeClass("highlighted");
+        node.addClass("highlighted");
+      });
+
+      cy.on("tap", (evt: cytoscapeType.EventObject) => {
+        if (!cy || cy.destroyed()) return;
+        if (evt.target === cy) {
+          setSelectedNodeId(null);
+          cy.nodes().removeClass("highlighted");
+        }
+      });
+
+      cyInstanceRef.current = cy;
+    };
+
+    void setup();
+    return () => {
+      cancelled = true;
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
+      if (cy) {
+        try {
+          cy.destroy();
+        } catch {
+          // best effort cleanup
+        }
+      }
+      if (cyInstanceRef.current === cy) {
+        cyInstanceRef.current = null;
+      }
+    };
+  }, [cyInstanceRef, cyRef, graph, resizeObserverRef, setSelectedNodeId]);
+}
+
+export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
+  const {
+    snapshot,
+    readiness,
+    layerInternalsPayload,
+    title,
+    description,
+    typeHintText,
+  } = props;
+  const t = useTranslation();
+  const graph = getArchitectureGraph(snapshot);
+  const nodes = useMemo(() => getArchitectureGraphNodes(snapshot), [snapshot]);
+  const edges = useMemo(() => getArchitectureGraphEdges(snapshot), [snapshot]);
+  const summary = useMemo(() => getArchitectureGraphSummary(snapshot), [snapshot]);
+  const overview = useMemo(() => getArchitectureGraphOverview(snapshot), [snapshot]);
+  const transitions = useMemo(() => getArchitectureGraphTransitions(snapshot), [snapshot]);
+  const layerInternals = useMemo(
+    () => getAnalysisLayerInternals(layerInternalsPayload),
+    [layerInternalsPayload],
+  );
+  const activationPath = useMemo(
+    () => getAnalysisActivationPath(layerInternalsPayload),
+    [layerInternalsPayload],
+  );
+  const mlpActivation = useMemo(
+    () => getAnalysisMlpActivation(layerInternalsPayload),
+    [layerInternalsPayload],
+  );
+  const architectureBlocks = useMemo(
+    () => layerInternalsPayload?.architecture_blocks ?? [],
+    [layerInternalsPayload],
+  );
+  const progressCheckpoints = useMemo(
+    () => getArchitectureGraphProgressCheckpoints(snapshot, transitions, summary, overview),
+    [overview, snapshot, summary, transitions],
+  );
+  const outcome = useMemo(
+    () => getArchitectureGraphOutcome(readiness, overview, summary, transitions),
+    [readiness, overview, summary, transitions],
+  );
+  const readinessTone = getReadinessTone(readiness.status);
+  const selection = useArchitectureGraphSelectionState({
+    nodes,
+    transitions,
+    layerInternals,
+    activationPath,
+  });
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedTransitionId,
+    setSelectedTransitionId,
+    selectedLayerId,
+    setSelectedLayerId,
+    selectedActivationLayer,
+    selectedActivationTransition,
+  } = selection;
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [nodes, selectedNodeId],
+  );
+  const selectedTransition = useMemo(
+    () => transitions.find((transition) => transition.id === selectedTransitionId) ?? null,
+    [selectedTransitionId, transitions],
+  );
+  const selectedLayer = useMemo(
+    () => layerInternals.find((layer) => layer.id === selectedLayerId) ?? null,
+    [layerInternals, selectedLayerId],
+  );
+  useEffect(() => {
+    if (
+      selectedNode?.role === "layer" &&
+      selectedNode.id !== selectedLayerId &&
+      layerInternals.some((layer) => layer.id === selectedNode.id)
+    ) {
+      setSelectedLayerId(selectedNode.id);
+    }
+  }, [layerInternals, selectedLayerId, selectedNode, setSelectedLayerId]);
+  const selectedDominantSignals = useMemo(
+    () => getArchitectureLayerDominantSignals(selectedLayer),
+    [selectedLayer],
+  );
+  const selectedNodeDetails = useMemo(
+    () => getArchitectureGraphNodeDetails(snapshot, selectedNode),
+    [selectedNode, snapshot],
+  );
+
+  const cyRef = useRef<HTMLDivElement | null>(null);
+  const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  useArchitectureGraphCytoscape({
+    graph,
+    cyRef,
+    cyInstanceRef,
+    resizeObserverRef,
+    setSelectedNodeId,
+  });
+
+  if (!graph) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-5">
+      <div className="space-y-1">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">{"// architecture"}</p>
+        <h3 className="text-lg font-semibold text-white">{title}</h3>
+        <p className="text-sm text-zinc-300">{description}</p>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Badge tone={getReadinessTone(readiness.status)}>
+          ready {readiness.status}
+        </Badge>
+        <Badge tone="neutral">nodes {formatCount(summary.nodes)}</Badge>
+        <Badge tone="neutral">edges {formatCount(summary.edges)}</Badge>
+        <Badge tone="neutral">layers {formatCount(summary.layer_count)}</Badge>
+        <Badge tone="neutral">blocks {formatCount(summary.block_count)}</Badge>
+      </div>
+      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureProgressTitle")}
+            </p>
+            <p className="mt-1 text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureProgressDescription")}
+            </p>
+          </div>
+          <Badge tone="neutral">{progressCheckpoints.length} checkpoints</Badge>
+        </div>
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {progressCheckpoints.map((checkpoint) => (
+            <div key={checkpoint.id} className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">{checkpoint.title}</p>
+                  <p className="mt-1 font-mono text-sm text-white">{checkpoint.stage}</p>
+                </div>
+                <Badge tone="neutral">{checkpoint.id}</Badge>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressBefore")}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.before}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressAfter")}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.after}</p>
+                </div>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressChange")}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.change}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureProgressResult")}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-300">{checkpoint.result}</p>
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureProgressEvidence")}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {checkpoint.evidence.map((line) => (
+                    <Badge key={line} tone="neutral">
+                      {line}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTitle")}
+            </p>
+            <p className="mt-1 text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDescription")}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="neutral">
+              {layerInternals.length} {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsCount")}
+            </Badge>
+            {layerInternalsPayload?.summary ? (
+              <>
+                <Badge tone="neutral">
+                  {layerInternalsPayload.summary.checkpoint_count}{" "}
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsCheckpoints")}
+                </Badge>
+                <Badge tone="neutral">
+                  {layerInternalsPayload.summary.block_count}{" "}
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsBlocks")}
+                </Badge>
+                <Badge tone="neutral">
+                  {layerInternalsPayload.summary.architecture_block_count}{" "}
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsArchitectureBlocks")}
+                </Badge>
+                <Badge tone="neutral">
+                  {layerInternalsPayload.summary.activation_layer_count}{" "}
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayers")}
+                </Badge>
+                <Badge tone="neutral">
+                  {layerInternalsPayload.summary.activation_transition_count}{" "}
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransitions")}
+                </Badge>
+                <Badge tone="neutral">
+                  {layerInternalsPayload.summary.attention_layer_count}{" "}
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsAttentionLayers")}
+                </Badge>
+                <Badge tone="neutral">
+                  {layerInternalsPayload.summary.saliency_token_count}{" "}
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSaliencyTokens")}
+                </Badge>
+              </>
+            ) : null}
+            {layerInternalsPayload ? <Badge tone="neutral">{layerInternalsPayload.source}</Badge> : null}
+          </div>
+        </div>
+        {layerInternalsPayload?.notes?.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {layerInternalsPayload.notes.slice(0, 3).map((note) => (
+              <Badge key={note} tone="neutral">
+                {note}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+        {layerInternals.length > 0 ? (
+          <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsList")}
+              </p>
+              <div className="mt-3 max-h-80 space-y-2 overflow-auto pr-1">
+                {layerInternals.map((layer) => {
+                  const isSelected = layer.id === selectedLayerId;
+                  return (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      onClick={() => setSelectedLayerId(layer.id)}
+                      className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                        isSelected
+                          ? "border-cyan-300 bg-cyan-500/15"
+                          : "border-white/10 bg-white/5 hover:border-cyan-300/40 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="font-mono text-sm text-white">{layer.label}</p>
+                          <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                            {layer.status}
+                          </p>
+                        </div>
+                        <Badge tone={isSelected ? "success" : "neutral"}>{layer.layer}</Badge>
+                      </div>
+                      <p className="mt-2 text-sm text-zinc-300">{layer.summary}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSelected")}
+                </p>
+                <Badge tone={selectedLayer ? "success" : "neutral"}>
+                  {selectedLayer ? "layer selected" : "awaiting selection"}
+                </Badge>
+              </div>
+              {selectedLayer ? (
+                <div className="mt-3 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="neutral">{selectedLayer.status}</Badge>
+                    <Badge tone="neutral">layer {selectedLayer.layer}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsLabel")}
+                    </p>
+                    <p className="mt-1 font-mono text-sm text-white">{selectedLayer.label}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSummary")}
+                    </p>
+                    <p className="mt-2 text-sm text-zinc-300">{selectedLayer.summary}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsStateDelta")}
+                    </p>
+                    <p className="mt-2 text-sm text-zinc-300">{selectedLayer.stateDelta}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDominantSignals")}
+                      </p>
+                      <Badge tone={selectedDominantSignals.length > 0 ? "success" : "neutral"}>
+                        {selectedDominantSignals.length}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-300">
+                      {selectedDominantSignals.length > 0
+                        ? t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsDominantSignalsDescription")
+                        : t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {selectedDominantSignals.length > 0 ? (
+                        selectedDominantSignals.map((signal) => (
+                          <div
+                            key={`${selectedLayer.id}-${signal.source}-${signal.label}`}
+                            className="rounded-lg border border-white/10 bg-black/20 p-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone={signal.dominant ? "success" : "neutral"}>
+                                {signal.dominant ? "dominant" : signal.source}
+                              </Badge>
+                              <Badge tone="neutral">{signal.source}</Badge>
+                              <Badge tone="neutral">{signal.label}</Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">{signal.detail}</p>
+                            {signal.evidence.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {signal.evidence.map((line) => (
+                                  <Badge key={line} tone="neutral">
+                                    {line}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : null}
+                    </div>
+                  </div>
+                  {activationPath ? (
+                    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationPath")}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone="neutral">
+                            {activationPath.summary.selectedLayerCount}{" "}
+                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayers")}
+                          </Badge>
+                          <Badge tone="neutral">
+                            {activationPath.summary.transitionCount}{" "}
+                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransitions")}
+                          </Badge>
+                        </div>
+                      </div>
+                      {activationPath.notes.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {activationPath.notes.slice(0, 2).map((note) => (
+                            <Badge key={note} tone="neutral">
+                              {note}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                      {selectedActivationLayer ? (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                                {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationLayer")}
+                              </p>
+                              <p className="mt-1 font-mono text-sm text-white">
+                                {selectedActivationLayer.label}
+                              </p>
+                            </div>
+                            <Badge tone="neutral">layer {selectedActivationLayer.layer}</Badge>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Badge tone="neutral">
+                              mean {selectedActivationLayer.metrics.mean.toFixed(3)}
+                            </Badge>
+                            <Badge tone="neutral">
+                              norm {selectedActivationLayer.metrics.norm.toFixed(3)}
+                            </Badge>
+                            <Badge tone="neutral">
+                              max |x| {selectedActivationLayer.metrics.maxAbs.toFixed(3)}
+                            </Badge>
+                            {selectedActivationLayer.roleHint ? (
+                              <Badge tone="neutral">{selectedActivationLayer.roleHint}</Badge>
+                            ) : null}
+                          </div>
+                          <p className="mt-3 text-sm text-zinc-300">
+                            {selectedActivationLayer.summary}
+                          </p>
+                          {selectedActivationLayer.metrics.topDimensions.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {selectedActivationLayer.metrics.topDimensions.map((dimension) => (
+                                <Badge
+                                  key={`${selectedActivationLayer.layer}-${dimension.index}`}
+                                  tone="neutral"
+                                >
+                                  dim {dimension.index}: {dimension.value.toFixed(3)}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {selectedActivationTransition ? (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsActivationTransition")}
+                            </p>
+                            <Badge tone="neutral">
+                              {selectedActivationTransition.fromLayer} → {selectedActivationTransition.toLayer}
+                            </Badge>
+                          </div>
+                          <p className="mt-2 font-mono text-sm text-white">
+                            {selectedActivationTransition.before} → {selectedActivationTransition.after}
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Badge tone="neutral">
+                              ΔL2 {selectedActivationTransition.deltaNorm.toFixed(3)}
+                            </Badge>
+                            <Badge tone="neutral">
+                              Δmean {selectedActivationTransition.meanShift.toFixed(3)}
+                            </Badge>
+                            <Badge tone="neutral">
+                              peak |Δ| {selectedActivationTransition.maxAbsShift.toFixed(3)}
+                            </Badge>
+                          </div>
+                          <p className="mt-3 text-sm text-zinc-300">
+                            {selectedActivationTransition.summary}
+                          </p>
+                          <p className="mt-2 text-sm text-zinc-400">
+                            {selectedActivationTransition.impact}
+                          </p>
+                          {selectedActivationTransition.evidence.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {selectedActivationTransition.evidence.map((line) => (
+                                <Badge key={line} tone="neutral">
+                                  {line}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsBlocks")}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {selectedLayer.blocks.length > 0 ? (
+                        selectedLayer.blocks.map((block) => (
+                          <div key={`${selectedLayer.id}-${block.kind}-${block.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone="neutral">{block.kind}</Badge>
+                              <Badge tone="neutral">{block.label}</Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">{block.summary}</p>
+                            <p className="mt-2 text-sm text-zinc-400">{block.detail}</p>
+                            <p className="mt-2 text-sm text-zinc-400">{block.impact}</p>
+                            {block.heads?.length ? (
+                              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsHeads")}
+                                </p>
+                                <div className="mt-2 space-y-2">
+                                  {block.heads.map((head) => (
+                                    <div key={`${selectedLayer.id}-${block.kind}-${block.label}-head-${head.head}`} className="rounded-md border border-white/10 bg-black/20 p-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <Badge tone="neutral">head {head.head}</Badge>
+                                        <Badge tone="neutral">{head.summary}</Badge>
+                                      </div>
+                                      <p className="mt-2 text-sm text-zinc-300">{head.detail}</p>
+                                      {head.evidence.length > 0 ? (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {head.evidence.map((line) => (
+                                            <Badge key={line} tone="neutral">
+                                              {line}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            {block.evidence.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {block.evidence.map((line) => (
+                                  <Badge key={line} tone="neutral">
+                                    {line}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-zinc-300">
+                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {architectureBlocks.length > 0 ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsArchitectureBlocks")}
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {architectureBlocks.map((block) => (
+                          <div key={`${selectedLayer.id}-${block.kind}-${block.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone="neutral">{block.kind}</Badge>
+                              <Badge tone="neutral">{block.label}</Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">{block.summary}</p>
+                            <p className="mt-2 text-sm text-zinc-400">{block.detail}</p>
+                            <p className="mt-2 text-sm text-zinc-400">{block.impact}</p>
+                            {block.evidence.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {block.evidence.map((line) => (
+                                  <Badge key={line} tone="neutral">
+                                    {line}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsSignals")}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {selectedLayer.signals.length > 0 ? (
+                        selectedLayer.signals.map((signal) => (
+                          <div key={`${selectedLayer.id}-${signal.source}-${signal.label}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone="neutral">{signal.source}</Badge>
+                              <Badge tone="neutral">{signal.label}</Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">{signal.detail}</p>
+                            {signal.evidence.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {signal.evidence.map((line) => (
+                                  <Badge key={line} tone="neutral">
+                                    {line}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-zinc-300">
+                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkage")}
+                      </p>
+                      {selectedLayer.responseLinkage ? (
+                        <Badge tone={selectedLayer.responseLinkage.status === "linked" ? "success" : "warning"}>
+                          {selectedLayer.responseLinkage.coveragePercent.toFixed(2)}%
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-300">
+                      {selectedLayer.responseLinkage
+                        ? t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageDescription")
+                        : t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+                    </p>
+                    {selectedLayer.responseLinkage ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge tone="neutral">
+                            {selectedLayer.responseLinkage.linkedFragmentCount}/{selectedLayer.responseLinkage.fragmentCount}{" "}
+                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageFragments")}
+                          </Badge>
+                          <Badge tone="neutral">
+                            {selectedLayer.responseLinkage.evidenceLinks.length}{" "}
+                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsResponseLinkageEvidence")}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-zinc-300">{selectedLayer.responseLinkage.summary}</p>
+                        <p className="text-sm text-zinc-400">{selectedLayer.responseLinkage.impact}</p>
+                        {selectedLayer.responseLinkage.dominantSignals.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedLayer.responseLinkage.dominantSignals.map((signal) => (
+                              <Badge key={`${selectedLayer.id}-response-signal-${signal}`} tone="neutral">
+                                {signal}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                        {selectedLayer.responseLinkage.linkedFragments.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedLayer.responseLinkage.linkedFragments.map((fragment) => (
+                              <Badge key={`${selectedLayer.id}-response-fragment-${fragment}`} tone="neutral">
+                                {fragment}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                        {selectedLayer.responseLinkage.evidenceLinks.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedLayer.responseLinkage.evidenceLinks.map((link) => (
+                              <Badge key={`${selectedLayer.id}-response-link-${link}`} tone="neutral">
+                                {link}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  {mlpActivation ? (
+                    <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivation")}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={mlpActivation.status === "ok" ? "success" : "warning"}>
+                            {mlpActivation.status}
+                          </Badge>
+                          <Badge tone="neutral">
+                            {mlpActivation.summary.hiddenDimensionCount}{" "}
+                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivationDimensions")}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-zinc-300">
+                        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsMlpActivationDescription")}
+                      </p>
+                      <div className="mt-3 space-y-3">
+                        {mlpActivation.mlpLayer ? (
+                          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone="neutral">{mlpActivation.mlpLayer.label}</Badge>
+                              <Badge tone="neutral">
+                                layer {mlpActivation.mlpLayer.layer}
+                              </Badge>
+                              {mlpActivation.mlpLayer.roleHint ? (
+                                <Badge tone="neutral">{mlpActivation.mlpLayer.roleHint}</Badge>
+                              ) : null}
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">
+                              {mlpActivation.mlpLayer.summary}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Badge tone="neutral">
+                                mean {mlpActivation.mlpLayer.metrics.mean.toFixed(3)}
+                              </Badge>
+                              <Badge tone="neutral">
+                                norm {mlpActivation.mlpLayer.metrics.norm.toFixed(3)}
+                              </Badge>
+                              <Badge tone="neutral">
+                                max |x| {mlpActivation.mlpLayer.metrics.maxAbs.toFixed(3)}
+                              </Badge>
+                            </div>
+                            {mlpActivation.mlpLayer.metrics.topDimensions.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {mlpActivation.mlpLayer.metrics.topDimensions.map((dimension) => (
+                                  <Badge key={`${selectedLayer.id}-mlp-dim-${dimension.index}`} tone="neutral">
+                                    dim {dimension.index}: {dimension.value.toFixed(3)}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                            {mlpActivation.mlpLayer.evidence.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {mlpActivation.mlpLayer.evidence.map((line) => (
+                                  <Badge key={`${selectedLayer.id}-mlp-evidence-${line}`} tone="neutral">
+                                    {line}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {mlpActivation.transition ? (
+                          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone="neutral">
+                                {mlpActivation.transition.before} → {mlpActivation.transition.after}
+                              </Badge>
+                              <Badge tone="neutral">
+                                ΔL2 {mlpActivation.transition.deltaNorm.toFixed(3)}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">
+                              {mlpActivation.transition.summary}
+                            </p>
+                            <p className="mt-2 text-sm text-zinc-400">
+                              {mlpActivation.transition.impact}
+                            </p>
+                            {mlpActivation.transition.evidence.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {mlpActivation.transition.evidence.map((line) => (
+                                  <Badge key={`${selectedLayer.id}-mlp-transition-${line}`} tone="neutral">
+                                    {line}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {mlpActivation.residualLayer ? (
+                          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone="neutral">{mlpActivation.residualLayer.label}</Badge>
+                              <Badge tone="neutral">
+                                layer {mlpActivation.residualLayer.layer}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">
+                              {mlpActivation.residualLayer.summary}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Badge tone="neutral">
+                                mean {mlpActivation.residualLayer.metrics.mean.toFixed(3)}
+                              </Badge>
+                              <Badge tone="neutral">
+                                norm {mlpActivation.residualLayer.metrics.norm.toFixed(3)}
+                              </Badge>
+                              <Badge tone="neutral">
+                                max |x| {mlpActivation.residualLayer.metrics.maxAbs.toFixed(3)}
+                              </Badge>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      {mlpActivation.notes.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {mlpActivation.notes.slice(0, 3).map((note) => (
+                            <Badge key={`${selectedLayer.id}-mlp-note-${note}`} tone="neutral">
+                              {note}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                      {mlpActivation.tensorActivation ? (
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge tone="neutral">
+                              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivation")}
+                            </Badge>
+                            <Badge tone="neutral">
+                              {mlpActivation.tensorActivation.vectorLength} dims
+                            </Badge>
+                            <Badge tone="neutral">
+                              {mlpActivation.tensorActivation.sliceKind}
+                            </Badge>
+                          </div>
+                          <p className="mt-2 text-sm text-zinc-300">
+                            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationDescription")}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Badge tone="neutral">
+                              L2 MLP {mlpActivation.tensorActivation.norms.mlpL2.toFixed(3)}
+                            </Badge>
+                            {mlpActivation.tensorActivation.norms.residualL2 === null ? null : (
+                              <Badge tone="neutral">
+                                L2 residual {mlpActivation.tensorActivation.norms.residualL2.toFixed(3)}
+                              </Badge>
+                            )}
+                            {mlpActivation.tensorActivation.norms.deltaL2 === null ? null : (
+                              <Badge tone="neutral">
+                                L2 delta {mlpActivation.tensorActivation.norms.deltaL2.toFixed(3)}
+                              </Badge>
+                            )}
+                            {mlpActivation.tensorActivation.norms.cosineSimilarity === null ? null : (
+                              <Badge tone="neutral">
+                                cos {mlpActivation.tensorActivation.norms.cosineSimilarity.toFixed(3)}
+                              </Badge>
+                            )}
+                          </div>
+                          {mlpActivation.tensorActivation.topDeltaDimensions.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {mlpActivation.tensorActivation.topDeltaDimensions.slice(0, 6).map((dimension) => (
+                                <Badge key={`${selectedLayer.id}-tensor-delta-${dimension.index}`} tone="neutral">
+                                  delta dim {dimension.index}: {dimension.value.toFixed(3)}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : null}
+                          {mlpActivation.tensorActivation.notes.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {mlpActivation.tensorActivation.notes.map((note) => (
+                                <Badge key={`${selectedLayer.id}-tensor-note-${note}`} tone="neutral">
+                                  {note}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsEvidence")}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedLayer.evidence.length > 0 ? (
+                        selectedLayer.evidence.map((line) => (
+                          <Badge key={line} tone="neutral">
+                            {line}
+                          </Badge>
+                        ))
+                      ) : (
+                        <p className="text-sm text-zinc-300">
+                          {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-zinc-300">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsEmptySelection")}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+            <p className="text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsNoData")}
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewTitle")}
+            </p>
+            <p className="mt-1 text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewDescription")}
+            </p>
+          </div>
+          <Badge tone={readiness.status === "available" ? "success" : "warning"}>
+            {readiness.fidelity}
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewFlow")}
+            </p>
+            <p className="mt-1 font-mono text-sm text-white">{overview.flowLabel}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewScale")}
+            </p>
+            <p className="mt-1 font-mono text-sm text-white">
+              {formatCount(summary.layer_count)} layers · {formatCount(summary.block_count)} blocks
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Nodes / edges</p>
+            <p className="mt-1 font-mono text-sm text-white">
+              {formatCount(summary.nodes)} nodes · {formatCount(summary.edges)} edges
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOverviewOrigin")}
+            </p>
+            <p className="mt-1 font-mono text-sm text-white">{readiness.source}</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsTitle")}
+            </p>
+            <p className="mt-1 text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsDescription")}
+            </p>
+          </div>
+          <Badge tone="neutral">
+            {transitions.length} {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsSelected")}
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {transitions.map((transition) => {
+            const isSelected = transition.id === selectedTransitionId;
+            return (
+              <button
+                key={transition.id}
+                type="button"
+                onClick={() => setSelectedTransitionId(transition.id)}
+                className={`rounded-xl border p-4 text-left transition-colors ${isSelected
+                  ? "border-cyan-300 bg-cyan-500/15"
+                  : "border-white/10 bg-black/20 hover:border-cyan-300/40 hover:bg-white/10"
+                  }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-sm text-white">
+                      {transition.sourceLabel} → {transition.targetLabel}
+                    </p>
+                    <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                      {transition.label}
+                    </p>
+                  </div>
+                  <Badge tone={getTransitionSignificanceTone(transition.significance)}>
+                    {transition.significance}
+                  </Badge>
+                </div>
+                <p className="mt-3 text-sm text-zinc-300">{transition.effect}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeTitle")}
+            </p>
+            <p className="mt-1 text-sm text-zinc-300">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeDescription")}
+            </p>
+          </div>
+          <Badge
+            tone={readinessTone}
+          >
+            {readiness.status}
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeResult")}
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">{outcome.result}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomePrimaryPath")}
+            </p>
+            <p className="mt-2 font-mono text-sm text-white">{outcome.primaryPath}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeSummary")}
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">{outcome.summary}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeEvidence")}
+            </p>
+            <div className="mt-2 space-y-1 text-sm text-zinc-300">
+              {outcome.evidence.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeSignals")}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {outcome.supportingSignals.map((signal) => (
+              <Badge key={signal} tone="neutral">
+                {signal}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 grid items-stretch gap-4 xl:grid-cols-[1.45fr_0.85fr]">
+        <div className="min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+          <div
+            ref={cyRef}
+            data-testid="architecture-graph-container"
+            className="h-[clamp(560px,72vh,760px)] w-full"
+          />
+        </div>
+        <div className="flex h-full flex-col space-y-4">
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDetailTitle")}
+              </p>
+              <Badge tone={selectedTransition ? "success" : "neutral"}>
+                {selectedTransition ? "transition selected" : "awaiting selection"}
+              </Badge>
+            </div>
+            {selectedTransition ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{selectedTransition.sourceRole}</Badge>
+                  <Badge tone="neutral">{selectedTransition.targetRole}</Badge>
+                  <Badge tone="neutral">{selectedTransition.significance}</Badge>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Transition</p>
+                  <p className="mt-1 font-mono text-sm text-white">
+                    {selectedTransition.sourceLabel} → {selectedTransition.targetLabel}
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionBefore")}
+                    </p>
+                    <p className="mt-2 font-mono text-sm text-white">{selectedTransition.before}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionAfter")}
+                    </p>
+                    <p className="mt-2 font-mono text-sm text-white">{selectedTransition.after}</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDelta")}
+                  </p>
+                  <p className="mt-2 text-sm text-zinc-300">{selectedTransition.delta}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionImpact")}
+                  </p>
+                  <p className="mt-2 text-sm text-zinc-300">{selectedTransition.impact}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionEffect")}
+                  </p>
+                  <p className="mt-2 text-sm text-zinc-300">{selectedTransition.effect}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-300">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionEmpty")}
+              </p>
+            )}
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Architecture drilldown</p>
+              <Badge tone={selectedNode ? "success" : "neutral"}>
+                {selectedNode ? "node selected" : "awaiting selection"}
+              </Badge>
+            </div>
+            {selectedNode ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{selectedNode.role ?? "unknown"}</Badge>
+                  <Badge tone="neutral">{selectedNode.status}</Badge>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Label</p>
+                  <p className="mt-1 font-mono text-sm text-white">{selectedNode.label}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    {selectedNodeDetails.title}
+                  </p>
+                  <div className="mt-2 space-y-1 text-sm text-zinc-300">
+                    {selectedNodeDetails.lines.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Type hint</p>
+                  <p className="mt-1 text-sm text-zinc-300">{typeHintText}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-300">
+                Select a model layer, block or diagnostic node to inspect its architecture details.
+              </p>
+            )}
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Relations</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {edges.map((edge, index) => (
+                <Badge key={`${edge.from}-${edge.to}-${edge.label}-${index}`} tone="neutral">
+                  {edge.from} → {edge.to} ({edge.label})
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
+        Architecture graph data should describe layer flow, residual structure and block-level
+        relations. Current diagnostic graph stays available below as a separate surface.
       </div>
     </div>
   );

@@ -522,6 +522,65 @@ def _resolve_transition_descriptors(
     )
 
 
+def _resolve_mlp_probe_slice(
+    *,
+    raw_layers_by_index: dict[int, dict[str, Any]],
+    mlp_layer_index: int,
+    runtime_label: str | None,
+) -> tuple[list[float] | None, dict[str, Any] | None]:
+    mlp_layer_raw = raw_layers_by_index.get(mlp_layer_index)
+    if not isinstance(mlp_layer_raw, dict):
+        return None, _build_mlp_unavailable_payload(
+            status="failed",
+            code="mlp_layer_missing",
+            message="MLP probe layer is missing from payload",
+            runtime_label=runtime_label,
+        )
+
+    mlp_hidden_slice = _safe_slice(mlp_layer_raw.get("hidden_slice"))
+    if not mlp_hidden_slice:
+        return None, _build_mlp_unavailable_payload(
+            status="failed",
+            code="empty_hidden_slice",
+            message="MLP probe layer returned an empty hidden slice",
+            runtime_label=runtime_label,
+        )
+    return mlp_hidden_slice, None
+
+
+def _resolve_residual_transition(
+    *,
+    mlp_entry: dict[str, Any],
+    raw_layers_by_index: dict[int, dict[str, Any]],
+    residual_layer_index: int | None,
+    mlp_layer_index: int,
+    mlp_hidden_slice: list[float],
+    architecture_graph: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    residual_entry = _build_residual_layer_entry(
+        layer_index=residual_layer_index,
+        raw_layer=(
+            raw_layers_by_index.get(residual_layer_index)
+            if residual_layer_index is not None
+            else None
+        ),
+        architecture_graph=architecture_graph,
+    )
+    if not _is_distinct_residual_entry(
+        mlp_layer_index=mlp_layer_index,
+        residual_layer_index=residual_layer_index,
+        mlp_hidden_slice=mlp_hidden_slice,
+        residual_entry=residual_entry,
+    ):
+        residual_entry = None
+    if residual_entry is None:
+        return None, None
+    return residual_entry, _build_transition(
+        previous_layer=mlp_entry,
+        current_layer=residual_entry,
+    )
+
+
 def _is_distinct_residual_entry(
     *,
     mlp_layer_index: int,
@@ -682,18 +741,13 @@ async def build_mlp_activation_payload(
     if shape_error is not None:
         return shape_error
 
-    mlp_layer_raw = raw_layers_by_index.get(mlp_layer_index)
-    if not isinstance(mlp_layer_raw, dict):
-        return _build_mlp_unavailable_payload(
-            status="failed",
-            code="mlp_layer_missing",
-            message="MLP probe layer is missing from payload",
-            runtime_label=runtime_label_str,
-        )
-
-    mlp_hidden_slice = _safe_slice(mlp_layer_raw.get("hidden_slice"))
-    if not mlp_hidden_slice:
-        return _build_mlp_unavailable_payload(
+    mlp_hidden_slice, mlp_slice_error = _resolve_mlp_probe_slice(
+        raw_layers_by_index=raw_layers_by_index,
+        mlp_layer_index=mlp_layer_index,
+        runtime_label=runtime_label_str,
+    )
+    if mlp_slice_error is not None or mlp_hidden_slice is None:
+        return mlp_slice_error or _build_mlp_unavailable_payload(
             status="failed",
             code="empty_hidden_slice",
             message="MLP probe layer returned an empty hidden slice",
@@ -705,30 +759,14 @@ async def build_mlp_activation_payload(
         hidden_slice=mlp_hidden_slice,
         architecture_graph=architecture_graph,
     )
-    residual_entry = _build_residual_layer_entry(
-        layer_index=residual_layer_index,
-        raw_layer=(
-            raw_layers_by_index.get(residual_layer_index)
-            if residual_layer_index is not None
-            else None
-        ),
+    residual_entry, transition = _resolve_residual_transition(
+        mlp_entry=mlp_entry,
+        raw_layers_by_index=raw_layers_by_index,
+        residual_layer_index=residual_layer_index,
+        mlp_layer_index=mlp_layer_index,
+        mlp_hidden_slice=mlp_hidden_slice,
         architecture_graph=architecture_graph,
     )
-
-    if not _is_distinct_residual_entry(
-        mlp_layer_index=mlp_layer_index,
-        residual_layer_index=residual_layer_index,
-        mlp_hidden_slice=mlp_hidden_slice,
-        residual_entry=residual_entry,
-    ):
-        residual_entry = None
-
-    transition: dict[str, Any] | None = None
-    if residual_entry is not None:
-        transition = _build_transition(
-            previous_layer=mlp_entry,
-            current_layer=residual_entry,
-        )
 
     notes = _build_mlp_notes(architecture_graph)
 

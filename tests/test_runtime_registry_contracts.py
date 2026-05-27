@@ -377,7 +377,8 @@ def test_main_voice_route_helpers_and_contracts():
         )
 
 
-def test_main_runtime_state_and_access_helpers():
+def test_main_runtime_state_and_access_helpers(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("venom_core.main.get_last_runtime_switch_event", lambda: None)
     req = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
     _require_localhost_request(req)
     with pytest.raises(HTTPException):

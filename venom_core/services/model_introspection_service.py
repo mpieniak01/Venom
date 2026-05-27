@@ -27,6 +27,7 @@ _INTROSPECTION_PACKAGES: tuple[tuple[str, str], ...] = (
     ("graphrag", "graphrag"),
 )
 _RUNTIME_VLLM_MANIFEST_NAME = "venom_runtime_vllm.json"
+_CONFIG_JSON_FILENAME = "config.json"
 _NATIVE_RUNTIME_CONFIG_SOURCE = "native runtime config"
 
 
@@ -252,7 +253,7 @@ def _collect_hf_cache_candidates(
         snapshots_root = cache_root / runtime_model_store / "snapshots"
         if not snapshots_root.exists():
             continue
-        for config_path in snapshots_root.rglob("config.json"):
+        for config_path in snapshots_root.rglob(_CONFIG_JSON_FILENAME):
             _append_native_candidate_if_matching(
                 candidates=candidates,
                 config_path=config_path,
@@ -276,7 +277,7 @@ def _resolve_active_adapter_source(model_manager: Any) -> dict[str, Any] | None:
         return None
 
     adapter_path = Path(active_adapter_path).expanduser().resolve()
-    runtime_config = adapter_path.parent / "runtime_vllm" / "config.json"
+    runtime_config = adapter_path.parent / "runtime_vllm" / _CONFIG_JSON_FILENAME
     if not runtime_config.exists():
         return None
     return {
@@ -309,7 +310,7 @@ def _collect_runtime_vllm_candidates(
     for root in search_roots:
         if not root.exists():
             continue
-        for config_path in root.rglob("runtime_vllm/config.json"):
+        for config_path in root.rglob(f"runtime_vllm/{_CONFIG_JSON_FILENAME}"):
             _append_native_candidate_if_matching(
                 candidates=candidates,
                 config_path=config_path,
@@ -389,7 +390,7 @@ def _public_source_path(path: str) -> str:
         return str(Path(parts[-2]) / parts[-1])
     if parts:
         return parts[-1]
-    return "config.json"
+    return _CONFIG_JSON_FILENAME
 
 
 def _normalize_layer_types(

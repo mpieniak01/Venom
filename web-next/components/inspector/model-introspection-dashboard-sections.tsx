@@ -3023,11 +3023,13 @@ function useArchitectureGraphSelectionState({
   layerInternals: ReturnType<typeof getAnalysisLayerInternals>;
   activationPath: ReturnType<typeof getAnalysisActivationPath> | null;
 }) {
-  const [selectedNodeIdState, setSelectedNodeId] = useState<string | null>(nodes[0]?.id ?? null);
+  const [selectedNodeIdState, setSelectedNodeIdState] = useState<string | null>(
+    nodes[0]?.id ?? null,
+  );
   const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(
     transitions[0]?.id ?? null,
   );
-  const [selectedLayerIdState, setSelectedLayerId] = useState<string | null>(
+  const [selectedLayerIdState, setSelectedLayerIdState] = useState<string | null>(
     layerInternals[0]?.id ?? null,
   );
 
@@ -3081,11 +3083,11 @@ function useArchitectureGraphSelectionState({
 
   return {
     selectedNodeId,
-    setSelectedNodeId,
+    setSelectedNodeId: setSelectedNodeIdState,
     selectedTransitionId: selectedTransitionIdResolved,
     setSelectedTransitionId,
     selectedLayerId,
-    setSelectedLayerId,
+    setSelectedLayerId: setSelectedLayerIdState,
     selectedActivationLayer,
     selectedActivationTransition,
   };

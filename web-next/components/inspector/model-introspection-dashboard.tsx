@@ -60,6 +60,8 @@ type RunTrends = {
   liveStreamingRate: number;
   avgFirstContentMs: number | null;
   avgNoiseRatio: number | null;
+  avgMlpL2: number | null;
+  avgCosineSimilarity: number | null;
 };
 
 type OperatorChecklistItem = {
@@ -720,6 +722,14 @@ function buildRunTrends(payload: unknown): RunTrends | null {
     avgNoiseRatio:
       typeof candidate.avg_noise_ratio === "number"
         ? candidate.avg_noise_ratio
+        : null,
+    avgMlpL2:
+      typeof candidate.avg_mlp_l2 === "number"
+        ? candidate.avg_mlp_l2
+        : null,
+    avgCosineSimilarity:
+      typeof candidate.avg_cosine_similarity === "number"
+        ? candidate.avg_cosine_similarity
         : null,
   };
 }

@@ -675,6 +675,26 @@ function makeAnalysisCompletedPayload() {
               cosine_similarity: null,
             },
             top_delta_dimensions: [],
+            comparisons: [
+              {
+                request_id: "prev-req-123",
+                ts_ms: 1716834000000,
+                mlp_l2: 0.420,
+                cosine_similarity: 0.950,
+                mlp_l2_diff: -0.003467,
+                cosine_similarity_diff: -0.010000,
+              }
+            ],
+            stability: {
+              stable: true,
+              status_label: "stable",
+              mlp_l2_variance: 0.000012,
+              cosine_similarity_mean: 0.945000,
+            },
+            evidence: [
+              "computed from 1 historical run(s) and current run",
+              "current run L2 norm: 0.4165",
+            ],
             notes: [
               "Contract exposes hidden-state slice vectors for activation analysis.",
               "This payload is not a full tensor dump of the MLP block.",
@@ -815,7 +835,7 @@ function makeAnalysisCompletedPayload() {
   };
 }
 
-function createStreamingAnalysisResponse() {
+function createStreamingAnalysisResponse(completedPayload?: unknown) {
   const encoder = new TextEncoder();
   const events = [
     { delayMs: 0, payload: `event: analysis_start\ndata: ${JSON.stringify(makeAnalysisRunningPayload())}\n\n` },
@@ -823,7 +843,7 @@ function createStreamingAnalysisResponse() {
     { delayMs: 0, payload: 'event: content\ndata: {"text":"Slonce to "}\n\n' },
     { delayMs: 120, payload: 'event: content\ndata: {"text":"gwiazda."}\n\n' },
     { delayMs: 120, payload: "event: done\ndata: {}\n\n" },
-    { delayMs: 0, payload: `event: analysis_done\ndata: ${JSON.stringify(makeAnalysisCompletedPayload())}\n\n` },
+    { delayMs: 0, payload: `event: analysis_done\ndata: ${JSON.stringify(completedPayload || makeAnalysisCompletedPayload())}\n\n` },
   ];
   return new Response(
     new ReadableStream({
@@ -1592,6 +1612,80 @@ describe("ModelIntrospectionDashboard", () => {
     });
   });
 
+  it("renders new tensor activation fields (comparisons, stability, evidence) in layer internals detail panel", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes("/api/v1/models/introspection")) {
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }
+      if (url.includes("/api/v1/models/introspection/analyze/stream")) {
+        return createStreamingAnalysisResponse();
+      }
+      const completed = makeAnalysisCompletedPayload();
+      if (url.includes("/api/v1/models/introspection/analyze")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            snapshot: {
+              status: "completed",
+              analysis: completed.analysis,
+              snapshot_after: {
+                ...completed.snapshot_after,
+                architecture_graph: makeArchitectureGraphFixture(),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: {
+            ...makeSnapshotBeforeFixture(),
+            architecture_graph: makeArchitectureGraphFixture(),
+          },
+        }),
+        { status: 200 },
+      );
+    };
+
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Refresh snapshot|Odśwież migawkę/i,
+      }),
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Layer 4/i }));
+    }, { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: /Layer 4/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByText(/\(stable\)|\(stabilny\)/i));
+      assert.ok(screen.getByText(/variance|wariancja/i));
+      assert.ok(screen.getByText(/mean cos|śr\. cos/i));
+    });
+
+    assert.ok(screen.getByText(/prev-req/i));
+    assert.ok(screen.getByText(/-0.003/i));
+    assert.ok(screen.getByText(/computed from 1 historical run\(s\) and current run/i));
+    assert.ok(screen.getByText(/current run L2 norm: 0.4165/i));
+  });
+
   it("keeps stable-screen contract from PR230 without regressions", async () => {
     globalThis.fetch = async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -1793,6 +1887,107 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByText(/Token confidence \(lite\)/i));
       assert.ok(screen.getByText(/How to get full internals|jak uzyskać pełne internals/i));
       assert.ok(screen.getByText(/Switch runtime to multi_runtime/i));
+    });
+  });
+
+  it("handles missing comparisons, stability and renders avg run trends correctly", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes("/api/v1/models/introspection")) {
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }
+      const completed = makeAnalysisCompletedPayload() as unknown as {
+        snapshot_after?: Record<string, unknown>;
+        analysis: {
+          layer_internals: {
+            mlp_activation: {
+              tensor_activation: {
+                comparisons?: unknown;
+                stability?: unknown;
+              };
+            };
+          };
+          run_trends?: unknown;
+        };
+      };
+      if (completed.analysis?.layer_internals?.mlp_activation?.tensor_activation) {
+        completed.analysis.layer_internals.mlp_activation.tensor_activation.comparisons = undefined;
+        completed.analysis.layer_internals.mlp_activation.tensor_activation.stability = undefined;
+      }
+      if (completed.analysis) {
+        completed.analysis.run_trends = {
+          runs: 5,
+          window: 20,
+          runtime_trace_rate: 80,
+          probe_runtime_rate: 80,
+          high_coverage_rate: 80,
+          live_streaming_rate: 60,
+          avg_first_content_ms: 150,
+          avg_noise_ratio: 0.15,
+          avg_mlp_l2: 1.2345,
+          avg_cosine_similarity: 0.8765,
+        };
+      }
+
+      if (url.includes("/api/v1/models/introspection/analyze/stream")) {
+        return createStreamingAnalysisResponse(completed);
+      }
+
+      if (url.includes("/api/v1/models/introspection/analyze")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            snapshot: {
+              status: "completed",
+              analysis: completed.analysis,
+              snapshot_after: {
+                ...completed.snapshot_after,
+                architecture_graph: makeArchitectureGraphFixture(),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: {
+            ...makeSnapshotBeforeFixture(),
+            architecture_graph: makeArchitectureGraphFixture(),
+          },
+        }),
+        { status: 200 },
+      );
+    };
+
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByText(/1.2345/i));
+      assert.ok(screen.getByText(/0.8765/i));
+    });
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Layer 4/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Layer 4/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getAllByText(/Layer 4/i).length > 0);
+      assert.equal(screen.queryByText(/Stability|Stabilność/i), null);
+      assert.equal(screen.queryByText(/Run comparisons|Porównanie runów/i), null);
     });
   });
 });

@@ -288,6 +288,21 @@ export type AnalysisMlpActivationPayload = {
       value: number;
       abs_value: number;
     }>;
+    comparisons?: Array<{
+      request_id: string | null;
+      ts_ms: number | null;
+      mlp_l2: number | null;
+      cosine_similarity: number | null;
+      mlp_l2_diff: number | null;
+      cosine_similarity_diff: number | null;
+    }>;
+    stability?: {
+      stable: boolean;
+      status_label: string;
+      mlp_l2_variance: number;
+      cosine_similarity_mean: number | null;
+    };
+    evidence?: string[];
     notes: string[];
   } | null;
   summary: {
@@ -819,6 +834,8 @@ export type AnalysisResult = {
       live_streaming_rate?: number;
       avg_first_content_ms?: number | null;
       avg_noise_ratio?: number | null;
+      avg_mlp_l2?: number | null;
+      avg_cosine_similarity?: number | null;
     } | null;
   } | null;
   snapshot_after?: IntrospectionSnapshot;

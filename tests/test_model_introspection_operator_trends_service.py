@@ -208,3 +208,122 @@ def test_evaluate_consecutive_slo_windows_fails_when_probe_low() -> None:
     )
     assert result["ok"] is False
     assert result["reason"] == "consecutive_windows_failed"
+
+
+def test_record_operator_run_computes_deep_metrics_trends(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store_path = tmp_path / "operator_run_trends.json"
+    monkeypatch.setattr(
+        service, "_resolve_storage_path", lambda settings=None: store_path
+    )
+
+    trends = service.record_operator_run(
+        request_id="req-1",
+        rag_source="runtime_trace",
+        probe_source="probe_runtime",
+        stream_quality="live_streaming",
+        coverage_percent=88.4,
+        first_content_ms=120.0,
+        token_noise_ratio=0.22,
+        mlp_l2=1.5,
+        cosine_similarity=0.95,
+    )
+    assert trends is not None
+    assert trends["avg_mlp_l2"] == 1.5
+    assert trends["avg_cosine_similarity"] == 0.95
+
+    trends2 = service.record_operator_run(
+        request_id="req-2",
+        rag_source="runtime_trace",
+        probe_source="probe_runtime",
+        stream_quality="live_streaming",
+        coverage_percent=88.4,
+        first_content_ms=120.0,
+        token_noise_ratio=0.22,
+        mlp_l2=2.5,
+        cosine_similarity=0.85,
+    )
+    assert trends2 is not None
+    assert trends2["avg_mlp_l2"] == 2.0
+    assert trends2["avg_cosine_similarity"] == 0.90
+
+
+def test_record_operator_run_ttl_retention_and_limit(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import time
+
+    store_path = tmp_path / "operator_run_trends.json"
+    monkeypatch.setattr(
+        service, "_resolve_storage_path", lambda settings=None: store_path
+    )
+
+    # 1. Test limit 200 records
+    for i in range(210):
+        service.record_operator_run(
+            request_id=f"req-limit-{i}",
+            rag_source="runtime_trace",
+            probe_source="probe_runtime",
+            stream_quality="live_streaming",
+            coverage_percent=88.4,
+            first_content_ms=120.0,
+            token_noise_ratio=0.22,
+        )
+
+    records = service.get_operator_run_records()
+    assert len(records) == 200
+
+    # 2. Test TTL retention (30 days)
+    old_ts_ms = int(time.time() * 1000) - (31 * 24 * 60 * 60 * 1000)
+    old_record = {
+        "request_id": "old-req",
+        "ts_ms": old_ts_ms,
+        "rag_source": "runtime_trace",
+        "probe_source": "probe_runtime",
+        "stream_quality": "live_streaming",
+        "coverage_percent": 88.4,
+        "first_content_ms": 120.0,
+        "token_noise_ratio": 0.22,
+    }
+    # write to file directly first
+    service._write_records(store_path, [old_record])
+
+    # now insert a new record, which should trigger upsert and filter out the old one
+    service.record_operator_run(
+        request_id="new-req",
+        rag_source="runtime_trace",
+        probe_source="probe_runtime",
+        stream_quality="live_streaming",
+        coverage_percent=88.4,
+        first_content_ms=120.0,
+        token_noise_ratio=0.22,
+    )
+    records = service.get_operator_run_records()
+    assert len(records) == 1
+    assert records[0]["request_id"] == "new-req"
+
+
+def test_is_finite_float_nan_inf() -> None:
+    assert service._is_finite_float(1.5) is True
+    assert service._is_finite_float(True) is False
+    assert service._is_finite_float(False) is False
+    assert service._is_finite_float(float("nan")) is False
+    assert service._is_finite_float(float("inf")) is False
+    assert service._is_finite_float(float("-inf")) is False
+    assert service._is_finite_float("not a float") is False
+
+
+def test_upsert_record_keeps_descending_ts_order() -> None:
+    import time
+
+    now_ms = int(time.time() * 1000)
+    records = [
+        {"request_id": "old-a", "ts_ms": now_ms - 3000},
+        {"request_id": "old-b", "ts_ms": now_ms - 1000},
+    ]
+    record = {"request_id": "new", "ts_ms": now_ms - 2000}
+    result = service._upsert_record(records, record, max_records=10)
+    assert [entry["request_id"] for entry in result] == ["old-b", "new", "old-a"]

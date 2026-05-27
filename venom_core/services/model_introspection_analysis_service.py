@@ -1638,6 +1638,7 @@ def _record_run_trends(
     logit_profile: dict[str, Any],
     stream_profile: dict[str, Any],
     evidence_coverage: dict[str, Any],
+    mlp_activation: dict[str, Any] | None = None,
     settings: Any = None,
 ) -> dict[str, Any] | None:
     request_id = ""
@@ -1660,6 +1661,20 @@ def _record_run_trends(
         float(token_noise_raw) if isinstance(token_noise_raw, (int, float)) else None
     )
 
+    mlp_l2 = None
+    residual_l2 = None
+    delta_l2 = None
+    cosine_similarity = None
+    if isinstance(mlp_activation, dict):
+        tensor_activation = mlp_activation.get("tensor_activation")
+        if isinstance(tensor_activation, dict):
+            norms = tensor_activation.get("norms")
+            if isinstance(norms, dict):
+                mlp_l2 = norms.get("mlp_l2")
+                residual_l2 = norms.get("residual_l2")
+                delta_l2 = norms.get("delta_l2")
+                cosine_similarity = norms.get("cosine_similarity")
+
     return record_operator_run(
         request_id=request_id,
         rag_source=str(rag_profile.get("source") or "graph_fallback"),
@@ -1668,6 +1683,10 @@ def _record_run_trends(
         coverage_percent=coverage_percent,
         first_content_ms=first_content_ms,
         token_noise_ratio=token_noise_ratio,
+        mlp_l2=mlp_l2,
+        residual_l2=residual_l2,
+        delta_l2=delta_l2,
+        cosine_similarity=cosine_similarity,
         settings=settings,
     )
 
@@ -1679,6 +1698,7 @@ async def _record_run_trends_async(
     logit_profile: dict[str, Any],
     stream_profile: dict[str, Any],
     evidence_coverage: dict[str, Any],
+    mlp_activation: dict[str, Any] | None = None,
     settings: Any = None,
 ) -> dict[str, Any] | None:
     return await asyncio.to_thread(
@@ -1688,6 +1708,7 @@ async def _record_run_trends_async(
         logit_profile=logit_profile,
         stream_profile=stream_profile,
         evidence_coverage=evidence_coverage,
+        mlp_activation=mlp_activation,
         settings=settings,
     )
 
@@ -2886,11 +2907,13 @@ async def _collect_mlp_activation_payload_safe(
     *,
     prompt: str,
     architecture_graph: dict[str, Any] | None,
+    settings: Any = None,
 ) -> dict[str, Any]:
     try:
         return await build_mlp_activation_payload(
             prompt=prompt,
             architecture_graph=architecture_graph,
+            settings=settings,
         )
     except (RuntimeError, ValueError, TypeError):
         logger.exception("Model introspection MLP activation probe failed")
@@ -3211,6 +3234,7 @@ async def _finalize_completed_analysis(
         architecture_graph=architecture_graph
         if isinstance(architecture_graph, dict)
         else None,
+        settings=args.settings,
     )
     analysis_capabilities = _build_analysis_capabilities_payload(
         hidden_state=hidden_state,
@@ -3234,6 +3258,7 @@ async def _finalize_completed_analysis(
             logit_profile=logit_profile,
             stream_profile=stream_profile,
             evidence_coverage=evidence_coverage,
+            mlp_activation=mlp_activation,
             settings=args.settings,
         )
     except Exception:

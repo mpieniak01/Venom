@@ -80,7 +80,7 @@ tavily-python           # Tavily AI Search API - nowoczesna wyszukiwarka dla AI
 beautifulsoup4          # Parsowanie HTML
 trafilatura             # Ekstrakcja tekstu z stron WWW (lepsze czyszczenie niż BS4)
 PyGithub                # GitHub API wrapper (External Discovery - GitHub Scanner)
-huggingface_hub==0.35.3 # Hugging Face Hub API (External Discovery - Model Explorer), pin zgodny z CI-lite/runtime
+huggingface_hub>=1.5.0,<2.0 # Hugging Face Hub API (External Discovery - Model Explorer), zakres zgodny z runtime transformers
 
 # Google Calendar Integration (THE_CALENDAR)
 google-auth>=2.23.0     # Google OAuth2 authentication

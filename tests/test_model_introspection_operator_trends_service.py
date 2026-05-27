@@ -308,7 +308,22 @@ def test_record_operator_run_ttl_retention_and_limit(
 
 def test_is_finite_float_nan_inf() -> None:
     assert service._is_finite_float(1.5) is True
+    assert service._is_finite_float(True) is False
+    assert service._is_finite_float(False) is False
     assert service._is_finite_float(float("nan")) is False
     assert service._is_finite_float(float("inf")) is False
     assert service._is_finite_float(float("-inf")) is False
     assert service._is_finite_float("not a float") is False
+
+
+def test_upsert_record_keeps_descending_ts_order() -> None:
+    import time
+
+    now_ms = int(time.time() * 1000)
+    records = [
+        {"request_id": "old-a", "ts_ms": now_ms - 3000},
+        {"request_id": "old-b", "ts_ms": now_ms - 1000},
+    ]
+    record = {"request_id": "new", "ts_ms": now_ms - 2000}
+    result = service._upsert_record(records, record, max_records=10)
+    assert [entry["request_id"] for entry in result] == ["old-b", "new", "old-a"]

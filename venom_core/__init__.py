@@ -38,3 +38,22 @@ except (ModuleNotFoundError, AttributeError) as exc:
         RuntimeWarning,
         stacklevel=2,
     )
+
+# Compat: older Transformers revisions may import `huggingface_hub.is_offline_mode`,
+# removed from newer huggingface_hub releases. Re-create symbol from constants.
+try:
+    hf_hub = importlib.import_module("huggingface_hub")
+    if not hasattr(hf_hub, "is_offline_mode"):
+        constants = importlib.import_module("huggingface_hub.constants")
+
+        def _hf_is_offline_mode() -> bool:
+            return bool(getattr(constants, "HF_HUB_OFFLINE", False))
+
+        hf_hub.is_offline_mode = _hf_is_offline_mode  # type: ignore[attr-defined]
+except (ModuleNotFoundError, AttributeError) as exc:
+    # Best-effort compatibility; avoid breaking import chain.
+    warnings.warn(
+        f"huggingface_hub offline-mode compatibility patch skipped: {exc}",
+        RuntimeWarning,
+        stacklevel=2,
+    )

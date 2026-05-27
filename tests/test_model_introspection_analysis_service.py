@@ -1641,7 +1641,7 @@ def test_tensor_activation_comparisons_and_stability(
 
     evidence = payload["evidence"]
     assert len(evidence) == 4
-    assert "computed from 3 historical run(s)" in evidence[0]
+    assert "computed from 2 historical run(s) and current run" in evidence[0]
 
 
 def test_operator_trends_stores_new_metrics() -> None:

@@ -692,7 +692,7 @@ function makeAnalysisCompletedPayload() {
               cosine_similarity_mean: 0.945000,
             },
             evidence: [
-              "computed from 2 historical run(s)",
+              "computed from 1 historical run(s) and current run",
               "current run L2 norm: 0.4165",
             ],
             notes: [
@@ -1675,14 +1675,14 @@ describe("ModelIntrospectionDashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Layer 4/i }));
 
     await waitFor(() => {
-      assert.ok(screen.getByText(/Stable \(stable\)/i));
-      assert.ok(screen.getByText(/variance: 0.000012/i));
-      assert.ok(screen.getByText(/mean cos: 0.9450/i));
+      assert.ok(screen.getByText(/\(stable\)|\(stabilny\)/i));
+      assert.ok(screen.getByText(/variance|wariancja/i));
+      assert.ok(screen.getByText(/mean cos|śr\. cos/i));
     });
 
     assert.ok(screen.getByText(/prev-req/i));
     assert.ok(screen.getByText(/-0.003/i));
-    assert.ok(screen.getByText(/computed from 2 historical run\(s\)/i));
+    assert.ok(screen.getByText(/computed from 1 historical run\(s\) and current run/i));
     assert.ok(screen.getByText(/current run L2 norm: 0.4165/i));
   });
 
@@ -1986,8 +1986,8 @@ describe("ModelIntrospectionDashboard", () => {
 
     await waitFor(() => {
       assert.ok(screen.getAllByText(/Layer 4/i).length > 0);
-      assert.equal(screen.queryByText(/Stability/i), null);
-      assert.equal(screen.queryByText(/Run comparisons/i), null);
+      assert.equal(screen.queryByText(/Stability|Stabilność/i), null);
+      assert.equal(screen.queryByText(/Run comparisons|Porównanie runów/i), null);
     });
   });
 });

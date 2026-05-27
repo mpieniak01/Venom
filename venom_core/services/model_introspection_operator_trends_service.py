@@ -51,6 +51,8 @@ def _resolve_storage_path(settings: Any | None = None) -> Path:
 
 
 def _is_finite_float(val: Any) -> bool:
+    if isinstance(val, bool):
+        return False
     if not isinstance(val, (int, float)):
         return False
     return math.isfinite(float(val))
@@ -63,11 +65,7 @@ def _normalize_record(raw: Any) -> dict[str, Any] | None:
     if not request_id:
         return None
     ts_ms_value = raw.get("ts_ms")
-    ts_ms = (
-        int(ts_ms_value)
-        if isinstance(ts_ms_value, (int, float)) and math.isfinite(float(ts_ms_value))
-        else 0
-    )
+    ts_ms = int(ts_ms_value) if _is_finite_float(ts_ms_value) else 0
     record: dict[str, Any] = {
         "request_id": request_id,
         "ts_ms": ts_ms if ts_ms > 0 else int(time.time() * 1000),
@@ -161,7 +159,9 @@ def _upsert_record(
         for entry in records
         if entry.get("request_id") != request_id and entry.get("ts_ms", 0) >= cutoff_ms
     ]
-    return [record, *filtered][:max_records]
+    combined = [record, *filtered]
+    combined.sort(key=lambda entry: int(entry.get("ts_ms") or 0), reverse=True)
+    return combined[:max_records]
 
 
 def _compute_rate(

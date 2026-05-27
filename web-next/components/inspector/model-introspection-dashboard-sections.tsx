@@ -2068,6 +2068,7 @@ type ArchitectureGraphPanelProps = Readonly<{
 
 type ArchitectureGraphNode = ModelArchitectureGraphNode;
 type ArchitectureGraphEdge = ModelArchitectureGraphEdge;
+type TransitionSignificance = "key" | "supporting" | "repeat";
 
 type ArchitectureGraphTransition = Readonly<{
   id: string;
@@ -2081,7 +2082,7 @@ type ArchitectureGraphTransition = Readonly<{
   after: string;
   delta: string;
   impact: string;
-  significance: "key" | "supporting" | "repeat";
+  significance: TransitionSignificance;
 }>;
 
 type ArchitectureGraphOutcome = Readonly<{
@@ -2401,7 +2402,7 @@ function getTransitionEffect(
   return `${sourceLabel} continues into ${targetLabel}.`;
 }
 
-function getTransitionImpact(significance: "key" | "supporting" | "repeat"): string {
+function getTransitionImpact(significance: TransitionSignificance): string {
   if (significance === "key") {
     return "High-impact transition that changes the active state.";
   }
@@ -2422,7 +2423,7 @@ function getReadinessTone(status: "available" | "partial" | "missing"): BadgeTon
 }
 
 function getTransitionSignificanceTone(
-  significance: "key" | "supporting" | "repeat",
+  significance: TransitionSignificance,
 ): BadgeTone {
   if (significance === "key") {
     return "success";
@@ -2438,7 +2439,7 @@ function getTransitionDelta(
   targetNode: ArchitectureGraphNode | null,
   edge: ArchitectureGraphEdge,
   effect: string,
-  significance: "key" | "supporting" | "repeat",
+  significance: TransitionSignificance,
 ) {
   const sourceLabel = sourceNode?.label ?? edge.from;
   const targetLabel = targetNode?.label ?? edge.to;
@@ -2474,7 +2475,7 @@ function getTransitionSignificance(
   sourceNode: ArchitectureGraphNode | null,
   targetNode: ArchitectureGraphNode | null,
   edge: ArchitectureGraphEdge,
-): "key" | "supporting" | "repeat" {
+): TransitionSignificance {
   const edgeLabel = edge.label.toLowerCase();
   if (
     sourceNode?.role === "input" ||
@@ -3051,6 +3052,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
     () => getArchitectureGraphOutcome(readiness, overview, summary, transitions),
     [readiness, overview, summary, transitions],
   );
+  const readinessTone = getReadinessTone(readiness.status);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(nodes[0]?.id ?? null);
   const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(
     transitions[0]?.id ?? null,
@@ -4151,13 +4153,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
             </p>
           </div>
           <Badge
-            tone={
-              readiness.status === "available"
-                ? "success"
-                : readiness.status === "partial"
-                  ? "warning"
-                  : "neutral"
-            }
+            tone={readinessTone}
           >
             {readiness.status}
           </Badge>

@@ -372,6 +372,115 @@ def _extract_hidden_layers(raw_layers: Any) -> list[dict[str, Any]]:
     return layers
 
 
+def _index_hidden_probe_layers(raw_layers: Any) -> dict[int, dict[str, Any]]:
+    if not isinstance(raw_layers, list):
+        return {}
+    indexed: dict[int, dict[str, Any]] = {}
+    for raw_layer in raw_layers:
+        if not isinstance(raw_layer, dict):
+            continue
+        layer_index = raw_layer.get("layer")
+        if not isinstance(layer_index, int):
+            continue
+        indexed[layer_index] = raw_layer
+    return indexed
+
+
+def _resolve_residual_layer_selection(
+    *,
+    architecture_graph: dict[str, Any] | None,
+    mlp_layer_index: int,
+) -> tuple[int | None, list[int]]:
+    residual_node = _find_graph_node_by_role(architecture_graph, "residual")
+    residual_layer_index = (
+        _coerce_layer_index(residual_node.get("layer_index"))
+        if residual_node is not None
+        else None
+    )
+    selected_layers = [mlp_layer_index]
+    if residual_layer_index is not None and residual_layer_index not in selected_layers:
+        selected_layers.append(residual_layer_index)
+    return residual_layer_index, selected_layers
+
+
+def _build_mlp_layer_entry(
+    *,
+    layer_index: int,
+    hidden_slice: list[float],
+    architecture_graph: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    top_dimensions = _slice_top_dimensions(hidden_slice)
+    metrics = {
+        "mean": _slice_mean(hidden_slice),
+        "norm": _slice_norm(hidden_slice),
+        "max_abs": _slice_max_abs(hidden_slice),
+        "top_dimensions": top_dimensions,
+    }
+    return (
+        {
+            "layer": layer_index,
+            "label": _resolve_layer_label(layer_index, architecture_graph),
+            "role_hint": _resolve_layer_role(layer_index, architecture_graph),
+            "hidden_slice": hidden_slice,
+            "metrics": metrics,
+            "summary": (
+                f"norm {metrics['norm']:.3f}; "
+                f"mean {metrics['mean']:.3f}; "
+                f"top dims {', '.join(str(dim['index']) for dim in top_dimensions[:3]) or 'n/a'}"
+            ),
+            "evidence": _build_hidden_slice_evidence(hidden_slice),
+        },
+        metrics,
+    )
+
+
+def _build_residual_layer_entry(
+    *,
+    layer_index: int | None,
+    raw_layer: dict[str, Any] | None,
+    architecture_graph: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if layer_index is None or not isinstance(raw_layer, dict):
+        return None
+    hidden_slice = _safe_slice(raw_layer.get("hidden_slice"))
+    if not hidden_slice:
+        return None
+    top_dimensions = _slice_top_dimensions(hidden_slice)
+    mean_value = _slice_mean(hidden_slice)
+    norm_value = _slice_norm(hidden_slice)
+    return {
+        "layer": layer_index,
+        "label": _resolve_layer_label(layer_index, architecture_graph),
+        "role_hint": _resolve_layer_role(layer_index, architecture_graph),
+        "hidden_slice": hidden_slice,
+        "metrics": {
+            "mean": mean_value,
+            "norm": norm_value,
+            "max_abs": _slice_max_abs(hidden_slice),
+            "top_dimensions": top_dimensions,
+        },
+        "summary": (
+            f"norm {norm_value:.3f}; "
+            f"mean {mean_value:.3f}; "
+            f"top dims {', '.join(str(dim['index']) for dim in top_dimensions[:3]) or 'n/a'}"
+        ),
+        "evidence": _build_hidden_slice_evidence(hidden_slice),
+    }
+
+
+def _build_mlp_notes(architecture_graph: dict[str, Any] | None) -> list[str]:
+    notes = [
+        "Source data comes from hidden.hidden_slice for the selected MLP layer.",
+        "The residual bridge is sourced from the paired residual layer hidden slice.",
+        "This is a probe slice, not a full tensor dump.",
+    ]
+    if architecture_graph is not None:
+        notes.append(
+            "Architecture labels are used as hints for the MLP and residual nodes."
+        )
+    return notes
+
+
 async def build_activation_path_payload(
     *,
     prompt: str,
@@ -469,7 +578,6 @@ async def build_mlp_activation_payload(
     architecture_graph: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     mlp_node = _find_graph_node_by_role(architecture_graph, "mlp")
-    residual_node = _find_graph_node_by_role(architecture_graph, "residual")
     if mlp_node is None:
         return _build_mlp_unavailable_payload(
             status="probe_unavailable",
@@ -486,15 +594,11 @@ async def build_mlp_activation_payload(
             message="MLP graph node is missing a valid layer index",
             runtime_label=None,
         )
-    selected_layers = [mlp_layer_index]
-    residual_layer_index: int | None = None
-    if residual_node is not None:
-        residual_layer_index = _coerce_layer_index(residual_node.get("layer_index"))
-        if (
-            residual_layer_index is not None
-            and residual_layer_index not in selected_layers
-        ):
-            selected_layers.append(residual_layer_index)
+
+    residual_layer_index, selected_layers = _resolve_residual_layer_selection(
+        architecture_graph=architecture_graph,
+        mlp_layer_index=mlp_layer_index,
+    )
 
     probe_payload = await run_model_introspection_probe(
         prompt=prompt,
@@ -521,13 +625,7 @@ async def build_mlp_activation_payload(
     if not isinstance(raw_layers, list):
         return _build_mlp_probe_shape_error_payload(runtime_label=runtime_label_str)
 
-    raw_layers_by_index: dict[int, dict[str, Any]] = {}
-    for raw_layer in raw_layers:
-        if not isinstance(raw_layer, dict):
-            continue
-        layer_index = raw_layer.get("layer")
-        if isinstance(layer_index, int):
-            raw_layers_by_index[layer_index] = raw_layer
+    raw_layers_by_index = _index_hidden_probe_layers(raw_layers)
 
     mlp_layer_raw = raw_layers_by_index.get(mlp_layer_index)
     if not isinstance(mlp_layer_raw, dict):
@@ -547,67 +645,20 @@ async def build_mlp_activation_payload(
             runtime_label=runtime_label_str,
         )
 
-    residual_layer_raw = (
-        raw_layers_by_index.get(residual_layer_index)
-        if residual_layer_index is not None
-        else None
+    mlp_entry, mlp_metrics = _build_mlp_layer_entry(
+        layer_index=mlp_layer_index,
+        hidden_slice=mlp_hidden_slice,
+        architecture_graph=architecture_graph,
     )
-    residual_hidden_slice = (
-        _safe_slice(residual_layer_raw.get("hidden_slice"))
-        if isinstance(residual_layer_raw, dict)
-        else []
-    )
-
-    mlp_label = _resolve_layer_label(mlp_layer_index, architecture_graph)
-    residual_label = (
-        _resolve_layer_label(residual_layer_index, architecture_graph)
-        if residual_layer_index is not None
-        else None
-    )
-    mlp_top_dimensions = _slice_top_dimensions(mlp_hidden_slice)
-    mlp_metrics = {
-        "mean": _slice_mean(mlp_hidden_slice),
-        "norm": _slice_norm(mlp_hidden_slice),
-        "max_abs": _slice_max_abs(mlp_hidden_slice),
-        "top_dimensions": mlp_top_dimensions,
-    }
-    mlp_entry = {
-        "layer": mlp_layer_index,
-        "label": mlp_label,
-        "role_hint": _resolve_layer_role(mlp_layer_index, architecture_graph),
-        "hidden_slice": mlp_hidden_slice,
-        "metrics": mlp_metrics,
-        "summary": (
-            f"norm {mlp_metrics['norm']:.3f}; "
-            f"mean {mlp_metrics['mean']:.3f}; "
-            f"top dims {', '.join(str(dim['index']) for dim in mlp_top_dimensions[:3]) or 'n/a'}"
-        ),
-        "evidence": _build_hidden_slice_evidence(mlp_hidden_slice),
-    }
-
-    residual_entry: dict[str, Any] | None = None
-    if isinstance(residual_layer_raw, dict) and residual_hidden_slice:
-        residual_top_dimensions = _slice_top_dimensions(residual_hidden_slice)
-        residual_entry = {
-            "layer": residual_layer_index,
-            "label": residual_label or f"Layer {residual_layer_index}",
-            "role_hint": _resolve_layer_role(residual_layer_index, architecture_graph)
+    residual_entry = _build_residual_layer_entry(
+        layer_index=residual_layer_index,
+        raw_layer=(
+            raw_layers_by_index.get(residual_layer_index)
             if residual_layer_index is not None
-            else None,
-            "hidden_slice": residual_hidden_slice,
-            "metrics": {
-                "mean": _slice_mean(residual_hidden_slice),
-                "norm": _slice_norm(residual_hidden_slice),
-                "max_abs": _slice_max_abs(residual_hidden_slice),
-                "top_dimensions": residual_top_dimensions,
-            },
-            "summary": (
-                f"norm {_slice_norm(residual_hidden_slice):.3f}; "
-                f"mean {_slice_mean(residual_hidden_slice):.3f}; "
-                f"top dims {', '.join(str(dim['index']) for dim in residual_top_dimensions[:3]) or 'n/a'}"
-            ),
-            "evidence": _build_hidden_slice_evidence(residual_hidden_slice),
-        }
+            else None
+        ),
+        architecture_graph=architecture_graph,
+    )
 
     transition: dict[str, Any] | None = None
     if residual_entry is not None:
@@ -616,19 +667,7 @@ async def build_mlp_activation_payload(
             current_layer=residual_entry,
         )
 
-    selected_layers = [mlp_layer_index]
-    if residual_layer_index is not None and residual_layer_index not in selected_layers:
-        selected_layers.append(residual_layer_index)
-
-    notes = [
-        "Source data comes from hidden.hidden_slice for the selected MLP layer.",
-        "The residual bridge is sourced from the paired residual layer hidden slice.",
-        "This is a probe slice, not a full tensor dump.",
-    ]
-    if architecture_graph is not None:
-        notes.append(
-            "Architecture labels are used as hints for the MLP and residual nodes."
-        )
+    notes = _build_mlp_notes(architecture_graph)
 
     max_delta_norm = transition["delta_norm"] if isinstance(transition, dict) else 0.0
     average_norm_inputs = [mlp_metrics["norm"]]

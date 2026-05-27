@@ -628,6 +628,79 @@ def _format_float(value: Any, digits: int = 3) -> str:
     return f"{float(value):.{digits}f}"
 
 
+def _first_architecture_node(
+    node_list: list[dict[str, Any]],
+    role: str,
+) -> dict[str, Any] | None:
+    for item in node_list:
+        if item.get("role") == role:
+            return item
+    return None
+
+
+def _architecture_edge_labels(
+    edge_list: list[dict[str, Any]],
+    from_id: str,
+    to_id: str,
+) -> list[str]:
+    return [
+        str(edge.get("label") or f"{from_id} → {to_id}")
+        for edge in edge_list
+        if edge.get("from") == from_id and edge.get("to") == to_id
+    ]
+
+
+def _build_mlp_architecture_block(
+    node_list: list[dict[str, Any]],
+    edge_list: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    mlp_node = _first_architecture_node(node_list, "mlp")
+    if mlp_node is None:
+        return None
+    mlp_id = str(mlp_node.get("id") or "mlp")
+    residual_node = _first_architecture_node(node_list, "residual")
+    residual_id = (
+        str(residual_node.get("id") or "residual") if residual_node else "residual"
+    )
+    return {
+        "kind": "mlp",
+        "label": str(mlp_node.get("label") or "Response synthesis"),
+        "summary": "MLP synthesizes hidden state into the residual path.",
+        "detail": f"Source node {mlp_id} is the native architecture synthesis block.",
+        "impact": "This block converts internal state into response-oriented synthesis.",
+        "evidence": [
+            *_architecture_edge_labels(edge_list, "layer", mlp_id)[:2],
+            *_architecture_edge_labels(edge_list, mlp_id, residual_id)[:2],
+        ],
+    }
+
+
+def _build_residual_architecture_block(
+    node_list: list[dict[str, Any]],
+    edge_list: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    residual_node = _first_architecture_node(node_list, "residual")
+    if residual_node is None:
+        return None
+    residual_id = str(residual_node.get("id") or "residual")
+    incoming = [
+        str(edge.get("label") or f"{edge.get('from')} → {residual_id}")
+        for edge in edge_list
+        if edge.get("to") == residual_id
+    ][:2]
+    return {
+        "kind": "residual",
+        "label": str(residual_node.get("label") or "Reuse path"),
+        "summary": "Residual merge keeps the active path reusable before decode.",
+        "detail": f"Source node {residual_id} merges probe and synthesis paths.",
+        "impact": "Residual flow keeps accumulated state available for the final decode.",
+        "evidence": [
+            *incoming,
+            *_architecture_edge_labels(edge_list, residual_id, "output")[:2],
+        ],
+    }
+
+
 def _build_architecture_blocks_payload(
     architecture_graph: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
@@ -635,65 +708,21 @@ def _build_architecture_blocks_payload(
         return []
     nodes = architecture_graph.get("nodes")
     edges = architecture_graph.get("edges")
-    node_list = nodes if isinstance(nodes, list) else []
-    edge_list = edges if isinstance(edges, list) else []
-
-    def _first_node(role: str) -> dict[str, Any] | None:
-        for item in node_list:
-            if isinstance(item, dict) and item.get("role") == role:
-                return item
-        return None
-
-    def _edge_labels(from_id: str, to_id: str) -> list[str]:
-        return [
-            str(edge.get("label") or f"{from_id} → {to_id}")
-            for edge in edge_list
-            if isinstance(edge, dict)
-            and edge.get("from") == from_id
-            and edge.get("to") == to_id
-        ]
-
-    def _build_mlp_block() -> dict[str, Any] | None:
-        mlp_node = _first_node("mlp")
-        if mlp_node is None:
-            return None
-        mlp_id = str(mlp_node.get("id") or "mlp")
-        residual_node = _first_node("residual")
-        residual_id = (
-            str(residual_node.get("id") or "residual") if residual_node else "residual"
-        )
-        return {
-            "kind": "mlp",
-            "label": str(mlp_node.get("label") or "Response synthesis"),
-            "summary": "MLP synthesizes hidden state into the residual path.",
-            "detail": f"Source node {mlp_id} is the native architecture synthesis block.",
-            "impact": "This block converts internal state into response-oriented synthesis.",
-            "evidence": [
-                *(_edge_labels("layer", mlp_id)[:2]),
-                *(_edge_labels(mlp_id, residual_id)[:2]),
-            ],
-        }
-
-    def _build_residual_block() -> dict[str, Any] | None:
-        residual_node = _first_node("residual")
-        if residual_node is None:
-            return None
-        residual_id = str(residual_node.get("id") or "residual")
-        incoming = [
-            str(edge.get("label") or f"{edge.get('from')} → {residual_id}")
-            for edge in edge_list
-            if isinstance(edge, dict) and edge.get("to") == residual_id
-        ][:2]
-        return {
-            "kind": "residual",
-            "label": str(residual_node.get("label") or "Reuse path"),
-            "summary": "Residual merge keeps the active path reusable before decode.",
-            "detail": f"Source node {residual_id} merges probe and synthesis paths.",
-            "impact": "Residual flow keeps accumulated state available for the final decode.",
-            "evidence": [*incoming, *(_edge_labels(residual_id, "output")[:2])],
-        }
-
-    return [block for block in (_build_mlp_block(), _build_residual_block()) if block]
+    node_list = [
+        item
+        for item in (nodes if isinstance(nodes, list) else [])
+        if isinstance(item, dict)
+    ]
+    edge_list = [
+        item
+        for item in (edges if isinstance(edges, list) else [])
+        if isinstance(item, dict)
+    ]
+    blocks = [
+        _build_mlp_architecture_block(node_list, edge_list),
+        _build_residual_architecture_block(node_list, edge_list),
+    ]
+    return [block for block in blocks if block]
 
 
 def _build_layer_response_linkage_payload(
@@ -754,6 +783,314 @@ def _build_layer_response_linkage_payload(
     }
 
 
+def _collect_layer_ids(
+    *,
+    checkpoints: list[dict[str, Any]],
+    attention_layers: list[dict[str, Any]],
+) -> tuple[list[int], list[int], int | None, list[int]]:
+    checkpoint_layers = sorted(
+        {
+            int(checkpoint.get("layer"))
+            for checkpoint in checkpoints
+            if isinstance(checkpoint.get("layer"), int)
+        }
+    )
+    attention_layer_ids = sorted(
+        {
+            int(layer.get("layer"))
+            for layer in attention_layers
+            if isinstance(layer.get("layer"), int)
+        }
+    )
+    saliency_anchor_layer = checkpoint_layers[-1] if checkpoint_layers else None
+    if saliency_anchor_layer is None and attention_layer_ids:
+        saliency_anchor_layer = attention_layer_ids[-1]
+    layer_id_candidates = [*checkpoint_layers, *attention_layer_ids]
+    if saliency_anchor_layer is not None:
+        layer_id_candidates.append(saliency_anchor_layer)
+    layer_ids = sorted(set(layer_id_candidates))
+    return checkpoint_layers, attention_layer_ids, saliency_anchor_layer, layer_ids
+
+
+def _build_layer_index(
+    items: list[dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    indexed: dict[int, dict[str, Any]] = {}
+    for item in items:
+        layer_id = item.get("layer")
+        if isinstance(layer_id, int):
+            indexed[layer_id] = item
+    return indexed
+
+
+def _build_checkpoint_layer_parts(
+    *,
+    layer_id: int,
+    checkpoint: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(checkpoint, dict):
+        return {
+            "signals": [],
+            "evidence": [],
+            "blocks": [],
+            "state_delta": _NO_TRANSITION_DELTA_MESSAGE,
+            "status": "observed",
+        }
+
+    top_k_raw = checkpoint.get("top_k")
+    top_k_list = top_k_raw if isinstance(top_k_raw, list) else []
+    top_token = str(checkpoint.get("top_token") or "n/a")
+    confidence = checkpoint.get("confidence")
+    checkpoint_percent = checkpoint.get("percent")
+    changed = bool(checkpoint.get("changed"))
+    checkpoint_label = f"checkpoint {checkpoint_percent}%"
+    checkpoint_evidence = [
+        f"{entry.get('token', '?')} ({_format_float(entry.get('score'))})"
+        for entry in top_k_list[:3]
+        if isinstance(entry, dict)
+    ]
+    signal = {
+        "source": "logit_lens",
+        "label": checkpoint_label,
+        "detail": (
+            f"top token {top_token}; confidence {_format_float(confidence, 2)}; "
+            f"changed {'yes' if changed else 'no'}"
+        ),
+        "evidence": checkpoint_evidence,
+    }
+    block = {
+        "kind": "logit_lens",
+        "label": checkpoint_label,
+        "summary": f"Top token {top_token} at checkpoint {checkpoint_percent}%.",
+        "detail": (
+            f"Confidence {_format_float(confidence, 2)}; "
+            f"{'changed token path' if changed else 'stable token path'}."
+        ),
+        "impact": (
+            "This checkpoint marks a structural change in the prediction path."
+            if changed
+            else "This checkpoint preserves the current prediction path."
+        ),
+        "evidence": checkpoint_evidence,
+    }
+    state_delta = (
+        f"Prediction path shifts toward {top_token} at checkpoint {checkpoint_percent}%."
+        if changed
+        else f"Prediction path stays centered on {top_token} at checkpoint {checkpoint_percent}%."
+    )
+    evidence = [
+        f"{checkpoint_label} layer {layer_id}: {top_token} ({_format_float(confidence, 2)})",
+        *checkpoint_evidence,
+    ]
+    return {
+        "signals": [signal],
+        "evidence": evidence,
+        "blocks": [block],
+        "state_delta": state_delta,
+        "status": "changed" if changed else "stable",
+    }
+
+
+def _build_attention_layer_parts(
+    *,
+    layer_id: int,
+    attention_layer: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(attention_layer, dict):
+        return {
+            "signals": [],
+            "evidence": [],
+            "blocks": [],
+            "state_delta": None,
+            "status": None,
+        }
+
+    heads_raw = attention_layer.get("heads")
+    head_list = heads_raw if isinstance(heads_raw, list) else []
+    head_entries: list[dict[str, Any]] = []
+    link_samples: list[str] = []
+    for head in head_list[:2]:
+        if not isinstance(head, dict):
+            continue
+        links_raw = head.get("top_links")
+        link_list = links_raw if isinstance(links_raw, list) else []
+        head_entries.append(
+            {
+                "head": int(head.get("head") or 0),
+                "summary": f"{len(link_list)} link(s)",
+                "detail": "Strong attention links from this head.",
+                "evidence": [
+                    f"{link.get('from_token', '?')} → {link.get('to_token', '?')} ({_format_float(link.get('weight'))})"
+                    for link in link_list[:4]
+                    if isinstance(link, dict)
+                ],
+            }
+        )
+        for link in link_list[:2]:
+            if not isinstance(link, dict):
+                continue
+            link_samples.append(
+                f"head {head.get('head', '?')}: {link.get('from_token', '?')} → {link.get('to_token', '?')} ({_format_float(link.get('weight'))})"
+            )
+
+    link_total = sum(
+        len(head.get("top_links") or []) for head in head_list if isinstance(head, dict)
+    )
+    summary = f"{len(head_list)} head(s) and {link_total} link(s) reshape the active representation."
+    return {
+        "signals": [
+            {
+                "source": "attention",
+                "label": f"attention layer {layer_id}",
+                "detail": f"{len(head_list)} head(s) with {link_total} link(s)",
+                "evidence": link_samples[:4],
+            }
+        ],
+        "evidence": [
+            f"attention layer {layer_id}: {len(head_list)} head(s)",
+            *link_samples[:4],
+        ],
+        "blocks": [
+            {
+                "kind": "attention",
+                "label": f"attention layer {layer_id}",
+                "summary": summary,
+                "detail": "Attention exposes the strongest links between the current tokens.",
+                "impact": "Attention shifts how the layer reads the current context.",
+                "heads": head_entries,
+                "evidence": link_samples[:4],
+            }
+        ],
+        "state_delta": f"Attention reshapes the active representation across {len(head_list)} head(s).",
+        "status": "inspection",
+    }
+
+
+def _build_saliency_layer_parts(
+    *,
+    layer_id: int,
+    saliency_anchor_layer: int | None,
+    saliency: dict[str, Any],
+    token_weights: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if saliency_anchor_layer is None or layer_id != saliency_anchor_layer:
+        return {
+            "signals": [],
+            "evidence": [],
+            "blocks": [],
+            "state_delta": None,
+            "status": None,
+        }
+    saliency_method = str(saliency.get("method") or "unknown")
+    target_token = str(saliency.get("target_output_token") or "n/a")
+    token_weight_samples = [
+        f"{entry.get('token', '?')} ({_format_float(entry.get('weight'))})"
+        for entry in token_weights[:5]
+        if isinstance(entry, dict)
+    ]
+    return {
+        "signals": [
+            {
+                "source": "saliency",
+                "label": f"saliency target {target_token}",
+                "detail": (
+                    f"method {saliency_method}; {len(token_weights)} weighted token(s)"
+                ),
+                "evidence": token_weight_samples,
+            }
+        ],
+        "evidence": [
+            f"saliency target {target_token} via {saliency_method}",
+            *token_weight_samples,
+        ],
+        "blocks": [
+            {
+                "kind": "saliency",
+                "label": f"saliency target {target_token}",
+                "summary": f"Saliency is anchored to {target_token} via {saliency_method}.",
+                "detail": f"{len(token_weights)} weighted token(s) highlight the target path.",
+                "impact": "Saliency makes the strongest supporting tokens visible.",
+                "evidence": token_weight_samples,
+            }
+        ],
+        "state_delta": f"Saliency concentrates the explanation around {target_token}.",
+        "status": "inspection",
+    }
+
+
+def _merge_layer_status(current_status: str, incoming_status: str | None) -> str:
+    if incoming_status is None:
+        return current_status
+    if current_status == "observed":
+        return incoming_status
+    return current_status
+
+
+def _build_layer_summary(
+    signals: list[dict[str, Any]],
+    blocks: list[dict[str, Any]],
+) -> str:
+    summary_parts = [signal["detail"] for signal in signals[:3]]
+    summary = (
+        "; ".join(summary_parts)
+        if summary_parts
+        else "No probe data captured for this layer."
+    )
+    if blocks:
+        return f"{summary} | {len(blocks)} block(s) resolved."
+    return summary
+
+
+def _build_layer_internals_notes(
+    *,
+    process_steps_count: int,
+    timeline_step_count: int,
+    saliency_anchor_layer: int | None,
+) -> list[str]:
+    notes = [
+        "Source data comes from logit_lens.checkpoints, attention.layers and saliency.token_weights.",
+        "Hidden-state activation path is sourced separately from hidden.hidden_slice.",
+        f"Process trace steps: {process_steps_count}",
+        f"Timeline steps: {timeline_step_count}",
+    ]
+    if saliency_anchor_layer is not None:
+        notes.append(
+            f"Saliency is anchored to layer {saliency_anchor_layer} because the payload does not carry an explicit hidden-layer index."
+        )
+    return notes
+
+
+def _build_layer_internals_summary_payload(
+    *,
+    layers: list[dict[str, Any]],
+    architecture_blocks: list[dict[str, Any]],
+    activation_summary: dict[str, Any],
+    activation_layers: list[dict[str, Any]],
+    activation_transitions: list[dict[str, Any]],
+    checkpoints: list[dict[str, Any]],
+    attention_layers: list[dict[str, Any]],
+    token_weights: list[dict[str, Any]],
+    process_steps_count: int,
+    timeline_step_count: int,
+) -> dict[str, Any]:
+    return {
+        "layer_count": len(layers),
+        "block_count": sum(len(layer.get("blocks") or []) for layer in layers),
+        "architecture_block_count": len(architecture_blocks),
+        "activation_layer_count": int(
+            activation_summary.get("selected_layer_count") or len(activation_layers)
+        ),
+        "activation_transition_count": int(
+            activation_summary.get("transition_count") or len(activation_transitions)
+        ),
+        "checkpoint_count": len(checkpoints),
+        "attention_layer_count": len(attention_layers),
+        "saliency_token_count": len(token_weights),
+        "process_step_count": process_steps_count,
+        "timeline_step_count": timeline_step_count,
+    }
+
+
 def _build_layer_internals_payload(
     *,
     process_trace: dict[str, Any] | None,
@@ -768,32 +1105,37 @@ def _build_layer_internals_payload(
     response_text: str,
     mlp_activation: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    checkpoints = list(logit_lens.get("checkpoints") or [])
-    attention_layers = list(attention.get("layers") or [])
-    token_weights = list(saliency.get("token_weights") or [])
-    checkpoint_layers = sorted(
-        {
-            int(checkpoint.get("layer"))
-            for checkpoint in checkpoints
-            if isinstance(checkpoint, dict) and isinstance(checkpoint.get("layer"), int)
-        }
+    checkpoints_raw = logit_lens.get("checkpoints")
+    attention_layers_raw = attention.get("layers")
+    token_weights_raw = saliency.get("token_weights")
+    checkpoints = [
+        item
+        for item in (checkpoints_raw if isinstance(checkpoints_raw, list) else [])
+        if isinstance(item, dict)
+    ]
+    attention_layers = [
+        item
+        for item in (
+            attention_layers_raw if isinstance(attention_layers_raw, list) else []
+        )
+        if isinstance(item, dict)
+    ]
+    token_weights = [
+        item
+        for item in (token_weights_raw if isinstance(token_weights_raw, list) else [])
+        if isinstance(item, dict)
+    ]
+    (
+        _checkpoint_layers,
+        _attention_layer_ids,
+        saliency_anchor_layer,
+        layer_ids,
+    ) = _collect_layer_ids(
+        checkpoints=checkpoints,
+        attention_layers=attention_layers,
     )
-    attention_layer_ids = sorted(
-        {
-            int(layer.get("layer"))
-            for layer in attention_layers
-            if isinstance(layer, dict) and isinstance(layer.get("layer"), int)
-        }
-    )
-    saliency_anchor_layer: int | None = None
-    if checkpoint_layers:
-        saliency_anchor_layer = checkpoint_layers[-1]
-    elif attention_layer_ids:
-        saliency_anchor_layer = attention_layer_ids[-1]
-    layer_id_candidates = [*checkpoint_layers, *attention_layer_ids]
-    if saliency_anchor_layer is not None:
-        layer_id_candidates.append(saliency_anchor_layer)
-    layer_ids = sorted(set(layer_id_candidates))
+    checkpoint_by_layer = _build_layer_index(checkpoints)
+    attention_by_layer = _build_layer_index(attention_layers)
 
     process_steps = (
         process_trace.get("step_count") if isinstance(process_trace, dict) else None
@@ -802,15 +1144,23 @@ def _build_layer_internals_payload(
     timeline_step_count = len(analysis_timeline)
     architecture_blocks = _build_architecture_blocks_payload(architecture_graph)
     activation_layers_raw = hidden_state.get("layers")
-    activation_layers = (
-        activation_layers_raw if isinstance(activation_layers_raw, list) else []
-    )
+    activation_layers = [
+        item
+        for item in (
+            activation_layers_raw if isinstance(activation_layers_raw, list) else []
+        )
+        if isinstance(item, dict)
+    ]
     activation_transitions_raw = hidden_state.get("transitions")
-    activation_transitions = (
-        activation_transitions_raw
-        if isinstance(activation_transitions_raw, list)
-        else []
-    )
+    activation_transitions = [
+        item
+        for item in (
+            activation_transitions_raw
+            if isinstance(activation_transitions_raw, list)
+            else []
+        )
+        if isinstance(item, dict)
+    ]
     activation_summary_raw = hidden_state.get("summary")
     activation_summary = (
         activation_summary_raw if isinstance(activation_summary_raw, dict) else {}
@@ -818,213 +1168,49 @@ def _build_layer_internals_payload(
     layers: list[dict[str, Any]] = []
 
     for layer_id in layer_ids:
-        checkpoint = next(
-            (
-                item
-                for item in checkpoints
-                if isinstance(item, dict) and item.get("layer") == layer_id
-            ),
-            None,
+        checkpoint_parts = _build_checkpoint_layer_parts(
+            layer_id=layer_id,
+            checkpoint=checkpoint_by_layer.get(layer_id),
         )
-        attention_layer = next(
-            (
-                item
-                for item in attention_layers
-                if isinstance(item, dict) and item.get("layer") == layer_id
-            ),
-            None,
+        attention_parts = _build_attention_layer_parts(
+            layer_id=layer_id,
+            attention_layer=attention_by_layer.get(layer_id),
         )
-        signals: list[dict[str, Any]] = []
-        evidence: list[str] = []
-        attention_block_evidence: list[str] = []
-        attention_block_summary = ""
+        saliency_parts = _build_saliency_layer_parts(
+            layer_id=layer_id,
+            saliency_anchor_layer=saliency_anchor_layer,
+            saliency=saliency,
+            token_weights=token_weights,
+        )
 
-        if isinstance(checkpoint, dict):
-            top_k = checkpoint.get("top_k")
-            top_k_list = top_k if isinstance(top_k, list) else []
-            top_token = str(checkpoint.get("top_token") or "n/a")
-            confidence = checkpoint.get("confidence")
-            percent = checkpoint.get("percent")
-            changed = bool(checkpoint.get("changed"))
-            checkpoint_label = f"checkpoint {percent}%"
-            checkpoint_detail = (
-                f"top token {top_token}; confidence {_format_float(confidence, 2)}; "
-                f"changed {'yes' if changed else 'no'}"
-            )
-            signals.append(
-                {
-                    "source": "logit_lens",
-                    "label": checkpoint_label,
-                    "detail": checkpoint_detail,
-                    "evidence": [
-                        f"{entry.get('token', '?')} ({_format_float(entry.get('score'))})"
-                        for entry in top_k_list[:3]
-                        if isinstance(entry, dict)
-                    ],
-                }
-            )
-            evidence.append(
-                f"{checkpoint_label} layer {layer_id}: {top_token} ({_format_float(confidence, 2)})"
-            )
-            evidence.extend(
-                [
-                    f"{entry.get('token', '?')} ({_format_float(entry.get('score'))})"
-                    for entry in top_k_list[:3]
-                    if isinstance(entry, dict)
-                ]
-            )
+        signals = [
+            *checkpoint_parts["signals"],
+            *attention_parts["signals"],
+            *saliency_parts["signals"],
+        ]
+        evidence = [
+            *checkpoint_parts["evidence"],
+            *attention_parts["evidence"],
+            *saliency_parts["evidence"],
+        ]
+        blocks = [
+            *checkpoint_parts["blocks"],
+            *attention_parts["blocks"],
+            *saliency_parts["blocks"],
+        ]
+        status = checkpoint_parts["status"]
+        status = _merge_layer_status(status, attention_parts["status"])
+        status = _merge_layer_status(status, saliency_parts["status"])
 
-        if isinstance(attention_layer, dict):
-            heads = attention_layer.get("heads")
-            head_list = heads if isinstance(heads, list) else []
-            head_entries: list[dict[str, Any]] = []
-            link_samples: list[str] = []
-            for head in head_list[:2]:
-                if not isinstance(head, dict):
-                    continue
-                links = head.get("top_links")
-                link_list = links if isinstance(links, list) else []
-                head_entries.append(
-                    {
-                        "head": int(head.get("head") or 0),
-                        "summary": f"{len(link_list)} link(s)",
-                        "detail": "Strong attention links from this head.",
-                        "evidence": [
-                            f"{link.get('from_token', '?')} → {link.get('to_token', '?')} ({_format_float(link.get('weight'))})"
-                            for link in link_list[:4]
-                            if isinstance(link, dict)
-                        ],
-                    }
-                )
-                for link in link_list[:2]:
-                    if not isinstance(link, dict):
-                        continue
-                    link_samples.append(
-                        f"head {head.get('head', '?')}: {link.get('from_token', '?')} → {link.get('to_token', '?')} ({_format_float(link.get('weight'))})"
-                    )
-            attention_block_evidence = link_samples[:4]
-            attention_block_summary = f"{len(head_list)} head(s) and {sum(len(head.get('top_links') or []) for head in head_list if isinstance(head, dict))} link(s) reshape the active representation."
-            signals.append(
-                {
-                    "source": "attention",
-                    "label": f"attention layer {layer_id}",
-                    "detail": f"{len(head_list)} head(s) with {sum(len(head.get('top_links') or []) for head in head_list if isinstance(head, dict))} link(s)",
-                    "evidence": link_samples[:4],
-                }
-            )
-            evidence.append(f"attention layer {layer_id}: {len(head_list)} head(s)")
-            evidence.extend(link_samples[:4])
-
-        if saliency_anchor_layer is not None and layer_id == saliency_anchor_layer:
-            saliency_method = str(saliency.get("method") or "unknown")
-            target_token = str(saliency.get("target_output_token") or "n/a")
-            token_weight_samples = [
-                f"{entry.get('token', '?')} ({_format_float(entry.get('weight'))})"
-                for entry in token_weights[:5]
-                if isinstance(entry, dict)
-            ]
-            signals.append(
-                {
-                    "source": "saliency",
-                    "label": f"saliency target {target_token}",
-                    "detail": (
-                        f"method {saliency_method}; {len(token_weights)} weighted token(s)"
-                    ),
-                    "evidence": token_weight_samples,
-                }
-            )
-            evidence.append(f"saliency target {target_token} via {saliency_method}")
-            evidence.extend(token_weight_samples)
-
-        blocks: list[dict[str, Any]] = []
-        state_delta = _NO_TRANSITION_DELTA_MESSAGE
-
-        if isinstance(checkpoint, dict):
-            checkpoint_percent = checkpoint.get("percent")
-            top_token = str(checkpoint.get("top_token") or "n/a")
-            confidence = _format_float(checkpoint.get("confidence"), 2)
-            changed = bool(checkpoint.get("changed"))
-            blocks.append(
-                {
-                    "kind": "logit_lens",
-                    "label": f"checkpoint {checkpoint_percent}%",
-                    "summary": f"Top token {top_token} at checkpoint {checkpoint_percent}%.",
-                    "detail": (
-                        f"Confidence {confidence}; "
-                        f"{'changed token path' if changed else 'stable token path'}."
-                    ),
-                    "impact": (
-                        "This checkpoint marks a structural change in the prediction path."
-                        if changed
-                        else "This checkpoint preserves the current prediction path."
-                    ),
-                    "evidence": [
-                        f"{entry.get('token', '?')} ({_format_float(entry.get('score'))})"
-                        for entry in top_k_list[:3]
-                        if isinstance(entry, dict)
-                    ],
-                }
-            )
-            state_delta = (
-                f"Prediction path shifts toward {top_token} at checkpoint {checkpoint_percent}%."
-                if changed
-                else f"Prediction path stays centered on {top_token} at checkpoint {checkpoint_percent}%."
-            )
-
-        status = "observed"
-        if isinstance(checkpoint, dict) and bool(checkpoint.get("changed")):
-            status = "changed"
-        elif any(signal["source"] == "attention" for signal in signals):
-            status = "inspection"
-        elif any(signal["source"] == "saliency" for signal in signals):
-            status = "inspection"
-        elif isinstance(checkpoint, dict):
-            status = "stable"
-
-        if isinstance(attention_layer, dict):
-            heads = attention_layer.get("heads")
-            head_list = heads if isinstance(heads, list) else []
-            link_total = sum(
-                len(head.get("top_links") or [])
-                for head in head_list
-                if isinstance(head, dict)
-            )
-            blocks.append(
-                {
-                    "kind": "attention",
-                    "label": f"attention layer {layer_id}",
-                    "summary": attention_block_summary
-                    or f"{len(head_list)} head(s) and {link_total} link(s) reshape the active representation.",
-                    "detail": "Attention exposes the strongest links between the current tokens.",
-                    "impact": "Attention shifts how the layer reads the current context.",
-                    "heads": head_entries,
-                    "evidence": attention_block_evidence,
-                }
-            )
-            if status == "observed":
-                status = "inspection"
-            if state_delta == _NO_TRANSITION_DELTA_MESSAGE:
-                state_delta = f"Attention reshapes the active representation across {len(head_list)} head(s)."
-
-        if saliency_anchor_layer is not None and layer_id == saliency_anchor_layer:
-            saliency_method = str(saliency.get("method") or "unknown")
-            target_token = str(saliency.get("target_output_token") or "n/a")
-            blocks.append(
-                {
-                    "kind": "saliency",
-                    "label": f"saliency target {target_token}",
-                    "summary": f"Saliency is anchored to {target_token} via {saliency_method}.",
-                    "detail": f"{len(token_weights)} weighted token(s) highlight the target path.",
-                    "impact": "Saliency makes the strongest supporting tokens visible.",
-                    "evidence": token_weight_samples,
-                }
-            )
-            if status == "observed":
-                status = "inspection"
-            if state_delta == _NO_TRANSITION_DELTA_MESSAGE:
-                state_delta = (
-                    f"Saliency concentrates the explanation around {target_token}."
-                )
+        state_delta = checkpoint_parts["state_delta"]
+        if state_delta == _NO_TRANSITION_DELTA_MESSAGE and isinstance(
+            attention_parts["state_delta"], str
+        ):
+            state_delta = attention_parts["state_delta"]
+        if state_delta == _NO_TRANSITION_DELTA_MESSAGE and isinstance(
+            saliency_parts["state_delta"], str
+        ):
+            state_delta = saliency_parts["state_delta"]
 
         response_linkage = _build_layer_response_linkage_payload(
             layer_id=layer_id,
@@ -1035,14 +1221,7 @@ def _build_layer_internals_payload(
             evidence_coverage=evidence_coverage,
         )
 
-        summary_parts = [signal["detail"] for signal in signals[:3]]
-        summary = (
-            "; ".join(summary_parts)
-            if summary_parts
-            else "No probe data captured for this layer."
-        )
-        if blocks:
-            summary = f"{summary} | {len(blocks)} block(s) resolved."
+        summary = _build_layer_summary(signals, blocks)
 
         layers.append(
             {
@@ -1060,37 +1239,29 @@ def _build_layer_internals_payload(
         )
 
     notes = [
-        "Source data comes from logit_lens.checkpoints, attention.layers and saliency.token_weights.",
-        "Hidden-state activation path is sourced separately from hidden.hidden_slice.",
-        f"Process trace steps: {process_steps_count}",
-        f"Timeline steps: {timeline_step_count}",
-    ]
-    if saliency_anchor_layer is not None:
-        notes.append(
-            f"Saliency is anchored to layer {saliency_anchor_layer} because the payload does not carry an explicit hidden-layer index."
+        *_build_layer_internals_notes(
+            process_steps_count=process_steps_count,
+            timeline_step_count=timeline_step_count,
+            saliency_anchor_layer=saliency_anchor_layer,
         )
+    ]
 
     return {
         "source": str(logit_lens.get("source") or "probe_unavailable"),
         "status": str(logit_lens.get("status") or "probe_unavailable"),
         "mode": "probe_runtime",
-        "summary": {
-            "layer_count": len(layers),
-            "block_count": sum(len(layer.get("blocks") or []) for layer in layers),
-            "architecture_block_count": len(architecture_blocks),
-            "activation_layer_count": int(
-                activation_summary.get("selected_layer_count") or len(activation_layers)
-            ),
-            "activation_transition_count": int(
-                activation_summary.get("transition_count")
-                or len(activation_transitions)
-            ),
-            "checkpoint_count": len(checkpoints),
-            "attention_layer_count": len(attention_layers),
-            "saliency_token_count": len(token_weights),
-            "process_step_count": process_steps_count,
-            "timeline_step_count": timeline_step_count,
-        },
+        "summary": _build_layer_internals_summary_payload(
+            layers=layers,
+            architecture_blocks=architecture_blocks,
+            activation_summary=activation_summary,
+            activation_layers=activation_layers,
+            activation_transitions=activation_transitions,
+            checkpoints=checkpoints,
+            attention_layers=attention_layers,
+            token_weights=token_weights,
+            process_steps_count=process_steps_count,
+            timeline_step_count=timeline_step_count,
+        ),
         "layers": layers,
         "architecture_blocks": architecture_blocks,
         "activation_path": hidden_state,

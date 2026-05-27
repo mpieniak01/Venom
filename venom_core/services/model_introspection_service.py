@@ -213,18 +213,35 @@ def _append_native_candidate_if_matching(
         return
 
 
-def _resolve_native_architecture_source(
-    *,
-    runtime: dict[str, Any],
-    model_manager: Any,
-) -> dict[str, Any] | None:
-    candidates: list[tuple[float, Path, dict[str, Any], dict[str, Any]]] = []
-    runtime_model = str(runtime.get("model") or "").strip()
-    runtime_model_store = ""
-    if "/" in runtime_model:
-        owner, name = runtime_model.split("/", 1)
-        runtime_model_store = f"models--{owner}--{name}"
+def _resolve_runtime_model_store(runtime_model: str) -> str:
+    if "/" not in runtime_model:
+        return ""
+    owner, name = runtime_model.split("/", 1)
+    return f"models--{owner}--{name}"
 
+
+def _select_newest_native_candidate(
+    candidates: list[tuple[float, Path, dict[str, Any], dict[str, Any]]],
+    source_label: str,
+) -> dict[str, Any] | None:
+    if not candidates:
+        return None
+    _, config_path, config, _manifest = max(candidates, key=lambda item: item[0])
+    runtime_dir = config_path.parent
+    return {
+        "config_path": config_path,
+        "config": config,
+        "manifest_path": runtime_dir / _RUNTIME_VLLM_MANIFEST_NAME,
+        "source": source_label,
+    }
+
+
+def _collect_hf_cache_candidates(
+    *,
+    candidates: list[tuple[float, Path, dict[str, Any], dict[str, Any]]],
+    runtime_model: str,
+    runtime_model_store: str,
+) -> None:
     hf_cache_roots = [
         Path("./models_cache/hf").resolve(),
         Path("./models/cache/huggingface/hub").resolve(),
@@ -241,16 +258,9 @@ def _resolve_native_architecture_source(
                 config_path=config_path,
                 runtime_model=runtime_model,
             )
-    if candidates:
-        _, config_path, config, _manifest = max(candidates, key=lambda item: item[0])
-        runtime_dir = config_path.parent
-        return {
-            "config_path": config_path,
-            "config": config,
-            "manifest_path": runtime_dir / _RUNTIME_VLLM_MANIFEST_NAME,
-            "source": "native hf cache config",
-        }
 
+
+def _resolve_active_adapter_source(model_manager: Any) -> dict[str, Any] | None:
     active_adapter_info = None
     get_active_adapter_info = getattr(model_manager, "get_active_adapter_info", None)
     if callable(get_active_adapter_info):
@@ -262,19 +272,24 @@ def _resolve_native_architecture_source(
     active_adapter_path = str(
         (active_adapter_info or {}).get("adapter_path") or ""
     ).strip()
-    if active_adapter_path:
-        adapter_path = Path(active_adapter_path).expanduser().resolve()
-        runtime_config = adapter_path.parent / "runtime_vllm" / "config.json"
-        if runtime_config.exists():
-            return {
-                "config_path": runtime_config,
-                "config": _read_json_file(runtime_config),
-                "manifest_path": adapter_path.parent
-                / "runtime_vllm"
-                / _RUNTIME_VLLM_MANIFEST_NAME,
-                "source": _NATIVE_RUNTIME_CONFIG_SOURCE,
-            }
+    if not active_adapter_path:
+        return None
 
+    adapter_path = Path(active_adapter_path).expanduser().resolve()
+    runtime_config = adapter_path.parent / "runtime_vllm" / "config.json"
+    if not runtime_config.exists():
+        return None
+    return {
+        "config_path": runtime_config,
+        "config": _read_json_file(runtime_config),
+        "manifest_path": adapter_path.parent
+        / "runtime_vllm"
+        / _RUNTIME_VLLM_MANIFEST_NAME,
+        "source": _NATIVE_RUNTIME_CONFIG_SOURCE,
+    }
+
+
+def _resolve_native_search_roots(model_manager: Any) -> list[Path]:
     models_dir = getattr(model_manager, "models_dir", None)
     search_roots: list[Path] = []
     if isinstance(models_dir, Path):
@@ -282,7 +297,15 @@ def _resolve_native_architecture_source(
     default_models_dir = Path("./data/models").resolve()
     if default_models_dir not in search_roots:
         search_roots.append(default_models_dir)
+    return search_roots
 
+
+def _collect_runtime_vllm_candidates(
+    *,
+    candidates: list[tuple[float, Path, dict[str, Any], dict[str, Any]]],
+    runtime_model: str,
+    search_roots: list[Path],
+) -> None:
     for root in search_roots:
         if not root.exists():
             continue
@@ -293,17 +316,70 @@ def _resolve_native_architecture_source(
                 runtime_model=runtime_model,
             )
 
-    if not candidates:
-        return None
 
-    _, config_path, config, _manifest = max(candidates, key=lambda item: item[0])
-    runtime_dir = config_path.parent
-    return {
-        "config_path": config_path,
-        "config": config,
-        "manifest_path": runtime_dir / _RUNTIME_VLLM_MANIFEST_NAME,
-        "source": _NATIVE_RUNTIME_CONFIG_SOURCE,
-    }
+def _resolve_native_architecture_source(
+    *,
+    runtime: dict[str, Any],
+    model_manager: Any,
+) -> dict[str, Any] | None:
+    candidates: list[tuple[float, Path, dict[str, Any], dict[str, Any]]] = []
+    runtime_model = str(runtime.get("model") or "").strip()
+    runtime_model_store = _resolve_runtime_model_store(runtime_model)
+    _collect_hf_cache_candidates(
+        candidates=candidates,
+        runtime_model=runtime_model,
+        runtime_model_store=runtime_model_store,
+    )
+    hf_cache_source = _select_newest_native_candidate(
+        candidates,
+        "native hf cache config",
+    )
+    if hf_cache_source is not None:
+        return hf_cache_source
+
+    adapter_source = _resolve_active_adapter_source(model_manager)
+    if adapter_source is not None:
+        return adapter_source
+
+    _collect_runtime_vllm_candidates(
+        candidates=candidates,
+        runtime_model=runtime_model,
+        search_roots=_resolve_native_search_roots(model_manager),
+    )
+    return _select_newest_native_candidate(candidates, _NATIVE_RUNTIME_CONFIG_SOURCE)
+
+
+def _resolve_native_architecture_section(config: dict[str, Any]) -> dict[str, Any]:
+    text_config = config.get("text_config")
+    if isinstance(text_config, dict):
+        return text_config
+    return config
+
+
+def _resolve_native_layer_count(architecture_section: dict[str, Any]) -> int:
+    layer_count = _safe_int(architecture_section.get("num_hidden_layers"), 0)
+    if layer_count > 0:
+        return layer_count
+    return max(1, len(architecture_section.get("layer_types") or []))
+
+
+def _resolve_native_statuses(
+    *,
+    missing_packages: list[str],
+    model_manager: dict[str, Any],
+    probe_health: dict[str, Any],
+    reuse: dict[str, Any],
+) -> tuple[str, str, str, str]:
+    package_pressure = "degraded" if missing_packages else "ready"
+    layer_status = "ready" if bool(model_manager.get("available")) else "degraded"
+    probe_status = "ready" if bool(probe_health.get("healthy")) else "degraded"
+    reuse_status = (
+        "ready"
+        if bool(reuse.get("brain", {}).get("available"))
+        or bool(reuse.get("diagnostics"))
+        else "unknown"
+    )
+    return package_pressure, layer_status, probe_status, reuse_status
 
 
 def _normalize_layer_types(
@@ -331,15 +407,11 @@ def _build_native_architecture_graph_snapshot(
     architecture_source: dict[str, Any],
 ) -> dict[str, Any]:
     config = architecture_source["config"]
-    architecture_section = config
-    if isinstance(config.get("text_config"), dict):
-        architecture_section = config["text_config"]
+    architecture_section = _resolve_native_architecture_section(config)
     generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     architecture_name = str((config.get("architectures") or [runtime["model"]])[0])
     model_type = str(config.get("model_type") or architecture_name or runtime["model"])
-    layer_count = _safe_int(architecture_section.get("num_hidden_layers"), 0)
-    if layer_count <= 0:
-        layer_count = max(1, len(architecture_section.get("layer_types") or []))
+    layer_count = _resolve_native_layer_count(architecture_section)
     layer_types = _normalize_layer_types(
         architecture_section.get("layer_types"),
         layer_count,
@@ -350,16 +422,13 @@ def _build_native_architecture_graph_snapshot(
     intermediate_size = _safe_int(architecture_section.get("intermediate_size"), 0)
     head_dim = _safe_int(architecture_section.get("head_dim"), 0)
     sliding_window = _safe_int(architecture_section.get("sliding_window"), 0)
-    has_model_manager = bool(model_manager.get("available"))
-    has_probe = bool(probe_health.get("healthy"))
-    package_pressure = "degraded" if missing_packages else "ready"
-    layer_status = "ready" if has_model_manager else "degraded"
-    probe_status = "ready" if has_probe else "degraded"
-    reuse_status = (
-        "ready"
-        if bool(reuse.get("brain", {}).get("available"))
-        or bool(reuse.get("diagnostics"))
-        else "unknown"
+    package_pressure, layer_status, probe_status, reuse_status = (
+        _resolve_native_statuses(
+            missing_packages=missing_packages,
+            model_manager=model_manager,
+            probe_health=probe_health,
+            reuse=reuse,
+        )
     )
     runtime_source = str(
         architecture_source.get("source") or _NATIVE_RUNTIME_CONFIG_SOURCE
@@ -428,7 +497,7 @@ def _build_native_architecture_graph_snapshot(
                 "id": "output",
                 "label": "Answer output",
                 "kind": "output",
-                "status": "ready" if has_model_manager else "degraded",
+                "status": layer_status,
                 "layer_index": layer_count + 1,
                 "role": "output",
                 "group": "exit",

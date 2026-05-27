@@ -3349,7 +3349,12 @@ function formatOptionalMetric(
 }
 
 function formatTrendDelta(value: number, digits: number): string {
-  const direction = value > 0 ? "↑" : value < 0 ? "↓" : "→";
+  let direction = "→";
+  if (value > 0) {
+    direction = "↑";
+  } else if (value < 0) {
+    direction = "↓";
+  }
   const sign = value > 0 ? "+" : "";
   return `${direction} ${sign}${value.toFixed(digits)}`;
 }
@@ -3374,6 +3379,98 @@ function buildTensorComparisonKey(
   return `${layerId}-tensor-comp-${requestId}-${tsMs}-${mlpL2}-${cosineSimilarity}`;
 }
 
+type TensorActivationModel = NonNullable<ArchitectureMlpActivation["tensorActivation"]>;
+type TensorComparison = TensorActivationModel["comparisons"][number];
+
+type TensorStabilitySectionProps = Readonly<{
+  stability: TensorActivationModel["stability"];
+  stabilityVariance: string;
+  stabilityCosineMean: string;
+  t: (key: string) => string;
+}>;
+
+function renderOptionalNormBadge(label: string, value: number | null): JSX.Element | null {
+  if (value === null) {
+    return null;
+  }
+  return (
+    <Badge tone="neutral">
+      {label} {value.toFixed(3)}
+    </Badge>
+  );
+}
+
+function TensorStabilitySection({ stability, stabilityVariance, stabilityCosineMean, t }: TensorStabilitySectionProps) {
+  if (!stability) {
+    return null;
+  }
+
+  const stabilityTone = stability.stable ? "success" : "warning";
+  const stabilityStateLabel = stability.stable
+    ? t("inspector.modelIntrospection.dashboard.graph.stability.stable")
+    : t("inspector.modelIntrospection.dashboard.graph.stability.unstable");
+  const hasCosineMean = stability.cosineSimilarityMean != null;
+
+  return (
+    <div className="mt-4 border-t border-white/10 pt-3">
+      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+        {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationStability")}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Badge tone={stabilityTone}>
+          {stabilityStateLabel} ({t(`inspector.modelIntrospection.dashboard.graph.stability.status.${stability.statusLabel}`)})
+        </Badge>
+        <Badge tone="neutral">
+          {t("inspector.modelIntrospection.dashboard.graph.stability.variance")}: {stabilityVariance}
+        </Badge>
+        {hasCosineMean ? (
+          <Badge tone="neutral">
+            {t("inspector.modelIntrospection.dashboard.graph.stability.meanCos")}: {stabilityCosineMean}
+          </Badge>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+type TensorComparisonItemProps = Readonly<{
+  comparison: TensorComparison;
+}>;
+
+function TensorComparisonItem({ comparison }: TensorComparisonItemProps) {
+  const requestLabel = comparison.requestId ? comparison.requestId.slice(0, 8) : "N/A";
+  const timestampLabel = comparison.tsMs ? new Date(comparison.tsMs).toLocaleString() : "N/A";
+  const mlpL2Label = comparison.mlpL2 === null ? "N/A" : comparison.mlpL2.toFixed(3);
+  const cosineLabel = comparison.cosineSimilarity === null ? "N/A" : comparison.cosineSimilarity.toFixed(3);
+
+  return (
+    <div className="rounded-lg border border-white/5 bg-black/40 p-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-1 text-zinc-400">
+        <span className="font-mono">{requestLabel}</span>
+        <span>{timestampLabel}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-2 text-zinc-300">
+        <span>
+          L2: {mlpL2Label}
+          {comparison.mlpL2Diff !== null && (
+            <span className="ml-1 text-zinc-400">
+              ({formatTrendDelta(comparison.mlpL2Diff, 3)})
+            </span>
+          )}
+        </span>
+        <span>
+          cos: {cosineLabel}
+          {comparison.cosineSimilarityDiff !== null && (
+            <span className="ml-1 text-zinc-400">
+              ({formatTrendDelta(comparison.cosineSimilarityDiff, 3)})
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function TensorActivationDetail({ tensorActivation, layerId, t }: TensorActivationDetailProps) {
   const naLabel = t("inspector.modelIntrospection.common.na");
   const stabilityVariance = formatOptionalMetric(tensorActivation.stability?.mlpL2Variance, 6, naLabel);
@@ -3383,6 +3480,10 @@ function TensorActivationDetail({ tensorActivation, layerId, t }: TensorActivati
     naLabel,
   );
   const evidenceEntries = buildKeyedTextEntries(`${layerId}-tensor-evidence`, tensorActivation.evidence);
+  const hasTopDeltaDimensions = tensorActivation.topDeltaDimensions.length > 0;
+  const hasComparisons = tensorActivation.comparisons.length > 0;
+  const hasEvidence = tensorActivation.evidence.length > 0;
+  const hasNotes = tensorActivation.notes.length > 0;
 
   return (
     <div className="rounded-lg border border-white/10 bg-black/20 p-3">
@@ -3404,23 +3505,11 @@ function TensorActivationDetail({ tensorActivation, layerId, t }: TensorActivati
         <Badge tone="neutral">
           L2 MLP {tensorActivation.norms.mlpL2.toFixed(3)}
         </Badge>
-        {tensorActivation.norms.residualL2 === null ? null : (
-          <Badge tone="neutral">
-            L2 residual {tensorActivation.norms.residualL2.toFixed(3)}
-          </Badge>
-        )}
-        {tensorActivation.norms.deltaL2 === null ? null : (
-          <Badge tone="neutral">
-            L2 delta {tensorActivation.norms.deltaL2.toFixed(3)}
-          </Badge>
-        )}
-        {tensorActivation.norms.cosineSimilarity === null ? null : (
-          <Badge tone="neutral">
-            cos {tensorActivation.norms.cosineSimilarity.toFixed(3)}
-          </Badge>
-        )}
+        {renderOptionalNormBadge("L2 residual", tensorActivation.norms.residualL2)}
+        {renderOptionalNormBadge("L2 delta", tensorActivation.norms.deltaL2)}
+        {renderOptionalNormBadge("cos", tensorActivation.norms.cosineSimilarity)}
       </div>
-      {tensorActivation.topDeltaDimensions.length > 0 ? (
+      {hasTopDeltaDimensions ? (
         <div className="mt-2 flex flex-wrap gap-2">
           {tensorActivation.topDeltaDimensions.slice(0, 6).map((dimension) => (
             <Badge key={`${layerId}-tensor-delta-${dimension.index}`} tone="neutral">
@@ -3432,72 +3521,29 @@ function TensorActivationDetail({ tensorActivation, layerId, t }: TensorActivati
 
 
 
-      {/* Stability section */}
-      {tensorActivation.stability ? (
-        <div className="mt-4 border-t border-white/10 pt-3">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-            {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationStability")}
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge tone={tensorActivation.stability.stable ? "success" : "warning"}>
-              {tensorActivation.stability.stable
-                ? t("inspector.modelIntrospection.dashboard.graph.stability.stable")
-                : t("inspector.modelIntrospection.dashboard.graph.stability.unstable")}{" "}
-              ({t(`inspector.modelIntrospection.dashboard.graph.stability.status.${tensorActivation.stability.statusLabel}`)})
-            </Badge>
-            <Badge tone="neutral">
-              {t("inspector.modelIntrospection.dashboard.graph.stability.variance")}:{" "}
-              {stabilityVariance}
-            </Badge>
-            {tensorActivation.stability.cosineSimilarityMean !== null && tensorActivation.stability.cosineSimilarityMean !== undefined ? (
-              <Badge tone="neutral">
-                {t("inspector.modelIntrospection.dashboard.graph.stability.meanCos")}:{" "}
-                {stabilityCosineMean}
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <TensorStabilitySection
+        stability={tensorActivation.stability}
+        stabilityVariance={stabilityVariance}
+        stabilityCosineMean={stabilityCosineMean}
+        t={t}
+      />
 
       {/* Comparisons section */}
-      {tensorActivation.comparisons && tensorActivation.comparisons.length > 0 ? (
+      {hasComparisons ? (
         <div className="mt-4 border-t border-white/10 pt-3">
           <p className="text-[11px] uppercase tracking-wide text-zinc-500">
             {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationComparisons")}
           </p>
           <div className="mt-2 max-h-40 overflow-auto space-y-2 pr-1">
-            {tensorActivation.comparisons.map((comp) => (
-              <div key={buildTensorComparisonKey(layerId, comp)} className="rounded-lg border border-white/5 bg-black/40 p-2 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-1 text-zinc-400">
-                  <span className="font-mono">{comp.requestId ? comp.requestId.slice(0, 8) : "N/A"}</span>
-                  <span>{comp.tsMs ? new Date(comp.tsMs).toLocaleString() : "N/A"}</span>
-                </div>
-                <div className="mt-1 flex flex-wrap gap-2 text-zinc-300">
-                  <span>
-                    L2: {comp.mlpL2 === null ? "N/A" : comp.mlpL2.toFixed(3)}
-                    {comp.mlpL2Diff !== null && (
-                      <span className="ml-1 text-zinc-400">
-                        ({formatTrendDelta(comp.mlpL2Diff, 3)})
-                      </span>
-                    )}
-                  </span>
-                  <span>
-                    cos: {comp.cosineSimilarity === null ? "N/A" : comp.cosineSimilarity.toFixed(3)}
-                    {comp.cosineSimilarityDiff !== null && (
-                      <span className="ml-1 text-zinc-400">
-                        ({formatTrendDelta(comp.cosineSimilarityDiff, 3)})
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </div>
+            {tensorActivation.comparisons.map((comparison) => (
+              <TensorComparisonItem key={buildTensorComparisonKey(layerId, comparison)} comparison={comparison} />
             ))}
           </div>
         </div>
       ) : null}
 
       {/* Evidence section */}
-      {tensorActivation.evidence && tensorActivation.evidence.length > 0 ? (
+      {hasEvidence ? (
         <div className="mt-4 border-t border-white/10 pt-3">
           <p className="text-[11px] uppercase tracking-wide text-zinc-500">
             {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsTensorActivationEvidence")}
@@ -3512,7 +3558,7 @@ function TensorActivationDetail({ tensorActivation, layerId, t }: TensorActivati
         </div>
       ) : null}
 
-      {tensorActivation.notes.length > 0 ? (
+      {hasNotes ? (
         <div className="mt-3 border-t border-white/10 pt-2 flex flex-wrap gap-2">
           {tensorActivation.notes.map((note) => (
             <Badge key={`${layerId}-tensor-note-${note}`} tone="neutral">

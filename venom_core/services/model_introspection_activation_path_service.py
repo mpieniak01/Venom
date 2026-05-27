@@ -204,7 +204,11 @@ def _compute_cosine_similarity(
 ) -> float | None:
     if not left_slice or not right_slice or left_norm <= 0.0 or right_norm <= 0.0:
         return None
-    dot_product = sum(left * right for left, right in zip(left_slice, right_slice))
+    if len(left_slice) != len(right_slice):
+        return None
+    dot_product = sum(
+        left * right for left, right in zip(left_slice, right_slice, strict=True)
+    )
     return round(dot_product / (left_norm * right_norm), 6)
 
 
@@ -237,8 +241,8 @@ def _build_tensor_activation_comparisons(
 ) -> list[dict[str, Any]]:
     comparisons: list[dict[str, Any]] = []
     for run in past_runs:
-        past_mlp_l2 = run.get("mlp_l2")
-        past_cos = run.get("cosine_similarity")
+        past_mlp_l2 = _safe_float(run.get("mlp_l2"))
+        past_cos = _safe_float(run.get("cosine_similarity"))
         mlp_l2_diff = (
             round(mlp_norm_val - past_mlp_l2, 6) if past_mlp_l2 is not None else None
         )
@@ -266,14 +270,18 @@ def _collect_mlp_and_cosine_history(
     mlp_norm_val: float,
     cosine_similarity_val: float | None,
 ) -> tuple[list[float], list[float]]:
-    all_mlp_l2 = [mlp_norm_val] + [
-        run["mlp_l2"] for run in past_runs if run.get("mlp_l2") is not None
-    ]
-    all_cos = ([cosine_similarity_val] if cosine_similarity_val is not None else []) + [
-        run["cosine_similarity"]
-        for run in past_runs
-        if run.get("cosine_similarity") is not None
-    ]
+    all_mlp_l2 = [mlp_norm_val]
+    for run in past_runs:
+        value = _safe_float(run.get("mlp_l2"))
+        if value is not None:
+            all_mlp_l2.append(value)
+
+    all_cos = [cosine_similarity_val] if cosine_similarity_val is not None else []
+    for run in past_runs:
+        value = _safe_float(run.get("cosine_similarity"))
+        if value is not None:
+            all_cos.append(value)
+
     return all_mlp_l2, all_cos
 
 
@@ -352,7 +360,9 @@ def _build_tensor_activation_contract(
     delta_vector = (
         [
             round(current - previous, 6)
-            for previous, current in zip(mlp_hidden_slice, residual_hidden_slice)
+            for previous, current in zip(
+                mlp_hidden_slice, residual_hidden_slice, strict=False
+            )
         ]
         if residual_hidden_slice
         else []
@@ -810,7 +820,7 @@ async def build_activation_path_payload(
     ]
 
     transitions: list[dict[str, Any]] = []
-    for previous_layer, current_layer in zip(layers, layers[1:]):
+    for previous_layer, current_layer in zip(layers, layers[1:], strict=False):
         transitions.append(
             _build_transition(
                 previous_layer=previous_layer,

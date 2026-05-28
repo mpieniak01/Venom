@@ -2162,6 +2162,13 @@ function useRuntimeGraphCytoscape(args: {
     cyRef,
     cyInstanceRef,
   } = args;
+  const onSelectGraphNodeRef = useRef(onSelectGraphNode);
+  const onSelectTransitionIdRef = useRef(onSelectTransitionId);
+
+  useEffect(() => {
+    onSelectGraphNodeRef.current = onSelectGraphNode;
+    onSelectTransitionIdRef.current = onSelectTransitionId;
+  }, [onSelectGraphNode, onSelectTransitionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2202,19 +2209,19 @@ function useRuntimeGraphCytoscape(args: {
           const node = evt.target;
           const nodeId = String(node.id() || "");
           if (!nodeId) return;
-          onSelectTransitionId(null);
-          onSelectGraphNode(nodeId);
+          onSelectTransitionIdRef.current(null);
+          onSelectGraphNodeRef.current(nodeId);
         });
         cy.on("tap", "edge", (evt: cytoscapeType.EventObject) => {
           if (cy?.destroyed()) return;
           const edgeId = String(evt.target.id() || "");
           if (!edgeId) return;
-          onSelectTransitionId(edgeId);
+          onSelectTransitionIdRef.current(edgeId);
         });
         cy.on("tap", (evt: cytoscapeType.EventObject) => {
           if (cy?.destroyed()) return;
           if (evt.target === cy) {
-            onSelectTransitionId(null);
+            onSelectTransitionIdRef.current(null);
           }
         });
         cyInstanceRef.current = cy;
@@ -2252,8 +2259,6 @@ function useRuntimeGraphCytoscape(args: {
     cyRef,
     edges,
     nodes,
-    onSelectGraphNode,
-    onSelectTransitionId,
   ]);
 
   useEffect(() => {

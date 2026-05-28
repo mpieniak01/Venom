@@ -2548,15 +2548,13 @@ export function GraphPanel(props: GraphPanelProps) {
     [snapshot],
   );
   const { nodes, edges, transitions } = graphPresentation;
-  const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(
-    transitions[0]?.id ?? null,
-  );
+  const [selectedTransitionIdState, setSelectedTransitionIdState] = useState<string | null>(null);
   const [showFallbackSelectors, setShowFallbackSelectors] = useState(false);
   const graphDrilldownPresentation = useMemo(
     () =>
       mapGraphDrilldownPresentationModel({
         transitions,
-        selectedTransitionId,
+        selectedTransitionId: selectedTransitionIdState,
         selectedGraphNode,
         selectedGraphNodeDetails,
         typeHintText,
@@ -2564,24 +2562,36 @@ export function GraphPanel(props: GraphPanelProps) {
     [
       selectedGraphNode,
       selectedGraphNodeDetails,
-      selectedTransitionId,
+      selectedTransitionIdState,
       transitions,
       typeHintText,
     ],
   );
+  const selectedTransitionIdResolved = useMemo(() => {
+    if (transitions.length <= 0) {
+      return null;
+    }
+    if (
+      selectedTransitionIdState &&
+      transitions.some((transition) => transition.id === selectedTransitionIdState)
+    ) {
+      return selectedTransitionIdState;
+    }
+    return transitions[0]?.id ?? null;
+  }, [selectedTransitionIdState, transitions]);
   const graphFallbackSelectorsPresentation = useMemo(
     () =>
       mapGraphFallbackSelectorsPresentationModel({
         showFallbackSelectors,
         transitions,
-        selectedTransitionId,
+        selectedTransitionId: selectedTransitionIdResolved,
         nodes,
         selectedGraphNodeId,
       }),
     [
       nodes,
       selectedGraphNodeId,
-      selectedTransitionId,
+      selectedTransitionIdResolved,
       showFallbackSelectors,
       transitions,
     ],
@@ -2593,28 +2603,12 @@ export function GraphPanel(props: GraphPanelProps) {
     nodes,
     edges,
     selectedGraphNodeId,
-    selectedTransitionId,
+    selectedTransitionId: selectedTransitionIdResolved,
     onSelectGraphNode,
-    onSelectTransitionId: setSelectedTransitionId,
+    onSelectTransitionId: setSelectedTransitionIdState,
     cyRef: runtimeGraphRef,
     cyInstanceRef: runtimeCyInstanceRef,
   });
-
-  useEffect(() => {
-    if (transitions.length <= 0) {
-      if (selectedTransitionId !== null) {
-        setSelectedTransitionId(null);
-      }
-      return;
-    }
-    if (
-      selectedTransitionId &&
-      transitions.some((transition) => transition.id === selectedTransitionId)
-    ) {
-      return;
-    }
-    setSelectedTransitionId(transitions[0]?.id ?? null);
-  }, [selectedTransitionId, transitions]);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -2643,7 +2637,7 @@ export function GraphPanel(props: GraphPanelProps) {
         <GraphFallbackSelectorsCard
           model={graphFallbackSelectorsPresentation}
           onToggleFallbackSelectors={() => setShowFallbackSelectors((open) => !open)}
-          onSelectTransitionId={setSelectedTransitionId}
+          onSelectTransitionId={setSelectedTransitionIdState}
           onSelectGraphNode={onSelectGraphNode}
         />
       </div>

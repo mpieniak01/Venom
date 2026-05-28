@@ -1581,6 +1581,60 @@ describe("ModelIntrospectionDashboard", () => {
     assert.ok(screen.getByText("fidelity native"));
   });
 
+  it("keeps runtime fallback selectors collapsed by default and toggles them on demand", async () => {
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+
+    await waitFor(() => {
+      assert.ok(
+        screen.getByRole("button", {
+          name: /Show technical layer|Pokaż warstwę techniczną|Technische Ebene anzeigen/i,
+        }),
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Show technical layer|Pokaż warstwę techniczną|Technische Ebene anzeigen/i,
+      }),
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByTestId("runtime-graph-container"));
+      assert.ok(screen.getByText("Additional selectors (fallback)"));
+      assert.ok(screen.getByRole("button", { name: /Show selectors/i }));
+    });
+
+    assert.equal(screen.queryByText("Key transitions"), null);
+    assert.equal(screen.queryByText("Node selection"), null);
+
+    fireEvent.click(screen.getByRole("button", { name: /Show selectors/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByText("Key transitions"));
+      assert.ok(screen.getByText("Node selection"));
+      assert.ok(screen.getByRole("button", { name: /Hide selectors/i }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Hide selectors/i }));
+
+    await waitFor(() => {
+      assert.equal(screen.queryByText("Key transitions"), null);
+      assert.equal(screen.queryByText("Node selection"), null);
+      assert.ok(screen.getByRole("button", { name: /Show selectors/i }));
+    });
+  });
+
   it("toggles normalized and raw token views in logit-lens panel", async () => {
     render(
       <LanguageProvider>

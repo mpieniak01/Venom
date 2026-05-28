@@ -320,19 +320,12 @@ function TechnicalLayerPanel({
       title={t("inspector.modelIntrospection.dashboard.graph.layerTitle")}
       description={t("inspector.modelIntrospection.dashboard.graph.layerDescription")}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="neutral">nodes {formatCount(snapshot.graph?.summary.nodes ?? 0)}</Badge>
-          <Badge tone="neutral">edges {formatCount(snapshot.graph?.summary.edges ?? 0)}</Badge>
-          <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
-            drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
-          </Badge>
-        </div>
-        <Button variant="ghost" onClick={onToggleGraphLayer}>
-          {graphLayerOpen
-            ? t("inspector.modelIntrospection.dashboard.graph.hideLayer")
-            : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">nodes {formatCount(snapshot.graph?.summary.nodes ?? 0)}</Badge>
+        <Badge tone="neutral">edges {formatCount(snapshot.graph?.summary.edges ?? 0)}</Badge>
+        <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
+          drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
+        </Badge>
       </div>
       <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -374,8 +367,15 @@ function TechnicalLayerPanel({
           />
         </div>
       ) : null}
+      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+        <Button variant="ghost" onClick={onToggleGraphLayer}>
+          {graphLayerOpen
+            ? t("inspector.modelIntrospection.dashboard.graph.hideLayer")
+            : t("inspector.modelIntrospection.dashboard.graph.showLayer")}
+        </Button>
+      </div>
       {graphLayerOpen ? (
-        <div className="mt-4">
+        <div className="mt-3">
           <GraphPanel
             snapshot={snapshot}
             analysisActive={analysisActive}

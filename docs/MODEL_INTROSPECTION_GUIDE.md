@@ -88,6 +88,17 @@ The timeline now separates two paths:
 
 This helps identify whether a delay is caused by the answer itself or by additional probes.
 
+### 4.4 Interactive presentation layer (249G)
+
+The technical layer in `/inspector/model-introspection` is now presentation-first:
+
+- interactive runtime graph is the default anchor,
+- transition and node details are shown in drilldown panels after selection,
+- fallback selectors are collapsed by default (`Show selectors`) and only expanded on demand,
+- verbose technical payloads (`Technical IDs`, transition narrative text) are optional and hidden behind explicit expand actions.
+
+This reduces duplicated representations of the same data and keeps first-screen focus on graphical interaction.
+
 ## 5. When the state is transitional
 
 The state is transitional if:

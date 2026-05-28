@@ -1837,22 +1837,71 @@ type GraphPanelProps = Readonly<{
 type GraphNodeItem = NonNullable<IntrospectionSnapshot["graph"]>["nodes"][number];
 type GraphEdgeItem = NonNullable<IntrospectionSnapshot["graph"]>["edges"][number];
 
-type GraphOverviewBadgesProps = Readonly<{ snapshot: IntrospectionSnapshot }>;
-type GraphNodesGridProps = Readonly<{
-  nodes: GraphNodeItem[];
-  selectedGraphNodeId: string | null;
-  onSelectGraphNode: (id: string) => void;
-}>;
-type GraphRelationsCardProps = Readonly<{ edges: GraphEdgeItem[] }>;
 type GraphSelectedNodeCardProps = Readonly<{
   selectedGraphNode: GraphNodeItem | null;
   selectedGraphNodeDetails: GraphNodeDetails | null;
   typeHintText: string;
 }>;
-type GraphContextSummaryProps = Readonly<{
+type GraphTransitionsCardProps = Readonly<{
+  transitions: GraphTransition[];
+  selectedTransitionId: string | null;
+  onSelectTransitionId: (id: string) => void;
+}>;
+type GraphTransitionDetailCardProps = Readonly<{
+  selectedTransition: GraphTransition | null;
+}>;
+type GraphNodeQuickPickProps = Readonly<{
+  nodes: GraphNodeItem[];
+  selectedGraphNodeId: string | null;
+  onSelectGraphNode: (id: string) => void;
+}>;
+type GraphFallbackSelectorsCardProps = Readonly<{
+  model: GraphFallbackSelectorsPresentationModel;
+  onToggleFallbackSelectors: () => void;
+  onSelectTransitionId: (id: string) => void;
+  onSelectGraphNode: (id: string) => void;
+}>;
+type GraphRuntimeDrilldownColumnProps = Readonly<{
+  selectedTransition: GraphTransition | null;
+  selectedGraphNode: GraphNodeItem | null;
+  selectedGraphNodeDetails: GraphNodeDetails | null;
+  typeHintText: string;
+}>;
+type GraphSignalStripProps = Readonly<{
   snapshot: IntrospectionSnapshot;
   analysisActive: boolean;
-  nodeCount: number;
+}>;
+type GraphTransitionSignificance = "key" | "supporting";
+type GraphTransition = Readonly<{
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  sourceLabel: string;
+  targetLabel: string;
+  before: string;
+  after: string;
+  delta: string;
+  impact: string;
+  significance: GraphTransitionSignificance;
+}>;
+type GraphPresentationModel = Readonly<{
+  nodes: GraphNodeItem[];
+  edges: GraphEdgeItem[];
+  transitions: GraphTransition[];
+}>;
+type GraphDrilldownPresentationModel = Readonly<{
+  selectedTransition: GraphTransition | null;
+  selectedGraphNode: GraphNodeItem | null;
+  selectedGraphNodeDetails: GraphNodeDetails | null;
+  typeHintText: string;
+}>;
+type GraphFallbackSelectorsPresentationModel = Readonly<{
+  showFallbackSelectors: boolean;
+  transitions: GraphTransition[];
+  selectedTransitionId: string | null;
+  nodes: GraphNodeItem[];
+  selectedGraphNodeId: string | null;
 }>;
 
 function getGraphNodes(snapshot: IntrospectionSnapshot): GraphNodeItem[] {
@@ -1877,61 +1926,364 @@ function getGraphSummary(
   );
 }
 
-function GraphOverviewBadges(props: GraphOverviewBadgesProps) {
-  const { snapshot } = props;
-  const summary = getGraphSummary(snapshot);
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Badge tone="neutral">nodes {formatCount(summary.nodes)}</Badge>
-      <Badge tone="neutral">edges {formatCount(summary.edges)}</Badge>
-      <Badge tone="success">available {formatCount(summary.available_packages)}</Badge>
-      <Badge tone="warning">missing {formatCount(summary.missing_packages)}</Badge>
-      <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
-        drift issues {formatCount(summary.drift_issues)}
-      </Badge>
-    </div>
-  );
+function getGraphTransitionSignificance(edge: GraphEdgeItem): GraphTransitionSignificance {
+  const label = edge.label.toLowerCase();
+  if (
+    label.includes("active model") ||
+    label.includes("prompt execution") ||
+    label.includes("introspection probe")
+  ) {
+    return "key";
+  }
+  if (label.includes("reuse") || label.includes("optional")) {
+    return "supporting";
+  }
+  return "key";
 }
 
-function GraphNodesGrid(props: GraphNodesGridProps) {
-  const { nodes, selectedGraphNodeId, onSelectGraphNode } = props;
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {nodes.map((node) => (
-        <GraphNodeCard
-          key={node.id}
-          label={node.label}
-          kind={node.kind}
-          status={node.status}
-          selected={selectedGraphNodeId === node.id}
-          onClick={() => onSelectGraphNode(node.id)}
-        />
-      ))}
-    </div>
-  );
+function getGraphTransitionDelta(edge: GraphEdgeItem): string {
+  const label = edge.label.toLowerCase();
+  if (label.includes("active model")) {
+    return "Runtime binds execution to the selected model.";
+  }
+  if (label.includes("prompt")) {
+    return "Prompt path becomes active for live analysis.";
+  }
+  if (label.includes("probe")) {
+    return "Probe path exposes internals for inspection.";
+  }
+  if (label.includes("reuse")) {
+    return "Existing subsystem is reused without switching model state.";
+  }
+  if (label.includes("optional")) {
+    return "Optional package augments introspection depth.";
+  }
+  return "The graph advances to the next operational context.";
 }
 
-function GraphRelationsCard(props: GraphRelationsCardProps) {
-  const { edges } = props;
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">Relations</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {edges.map((edge, index) => (
-          <Badge
-            key={`${edge.from}-${edge.to}-${edge.label}-${index}`}
-            tone="neutral"
-          >
-            {edge.from} → {edge.to} ({edge.label})
-          </Badge>
-        ))}
-      </div>
-      <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
-        Click any node to open the drilldown panel on the right. Package and reuse nodes are
-        treated the same way as runtime nodes so the graph stays uniform.
-      </div>
-    </div>
+function getGraphTransitionImpact(
+  significance: GraphTransitionSignificance,
+): string {
+  if (significance === "key") {
+    return "High-impact transition for runtime or analysis state.";
+  }
+  return "Supporting transition for diagnostics and optional capabilities.";
+}
+
+function getGraphTransitions(snapshot: IntrospectionSnapshot): GraphTransition[] {
+  const nodesById = new Map(
+    getGraphNodes(snapshot).map((node) => [node.id, node] as const),
   );
+  const transitions = getGraphEdges(snapshot).map((edge, index) => {
+    const sourceLabel = nodesById.get(edge.from)?.label ?? edge.from;
+    const targetLabel = nodesById.get(edge.to)?.label ?? edge.to;
+    const significance = getGraphTransitionSignificance(edge);
+    const delta = getGraphTransitionDelta(edge);
+    return {
+      id: `${edge.from}->${edge.to}:${index}`,
+      from: edge.from,
+      to: edge.to,
+      label: edge.label,
+      sourceLabel,
+      targetLabel,
+      before: sourceLabel,
+      after: targetLabel,
+      delta,
+      impact: getGraphTransitionImpact(significance),
+      significance,
+    };
+  });
+  const scored = transitions
+    .map((transition, index) => ({
+      transition,
+      score:
+        (transition.significance === "key" ? 3 : 1) +
+        (transition.label.toLowerCase().includes("active model") ? 4 : 0) +
+        (transition.label.toLowerCase().includes("prompt") ? 3 : 0) +
+        (transition.label.toLowerCase().includes("probe") ? 2 : 0) +
+        Math.max(0, 2 - index * 0.1),
+    }))
+    .sort((left, right) => right.score - left.score);
+  return scored.map((entry) => entry.transition);
+}
+
+function mapGraphPresentationModel(
+  snapshot: IntrospectionSnapshot,
+): GraphPresentationModel {
+  const nodes = getGraphNodes(snapshot);
+  const edges = getGraphEdges(snapshot);
+  const transitions = getGraphTransitions(snapshot);
+  return {
+    nodes,
+    edges,
+    transitions,
+  };
+}
+
+function mapGraphDrilldownPresentationModel(args: {
+  transitions: GraphTransition[];
+  selectedTransitionId: string | null;
+  selectedGraphNode: GraphNodeItem | null;
+  selectedGraphNodeDetails: GraphNodeDetails | null;
+  typeHintText: string;
+}): GraphDrilldownPresentationModel {
+  const {
+    transitions,
+    selectedTransitionId,
+    selectedGraphNode,
+    selectedGraphNodeDetails,
+    typeHintText,
+  } = args;
+  return {
+    selectedTransition:
+      transitions.find((transition) => transition.id === selectedTransitionId) ?? null,
+    selectedGraphNode,
+    selectedGraphNodeDetails,
+    typeHintText,
+  };
+}
+
+function mapGraphFallbackSelectorsPresentationModel(args: {
+  showFallbackSelectors: boolean;
+  transitions: GraphTransition[];
+  selectedTransitionId: string | null;
+  nodes: GraphNodeItem[];
+  selectedGraphNodeId: string | null;
+}): GraphFallbackSelectorsPresentationModel {
+  const {
+    showFallbackSelectors,
+    transitions,
+    selectedTransitionId,
+    nodes,
+    selectedGraphNodeId,
+  } = args;
+  return {
+    showFallbackSelectors,
+    transitions,
+    selectedTransitionId,
+    nodes,
+    selectedGraphNodeId,
+  };
+}
+
+function getGraphNodeColor(kind: string): string {
+  if (kind === "runtime") return "#06b6d4";
+  if (kind === "model") return "#8b5cf6";
+  if (kind === "analysis") return "#f59e0b";
+  if (kind === "manager") return "#10b981";
+  if (kind === "package") return "#22c55e";
+  if (kind === "probe") return "#eab308";
+  return "#64748b";
+}
+
+function getRuntimeGraphStyle(): cytoscapeType.StylesheetStyle[] {
+  return [
+    {
+      selector: "node",
+      style: {
+        label: "data(label)",
+        "background-color": (ele: cytoscapeType.NodeSingular) =>
+          getGraphNodeColor(String(ele.data("kind") || "unknown")),
+        color: "#fff",
+        "font-size": 10,
+        "text-opacity": 0.85,
+        "text-valign": "center",
+        "text-halign": "center",
+      },
+    },
+    {
+      selector: "node.highlighted",
+      style: { "border-width": 4, "border-color": "#67e8f9" },
+    },
+    {
+      selector: "edge",
+      style: {
+        label: "data(label)",
+        "font-size": 9,
+        color: "#cbd5e1",
+        "text-background-color": "#09090b",
+        "text-background-opacity": 0.85,
+        "text-background-padding": "2px",
+        "curve-style": "bezier",
+        "target-arrow-shape": "triangle",
+        width: 2,
+        "line-color": "#334155",
+      },
+    },
+    {
+      selector: "edge.highlighted",
+      style: { width: 4, "line-color": "#22d3ee", "target-arrow-color": "#22d3ee" },
+    },
+  ];
+}
+
+function buildRuntimeGraphElements(nodes: GraphNodeItem[], edges: GraphEdgeItem[]) {
+  return {
+    nodes: nodes.map((node, index) => ({
+      data: {
+        id: node.id,
+        label: node.label,
+        kind: node.kind,
+        status: node.status,
+      },
+      position: {
+        x: 120 + index * 150,
+        y: 160 + (index % 2) * 120,
+      },
+    })),
+    edges: edges.map((edge, index) => ({
+      data: {
+        id: `${edge.from}->${edge.to}:${index}`,
+        source: edge.from,
+        target: edge.to,
+        label: edge.label,
+      },
+    })),
+  };
+}
+
+function useRuntimeGraphCytoscape(args: {
+  nodes: GraphNodeItem[];
+  edges: GraphEdgeItem[];
+  selectedGraphNodeId: string | null;
+  selectedTransitionId: string | null;
+  onSelectGraphNode: (id: string) => void;
+  onSelectTransitionId: (id: string | null) => void;
+  cyRef: MutableRefObject<HTMLDivElement | null>;
+  cyInstanceRef: MutableRefObject<cytoscapeType.Core | null>;
+}) {
+  const {
+    nodes,
+    edges,
+    selectedGraphNodeId,
+    selectedTransitionId,
+    onSelectGraphNode,
+    onSelectTransitionId,
+    cyRef,
+    cyInstanceRef,
+  } = args;
+  const onSelectGraphNodeRef = useRef(onSelectGraphNode);
+  const onSelectTransitionIdRef = useRef(onSelectTransitionId);
+
+  useEffect(() => {
+    onSelectGraphNodeRef.current = onSelectGraphNode;
+    onSelectTransitionIdRef.current = onSelectTransitionId;
+  }, [onSelectGraphNode, onSelectTransitionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let cy: cytoscapeType.Core | null = null;
+
+    const setup = async () => {
+      if (cancelled || !cyRef.current || nodes.length <= 0) return;
+      try {
+        const cytoscape = (await import("cytoscape")).default;
+        if (cancelled || !cyRef.current) return;
+
+        const elements = buildRuntimeGraphElements(nodes, edges);
+        cy = cytoscape({
+          container: cyRef.current,
+          elements,
+          style: getRuntimeGraphStyle(),
+          layout: {
+            name: "breadthfirst",
+            animate: false,
+            fit: true,
+            padding: ARCHITECTURE_GRAPH_PADDING_PX,
+            directed: true,
+            circle: false,
+            spacingFactor: nodes.length >= 8 ? 1.45 : 1.35,
+            avoidOverlap: true,
+            nodeDimensionsIncludeLabels: true,
+            orientation: "horizontal",
+            roots: "#runtime",
+          },
+        });
+        if (cancelled) {
+          cy.destroy();
+          cy = null;
+          return;
+        }
+        cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
+          if (cy?.destroyed()) return;
+          const node = evt.target;
+          const nodeId = String(node.id() || "");
+          if (!nodeId) return;
+          onSelectTransitionIdRef.current(null);
+          onSelectGraphNodeRef.current(nodeId);
+        });
+        cy.on("tap", "edge", (evt: cytoscapeType.EventObject) => {
+          if (cy?.destroyed()) return;
+          const edgeId = String(evt.target.id() || "");
+          if (!edgeId) return;
+          onSelectTransitionIdRef.current(edgeId);
+        });
+        cy.on("tap", (evt: cytoscapeType.EventObject) => {
+          if (cy?.destroyed()) return;
+          if (evt.target === cy) {
+            onSelectTransitionIdRef.current(null);
+          }
+        });
+        cyInstanceRef.current = cy;
+        cy.resize();
+        cy.fit(undefined, ARCHITECTURE_GRAPH_PADDING_PX);
+      } catch {
+        if (cy && !cy.destroyed()) {
+          try {
+            cy.destroy();
+          } catch {
+            // best effort cleanup
+          }
+        }
+        cy = null;
+        cyInstanceRef.current = null;
+      }
+    };
+
+    void setup();
+    return () => {
+      cancelled = true;
+      if (cy) {
+        try {
+          cy.destroy();
+        } catch {
+          // best effort cleanup
+        }
+      }
+      if (cyInstanceRef.current === cy) {
+        cyInstanceRef.current = null;
+      }
+    };
+  }, [
+    cyInstanceRef,
+    cyRef,
+    edges,
+    nodes,
+  ]);
+
+  useEffect(() => {
+    const cy = cyInstanceRef.current;
+    if (!cy || cy.destroyed()) return;
+    cy.nodes().removeClass("highlighted");
+    if (selectedGraphNodeId) {
+      const node = cy.getElementById(selectedGraphNodeId);
+      if (node.nonempty()) {
+        node.addClass("highlighted");
+      }
+    }
+  }, [cyInstanceRef, selectedGraphNodeId]);
+
+  useEffect(() => {
+    const cy = cyInstanceRef.current;
+    if (!cy || cy.destroyed()) return;
+    cy.edges().removeClass("highlighted");
+    if (selectedTransitionId) {
+      const edge = cy.getElementById(selectedTransitionId);
+      if (edge.nonempty()) {
+        edge.addClass("highlighted");
+      }
+    }
+  }, [cyInstanceRef, selectedTransitionId]);
 }
 
 function GraphSelectedNodeCard(props: GraphSelectedNodeCardProps) {
@@ -1964,10 +2316,12 @@ function GraphSelectedNodeCard(props: GraphSelectedNodeCardProps) {
               ))}
             </div>
           </div>
-          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Type hint</p>
-            <p className="mt-1 text-sm text-zinc-300">{typeHintText}</p>
-          </div>
+          <details className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-400">
+              Type hint (optional)
+            </summary>
+            <p className="mt-2 text-sm text-zinc-300">{typeHintText}</p>
+          </details>
         </div>
       ) : (
         <p className="mt-3 text-sm text-zinc-300">
@@ -1978,8 +2332,197 @@ function GraphSelectedNodeCard(props: GraphSelectedNodeCardProps) {
   );
 }
 
-function GraphContextSummary(props: GraphContextSummaryProps) {
-  const { snapshot, analysisActive, nodeCount } = props;
+function GraphTransitionsCard(props: GraphTransitionsCardProps) {
+  const t = useTranslation();
+  const { transitions, selectedTransitionId, onSelectTransitionId } = props;
+  return (
+    <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.fallback.keyTransitions")}
+        </p>
+        <Badge tone="neutral">{formatCount(transitions.length)} available</Badge>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {transitions.map((transition) => (
+          <button
+            key={transition.id}
+            type="button"
+            onClick={() => onSelectTransitionId(transition.id)}
+            className={`rounded-xl border px-4 py-3 text-left transition ${
+              selectedTransitionId === transition.id
+                ? "border-cyan-300 bg-cyan-500/15"
+                : "border-white/10 bg-white/5 hover:border-cyan-300/40 hover:bg-white/10"
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-sm text-white">
+                {transition.sourceLabel} → {transition.targetLabel}
+              </p>
+              <Badge tone={transition.significance === "key" ? "success" : "neutral"}>
+                {transition.significance}
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+              {transition.label}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GraphTransitionDetailCard(props: GraphTransitionDetailCardProps) {
+  const { selectedTransition } = props;
+  return (
+    <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">Transition detail</p>
+        <Badge tone={selectedTransition ? "success" : "neutral"}>
+          {selectedTransition ? "transition selected" : "awaiting selection"}
+        </Badge>
+      </div>
+      {selectedTransition ? (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={selectedTransition.significance === "key" ? "success" : "neutral"}>
+              {selectedTransition.significance}
+            </Badge>
+            <Badge tone="neutral">{selectedTransition.label}</Badge>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Before</p>
+              <p className="mt-1 font-mono text-sm text-white">{selectedTransition.before}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">After</p>
+              <p className="mt-1 font-mono text-sm text-white">{selectedTransition.after}</p>
+            </div>
+          </div>
+          <details className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-400">
+              Transition narrative (optional)
+            </summary>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Delta</p>
+                <p className="mt-1 text-sm text-zinc-300">{selectedTransition.delta}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Impact</p>
+                <p className="mt-1 text-sm text-zinc-300">{selectedTransition.impact}</p>
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Technical IDs</p>
+              <p className="mt-1 font-mono text-xs text-zinc-400">
+                {selectedTransition.from} → {selectedTransition.to}
+              </p>
+            </div>
+          </details>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-zinc-300">
+          Select a key transition on the graph or from the list to inspect state change.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function GraphNodeQuickPick(props: GraphNodeQuickPickProps) {
+  const t = useTranslation();
+  const { nodes, selectedGraphNodeId, onSelectGraphNode } = props;
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-wide text-zinc-500">
+        {t("inspector.modelIntrospection.dashboard.graph.fallback.nodeSelection")}
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {nodes.map((node) => (
+          <GraphNodeCard
+            key={node.id}
+            label={node.label}
+            kind={node.kind}
+            status={node.status}
+            selected={selectedGraphNodeId === node.id}
+            onClick={() => onSelectGraphNode(node.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GraphFallbackSelectorsCard(props: GraphFallbackSelectorsCardProps) {
+  const t = useTranslation();
+  const { model, onToggleFallbackSelectors, onSelectTransitionId, onSelectGraphNode } = props;
+  const {
+    showFallbackSelectors,
+    transitions,
+    selectedTransitionId,
+    nodes,
+    selectedGraphNodeId,
+  } = model;
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.fallback.additionalSelectors")}
+        </p>
+        <button
+          type="button"
+          onClick={onToggleFallbackSelectors}
+          aria-expanded={showFallbackSelectors}
+          aria-controls="graph-fallback-selectors-content"
+          className="rounded-full border border-cyan-300/40 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-wide text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-500/20"
+        >
+          {showFallbackSelectors
+            ? t("inspector.modelIntrospection.dashboard.graph.fallback.hideSelectors")
+            : t("inspector.modelIntrospection.dashboard.graph.fallback.showSelectors")}
+        </button>
+      </div>
+      {showFallbackSelectors ? (
+        <div id="graph-fallback-selectors-content" className="mt-4 space-y-4">
+          <GraphTransitionsCard
+            transitions={transitions}
+            selectedTransitionId={selectedTransitionId}
+            onSelectTransitionId={onSelectTransitionId}
+          />
+          <GraphNodeQuickPick
+            nodes={nodes}
+            selectedGraphNodeId={selectedGraphNodeId}
+            onSelectGraphNode={onSelectGraphNode}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function GraphRuntimeDrilldownColumn(props: GraphRuntimeDrilldownColumnProps) {
+  const {
+    selectedTransition,
+    selectedGraphNode,
+    selectedGraphNodeDetails,
+    typeHintText,
+  } = props;
+  return (
+    <div className="flex h-full flex-col space-y-4">
+      <GraphTransitionDetailCard selectedTransition={selectedTransition} />
+      <GraphSelectedNodeCard
+        selectedGraphNode={selectedGraphNode}
+        selectedGraphNodeDetails={selectedGraphNodeDetails}
+        typeHintText={typeHintText}
+      />
+    </div>
+  );
+}
+
+function GraphSignalStrip(props: GraphSignalStripProps) {
+  const { snapshot, analysisActive } = props;
   const summary = getGraphSummary(snapshot);
   const totalPackages =
     snapshot.available_packages.length + snapshot.missing_packages.length;
@@ -1987,41 +2530,19 @@ function GraphContextSummary(props: GraphContextSummaryProps) {
     <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="neutral">runtime {snapshot.summary.runtime_label}</Badge>
+        <Badge tone="neutral">model {snapshot.runtime.model}</Badge>
+        <Badge tone="neutral">nodes {formatCount(summary.nodes)}</Badge>
+        <Badge tone="neutral">edges {formatCount(summary.edges)}</Badge>
         <Badge tone={analysisActive ? "success" : "neutral"}>
           analysis {analysisActive ? "live" : "idle"}
         </Badge>
         <Badge tone={snapshot.runtime_drift.drift_detected ? "warning" : "success"}>
-          drift {snapshot.runtime_drift.drift_detected ? "present" : "clean"}
+          drift issues {formatCount(summary.drift_issues)}
         </Badge>
         <Badge tone={snapshot.missing_packages.length === 0 ? "success" : "warning"}>
           packages {formatCount(snapshot.available_packages.length)}/{formatCount(totalPackages)}
         </Badge>
       </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Runtime</p>
-          <p className="mt-1 font-mono text-sm text-white">{snapshot.runtime.provider}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Model</p>
-          <p className="mt-1 font-mono text-sm text-white">{snapshot.runtime.model}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Analysis nodes</p>
-          <p className="mt-1 font-mono text-sm text-white">{formatCount(nodeCount)}</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Relations</p>
-          <p className="mt-1 font-mono text-sm text-white">
-            {formatCount(summary.edges)} edges
-          </p>
-        </div>
-      </div>
-      <p className="mt-3 text-sm text-zinc-300">
-        Graph data is derived from the same snapshot as the runtime view, so the graph stays
-        lightweight while still reflecting active model, diagnostics reuse, package coverage and
-        drift state.
-      </p>
     </div>
   );
 }
@@ -2038,9 +2559,72 @@ export function GraphPanel(props: GraphPanelProps) {
     title,
     description,
   } = props;
-  const nodes = getGraphNodes(snapshot);
-  const edges = getGraphEdges(snapshot);
-  const analysisNodeCount = nodes.filter((node) => node.kind === "analysis").length;
+  const graphPresentation = useMemo(
+    () => mapGraphPresentationModel(snapshot),
+    [snapshot],
+  );
+  const { nodes, edges, transitions } = graphPresentation;
+  const [selectedTransitionIdState, setSelectedTransitionIdState] = useState<string | null>(null);
+  const [showFallbackSelectors, setShowFallbackSelectors] = useState(false);
+  const graphDrilldownPresentation = useMemo(
+    () =>
+      mapGraphDrilldownPresentationModel({
+        transitions,
+        selectedTransitionId: selectedTransitionIdState,
+        selectedGraphNode,
+        selectedGraphNodeDetails,
+        typeHintText,
+      }),
+    [
+      selectedGraphNode,
+      selectedGraphNodeDetails,
+      selectedTransitionIdState,
+      transitions,
+      typeHintText,
+    ],
+  );
+  const selectedTransitionIdResolved = useMemo(() => {
+    if (transitions.length <= 0) {
+      return null;
+    }
+    if (
+      selectedTransitionIdState &&
+      transitions.some((transition) => transition.id === selectedTransitionIdState)
+    ) {
+      return selectedTransitionIdState;
+    }
+    return transitions[0]?.id ?? null;
+  }, [selectedTransitionIdState, transitions]);
+  const graphFallbackSelectorsPresentation = useMemo(
+    () =>
+      mapGraphFallbackSelectorsPresentationModel({
+        showFallbackSelectors,
+        transitions,
+        selectedTransitionId: selectedTransitionIdResolved,
+        nodes,
+        selectedGraphNodeId,
+      }),
+    [
+      nodes,
+      selectedGraphNodeId,
+      selectedTransitionIdResolved,
+      showFallbackSelectors,
+      transitions,
+    ],
+  );
+  const runtimeGraphRef = useRef<HTMLDivElement | null>(null);
+  const runtimeCyInstanceRef = useRef<cytoscapeType.Core | null>(null);
+
+  useRuntimeGraphCytoscape({
+    nodes,
+    edges,
+    selectedGraphNodeId,
+    selectedTransitionId: selectedTransitionIdResolved,
+    onSelectGraphNode,
+    onSelectTransitionId: setSelectedTransitionIdState,
+    cyRef: runtimeGraphRef,
+    cyInstanceRef: runtimeCyInstanceRef,
+  });
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -2050,24 +2634,27 @@ export function GraphPanel(props: GraphPanelProps) {
         <p className="text-sm text-zinc-300">{description}</p>
       </div>
       <div className="mt-4 space-y-4">
-        <GraphOverviewBadges snapshot={snapshot} />
-        <GraphNodesGrid
-          nodes={nodes}
-          selectedGraphNodeId={selectedGraphNodeId}
-          onSelectGraphNode={onSelectGraphNode}
-        />
-        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <GraphRelationsCard edges={edges} />
-          <GraphSelectedNodeCard
-            selectedGraphNode={selectedGraphNode}
-            selectedGraphNodeDetails={selectedGraphNodeDetails}
-            typeHintText={typeHintText}
+        <GraphSignalStrip snapshot={snapshot} analysisActive={analysisActive} />
+        <div className="grid items-stretch gap-4 xl:grid-cols-[1.45fr_0.85fr]">
+          <div className="min-h-[500px] overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+            <div
+              ref={runtimeGraphRef}
+              data-testid="runtime-graph-container"
+              className="h-[clamp(500px,68vh,700px)] w-full"
+            />
+          </div>
+          <GraphRuntimeDrilldownColumn
+            selectedTransition={graphDrilldownPresentation.selectedTransition}
+            selectedGraphNode={graphDrilldownPresentation.selectedGraphNode}
+            selectedGraphNodeDetails={graphDrilldownPresentation.selectedGraphNodeDetails}
+            typeHintText={graphDrilldownPresentation.typeHintText}
           />
         </div>
-        <GraphContextSummary
-          snapshot={snapshot}
-          analysisActive={analysisActive}
-          nodeCount={analysisNodeCount}
+        <GraphFallbackSelectorsCard
+          model={graphFallbackSelectorsPresentation}
+          onToggleFallbackSelectors={() => setShowFallbackSelectors((open) => !open)}
+          onSelectTransitionId={setSelectedTransitionIdState}
+          onSelectGraphNode={onSelectGraphNode}
         />
       </div>
     </div>
@@ -4711,11 +5298,11 @@ function ArchitectureLayerInternalsSection({
       ) : null}
       {layerInternals.length > 0 ? (
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 xl:flex xl:min-h-[760px] xl:flex-col">
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">
               {t("inspector.modelIntrospection.dashboard.graph.architectureLayerInternalsList")}
             </p>
-            <div className="mt-3 max-h-80 space-y-2 overflow-auto pr-1">
+            <div className="mt-3 max-h-[70vh] space-y-2 overflow-auto pr-1 xl:flex-1 xl:max-h-none">
               {layerInternals.map((layer) => {
                 const isSelected = layer.id === selectedLayerId;
                 return (

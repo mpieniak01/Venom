@@ -1270,6 +1270,7 @@ function createStableScreenStreamingResponse() {
 }
 
 beforeEach(() => {
+  globalThis.window.localStorage.setItem("venom-language", "en");
   globalThis.window.localStorage.setItem(mechanismStorageKey, "true");
   globalThis.fetch = async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -1454,6 +1455,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  globalThis.window.localStorage.removeItem("venom-language");
   globalThis.window.localStorage.removeItem(mechanismStorageKey);
   globalThis.fetch = originalFetch;
 });
@@ -1579,6 +1581,64 @@ describe("ModelIntrospectionDashboard", () => {
     assert.ok(screen.getAllByText(/Delta|Wpływ/i).length >= 1);
     assert.ok(screen.getByText("ready available"));
     assert.ok(screen.getByText("fidelity native"));
+  });
+
+  it("keeps runtime fallback selectors collapsed by default and toggles them on demand", async () => {
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+
+    await waitFor(() => {
+      assert.ok(
+        screen.getByRole("button", {
+          name: /Show technical layer|Pokaż warstwę techniczną|Technische Ebene anzeigen/i,
+        }),
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Show technical layer|Pokaż warstwę techniczną|Technische Ebene anzeigen/i,
+      }),
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByTestId("runtime-graph-container"));
+      assert.ok(
+        screen.getByText(
+          /Additional selectors \(fallback\)|Dodatkowe selektory \(awaryjne\)/i,
+        ),
+      );
+      assert.ok(screen.getByRole("button", { name: /Show selectors|Pokaż selektory/i }));
+    });
+
+    assert.equal(screen.queryByText(/Key transitions|Kluczowe przejścia/i), null);
+    assert.equal(screen.queryByText(/Node selection|Wybór węzła/i), null);
+
+    fireEvent.click(screen.getByRole("button", { name: /Show selectors|Pokaż selektory/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByText(/Key transitions|Kluczowe przejścia/i));
+      assert.ok(screen.getByText(/Node selection|Wybór węzła/i));
+      assert.ok(screen.getByRole("button", { name: /Hide selectors|Ukryj selektory/i }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Hide selectors|Ukryj selektory/i }));
+
+    await waitFor(() => {
+      assert.equal(screen.queryByText(/Key transitions|Kluczowe przejścia/i), null);
+      assert.equal(screen.queryByText(/Node selection|Wybór węzła/i), null);
+      assert.ok(screen.getByRole("button", { name: /Show selectors|Pokaż selektory/i }));
+    });
   });
 
   it("toggles normalized and raw token views in logit-lens panel", async () => {

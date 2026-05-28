@@ -899,6 +899,13 @@ export const de = {
           architectureTransitionsDescription:
             "Heben Sie die Übergänge hervor, die den Zustand ändern, statt jeden einzelnen Verbindungsschritt anzuzeigen.",
           architectureTransitionsSelected: "hervorgehoben",
+          fallback: {
+            additionalSelectors: "Zusätzliche Selektoren (Fallback)",
+            showSelectors: "Selektoren anzeigen",
+            hideSelectors: "Selektoren ausblenden",
+            keyTransitions: "Schlüsselübergänge",
+            nodeSelection: "Knotenauswahl",
+          },
           architectureProgressTitle: "Fortschritts-Checkpoints",
           architectureProgressDescription:
             "Gehen Sie vom Prompt zum Output durch die Stufen, die den Modellzustand tatsächlich verändern.",

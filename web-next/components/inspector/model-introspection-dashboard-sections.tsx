@@ -2004,7 +2004,7 @@ function getGraphTransitions(snapshot: IntrospectionSnapshot): GraphTransition[]
         Math.max(0, 2 - index * 0.1),
     }))
     .sort((left, right) => right.score - left.score);
-  return scored.slice(0, Math.min(5, scored.length)).map((entry) => entry.transition);
+  return scored.map((entry) => entry.transition);
 }
 
 function mapGraphPresentationModel(
@@ -2333,11 +2333,14 @@ function GraphSelectedNodeCard(props: GraphSelectedNodeCardProps) {
 }
 
 function GraphTransitionsCard(props: GraphTransitionsCardProps) {
+  const t = useTranslation();
   const { transitions, selectedTransitionId, onSelectTransitionId } = props;
   return (
     <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs uppercase tracking-wide text-zinc-500">Key transitions</p>
+        <p className="text-xs uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.fallback.keyTransitions")}
+        </p>
         <Badge tone="neutral">{formatCount(transitions.length)} available</Badge>
       </div>
       <div className="mt-3 grid gap-2">
@@ -2430,10 +2433,13 @@ function GraphTransitionDetailCard(props: GraphTransitionDetailCardProps) {
 }
 
 function GraphNodeQuickPick(props: GraphNodeQuickPickProps) {
+  const t = useTranslation();
   const { nodes, selectedGraphNodeId, onSelectGraphNode } = props;
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">Node selection</p>
+      <p className="text-xs uppercase tracking-wide text-zinc-500">
+        {t("inspector.modelIntrospection.dashboard.graph.fallback.nodeSelection")}
+      </p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {nodes.map((node) => (
           <GraphNodeCard
@@ -2451,6 +2457,7 @@ function GraphNodeQuickPick(props: GraphNodeQuickPickProps) {
 }
 
 function GraphFallbackSelectorsCard(props: GraphFallbackSelectorsCardProps) {
+  const t = useTranslation();
   const { model, onToggleFallbackSelectors, onSelectTransitionId, onSelectGraphNode } = props;
   const {
     showFallbackSelectors,
@@ -2463,18 +2470,22 @@ function GraphFallbackSelectorsCard(props: GraphFallbackSelectorsCardProps) {
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs uppercase tracking-wide text-zinc-500">
-          Additional selectors (fallback)
+          {t("inspector.modelIntrospection.dashboard.graph.fallback.additionalSelectors")}
         </p>
         <button
           type="button"
           onClick={onToggleFallbackSelectors}
+          aria-expanded={showFallbackSelectors}
+          aria-controls="graph-fallback-selectors-content"
           className="rounded-full border border-cyan-300/40 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-wide text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-500/20"
         >
-          {showFallbackSelectors ? "Hide selectors" : "Show selectors"}
+          {showFallbackSelectors
+            ? t("inspector.modelIntrospection.dashboard.graph.fallback.hideSelectors")
+            : t("inspector.modelIntrospection.dashboard.graph.fallback.showSelectors")}
         </button>
       </div>
       {showFallbackSelectors ? (
-        <div className="mt-4 space-y-4">
+        <div id="graph-fallback-selectors-content" className="mt-4 space-y-4">
           <GraphTransitionsCard
             transitions={transitions}
             selectedTransitionId={selectedTransitionId}

@@ -899,6 +899,13 @@ export const pl = {
           architectureTransitionsDescription:
             "Wyróżnij przejścia, które zmieniają stan, zamiast każdego kroku łączącego.",
           architectureTransitionsSelected: "wyróżnionych",
+          fallback: {
+            additionalSelectors: "Dodatkowe selektory (awaryjne)",
+            showSelectors: "Pokaż selektory",
+            hideSelectors: "Ukryj selektory",
+            keyTransitions: "Kluczowe przejścia",
+            nodeSelection: "Wybór węzła",
+          },
           architectureProgressTitle: "Punkty kontrolne przebiegu",
           architectureProgressDescription:
             "Przejdź od promptu do odpowiedzi przez etapy, które rzeczywiście zmieniają stan modelu.",

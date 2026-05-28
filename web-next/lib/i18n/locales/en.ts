@@ -898,6 +898,13 @@ export const en = {
           architectureTransitionsDescription:
             "Highlight the transitions that change the state instead of every connector step.",
           architectureTransitionsSelected: "highlighted",
+          fallback: {
+            additionalSelectors: "Additional selectors (fallback)",
+            showSelectors: "Show selectors",
+            hideSelectors: "Hide selectors",
+            keyTransitions: "Key transitions",
+            nodeSelection: "Node selection",
+          },
           architectureProgressTitle: "Progress checkpoints",
           architectureProgressDescription:
             "Move from the prompt to the output through the stages that actually alter model state.",

@@ -1270,6 +1270,7 @@ function createStableScreenStreamingResponse() {
 }
 
 beforeEach(() => {
+  globalThis.window.localStorage.setItem("venom-language", "en");
   globalThis.window.localStorage.setItem(mechanismStorageKey, "true");
   globalThis.fetch = async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -1454,6 +1455,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  globalThis.window.localStorage.removeItem("venom-language");
   globalThis.window.localStorage.removeItem(mechanismStorageKey);
   globalThis.fetch = originalFetch;
 });
@@ -1611,27 +1613,31 @@ describe("ModelIntrospectionDashboard", () => {
 
     await waitFor(() => {
       assert.ok(screen.getByTestId("runtime-graph-container"));
-      assert.ok(screen.getByText("Additional selectors (fallback)"));
-      assert.ok(screen.getByRole("button", { name: /Show selectors/i }));
+      assert.ok(
+        screen.getByText(
+          /Additional selectors \(fallback\)|Dodatkowe selektory \(awaryjne\)/i,
+        ),
+      );
+      assert.ok(screen.getByRole("button", { name: /Show selectors|Pokaż selektory/i }));
     });
 
-    assert.equal(screen.queryByText("Key transitions"), null);
-    assert.equal(screen.queryByText("Node selection"), null);
+    assert.equal(screen.queryByText(/Key transitions|Kluczowe przejścia/i), null);
+    assert.equal(screen.queryByText(/Node selection|Wybór węzła/i), null);
 
-    fireEvent.click(screen.getByRole("button", { name: /Show selectors/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Show selectors|Pokaż selektory/i }));
 
     await waitFor(() => {
-      assert.ok(screen.getByText("Key transitions"));
-      assert.ok(screen.getByText("Node selection"));
-      assert.ok(screen.getByRole("button", { name: /Hide selectors/i }));
+      assert.ok(screen.getByText(/Key transitions|Kluczowe przejścia/i));
+      assert.ok(screen.getByText(/Node selection|Wybór węzła/i));
+      assert.ok(screen.getByRole("button", { name: /Hide selectors|Ukryj selektory/i }));
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Hide selectors/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Hide selectors|Ukryj selektory/i }));
 
     await waitFor(() => {
-      assert.equal(screen.queryByText("Key transitions"), null);
-      assert.equal(screen.queryByText("Node selection"), null);
-      assert.ok(screen.getByRole("button", { name: /Show selectors/i }));
+      assert.equal(screen.queryByText(/Key transitions|Kluczowe przejścia/i), null);
+      assert.equal(screen.queryByText(/Node selection|Wybór węzła/i), null);
+      assert.ok(screen.getByRole("button", { name: /Show selectors|Pokaż selektory/i }));
     });
   });
 

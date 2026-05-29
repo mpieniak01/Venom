@@ -64,7 +64,7 @@ openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.6
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
 
-transformers>=4.57.6,<5.0.0  # Zgodne z constraints-hf-onnx i stabilnym resolverem HF/ONNX
+transformers>=5.3.0  # Zgodne z constraints-hf-onnx i stabilnym resolverem HF/ONNX
 sentence-transformers   # Embeddingi do RAG
 pillow                  # Przetwarzanie obrazów
 timm                    # Modele wizyjne (zależność dla Florence-2)

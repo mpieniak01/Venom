@@ -16,4 +16,4 @@ onnx>=1.14.0
 onnx-ir>=0.1.16
 optimum
 accelerate
-transformers>=5.0.0,<6.0.0
+transformers>=5.3.0

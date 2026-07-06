@@ -52,14 +52,14 @@
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
     "dagre": "^0.8.5",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.11",
     "eventsource-parser": "^3.0.6",
     "framer-motion": "^12.23.26",
     "katex": "^0.16.27",
     "lucide-react": "^0.561.0",
     "marked": "15.0.12",
-    "mermaid": "^11.12.3",
-    "next": "^16.1.6",
+    "mermaid": "^11.16.0",
+    "next": "^16.2.10",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-zoom-pan-pinch": "^3.7.0",
@@ -78,7 +78,7 @@
     "@types/react-dom": "^19",
     "@types/three": "^0.184.1",
     "eslint": "^9",
-    "eslint-config-next": "^16.1.6",
+    "eslint-config-next": "^16.2.10",
     "jsdom": "^28.1.0",
     "playwright": "^1.57.0",
     "tailwindcss": "^4",
@@ -88,6 +88,10 @@
   },
   "overrides": {
     "dagre-d3-es": "7.0.13",
-    "marked": "15.0.12"
+    "marked": "15.0.12",
+    "lodash": "4.18.1",
+    "lodash-es": "4.18.1",
+    "postcss": "8.5.10",
+    "uuid": "11.1.1"
   }
 }

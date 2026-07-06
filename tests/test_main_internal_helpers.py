@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 import venom_core.main as main_module
+from venom_core.api.routes.system import _iter_routes
 from venom_core.nodes.protocol import MessageType
 
 
@@ -40,7 +41,11 @@ def test_extract_available_local_models_skips_missing_name_key():
 
 def test_main_app_includes_runtime_and_system_routes():
     """Main app should expose the expected runtime/system route prefixes."""
-    paths = {route.path for route in main_module.app.routes if hasattr(route, "path")}
+    paths = {
+        route.path
+        for route in _iter_routes(main_module.app.routes)
+        if hasattr(route, "path")
+    }
 
     assert "/api/v1/system/llm-servers" in paths
     assert "/api/v1/system/llm-servers/active" in paths

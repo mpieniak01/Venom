@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi import APIRouter, FastAPI
 
+from venom_core.api.routes.system import _iter_routes as _iter_concrete_routes
 from venom_core.services import module_registry
 
 
@@ -85,7 +86,10 @@ def test_include_optional_api_routers_includes_module_from_manifest_file(
     app = FastAPI()
     included = module_registry.include_optional_api_routers(app, settings)
     assert included == ["module_example"]
-    assert any(route.path == "/module-example/health" for route in app.routes)
+    assert any(
+        route.path == "/module-example/health"
+        for route in _iter_concrete_routes(app.routes)
+    )
 
 
 def test_include_optional_api_routers_respects_feature_flag(

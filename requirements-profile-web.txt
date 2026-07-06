@@ -15,5 +15,4 @@
 
 # Explicit web-integration runtime pins (kept aligned with CI-lite)
 websockets==15.0.1
-python-multipart==0.0.22
-bleach
+python-multipart==0.0.31

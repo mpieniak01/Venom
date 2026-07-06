@@ -10,21 +10,24 @@ pyautogen>=0.2.0        # Microsoft AutoGen (Standardowa, stabilna wersja)
 flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
 
 # API / orkiestracja zewnętrzna
-fastapi==0.128.0        # API Orchestratora (pin zgodny z profilem CI Lite)
+fastapi==0.139.0        # API Orchestratora (pin zgodny z profilem CI Lite)
 uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
-python-multipart==0.0.22 # Required for FastAPI multipart/form-data support (file uploads)
+python-multipart==0.0.31 # Required for FastAPI multipart/form-data support (file uploads)
 
 
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
 # UWAGA: linia SK musi być zgodna z OpenAI 2.x (wymóg litellm>=1.83.9 po fixach security).
-semantic-kernel>=1.42.0 # Microsoft Semantic Kernel (linia kompatybilna z OpenAI 2.x)
+semantic-kernel>=1.43.1 # Microsoft Semantic Kernel (linia kompatybilna z OpenAI 2.x)
 mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
-aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
+starlette==1.3.1        # ASGI framework pin for FastAPI/MCP compatibility and Snyk fixes
+aiohttp>=3.14.1         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
 urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
 requests>=2.32.5        # Wymusza bezpieczny łańcuch requests->urllib3 po CVE-2026-21441
 httpx==0.28.1           # Nowoczesny klient HTTP (pin zgodny z profilem CI Lite)
 aiofiles==25.1.0        # Async file I/O (pin zgodny z profilem CI Lite)
+cryptography>=48.0.1    # Fix for google-auth / aiortc transitive vulnerability
+pyopenssl>=26.0.0       # Fix for aiortc / semantic-kernel transitive vulnerability
 
 
 # --- VENOM METABOLISM: ONNX RUNTIME (Inference Engine) ---
@@ -55,7 +58,8 @@ pypdf>=6.6.0            # Ekstrakcja tekstu z PDF (fix CVE)
 filelock>=3.20.3        # Fix for TOCTOU/symlink issues (transitive from HF stack)
 # litellm>=1.84.0         # Security floor for GraphRAG transitive chain (OpenAI 2.x compatible)
 marshmallow>=4.1.2      # Fix for graphrag/environs transitive vulnerability
-pyasn1>=0.6.2           # Fix for google-auth transitive vulnerability
+pyasn1>=0.6.3           # Fix for google-auth transitive vulnerability
+pyjwt>=2.13.0           # Fix for redis / mcp transitive vulnerability
 werkzeug>=3.1.6         # Fix for Windows safe_join CVE chain
 markitdown              # Microsoft MarkItDown - konwersja dokumentów (PDF, DOCX) do Markdown
 python-docx             # Obsługa plików DOCX (fallback dla markitdown)
@@ -83,7 +87,7 @@ PyGithub                # GitHub API wrapper (External Discovery - GitHub Scanne
 huggingface_hub>=1.5.0,<2.0 # Hugging Face Hub API (External Discovery - Model Explorer), zakres zgodny z runtime transformers
 
 # Google Calendar Integration (THE_CALENDAR)
-google-auth>=2.23.0     # Google OAuth2 authentication
+google-auth>=2.55.1     # Google OAuth2 authentication
 google-auth-oauthlib>=1.1.0  # OAuth2 flow helpers
 google-auth-httplib2>=0.1.1  # HTTP transport for Google API
 google-api-python-client>=2.100.0  # Google Calendar API client
@@ -100,7 +104,7 @@ tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT
 
 # --- VENOM INFRASTRUCTURE & UTILS ---
 
-python-dotenv==1.2.1    # Zmienne środowiskowe (.env) (pin zgodny z profilem CI Lite)
+python-dotenv==1.2.2    # Zmienne środowiskowe (.env) (pin zgodny z profilem CI Lite)
 pydantic==2.11.10       # Walidacja (pin zgodny z profilem CI Lite i FastAPI)
 pydantic-settings==2.10.1  # Settings loader używany przez runtime
 numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)
@@ -135,7 +139,7 @@ asyncssh                # Async SSH client for cloud deployment
 zeroconf                # mDNS service discovery for local network
 
 # UI & Visualization (THE_CANVAS)
-bleach                  # HTML sanitization for safe widget rendering
+# HTML sanitization uses the optional fallback path in render_skill.py.
 
 # Desktop Awareness & Proactive Assistance (THE_SHADOW)
 pyperclip               # Cross-platform clipboard access
@@ -159,5 +163,4 @@ mypy                    # Statyczne typowanie
 types-PyYAML            # Typy dla PyYAML
 types-psutil            # Typy dla psutil
 types-docker            # Typy dla docker SDK
-types-bleach            # Typy dla bleach
 types-aiofiles          # Typy dla aiofiles

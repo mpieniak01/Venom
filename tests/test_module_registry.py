@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi import APIRouter, FastAPI
 
+from venom_core.api.routes.system import _iter_routes as _iter_concrete_routes
 from venom_core.services import module_registry
 
 
@@ -45,24 +46,6 @@ def _write_manifest(
         json.dumps({"module_id": module_id, "backend": backend}),
         encoding="utf-8",
     )
-
-
-def _iter_concrete_routes(routes):
-    for route in routes:
-        path = getattr(route, "path", None)
-        if path is not None:
-            yield route
-            continue
-
-        original_router = getattr(route, "original_router", None)
-        if original_router is not None:
-            yield from _iter_concrete_routes(getattr(original_router, "routes", []))
-            continue
-
-        include_context = getattr(route, "include_context", None)
-        included_router = getattr(include_context, "included_router", None)
-        if included_router is not None:
-            yield from _iter_concrete_routes(getattr(included_router, "routes", []))
 
 
 def test_builtin_manifest_is_empty_by_default() -> None:

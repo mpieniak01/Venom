@@ -320,7 +320,10 @@ def include_optional_api_routers(
         router = _load_router(manifest.router_import, manifest.module_root)
         if router is None:
             continue
-        app.include_router(router)
+        # FastAPI 0.139+ stores included routers as _IncludedRouter wrappers in
+        # app.routes, which breaks older route-introspection tests. Register the
+        # concrete route objects directly so path discovery stays stable.
+        app.router.routes.extend(router.routes)
         included.append(manifest.module_id)
     if included:
         logger.info("Included optional API modules: %s", ", ".join(included))

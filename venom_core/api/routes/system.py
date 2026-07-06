@@ -54,7 +54,7 @@ class _ApiDefinition(TypedDict):
 def _get_method_signatures(app: FastAPI, prefix: str) -> List[str]:
     """Scans app routes for a given prefix and returns list of 'METHOD /path' strings."""
     methods_set = set()
-    for route in app.routes:
+    for route in _iter_routes(app.routes):
         path = getattr(route, "path", None)
         if not path or not path.startswith(prefix):
             continue
@@ -69,6 +69,25 @@ def _get_method_signatures(app: FastAPI, prefix: str) -> List[str]:
             methods_set.add(f"{method} {path}")
 
     return sorted(methods_set)
+
+
+def _iter_routes(routes):
+    """Yield concrete route objects, flattening FastAPI included-router wrappers."""
+    for route in routes:
+        path = getattr(route, "path", None)
+        if path is not None:
+            yield route
+            continue
+
+        original_router = getattr(route, "original_router", None)
+        if original_router is not None:
+            yield from _iter_routes(getattr(original_router, "routes", []))
+            continue
+
+        include_context = getattr(route, "include_context", None)
+        included_router = getattr(include_context, "included_router", None)
+        if included_router is not None:
+            yield from _iter_routes(getattr(included_router, "routes", []))
 
 
 def _generate_internal_map(request: Request) -> List[ApiConnection]:

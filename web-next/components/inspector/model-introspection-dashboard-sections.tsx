@@ -5754,19 +5754,6 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
       (edge) => edge.from === selectedNode.id || edge.to === selectedNode.id,
     );
   }, [graph.edges, selectedNode]);
-  const selectedNodeRelatedTransitionIds = useMemo(() => {
-    if (!selectedNodeId) {
-      return new Set<string>();
-    }
-    return new Set(
-      transitions
-        .filter(
-          (transition) =>
-            transition.sourceId === selectedNodeId || transition.targetId === selectedNodeId,
-        )
-        .map((transition) => transition.id),
-    );
-  }, [selectedNodeId, transitions]);
   const overviewMode = graphMode === "overview";
 
   const cyRef = useRef<HTMLDivElement | null>(null);

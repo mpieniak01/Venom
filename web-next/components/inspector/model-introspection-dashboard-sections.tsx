@@ -2672,7 +2672,7 @@ type ArchitectureGraphPanelProps = Readonly<{
 type ArchitectureGraphNode = ModelArchitectureGraphNode;
 type ArchitectureGraphEdge = ModelArchitectureGraphEdge;
 type TransitionSignificance = "key" | "supporting" | "repeat";
-type ArchitectureRelationSelectionTarget = "edge" | "path" | "node";
+type ArchitectureRelationSelectionTarget = "edge" | "path";
 
 type ArchitectureGraphTransition = Readonly<{
   id: string;
@@ -3046,9 +3046,6 @@ function getTransitionSelectionTarget(
   if (sourceNode?.role === "input" || targetNode?.role === "output" || significance === "key") {
     return "path";
   }
-  if (sourceNode?.role === "layer" && targetNode?.role === "layer") {
-    return "edge";
-  }
   return "edge";
 }
 
@@ -3057,12 +3054,13 @@ function getTransitionEvidence(
   targetNode: ArchitectureGraphNode | null,
   edge: ArchitectureGraphEdge,
   transitionDelta: { before: string; after: string; delta: string; impact: string },
+  t: (path: string, replacements?: Record<string, string | number>) => string,
 ): string[] {
   return [
     `${transitionDelta.before} → ${transitionDelta.after}`,
-    `Edge label: ${edge.label}`,
-    `Source role: ${sourceNode?.role ?? "unknown"}`,
-    `Target role: ${targetNode?.role ?? "unknown"}`,
+    `${t("inspector.modelIntrospection.dashboard.graph.transitionEvidenceEdgeLabel")}: ${edge.label}`,
+    `${t("inspector.modelIntrospection.dashboard.graph.transitionEvidenceSourceRole")}: ${sourceNode?.role ?? "unknown"}`,
+    `${t("inspector.modelIntrospection.dashboard.graph.transitionEvidenceTargetRole")}: ${targetNode?.role ?? "unknown"}`,
   ];
 }
 
@@ -3151,6 +3149,7 @@ function getTransitionSignificance(
 
 function getArchitectureGraphTransitions(
   snapshot: IntrospectionSnapshot,
+  t: (path: string, replacements?: Record<string, string | number>) => string,
 ): ArchitectureGraphTransition[] {
   const edges = getArchitectureGraphEdges(snapshot);
   const nodes = getArchitectureGraphNodes(snapshot);
@@ -3162,7 +3161,7 @@ function getArchitectureGraphTransitions(
     const effect = getTransitionEffect(sourceNode, targetNode, edge);
     const transitionDelta = getTransitionDelta(sourceNode, targetNode, edge, effect, significance);
     const selectionTarget = getTransitionSelectionTarget(sourceNode, targetNode, significance);
-    const evidence = getTransitionEvidence(sourceNode, targetNode, edge, transitionDelta);
+    const evidence = getTransitionEvidence(sourceNode, targetNode, edge, transitionDelta, t);
     return {
       id: `${edge.from}->${edge.to}:${index}`,
       sourceId: edge.from,
@@ -3188,6 +3187,11 @@ function getArchitectureGraphTransitions(
   const sourceDistances = new Map<string, number>();
   const adjacency = new Map<string, string[]>();
   const inDegree = new Map<string, number>();
+  const significanceRank: Record<TransitionSignificance, number> = {
+    key: 0,
+    supporting: 1,
+    repeat: 2,
+  };
 
   nodes.forEach((node) => {
     adjacency.set(node.id, []);
@@ -3240,8 +3244,10 @@ function getArchitectureGraphTransitions(
     if (leftTargetDistance !== rightTargetDistance) {
       return leftTargetDistance - rightTargetDistance;
     }
-    if (left.significance !== right.significance) {
-      return left.significance === "key" ? -1 : 1;
+    const leftSignificanceRank = significanceRank[left.significance];
+    const rightSignificanceRank = significanceRank[right.significance];
+    if (leftSignificanceRank !== rightSignificanceRank) {
+      return leftSignificanceRank - rightSignificanceRank;
     }
     const leftPath = `${left.sourceLabel}→${left.targetLabel}`;
     const rightPath = `${right.sourceLabel}→${right.targetLabel}`;
@@ -3719,6 +3725,13 @@ function getArchitectureGraphLayoutOptions(
       padding: ARCHITECTURE_GRAPH_PADDING_PX,
     };
   }
+  const spacingFactor = (() => {
+    const isDenseGraph = graph.nodes.length >= 8;
+    if (mode === "overview") {
+      return isDenseGraph ? 1.8 : 1.55;
+    }
+    return isDenseGraph ? 1.35 : 1.15;
+  })();
   return {
     name: "breadthfirst",
     animate: false,
@@ -3726,14 +3739,7 @@ function getArchitectureGraphLayoutOptions(
     padding: ARCHITECTURE_GRAPH_PADDING_PX,
     directed: true,
     circle: false,
-    spacingFactor:
-      mode === "overview"
-        ? graph.nodes.length >= 8
-          ? 1.8
-          : 1.55
-        : graph.nodes.length >= 8
-          ? 1.35
-          : 1.15,
+    spacingFactor,
     avoidOverlap: true,
     nodeDimensionsIncludeLabels: true,
     orientation: "horizontal",
@@ -4027,6 +4033,7 @@ function useArchitectureGraphCytoscape({
   resizeObserverRef,
   setSelectedNodeId,
   setSelectedTransitionId,
+  onCyReady,
 }: {
   graph: ModelArchitectureGraph | null;
   graphMode: ArchitectureGraphMode;
@@ -4035,7 +4042,11 @@ function useArchitectureGraphCytoscape({
   resizeObserverRef: MutableRefObject<ResizeObserver | null>;
   setSelectedNodeId: (nodeId: string | null) => void;
   setSelectedTransitionId: (transitionId: string | null) => void;
+  onCyReady?: () => void;
 }) {
+  const onCyReadyRef = useRef(onCyReady);
+  onCyReadyRef.current = onCyReady;
+
   useEffect(() => {
     let cancelled = false;
     let cy: cytoscapeType.Core | null = null;
@@ -4076,6 +4087,7 @@ function useArchitectureGraphCytoscape({
 
       registerCytoscapeEvents(cy, setSelectedNodeId, setSelectedTransitionId);
       cyInstanceRef.current = cy;
+      onCyReadyRef.current?.();
     };
 
     void setup();
@@ -4516,6 +4528,12 @@ function ArchitectureRelations({
           const isRelatedToSelectedNode =
             Boolean(selectedNodeId) &&
             (transition.sourceId === selectedNodeId || transition.targetId === selectedNodeId);
+          let relationClassName = "border-white/10 bg-black/20 hover:border-cyan-300/40 hover:bg-white/10";
+          if (isSelected) {
+            relationClassName = "border-cyan-300 bg-cyan-500/15";
+          } else if (isRelatedToSelectedNode) {
+            relationClassName = "border-cyan-300/45 bg-transparent";
+          }
           return (
             <button
               key={transition.id}
@@ -4526,13 +4544,7 @@ function ArchitectureRelations({
                 setSelectedTransitionId(transition.id);
                 setSelectedNodeId(null);
               }}
-              className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
-                isSelected
-                  ? "border-cyan-300 bg-cyan-500/15"
-                  : isRelatedToSelectedNode
-                    ? "border-cyan-300/45 bg-transparent"
-                  : "border-white/10 bg-black/20 hover:border-cyan-300/40 hover:bg-white/10"
-              }`}
+              className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${relationClassName}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -4752,7 +4764,9 @@ function ArchitectureDrilldown({
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs uppercase tracking-wide text-zinc-500">Architecture drilldown</p>
+        <p className="text-xs uppercase tracking-wide text-zinc-500">
+          {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownTitle")}
+        </p>
         <Badge tone={selectedNode ? "success" : "neutral"}>
           {selectedNode
             ? t("inspector.modelIntrospection.dashboard.graph.architectureNodeSelected")
@@ -4766,32 +4780,40 @@ function ArchitectureDrilldown({
             <Badge tone="neutral">{selectedNode.status}</Badge>
           </div>
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Label</p>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownLabel")}
+            </p>
             <p className="mt-1 font-mono text-sm text-white">{selectedNode.label}</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
             <details open className="group">
               <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-500 marker:text-zinc-500">
-                Node payload
+                {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownNodePayload")}
               </summary>
               <div className="mt-2 space-y-1 text-sm text-zinc-300">
                 <p>
-                  <span className="text-zinc-500">id:</span> {selectedNode.id}
+                  <span className="text-zinc-500">{t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownFieldId")}:</span>{" "}
+                  {selectedNode.id}
                 </p>
                 <p>
-                  <span className="text-zinc-500">kind:</span> {selectedNode.kind}
+                  <span className="text-zinc-500">{t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownFieldKind")}:</span>{" "}
+                  {selectedNode.kind}
                 </p>
                 <p>
-                  <span className="text-zinc-500">role:</span> {selectedNode.role ?? "unknown"}
+                  <span className="text-zinc-500">{t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownFieldRole")}:</span>{" "}
+                  {selectedNode.role ?? "unknown"}
                 </p>
                 <p>
-                  <span className="text-zinc-500">status:</span> {selectedNode.status}
+                  <span className="text-zinc-500">{t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownFieldStatus")}:</span>{" "}
+                  {selectedNode.status}
                 </p>
                 <p>
-                  <span className="text-zinc-500">layer_index:</span> {selectedNode.layer_index ?? "n/a"}
+                  <span className="text-zinc-500">{t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownFieldLayerIndex")}:</span>{" "}
+                  {selectedNode.layer_index ?? "n/a"}
                 </p>
                 <p>
-                  <span className="text-zinc-500">group:</span> {selectedNode.group ?? "n/a"}
+                  <span className="text-zinc-500">{t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownFieldGroup")}:</span>{" "}
+                  {selectedNode.group ?? "n/a"}
                 </p>
               </div>
             </details>
@@ -4799,7 +4821,9 @@ function ArchitectureDrilldown({
           <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
             <details className="group">
               <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-500 marker:text-zinc-500">
-                Metadata ({metadataEntries.length})
+                {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownMetadata", {
+                  count: metadataEntries.length,
+                })}
               </summary>
               {metadataEntries.length > 0 ? (
                 <div className="mt-2 space-y-1 text-sm text-zinc-300">
@@ -4813,14 +4837,18 @@ function ArchitectureDrilldown({
                   ))}
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-zinc-400">No metadata payload for this node.</p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownNoMetadata")}
+                </p>
               )}
             </details>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
             <details className="group">
               <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-500 marker:text-zinc-500">
-                Connected edges ({relatedEdges.length})
+                {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownConnectedEdges", {
+                  count: relatedEdges.length,
+                })}
               </summary>
               {relatedEdges.length > 0 ? (
                 <div className="mt-2 space-y-1 text-sm text-zinc-300">
@@ -4833,7 +4861,9 @@ function ArchitectureDrilldown({
                   ))}
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-zinc-400">No direct edge connected to this node.</p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownNoEdges")}
+                </p>
               )}
             </details>
           </div>
@@ -4852,7 +4882,7 @@ function ArchitectureDrilldown({
         </div>
       ) : (
         <p className="mt-3 text-sm text-zinc-300">
-          Select a model layer, block or diagnostic node to inspect its architecture details.
+          {t("inspector.modelIntrospection.dashboard.graph.architectureDrilldownSelectNode")}
         </p>
       )}
     </div>
@@ -5675,7 +5705,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
   const nodes = useMemo(() => getArchitectureGraphNodes(snapshot), [snapshot]);
   const summary = useMemo(() => getArchitectureGraphSummary(snapshot), [snapshot]);
   const overview = useMemo(() => getArchitectureGraphOverview(snapshot), [snapshot]);
-  const transitions = useMemo(() => getArchitectureGraphTransitions(snapshot), [snapshot]);
+  const transitions = useMemo(() => getArchitectureGraphTransitions(snapshot, t), [snapshot, t]);
   const layerInternals = useMemo(
     () => getAnalysisLayerInternals(layerInternalsPayload),
     [layerInternalsPayload],
@@ -5755,6 +5785,12 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
     );
   }, [graph.edges, selectedNode]);
   const overviewMode = graphMode === "overview";
+  const [cyRevision, setCyRevision] = useState(0);
+  const handleGraphModeChange = (mode: ArchitectureGraphMode) => {
+    setSelectedNodeId(null);
+    setSelectedTransitionId(null);
+    setGraphMode(mode);
+  };
 
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
@@ -5767,6 +5803,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
     resizeObserverRef,
     setSelectedNodeId,
     setSelectedTransitionId,
+    onCyReady: () => setCyRevision((value) => value + 1),
   });
 
   useEffect(() => {
@@ -5802,7 +5839,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
         selectedEdge.addClass("highlighted");
       }
     }
-  }, [selectedNodeId, selectedTransitionId]);
+  }, [cyRevision, selectedNodeId, selectedTransitionId]);
 
   if (!graph) {
     return null;
@@ -5835,7 +5872,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
               type="button"
               aria-pressed={overviewMode}
               data-testid="architecture-mode-overview"
-              onClick={() => setGraphMode("overview")}
+              onClick={() => handleGraphModeChange("overview")}
               className={`rounded-full px-3 py-1 text-xs uppercase tracking-wide transition ${
                 overviewMode
                   ? "bg-cyan-500/30 text-cyan-100"
@@ -5848,7 +5885,7 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
               type="button"
               aria-pressed={!overviewMode}
               data-testid="architecture-mode-detail"
-              onClick={() => setGraphMode("detail")}
+              onClick={() => handleGraphModeChange("detail")}
               className={`rounded-full px-3 py-1 text-xs uppercase tracking-wide transition ${
                 overviewMode
                   ? "text-zinc-300 hover:bg-white/10 hover:text-white"

@@ -381,10 +381,10 @@ test.describe("Model introspection visual information layer", () => {
     const detailButton = page.getByTestId("architecture-mode-detail");
     await expect(overviewButton).toBeVisible();
     await expect(detailButton).toBeVisible();
-    await expect(page.getByText(/replaces text|zastępuje tekst/i)).toBeVisible();
-    await expect(page.getByText(/supports text|wspiera tekst/i)).toBeVisible();
-    await expect(page.getByText(/evidence only|tylko dowody/i)).toBeVisible();
-    await expect(page.getByText(/Local relation map|Lokalna mapa relacji/i)).toBeVisible();
+    await expect(page.getByText(/replaces text|zastępuje tekst|ersetzt Text/i)).toBeVisible();
+    await expect(page.getByText(/supports text|wspiera tekst|unterstützt Text/i)).toBeVisible();
+    await expect(page.getByText(/evidence only|tylko dowody|nur Nachweise/i)).toBeVisible();
+    await expect(page.getByText(/Local relation map|Lokalna mapa relacji|Lokale Relationskarte/i)).toBeVisible();
     await expect(page.locator('[data-testid^="architecture-relation-"][aria-pressed="true"]')).toBeVisible();
 
     const initialSnapshot = await page.evaluate(() => ({
@@ -397,11 +397,12 @@ test.describe("Model introspection visual information layer", () => {
 
     await overviewButton.click();
     await expect(page.getByText(/Architecture overview|Przegląd architektury/i)).toBeVisible();
-    await expect(page.getByText(/Local relation map|Lokalna mapa relacji/i)).toBeVisible();
+    await expect(page.getByText(/Local relation map|Lokalna mapa relacji|Lokale Relationskarte/i)).toBeVisible();
     await page.locator('[data-testid^="architecture-relation-"]').nth(1).click();
     await expect(page.locator('[data-testid^="architecture-relation-"][aria-pressed="true"]')).toBeVisible();
     await detailButton.click();
     await expect(page.getByText(/Layer internals|Wnętrze warstwy/i)).toBeVisible();
+    await expect(page.locator('[data-testid^="architecture-relation-"][aria-pressed="true"]')).toHaveCount(0);
   });
 
   test("mobile: keeps overview/detail controls visible after snapshot load", async ({ page }) => {
@@ -414,6 +415,6 @@ test.describe("Model introspection visual information layer", () => {
     await expect(page.getByRole("heading", { name: /Architecture graph|Graf architektury/i })).toBeVisible();
     await expect(page.getByTestId("architecture-mode-overview")).toBeVisible();
     await expect(page.getByTestId("architecture-mode-detail")).toBeVisible();
-    await expect(page.getByText(/Local relation map|Lokalna mapa relacji/i)).toBeVisible();
+    await expect(page.getByText(/Local relation map|Lokalna mapa relacji|Lokale Relationskarte/i)).toBeVisible();
   });
 });

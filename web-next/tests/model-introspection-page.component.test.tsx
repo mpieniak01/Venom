@@ -1566,10 +1566,10 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByRole("heading", { name: /Architecture graph|Graf architektury/i }));
     });
     assert.ok(screen.getByTestId("architecture-graph-container"));
-    assert.ok(screen.getByText(/Visual mode|Tryb wizualny/i));
-    assert.ok(screen.getByRole("button", { name: /Overview graph|Graf ogólny/i }));
-    assert.ok(screen.getByRole("button", { name: /Detail graph|Graf szczegółowy/i }));
-    assert.ok(screen.getByText(/Local relation map|Lokalna mapa relacji/i));
+    assert.ok(screen.getByText(/Visual mode|Tryb wizualny|Visualisierungsmodus/i));
+    assert.ok(screen.getByRole("button", { name: /Overview graph|Graf ogólny|Übersichtsgraph/i }));
+    assert.ok(screen.getByRole("button", { name: /Detail graph|Graf szczegółowy|Detailgraph/i }));
+    assert.ok(screen.getByText(/Local relation map|Lokalna mapa relacji|Lokale Relationskarte/i));
     assert.ok(screen.getByText(/Progress checkpoints|Punkty kontrolne przebiegu/i));
     assert.ok(screen.getByText(/Layer internals|Wnętrze warstwy/i));
     assert.ok(screen.getAllByText(/Activation path|activation path/i).length >= 1);
@@ -1581,12 +1581,12 @@ describe("ModelIntrospectionDashboard", () => {
     assert.ok(screen.getAllByText(/Delta|Wpływ/i).length >= 1);
     assert.equal(screen.queryByText(/Architecture overview|Przegląd architektury/i), null);
 
-    fireEvent.click(screen.getByRole("button", { name: /Overview graph|Graf ogólny/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Overview graph|Graf ogólny|Übersichtsgraph/i }));
 
     await waitFor(() => {
       assert.ok(screen.getByText(/Architecture overview|Przegląd architektury/i));
     });
-    assert.ok(screen.getAllByText(/Supporting signals|Sygnały wspierające/i).length >= 1);
+    assert.ok(screen.getAllByText(/Supporting signals|Sygnały wspierające|Unterstützende Signale/i).length >= 1);
     assert.ok(screen.getByText("ready available"));
     assert.ok(screen.getByText("fidelity native"));
   });
@@ -1627,16 +1627,22 @@ describe("ModelIntrospectionDashboard", () => {
     );
 
     await waitFor(() => {
-      assert.ok(screen.getByText("Visual mode"));
-      assert.ok(screen.getByText("replaces text"));
-      assert.ok(screen.getByText("supports text"));
-      assert.ok(screen.getByText("evidence only"));
-      assert.ok(screen.getByText(/Local relation map|Lokalna mapa relacji/i));
-      assert.ok(screen.getByText(/Transition detail|Szczegóły przejścia/i));
-      assert.ok(screen.getByText(/Architecture drilldown/i));
+      assert.ok(screen.getByText(/Visual mode|Tryb wizualny|Visualisierungsmodus/i));
+      assert.ok(screen.getByText(/replaces text|zastępuje tekst|ersetzt Text/i));
+      assert.ok(screen.getByText(/supports text|wspiera tekst|unterstützt Text/i));
+      assert.ok(screen.getByText(/evidence only|tylko dowody|nur Nachweise/i));
+      assert.ok(screen.getByText(/Local relation map|Lokalna mapa relacji|Lokale Relationskarte/i));
+      assert.ok(screen.getByText(/Transition detail|Szczegóły przejścia|Übergangsdetails/i));
+      assert.ok(screen.getByText(/Architecture drilldown|Drilldown architektury|Architektur-Drilldown/i));
       assert.ok(screen.getByText(/Layer internals|Wnętrze warstwy/i));
     });
     assert.ok(container.querySelector('[data-testid^="architecture-relation-"][aria-pressed="true"]'));
+
+    fireEvent.click(screen.getByRole("button", { name: /Overview graph|Graf ogólny|Übersichtsgraph/i }));
+
+    await waitFor(() => {
+      assert.equal(container.querySelector('[data-testid^="architecture-relation-"][aria-pressed="true"]'), null);
+    });
   });
 
   it("keeps technical layer available when architecture payload is missing", async () => {
@@ -1687,8 +1693,11 @@ describe("ModelIntrospectionDashboard", () => {
     );
 
     await waitFor(() => {
-      assert.equal(screen.queryByRole("heading", { name: /Architecture graph|Graf architektury/i }), null);
-      assert.equal(screen.queryByText(/Visual mode|Tryb wizualny/i), null);
+      assert.equal(
+        screen.queryByRole("heading", { name: /Architecture graph|Graf architektury|Architektur-Graph/i }),
+        null,
+      );
+      assert.equal(screen.queryByText(/Visual mode|Tryb wizualny|Visualisierungsmodus/i), null);
     });
 
     fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));

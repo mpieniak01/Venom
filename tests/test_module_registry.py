@@ -47,6 +47,24 @@ def _write_manifest(
     )
 
 
+def _iter_concrete_routes(routes):
+    for route in routes:
+        path = getattr(route, "path", None)
+        if path is not None:
+            yield route
+            continue
+
+        original_router = getattr(route, "original_router", None)
+        if original_router is not None:
+            yield from _iter_concrete_routes(getattr(original_router, "routes", []))
+            continue
+
+        include_context = getattr(route, "include_context", None)
+        included_router = getattr(include_context, "included_router", None)
+        if included_router is not None:
+            yield from _iter_concrete_routes(getattr(included_router, "routes", []))
+
+
 def test_builtin_manifest_is_empty_by_default() -> None:
     manifests = list(module_registry.iter_api_module_manifests(_Settings()))
     assert manifests == []
@@ -85,7 +103,10 @@ def test_include_optional_api_routers_includes_module_from_manifest_file(
     app = FastAPI()
     included = module_registry.include_optional_api_routers(app, settings)
     assert included == ["module_example"]
-    assert any(route.path == "/module-example/health" for route in app.routes)
+    assert any(
+        route.path == "/module-example/health"
+        for route in _iter_concrete_routes(app.routes)
+    )
 
 
 def test_include_optional_api_routers_respects_feature_flag(

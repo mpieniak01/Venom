@@ -358,13 +358,12 @@ function TechnicalLayerPanel({
       {snapshot.architecture_graph ? (
         <div className="mt-4">
       <ArchitectureGraphPanel
-            snapshot={snapshot}
-            readiness={architectureGraphReadiness}
-            layerInternalsPayload={analysisLayerInternalsPayload}
-            title={t("inspector.modelIntrospection.dashboard.graph.architectureTitle")}
-            description={t("inspector.modelIntrospection.dashboard.graph.architectureDescription")}
-            typeHintText={t("inspector.modelIntrospection.dashboard.graph.architectureTypeHint")}
-          />
+        snapshot={snapshot}
+        readiness={architectureGraphReadiness}
+        layerInternalsPayload={analysisLayerInternalsPayload}
+        title={t("inspector.modelIntrospection.dashboard.graph.architectureTitle")}
+        description={t("inspector.modelIntrospection.dashboard.graph.architectureDescription")}
+      />
         </div>
       ) : null}
       <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">

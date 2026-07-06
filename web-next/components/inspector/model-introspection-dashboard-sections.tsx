@@ -2667,15 +2667,17 @@ type ArchitectureGraphPanelProps = Readonly<{
   layerInternalsPayload: AnalysisLayerInternalsPayload | null;
   title: string;
   description: string;
-  typeHintText: string;
 }>;
 
 type ArchitectureGraphNode = ModelArchitectureGraphNode;
 type ArchitectureGraphEdge = ModelArchitectureGraphEdge;
 type TransitionSignificance = "key" | "supporting" | "repeat";
+type ArchitectureRelationSelectionTarget = "edge" | "path" | "node";
 
 type ArchitectureGraphTransition = Readonly<{
   id: string;
+  sourceId: string;
+  targetId: string;
   sourceLabel: string;
   targetLabel: string;
   sourceRole: string;
@@ -2687,6 +2689,11 @@ type ArchitectureGraphTransition = Readonly<{
   delta: string;
   impact: string;
   significance: TransitionSignificance;
+  state: TransitionSignificance;
+  summary: string;
+  drilldown: string;
+  evidence: string[];
+  selectionTarget: ArchitectureRelationSelectionTarget;
 }>;
 
 type ArchitectureGraphOutcome = Readonly<{
@@ -2940,7 +2947,7 @@ const ARCHITECTURE_NODE_COLORS: Record<string, string> = {
   unknown: "#64748b",
 };
 
-const ARCHITECTURE_GRAPH_PADDING_PX = 72;
+const ARCHITECTURE_GRAPH_PADDING_PX = 48;
 
 function getArchitectureGraph(snapshot: IntrospectionSnapshot): ModelArchitectureGraph | null {
   return snapshot.architecture_graph ?? null;
@@ -3031,6 +3038,34 @@ function getTransitionImpact(significance: TransitionSignificance): string {
   return "Supporting transition that keeps the chain moving.";
 }
 
+function getTransitionSelectionTarget(
+  sourceNode: ArchitectureGraphNode | null,
+  targetNode: ArchitectureGraphNode | null,
+  significance: TransitionSignificance,
+): ArchitectureRelationSelectionTarget {
+  if (sourceNode?.role === "input" || targetNode?.role === "output" || significance === "key") {
+    return "path";
+  }
+  if (sourceNode?.role === "layer" && targetNode?.role === "layer") {
+    return "edge";
+  }
+  return "edge";
+}
+
+function getTransitionEvidence(
+  sourceNode: ArchitectureGraphNode | null,
+  targetNode: ArchitectureGraphNode | null,
+  edge: ArchitectureGraphEdge,
+  transitionDelta: { before: string; after: string; delta: string; impact: string },
+): string[] {
+  return [
+    `${transitionDelta.before} → ${transitionDelta.after}`,
+    `Edge label: ${edge.label}`,
+    `Source role: ${sourceNode?.role ?? "unknown"}`,
+    `Target role: ${targetNode?.role ?? "unknown"}`,
+  ];
+}
+
 function getReadinessTone(status: "available" | "partial" | "missing"): BadgeTone {
   if (status === "available") {
     return "success";
@@ -3118,17 +3153,20 @@ function getArchitectureGraphTransitions(
   snapshot: IntrospectionSnapshot,
 ): ArchitectureGraphTransition[] {
   const edges = getArchitectureGraphEdges(snapshot);
-  const nodesById = new Map(
-    getArchitectureGraphNodes(snapshot).map((node) => [node.id, node] as const),
-  );
+  const nodes = getArchitectureGraphNodes(snapshot);
+  const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
   const transitions = edges.map((edge, index) => {
     const sourceNode = nodesById.get(edge.from) ?? null;
     const targetNode = nodesById.get(edge.to) ?? null;
     const significance = getTransitionSignificance(sourceNode, targetNode, edge);
     const effect = getTransitionEffect(sourceNode, targetNode, edge);
     const transitionDelta = getTransitionDelta(sourceNode, targetNode, edge, effect, significance);
+    const selectionTarget = getTransitionSelectionTarget(sourceNode, targetNode, significance);
+    const evidence = getTransitionEvidence(sourceNode, targetNode, edge, transitionDelta);
     return {
       id: `${edge.from}->${edge.to}:${index}`,
+      sourceId: edge.from,
+      targetId: edge.to,
       sourceLabel: sourceNode?.label ?? edge.from,
       targetLabel: targetNode?.label ?? edge.to,
       sourceRole: sourceNode?.role ?? "unknown",
@@ -3140,28 +3178,75 @@ function getArchitectureGraphTransitions(
       delta: transitionDelta.delta,
       impact: transitionDelta.impact,
       significance,
+      state: significance,
+      summary: effect,
+      drilldown: `${transitionDelta.delta} ${transitionDelta.impact}`,
+      evidence,
+      selectionTarget,
     };
   });
+  const sourceDistances = new Map<string, number>();
+  const adjacency = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
 
-  const scoredTransitions = transitions
-    .map((transition, index) => ({
-      transition,
-      score:
-        (transition.significance === "key" ? 3 : 1) +
-        (transition.sourceRole === "input" ? 3 : 0) +
-        (transition.targetRole === "output" ? 3 : 0) +
-        (transition.label.toLowerCase().includes("probe") ? 2 : 0) +
-        (transition.label.toLowerCase().includes("merge") ? 2 : 0) +
-        (transition.label.toLowerCase().includes("decode") ? 2 : 0) +
-        Math.max(0, 2 - index * 0.1),
-    }))
-    .sort((left, right) => right.score - left.score);
+  nodes.forEach((node) => {
+    adjacency.set(node.id, []);
+    inDegree.set(node.id, 0);
+  });
+  edges.forEach((edge) => {
+    if (!adjacency.has(edge.from)) {
+      adjacency.set(edge.from, []);
+    }
+    adjacency.get(edge.from)?.push(edge.to);
+    inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+  });
 
-  const selected = scoredTransitions.slice(0, Math.min(4, scoredTransitions.length)).map((entry) => entry.transition);
-  if (selected.length > 0) {
-    return selected;
+  const queue: string[] = [];
+  nodes.forEach((node) => {
+    if ((inDegree.get(node.id) ?? 0) === 0) {
+      queue.push(node.id);
+      sourceDistances.set(node.id, 0);
+    }
+  });
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      break;
+    }
+    const currentDistance = sourceDistances.get(current) ?? 0;
+    const neighbors = adjacency.get(current) ?? [];
+    neighbors.forEach((neighbor) => {
+      const existing = sourceDistances.get(neighbor);
+      const candidate = currentDistance + 1;
+      if (existing === undefined || candidate < existing) {
+        sourceDistances.set(neighbor, candidate);
+      }
+      inDegree.set(neighbor, (inDegree.get(neighbor) ?? 0) - 1);
+      if ((inDegree.get(neighbor) ?? 0) === 0) {
+        queue.push(neighbor);
+      }
+    });
   }
-  return transitions.slice(0, Math.min(3, transitions.length));
+
+  return transitions.sort((left, right) => {
+    const leftSourceDistance = sourceDistances.get(left.sourceId) ?? Number.POSITIVE_INFINITY;
+    const rightSourceDistance = sourceDistances.get(right.sourceId) ?? Number.POSITIVE_INFINITY;
+    if (leftSourceDistance !== rightSourceDistance) {
+      return leftSourceDistance - rightSourceDistance;
+    }
+    const leftTargetDistance = sourceDistances.get(left.targetId) ?? Number.POSITIVE_INFINITY;
+    const rightTargetDistance = sourceDistances.get(right.targetId) ?? Number.POSITIVE_INFINITY;
+    if (leftTargetDistance !== rightTargetDistance) {
+      return leftTargetDistance - rightTargetDistance;
+    }
+    if (left.significance !== right.significance) {
+      return left.significance === "key" ? -1 : 1;
+    }
+    const leftPath = `${left.sourceLabel}→${left.targetLabel}`;
+    const rightPath = `${right.sourceLabel}→${right.targetLabel}`;
+    return leftPath.localeCompare(rightPath);
+  });
 }
 
 function getArchitectureGraphCheckpointEvidence(
@@ -3621,6 +3706,7 @@ function getArchitectureGraphLayoutOptions(
   graph: ModelArchitectureGraph,
   containerWidth: number,
   containerHeight: number,
+  mode: ArchitectureGraphMode,
 ): cytoscapeType.LayoutOptions {
   const usePresetLayout = containerWidth <= 0 || containerHeight <= 0;
   const roots = graph.nodes.find((node) => node.role === "input")?.id;
@@ -3640,7 +3726,14 @@ function getArchitectureGraphLayoutOptions(
     padding: ARCHITECTURE_GRAPH_PADDING_PX,
     directed: true,
     circle: false,
-    spacingFactor: graph.nodes.length >= 8 ? 1.5 : 1.35,
+    spacingFactor:
+      mode === "overview"
+        ? graph.nodes.length >= 8
+          ? 1.8
+          : 1.55
+        : graph.nodes.length >= 8
+          ? 1.35
+          : 1.15,
     avoidOverlap: true,
     nodeDimensionsIncludeLabels: true,
     orientation: "horizontal",
@@ -3676,6 +3769,9 @@ function useArchitectureGraphSelectionState({
     return nodes[0]?.id ?? null;
   }, [nodes, selectedNodeIdState]);
   const selectedTransitionIdResolved = useMemo(() => {
+    if (selectedTransitionId === null) {
+      return null;
+    }
     if (
       selectedTransitionId &&
       transitions.some((transition) => transition.id === selectedTransitionId)
@@ -3733,7 +3829,9 @@ function buildCytoscapeElements(
   graph: ModelArchitectureGraph,
   containerWidth: number,
   containerHeight: number,
+  mode: ArchitectureGraphMode,
 ) {
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node] as const));
   return {
     nodes: graph.nodes.map((node, index) => ({
       data: {
@@ -3745,6 +3843,11 @@ function buildCytoscapeElements(
         layer_index: node.layer_index ?? null,
         group: node.group ?? null,
       },
+      classes: [
+        `role-${String(node.role ?? "unknown")}`,
+        node.role === "input" || node.role === "output" ? "key-node" : "support-node",
+        mode === "overview" ? "mode-overview-node" : "mode-detail-node",
+      ].join(" "),
       ...((containerWidth <= 0 || containerHeight <= 0)
         ? {
             position: {
@@ -3755,6 +3858,16 @@ function buildCytoscapeElements(
         : {}),
     })),
     edges: graph.edges.map((edge, index) => ({
+      classes: [
+        (() => {
+          const sourceNode = nodesById.get(edge.from) ?? null;
+          const targetNode = nodesById.get(edge.to) ?? null;
+          return getTransitionSignificance(sourceNode, targetNode, edge) === "key"
+            ? "key-transition"
+            : "support-transition";
+        })(),
+        mode === "overview" ? "mode-overview-edge" : "mode-detail-edge",
+      ].join(" "),
       data: {
         id: `${edge.from}->${edge.to}:${index}`,
         source: edge.from,
@@ -3768,7 +3881,7 @@ function buildCytoscapeElements(
   };
 }
 
-function getCytoscapeStyle(): cytoscapeType.StylesheetStyle[] {
+function getCytoscapeStyle(mode: ArchitectureGraphMode): cytoscapeType.StylesheetStyle[] {
   return [
     {
       selector: "node",
@@ -3777,28 +3890,82 @@ function getCytoscapeStyle(): cytoscapeType.StylesheetStyle[] {
         "background-color": (ele: cytoscapeType.NodeSingular) =>
           getArchitectureGraphColor(String(ele.data("role") || "unknown")),
         color: "#fff",
-        "font-size": 10,
+        "font-size": 11,
         "text-opacity": 0.85,
         "text-valign": "center",
         "text-halign": "center",
       },
     },
-    { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#67e8f9" } },
+    {
+      selector: "node.key-node",
+      style: {
+        "border-width": 3.5,
+        "border-color": "#67e8f9",
+        "font-size": mode === "overview" ? 12 : 11,
+      },
+    },
+    {
+      selector: "node.support-node",
+      style: { opacity: mode === "overview" ? 0.72 : 0.92 },
+    },
+    { selector: "node.highlighted", style: { "border-width": 4.5, "border-color": "#67e8f9" } },
+    {
+      selector: "node.related",
+      style: {
+        "border-width": 2.5,
+        "border-color": "#38bdf8",
+      },
+    },
+    { selector: "node.muted", style: { opacity: 0.35 } },
     {
       selector: "edge",
       style: {
         label: "data(label)",
-        "font-size": 9,
+        "font-size": 10,
         color: "#cbd5e1",
         "text-background-color": "#09090b",
         "text-background-opacity": 0.85,
         "text-background-padding": "2px",
         "curve-style": "bezier",
         "target-arrow-shape": "triangle",
-        width: 2,
+        width: 2.75,
         "line-color": "#475569",
       },
     },
+    {
+      selector: "edge.key-transition",
+      style: {
+        width: mode === "overview" ? 3.75 : 3.25,
+        "line-color": "#22d3ee",
+        color: "#e0f2fe",
+        "text-opacity": 1,
+      },
+    },
+    {
+      selector: "edge.support-transition",
+      style: {
+        opacity: mode === "overview" ? 0.25 : 0.55,
+      },
+    },
+    {
+      selector: "edge.related",
+      style: {
+        opacity: mode === "overview" ? 0.45 : 0.55,
+        "line-color": "#38bdf8",
+        color: "#bae6fd",
+        width: mode === "overview" ? 2.9 : 2.75,
+      },
+    },
+    {
+      selector: "edge.highlighted",
+      style: {
+        width: mode === "overview" ? 4.2 : 3.8,
+        "line-color": "#67e8f9",
+        "target-arrow-color": "#67e8f9",
+        color: "#f0f9ff",
+      },
+    },
+    { selector: "edge.muted", style: { opacity: 0.18 } },
   ];
 }
 
@@ -3823,6 +3990,7 @@ function setupResizeObserver(
 function registerCytoscapeEvents(
   cy: cytoscapeType.Core,
   setSelectedNodeId: (nodeId: string | null) => void,
+  setSelectedTransitionId: (transitionId: string | null) => void,
 ) {
   cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
     if (cy.destroyed()) return;
@@ -3830,31 +3998,43 @@ function registerCytoscapeEvents(
     const nodeId = String(node.id() || "");
     if (!nodeId) return;
     setSelectedNodeId(nodeId);
-    cy.nodes().removeClass("highlighted");
-    node.addClass("highlighted");
+    setSelectedTransitionId(null);
+  });
+
+  cy.on("tap", "edge", (evt: cytoscapeType.EventObject) => {
+    if (cy.destroyed()) return;
+    const edge = evt.target;
+    const transitionId = String(edge.id() || "");
+    if (!transitionId) return;
+    setSelectedNodeId(null);
+    setSelectedTransitionId(transitionId);
   });
 
   cy.on("tap", (evt: cytoscapeType.EventObject) => {
     if (cy.destroyed()) return;
     if (evt.target === cy) {
       setSelectedNodeId(null);
-      cy.nodes().removeClass("highlighted");
+      setSelectedTransitionId(null);
     }
   });
 }
 
 function useArchitectureGraphCytoscape({
   graph,
+  graphMode,
   cyRef,
   cyInstanceRef,
   resizeObserverRef,
   setSelectedNodeId,
+  setSelectedTransitionId,
 }: {
   graph: ModelArchitectureGraph | null;
+  graphMode: ArchitectureGraphMode;
   cyRef: MutableRefObject<HTMLDivElement | null>;
   cyInstanceRef: MutableRefObject<cytoscapeType.Core | null>;
   resizeObserverRef: MutableRefObject<ResizeObserver | null>;
   setSelectedNodeId: (nodeId: string | null) => void;
+  setSelectedTransitionId: (transitionId: string | null) => void;
 }) {
   useEffect(() => {
     let cancelled = false;
@@ -3871,13 +4051,14 @@ function useArchitectureGraphCytoscape({
         cyInstanceRef.current.destroy();
       }
       cyInstanceRef.current = null;
-      const elements = buildCytoscapeElements(graph, containerWidth, containerHeight);
+      const elements = buildCytoscapeElements(graph, containerWidth, containerHeight, graphMode);
 
       cy = cytoscape({
         container: cyRef.current,
         elements,
-        style: getCytoscapeStyle(),
-        layout: getArchitectureGraphLayoutOptions(graph, containerWidth, containerHeight),
+        style: getCytoscapeStyle(graphMode),
+        wheelSensitivity: 0.9,
+        layout: getArchitectureGraphLayoutOptions(graph, containerWidth, containerHeight, graphMode),
       });
 
       if (cancelled || !cyRef.current) return;
@@ -3893,7 +4074,7 @@ function useArchitectureGraphCytoscape({
         return;
       }
 
-      registerCytoscapeEvents(cy, setSelectedNodeId);
+      registerCytoscapeEvents(cy, setSelectedNodeId, setSelectedTransitionId);
       cyInstanceRef.current = cy;
     };
 
@@ -3915,7 +4096,15 @@ function useArchitectureGraphCytoscape({
         cyInstanceRef.current = null;
       }
     };
-  }, [cyInstanceRef, cyRef, graph, resizeObserverRef, setSelectedNodeId]);
+  }, [
+    cyInstanceRef,
+    cyRef,
+    graph,
+    graphMode,
+    resizeObserverRef,
+    setSelectedNodeId,
+    setSelectedTransitionId,
+  ]);
 }
 
 type TensorActivationDetailProps = Readonly<{
@@ -4289,49 +4478,63 @@ function ArchitectureOverview({ overview, summary, readiness, t }: ArchitectureO
   );
 }
 
-type ArchitectureTransitionsProps = Readonly<{
+type ArchitectureRelationsProps = Readonly<{
   transitions: ReturnType<typeof getArchitectureGraphTransitions>;
   selectedTransitionId: string | null;
+  selectedNodeId: string | null;
   setSelectedTransitionId: (id: string | null) => void;
+  setSelectedNodeId: (id: string | null) => void;
   t: (key: string) => string;
 }>;
 
-function ArchitectureTransitions({
+function ArchitectureRelations({
   transitions,
   selectedTransitionId,
+  selectedNodeId,
   setSelectedTransitionId,
+  setSelectedNodeId,
   t,
-}: ArchitectureTransitionsProps) {
+}: ArchitectureRelationsProps) {
   return (
-    <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-            {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsTitle")}
+            {t("inspector.modelIntrospection.dashboard.graph.architectureRelationsTitle")}
           </p>
           <p className="mt-1 text-sm text-zinc-300">
-            {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsDescription")}
+            {t("inspector.modelIntrospection.dashboard.graph.architectureRelationsDescription")}
           </p>
         </div>
         <Badge tone="neutral">
-          {transitions.length} {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionsSelected")}
+          {transitions.length} {t("inspector.modelIntrospection.dashboard.graph.architectureRelationsCount")}
         </Badge>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-3 space-y-2">
         {transitions.map((transition) => {
           const isSelected = transition.id === selectedTransitionId;
+          const isRelatedToSelectedNode =
+            Boolean(selectedNodeId) &&
+            (transition.sourceId === selectedNodeId || transition.targetId === selectedNodeId);
           return (
             <button
               key={transition.id}
               type="button"
-              onClick={() => setSelectedTransitionId(transition.id)}
-              className={`rounded-xl border p-4 text-left transition-colors ${
+              aria-pressed={isSelected}
+              data-testid={`architecture-relation-${transition.id}`}
+              onClick={() => {
+                setSelectedTransitionId(transition.id);
+                setSelectedNodeId(null);
+              }}
+              className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
                 isSelected
                   ? "border-cyan-300 bg-cyan-500/15"
+                  : isRelatedToSelectedNode
+                    ? "border-cyan-300/45 bg-transparent"
                   : "border-white/10 bg-black/20 hover:border-cyan-300/40 hover:bg-white/10"
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="font-mono text-sm text-white">
                     {transition.sourceLabel} → {transition.targetLabel}
@@ -4340,11 +4543,20 @@ function ArchitectureTransitions({
                     {transition.label}
                   </p>
                 </div>
-                <Badge tone={getTransitionSignificanceTone(transition.significance)}>
-                  {transition.significance}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={getTransitionSignificanceTone(transition.state)}>{transition.state}</Badge>
+                  <Badge tone="neutral">{transition.selectionTarget}</Badge>
+                </div>
               </div>
-              <p className="mt-3 text-sm text-zinc-300">{transition.effect}</p>
+              <p className="mt-2 text-sm text-zinc-300">{transition.summary}</p>
+              <p className="mt-2 text-sm text-zinc-400">{transition.impact}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {transition.evidence.slice(0, 3).map((line) => (
+                  <Badge key={`relation-evidence-${transition.id}-${line}`} tone="neutral">
+                    {line}
+                  </Badge>
+                ))}
+              </div>
             </button>
           );
         })}
@@ -4362,7 +4574,7 @@ type ArchitectureOutcomeProps = Readonly<{
 
 function ArchitectureOutcome({ outcome, readiness, readinessTone, t }: ArchitectureOutcomeProps) {
   return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[11px] uppercase tracking-wide text-zinc-500">
@@ -4433,7 +4645,9 @@ function ArchitectureTransitionDetail({ selectedTransition, t }: ArchitectureTra
           {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDetailTitle")}
         </p>
         <Badge tone={selectedTransition ? "success" : "neutral"}>
-          {selectedTransition ? "transition selected" : "awaiting selection"}
+          {selectedTransition
+            ? t("inspector.modelIntrospection.dashboard.graph.architectureTransitionSelected")
+            : t("inspector.modelIntrospection.dashboard.graph.architectureTransitionAwaiting")}
         </Badge>
       </div>
       {selectedTransition ? (
@@ -4441,13 +4655,20 @@ function ArchitectureTransitionDetail({ selectedTransition, t }: ArchitectureTra
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="neutral">{selectedTransition.sourceRole}</Badge>
             <Badge tone="neutral">{selectedTransition.targetRole}</Badge>
-            <Badge tone="neutral">{selectedTransition.significance}</Badge>
+            <Badge tone="neutral">{selectedTransition.state}</Badge>
+            <Badge tone="neutral">{selectedTransition.selectionTarget}</Badge>
           </div>
           <div>
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">Transition</p>
             <p className="mt-1 font-mono text-sm text-white">
               {selectedTransition.sourceLabel} → {selectedTransition.targetLabel}
             </p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionSummary")}
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">{selectedTransition.summary}</p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
@@ -4481,6 +4702,26 @@ function ArchitectureTransitionDetail({ selectedTransition, t }: ArchitectureTra
             </p>
             <p className="mt-2 text-sm text-zinc-300">{selectedTransition.effect}</p>
           </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              {t("inspector.modelIntrospection.dashboard.graph.architectureTransitionDrilldown")}
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">{selectedTransition.drilldown}</p>
+          </div>
+          {selectedTransition.evidence.length > 0 ? (
+            <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                {t("inspector.modelIntrospection.dashboard.graph.architectureOutcomeEvidence")}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {selectedTransition.evidence.map((line) => (
+                  <Badge key={`transition-evidence-${selectedTransition.id}-${line}`} tone="neutral">
+                    {line}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="mt-3 text-sm text-zinc-300">
@@ -4494,16 +4735,28 @@ function ArchitectureTransitionDetail({ selectedTransition, t }: ArchitectureTra
 type ArchitectureDrilldownProps = Readonly<{
   selectedNode: ModelArchitectureGraphNode | null;
   selectedNodeDetails: GraphNodeDetails;
-  typeHintText: string;
+  relatedEdges: ModelArchitectureGraphEdge[];
+  t: (key: string) => string;
 }>;
 
-function ArchitectureDrilldown({ selectedNode, selectedNodeDetails, typeHintText }: ArchitectureDrilldownProps) {
+function ArchitectureDrilldown({
+  selectedNode,
+  selectedNodeDetails,
+  relatedEdges,
+  t,
+}: ArchitectureDrilldownProps) {
+  const metadataEntries = selectedNode?.metadata
+    ? Object.entries(selectedNode.metadata)
+    : [];
+
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs uppercase tracking-wide text-zinc-500">Architecture drilldown</p>
         <Badge tone={selectedNode ? "success" : "neutral"}>
-          {selectedNode ? "node selected" : "awaiting selection"}
+          {selectedNode
+            ? t("inspector.modelIntrospection.dashboard.graph.architectureNodeSelected")
+            : t("inspector.modelIntrospection.dashboard.graph.architectureNodeAwaiting")}
         </Badge>
       </div>
       {selectedNode ? (
@@ -4517,18 +4770,84 @@ function ArchitectureDrilldown({ selectedNode, selectedNodeDetails, typeHintText
             <p className="mt-1 font-mono text-sm text-white">{selectedNode.label}</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              {selectedNodeDetails.title}
-            </p>
-            <div className="mt-2 space-y-1 text-sm text-zinc-300">
-              {selectedNodeDetails.lines.map((line, index) => (
-                <p key={`node-detail-${index}-${line}`}>{line}</p>
-              ))}
-            </div>
+            <details open className="group">
+              <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-500 marker:text-zinc-500">
+                Node payload
+              </summary>
+              <div className="mt-2 space-y-1 text-sm text-zinc-300">
+                <p>
+                  <span className="text-zinc-500">id:</span> {selectedNode.id}
+                </p>
+                <p>
+                  <span className="text-zinc-500">kind:</span> {selectedNode.kind}
+                </p>
+                <p>
+                  <span className="text-zinc-500">role:</span> {selectedNode.role ?? "unknown"}
+                </p>
+                <p>
+                  <span className="text-zinc-500">status:</span> {selectedNode.status}
+                </p>
+                <p>
+                  <span className="text-zinc-500">layer_index:</span> {selectedNode.layer_index ?? "n/a"}
+                </p>
+                <p>
+                  <span className="text-zinc-500">group:</span> {selectedNode.group ?? "n/a"}
+                </p>
+              </div>
+            </details>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Type hint</p>
-            <p className="mt-1 text-sm text-zinc-300">{typeHintText}</p>
+            <details className="group">
+              <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-500 marker:text-zinc-500">
+                Metadata ({metadataEntries.length})
+              </summary>
+              {metadataEntries.length > 0 ? (
+                <div className="mt-2 space-y-1 text-sm text-zinc-300">
+                  {metadataEntries.map(([key, value]) => (
+                    <p key={`node-meta-${selectedNode.id}-${key}`}>
+                      <span className="text-zinc-500">{key}:</span>{" "}
+                      {typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+                        ? String(value)
+                        : JSON.stringify(value)}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-zinc-400">No metadata payload for this node.</p>
+              )}
+            </details>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <details className="group">
+              <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-500 marker:text-zinc-500">
+                Connected edges ({relatedEdges.length})
+              </summary>
+              {relatedEdges.length > 0 ? (
+                <div className="mt-2 space-y-1 text-sm text-zinc-300">
+                  {relatedEdges.map((edge, index) => (
+                    <p key={`node-edge-${selectedNode.id}-${edge.from}-${edge.to}-${index}`}>
+                      <span className="text-zinc-500">{edge.from}</span>
+                      {" -> "}
+                      <span className="text-zinc-500">{edge.to}</span> ({edge.label})
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-zinc-400">No direct edge connected to this node.</p>
+              )}
+            </details>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <details className="group">
+              <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide text-zinc-500 marker:text-zinc-500">
+                {selectedNodeDetails.title}
+              </summary>
+              <div className="mt-2 space-y-1 text-sm text-zinc-300">
+                {selectedNodeDetails.lines.map((line, index) => (
+                  <p key={`node-detail-${index}-${line}`}>{line}</p>
+                ))}
+              </div>
+            </details>
           </div>
         </div>
       ) : (
@@ -4536,29 +4855,6 @@ function ArchitectureDrilldown({ selectedNode, selectedNodeDetails, typeHintText
           Select a model layer, block or diagnostic node to inspect its architecture details.
         </p>
       )}
-    </div>
-  );
-}
-
-type ArchitectureRelationsProps = Readonly<{
-  edges: ModelArchitectureGraphEdge[];
-}>;
-
-function ArchitectureRelations({ edges }: ArchitectureRelationsProps) {
-  const relationEntries = buildKeyedTextEntries(
-    "architecture-relation",
-    edges.map((edge) => `${edge.from}→${edge.to}(${edge.label})`),
-  );
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">Relations</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {relationEntries.map((entry) => (
-          <Badge key={entry.key} tone="neutral">
-            {entry.line}
-          </Badge>
-        ))}
-      </div>
     </div>
   );
 }
@@ -5223,6 +5519,8 @@ type ArchitectureLayerInternalsSectionProps = Readonly<{
   t: (key: string) => string;
 }>;
 
+type ArchitectureGraphMode = "overview" | "detail";
+
 function ArchitectureLayerInternalsSection({
   layerInternals,
   layerInternalsPayload,
@@ -5370,12 +5668,11 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
     layerInternalsPayload,
     title,
     description,
-    typeHintText,
   } = props;
   const t = useTranslation();
+  const [graphMode, setGraphMode] = useState<ArchitectureGraphMode>("detail");
   const graph = getArchitectureGraph(snapshot);
   const nodes = useMemo(() => getArchitectureGraphNodes(snapshot), [snapshot]);
-  const edges = useMemo(() => getArchitectureGraphEdges(snapshot), [snapshot]);
   const summary = useMemo(() => getArchitectureGraphSummary(snapshot), [snapshot]);
   const overview = useMemo(() => getArchitectureGraphOverview(snapshot), [snapshot]);
   const transitions = useMemo(() => getArchitectureGraphTransitions(snapshot), [snapshot]);
@@ -5449,17 +5746,76 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
     () => getArchitectureGraphNodeDetails(snapshot, selectedNode),
     [selectedNode, snapshot],
   );
+  const selectedNodeEdges = useMemo(() => {
+    if (!selectedNode) {
+      return [];
+    }
+    return graph.edges.filter(
+      (edge) => edge.from === selectedNode.id || edge.to === selectedNode.id,
+    );
+  }, [graph.edges, selectedNode]);
+  const selectedNodeRelatedTransitionIds = useMemo(() => {
+    if (!selectedNodeId) {
+      return new Set<string>();
+    }
+    return new Set(
+      transitions
+        .filter(
+          (transition) =>
+            transition.sourceId === selectedNodeId || transition.targetId === selectedNodeId,
+        )
+        .map((transition) => transition.id),
+    );
+  }, [selectedNodeId, transitions]);
+  const overviewMode = graphMode === "overview";
 
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   useArchitectureGraphCytoscape({
     graph,
+    graphMode,
     cyRef,
     cyInstanceRef,
     resizeObserverRef,
     setSelectedNodeId,
+    setSelectedTransitionId,
   });
+
+  useEffect(() => {
+    const cy = cyInstanceRef.current;
+    if (!cy || cy.destroyed()) {
+      return;
+    }
+
+    cy.nodes().removeClass("highlighted related muted");
+    cy.edges().removeClass("highlighted related muted");
+
+    const hasNodeSelection = Boolean(selectedNodeId);
+    const hasTransitionSelection = Boolean(selectedTransitionId);
+    const hasSelection = hasNodeSelection || hasTransitionSelection;
+
+    if (hasSelection) {
+      cy.nodes().addClass("muted");
+      cy.edges().addClass("muted");
+    }
+
+    if (selectedNodeId && !selectedTransitionId) {
+      const node = cy.getElementById(selectedNodeId);
+      if (node.nonempty()) {
+        node.removeClass("muted");
+        node.addClass("highlighted");
+      }
+    }
+
+    if (selectedTransitionId) {
+      const selectedEdge = cy.getElementById(selectedTransitionId);
+      if (selectedEdge.nonempty()) {
+        selectedEdge.removeClass("muted related");
+        selectedEdge.addClass("highlighted");
+      }
+    }
+  }, [selectedNodeId, selectedTransitionId]);
 
   if (!graph) {
     return null;
@@ -5482,66 +5838,118 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
         <Badge tone="neutral">blocks {formatCount(summary.block_count)}</Badge>
       </div>
 
+      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("inspector.modelIntrospection.dashboard.graph.visualModeLabel")}
+          </p>
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 p-1">
+            <button
+              type="button"
+              aria-pressed={overviewMode}
+              data-testid="architecture-mode-overview"
+              onClick={() => setGraphMode("overview")}
+              className={`rounded-full px-3 py-1 text-xs uppercase tracking-wide transition ${
+                overviewMode
+                  ? "bg-cyan-500/30 text-cyan-100"
+                  : "text-zinc-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {t("inspector.modelIntrospection.dashboard.graph.visualModeOverview")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={!overviewMode}
+              data-testid="architecture-mode-detail"
+              onClick={() => setGraphMode("detail")}
+              className={`rounded-full px-3 py-1 text-xs uppercase tracking-wide transition ${
+                overviewMode
+                  ? "text-zinc-300 hover:bg-white/10 hover:text-white"
+                  : "bg-cyan-500/30 text-cyan-100"
+              }`}
+            >
+              {t("inspector.modelIntrospection.dashboard.graph.visualModeDetail")}
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Badge tone="success">
+            {t("inspector.modelIntrospection.dashboard.graph.visualRoleReplaces")}
+          </Badge>
+          <Badge tone="neutral">
+            {t("inspector.modelIntrospection.dashboard.graph.visualRoleSupports")}
+          </Badge>
+          <Badge tone="neutral">
+            {t("inspector.modelIntrospection.dashboard.graph.visualRoleEvidence")}
+          </Badge>
+        </div>
+        <p className="mt-3 text-sm text-zinc-300">
+          {overviewMode
+            ? t("inspector.modelIntrospection.dashboard.graph.visualModeOverviewHint")
+            : t("inspector.modelIntrospection.dashboard.graph.visualModeDetailHint")}
+        </p>
+      </div>
+
       <ArchitectureProgressCheckpoints
         progressCheckpoints={progressCheckpoints}
         t={t}
       />
+      {overviewMode ? (
+        <ArchitectureOverview
+          overview={overview}
+          summary={summary}
+          readiness={readiness}
+          t={t}
+        />
+      ) : (
+        <ArchitectureLayerInternalsSection
+          layerInternals={layerInternals}
+          layerInternalsPayload={layerInternalsPayload}
+          selectedLayerId={selectedLayerId}
+          setSelectedLayerId={setSelectedLayerId}
+          selectedLayer={selectedLayer}
+          selectedDominantSignals={selectedDominantSignals}
+          activationPath={activationPath}
+          selectedActivationLayer={selectedActivationLayer}
+          selectedActivationTransition={selectedActivationTransition}
+          architectureBlocks={architectureBlocks}
+          mlpActivation={mlpActivation}
+          t={t}
+        />
+      )}
 
-      <ArchitectureLayerInternalsSection
-        layerInternals={layerInternals}
-        layerInternalsPayload={layerInternalsPayload}
-        selectedLayerId={selectedLayerId}
-        setSelectedLayerId={setSelectedLayerId}
-        selectedLayer={selectedLayer}
-        selectedDominantSignals={selectedDominantSignals}
-        activationPath={activationPath}
-        selectedActivationLayer={selectedActivationLayer}
-        selectedActivationTransition={selectedActivationTransition}
-        architectureBlocks={architectureBlocks}
-        mlpActivation={mlpActivation}
-        t={t}
-      />
-
-      <ArchitectureOverview
-        overview={overview}
-        summary={summary}
-        readiness={readiness}
-        t={t}
-      />
-
-      <ArchitectureTransitions
-        transitions={transitions}
-        selectedTransitionId={selectedTransitionId}
-        setSelectedTransitionId={setSelectedTransitionId}
-        t={t}
-      />
-
-      <ArchitectureOutcome
-        outcome={outcome}
-        readiness={readiness}
-        readinessTone={readinessTone}
-        t={t}
-      />
-
-      <div className="mt-4 grid items-stretch gap-4 xl:grid-cols-[1.45fr_0.85fr]">
-        <div className="min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-          <div
-            ref={cyRef}
-            data-testid="architecture-graph-container"
-            className="h-[clamp(560px,72vh,760px)] w-full"
+      <div className="mt-4 grid items-stretch gap-4 xl:grid-cols-[1.65fr_0.75fr]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="min-h-[520px] overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+            <div
+              ref={cyRef}
+              data-testid="architecture-graph-container"
+              className="h-[clamp(520px,60vh,760px)] w-full"
+            />
+          </div>
+          <ArchitectureRelations
+            transitions={transitions}
+            selectedTransitionId={selectedTransitionId}
+            selectedNodeId={selectedNodeId}
+            setSelectedTransitionId={setSelectedTransitionId}
+            setSelectedNodeId={setSelectedNodeId}
+            t={t}
           />
         </div>
         <div className="flex h-full flex-col space-y-4">
-          <ArchitectureTransitionDetail
-            selectedTransition={selectedTransition}
-            t={t}
-          />
           <ArchitectureDrilldown
             selectedNode={selectedNode}
             selectedNodeDetails={selectedNodeDetails}
-            typeHintText={typeHintText}
+            relatedEdges={selectedNodeEdges}
+            t={t}
           />
-          <ArchitectureRelations edges={edges} />
+          <ArchitectureTransitionDetail selectedTransition={selectedTransition} t={t} />
+          <ArchitectureOutcome
+            outcome={outcome}
+            readiness={readiness}
+            readinessTone={readinessTone}
+            t={t}
+          />
         </div>
       </div>
       <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-zinc-300">

@@ -894,6 +894,10 @@ export const en = {
           architectureOverviewFlow: "Main flow",
           architectureOverviewScale: "Scale",
           architectureOverviewOrigin: "Origin",
+          architectureRelationsTitle: "Local relation map",
+          architectureRelationsDescription:
+            "Click a relation to keep its detail anchored next to the graph.",
+          architectureRelationsCount: "relation(s)",
           architectureTransitionsTitle: "Important transitions",
           architectureTransitionsDescription:
             "Highlight the transitions that change the state instead of every connector step.",
@@ -905,6 +909,18 @@ export const en = {
             keyTransitions: "Key transitions",
             nodeSelection: "Node selection",
           },
+          visualModeLabel: "Visual mode",
+          visualModeOverview: "Overview graph",
+          visualModeDetail: "Detail graph",
+          visualModeOverviewHint:
+            "Overview graph replaces long step lists and keeps state-change path as primary orientation.",
+          visualModeDetailHint:
+            "Detail graph supports layer-level diagnostics while evidence stays in textual drilldown.",
+          visualRoleReplaces: "replaces text",
+          visualRoleSupports: "supports text",
+          visualRoleEvidence: "evidence only",
+          visualOverviewFocusBody:
+            "Use overview mode to follow key path and status before switching to layer-level drilldown.",
           architectureProgressTitle: "Progress checkpoints",
           architectureProgressDescription:
             "Move from the prompt to the output through the stages that actually alter model state.",
@@ -973,6 +989,12 @@ export const en = {
           architectureTransitionDelta: "Delta",
           architectureTransitionImpact: "Impact",
           architectureTransitionEffect: "Effect",
+          architectureTransitionSummary: "Summary",
+          architectureTransitionDrilldown: "Drilldown",
+          architectureTransitionSelected: "transition selected",
+          architectureTransitionAwaiting: "awaiting selection",
+          architectureNodeSelected: "node selected",
+          architectureNodeAwaiting: "awaiting selection",
           architectureTransitionEmpty:
             "Select a transition to see what it changed and why it matters.",
           architectureOutcomeTitle: "Final outcome",

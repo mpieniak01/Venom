@@ -895,6 +895,10 @@ export const pl = {
           architectureOverviewFlow: "Główny przepływ",
           architectureOverviewScale: "Skala",
           architectureOverviewOrigin: "Pochodzenie",
+          architectureRelationsTitle: "Lokalna mapa relacji",
+          architectureRelationsDescription:
+            "Kliknij relację, aby jej szczegóły pozostały zakotwiczone obok grafu.",
+          architectureRelationsCount: "relacja(i)",
           architectureTransitionsTitle: "Ważne przejścia",
           architectureTransitionsDescription:
             "Wyróżnij przejścia, które zmieniają stan, zamiast każdego kroku łączącego.",
@@ -906,6 +910,18 @@ export const pl = {
             keyTransitions: "Kluczowe przejścia",
             nodeSelection: "Wybór węzła",
           },
+          visualModeLabel: "Tryb wizualny",
+          visualModeOverview: "Graf ogólny",
+          visualModeDetail: "Graf szczegółowy",
+          visualModeOverviewHint:
+            "Graf ogólny zastępuje długie listy kroków i utrzymuje ścieżkę zmiany stanu jako główną orientację.",
+          visualModeDetailHint:
+            "Graf szczegółowy wspiera diagnostykę warstw, a dowody pozostają w tekstowym drilldownie.",
+          visualRoleReplaces: "zastępuje tekst",
+          visualRoleSupports: "wspiera tekst",
+          visualRoleEvidence: "tylko dowody",
+          visualOverviewFocusBody:
+            "Użyj trybu ogólnego do śledzenia key path i statusu, a potem przełącz na drilldown warstwy.",
           architectureProgressTitle: "Punkty kontrolne przebiegu",
           architectureProgressDescription:
             "Przejdź od promptu do odpowiedzi przez etapy, które rzeczywiście zmieniają stan modelu.",
@@ -974,6 +990,12 @@ export const pl = {
           architectureTransitionDelta: "Delta",
           architectureTransitionImpact: "Wpływ",
           architectureTransitionEffect: "Efekt",
+          architectureTransitionSummary: "Podsumowanie",
+          architectureTransitionDrilldown: "Drilldown",
+          architectureTransitionSelected: "przejście wybrane",
+          architectureTransitionAwaiting: "oczekuje na wybór",
+          architectureNodeSelected: "węzeł wybrany",
+          architectureNodeAwaiting: "oczekuje na wybór",
           architectureTransitionEmpty:
             "Wybierz przejście, aby zobaczyć, co zmieniło i dlaczego ma znaczenie.",
           architectureOutcomeTitle: "Wynik końcowy",

@@ -1566,21 +1566,140 @@ describe("ModelIntrospectionDashboard", () => {
       assert.ok(screen.getByRole("heading", { name: /Architecture graph|Graf architektury/i }));
     });
     assert.ok(screen.getByTestId("architecture-graph-container"));
-    assert.ok(screen.getByText("Architecture drilldown"));
-    assert.ok(screen.getByText(/Architecture overview|Przegląd architektury/i));
-    assert.ok(screen.getByText(/Important transitions|Ważne przejścia/i));
+    assert.ok(screen.getByText(/Visual mode|Tryb wizualny/i));
+    assert.ok(screen.getByRole("button", { name: /Overview graph|Graf ogólny/i }));
+    assert.ok(screen.getByRole("button", { name: /Detail graph|Graf szczegółowy/i }));
+    assert.ok(screen.getByText(/Local relation map|Lokalna mapa relacji/i));
     assert.ok(screen.getByText(/Progress checkpoints|Punkty kontrolne przebiegu/i));
     assert.ok(screen.getByText(/Layer internals|Wnętrze warstwy/i));
     assert.ok(screen.getAllByText(/Activation path|activation path/i).length >= 1);
     assert.ok(screen.getAllByText(/transformer block 1/i).length >= 1);
     assert.ok(screen.getByText(/Transition detail|Szczegóły przejścia/i));
     assert.ok(screen.getByText(/Final outcome|Wynik końcowy/i));
-    assert.ok(screen.getAllByText(/Supporting signals|Sygnały wspierające/i).length >= 1);
     assert.ok(screen.getAllByText(/Before|Przed/i).length >= 1);
     assert.ok(screen.getAllByText(/After|Po/i).length >= 1);
     assert.ok(screen.getAllByText(/Delta|Wpływ/i).length >= 1);
+    assert.equal(screen.queryByText(/Architecture overview|Przegląd architektury/i), null);
+
+    fireEvent.click(screen.getByRole("button", { name: /Overview graph|Graf ogólny/i }));
+
+    await waitFor(() => {
+      assert.ok(screen.getByText(/Architecture overview|Przegląd architektury/i));
+    });
+    assert.ok(screen.getAllByText(/Supporting signals|Sygnały wspierające/i).length >= 1);
     assert.ok(screen.getByText("ready available"));
     assert.ok(screen.getByText("fidelity native"));
+  });
+
+  it("keeps visual replacement markers with textual drilldown in detail mode", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes("/api/v1/models/introspection")) {
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }
+      if (url.includes("/api/v1/models/introspection/analyze/stream")) {
+        return createStreamingAnalysisResponse();
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: {
+            ...makeSnapshotBeforeFixture(),
+            architecture_graph: makeArchitectureGraphFixture(),
+          },
+        }),
+        { status: 200 },
+      );
+    };
+
+    const { container } = render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Refresh snapshot|Odśwież migawkę/i,
+      }),
+    );
+
+    await waitFor(() => {
+      assert.ok(screen.getByText("Visual mode"));
+      assert.ok(screen.getByText("replaces text"));
+      assert.ok(screen.getByText("supports text"));
+      assert.ok(screen.getByText("evidence only"));
+      assert.ok(screen.getByText(/Local relation map|Lokalna mapa relacji/i));
+      assert.ok(screen.getByText(/Transition detail|Szczegóły przejścia/i));
+      assert.ok(screen.getByText(/Architecture drilldown/i));
+      assert.ok(screen.getByText(/Layer internals|Wnętrze warstwy/i));
+    });
+    assert.ok(container.querySelector('[data-testid^="architecture-relation-"][aria-pressed="true"]'));
+  });
+
+  it("keeps technical layer available when architecture payload is missing", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes("/api/v1/models/introspection")) {
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }
+      if (url.includes("/api/v1/models/introspection/analyze/stream")) {
+        return createStreamingAnalysisResponse();
+      }
+      if (url.includes("/api/v1/models/introspection/analyze")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            snapshot: {
+              ...makeSnapshotBeforeFixture(),
+              architecture_graph: null,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          snapshot: {
+            ...makeSnapshotBeforeFixture(),
+            architecture_graph: null,
+          },
+        }),
+        { status: 200 },
+      );
+    };
+
+    render(
+      <LanguageProvider>
+        <ModelIntrospectionMechanismProvider>
+          <ModelIntrospectionDashboard />
+        </ModelIntrospectionMechanismProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Refresh snapshot|Odśwież migawkę/i,
+      }),
+    );
+
+    await waitFor(() => {
+      assert.equal(screen.queryByRole("heading", { name: /Architecture graph|Graf architektury/i }), null);
+      assert.equal(screen.queryByText(/Visual mode|Tryb wizualny/i), null);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Run analysis|Uruchom analizę/i }));
+
+    await waitFor(() => {
+      assert.ok(
+        screen.getByRole("button", {
+          name: /Show technical layer|Pokaż warstwę techniczną|Technische Ebene anzeigen/i,
+        }),
+      );
+    });
   });
 
   it("keeps runtime fallback selectors collapsed by default and toggles them on demand", async () => {

@@ -895,6 +895,10 @@ export const de = {
           architectureOverviewFlow: "Hauptfluss",
           architectureOverviewScale: "Skalierung",
           architectureOverviewOrigin: "Herkunft",
+          architectureRelationsTitle: "Lokale Relationskarte",
+          architectureRelationsDescription:
+            "Wählen Sie eine Relation aus, damit ihr Detail neben dem Graphen verankert bleibt.",
+          architectureRelationsCount: "Relation(en)",
           architectureTransitionsTitle: "Wichtige Übergänge",
           architectureTransitionsDescription:
             "Heben Sie die Übergänge hervor, die den Zustand ändern, statt jeden einzelnen Verbindungsschritt anzuzeigen.",
@@ -906,6 +910,18 @@ export const de = {
             keyTransitions: "Schlüsselübergänge",
             nodeSelection: "Knotenauswahl",
           },
+          visualModeLabel: "Visualisierungsmodus",
+          visualModeOverview: "Übersichtsgraph",
+          visualModeDetail: "Detailgraph",
+          visualModeOverviewHint:
+            "Der Übersichtsgraph ersetzt lange Schrittlisten und hält den Zustandswechselpfad als primäre Orientierung.",
+          visualModeDetailHint:
+            "Der Detailgraph unterstützt Diagnostik auf Schichtebene, während Nachweise im textuellen Drilldown bleiben.",
+          visualRoleReplaces: "ersetzt Text",
+          visualRoleSupports: "unterstützt Text",
+          visualRoleEvidence: "nur Nachweise",
+          visualOverviewFocusBody:
+            "Nutzen Sie den Übersichtsmodus für Key Path und Status, bevor Sie in den Schicht-Drilldown wechseln.",
           architectureProgressTitle: "Fortschritts-Checkpoints",
           architectureProgressDescription:
             "Gehen Sie vom Prompt zum Output durch die Stufen, die den Modellzustand tatsächlich verändern.",
@@ -974,6 +990,12 @@ export const de = {
           architectureTransitionDelta: "Delta",
           architectureTransitionImpact: "Auswirkung",
           architectureTransitionEffect: "Effekt",
+          architectureTransitionSummary: "Zusammenfassung",
+          architectureTransitionDrilldown: "Drilldown",
+          architectureTransitionSelected: "Übergang ausgewählt",
+          architectureTransitionAwaiting: "wartet auf Auswahl",
+          architectureNodeSelected: "Knoten ausgewählt",
+          architectureNodeAwaiting: "wartet auf Auswahl",
           architectureTransitionEmpty:
             "Wählen Sie einen Übergang aus, um zu sehen, was sich geändert hat und warum es wichtig ist.",
           architectureOutcomeTitle: "Endergebnis",

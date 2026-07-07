@@ -16,7 +16,7 @@ from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - zależne od środowiska testowego
     import pyautogui  # type: ignore[import-untyped]
-except (Exception, SystemExit):  # pragma: no cover
+except Exception:  # pragma: no cover
     pyautogui = None
 
 logger = get_logger(__name__)

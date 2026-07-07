@@ -15,7 +15,7 @@ openai>=2.24.0,<3.0.0
 cbor2==5.9.0
 torch==2.11.0
 transformers>=5.5.0,<6.0.0
-vllm==0.22.0
+vllm==0.24.0
 
 # Optional quantization backend for multi_runtime profile tuning (217B).
 # Linux-only wheels are currently the supported path in this stack.

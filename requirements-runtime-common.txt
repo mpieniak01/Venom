@@ -4,7 +4,7 @@
 # by API, vLLM, ONNX, and other overlays.
 
 pyautogen>=0.2.0
-fastapi==0.139.0
+fastapi==0.136.1
 uvicorn[standard]==0.40.0
 python-dotenv==1.2.2
 loguru==0.7.3

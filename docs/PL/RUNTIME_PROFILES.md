@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-Venom wspiera trzy różne profile runtime, aby dostosować się do różnych wymagań sprzętowych, prywatności i operacyjnych. Każdy profil ma jawnie zdefiniowane możliwości i ograniczenia w kodzie.
+Venom wspiera trzy różne tryby usług runtime (LIGHT, LLM_OFF, FULL), aby dostosować się do różnych wymagań sprzętowych, prywatności i operacyjnych. Równolegle pakowanie zależności jest ułożone w cztery kanoniczne role: minimal, developer/medium, CI i full legacy. Instalatory silnikowe (`vllm`, `onnx`, `web`) są overlayami albo aliasami nad bazą developer/medium, a nie dodatkowymi kanonicznymi korzeniami.
 
 ## Kanoniczne odnośniki
 

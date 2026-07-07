@@ -34,14 +34,17 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
 
 Use these guarantees to classify issues correctly:
 
-| Profile | What it guarantees | What it does not guarantee |
-|---|---|---|
-| `requirements.txt` / API | backend + cloud integrations | local heavy stacks: `vllm`, ONNX runtime stack, `lancedb`, `sentence-transformers` |
-| `requirements-profile-web.txt` | API baseline alias for web-next integration | same heavy local stacks as API profile; no extra Python pins beyond the base |
-| `requirements-profile-vllm.txt` | API + `vllm` | ONNX stack, `lancedb`, `sentence-transformers` |
-| `requirements-profile-onnx.txt` | API/runtime base + ONNX overlay | `vllm`, `lancedb`, `sentence-transformers` |
-| `requirements-profile-onnx-cpu.txt` | API/runtime base + ONNX CPU-only overlay | `vllm`, ONNX CUDA packages, `lancedb`, `sentence-transformers` |
-| `requirements-full.txt` | legacy catch-all exception with historical all-in stacks | n/a |
+| Canonical role | Primary files | What it guarantees | What it does not guarantee |
+|---|---|---|---|
+| Minimal | `requirements-docker-minimal.txt` | lowest shared runtime base | engine overlays, CI-only tooling, legacy all-in extras |
+| Developer/medium | `requirements.txt`, `requirements-profile-api.txt`, `requirements-profile-web.txt` | backend + cloud integrations with web alias support | local heavy stacks when no overlay is installed |
+| CI | `requirements-ci-lite.txt` | lightweight GitHub CI gate | local heavy stacks and legacy all-in runtime |
+| Full/legacy | `requirements-full.txt` | explicit legacy catch-all exception | canonical new runtime target |
+
+Overlay rule:
+- `requirements-profile-vllm.txt` and `requirements-profile-onnx.txt` extend the developer/medium base.
+- `requirements-profile-onnx-cpu.txt` is a technical ONNX variant, not a fifth canonical role.
+- `requirements-extras-onnx.txt` is an add-on layer, not a standalone runtime root.
 
 Interpretation rules:
 1. Missing package after installing the wrong profile is expected.

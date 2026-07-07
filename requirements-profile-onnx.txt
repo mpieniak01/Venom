@@ -1,5 +1,5 @@
-# Venom profile: ONNX local LLM runtime (3rd engine)
-# Canonical overlay for ONNX Runtime GenAI model serving.
+# Venom profile: ONNX local LLM runtime
+# Engine overlay for the medium/developer stack.
 # This profile intentionally starts from the shared API/runtime base and adds
 # only the ONNX-specific engine stack.
 #

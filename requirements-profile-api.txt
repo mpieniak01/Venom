@@ -1,6 +1,6 @@
-# Venom profile: API-only / cloud-first minimal baseline
+# Venom profile: API-only / developer-medium baseline
 # Installs backend runtime without local heavy LLM engines (vLLM/ONNX).
-# Intended default for quick start and minimal environments.
+# Intended default for quick start, minimal environments, and web aliasing.
 
 -r requirements-docker-minimal.txt
 

@@ -20,28 +20,30 @@ Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje 
    pip install -r requirements.txt
    ```
    Uwagi:
-   - `requirements.txt` = minimalny profil API/cloud (domyślny).
+   - `requirements-docker-minimal.txt` = techniczny minimalny baseline.
+   - `requirements.txt` + `requirements-profile-api.txt` = developer/medium baseline dla backendu.
    - `requirements-profile-web.txt` = alias bazowego API dla integracji web-next; nie dodaje własnych pinów Pythona.
-   - Dla lokalnych silników runtime doinstaluj profil:
-     - `pip install -r requirements.txt` (Ollama)
-     - `pip install -r requirements-profile-vllm.txt`
-     - `pip install -r requirements-profile-onnx.txt` (overlay na wspólnej bazie API/runtime)
-     - `pip install -r requirements-profile-onnx-cpu.txt` (overlay ONNX tylko dla CPU, na tej samej bazie)
-   - opcjonalne extras (instaluj po profilu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
+   - `requirements-ci-lite.txt` = osobny lekki profil gate'ów CI.
+   - `requirements-profile-vllm.txt` i `requirements-profile-onnx.txt` = overlaye silnikowe nad wspólną bazą, nie osobne kanoniczne korzenie.
+   - `requirements-profile-onnx-cpu.txt` = techniczny wariant ONNX dla hostów CPU-only.
+   - opcjonalne extras (instaluj po overlayu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
    - Legacy catch-all exception: `pip install -r requirements-full.txt`
 
 ### Kontrakt profili zależności (ważne)
 
 Tych gwarancji używamy do rozróżnienia "to normalne" vs "to błąd":
 
-| Profil | Co gwarantuje | Czego nie gwarantuje |
-|---|---|---|
-| `requirements.txt` / API | backend + integracje cloud | lokalne ciężkie stosy: `vllm`, stos ONNX, `lancedb`, `sentence-transformers` |
-| `requirements-profile-web.txt` | alias bazowego API dla integracji web-next | te same ciężkie stosy lokalne co profil API; bez dodatkowych pinów ponad bazę |
-| `requirements-profile-vllm.txt` | API + `vllm` | stos ONNX, `lancedb`, `sentence-transformers` |
-| `requirements-profile-onnx.txt` | baza API/runtime + overlay ONNX | `vllm`, `lancedb`, `sentence-transformers` |
-| `requirements-profile-onnx-cpu.txt` | baza API/runtime + overlay ONNX tylko CPU | `vllm`, pakiety ONNX CUDA, `lancedb`, `sentence-transformers` |
-| `requirements-full.txt` | legacy catch-all exception z historycznymi all-in stackami | n/a |
+| Kanoniczna rola | Główne pliki | Co gwarantuje | Czego nie gwarantuje |
+|---|---|---|---|
+| Minimal | `requirements-docker-minimal.txt` | najniższa wspólna baza runtime | overlaye silnikowe, narzędzia tylko dla CI, legacy all-in extras |
+| Developer/medium | `requirements.txt`, `requirements-profile-api.txt`, `requirements-profile-web.txt` | backend + integracje cloud z aliasem web | ciężkie lokalne stosy, jeśli overlay nie został doinstalowany |
+| CI | `requirements-ci-lite.txt` | lekki profil gate'ów GitHub CI | ciężkie lokalne stosy i legacy all-in runtime |
+| Full/legacy | `requirements-full.txt` | jawny legacy catch-all exception | kanoniczny nowy target runtime |
+
+Zasada overlay:
+- `requirements-profile-vllm.txt` i `requirements-profile-onnx.txt` rozszerzają bazę developer/medium.
+- `requirements-profile-onnx-cpu.txt` to techniczny wariant ONNX, a nie piąta kanoniczna rola.
+- `requirements-extras-onnx.txt` to warstwa add-on, a nie samodzielny root runtime.
 
 Zasady interpretacji:
 1. Brak pakietu po instalacji niewłaściwego profilu jest zachowaniem oczekiwanym.

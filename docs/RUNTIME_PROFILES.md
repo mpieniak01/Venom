@@ -2,7 +2,7 @@
 
 ## Overview
 
-Venom supports three distinct runtime profiles to accommodate different hardware, privacy, and operational requirements. Each profile has explicit capabilities and constraints defined in the codebase.
+Venom supports three distinct runtime service modes (LIGHT, LLM_OFF, FULL) to accommodate different hardware, privacy, and operational requirements. In parallel, dependency packaging is organized into four canonical roles: minimal, developer/medium, CI, and full legacy. Engine-specific installers (`vllm`, `onnx`, `web`) are overlays or aliases on top of the developer/medium base, not extra canonical roots.
 
 ## Canonical References
 

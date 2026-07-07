@@ -1,6 +1,7 @@
 # Venom profile: vLLM local runtime
 #
-# Self-contained overlay for the local vLLM stack on top of the shared runtime base.
+# Engine overlay for the medium/developer stack.
+# Install on top of the shared runtime base; do not reinstall the base set.
 
 -c constraints-hf-onnx.txt
 -r requirements-runtime-common.txt

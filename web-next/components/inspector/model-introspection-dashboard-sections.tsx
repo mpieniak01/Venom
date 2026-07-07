@@ -5785,15 +5785,14 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
     () => getArchitectureGraphNodeDetails(snapshot, selectedNode),
     [selectedNode, snapshot],
   );
-  const graphEdges = graph?.edges ?? [];
   const selectedNodeEdges = useMemo(() => {
-    if (!selectedNode) {
+    if (!selectedNode || !graph) {
       return [];
     }
-    return graphEdges.filter(
+    return graph.edges.filter(
       (edge) => edge.from === selectedNode.id || edge.to === selectedNode.id,
     );
-  }, [graphEdges, selectedNode]);
+  }, [graph, selectedNode]);
   const overviewMode = graphMode === "overview";
   const [cyRevision, setCyRevision] = useState(0);
   const handleGraphModeChange = (mode: ArchitectureGraphMode) => {

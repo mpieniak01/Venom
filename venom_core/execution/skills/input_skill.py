@@ -6,6 +6,7 @@ Ten skill pozwala na fizyczną interakcję z interfejsem systemu operacyjnego.
 
 import asyncio
 import importlib.util
+import os
 import platform
 import sys
 from types import ModuleType
@@ -15,6 +16,8 @@ from semantic_kernel.functions import kernel_function
 
 from venom_core.core.autonomy_enforcement import require_desktop_input_permission
 from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _build_mouseinfo_stub() -> ModuleType:
@@ -35,19 +38,35 @@ def _build_mouseinfo_stub() -> ModuleType:
 def _load_pyautogui():
     """Import pyautogui without suppressing real application exits."""
 
-    if importlib.util.find_spec("tkinter") is None and "mouseinfo" not in sys.modules:
+    is_headless_linux = (
+        platform.system() == "Linux"
+        and not os.environ.get("DISPLAY")
+        and not os.environ.get("WAYLAND_DISPLAY")
+    )
+    if (
+        is_headless_linux or importlib.util.find_spec("tkinter") is None
+    ) and "mouseinfo" not in sys.modules:
         sys.modules["mouseinfo"] = _build_mouseinfo_stub()
 
     try:  # pragma: no cover - zależne od środowiska testowego
         import pyautogui  # type: ignore[import-untyped]
-    except Exception:  # pragma: no cover
+    except (
+        ImportError,
+        ModuleNotFoundError,
+        RuntimeError,
+        OSError,
+        KeyError,
+    ) as exc:  # pragma: no cover
+        logger.warning(
+            "PyAutoGUI is unavailable in this environment: %s",
+            exc,
+            exc_info=True,
+        )
         return None
     return pyautogui
 
 
 pyautogui = _load_pyautogui()
-
-logger = get_logger(__name__)
 FAIL_SAFE_ERROR_MESSAGE = (
     "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
 )

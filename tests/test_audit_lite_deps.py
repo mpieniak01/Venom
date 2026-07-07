@@ -71,6 +71,20 @@ def test_audit_follows_nested_requirements_includes(tmp_path: Path):
     assert "Wszystkie testy czyste" in result.stdout
 
 
+def test_audit_fails_on_missing_nested_requirements_include(tmp_path: Path):
+    _write(
+        tmp_path / "requirements-ci-lite.txt",
+        "-r missing-runtime-common.txt\npytest==9.0.2\n",
+    )
+    _write(tmp_path / "config/pytest-groups/ci-lite.txt", "tests/test_sample.py\n")
+    _write(tmp_path / "tests/test_sample.py", "def test_sample():\n    assert True\n")
+
+    result = _run_audit(tmp_path)
+    assert result.returncode == 1
+    assert "Missing requirements include" in result.stdout
+    assert "missing-runtime-common.txt" in result.stdout
+
+
 def test_audit_ignores_type_checking_only_imports(tmp_path: Path):
     _write(tmp_path / "requirements-ci-lite.txt", "pytest==9.0.2\n")
     _write(tmp_path / "config/pytest-groups/ci-lite.txt", "tests/test_sample.py\n")

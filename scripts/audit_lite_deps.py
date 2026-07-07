@@ -176,8 +176,11 @@ def load_requirements(req_path: Path, seen: set[Path] | None = None) -> set[str]
     allowed_packages: set[str] = set()
     if seen is None:
         seen = set()
-    if req_path in seen or not req_path.exists():
+    req_path = req_path.resolve()
+    if req_path in seen:
         return allowed_packages
+    if not req_path.exists():
+        raise FileNotFoundError(f"Missing requirements include: {req_path}")
     seen.add(req_path)
 
     for line in req_path.read_text(encoding="utf-8").splitlines():
@@ -443,7 +446,11 @@ def main() -> int:
         print("❌ Brak plików konfiguracyjnych!")
         return 1
 
-    allowed_packages = load_requirements(req_path)
+    try:
+        allowed_packages = load_requirements(req_path)
+    except FileNotFoundError as exc:
+        print(f"❌ {exc}")
+        return 1
     test_files = read_ci_lite_tests(config_path)
     stdlib = _stdlib_modules()
 

@@ -12,4 +12,4 @@ pydantic-settings==2.10.1
 chardet<6
 psutil==5.9.8
 numpy<2.0.0
-semantic-kernel==1.39.4
+semantic-kernel==1.44.0

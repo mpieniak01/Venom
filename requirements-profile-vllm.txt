@@ -2,13 +2,14 @@
 #
 # Self-contained overlay for the local vLLM stack on top of the shared runtime base.
 
+-c constraints-hf-onnx.txt
 -r requirements-runtime-common.txt
 
 # vLLM-specific runtime baseline
 pydantic==2.13.4
 pydantic-settings==2.10.1
 numpy>=2.0.0,<3.0.0
-semantic-kernel==1.43.1
+semantic-kernel==1.44.0
 openai>=2.24.0,<3.0.0
 
 # vLLM runtime package (provides .venv/bin/vllm)

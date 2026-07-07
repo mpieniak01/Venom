@@ -32,8 +32,8 @@ websockets==15.0.1
 
 python-multipart==0.0.31
 mcp>=1.0.0
-urllib3>=2.6.3
-requests>=2.32.5
+urllib3>=2.7.0
+requests>=2.33.0
 
 google-genai
 anthropic
@@ -44,3 +44,4 @@ google-auth-httplib2>=0.1.1
 google-api-python-client>=2.100.0
 pyasn1>=0.6.3
 PyGithub==2.8.1
+certifi>=2024.7.4

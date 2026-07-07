@@ -14,7 +14,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements-docker-minimal.txt /tmp/requirements-docker-minimal.txt
+COPY requirements-runtime-common.txt requirements-docker-minimal.txt /tmp/
 RUN python -m pip install --upgrade pip \
     && pip install -r /tmp/requirements-docker-minimal.txt
 

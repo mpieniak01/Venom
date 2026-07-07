@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactElement,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
@@ -41,6 +48,8 @@ import type {
   SnapshotComparison,
   AnalysisLayerInternalsBlock,
 } from "@/components/inspector/model-introspection-dashboard-types";
+
+type TranslationFn = (key: string, replacements?: Record<string, string | number>) => string;
 
 type AnalysisOrbProps = Readonly<{
   active: boolean;
@@ -602,7 +611,7 @@ function renderVerdictCopy(args: {
 
 function renderManagerMetricsBadge(
   available: boolean,
-  t: (key: string, replacements?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): string {
   if (available) {
     return t("inspector.modelIntrospection.dashboard.results.managerMetricsOn");
@@ -2195,8 +2204,8 @@ function useRuntimeGraphCytoscape(args: {
             spacingFactor: nodes.length >= 8 ? 1.45 : 1.35,
             avoidOverlap: true,
             nodeDimensionsIncludeLabels: true,
-            orientation: "horizontal",
-            roots: "#runtime",
+            direction: "rightward",
+            roots: ["#runtime"],
           },
         });
         if (cancelled) {
@@ -3054,7 +3063,7 @@ function getTransitionEvidence(
   targetNode: ArchitectureGraphNode | null,
   edge: ArchitectureGraphEdge,
   transitionDelta: { before: string; after: string; delta: string; impact: string },
-  t: (path: string, replacements?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): string[] {
   return [
     `${transitionDelta.before} → ${transitionDelta.after}`,
@@ -3149,7 +3158,7 @@ function getTransitionSignificance(
 
 function getArchitectureGraphTransitions(
   snapshot: IntrospectionSnapshot,
-  t: (path: string, replacements?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): ArchitectureGraphTransition[] {
   const edges = getArchitectureGraphEdges(snapshot);
   const nodes = getArchitectureGraphNodes(snapshot);
@@ -3742,8 +3751,8 @@ function getArchitectureGraphLayoutOptions(
     spacingFactor,
     avoidOverlap: true,
     nodeDimensionsIncludeLabels: true,
-    orientation: "horizontal",
-    roots: roots ? `#${roots}` : undefined,
+    direction: "rightward",
+    roots: roots ? [`#${roots}`] : undefined,
   };
 }
 
@@ -4122,7 +4131,7 @@ function useArchitectureGraphCytoscape({
 type TensorActivationDetailProps = Readonly<{
   tensorActivation: NonNullable<ArchitectureMlpActivation["tensorActivation"]>;
   layerId: string;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function formatOptionalMetric(
@@ -4174,10 +4183,10 @@ type TensorStabilitySectionProps = Readonly<{
   stability: TensorActivationModel["stability"];
   stabilityVariance: string;
   stabilityCosineMean: string;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
-function renderOptionalNormBadge(label: string, value: number | null): JSX.Element | null {
+function renderOptionalNormBadge(label: string, value: number | null): ReactElement | null {
   if (value === null) {
     return null;
   }
@@ -4361,7 +4370,7 @@ function TensorActivationDetail({ tensorActivation, layerId, t }: TensorActivati
 
 type ArchitectureProgressCheckpointsProps = Readonly<{
   progressCheckpoints: ReturnType<typeof getArchitectureGraphProgressCheckpoints>;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function ArchitectureProgressCheckpoints({ progressCheckpoints, t }: ArchitectureProgressCheckpointsProps) {
@@ -4439,7 +4448,7 @@ type ArchitectureOverviewProps = Readonly<{
   overview: ReturnType<typeof getArchitectureGraphOverview>;
   summary: ReturnType<typeof getArchitectureGraphSummary>;
   readiness: ModelArchitectureGraphReadiness;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function ArchitectureOverview({ overview, summary, readiness, t }: ArchitectureOverviewProps) {
@@ -4496,7 +4505,7 @@ type ArchitectureRelationsProps = Readonly<{
   selectedNodeId: string | null;
   setSelectedTransitionId: (id: string | null) => void;
   setSelectedNodeId: (id: string | null) => void;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function ArchitectureRelations({
@@ -4581,7 +4590,7 @@ type ArchitectureOutcomeProps = Readonly<{
   outcome: ReturnType<typeof getArchitectureGraphOutcome>;
   readiness: ModelArchitectureGraphReadiness;
   readinessTone: BadgeTone;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function ArchitectureOutcome({ outcome, readiness, readinessTone, t }: ArchitectureOutcomeProps) {
@@ -4646,7 +4655,7 @@ function ArchitectureOutcome({ outcome, readiness, readinessTone, t }: Architect
 
 type ArchitectureTransitionDetailProps = Readonly<{
   selectedTransition: ReturnType<typeof getArchitectureGraphTransitions>[number] | null;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function ArchitectureTransitionDetail({ selectedTransition, t }: ArchitectureTransitionDetailProps) {
@@ -4748,7 +4757,7 @@ type ArchitectureDrilldownProps = Readonly<{
   selectedNode: ModelArchitectureGraphNode | null;
   selectedNodeDetails: GraphNodeDetails;
   relatedEdges: ModelArchitectureGraphEdge[];
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function ArchitectureDrilldown({
@@ -4897,7 +4906,7 @@ type LayerInternalsDetailPanelProps = Readonly<{
   selectedActivationTransition: ArchitectureActivationPath["transitions"][number] | null;
   architectureBlocks: AnalysisLayerInternalsBlock[];
   mlpActivation: ArchitectureMlpActivation | null;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerInternalsDetailPanel({
@@ -4971,7 +4980,7 @@ function LayerInternalsDetailPanel({
 type LayerDominantSignalsCardProps = Readonly<{
   selectedLayer: ArchitectureLayerInternals;
   selectedDominantSignals: ReturnType<typeof getArchitectureLayerDominantSignals>;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerDominantSignalsCard({
@@ -5032,7 +5041,7 @@ type LayerActivationPathCardProps = Readonly<{
   activationPath: ArchitectureActivationPath | null;
   selectedActivationLayer: ArchitectureActivationPath["layers"][number] | null;
   selectedActivationTransition: ArchitectureActivationPath["transitions"][number] | null;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerActivationPathCard({
@@ -5142,7 +5151,7 @@ function LayerActivationPathCard({
 
 type LayerBlocksCardProps = Readonly<{
   selectedLayer: ArchitectureLayerInternals;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerBlocksCard({ selectedLayer, t }: LayerBlocksCardProps) {
@@ -5222,7 +5231,7 @@ function LayerBlocksCard({ selectedLayer, t }: LayerBlocksCardProps) {
 type LayerArchitectureBlocksCardProps = Readonly<{
   selectedLayer: ArchitectureLayerInternals;
   architectureBlocks: AnalysisLayerInternalsBlock[];
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerArchitectureBlocksCard({
@@ -5269,7 +5278,7 @@ function LayerArchitectureBlocksCard({
 
 type LayerSignalsCardProps = Readonly<{
   selectedLayer: ArchitectureLayerInternals;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerSignalsCard({ selectedLayer, t }: LayerSignalsCardProps) {
@@ -5316,7 +5325,7 @@ function LayerSignalsCard({ selectedLayer, t }: LayerSignalsCardProps) {
 
 type LayerResponseLinkageCardProps = Readonly<{
   selectedLayer: ArchitectureLayerInternals;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerResponseLinkageCard({ selectedLayer, t }: LayerResponseLinkageCardProps) {
@@ -5388,7 +5397,7 @@ function LayerResponseLinkageCard({ selectedLayer, t }: LayerResponseLinkageCard
 type LayerMlpActivationCardProps = Readonly<{
   selectedLayer: ArchitectureLayerInternals;
   mlpActivation: ArchitectureMlpActivation | null;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerMlpActivationCard({ selectedLayer, mlpActivation, t }: LayerMlpActivationCardProps) {
@@ -5508,7 +5517,7 @@ function LayerMlpActivationCard({ selectedLayer, mlpActivation, t }: LayerMlpAct
 
 type LayerEvidenceCardProps = Readonly<{
   selectedLayer: ArchitectureLayerInternals;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 function LayerEvidenceCard({ selectedLayer, t }: LayerEvidenceCardProps) {
@@ -5546,7 +5555,7 @@ type ArchitectureLayerInternalsSectionProps = Readonly<{
   selectedActivationTransition: ArchitectureActivationPath["transitions"][number] | null;
   architectureBlocks: AnalysisLayerInternalsBlock[];
   mlpActivation: ArchitectureMlpActivation | null;
-  t: (key: string) => string;
+  t: TranslationFn;
 }>;
 
 type ArchitectureGraphMode = "overview" | "detail";
@@ -5776,14 +5785,15 @@ export function ArchitectureGraphPanel(props: ArchitectureGraphPanelProps) {
     () => getArchitectureGraphNodeDetails(snapshot, selectedNode),
     [selectedNode, snapshot],
   );
+  const graphEdges = graph?.edges ?? [];
   const selectedNodeEdges = useMemo(() => {
     if (!selectedNode) {
       return [];
     }
-    return graph.edges.filter(
+    return graphEdges.filter(
       (edge) => edge.from === selectedNode.id || edge.to === selectedNode.id,
     );
-  }, [graph.edges, selectedNode]);
+  }, [graphEdges, selectedNode]);
   const overviewMode = graphMode === "overview";
   const [cyRevision, setCyRevision] = useState(0);
   const handleGraphModeChange = (mode: ArchitectureGraphMode) => {

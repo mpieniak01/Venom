@@ -495,7 +495,7 @@ function useOrbInteractions(
   state: VoiceOrbState,
   cfg: OrbEffectsConfig,
   noAnim: boolean,
-  containerRef: RefObject<HTMLButtonElement>,
+  containerRef: RefObject<HTMLButtonElement | null>,
 ): OrbInteractions {
   const [shockwaves, setShockwaves] = useState<readonly OrbShockwave[]>([]);
   const shockwaveIdRef = useRef(0);
@@ -590,7 +590,7 @@ type VoiceOrbSceneProps = Readonly<{
   cfg: OrbEffectsConfig;
   noAnim: boolean;
   effectiveState: VoiceOrbState;
-  containerRef: RefObject<HTMLButtonElement>;
+  containerRef: RefObject<HTMLButtonElement | null>;
   interactions: OrbInteractions;
   glowShadow: string | undefined;
   ringAnimation: string;

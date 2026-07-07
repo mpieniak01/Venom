@@ -309,6 +309,8 @@ Includes:
 - minimal API/cloud baseline
 - no local heavy runtime engines by default (`vllm`/ONNX excluded)
 
+Web-next integration uses the same baseline through `requirements-profile-web.txt`; that file is a named alias and does not add extra Python pins.
+
 ### Core-Light (Docker/minimal runtime)
 
 Install with:
@@ -333,6 +335,8 @@ Includes:
 - ONNX Runtime (GPU or CPU)
 - Optimum, Accelerate
 
+This profile is an overlay on top of the shared API/runtime base. It does not redefine the baseline.
+
 ### Extras-ONNX (Optional add-ons)
 
 Install with:
@@ -355,6 +359,8 @@ pip install -r requirements-full.txt
 ```
 
 Includes full legacy set (core + local engines + heavy extras + dev tools).
+
+This file is an explicit legacy exception for hosts that still require the historical all-in stack.
 
 ### Full vs Profiles (Operational Rule)
 

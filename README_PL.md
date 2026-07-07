@@ -196,11 +196,12 @@ make start
 Domyślny `requirements.txt` instaluje **minimalny profil API/cloud**.
 Jeśli chcesz lokalne silniki runtime, doinstaluj jeden z profili:
 - `pip install -r requirements.txt` (Ollama: bez dodatkowych paczek Pythona)
+- `pip install -r requirements-profile-web.txt` (sam bazowy API, nazwana ścieżka dla integracji web-next bez dodatkowych pinów Pythona)
 - `pip install -r requirements-profile-vllm.txt`
-- `pip install -r requirements-profile-onnx.txt`
-- `pip install -r requirements-profile-onnx-cpu.txt`
+- `pip install -r requirements-profile-onnx.txt` (overlay nad bazą API/runtime)
+- `pip install -r requirements-profile-onnx-cpu.txt` (overlay ONNX tylko dla CPU, na tej samej bazie)
 - `pip install -r requirements-extras-onnx.txt` (opcjonalne extras: `faster-whisper` + `piper-tts`; instaluj po profilu ONNX/ONNX-CPU)
-- `pip install -r requirements-full.txt` (legacy full stack)
+- `pip install -r requirements-full.txt` (tylko legacy catch-all host exception)
 
 ### Gwarancje profili zależności
 Traktuj tę tabelę jako źródło prawdy dla rozróżnienia: "to oczekiwane" vs "to błąd profilu".
@@ -208,11 +209,11 @@ Traktuj tę tabelę jako źródło prawdy dla rozróżnienia: "to oczekiwane" vs
 | Profil | Gwarantowany zakres | Jawnie nie zawiera |
 |---|---|---|
 | `requirements.txt` (`requirements-profile-api.txt`) | baseline API/cloud (`fastapi`, `uvicorn`, providerzy cloud) | ciężkie lokalne pakiety runtime (`vllm`, `onnxruntime*`, `lancedb`, `sentence-transformers`) |
-| `requirements-profile-web.txt` | baseline API + zależności integracji web | te same ciężkie lokalne pakiety runtime co profil API |
+| `requirements-profile-web.txt` | sam baseline API, nazwana ścieżka dla integracji web-next | te same ciężkie lokalne pakiety runtime co profil API; brak dodatkowych pinów ponad bazę |
 | `requirements-profile-vllm.txt` | baseline API + `vllm` | stos ONNX, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx.txt` | baseline API + stos runtime ONNX | vLLM, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx-cpu.txt` | baseline API + stos runtime ONNX CPU | vLLM, pakiety ONNX CUDA, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
-| `requirements-full.txt` | legacy profil all-in (zawiera `vllm`, ONNX, `lancedb`, `sentence-transformers`) | n/a |
+| `requirements-profile-onnx.txt` | baseline API/runtime + overlay ONNX | vLLM, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
+| `requirements-profile-onnx-cpu.txt` | baseline API/runtime + overlay ONNX tylko CPU | vLLM, pakiety ONNX CUDA, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
+| `requirements-full.txt` | legacy catch-all host exception (historyczny all-in stack) | n/a |
 
 Zasady triage incydentów:
 1. Jeśli pakietu brakuje, bo nie zainstalowano właściwego profilu, to zachowanie oczekiwane.
@@ -296,12 +297,12 @@ Python 3.12+ (zalecane 3.12)
 
 Profile:
 - [requirements.txt](requirements.txt) - domyślny minimalny profil API/cloud
-- [requirements-profile-web.txt](requirements-profile-web.txt) - profil API + integracja z web-next
+- [requirements-profile-web.txt](requirements-profile-web.txt) - alias bazowego API dla integracji web-next
 - [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - profil API + vLLM
-- [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - profil API + ONNX LLM (trzeci silnik)
-- [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - profil API + ONNX CPU-only
+- [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - baseline API/runtime + overlay ONNX
+- [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - baseline API/runtime + overlay ONNX tylko CPU
 - [requirements-extras-onnx.txt](requirements-extras-onnx.txt) - opcjonalne extras (`faster-whisper`, `piper-tts`), instalowane po profilu ONNX LLM lub ONNX CPU
-- [requirements-full.txt](requirements-full.txt) - pełny legacy stack
+- [requirements-full.txt](requirements-full.txt) - legacy catch-all host exception
 
 ## Uruchamianie (FastAPI + Next.js)
 Pełna checklista: [`docs/PL/DEPLOYMENT_NEXT.md`](docs/PL/DEPLOYMENT_NEXT.md).

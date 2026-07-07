@@ -9,9 +9,11 @@
 -r requirements-profile-api.txt
 
 # ONNX CPU runtime stack for local LLM inference.
+# Shares the same ONNX floor as the GPU profile so the variant only differs
+# in runtime backend, not in model-format support.
 onnxruntime
 onnxruntime-genai
-onnx>=1.14.0
+onnx>=1.21.0
 onnx-ir>=0.1.16
 
 # Intentionally excluded here (heavy GPU/torch chain):

@@ -196,11 +196,12 @@ make start
 Default `requirements.txt` installs **minimal API/cloud profile**.
 If you want local runtime engines, install one of:
 - `pip install -r requirements.txt` (Ollama: no extra Python deps)
+- `pip install -r requirements-profile-web.txt` (API baseline only; web-next integration without extra Python pins)
 - `pip install -r requirements-profile-vllm.txt`
-- `pip install -r requirements-profile-onnx.txt`
-- `pip install -r requirements-profile-onnx-cpu.txt`
+- `pip install -r requirements-profile-onnx.txt` (overlay on API/runtime base)
+- `pip install -r requirements-profile-onnx-cpu.txt` (CPU-only ONNX overlay on the same base)
 - `pip install -r requirements-extras-onnx.txt` (optional extras: `faster-whisper` + `piper-tts`; install after ONNX/ONNX-CPU profile)
-- `pip install -r requirements-full.txt` (legacy full stack)
+- `pip install -r requirements-full.txt` (legacy catch-all host exception only)
 
 ### Dependency Profile Guarantees
 Use this matrix as the source of truth for "is this missing package expected or a profile bug?".
@@ -208,11 +209,11 @@ Use this matrix as the source of truth for "is this missing package expected or 
 | Profile | Guaranteed scope | Explicitly not included |
 |---|---|---|
 | `requirements.txt` (`requirements-profile-api.txt`) | API/cloud baseline (`fastapi`, `uvicorn`, cloud providers) | Local heavy runtime packages (`vllm`, `onnxruntime*`, `lancedb`, `sentence-transformers`) |
-| `requirements-profile-web.txt` | API baseline + web integration runtime deps | Same heavy local runtime packages as API profile |
+| `requirements-profile-web.txt` | API baseline only, named for web-next integration | Same heavy local runtime packages as API profile; no extra Python pins beyond API baseline |
 | `requirements-profile-vllm.txt` | API baseline + `vllm` | ONNX stack, RAG/vector stack (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx.txt` | API baseline + ONNX runtime stack | vLLM, RAG/vector stack (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx-cpu.txt` | API baseline + ONNX CPU runtime stack | vLLM, ONNX CUDA packages, RAG/vector stack (`lancedb`, `sentence-transformers`) |
-| `requirements-full.txt` | Legacy all-in profile (includes `vllm`, ONNX, `lancedb`, `sentence-transformers`) | n/a |
+| `requirements-profile-onnx.txt` | API/runtime base + ONNX overlay | vLLM, RAG/vector stack (`lancedb`, `sentence-transformers`) |
+| `requirements-profile-onnx-cpu.txt` | API/runtime base + ONNX CPU-only overlay | vLLM, ONNX CUDA packages, RAG/vector stack (`lancedb`, `sentence-transformers`) |
+| `requirements-full.txt` | Legacy catch-all host exception (all-in historical stack) | n/a |
 
 Rules for incident triage:
 1. If a package is missing because the corresponding profile was not installed, this is expected behavior.
@@ -296,12 +297,12 @@ Python 3.12+ (recommended 3.12)
 
 Profiles:
 - [requirements.txt](requirements.txt) - default minimal API/cloud profile
-- [requirements-profile-web.txt](requirements-profile-web.txt) - API + web-next integration profile
+- [requirements-profile-web.txt](requirements-profile-web.txt) - API baseline alias for web-next integration
 - [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - API + vLLM profile
-- [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - API + ONNX LLM profile (third engine)
-- [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - API + ONNX CPU-only profile
+- [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - API/runtime base + ONNX overlay
+- [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - API/runtime base + ONNX CPU-only overlay
 - [requirements-extras-onnx.txt](requirements-extras-onnx.txt) - optional extras (`faster-whisper`, `piper-tts`), installed after ONNX LLM or ONNX CPU profile
-- [requirements-full.txt](requirements-full.txt) - full legacy stack
+- [requirements-full.txt](requirements-full.txt) - legacy catch-all host exception
 
 ## Running (FastAPI + Next.js)
 Full checklist: [`docs/DEPLOYMENT_NEXT.md`](docs/DEPLOYMENT_NEXT.md).

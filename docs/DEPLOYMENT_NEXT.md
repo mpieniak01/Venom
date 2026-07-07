@@ -21,13 +21,14 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
    ```
    Notes:
    - `requirements.txt` = minimal API/cloud profile (default).
+   - `requirements-profile-web.txt` = API baseline alias for web-next integration; it does not add extra Python pins.
    - For local runtime engines install additional profile:
      - `pip install -r requirements.txt` (Ollama)
      - `pip install -r requirements-profile-vllm.txt`
-     - `pip install -r requirements-profile-onnx.txt`
-     - `pip install -r requirements-profile-onnx-cpu.txt`
+     - `pip install -r requirements-profile-onnx.txt` (overlay on the shared API/runtime base)
+     - `pip install -r requirements-profile-onnx-cpu.txt` (CPU-only overlay on the same base)
      - optional extras (install after ONNX/ONNX-CPU profile): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
-   - Full legacy stack: `pip install -r requirements-full.txt`
+   - Legacy catch-all exception: `pip install -r requirements-full.txt`
 
 ### Dependency Profile Contract (Important)
 
@@ -36,10 +37,11 @@ Use these guarantees to classify issues correctly:
 | Profile | What it guarantees | What it does not guarantee |
 |---|---|---|
 | `requirements.txt` / API | backend + cloud integrations | local heavy stacks: `vllm`, ONNX runtime stack, `lancedb`, `sentence-transformers` |
-| `requirements-profile-web.txt` | API + web integration deps | same heavy local stacks as API profile |
+| `requirements-profile-web.txt` | API baseline alias for web-next integration | same heavy local stacks as API profile; no extra Python pins beyond the base |
 | `requirements-profile-vllm.txt` | API + `vllm` | ONNX stack, `lancedb`, `sentence-transformers` |
-| `requirements-profile-onnx*.txt` | API + ONNX runtime stack | `vllm`, `lancedb`, `sentence-transformers` |
-| `requirements-full.txt` | all legacy runtime stacks together | n/a |
+| `requirements-profile-onnx.txt` | API/runtime base + ONNX overlay | `vllm`, `lancedb`, `sentence-transformers` |
+| `requirements-profile-onnx-cpu.txt` | API/runtime base + ONNX CPU-only overlay | `vllm`, ONNX CUDA packages, `lancedb`, `sentence-transformers` |
+| `requirements-full.txt` | legacy catch-all exception with historical all-in stacks | n/a |
 
 Interpretation rules:
 1. Missing package after installing the wrong profile is expected.

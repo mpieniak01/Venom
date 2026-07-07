@@ -21,13 +21,14 @@ Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje 
    ```
    Uwagi:
    - `requirements.txt` = minimalny profil API/cloud (domyślny).
+   - `requirements-profile-web.txt` = alias bazowego API dla integracji web-next; nie dodaje własnych pinów Pythona.
    - Dla lokalnych silników runtime doinstaluj profil:
      - `pip install -r requirements.txt` (Ollama)
      - `pip install -r requirements-profile-vllm.txt`
-     - `pip install -r requirements-profile-onnx.txt`
-     - `pip install -r requirements-profile-onnx-cpu.txt`
+     - `pip install -r requirements-profile-onnx.txt` (overlay na wspólnej bazie API/runtime)
+     - `pip install -r requirements-profile-onnx-cpu.txt` (overlay ONNX tylko dla CPU, na tej samej bazie)
    - opcjonalne extras (instaluj po profilu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
-   - Pełny legacy stack: `pip install -r requirements-full.txt`
+   - Legacy catch-all exception: `pip install -r requirements-full.txt`
 
 ### Kontrakt profili zależności (ważne)
 
@@ -36,10 +37,11 @@ Tych gwarancji używamy do rozróżnienia "to normalne" vs "to błąd":
 | Profil | Co gwarantuje | Czego nie gwarantuje |
 |---|---|---|
 | `requirements.txt` / API | backend + integracje cloud | lokalne ciężkie stosy: `vllm`, stos ONNX, `lancedb`, `sentence-transformers` |
-| `requirements-profile-web.txt` | API + zależności integracji web | te same ciężkie stosy lokalne co profil API |
+| `requirements-profile-web.txt` | alias bazowego API dla integracji web-next | te same ciężkie stosy lokalne co profil API; bez dodatkowych pinów ponad bazę |
 | `requirements-profile-vllm.txt` | API + `vllm` | stos ONNX, `lancedb`, `sentence-transformers` |
-| `requirements-profile-onnx*.txt` | API + stos runtime ONNX | `vllm`, `lancedb`, `sentence-transformers` |
-| `requirements-full.txt` | pełny legacy stack (wszystkie główne stosy razem) | n/a |
+| `requirements-profile-onnx.txt` | baza API/runtime + overlay ONNX | `vllm`, `lancedb`, `sentence-transformers` |
+| `requirements-profile-onnx-cpu.txt` | baza API/runtime + overlay ONNX tylko CPU | `vllm`, pakiety ONNX CUDA, `lancedb`, `sentence-transformers` |
+| `requirements-full.txt` | legacy catch-all exception z historycznymi all-in stackami | n/a |
 
 Zasady interpretacji:
 1. Brak pakietu po instalacji niewłaściwego profilu jest zachowaniem oczekiwanym.

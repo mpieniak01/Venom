@@ -198,7 +198,7 @@ If you want local runtime engines, install one of:
 - `pip install -r requirements.txt` (Ollama: no extra Python deps)
 - `pip install -r requirements-profile-web.txt` (API baseline only; web-next integration without extra Python pins)
 - `pip install -r requirements-profile-vllm.txt`
-- `pip install -r requirements-profile-onnx.txt` (overlay on API/runtime base)
+- `pip install -r requirements-profile-onnx.txt` (runtime-only overlay on API/runtime base)
 - `pip install -r requirements-profile-onnx-cpu.txt` (CPU-only ONNX overlay on the same base)
 - `pip install -r requirements-extras-onnx.txt` (optional extras: `faster-whisper` + `piper-tts`; install after ONNX/ONNX-CPU profile)
 - `pip install -r requirements-full.txt` (legacy catch-all host exception only)
@@ -211,7 +211,7 @@ Use this matrix as the source of truth for "is this missing package expected or 
 | `requirements.txt` (`requirements-profile-api.txt`) | API/cloud baseline (`fastapi`, `uvicorn`, cloud providers) | Local heavy runtime packages (`vllm`, `onnxruntime*`, `lancedb`, `sentence-transformers`) |
 | `requirements-profile-web.txt` | API baseline only, named for web-next integration | Same heavy local runtime packages as API profile; no extra Python pins beyond API baseline |
 | `requirements-profile-vllm.txt` | API baseline + `vllm` | ONNX stack, RAG/vector stack (`lancedb`, `sentence-transformers`) |
-| `requirements-profile-onnx.txt` | API/runtime base + ONNX overlay | vLLM, RAG/vector stack (`lancedb`, `sentence-transformers`) |
+| `requirements-profile-onnx.txt` | API/runtime base + ONNX runtime overlay | HF tooling (`transformers`, `optimum`, `accelerate`) |
 | `requirements-profile-onnx-cpu.txt` | API/runtime base + ONNX CPU-only overlay | vLLM, ONNX CUDA packages, RAG/vector stack (`lancedb`, `sentence-transformers`) |
 | `requirements-full.txt` | Legacy catch-all host exception (all-in historical stack) | n/a |
 

@@ -22,12 +22,13 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
    Notes:
    - `requirements.txt` = minimal API/cloud profile (default).
    - `requirements-profile-web.txt` = API baseline alias for web-next integration; it does not add extra Python pins.
+   - `requirements-ci-lite.txt` = lightweight CI gate built on the shared runtime base.
    - For local runtime engines install additional profile:
      - `pip install -r requirements.txt` (Ollama)
-     - `pip install -r requirements-profile-vllm.txt`
-     - `pip install -r requirements-profile-onnx.txt` (overlay on the shared API/runtime base)
-     - `pip install -r requirements-profile-onnx-cpu.txt` (CPU-only overlay on the same base)
-     - optional extras (install after ONNX/ONNX-CPU profile): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
+   - `pip install -r requirements-profile-vllm.txt`
+   - `pip install -r requirements-profile-onnx.txt` (runtime-only overlay on the shared API/runtime base)
+   - `pip install -r requirements-profile-onnx-cpu.txt` (CPU-only overlay on the same base)
+   - optional extras (install after ONNX/ONNX-CPU profile): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
    - Legacy catch-all exception: `pip install -r requirements-full.txt`
 
 ### Dependency Profile Contract (Important)
@@ -38,13 +39,20 @@ Use these guarantees to classify issues correctly:
 |---|---|---|---|
 | Minimal | `requirements-docker-minimal.txt` | lowest shared runtime base | engine overlays, CI-only tooling, legacy all-in extras |
 | Developer/medium | `requirements.txt`, `requirements-profile-api.txt`, `requirements-profile-web.txt` | backend + cloud integrations with web alias support | local heavy stacks when no overlay is installed |
-| CI | `requirements-ci-lite.txt` | lightweight GitHub CI gate | local heavy stacks and legacy all-in runtime |
+| CI | `requirements-ci-lite.txt` | lightweight GitHub CI gate built on the shared runtime base | local heavy stacks and legacy all-in runtime |
 | Full/legacy | `requirements-full.txt` | explicit legacy catch-all exception | canonical new runtime target |
+
+Shared compromise base:
+- `requirements-runtime-common.txt` carries the pinned floor shared by the active runtime roles.
+- The shared floor now owns `fastapi`, `pydantic`, `pydantic-settings`, `semantic-kernel`, and `watchdog`.
+- Profile files should keep only role-specific deltas.
 
 Overlay rule:
 - `requirements-profile-vllm.txt` and `requirements-profile-onnx.txt` extend the developer/medium base.
 - `requirements-profile-onnx-cpu.txt` is a technical ONNX variant, not a fifth canonical role.
 - `requirements-extras-onnx.txt` is an add-on layer, not a standalone runtime root.
+Operational rule:
+- treat the local engine overlays as mutually exclusive for a given host/run; keep only one active local LLM engine at a time, and use the others only when testing a specific model path.
 
 Interpretation rules:
 1. Missing package after installing the wrong profile is expected.

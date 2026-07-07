@@ -23,7 +23,7 @@ Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje 
    - `requirements-docker-minimal.txt` = techniczny minimalny baseline.
    - `requirements.txt` + `requirements-profile-api.txt` = developer/medium baseline dla backendu.
    - `requirements-profile-web.txt` = alias bazowego API dla integracji web-next; nie dodaje własnych pinów Pythona.
-   - `requirements-ci-lite.txt` = osobny lekki profil gate'ów CI.
+   - `requirements-ci-lite.txt` = lekki profil gate'ów CI oparty o wspólną bazę runtime.
    - `requirements-profile-vllm.txt` i `requirements-profile-onnx.txt` = overlaye silnikowe nad wspólną bazą, nie osobne kanoniczne korzenie.
    - `requirements-profile-onnx-cpu.txt` = techniczny wariant ONNX dla hostów CPU-only.
    - opcjonalne extras (instaluj po overlayu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
@@ -37,13 +37,20 @@ Tych gwarancji używamy do rozróżnienia "to normalne" vs "to błąd":
 |---|---|---|---|
 | Minimal | `requirements-docker-minimal.txt` | najniższa wspólna baza runtime | overlaye silnikowe, narzędzia tylko dla CI, legacy all-in extras |
 | Developer/medium | `requirements.txt`, `requirements-profile-api.txt`, `requirements-profile-web.txt` | backend + integracje cloud z aliasem web | ciężkie lokalne stosy, jeśli overlay nie został doinstalowany |
-| CI | `requirements-ci-lite.txt` | lekki profil gate'ów GitHub CI | ciężkie lokalne stosy i legacy all-in runtime |
+| CI | `requirements-ci-lite.txt` | lekki profil gate'ów GitHub CI z wspólną bazą runtime | ciężkie lokalne stosy i legacy all-in runtime |
 | Full/legacy | `requirements-full.txt` | jawny legacy catch-all exception | kanoniczny nowy target runtime |
+
+Wspólna baza kompromisu:
+- `requirements-runtime-common.txt` trzyma przypiętą podłogę wspólną dla aktywnych ról runtime.
+- Ta wspólna podłoga obejmuje teraz `fastapi`, `pydantic`, `pydantic-settings`, `semantic-kernel` i `watchdog`.
+- Pliki profili powinny zawierać wyłącznie delty wynikające z roli.
 
 Zasada overlay:
 - `requirements-profile-vllm.txt` i `requirements-profile-onnx.txt` rozszerzają bazę developer/medium.
 - `requirements-profile-onnx-cpu.txt` to techniczny wariant ONNX, a nie piąta kanoniczna rola.
 - `requirements-extras-onnx.txt` to warstwa add-on, a nie samodzielny root runtime.
+Reguła operacyjna:
+- traktuj overlaye silnikowe jako wzajemnie wykluczające się dla danego hosta/uruchomienia; aktywny ma być tylko jeden lokalny silnik LLM, a pozostałe uruchamia się wyłącznie do testów konkretnej ścieżki modelu.
 
 Zasady interpretacji:
 1. Brak pakietu po instalacji niewłaściwego profilu jest zachowaniem oczekiwanym.

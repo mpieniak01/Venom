@@ -4,12 +4,7 @@
 # Shared runtime base
 -r requirements-runtime-common.txt
 
-# Core API/runtime
-pydantic==2.11.10
-pydantic-settings==2.10.1
-
 # Utilities used by runtime code paths
 chardet<6
 psutil==5.9.8
 numpy<2.0.0
-semantic-kernel==1.44.0

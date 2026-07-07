@@ -15,7 +15,7 @@ pyautogen>=0.2.0        # Microsoft AutoGen (Standardowa, stabilna wersja)
 flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
 
 # API / orkiestracja zewnętrzna
-fastapi==0.139.0        # API Orchestratora (pin zgodny z profilem CI Lite)
+fastapi==0.136.1        # API Orchestratora (pin zgodny z profilem vLLM i wspolnym floor)
 uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
 python-multipart==0.0.31 # Required for FastAPI multipart/form-data support (file uploads)
 
@@ -53,14 +53,14 @@ onnxruntime-genai; platform_system == "Darwin"       # ONNX Runtime GenAI (CPU/m
 onnx>=1.21.0            # Standard wymiany modeli
 onnx-ir>=0.1.16         # Wymagane przez onnxruntime_genai.models.builder
 optimum                 # Hugging Face Optimum (Interface do ONNX)
-accelerate              # Zarządzanie pamięcią przy ładowaniu dużych modeli
+accelerate==1.14.0      # Zarządzanie pamięcią przy ładowaniu dużych modeli
 protobuf>=5.29.6,<6.0.0 # Zakres po fixie CVE (Uncontrolled Recursion), zgodny z ONNX + SDK Google
 
 
 # --- LEGACY HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
 
 graphrag==2.7.2         # Microsoft GraphRAG (Pamięć długotrwała) - pin zgodny z OpenAI 1.x
-litellm==1.89.0rc1       # Security baseline: line compatible with OpenAI 2.x + latest LiteLLM CVE fixes
+litellm==1.91.0          # Security baseline: latest stable line compatible with OpenAI 2.x
 networkx==3.6.1         # Analiza grafów (pin zgodny z profilem CI Lite)
 lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego resolvera
 # uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
@@ -82,7 +82,7 @@ openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.6
 
 transformers>=5.5.0,<6.0.0  # Zgodne z constraints-hf-onnx i stabilnym resolverem HF/ONNX
 sentence-transformers   # Embeddingi do RAG
-pillow                  # Przetwarzanie obrazów
+pillow==12.3.0          # Przetwarzanie obrazów
 timm                    # Modele wizyjne (zależność dla Florence-2)
 opencv-python-headless==4.11.0.86  # Wersja "headless" bez X11; ta linia zostaje na numpy<2 dla legacy full stack
 soundfile               # Odczyt WAV/PCM dla gemma4_audio runtime

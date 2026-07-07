@@ -225,7 +225,7 @@ install_optional_addons() {
         ;;
       onnx)
         "$pip_bin" install -r "$ROOT_DIR/requirements-profile-onnx.txt"
-        echo "[INFO] ONNX addon installs ONNX LLM profile. Optional extras: requirements-extras-onnx.txt (faster-whisper, piper-tts)."
+        echo "[INFO] ONNX addon installs ONNX LLM runtime. Optional extras: requirements-extras-onnx.txt (faster-whisper, piper-tts). Legacy HF conversion/probes live in requirements-full.txt."
         ;;
     esac
   done

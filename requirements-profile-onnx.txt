@@ -10,13 +10,9 @@
 -r requirements-profile-api.txt
 
 # ONNX runtime stack for local LLM inference.
-onnxruntime-gpu; platform_system != "Darwin"
-onnxruntime; platform_system == "Darwin"
-onnxruntime-genai-cuda; platform_system != "Darwin"
-onnxruntime-genai; platform_system == "Darwin"
+# This file keeps only the runtime core for the Linux/WSL path. Legacy HF
+# conversion/probe workflows live in `requirements-full.txt`.
+onnxruntime-gpu==1.26.0
+onnxruntime-genai-cuda==0.12.1
 onnx>=1.21.0
 onnx-ir>=0.1.16
-optimum
-accelerate
-torch==2.11.0
-transformers>=5.5.0,<6.0.0

@@ -172,13 +172,22 @@ def _normalize_requirement_name(raw: str) -> str:
     return raw.strip().lower().replace("_", "-")
 
 
-def load_requirements(req_path: Path) -> set[str]:
+def load_requirements(req_path: Path, seen: set[Path] | None = None) -> set[str]:
     allowed_packages: set[str] = set()
+    if seen is None:
+        seen = set()
+    if req_path in seen or not req_path.exists():
+        return allowed_packages
+    seen.add(req_path)
+
     for line in req_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("-r ") or line.startswith("--requirement "):
+            include_target = line.split(maxsplit=1)[1].strip()
+            include_path = (req_path.parent / include_target).resolve()
+            allowed_packages.update(load_requirements(include_path, seen=seen))
             continue
 
         pkg_name = (

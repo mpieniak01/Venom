@@ -51,6 +51,26 @@ def test_audit_detects_missing_runtime_dependency(tmp_path: Path):
     assert "github -> pygithub" in result.stdout
 
 
+def test_audit_follows_nested_requirements_includes(tmp_path: Path):
+    _write(
+        tmp_path / "requirements-ci-lite.txt",
+        "-r requirements-runtime-common.txt\npytest==9.0.2\n",
+    )
+    _write(
+        tmp_path / "requirements-runtime-common.txt",
+        "fastapi==0.139.0\npydantic==2.13.4\n",
+    )
+    _write(tmp_path / "config/pytest-groups/ci-lite.txt", "tests/test_sample.py\n")
+    _write(
+        tmp_path / "tests/test_sample.py",
+        "from fastapi import FastAPI\nfrom pydantic import BaseModel\n",
+    )
+
+    result = _run_audit(tmp_path)
+    assert result.returncode == 0
+    assert "Wszystkie testy czyste" in result.stdout
+
+
 def test_audit_ignores_type_checking_only_imports(tmp_path: Path):
     _write(tmp_path / "requirements-ci-lite.txt", "pytest==9.0.2\n")
     _write(tmp_path / "config/pytest-groups/ci-lite.txt", "tests/test_sample.py\n")

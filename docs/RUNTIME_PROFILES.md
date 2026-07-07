@@ -4,6 +4,11 @@
 
 Venom supports three distinct runtime service modes (LIGHT, LLM_OFF, FULL) to accommodate different hardware, privacy, and operational requirements. In parallel, dependency packaging is organized into four canonical roles: minimal, developer/medium, CI, and full legacy. Engine-specific installers (`vllm`, `onnx`, `web`) are overlays or aliases on top of the developer/medium base, not extra canonical roots.
 
+Operationally, only one local LLM engine should be active at a time on a given host. The default local path is the daemon-backed runtime or Ollama; vLLM and ONNX are on-demand overlays for specific model tests.
+
+The shared compromise floor lives in `requirements-runtime-common.txt`. It carries the pinned common versions for `fastapi`, `pydantic`, `pydantic-settings`, `semantic-kernel`, and `watchdog`, so the per-profile manifests only define deltas instead of repeating the same base pins.
+`requirements-ci-lite.txt` now reuses that floor instead of copying the same runtime pins into the CI gate.
+
 ## Canonical References
 
 - Benchmark baseline (3-stack): `docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md`
@@ -16,7 +21,7 @@ Use this document for profile requirements and environment context. Use the benc
 ## Runtime Availability Contract (Do not hardcode stack)
 
 Runtime engines (`ollama`, `vllm`, `onnx`) are configuration/installation options, not guaranteed constants.
-On a given host/profile, only a subset may be actually available.
+On a given host/profile, only a subset may be actually available, and only one local engine should be active at a time.
 
 Canonical runtime discovery for UI/automation:
 
@@ -133,6 +138,7 @@ LLM_WARMUP_ON_STARTUP=false
 **Capabilities:**
 - ✅ Backend + Frontend services
 - ✅ Local LLM stack (Ollama by default, vLLM/ONNX optional and environment-dependent)
+- ✅ Only one local engine active at a time; others are switched on demand
 - ✅ GPU acceleration support
 - ✅ Optional ONNX extras
 - ✅ All advanced features enabled
@@ -215,7 +221,7 @@ Operational notes:
 The launcher will prompt you to:
 1. Select language (English/Polski/Deutsch)
 2. Select profile (LIGHT/API/FULL)
-3. Select optional addons (`vllm` and/or `onnx` for ONNX LLM profile)
+3. Select optional addon for the current run (`vllm` or `onnx`, not both as active engines)
 4. Select action (Start/Install/Reinstall/Uninstall/Status)
 
 ### Non-Interactive Mode
@@ -333,9 +339,14 @@ pip install -r requirements-profile-onnx.txt
 
 Includes:
 - ONNX Runtime (GPU or CPU)
-- Optimum, Accelerate
+This profile is an overlay on top of the shared API/runtime base. It does not redefine the baseline. Legacy HF conversion/probe workflows remain available through `requirements-full.txt`.
 
-This profile is an overlay on top of the shared API/runtime base. It does not redefine the baseline.
+### ONNX Helper Workflows
+
+If you need ONNX model conversion, transformer-backed probes, or builder-oriented workflows, use the legacy full stack:
+```bash
+pip install -r requirements-full.txt
+```
 
 ### Extras-ONNX (Optional add-ons)
 
@@ -371,7 +382,7 @@ Recommended selection:
 - Typical dev/API/cloud host: `requirements.txt`
 - Local ONNX inference (GPU): `requirements-profile-onnx.txt`
 - Local ONNX inference (CPU-only): `requirements-profile-onnx-cpu.txt`
-- Local vLLM runtime: `requirements-profile-vllm.txt`
+- Local vLLM runtime: `requirements-profile-vllm.txt` (quantization backend is opt-in via `bitsandbytes`)
 - Optional voice/STT add-ons: `requirements-extras-onnx.txt` (after ONNX/ONNX-CPU profile)
 - Legacy catch-all host (explicit exception): `requirements-full.txt`
 

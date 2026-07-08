@@ -52,7 +52,6 @@ def _load_pyautogui():
         import pyautogui  # type: ignore[import-untyped]
     except (
         ImportError,
-        ModuleNotFoundError,
         RuntimeError,
         OSError,
         KeyError,

@@ -49,7 +49,10 @@ if (!("cancelAnimationFrame" in globalThis)) {
   globalThis.cancelAnimationFrame = (id: number) => window.clearTimeout(id);
 }
 
-window.HTMLCanvasElement.prototype.getContext = function getContext() {
+const getContextMock = function getContext(this: HTMLCanvasElement, contextId: string) {
+  if (contextId !== "2d") {
+    return null;
+  }
   return {
     canvas: this,
     clearRect() {},
@@ -92,5 +95,8 @@ window.HTMLCanvasElement.prototype.getContext = function getContext() {
     textBaseline: "alphabetic",
   } as unknown as CanvasRenderingContext2D;
 };
+
+window.HTMLCanvasElement.prototype.getContext =
+  getContextMock as HTMLCanvasElement["getContext"];
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

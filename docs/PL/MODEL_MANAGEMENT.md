@@ -17,6 +17,7 @@ Projekt korzysta obecnie z jednej paczki instalacyjnej i profili wybieranych prz
 Uwagi operacyjne:
 1. W `light` runtime/API/UI udostępniają wyłącznie ścieżki lokalnego runtime Ollama.
 2. vLLM pozostaje opcjonalny dla `full` i nie jest wymaganiem domyślnego onboardingu light.
+3. Na jednym hoście aktywny powinien być tylko jeden lokalny silnik LLM. Domyślną ścieżką jest runtime oparty o daemona albo Ollama, a vLLM i ONNX traktujemy jako ścieżki na żądanie do testów konkretnych modeli.
 
 ## Bazowy runtime Ollama (v1.5 / zadanie 152)
 

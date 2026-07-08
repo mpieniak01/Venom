@@ -16,7 +16,7 @@ export type SelectMenuOption = {
 
 type SelectMenuProps = Readonly<{
   value: string;
-  options: SelectMenuOption[];
+  options: readonly SelectMenuOption[];
   onChange: (value: string) => void;
   placeholder?: string;
   ariaLabel?: string;

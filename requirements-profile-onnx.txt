@@ -1,5 +1,7 @@
-# Venom profile: ONNX local LLM runtime (3rd engine)
-# Canonical profile for ONNX Runtime GenAI model serving.
+# Venom profile: ONNX local LLM runtime
+# Engine overlay for the medium/developer stack.
+# This profile intentionally starts from the shared API/runtime base and adds
+# only the ONNX-specific engine stack.
 #
 # Install with:
 #   pip install -r requirements-profile-onnx.txt
@@ -8,12 +10,9 @@
 -r requirements-profile-api.txt
 
 # ONNX runtime stack for local LLM inference.
-onnxruntime-gpu; platform_system != "Darwin"
-onnxruntime; platform_system == "Darwin"
-onnxruntime-genai-cuda; platform_system != "Darwin"
-onnxruntime-genai; platform_system == "Darwin"
-onnx>=1.14.0
+# This file keeps only the runtime core for the Linux/WSL path. Legacy HF
+# conversion/probe workflows live in `requirements-full.txt`.
+onnxruntime-gpu==1.26.0
+onnxruntime-genai-cuda==0.12.1
+onnx>=1.21.0
 onnx-ir>=0.1.16
-optimum
-accelerate
-transformers>=5.3.0

@@ -1,11 +1,19 @@
 # Venom profile: vLLM local runtime
+#
+# Engine overlay for the medium/developer stack.
+# Install on top of the shared runtime base; do not reinstall the base set.
 
--r requirements-profile-api.txt
+-c constraints-hf-onnx.txt
+-r requirements-runtime-common.txt
+
+# vLLM-specific runtime baseline
+numpy>=2.0.0,<3.0.0
+openai>=2.24.0,<3.0.0
 
 # vLLM runtime package (provides .venv/bin/vllm)
-# Keep compatibility with repo stack pinned to pydantic 2.11.x.
-vllm==0.11.0
+torch==2.11.0
+transformers>=5.5.0,<6.0.0
+vllm==0.24.0
 
 # Optional quantization backend for multi_runtime profile tuning (217B).
-# Linux-only wheels are currently the supported path in this stack.
-bitsandbytes>=0.49.0; platform_system == "Linux"
+# Keep it out of the base overlay; install `bitsandbytes` on demand when benchmarks need it.

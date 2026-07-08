@@ -17,6 +17,7 @@ The project currently uses one installation package with runtime profiles select
 Profile behavior notes:
 1. In `light`, runtime/API/UI expose only Ollama local runtime paths.
 2. vLLM remains an optional path for `full`, not a default requirement for light onboarding.
+3. Only one local LLM engine is expected to be active at a time on a host. The default local path is the daemon-backed runtime or Ollama, while vLLM and ONNX are on-demand paths for specific model tests.
 
 ## Ollama Runtime Baseline (v1.5 / task 152)
 

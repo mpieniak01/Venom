@@ -156,8 +156,8 @@ export function useRuntime() {
     const runtimeState = useMemo(
         () =>
             buildRuntimeStateViewFromActiveServer(activeServer.data ?? null, {
-                runtimeId: selectedServer || undefined,
-                modelName: selectedModel || undefined,
+                runtimeId: selectedServer ?? "",
+                modelName: selectedModel ?? "",
             }),
         [activeServer.data, selectedModel, selectedServer],
     );

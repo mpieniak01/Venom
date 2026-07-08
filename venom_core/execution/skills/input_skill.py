@@ -5,8 +5,11 @@ Ten skill pozwala na fizyczną interakcję z interfejsem systemu operacyjnego.
 """
 
 import asyncio
+import importlib.util
+import os
 import platform
 import sys
+from types import ModuleType
 from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
@@ -14,12 +17,55 @@ from semantic_kernel.functions import kernel_function
 from venom_core.core.autonomy_enforcement import require_desktop_input_permission
 from venom_core.utils.logger import get_logger
 
-try:  # pragma: no cover - zależne od środowiska testowego
-    import pyautogui  # type: ignore[import-untyped]
-except Exception:  # pragma: no cover
-    pyautogui = None
-
 logger = get_logger(__name__)
+
+
+def _build_mouseinfo_stub() -> ModuleType:
+    """Provide a minimal mouseinfo stub for headless Linux environments."""
+
+    module = ModuleType("mouseinfo")
+
+    class _MouseInfoWindow:  # pragma: no cover - fallback for import-time only
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError(
+                "MouseInfo jest niedostępne w tym środowisku bez tkinter."
+            )
+
+    module.MouseInfoWindow = _MouseInfoWindow  # type: ignore[attr-defined]
+    return module
+
+
+def _load_pyautogui():
+    """Import pyautogui without suppressing real application exits."""
+
+    is_headless_linux = (
+        platform.system() == "Linux"
+        and not os.environ.get("DISPLAY")
+        and not os.environ.get("WAYLAND_DISPLAY")
+    )
+    if (
+        is_headless_linux or importlib.util.find_spec("tkinter") is None
+    ) and "mouseinfo" not in sys.modules:
+        sys.modules["mouseinfo"] = _build_mouseinfo_stub()
+
+    try:  # pragma: no cover - zależne od środowiska testowego
+        import pyautogui  # type: ignore[import-untyped]
+    except (
+        ImportError,
+        RuntimeError,
+        OSError,
+        KeyError,
+    ) as exc:  # pragma: no cover
+        logger.warning(
+            "PyAutoGUI is unavailable in this environment: %s",
+            exc,
+            exc_info=True,
+        )
+        return None
+    return pyautogui
+
+
+pyautogui = _load_pyautogui()
 FAIL_SAFE_ERROR_MESSAGE = (
     "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
 )

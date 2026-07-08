@@ -172,13 +172,25 @@ def _normalize_requirement_name(raw: str) -> str:
     return raw.strip().lower().replace("_", "-")
 
 
-def load_requirements(req_path: Path) -> set[str]:
+def load_requirements(req_path: Path, seen: set[Path] | None = None) -> set[str]:
     allowed_packages: set[str] = set()
+    if seen is None:
+        seen = set()
+    req_path = req_path.resolve()
+    if req_path in seen:
+        return allowed_packages
+    if not req_path.exists():
+        raise FileNotFoundError(f"Missing requirements include: {req_path}")
+    seen.add(req_path)
+
     for line in req_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("-r ") or line.startswith("--requirement "):
+            include_target = line.split(maxsplit=1)[1].strip()
+            include_path = (req_path.parent / include_target).resolve()
+            allowed_packages.update(load_requirements(include_path, seen=seen))
             continue
 
         pkg_name = (
@@ -434,7 +446,11 @@ def main() -> int:
         print("❌ Brak plików konfiguracyjnych!")
         return 1
 
-    allowed_packages = load_requirements(req_path)
+    try:
+        allowed_packages = load_requirements(req_path)
+    except FileNotFoundError as exc:
+        print(f"❌ {exc}")
+        return 1
     test_files = read_ci_lite_tests(config_path)
     stdlib = _stdlib_modules()
 

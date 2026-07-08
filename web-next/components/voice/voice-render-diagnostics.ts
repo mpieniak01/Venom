@@ -47,6 +47,9 @@ const EFFECT_QUERY_KEYS: Record<keyof OrbEffectsConfig, string> = {
   particles: "voiceFxParticles",
   stateLabel: "voiceFxStateLabel",
   orbMetricsBars: "voiceFxMetrics",
+  parallaxTilt: "voiceFxParallaxTilt",
+  interactiveGlow: "voiceFxInteractiveGlow",
+  clickShockwave: "voiceFxClickShockwave",
 };
 
 function normalizeMode(value: string | null | undefined): VoiceRenderDiagnosticMode {

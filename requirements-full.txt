@@ -1,36 +1,48 @@
-# VENOM – requirements-full.txt (legacy full stack)
+# VENOM – requirements-full.txt (legacy catch-all host exception)
 # Zalecany Python: 3.12
-# Użyj: pip install -r requirements-full.txt
+# Użyj tylko na hostach legacy, które faktycznie potrzebują całego starego stosu.
+# Ten plik nie jest canonical runtime ani domyślną ścieżką instalacji.
 
 -c constraints-hf-onnx.txt
 
-# --- VENOM CORE: SYSTEM NERWOWY (Orchestration) ---
+# IMPORTANT:
+# This file intentionally keeps the legacy all-in layout.
+# Do not use it as the baseline for new overlays or canonical runtime pins.
+
+# --- LEGACY CORE: SYSTEM NERWOWY (Orchestration) ---
 
 pyautogen>=0.2.0        # Microsoft AutoGen (Standardowa, stabilna wersja)
 flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
 
 # API / orkiestracja zewnętrzna
-fastapi==0.139.0        # API Orchestratora (pin zgodny z profilem CI Lite)
+fastapi==0.136.1        # API Orchestratora (pin zgodny z profilem vLLM i wspolnym floor)
 uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
 python-multipart==0.0.31 # Required for FastAPI multipart/form-data support (file uploads)
 
 
-# --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
+# --- LEGACY HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
 # UWAGA: linia SK musi być zgodna z OpenAI 2.x (wymóg litellm>=1.83.9 po fixach security).
-semantic-kernel>=1.43.1 # Microsoft Semantic Kernel (linia kompatybilna z OpenAI 2.x)
+semantic-kernel==1.44.0 # Microsoft Semantic Kernel (linia kompatybilna z OpenAI 2.x)
 mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
 starlette==1.3.1        # ASGI framework pin for FastAPI/MCP compatibility and Snyk fixes
 aiohttp>=3.14.1         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
-urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
-requests>=2.32.5        # Wymusza bezpieczny łańcuch requests->urllib3 po CVE-2026-21441
 httpx==0.28.1           # Nowoczesny klient HTTP (pin zgodny z profilem CI Lite)
 aiofiles==25.1.0        # Async file I/O (pin zgodny z profilem CI Lite)
 cryptography>=48.0.1    # Fix for google-auth / aiortc transitive vulnerability
 pyopenssl>=26.0.0       # Fix for aiortc / semantic-kernel transitive vulnerability
+torch==2.11.0           # Ujednolicony pin dla stackow z ONNX/vLLM
+certifi>=2024.7.4       # Upstream fix dla chain requests/httpx
+requests>=2.33.0        # Upstream fix dla chain urllib3/certifi
+urllib3>=2.7.0          # Upstream fix dla chain redirect/compression
+flask==3.1.3            # Fix dla locust transitive chain
+flask-cors==6.0.0       # Fix dla locust transitive chain
+gevent==25.4.1          # Fix dla locust transitive chain
+msgpack==1.2.1          # Fix dla locust transitive chain
+lxml==6.1.0             # Fix dla ddgs/transitive HTML chain
 
 
-# --- VENOM METABOLISM: ONNX RUNTIME (Inference Engine) ---
+# --- LEGACY METABOLISM: ONNX RUNTIME (Inference Engine) ---
 
 # UWAGA: Upewnij się, że masz zainstalowane CUDA Toolkit w WSL2 dla wersji -gpu.
 # Na macOS używamy CPU wheels, bo onnxruntime-gpu jest niedostępne.
@@ -38,23 +50,23 @@ onnxruntime-gpu; platform_system != "Darwin"  # Domyślnie Linux/Windows
 onnxruntime; platform_system == "Darwin"      # Fallback dla macOS
 onnxruntime-genai-cuda; platform_system != "Darwin"  # ONNX Runtime GenAI (CUDA)
 onnxruntime-genai; platform_system == "Darwin"       # ONNX Runtime GenAI (CPU/macOS)
-onnx>=1.14.0            # Standard wymiany modeli
+onnx>=1.21.0            # Standard wymiany modeli
 onnx-ir>=0.1.16         # Wymagane przez onnxruntime_genai.models.builder
 optimum                 # Hugging Face Optimum (Interface do ONNX)
-accelerate              # Zarządzanie pamięcią przy ładowaniu dużych modeli
+accelerate==1.14.0      # Zarządzanie pamięcią przy ładowaniu dużych modeli
 protobuf>=5.29.6,<6.0.0 # Zakres po fixie CVE (Uncontrolled Recursion), zgodny z ONNX + SDK Google
 
 
-# --- VENOM HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
+# --- LEGACY HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
 
 graphrag==2.7.2         # Microsoft GraphRAG (Pamięć długotrwała) - pin zgodny z OpenAI 1.x
-litellm==1.84.0         # Security baseline: line compatible with OpenAI 2.x + latest LiteLLM CVE fixes
+litellm==1.91.0          # Security baseline: latest stable line compatible with OpenAI 2.x
 networkx==3.6.1         # Analiza grafów (pin zgodny z profilem CI Lite)
 lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego resolvera
 # uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
 
 # Ingestion Engine dependencies
-pypdf>=6.6.0            # Ekstrakcja tekstu z PDF (fix CVE)
+pypdf>=6.13.3           # Ekstrakcja tekstu z PDF (fix CVE)
 filelock>=3.20.3        # Fix for TOCTOU/symlink issues (transitive from HF stack)
 # litellm>=1.84.0         # Security floor for GraphRAG transitive chain (OpenAI 2.x compatible)
 marshmallow>=4.1.2      # Fix for graphrag/environs transitive vulnerability
@@ -66,25 +78,25 @@ python-docx             # Obsługa plików DOCX (fallback dla markitdown)
 openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.6)
 
 
-# --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
+# --- LEGACY FRONTAL LOBE & EYES: MODELE I WZROK ---
 
-transformers>=4.57.6,<5.0.0  # Zgodne z constraints-hf-onnx i stabilnym resolverem HF/ONNX
+transformers>=5.5.0,<6.0.0  # Zgodne z constraints-hf-onnx i stabilnym resolverem HF/ONNX
 sentence-transformers   # Embeddingi do RAG
-pillow                  # Przetwarzanie obrazów
+pillow==12.3.0          # Przetwarzanie obrazów
 timm                    # Modele wizyjne (zależność dla Florence-2)
-opencv-python-headless  # Wersja "headless" jest bezpieczniejsza dla WSL2/Server (brak zależności X11)
+opencv-python-headless==4.11.0.86  # Wersja "headless" bez X11; ta linia zostaje na numpy<2 dla legacy full stack
 soundfile               # Odczyt WAV/PCM dla gemma4_audio runtime
 scipy                   # Resampling audio do 16 kHz mono
 
 
-# --- VENOM ANTENNA: DOSTĘP DO SIECI ---
+# --- LEGACY ANTENNA: DOSTĘP DO SIECI ---
 
 ddgs>=1.0  # Wyszukiwanie (następca duckduckgo-search)
 tavily-python           # Tavily AI Search API - nowoczesna wyszukiwarka dla AI
 beautifulsoup4          # Parsowanie HTML
 trafilatura             # Ekstrakcja tekstu z stron WWW (lepsze czyszczenie niż BS4)
-PyGithub                # GitHub API wrapper (External Discovery - GitHub Scanner)
-huggingface_hub>=1.5.0,<2.0 # Hugging Face Hub API (External Discovery - Model Explorer), zakres zgodny z runtime transformers
+PyGithub==2.8.1         # GitHub API wrapper (External Discovery - GitHub Scanner)
+huggingface_hub>=1.5.0,<2.0 # Hugging Face Hub API (External Discovery - Model Explorer), zgodne z constraints-hf-onnx i runtime transformers
 
 # Google Calendar Integration (THE_CALENDAR)
 google-auth>=2.55.1     # Google OAuth2 authentication
@@ -93,7 +105,7 @@ google-auth-httplib2>=0.1.1  # HTTP transport for Google API
 google-api-python-client>=2.100.0  # Google Calendar API client
 
 
-# --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
+# --- LEGACY ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
 
 openai>=2.24.0,<3.0.0       # SDK OpenAI 2.x (zgodne z semantic-kernel>=1.42 i litellm>=1.83.9)
 google-genai            # Gemini API (Google GenAI SDK)
@@ -102,12 +114,12 @@ azure-core>=1.38.0      # Azure SDK core – aktualizacja pod CVE dot. deseriali
 tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT)
 
 
-# --- VENOM INFRASTRUCTURE & UTILS ---
+# --- LEGACY INFRASTRUCTURE & UTILS ---
 
 python-dotenv==1.2.2    # Zmienne środowiskowe (.env) (pin zgodny z profilem CI Lite)
-pydantic==2.11.10       # Walidacja (pin zgodny z profilem CI Lite i FastAPI)
+pydantic==2.13.4       # Walidacja (pin zgodny z profilem vLLM i FastAPI)
 pydantic-settings==2.10.1  # Settings loader używany przez runtime
-numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)
+numpy>=1.26.4,<2.0.0    # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba; 1.26.4 jest dolnym sensownym floor dla Py 3.12
 pandas                  # Analiza danych
 colorama==0.4.6         # Kolory w terminalu (pin zgodny z profilem CI Lite)
 rich==13.7.1            # Piękne logi i paski postępu (pin zgodny z profilem CI Lite)
@@ -150,14 +162,14 @@ pyautogui>=0.9.54       # GUI automation (mouse, keyboard) - stable version
 pynput>=1.7.6           # Alternative input control library
 mss>=9.0.1              # Fast screenshot library
 
-# --- VENOM DEV TOOLS (Jakość Kodu) ---
+# --- LEGACY DEV TOOLS (Jakość Kodu) ---
 
-pytest==9.0.2           # Testy (pin zgodny z profilem CI Lite)
+pytest==9.0.3           # Testy (pin zgodny z profilem CI Lite)
 pytest-asyncio==1.3.0   # Obsługa testów asynchronicznych (pin zgodny z profilem CI Lite)
 pytest-cov>=7.0.0       # Raporty pokrycia testami
 pytest-xdist==3.8.0
 pytest-timeout==2.4.0   # Twarde timeouty per-test (anty-zawieszka)
-locust                  # Testy wydajnościowe HTTP/SSE
+locust==1.3.2           # Testy wydajnościowe HTTP/SSE
 ruff                    # Linter (zastępuje flake8/black)
 mypy                    # Statyczne typowanie
 types-PyYAML            # Typy dla PyYAML

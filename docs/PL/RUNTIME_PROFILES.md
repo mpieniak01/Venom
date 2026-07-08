@@ -2,7 +2,12 @@
 
 ## Przegląd
 
-Venom wspiera trzy różne profile runtime, aby dostosować się do różnych wymagań sprzętowych, prywatności i operacyjnych. Każdy profil ma jawnie zdefiniowane możliwości i ograniczenia w kodzie.
+Venom wspiera trzy różne tryby usług runtime (LIGHT, LLM_OFF, FULL), aby dostosować się do różnych wymagań sprzętowych, prywatności i operacyjnych. Równolegle pakowanie zależności jest ułożone w cztery kanoniczne role: minimal, developer/medium, CI i full legacy. Instalatory silnikowe (`vllm`, `onnx`, `web`) są overlayami albo aliasami nad bazą developer/medium, a nie dodatkowymi kanonicznymi korzeniami.
+
+Operacyjnie na jednym hoście powinien być aktywny tylko jeden lokalny silnik LLM. Domyślną ścieżką jest runtime oparty o daemona albo Ollama, a vLLM i ONNX traktujemy jako overlaye na żądanie do testów konkretnych modeli.
+
+Wspólna podłoga kompromisu jest w `requirements-runtime-common.txt`. Trzyma ona przypięte wspólne wersje dla `fastapi`, `pydantic`, `pydantic-settings`, `semantic-kernel` i `watchdog`, dzięki czemu pliki profili opisują tylko delty zamiast powtarzać te same piny.
+`requirements-ci-lite.txt` korzysta teraz z tej podłogi zamiast kopiować te same piny do profilu CI.
 
 ## Kanoniczne odnośniki
 
@@ -16,7 +21,7 @@ Ten dokument jest źródłem prawdy dla wymagań profili i kontekstu środowisko
 ## Kontrakt dostępności runtime (bez hardkodowania stosu)
 
 Silniki runtime (`ollama`, `vllm`, `onnx`) to opcje konfiguracyjno-instalacyjne, a nie stały zestaw gwarantowany na każdym hoście.
-W danym profilu/środowisku dostępny może być tylko podzbiór.
+W danym profilu/środowisku dostępny może być tylko podzbiór, a aktywny powinien być tylko jeden lokalny silnik naraz.
 
 Kanoniczne wykrywanie runtime dla UI/automatyzacji:
 
@@ -132,6 +137,7 @@ LLM_WARMUP_ON_STARTUP=false
 **Możliwości:**
 - ✅ Usługi Backend + Frontend
 - ✅ Lokalny stack LLM (domyślnie Ollama, vLLM/ONNX opcjonalnie i zależnie od środowiska)
+- ✅ Tylko jeden lokalny silnik aktywny naraz; pozostałe są przełączane na żądanie
 - ✅ Wsparcie akceleracji GPU
 - ✅ Opcjonalne extras ONNX
 - ✅ Wszystkie zaawansowane funkcje włączone
@@ -214,7 +220,7 @@ Uwagi operacyjne:
 Launcher zapyta Cię o:
 1. Wybór języka (English/Polski/Deutsch)
 2. Wybór profilu (LIGHT/API/FULL)
-3. Wybór opcjonalnych dodatków (`vllm` i/lub `onnx` dla profilu ONNX LLM)
+3. Wybór opcjonalnego dodatku dla bieżącego uruchomienia (`vllm` albo `onnx`, nie oba jako aktywne silniki)
 4. Wybór akcji (Start/Install/Reinstall/Uninstall/Status)
 
 ### Tryb Nieinteraktywny
@@ -308,6 +314,8 @@ Zawiera:
 - minimalny baseline API/cloud
 - bez ciężkich lokalnych silników runtime w domyślnej instalacji (`vllm`/ONNX wyłączone)
 
+Integracja web-next używa tego samego baseline przez `requirements-profile-web.txt`; ten plik jest tylko nazwanym aliasem i nie dodaje własnych pinów Pythona.
+
 ### Core-Light (Docker/minimal runtime)
 
 Instalacja:
@@ -330,7 +338,14 @@ pip install -r requirements-profile-onnx.txt
 
 Zawiera:
 - ONNX Runtime (GPU lub CPU)
-- Optimum, Accelerate
+Ten profil jest overlayem na wspólną bazę API/runtime. Nie redefiniuje baseline. Legacy HF conversion/probe workflows pozostają dostępne przez `requirements-full.txt`.
+
+### Helper ONNX
+
+Jeśli potrzebujesz konwersji modeli ONNX, probe'ów opartych o transformers albo workflow buildera, użyj legacy full stack:
+```bash
+pip install -r requirements-full.txt
+```
 
 ### Extras-ONNX (opcjonalne dodatki)
 
@@ -355,6 +370,8 @@ pip install -r requirements-full.txt
 
 Zawiera pełny legacy zestaw (core + lokalne silniki + ciężkie extras + narzędzia deweloperskie).
 
+Ten plik jest jawnym wyjątkiem legacy dla hostów, które nadal potrzebują historycznego all-in stack.
+
 ### Full vs Profile (reguła operacyjna)
 
 Domyślna ścieżka to `requirements.txt` + jeden wybrany profil.
@@ -364,7 +381,7 @@ Rekomendowany dobór:
 - Typowy host dev/API/cloud: `requirements.txt`
 - Lokalna inferencja ONNX (GPU): `requirements-profile-onnx.txt`
 - Lokalna inferencja ONNX (CPU-only): `requirements-profile-onnx-cpu.txt`
-- Lokalny runtime vLLM: `requirements-profile-vllm.txt`
+- Lokalny runtime vLLM: `requirements-profile-vllm.txt` (kwantyzacja jest opt-in przez `bitsandbytes`)
 - Opcjonalne dodatki voice/STT: `requirements-extras-onnx.txt` (po profilu ONNX/ONNX-CPU)
 - Host legacy catch-all (jawny wyjątek): `requirements-full.txt`
 

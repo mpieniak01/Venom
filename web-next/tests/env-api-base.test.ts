@@ -96,4 +96,12 @@ describe("env api base policy", () => {
     const mod = await loadEnvModule("audio-host-base");
     assert.equal(mod.getAudioWsUrl(), "ws://localhost:8000/ws/audio");
   });
+  it("uses an explicit event websocket on a separate development port", async () => {
+    process.env.NEXT_PUBLIC_WS_BASE = "ws://127.0.0.1:8800";
+    setWindowLocation("http://127.0.0.1:3300");
+
+    const mod = await loadEnvModule("explicit-events-port");
+    assert.equal(mod.getWsBaseUrl(), "ws://127.0.0.1:8800");
+  });
+
 });

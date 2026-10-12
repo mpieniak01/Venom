@@ -318,6 +318,7 @@ async def test_ollama_to_multi_runtime_stops_ollama_starts_multi(monkeypatch):
     monkeypatch.setattr(system_routes, "_release_onnx_runtime_caches", lambda: None)
 
     original = _snapshot_settings()
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
     SETTINGS.LLM_SERVICE_TYPE = "local"
     SETTINGS.LLM_LOCAL_ENDPOINT = f"{OLLAMA_ENDPOINT}/v1"
     SETTINGS.LLM_MODEL_NAME = "phi3:mini"
@@ -447,6 +448,7 @@ async def test_health_check_timeout_prevents_config_write(monkeypatch):
     monkeypatch.setattr(runtime_switch_service, "probe_health_ready", _health_timeout)
 
     original = _snapshot_settings()
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
     SETTINGS.LLM_SERVICE_TYPE = "local"
     SETTINGS.ACTIVE_LLM_SERVER = "ollama"
     SETTINGS.LLM_MODEL_NAME = "phi3:mini"

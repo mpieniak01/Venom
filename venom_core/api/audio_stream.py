@@ -11,6 +11,7 @@ import subprocess
 import time
 import uuid
 import wave
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
@@ -22,6 +23,16 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
+from venom_core.services.conversation_providers import (
+    conversation_turn,
+    create_conversation_context,
+    current_conversation_context,
+    finish_conversation_turn,
+    handle_conversation_turn,
+    has_voice_providers,
+    prepare_conversation_turn,
+    urgent_conversation_turn,
+)
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
 from venom_core.services.runtime_switch_gate import (
     assert_runtime_request_allowed,
@@ -323,7 +334,65 @@ def _build_voice_session_insights_payload(
     )
 
 
+@asynccontextmanager
+async def _voice_input_turn(
+    *,
+    conversation_id: str | None = None,
+    language: str | None = None,
+    inherit: bool = True,
+):
+    """Bind voice safety scope before decoding or recognizing an utterance."""
+    parent = current_conversation_context() if inherit else None
+    owned = parent is None or parent.actor != "voice"
+    context = (
+        create_conversation_context(
+            "voice", conversation_id=conversation_id, language=language
+        )
+        if owned
+        else parent
+    )
+    assert context is not None
+    with conversation_turn(context):
+        try:
+            await prepare_conversation_turn("", context)
+            yield context
+        finally:
+            if owned:
+                await finish_conversation_turn(context)
+
+
 async def _invoke_operator_agent(
+    operator_agent: object | None,
+    text: str,
+    *,
+    mode: str,
+    voice_context: dict[str, Any] | None = None,
+    conversation_id: str | None = None,
+    language: str | None = None,
+    legacy_guard: AbstractAsyncContextManager[Any] | None = None,
+) -> str:
+    """Invoke extensions before legacy GPIO, with a host-owned voice actor."""
+    async with _voice_input_turn(
+        conversation_id=conversation_id, language=language
+    ) as context:
+        await prepare_conversation_turn(text, context)
+        response = await urgent_conversation_turn(text, context)
+        if response is None:
+            response = await handle_conversation_turn(text, context)
+        if response is not None:
+            return response
+        if operator_agent is None:
+            return ""
+        async with legacy_guard or nullcontext():
+            return await _invoke_legacy_operator_agent(
+                operator_agent,
+                text,
+                mode=mode,
+                voice_context=voice_context,
+            )
+
+
+async def _invoke_legacy_operator_agent(
     operator_agent: object,
     text: str,
     *,
@@ -1006,14 +1075,14 @@ class AudioStreamHandler:
         active_server = _coerce_str(_multi_runtime_setting("ACTIVE_LLM_SERVER", ""), "")
         return is_multi_runtime(active_server)
 
-    def _voice_pipeline_mode(self) -> str:
+    def _voice_pipeline_mode(self, decoder_plan: dict[str, Any] | None = None) -> str:
         """Resolve voice pipeline contract for current runtime selection.
 
         Contract:
         - multi_runtime (Gemma4): native voice pipeline allowed.
         - ollama/vllm/onnx/other: always local intermediary STT -> LLM -> TTS.
         """
-        decoder_plan = self._resolve_audio_decoder_plan()
+        decoder_plan = decoder_plan or self._resolve_audio_decoder_plan()
         return (
             "native_multi_runtime"
             if decoder_plan["effective"] == "gemma_native"
@@ -1179,6 +1248,21 @@ class AudioStreamHandler:
             fallback_reason="audio decoder profile forced faster_whisper",
         )
 
+    async def _resolve_voice_input_decoder_plan(self) -> dict[str, Any]:
+        plan = self._resolve_audio_decoder_plan()
+        if not await has_voice_providers():
+            return plan
+        reason = "guarded conversation: host shared Whisper routes providers before generation"
+        if plan.get("fallback_reason"):
+            reason += f"; {plan['fallback_reason']}"
+        return {
+            **plan,
+            "effective": "faster_whisper",
+            "should_try_native": False,
+            "guarded_voice": True,
+            "fallback_reason": reason,
+        }
+
     def _voice_pipeline_fallback_reason(self) -> str:
         active_server = ""
         try:
@@ -1338,6 +1422,33 @@ class AudioStreamHandler:
         *,
         decoder_selected: str = "gemma_native",
     ) -> bool:
+        async with _voice_input_turn(conversation_id=session_dir.name):
+            return await self._process_native_multi_runtime_in_turn(
+                connection_id,
+                session_dir,
+                wav_path,
+                timings_ms,
+                total_started_at,
+                operator_agent,
+                decoder_selected=decoder_selected,
+            )
+
+    async def _process_native_multi_runtime_in_turn(
+        self,
+        connection_id: int,
+        session_dir: Path,
+        wav_path: Path,
+        timings_ms: dict[str, float],
+        total_started_at: float,
+        operator_agent,
+        *,
+        decoder_selected: str = "gemma_native",
+    ) -> bool:
+        turn = current_conversation_context()
+        if turn is None or turn.actor != "voice":
+            raise RuntimeError("voice_context_required")
+        if await has_voice_providers():
+            return False
         if not self._multi_runtime_runtime_selected():
             return False
         if not await self._ensure_native_audio_engine_available(connection_id):
@@ -1393,6 +1504,7 @@ class AudioStreamHandler:
                 runtime_result.get("transcription"), ""
             ) or _coerce_str(runtime_result.get("text"), "")
             response_text = _coerce_str(runtime_result.get("response_text"), "")
+            # Combined runtime output is never forwarded to actuating providers.
             if not transcription or not response_text:
                 self._persist_native_runtime_incomplete_result(
                     connection_id=connection_id,
@@ -1450,6 +1562,7 @@ class AudioStreamHandler:
                     "transcription_length": len(transcription or ""),
                     "response_text": response_text,
                     "response_length": len(response_text or ""),
+                    "conversation_provider_handled": False,
                     "execution_trace": runtime_result.get("execution_trace") or [],
                     "selected_policy": runtime_result.get("selected_policy"),
                     "selected_image_strategy": runtime_result.get(
@@ -1491,7 +1604,10 @@ class AudioStreamHandler:
         await self._send_json(connection_id, {"type": "processing", "status": "tts"})
 
         tts_started_at = time.perf_counter()
-        audio_response = await self.audio_engine.speak(response_text)
+        audio_engine = self.audio_engine
+        if audio_engine is None:
+            raise RuntimeError("audio_engine_unavailable")
+        audio_response = await audio_engine.speak(response_text)
         timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
         timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
         self._update_voice_session_metadata(
@@ -1665,6 +1781,7 @@ class AudioStreamHandler:
                 {
                     "decoder_fallback_reason": decoder_plan["fallback_reason"],
                     "fallback_reason": decoder_plan["fallback_reason"],
+                    "guarded_voice": decoder_plan.get("guarded_voice", False),
                 },
             )
 
@@ -1689,6 +1806,18 @@ class AudioStreamHandler:
         operator_agent,
         sample_rate: int = 16000,
     ):
+        async with _voice_input_turn(inherit=False):
+            return await self._process_audio_buffer_in_turn(
+                connection_id, audio_buffer, operator_agent, sample_rate=sample_rate
+            )
+
+    async def _process_audio_buffer_in_turn(
+        self,
+        connection_id: int,
+        audio_buffer: List[np.ndarray],
+        operator_agent,
+        sample_rate: int = 16000,
+    ):
         """
         Przetwarza bufor audio (STT -> Agent -> TTS).
 
@@ -1697,7 +1826,12 @@ class AudioStreamHandler:
             audio_buffer: Lista fragmentów audio
             operator_agent: Agent do przetwarzania
         """
-        assert_runtime_request_allowed(request_kind="voice_chat")
+        turn = current_conversation_context()
+        if turn is None or turn.actor != "voice":
+            raise RuntimeError("voice_context_required")
+        decoder_plan = await self._resolve_voice_input_decoder_plan()
+        if not decoder_plan.get("guarded_voice"):
+            assert_runtime_request_allowed(request_kind="voice_chat")
         try:
             total_started_at = time.perf_counter()
             timings_ms: dict[str, float] = {}
@@ -1716,16 +1850,19 @@ class AudioStreamHandler:
                 audio_stats=audio_stats,
             )
             route_config = self._voice_route_runtime_config()
-            decoder_plan = self._resolve_audio_decoder_plan()
             self._update_voice_session_metadata(
                 session_dir,
                 {
+                    "conversation_id": turn.conversation_id,
+                    "conversation_task_id": turn.task_id,
                     "runtime": self._build_runtime_metadata(operator_agent),
-                    "voice_pipeline_mode": self._voice_pipeline_mode(),
+                    "voice_pipeline_mode": self._voice_pipeline_mode(decoder_plan),
                     "voice_route_profile": route_config["voice_route_profile"],
                     "audio_decoder_profile": route_config["audio_decoder_profile"],
                     "audio_decoder_chain": route_config["audio_decoder_chain"],
                     "decoder_selected": decoder_plan["selected"],
+                    "decoder_effective": decoder_plan["effective"],
+                    "guarded_voice": decoder_plan.get("guarded_voice", False),
                 },
             )
             logger.info(f"Zapisano sesję audio: {session_dir}")
@@ -1767,7 +1904,7 @@ class AudioStreamHandler:
 
             stt_started_at = time.perf_counter()
             try:
-                transcription = await self.audio_engine.listen(
+                transcription = await self.audio_engine.transcribe_checked(
                     normalized_audio,
                     language="pl",
                     sample_rate=sample_rate,
@@ -1833,8 +1970,25 @@ class AudioStreamHandler:
         operator_agent,
         mime_type: str = "",
     ):
+        async with _voice_input_turn(inherit=False):
+            return await self._process_encoded_audio_buffer_in_turn(
+                connection_id, audio_chunks, operator_agent, mime_type=mime_type
+            )
+
+    async def _process_encoded_audio_buffer_in_turn(
+        self,
+        connection_id: int,
+        audio_chunks: List[bytes],
+        operator_agent,
+        mime_type: str = "",
+    ):
         """Przetwarza nagranie z MediaRecorder przez ffmpeg -> WAV -> STT."""
-        assert_runtime_request_allowed(request_kind="voice_chat")
+        turn = current_conversation_context()
+        if turn is None or turn.actor != "voice":
+            raise RuntimeError("voice_context_required")
+        decoder_plan = await self._resolve_voice_input_decoder_plan()
+        if not decoder_plan.get("guarded_voice"):
+            assert_runtime_request_allowed(request_kind="voice_chat")
         try:
             total_started_at = time.perf_counter()
             timings_ms: dict[str, float] = {}
@@ -1856,10 +2010,11 @@ class AudioStreamHandler:
             self._write_wav(wav_path, audio, sample_rate)
             timings_ms["normalize_ms"] = self._elapsed_ms(normalize_started_at)
             route_config = self._voice_route_runtime_config()
-            decoder_plan = self._resolve_audio_decoder_plan()
             self._update_voice_session_metadata(
                 session_dir,
                 {
+                    "conversation_id": turn.conversation_id,
+                    "conversation_task_id": turn.task_id,
                     **audio_stats,
                     "sample_rate": sample_rate,
                     "samples": int(audio.size),
@@ -1869,11 +2024,13 @@ class AudioStreamHandler:
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     "voice_mode": self._connection_voice_mode(connection_id),
-                    "voice_pipeline_mode": self._voice_pipeline_mode(),
+                    "voice_pipeline_mode": self._voice_pipeline_mode(decoder_plan),
                     "voice_route_profile": route_config["voice_route_profile"],
                     "audio_decoder_profile": route_config["audio_decoder_profile"],
                     "audio_decoder_chain": route_config["audio_decoder_chain"],
                     "decoder_selected": decoder_plan["selected"],
+                    "decoder_effective": decoder_plan["effective"],
+                    "guarded_voice": decoder_plan.get("guarded_voice", False),
                 },
             )
             logger.info(f"Zapisano sesję audio MediaRecorder: {session_dir}")
@@ -1915,10 +2072,8 @@ class AudioStreamHandler:
             )
             stt_started_at = time.perf_counter()
             try:
-                transcription = await asyncio.to_thread(
-                    self.audio_engine.transcribe_file,
-                    str(wav_path),
-                    "pl",
+                transcription = await self.audio_engine.transcribe_checked(
+                    audio, language="pl", sample_rate=sample_rate
                 )
             except Exception:
                 self._update_voice_session_metadata(
@@ -1994,10 +2149,6 @@ class AudioStreamHandler:
             connection_id,
             {"type": "transcription", "text": transcription, "confidence": 1.0},
         )
-        if not operator_agent:
-            await self._send_json(connection_id, {"type": "complete"})
-            return
-
         await self._send_json(
             connection_id, {"type": "processing", "status": "thinking"}
         )
@@ -2017,82 +2168,84 @@ class AudioStreamHandler:
             }
         )
         runtime_metadata = self._build_runtime_metadata(operator_agent)
-        async with runtime_request_guard(
-            request_kind="voice_fallback_llm",
-            provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
-            model=_coerce_str(runtime_metadata.get("llm_model"), ""),
-        ):
-            response_text = await _invoke_operator_agent(
-                operator_agent,
-                transcription,
-                mode=self._connection_voice_mode(connection_id),
-                voice_context=voice_context,
-            )
-            timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
-            self._update_voice_session_metadata(
-                session_dir,
-                {
-                    "pipeline_id": "whisper_llm_piper",
-                    "response_text": response_text,
-                    "response_length": len(response_text or ""),
-                    **_build_voice_session_insights_payload(
-                        transcript=transcription,
-                        response=response_text,
-                        voice_mode=self._connection_voice_mode(connection_id),
-                        pipeline_id="whisper_llm_piper",
-                        **_multi_runtime_voice_flags(),
-                        raw_thinking_available=False,
-                    ),
-                    "timings_ms": timings_ms,
-                    # In fallback whisper->LLM path, this pair must reflect the LLM that
-                    # actually generated the response, not the native multi_runtime daemon.
-                    "audio_runtime_provider": runtime_metadata.get("llm_provider"),
-                    "audio_runtime_model": runtime_metadata.get("llm_model"),
-                    "runtime": runtime_metadata,
-                    **self._voice_contract_payload(connection_id),
-                },
-            )
-            if not response_text:
-                logger.warning(
-                    "Agent zwrócił pustą odpowiedź dla connection_id=%s%s",
-                    connection_id,
-                    empty_agent_response_log_suffix,
-                )
-                await self._send_json(
-                    connection_id,
-                    {
-                        "type": "error",
-                        "message": "Agent returned empty response. Check runtime status.",
-                    },
-                )
-                return
-
-            await self._send_json(
-                connection_id, {"type": "response_text", "text": response_text}
-            )
-            await self._send_json(
-                connection_id, {"type": "processing", "status": "tts"}
-            )
-            audio_engine = self.audio_engine
-            if audio_engine is None:
-                logger.warning("Brak audio_engine podczas etapu TTS; pomijam speak().")
+        response_text = await _invoke_operator_agent(
+            operator_agent,
+            transcription,
+            mode=self._connection_voice_mode(connection_id),
+            voice_context=voice_context,
+            conversation_id=session_dir.name,
+            legacy_guard=runtime_request_guard(
+                request_kind="voice_fallback_llm",
+                provider=_coerce_str(runtime_metadata.get("llm_provider"), ""),
+                model=_coerce_str(runtime_metadata.get("llm_model"), ""),
+            ),
+        )
+        timings_ms["llm_ms"] = self._elapsed_ms(agent_started_at)
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                "pipeline_id": "whisper_llm_piper",
+                "response_text": response_text,
+                "response_length": len(response_text or ""),
+                **_build_voice_session_insights_payload(
+                    transcript=transcription,
+                    response=response_text,
+                    voice_mode=self._connection_voice_mode(connection_id),
+                    pipeline_id="whisper_llm_piper",
+                    **_multi_runtime_voice_flags(),
+                    raw_thinking_available=False,
+                ),
+                "timings_ms": timings_ms,
+                # In fallback whisper->LLM path, this pair must reflect the LLM that
+                # actually generated the response, not the native multi_runtime daemon.
+                "audio_runtime_provider": runtime_metadata.get("llm_provider"),
+                "audio_runtime_model": runtime_metadata.get("llm_model"),
+                "runtime": runtime_metadata,
+                **self._voice_contract_payload(connection_id),
+            },
+        )
+        if not response_text:
+            if operator_agent is None:
                 await self._send_json(connection_id, {"type": "complete"})
                 return
-            tts_started_at = time.perf_counter()
-            audio_response = await audio_engine.speak(response_text)
-            timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
-            timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
-            self._update_voice_session_metadata(
-                session_dir,
+            logger.warning(
+                "Agent zwrócił pustą odpowiedź dla connection_id=%s%s",
+                connection_id,
+                empty_agent_response_log_suffix,
+            )
+            await self._send_json(
+                connection_id,
                 {
-                    "timings_ms": timings_ms,
-                    "runtime": self._build_runtime_metadata(operator_agent),
+                    "type": "error",
+                    "message": "Agent returned empty response. Check runtime status.",
                 },
             )
-            if audio_response is not None:
-                await self._send_audio(connection_id, audio_response)
+            return
 
+        await self._send_json(
+            connection_id, {"type": "response_text", "text": response_text}
+        )
+        await self._send_json(connection_id, {"type": "processing", "status": "tts"})
+        audio_engine = self.audio_engine
+        if audio_engine is None:
+            logger.warning("Brak audio_engine podczas etapu TTS; pomijam speak().")
             await self._send_json(connection_id, {"type": "complete"})
+            return
+        tts_started_at = time.perf_counter()
+        audio_response = await audio_engine.speak(response_text)
+        timings_ms["tts_ms"] = self._elapsed_ms(tts_started_at)
+        timings_ms["total_backend_ms"] = self._elapsed_ms(total_started_at)
+        self._update_voice_session_metadata(
+            session_dir,
+            {
+                "timings_ms": timings_ms,
+                "runtime": self._build_runtime_metadata(operator_agent),
+            },
+        )
+        if audio_response is not None:
+            await self._send_audio(connection_id, audio_response)
+
+        await self._send_json(connection_id, {"type": "complete"})
 
     def _persist_encoded_voice_session(
         self,

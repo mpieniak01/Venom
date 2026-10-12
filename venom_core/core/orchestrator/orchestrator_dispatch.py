@@ -24,6 +24,15 @@ from venom_core.core.policy_gate import (
 )
 from venom_core.core.tracer import TraceStatus
 from venom_core.services.audit_stream import get_audit_stream
+from venom_core.services.conversation_providers import (
+    conversation_turn,
+    create_conversation_context,
+    current_conversation_context,
+    finish_conversation_turn,
+    handle_conversation_turn,
+    prepare_conversation_turn,
+    urgent_conversation_turn,
+)
 from venom_core.services.execution_mode_planner import (
     decide_execution_mode,
     resolve_gui_fallback_contract,
@@ -390,6 +399,30 @@ async def run_task(
     request: TaskRequest,
     fast_path: bool = False,
 ) -> None:
+    turn = create_conversation_context(
+        "chat",
+        task_id=str(task_id),
+        conversation_id=request.session_id,
+        language=request.preferred_language,
+    )
+    with conversation_turn(turn):
+        try:
+            await prepare_conversation_turn(request.content, turn)
+            await _run_task(orch, task_id, request, fast_path=fast_path)
+        except Exception as exc:
+            await orch.result_processor.process_error(
+                task_id, exc, request, request.content
+            )
+        finally:
+            await finish_conversation_turn(turn)
+
+
+async def _run_task(
+    orch: "Orchestrator",
+    task_id: UUID,
+    request: TaskRequest,
+    fast_path: bool = False,
+) -> None:
     context = request.content
     tool_required = False
 
@@ -399,6 +432,15 @@ async def run_task(
             return
 
         orch._persist_session_context(task_id, request)
+
+        turn = current_conversation_context()
+        if turn is not None:
+            urgent_response = await urgent_conversation_turn(request.content, turn)
+            if urgent_response is not None:
+                await _complete_urgent_conversation(
+                    orch, task_id, request, urgent_response
+                )
+                return
 
         await orch.context_builder.preprocess_request(task_id, request)
         request_content = request.content
@@ -474,6 +516,54 @@ async def run_task(
 
     except Exception as exc:
         await orch.result_processor.process_error(task_id, exc, request, context)
+
+
+async def _complete_urgent_conversation(
+    orch: "Orchestrator", task_id: UUID, request: TaskRequest, response: str
+) -> None:
+    """Complete a safety response without translation, classification or learning."""
+    orch._append_session_history(
+        task_id, role="user", content=request.content, session_id=request.session_id
+    )
+    orch.streaming_handler.create_stream_callback(task_id)(response)
+    await orch.state_manager.update_status(
+        task_id, TaskStatus.COMPLETED, result=response
+    )
+    orch._append_session_history(
+        task_id, role="assistant", content=response, session_id=request.session_id
+    )
+    orch.state_manager.add_log(task_id, response)
+    orch.state_manager.update_context(
+        task_id,
+        {
+            "conversation_provider": {"operation": "urgent", "actor": "chat"},
+            "llm_runtime": {
+                "status": "skipped",
+                "error": None,
+                "last_success_at": None,
+            },
+        },
+    )
+    if orch.request_tracer:
+        orch.request_tracer.set_llm_metadata(
+            task_id, provider=None, model=None, endpoint=None
+        )
+        orch.request_tracer.add_step(
+            task_id,
+            "ConversationProvider",
+            "urgent",
+            status="ok",
+            details="actor=chat",
+        )
+        orch.request_tracer.update_status(task_id, TraceStatus.COMPLETED)
+    collector = metrics_module.metrics_collector
+    if collector:
+        collector.increment_task_completed()
+    await orch._broadcast_event(
+        event_type="TASK_COMPLETED",
+        message=response,
+        data={"task_id": str(task_id), "result_length": len(response)},
+    )
 
 
 async def _initialize_task_execution(orch: "Orchestrator", task_id: UUID):
@@ -630,8 +720,32 @@ async def _execute_with_stream_callback(
         stream_callback = orch.streaming_handler.create_stream_callback(task_id)
         stream_token = set_llm_stream_callback(stream_callback)
     try:
-        strategy = ExecutionStrategy(orch)
-        return await strategy.execute(task_id, intent, context, request)
+        turn = current_conversation_context() or create_conversation_context(
+            "chat",
+            task_id=str(task_id),
+            conversation_id=request.session_id,
+            language=request.preferred_language,
+        )
+        with conversation_turn(turn):
+            response = (
+                await handle_conversation_turn(request.content, turn)
+                if request.forced_tool is None
+                else None
+            )
+            if response is not None:
+                callback = orch.streaming_handler.create_stream_callback(task_id)
+                callback(response)
+                if orch.request_tracer:
+                    orch.request_tracer.add_step(
+                        task_id,
+                        "ConversationProvider",
+                        "handle",
+                        status="ok",
+                        details="actor=chat",
+                    )
+                return response
+            strategy = ExecutionStrategy(orch)
+            return await strategy.execute(task_id, intent, context, request)
     finally:
         if stream_token is not None:
             reset_llm_stream_callback(stream_token)

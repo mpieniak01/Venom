@@ -4,6 +4,8 @@
 # by API, vLLM, ONNX, and other overlays.
 
 pyautogen>=0.2.0
+# AutoGen core uses Protobuf 5.x; bound it before newer Google SDKs select 6.x.
+protobuf>=5.29.6,<6.0.0
 pydantic==2.13.4
 pydantic-settings==2.10.1
 fastapi==0.136.1
@@ -23,6 +25,10 @@ networkx==3.6.1
 pillow==12.3.0
 watchdog==6.0.0
 semantic-kernel==1.44.0
+aiortc==1.14.0
+# Use the shared, verified CPython wheel; never compile FFmpeg during CI bootstrap.
+--only-binary=av
+av==16.1.0
 
 starlette==1.3.1
 cryptography>=48.0.1

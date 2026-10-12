@@ -1697,6 +1697,100 @@ async def test_voice_without_registered_providers_preserves_native_plan(
     assert await handler._resolve_voice_input_decoder_plan() == native
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pipeline", ["pcm", "encoded"])
+@pytest.mark.parametrize("asr_error", [False, True])
+async def test_late_voice_provider_fallback_uses_only_checked_host_asr(
+    monkeypatch, tmp_path, pipeline, asr_error
+):
+    import numpy as np
+
+    from venom_core.api import audio_stream
+
+    registry = conversation.ConversationProviderRegistry(None)
+    conversation.set_conversation_registry(registry)
+    provider = Provider()
+    decisions = []
+
+    async def detect_provider():
+        if not decisions:
+            decisions.append(False)
+            return False
+        await registry.register("example", provider)
+        decisions.append(True)
+        return True
+
+    async def transcribe(*_, **__):
+        assert decisions == [False, True]
+        assert conversation.current_conversation_context().actor == "voice"
+        if asr_error:
+            raise RuntimeError("fixture ASR failed")
+        return "/extension"
+
+    audio = np.array([1, 2], dtype=np.int16)
+    handler = audio_stream.AudioStreamHandler()
+    handler.audio_engine = SimpleNamespace(
+        transcribe_checked=AsyncMock(side_effect=transcribe),
+        listen=AsyncMock(side_effect=AssertionError("unchecked ASR")),
+        transcribe_file=Mock(side_effect=AssertionError("duplicate file ASR")),
+        speak=AsyncMock(return_value=audio),
+    )
+    monkeypatch.setattr(audio_stream, "has_voice_providers", detect_provider)
+    monkeypatch.setattr(audio_stream, "assert_runtime_request_allowed", Mock())
+    monkeypatch.setattr(
+        handler,
+        "_resolve_audio_decoder_plan",
+        lambda: {
+            "selected": "gemma_native",
+            "effective": "gemma_native",
+            "should_try_native": True,
+            "fallback_reason": "",
+        },
+    )
+    monkeypatch.setattr(handler, "_persist_voice_session", lambda **_: tmp_path)
+    monkeypatch.setattr(handler, "_persist_encoded_voice_session", lambda *_: tmp_path)
+    monkeypatch.setattr(handler, "_load_wav_int16", lambda _: (audio, 22050))
+    monkeypatch.setattr(handler, "_normalize_recorded_audio", lambda value: (value, {}))
+    monkeypatch.setattr(handler, "_write_wav", Mock())
+    monkeypatch.setattr(handler, "_build_runtime_metadata", lambda _: {})
+    monkeypatch.setattr(handler, "_update_voice_session_metadata", Mock())
+    monkeypatch.setattr(handler, "_send_json", AsyncMock())
+    monkeypatch.setattr(handler, "_send_audio", AsyncMock())
+    monkeypatch.setattr(handler, "_invoke_multi_runtime", AsyncMock())
+    monkeypatch.setattr(handler, "_multi_runtime_health_ok", AsyncMock())
+    if pipeline == "pcm":
+        await handler._process_audio_buffer(1, [audio], None, sample_rate=22050)
+    else:
+        await handler._process_encoded_audio_buffer(1, [b"fixture"], None)
+    handler.audio_engine.transcribe_checked.assert_awaited_once()
+    call = handler.audio_engine.transcribe_checked.call_args
+    assert np.array_equal(call.args[0], audio) and call.kwargs["sample_rate"] == 22050
+    handler.audio_engine.listen.assert_not_awaited()
+    handler.audio_engine.transcribe_file.assert_not_called()
+    handler._invoke_multi_runtime.assert_not_awaited()
+    handler._multi_runtime_health_ok.assert_not_awaited()
+    metadata = [
+        call.args[1] for call in handler._update_voice_session_metadata.call_args_list
+    ]
+    assert any(
+        item.get("decoder_source") == "faster_whisper"
+        and item.get("decoder_effective") == "faster_whisper"
+        for item in metadata
+    )
+    if asr_error:
+        assert not provider.calls
+        handler.audio_engine.speak.assert_not_awaited()
+        assert handler._send_json.call_args.args[1] == {
+            "type": "error",
+            "message": "fixture ASR failed",
+        }
+    else:
+        assert len(provider.calls) == 1 and provider.calls[0][1].actor == "voice"
+        handler.audio_engine.speak.assert_awaited_once_with("handled")
+    assert not registry._active and not registry._prepared
+    assert conversation.current_conversation_context() is None
+
+
 def manifest(tmp_path, factory="example_module:create_provider"):
     path = tmp_path / "module.json"
     path.write_text(

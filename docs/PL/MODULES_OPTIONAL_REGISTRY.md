@@ -174,6 +174,9 @@ Metadane zachowują wybrany dekoder i zapisują `decoder_effective=faster_whispe
 natywnej generacji ani wykonania poleceń. STOP działa też bez starego agenta
 operatora. Bez zarejestrowanych providerów natywna ścieżka z jednym `/v1/respond`
 pozostaje bez zmian; wynik łącznej generacji modelu nigdy nie trafia do providerów.
+Każda hostowa ścieżka STT używa `transcribe_checked` na znormalizowanych próbkach,
+także po zmianie rejestracji providera podczas wyboru dekodera. Zakodowane audio
+nie jest ponownie dekodowane przez transkrypcję pliku; błędy ASR pozostają jawne.
 
 ## 5. Cykl życia modułu (rekomendacja)
 

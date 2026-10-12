@@ -1904,12 +1904,7 @@ class AudioStreamHandler:
 
             stt_started_at = time.perf_counter()
             try:
-                transcribe = (
-                    self.audio_engine.transcribe_checked
-                    if decoder_plan.get("guarded_voice")
-                    else self.audio_engine.listen
-                )
-                transcription = await transcribe(
+                transcription = await self.audio_engine.transcribe_checked(
                     normalized_audio,
                     language="pl",
                     sample_rate=sample_rate,
@@ -2077,16 +2072,9 @@ class AudioStreamHandler:
             )
             stt_started_at = time.perf_counter()
             try:
-                if decoder_plan.get("guarded_voice"):
-                    transcription = await self.audio_engine.transcribe_checked(
-                        audio, language="pl", sample_rate=sample_rate
-                    )
-                else:
-                    transcription = await asyncio.to_thread(
-                        self.audio_engine.transcribe_file,
-                        str(wav_path),
-                        "pl",
-                    )
+                transcription = await self.audio_engine.transcribe_checked(
+                    audio, language="pl", sample_rate=sample_rate
+                )
             except Exception:
                 self._update_voice_session_metadata(
                     session_dir,

@@ -177,6 +177,9 @@ preserves the selected decoder and records `decoder_effective=faster_whisper`,
 fall back to native generation or execute commands. Provider STOP also works
 without a legacy operator agent. With no registered providers the native single
 `/v1/respond` path is unchanged; combined model output is never routed to providers.
+All host STT paths use `transcribe_checked` on normalized samples, including a
+fallback chosen after provider registration changes. Encoded audio is not decoded
+a second time through file transcription; ASR errors remain explicit.
 
 ## 5. Module lifecycle (recommended)
 

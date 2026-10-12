@@ -171,9 +171,9 @@ def test_get_status_reports_loaded_backends_and_dependencies(monkeypatch):
     monkeypatch.setattr(
         audio_stream_mod.importlib.util,
         "find_spec",
-        lambda name: object()
-        if name in {"faster_whisper", "piper", "sounddevice"}
-        else None,
+        lambda name: (
+            object() if name in {"faster_whisper", "piper", "sounddevice"} else None
+        ),
     )
 
     status = handler.get_status(operator_agent=object())
@@ -871,7 +871,7 @@ async def test_process_audio_buffer_uses_voice_mode(monkeypatch, tmp_path):
     audio_engine = MagicMock()
     audio_engine.whisper = None
     audio_engine.voice = None
-    audio_engine.listen = AsyncMock(return_value="co robić dalej?")
+    audio_engine.transcribe_checked = AsyncMock(return_value="co robić dalej?")
     audio_engine.speak = AsyncMock(return_value=np.zeros(16000, dtype=np.int16))
     handler.audio_engine = audio_engine
 

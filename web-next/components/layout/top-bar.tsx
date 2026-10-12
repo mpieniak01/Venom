@@ -39,11 +39,11 @@ export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: Sta
 
   return (
     <div className="glass-panel allow-overflow sticky top-0 z-30 border-b border-[color:var(--ui-border)] bg-[color:var(--topbar-bg)] px-4 py-4 backdrop-blur-2xl sm:px-6">
-      <div className="mr-auto flex w-full max-w-[1320px] items-center justify-between gap-6 2xl:max-w-[68vw]">
+      <div className="mr-auto flex w-full flex-wrap max-w-[1320px] items-center justify-between gap-6 2xl:max-w-[68vw]">
         <div className="flex items-center gap-3">
           <MobileNav />
         </div>
-        <div className="flex flex-1 items-center justify-end gap-4">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-4">
           <StatusPills initialData={initialStatusData} />
           <ModelIntrospectionMechanismControl variant="compact" />
           <TopBarIconAction

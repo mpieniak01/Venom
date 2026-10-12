@@ -4,6 +4,8 @@
 # by API, vLLM, ONNX, and other overlays.
 
 pyautogen>=0.2.0
+# AutoGen core uses Protobuf 5.x; bound it before newer Google SDKs select 6.x.
+protobuf>=5.29.6,<6.0.0
 pydantic==2.13.4
 pydantic-settings==2.10.1
 fastapi==0.136.1

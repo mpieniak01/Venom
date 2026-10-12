@@ -727,7 +727,11 @@ async def _execute_with_stream_callback(
             language=request.preferred_language,
         )
         with conversation_turn(turn):
-            response = await handle_conversation_turn(request.content, turn)
+            response = (
+                await handle_conversation_turn(request.content, turn)
+                if request.forced_tool is None
+                else None
+            )
             if response is not None:
                 callback = orch.streaming_handler.create_stream_callback(task_id)
                 callback(response)

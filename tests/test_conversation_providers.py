@@ -1,6 +1,6 @@
 import asyncio
 import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import FrozenInstanceError
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -174,7 +174,9 @@ async def test_disabled_provider_is_removed_closed_and_inflight_cancelled():
     await started.wait()
     enabled = False
     await registry.refresh()
-    with pytest.raises(asyncio.CancelledError):
+    with pytest.raises(
+        conversation.ConversationProviderError, match="conversation_provider_disabled"
+    ):
         await active
     assert provider.closed and not registry.providers
     assert await registry.handle("ordinary", context()) is None
@@ -585,8 +587,9 @@ async def test_prepared_scope_is_finished_when_planning_returns_or_cancels(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tracing", [True, False])
+@pytest.mark.parametrize("forced_tool", [None, "git"])
 async def test_urgent_stop_completes_task_without_classifier_or_inference(
-    monkeypatch, tracing
+    monkeypatch, tracing, forced_tool
 ):
     from venom_core.core.models import TaskRequest, TaskStatus
     from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
@@ -628,7 +631,11 @@ async def test_urgent_stop_completes_task_without_classifier_or_inference(
     )
     task_id = uuid4()
     await dispatch.run_task(
-        orch, task_id, TaskRequest(content="/extension stop", session_id="chat")
+        orch,
+        task_id,
+        TaskRequest(
+            content="/extension stop", session_id="chat", forced_tool=forced_tool
+        ),
     )
     classify.assert_not_awaited()
     orch.context_builder.preprocess_request.assert_not_awaited()
@@ -959,6 +966,289 @@ async def test_voice_input_scope_is_released_when_asr_does_not_produce_a_command
     assert provider.prepare.call_args.args[1] is provider.finish.call_args.args[0]
     assert not provider.calls and not registry._prepared
     assert conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+async def test_unmatched_expired_chat_falls_through_without_renewing_deadline(
+    monkeypatch,
+):
+    from venom_core.core.models import TaskRequest
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    class Matching(Provider):
+        def accepts(self, text, turn):
+            assert conversation.current_conversation_context() is turn
+            return text.startswith("/extension")
+
+    provider = Matching()
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", provider)
+    conversation.set_conversation_registry(registry)
+    stale = context(timeout_s=0)
+    original_deadline = stale.deadline
+    assert await registry.handle("ordinary long chat", stale) is None
+    assert await registry.urgent("ordinary long chat", stale) is None
+    execution = AsyncMock(return_value="normal reply")
+    monkeypatch.setattr(
+        dispatch, "get_active_llm_runtime", lambda: SimpleNamespace(provider="ollama")
+    )
+    monkeypatch.setattr(
+        dispatch, "ExecutionStrategy", lambda _: SimpleNamespace(execute=execution)
+    )
+    orch = SimpleNamespace(
+        streaming_handler=SimpleNamespace(create_stream_callback=lambda _: Mock())
+    )
+    with conversation.conversation_turn(stale):
+        assert (
+            await dispatch._execute_with_stream_callback(
+                orch,
+                uuid4(),
+                "GENERAL_CHAT",
+                "context",
+                TaskRequest(content="ordinary"),
+            )
+            == "normal reply"
+        )
+    execution.assert_awaited_once()
+    assert not provider.calls and stale.deadline == original_deadline
+    assert conversation.current_conversation_context() is None
+    for route in (registry.handle, registry.urgent):
+        provider.urgent = AsyncMock(return_value="stopped")
+        with pytest.raises(
+            conversation.ConversationProviderError, match="conversation_deadline"
+        ):
+            await route("/extension move", stale)
+    assert not provider.calls and stale.deadline == original_deadline
+    provider.urgent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["not_callable", "async", "not_bool", "throws"])
+async def test_optional_accepts_requires_a_synchronous_boolean_predicate(kind):
+    provider = Provider()
+    if kind == "not_callable":
+        provider.accepts = True
+    elif kind == "async":
+        provider.accepts = AsyncMock(return_value=True)
+    elif kind == "not_bool":
+        provider.accepts = Mock(return_value="yes")
+    else:
+        provider.accepts = Mock(side_effect=RuntimeError("private prefilter detail"))
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", provider)
+    with pytest.raises(conversation.ConversationProviderError):
+        await registry.handle("/extension", context())
+    assert not provider.calls and conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("forced_tool", [None, "git"])
+async def test_explicit_forced_tool_preserves_dispatcher_and_other_tool_intents(
+    monkeypatch, forced_tool
+):
+    from venom_core.core.models import TaskRequest
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    provider = Provider()
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", provider)
+    conversation.set_conversation_registry(registry)
+    monkeypatch.setattr(
+        dispatch, "get_active_llm_runtime", lambda: SimpleNamespace(provider="ollama")
+    )
+    execution = AsyncMock(return_value="forced tool reply")
+    monkeypatch.setattr(
+        dispatch, "ExecutionStrategy", lambda _: SimpleNamespace(execute=execution)
+    )
+    orch = SimpleNamespace(
+        streaming_handler=SimpleNamespace(create_stream_callback=lambda _: Mock()),
+        request_tracer=None,
+    )
+    result = await dispatch._execute_with_stream_callback(
+        orch,
+        uuid4(),
+        "SYSTEM_DIAGNOSTICS",
+        "context",
+        TaskRequest(content="/extension", forced_tool=forced_tool),
+    )
+    if forced_tool is None:
+        assert result == "handled" and len(provider.calls) == 1
+        execution.assert_not_awaited()
+    else:
+        assert result == "forced tool reply" and not provider.calls
+        execution.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pipeline", ["pcm", "encoded", "native"])
+@pytest.mark.parametrize("actor", [None, "chat"])
+async def test_private_audio_pipeline_explicitly_rejects_missing_or_nonvoice_context(
+    monkeypatch, tmp_path, pipeline, actor
+):
+    from venom_core.api.audio_stream import AudioStreamHandler
+
+    handler = AudioStreamHandler()
+    if pipeline == "pcm":
+        operation = handler._process_audio_buffer_in_turn(1, [], None)
+    elif pipeline == "encoded":
+        operation = handler._process_encoded_audio_buffer_in_turn(1, [], None)
+    else:
+        handler.audio_engine = SimpleNamespace(speak=AsyncMock())
+        monkeypatch.setattr(handler, "_multi_runtime_runtime_selected", lambda: True)
+        monkeypatch.setattr(
+            handler, "_multi_runtime_runtime_snapshot_live", AsyncMock(return_value={})
+        )
+        monkeypatch.setattr(
+            handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
+        )
+        monkeypatch.setattr(
+            handler,
+            "_invoke_multi_runtime",
+            AsyncMock(
+                return_value={"transcription": "/extension", "response_text": "x"}
+            ),
+        )
+        monkeypatch.setattr(handler, "_send_json", AsyncMock())
+        operation = handler._process_native_multi_runtime_in_turn(
+            1, tmp_path, tmp_path / "fixture.wav", {}, 0.0, None
+        )
+    scope = conversation.conversation_turn(context(actor)) if actor else nullcontext()
+    with scope:
+        with pytest.raises(RuntimeError, match="voice_context_required"):
+            await operation
+
+
+@pytest.mark.asyncio
+async def test_real_caller_cancellation_propagates_and_resets_context():
+    started = asyncio.Event()
+
+    class Waiting(Provider):
+        async def handle(self, text, turn):
+            started.set()
+            await asyncio.Event().wait()
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Waiting())
+    pending = asyncio.create_task(registry.handle("/extension", context()))
+    await started.wait()
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert not registry._active and conversation.current_conversation_context() is None
+    await registry.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_self_cancellation_is_a_typed_error_not_caller_cancellation():
+    class Cancelled(Provider):
+        async def handle(self, text, turn):
+            raise asyncio.CancelledError()
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Cancelled())
+    with pytest.raises(
+        conversation.ConversationProviderError, match="conversation_provider_cancelled"
+    ):
+        await registry.handle("/extension", context())
+    assert not registry._active and conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["chat", "voice"])
+async def test_disabling_child_provider_finishes_host_task_or_voice_error(
+    monkeypatch, tmp_path, entry
+):
+    import numpy as np
+
+    from venom_core.api.audio_stream import AudioStreamHandler
+    from venom_core.core.models import TaskRequest, TaskStatus
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+    from venom_core.core.orchestrator.task_pipeline.result_processor import (
+        ResultProcessor,
+    )
+
+    started = asyncio.Event()
+
+    class Waiting(Provider):
+        async def handle(self, text, turn):
+            started.set()
+            await asyncio.Event().wait()
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Waiting())
+    conversation.set_conversation_registry(registry)
+    if entry == "chat":
+        state = SimpleNamespace(
+            get_task=Mock(return_value=SimpleNamespace(context_history={})),
+            update_status=AsyncMock(),
+            add_log=Mock(),
+        )
+        orch = SimpleNamespace(
+            state_manager=state,
+            request_tracer=None,
+            _broadcast_event=AsyncMock(),
+            _persist_session_context=Mock(),
+            _append_session_history=Mock(),
+            context_builder=SimpleNamespace(preprocess_request=AsyncMock()),
+            _is_perf_test_prompt=Mock(return_value=False),
+            validator=SimpleNamespace(validate_forced_tool=Mock()),
+            NON_LEARNING_INTENTS={"GENERAL_CHAT"},
+            streaming_handler=SimpleNamespace(create_stream_callback=lambda _: Mock()),
+            _build_error_envelope=Mock(return_value={"error_code": "agent_error"}),
+            _set_runtime_error=Mock(),
+        )
+        orch.result_processor = ResultProcessor(orch)
+        monkeypatch.setattr(
+            dispatch,
+            "_prepare_intent_and_context",
+            AsyncMock(return_value=("GENERAL_CHAT", "context", False, {})),
+        )
+        monkeypatch.setattr(dispatch, "_emit_classification_trace", Mock())
+        monkeypatch.setattr(dispatch, "_broadcast_intent", AsyncMock())
+        monkeypatch.setattr(dispatch, "_resolve_planned_provider", lambda *_: None)
+        monkeypatch.setattr(
+            dispatch,
+            "_handle_policy_block_global_pre_execution",
+            AsyncMock(return_value=False),
+        )
+        pending = asyncio.create_task(
+            dispatch.run_task(orch, uuid4(), TaskRequest(content="/extension"))
+        )
+    else:
+        handler = AudioStreamHandler()
+        handler.audio_engine = SimpleNamespace(
+            listen=AsyncMock(return_value="/extension"), speak=AsyncMock()
+        )
+        monkeypatch.setattr(handler, "_persist_voice_session", lambda **_: tmp_path)
+        monkeypatch.setattr(
+            handler, "_handle_decoder_plan_pre_stt", AsyncMock(return_value=False)
+        )
+        monkeypatch.setattr(handler, "_update_voice_session_metadata", Mock())
+        monkeypatch.setattr(handler, "_build_runtime_metadata", lambda _: {})
+        monkeypatch.setattr(handler, "_send_json", AsyncMock())
+        operator = SimpleNamespace(process=AsyncMock())
+        pending = asyncio.create_task(
+            handler._process_audio_buffer(
+                1, [np.array([1, 2], dtype=np.int16)], operator
+            )
+        )
+    await asyncio.wait_for(started.wait(), timeout=5)
+    await registry.unregister("example")
+    await pending
+    if entry == "chat":
+        assert state.update_status.call_args.args[1] == TaskStatus.FAILED
+        assert (
+            "conversation_provider_disabled"
+            in state.update_status.call_args.kwargs["result"]
+        )
+    else:
+        error = handler._send_json.call_args.args[1]
+        assert error == {"type": "error", "message": "conversation_provider_disabled"}
+        handler.audio_engine.speak.assert_not_awaited()
+        operator.process.assert_not_awaited()
+    assert (
+        not registry._prepared and conversation.current_conversation_context() is None
+    )
 
 
 @pytest.mark.asyncio

@@ -1485,7 +1485,8 @@ class AudioStreamHandler:
             provider_handled = False
             if source_transcription:
                 turn = current_conversation_context()
-                assert turn is not None and turn.actor == "voice"
+                if turn is None or turn.actor != "voice":
+                    raise RuntimeError("voice_context_required")
                 await prepare_conversation_turn(source_transcription, turn)
                 provider_response = await urgent_conversation_turn(
                     source_transcription, turn
@@ -1817,7 +1818,8 @@ class AudioStreamHandler:
             operator_agent: Agent do przetwarzania
         """
         turn = current_conversation_context()
-        assert turn is not None and turn.actor == "voice"
+        if turn is None or turn.actor != "voice":
+            raise RuntimeError("voice_context_required")
         assert_runtime_request_allowed(request_kind="voice_chat")
         try:
             total_started_at = time.perf_counter()
@@ -1970,7 +1972,8 @@ class AudioStreamHandler:
     ):
         """Przetwarza nagranie z MediaRecorder przez ffmpeg -> WAV -> STT."""
         turn = current_conversation_context()
-        assert turn is not None and turn.actor == "voice"
+        if turn is None or turn.actor != "voice":
+            raise RuntimeError("voice_context_required")
         assert_runtime_request_allowed(request_kind="voice_chat")
         try:
             total_started_at = time.perf_counter()

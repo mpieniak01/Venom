@@ -127,6 +127,42 @@ Wspólna operacja z jednej stacji developerskiej:
 5. `README.md` z instrukcją env/flag.
 6. Testy modułu (`tests/*`).
 
+### 4.3. Opcjonalny provider rozmów
+
+`backend.conversation_provider_import` może wskazywać import, np.
+`venom_module_example.conversation:create_provider`. Fabryka otrzymuje aplikację
+hosta po starcie modułu i zwraca provider z asynchronicznym
+`handle(text, context) -> str | None`. Provider istnieje poza kernelem modelu;
+wyłączenie modułu usuwa go z rejestru i zamyka jego zasoby.
+
+Host tworzy niezmienny `ConversationContext` i wiąże go przez ContextVar.
+Actor, urządzenie docelowe i deadline nie są argumentami LLM. Identyfikatory
+rozmowy służą korelacji, a nie potwierdzaniu zgody operatora.
+
+Opcjonalne hooki:
+
+- Synchroniczny `accepts(text, context) -> bool`: szybkie dopasowanie tekstu bez
+  ładowania modeli i aktuacji. Niedopasowany tekst przechodzi do zwykłego czatu,
+  także po deadline tury. Provider bez tego hooka zachowuje kontrolę deadline dla
+  każdego wywołania.
+- Asynchroniczny `prepare(text, context)`: wiązanie zakresu bezpieczeństwa przed
+  planowaniem lub ASR. Pusty tekst głosowy przygotowuje snapshot przed rozpoznaniem;
+  nie jest zgodą na przyszłe polecenie.
+- Asynchroniczny `urgent(text, context) -> str | None`: zaufana ścieżka operacji
+  bezpieczeństwa przed klasyfikacją, np. STOP. Zwykłe `handle` pozostaje po kontroli
+  polityki i respektuje jawnie wskazane `forced_tool`.
+- Asynchroniczne `finish(context)` i `close()`: zwolnienie zasobów tury i modułu.
+- Opcjonalny `list_tools()`: metadane typowanych narzędzi bez współdzielenia
+  pluginów w globalnym kernelu.
+
+Dopasowane polecenia używają pierwotnego monotonicznego deadline od utworzenia tury
+(domyślnie 30 sekund), razem z czasem planowania i rozpoznawania mowy. Host nie
+odnawia go po ASR ani inferencji. Wygasłe dopasowane polecenie kończy się
+`conversation_deadline`; zwykły czat i TTS nie otrzymują nowego wspólnego timeoutu.
+Sprzątanie działa także po wygaśnięciu z osobnym ograniczonym budżetem.
+Anulowanie zadania hosta propaguje `CancelledError`; wyłączenie tylko providera
+daje typowany błąd, który pozwala zakończyć status zadania i obsłużyć błąd głosu.
+
 ## 5. Cykl życia modułu (rekomendacja)
 
 1. Rozwijaj moduł w osobnym repozytorium/pakiecie.

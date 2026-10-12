@@ -131,6 +131,41 @@ Single workstation operations:
 5. `README.md` with env/flag setup.
 6. Module tests (`tests/*`).
 
+### 4.3. Optional conversation provider
+
+`backend.conversation_provider_import` may declare an import such as
+`venom_module_example.conversation:create_provider`. The factory receives the
+host app after module startup and returns a provider with async
+`handle(text, context) -> str | None`. Providers remain outside the model kernel;
+disabling their module unregisters and closes them.
+
+The host owns the frozen `ConversationContext` and binds it through a ContextVar.
+Actor, target device and deadline are not LLM arguments. Conversation identifiers
+provide correlation, not operator authorization.
+
+Optional hooks:
+
+- Sync `accepts(text, context) -> bool`: cheap text prefilter with no model loading
+  or actuation. Unmatched text falls through to ordinary chat, even after the turn
+  deadline. Providers without this hook retain deadline checks for every call.
+- Async `prepare(text, context)`: bind domain safety scope before planning or ASR.
+  Empty voice text prepares a snapshot before recognition; it does not authorize
+  a future command.
+- Async `urgent(text, context) -> str | None`: trusted safety-only handling before
+  classification, such as STOP. Ordinary handling stays after policy checks and
+  respects an explicitly requested `forced_tool`.
+- Async `finish(context)` and `close()`: release turn and module resources.
+- Optional `list_tools()`: return typed tool metadata without global kernel
+  plugin sharing.
+
+Matched commands use the original monotonic deadline from turn creation
+(30 seconds by default), including time spent planning or recognizing speech.
+The host does not renew it after recognition or inference. Expired matched
+commands fail with `conversation_deadline`; normal chat and TTS receive no new
+blanket timeout. Cleanup still runs after expiry with its separate bounded budget.
+Cancelling the host task propagates `CancelledError`; disabling only a provider
+produces a typed provider error so task status and voice errors can complete.
+
 ## 5. Module lifecycle (recommended)
 
 1. Develop module in separate repository/package.

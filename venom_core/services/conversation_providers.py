@@ -280,8 +280,16 @@ class ConversationProviderRegistry:
             result = await asyncio.wait_for(task, timeout=remaining)
         except TimeoutError as exc:
             raise ConversationProviderError("conversation_deadline", module_id) from exc
-        except asyncio.CancelledError:
-            raise
+        except asyncio.CancelledError as exc:
+            caller = asyncio.current_task()
+            if caller is not None and caller.cancelling() > 0:
+                raise
+            code = (
+                "conversation_provider_disabled"
+                if self.closed or self.providers.get(module_id) is not provider
+                else "conversation_provider_cancelled"
+            )
+            raise ConversationProviderError(code, module_id) from exc
         except Exception as exc:
             raise ConversationProviderError(
                 "conversation_provider_failed", module_id
@@ -297,6 +305,28 @@ class ConversationProviderRegistry:
                 raise ConversationProviderError("conversation_deadline", module_id)
         return result
 
+    @staticmethod
+    def _accepts(
+        module_id: str, provider: Any, text: str, context: ConversationContext
+    ) -> bool:
+        """Prefilter unmatched text without renewing the original turn deadline."""
+        predicate = getattr(provider, "accepts", None)
+        if predicate is None:
+            return True
+        if not callable(predicate) or inspect.iscoroutinefunction(predicate):
+            raise ConversationProviderError("conversation_provider_invalid", module_id)
+        try:
+            accepted = predicate(text, context)
+        except Exception as exc:
+            raise ConversationProviderError(
+                "conversation_provider_failed", module_id
+            ) from exc
+        if type(accepted) is not bool:
+            if inspect.iscoroutine(accepted):
+                accepted.close()
+            raise ConversationProviderError("conversation_provider_invalid", module_id)
+        return accepted
+
     async def _route(
         self, operation: str, text: str, context: ConversationContext
     ) -> str | None:
@@ -307,6 +337,8 @@ class ConversationProviderRegistry:
         with conversation_turn(context):
             for module_id, provider in list(self.providers.items()):
                 if not callable(getattr(provider, operation, None)):
+                    continue
+                if not self._accepts(module_id, provider, text, context):
                     continue
                 result = await self._invoke(
                     module_id, provider, operation, context, text

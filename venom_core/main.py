@@ -1495,6 +1495,8 @@ async def _initialize_avatar_stack() -> None:
     global audio_engine, hardware_bridge, operator_agent, audio_stream_handler
 
     audio_engine = _initialize_audio_engine_if_enabled()
+    # Optional modules reuse the host instance and observe model switches on it.
+    app.state.audio_engine = audio_engine
     hardware_bridge = await _initialize_hardware_bridge_if_enabled()
     operator_agent = _initialize_operator_agent_if_possible(
         audio_engine, hardware_bridge

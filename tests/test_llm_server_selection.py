@@ -211,6 +211,16 @@ def test_extract_health_status_handles_non_json_response():
 
 @pytest.mark.asyncio
 async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
+    async def _fake_probe(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(
+        "venom_core.services.runtime_switch_service.probe_until_shutdown", _fake_probe
+    )
+    monkeypatch.setattr(
+        "venom_core.services.runtime_switch_service.probe_health_ready", _fake_probe
+    )
+
     config = {
         "LAST_MODEL_OLLAMA": "phi3:mini",
         "PREVIOUS_MODEL_OLLAMA": "phi3:old",

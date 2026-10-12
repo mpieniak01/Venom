@@ -39,6 +39,7 @@ class WhisperSkill:
         self.device = device
         self.compute_type = compute_type
         self.model: Optional[Any] = None
+        self._inference_lock = threading.RLock()
         logger.info(f"Inicjalizacja WhisperSkill: model={model_size}, device={device}")
 
     def _load_model(self):
@@ -63,9 +64,27 @@ class WhisperSkill:
                 raise
 
     def _transcribe_buffer_sync(
-        self, audio_buffer: np.ndarray, language: str = "pl", sample_rate: int = 16000
+        self,
+        audio_buffer: np.ndarray,
+        language: str = "pl",
+        sample_rate: int = 16000,
+        *,
+        raise_on_error: bool = False,
     ) -> str:
         """Synchronously transcribe a preloaded audio buffer."""
+        with self._inference_lock:
+            return self._transcribe_locked_sync(
+                audio_buffer, language, sample_rate, raise_on_error=raise_on_error
+            )
+
+    def _transcribe_locked_sync(
+        self,
+        audio_buffer: np.ndarray,
+        language: str,
+        sample_rate: int,
+        *,
+        raise_on_error: bool,
+    ) -> str:
         self._load_model()
 
         try:
@@ -94,6 +113,8 @@ class WhisperSkill:
             return transcription.strip()
         except Exception as e:
             logger.error(f"Błąd podczas transkrypcji: {e}")
+            if raise_on_error:
+                raise
             return ""
 
     def _prepare_audio_buffer(
@@ -219,6 +240,18 @@ class WhisperSkill:
             self._transcribe_buffer_sync, audio_buffer, language, sample_rate
         )
 
+    async def transcribe_checked(
+        self, audio_buffer: np.ndarray, language: str = "pl", sample_rate: int = 16000
+    ) -> str:
+        """Distinguish successful silence from inference failure for remote callers."""
+        return await asyncio.to_thread(
+            self._transcribe_buffer_sync,
+            audio_buffer,
+            language,
+            sample_rate,
+            raise_on_error=True,
+        )
+
     def transcribe_file(self, file_path: str, language: str = "pl") -> str:
         """Transcribe an audio file from disk."""
         audio_buffer, sample_rate = self._load_audio_file(file_path)
@@ -313,7 +346,7 @@ class VoiceSkill:
         text = self._clean_text_for_speech(text)
 
         try:
-            self._load_model()
+            await asyncio.to_thread(self._load_model)
 
             voice = self.voice
             if voice is None or self.is_fallback_mode:
@@ -486,6 +519,14 @@ class AudioEngine:
             Transkrybowany tekst
         """
         return await self.whisper.transcribe(
+            audio_buffer, language=language, sample_rate=sample_rate
+        )
+
+    async def transcribe_checked(
+        self, audio_buffer: np.ndarray, language: str = "pl", sample_rate: int = 16000
+    ) -> str:
+        """Use the shared STT model, preserving errors instead of reporting silence."""
+        return await self.whisper.transcribe_checked(
             audio_buffer, language=language, sample_rate=sample_rate
         )
 

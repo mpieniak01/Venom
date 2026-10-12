@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import sys
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -32,6 +34,12 @@ class ApiModuleManifest:
     feature_flag: str | None = None
     module_api_version: str | None = None
     min_core_version: str | None = None
+    conversation_provider_import: str | None = None
+
+
+_FACTORY_IMPORT = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*"
+)
 
 
 def _is_enabled(manifest: ApiModuleManifest, settings: object) -> bool:
@@ -187,6 +195,13 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
     feature_flag = str(backend.get("feature_flag", "")).strip() or None
     module_api_version = str(backend.get("module_api_version", "")).strip() or None
     min_core_version = str(backend.get("min_core_version", "")).strip() or None
+    conversation_import = backend.get("conversation_provider_import")
+    if conversation_import is not None and (
+        not isinstance(conversation_import, str)
+        or _FACTORY_IMPORT.fullmatch(conversation_import) is None
+    ):
+        logger.warning("Invalid conversation provider import for module %s", module_id)
+        return None
     data_policy, data_policy_errors = parse_module_data_policy_payload(
         module_id=module_id or "<missing_module_id>",
         payload=backend.get("data_policy"),
@@ -211,6 +226,7 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
         feature_flag=feature_flag,
         module_api_version=module_api_version,
         min_core_version=min_core_version,
+        conversation_provider_import=conversation_import,
     )
 
 
@@ -264,6 +280,14 @@ def _validate_manifest_item(item: str, errors: list[str]) -> None:
         )
         return
     router_import = str(backend.get("router_import", "")).strip()
+    conversation_import = backend.get("conversation_provider_import")
+    if conversation_import is not None and (
+        not isinstance(conversation_import, str)
+        or _FACTORY_IMPORT.fullmatch(conversation_import) is None
+    ):
+        errors.append(
+            "invalid optional module conversation_provider_import: " + module_id
+        )
     if not module_id or not router_import:
         errors.append(
             "invalid optional module manifest (required module_id/backend.router_import): "
@@ -324,4 +348,65 @@ def include_optional_api_routers(
         included.append(manifest.module_id)
     if included:
         logger.info("Included optional API modules: %s", ", ".join(included))
+    _install_conversation_provider_lifespan(app, settings)
     return included
+
+
+def _conversation_provider_factories(settings: object):
+    factories = {}
+    for manifest in iter_api_module_manifests(settings):
+        if (
+            not manifest.conversation_provider_import
+            or not _is_enabled(manifest, settings)
+            or not _is_compatible(manifest, settings)
+        ):
+            continue
+        root = (
+            str(Path(manifest.module_root).resolve()) if manifest.module_root else None
+        )
+        inserted = bool(root and root not in sys.path)
+        if inserted:
+            assert root is not None
+            sys.path.insert(0, root)
+        try:
+            module_path, name = manifest.conversation_provider_import.split(":")
+            factory = getattr(importlib.import_module(module_path), name)
+            if not callable(factory):
+                raise ValueError("invalid_conversation_provider_factory")
+            factories[manifest.module_id] = factory
+        finally:
+            if inserted and root in sys.path:
+                sys.path.remove(root)
+    return factories
+
+
+def _install_conversation_provider_lifespan(app: FastAPI, settings: object) -> None:
+    from venom_core.services.conversation_providers import (
+        ConversationProviderRegistry,
+        set_conversation_registry,
+    )
+
+    if getattr(app.state, "conversation_providers", None) is not None:
+        return
+    registry = ConversationProviderRegistry(
+        app, factories=lambda: _conversation_provider_factories(settings)
+    )
+    app.state.conversation_providers = registry
+    original_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(application):
+        async with original_lifespan(application) as state:
+            previous = None
+            installed = False
+            try:
+                await registry.refresh()
+                previous = set_conversation_registry(registry)
+                installed = True
+                yield state
+            finally:
+                if installed:
+                    set_conversation_registry(previous)
+                await registry.close()
+
+    app.router.lifespan_context = lifespan

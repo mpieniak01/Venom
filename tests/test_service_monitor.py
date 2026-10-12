@@ -605,7 +605,12 @@ async def test_check_local_database_service(service_monitor):
 
 
 @pytest.mark.asyncio
-async def test_check_local_database_service_redis_missing_dependency(service_monitor):
+async def test_check_local_database_service_redis_missing_dependency(
+    service_monitor, monkeypatch
+):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "redis", None)
     service = ServiceInfo(
         name="Redis",
         service_type="database",

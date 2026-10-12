@@ -1011,6 +1011,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_audio_compute_contracts.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "R2 shared checked speech contract and singleton reuse; offline unit fixtures only."
+    },
+    {
       "path": "tests/test_audio_engine.py",
       "domain": "runtime",
       "test_type": "unit",
@@ -4177,6 +4191,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_conversation_providers.py",
+      "domain": "orchestrator",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Host-owned conversation context and shared optional providers for chat and voice."
     },
     {
       "path": "tests/test_module_registry.py",

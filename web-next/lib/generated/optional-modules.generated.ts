@@ -68,13 +68,27 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
       en: "Module Example",
       de: "Beispielmodul",
     },
+  },
+  {
+    schemaVersion: 1,
+    moduleId: "rider",
+    displayName: "Rider-Pi",
+    routePath: "/rider",
+    featureFlagEnv: "NEXT_PUBLIC_FEATURE_RIDER",
+    navLabel: "Rider-Pi",
+    navLabels: {
+      pl: "Robot Rider-Pi",
+      en: "Rider-Pi robot",
+      de: "Rider-Pi Roboter",
+    },
   }
 ];
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
   "brand_studio": () => process.env.NEXT_PUBLIC_FEATURE_BRAND_STUDIO ?? "",
   "google_home_bridge": () => process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE ?? "",
-  "module_example": () => process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE ?? ""
+  "module_example": () => process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE ?? "",
+  "rider": () => process.env.NEXT_PUBLIC_FEATURE_RIDER ?? ""
 };
 
 function isFlagEnabled(raw: string): boolean {

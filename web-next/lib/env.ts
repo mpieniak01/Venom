@@ -4,7 +4,17 @@ const DEFAULT_API_PORT = 8000;
 
 const getEnv = (key: string): string | undefined => {
   if (typeof process === "undefined") return undefined;
-  return process.env[key];
+  // Next only exposes public variables referenced by their literal name.
+  // Dynamic process.env[key] lookups are empty in the browser bundle.
+  const publicValues: Record<string, string | undefined> = {
+    NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_API_LOCALHOST_FALLBACK: process.env.NEXT_PUBLIC_API_LOCALHOST_FALLBACK,
+    NEXT_PUBLIC_WS_BASE: process.env.NEXT_PUBLIC_WS_BASE,
+    NEXT_PUBLIC_AUDIO_WS_BASE: process.env.NEXT_PUBLIC_AUDIO_WS_BASE,
+    NEXT_PUBLIC_GEMMA4_API_BASE: process.env.NEXT_PUBLIC_GEMMA4_API_BASE,
+  };
+  return publicValues[key] ?? process.env[key];
 };
 
 const getBrowserWindow = (): Window | undefined => {

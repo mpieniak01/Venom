@@ -92,14 +92,14 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${jetBrains.variable} font-sans antialiased`}>
         <Providers>
-          <div className="relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,var(--app-shell-radial),_transparent_55%)] text-[color:var(--text-primary)]">
+          <div className="relative min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,var(--app-shell-radial),_transparent_55%)] text-[color:var(--text-primary)]">
             <div className="pointer-events-none absolute inset-0 opacity-60 blur-3xl">
               <div className="absolute -left-10 top-10 h-64 w-64 rounded-full bg-[color:var(--app-orb-left)]" />
               <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-[color:var(--app-orb-right)]" />
             </div>
             <div className="relative z-10 flex">
               <Sidebar />
-              <div className="relative flex flex-1 flex-col transition-all duration-300 ease-in-out lg:pl-[var(--sidebar-width)]">
+              <div className="relative flex min-w-0 flex-1 flex-col transition-all duration-300 ease-in-out lg:pl-[var(--sidebar-width)]">
                 <Suspense fallback={<TopBarSkeleton />}>
                   <TopBarWrapper />
                 </Suspense>

@@ -1154,6 +1154,60 @@ async def test_provider_self_cancellation_is_a_typed_error_not_caller_cancellati
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "value", [RuntimeError("returned error"), asyncio.CancelledError(), TimeoutError()]
+)
+async def test_returned_exception_is_invalid_output_not_a_thrown_provider_error(value):
+    class Invalid(Provider):
+        async def handle(self, text, turn):
+            return value
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Invalid())
+    with pytest.raises(
+        conversation.ConversationProviderError, match="conversation_invalid_output"
+    ):
+        await registry.handle("/extension", context())
+    assert not registry._active and conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+async def test_provider_thrown_timeout_retains_deadline_classification():
+    class TimedOut(Provider):
+        async def handle(self, text, turn):
+            raise TimeoutError("provider timeout")
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", TimedOut())
+    with pytest.raises(
+        conversation.ConversationProviderError, match="conversation_deadline"
+    ):
+        await registry.handle("/extension", context())
+    assert not registry._active and conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+async def test_provider_timeout_cancels_child_and_releases_active_tracking():
+    cleaned = asyncio.Event()
+
+    class Waiting(Provider):
+        async def handle(self, text, turn):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaned.set()
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Waiting())
+    with pytest.raises(
+        conversation.ConversationProviderError, match="conversation_deadline"
+    ):
+        await registry.handle("/extension", context(timeout_s=0.02))
+    assert cleaned.is_set() and not registry._active
+    assert conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("entry", ["chat", "voice"])
 async def test_disabling_child_provider_finishes_host_task_or_voice_error(
     monkeypatch, tmp_path, entry

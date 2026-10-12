@@ -109,6 +109,11 @@ class ConversationProviderError(RuntimeError):
         self.code, self.module_id = code, module_id
 
 
+@dataclass(frozen=True, slots=True)
+class _ProviderValue:
+    value: Any
+
+
 class ConversationProviderRegistry:
     def __init__(
         self,
@@ -274,28 +279,24 @@ class ConversationProviderRegistry:
         method = getattr(provider, operation)
         if not inspect.iscoroutinefunction(method):
             raise ConversationProviderError("conversation_provider_invalid", module_id)
-        task = asyncio.create_task(method(*args, context))
+        task = asyncio.create_task(self._collect_value(method, args, context))
         self._active[task] = module_id
         try:
-            result = await asyncio.wait_for(task, timeout=remaining)
+            outcomes = await asyncio.wait_for(
+                asyncio.gather(task, return_exceptions=True), timeout=remaining
+            )
         except TimeoutError as exc:
             raise ConversationProviderError("conversation_deadline", module_id) from exc
-        except asyncio.CancelledError as exc:
-            caller = asyncio.current_task()
-            if caller is not None and caller.cancelling() > 0:
-                raise
-            code = (
-                "conversation_provider_disabled"
-                if self.closed or self.providers.get(module_id) is not provider
-                else "conversation_provider_cancelled"
-            )
-            raise ConversationProviderError(code, module_id) from exc
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
         except Exception as exc:
             raise ConversationProviderError(
                 "conversation_provider_failed", module_id
             ) from exc
         finally:
             self._active.pop(task, None)
+        result = self._resolve_outcome(module_id, provider, outcomes[0])
         if not cleanup:
             if self.closed or self.providers.get(module_id) is not provider:
                 raise ConversationProviderError(
@@ -304,6 +305,37 @@ class ConversationProviderRegistry:
             if time.monotonic() > context.deadline:
                 raise ConversationProviderError("conversation_deadline", module_id)
         return result
+
+    @staticmethod
+    async def _collect_value(
+        method: Callable[..., Any], args: tuple[Any, ...], context: ConversationContext
+    ) -> _ProviderValue:
+        return _ProviderValue(await method(*args, context))
+
+    def _resolve_outcome(
+        self, module_id: str, provider: Any, outcome: _ProviderValue | BaseException
+    ) -> Any:
+        if isinstance(outcome, _ProviderValue):
+            return outcome.value
+        if isinstance(outcome, asyncio.CancelledError):
+            caller = asyncio.current_task()
+            if caller is not None and caller.cancelling() > 0:
+                raise outcome
+            code = (
+                "conversation_provider_disabled"
+                if self.closed or self.providers.get(module_id) is not provider
+                else "conversation_provider_cancelled"
+            )
+            raise ConversationProviderError(code, module_id) from outcome
+        if isinstance(outcome, TimeoutError):
+            raise ConversationProviderError(
+                "conversation_deadline", module_id
+            ) from outcome
+        if isinstance(outcome, Exception):
+            raise ConversationProviderError(
+                "conversation_provider_failed", module_id
+            ) from outcome
+        raise outcome
 
     @staticmethod
     def _accepts(

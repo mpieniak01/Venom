@@ -162,6 +162,18 @@ odnawia go po ASR ani inferencji. Wygasłe dopasowane polecenie kończy się
 Sprzątanie działa także po wygaśnięciu z osobnym ograniczonym budżetem.
 Anulowanie zadania hosta propaguje `CancelledError`; wyłączenie tylko providera
 daje typowany błąd, który pozwala zakończyć status zadania i obsłużyć błąd głosu.
+Deadline hosta ogranicza także provider, który tłumi anulowanie. Zadanie potomne
+pozostaje śledzone do rzeczywistego zakończenia; jawne `drain()` odbiera wynik
+sprzątania bez dodawania nieograniczonego oczekiwania do cyklu życia modułu.
+
+Zarejestrowane providery rozmów wymagają transkrypcji przed generowaniem odpowiedzi.
+Głos korzysta ze wspólnego silnika Whisper z jawną obsługą błędów i istniejącego
+routingu hosta, także dla STOP przy wyłączonych zwykłych narzędziach providera.
+Metadane zachowują wybrany dekoder i zapisują `decoder_effective=faster_whisper`,
+`guarded_voice=true` oraz powód. Błąd ASR, cisza i anulowanie nie przechodzą do
+natywnej generacji ani wykonania poleceń. STOP działa też bez starego agenta
+operatora. Bez zarejestrowanych providerów natywna ścieżka z jednym `/v1/respond`
+pozostaje bez zmian; wynik łącznej generacji modelu nigdy nie trafia do providerów.
 
 ## 5. Cykl życia modułu (rekomendacja)
 

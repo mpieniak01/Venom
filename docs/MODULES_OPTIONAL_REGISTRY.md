@@ -165,6 +165,18 @@ commands fail with `conversation_deadline`; normal chat and TTS receive no new
 blanket timeout. Cleanup still runs after expiry with its separate bounded budget.
 Cancelling the host task propagates `CancelledError`; disabling only a provider
 produces a typed provider error so task status and voice errors can complete.
+The host deadline also bounds a provider that suppresses cancellation. Its child
+task remains tracked until actual completion; explicit `drain()` observes cleanup
+without adding an unbounded wait to the module lifecycle.
+
+Registered conversation providers require transcription before generation. Voice
+uses the shared checked Whisper engine and the existing host routing pipeline,
+including emergency routing when a provider's ordinary tools are off. Metadata
+preserves the selected decoder and records `decoder_effective=faster_whisper`,
+`guarded_voice=true` and the reason. ASR errors, silence and cancellation do not
+fall back to native generation or execute commands. Provider STOP also works
+without a legacy operator agent. With no registered providers the native single
+`/v1/respond` path is unchanged; combined model output is never routed to providers.
 
 ## 5. Module lifecycle (recommended)
 

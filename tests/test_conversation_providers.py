@@ -771,15 +771,11 @@ async def test_invalid_prepare_hook_fails_closed_and_disabled_scope_is_removed()
 async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
     monkeypatch, tmp_path, pipeline
 ):
-    import threading
-
     import numpy as np
 
     from venom_core.api.audio_stream import AudioStreamHandler
 
     started, release = asyncio.Event(), asyncio.Event()
-    thread_release = threading.Event()
-    loop = asyncio.get_running_loop()
 
     class Snapshot(Provider):
         epoch = 1
@@ -819,21 +815,10 @@ async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
         await release.wait()
         return "/extension move"
 
-    def delayed_file_asr(*args, **kwargs):
-        assert conversation.current_conversation_context() is provider.prepared[0]
-        loop.call_soon_threadsafe(started.set)
-        assert thread_release.wait(timeout=5)
-        return "/extension move"
-
-    async def delayed_native_asr(*args, **kwargs):
-        transcript = await delayed_asr()
-        return {"transcription": transcript, "response_text": "model reply"}
-
     audio = np.array([1, 2], dtype=np.int16)
     handler = AudioStreamHandler()
     handler.audio_engine = SimpleNamespace(
-        listen=AsyncMock(side_effect=delayed_asr),
-        transcribe_file=delayed_file_asr,
+        transcribe_checked=AsyncMock(side_effect=delayed_asr),
         speak=AsyncMock(return_value=audio),
     )
     metadata = []
@@ -855,10 +840,10 @@ async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
         handler,
         "_resolve_audio_decoder_plan",
         lambda: {
-            "selected": "faster_whisper",
-            "effective": "faster_whisper",
+            "selected": "gemma_native" if pipeline == "native" else "faster_whisper",
+            "effective": "gemma_native" if pipeline == "native" else "faster_whisper",
             "fallback_reason": None,
-            "should_try_native": False,
+            "should_try_native": pipeline == "native",
         },
     )
     monkeypatch.setattr(
@@ -871,9 +856,7 @@ async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
     monkeypatch.setattr(
         handler, "_multi_runtime_health_ok", AsyncMock(return_value=True)
     )
-    monkeypatch.setattr(
-        handler, "_invoke_multi_runtime", AsyncMock(side_effect=delayed_native_asr)
-    )
+    monkeypatch.setattr(handler, "_invoke_multi_runtime", AsyncMock())
     monkeypatch.setattr(
         handler,
         "_update_voice_session_metadata",
@@ -884,30 +867,20 @@ async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
     monkeypatch.setattr(handler, "_send_json", AsyncMock())
     monkeypatch.setattr(handler, "_send_audio", AsyncMock())
     operator = SimpleNamespace(process=AsyncMock())
-    if pipeline == "pcm":
+    if pipeline != "encoded":
         operation = handler._process_audio_buffer(1, [audio], operator)
     elif pipeline == "encoded":
         operation = handler._process_encoded_audio_buffer(1, [b"fixture"], operator)
-    else:
-        operation = handler._process_native_multi_runtime_pipeline(
-            1, tmp_path, tmp_path / "audio.wav", {}, 0.0, operator
-        )
     pending = asyncio.create_task(operation)
     try:
         await asyncio.wait_for(started.wait(), timeout=5)
         assert len(provider.prepared) == 1
         provider.epoch += 1
         release.set()
-        thread_release.set()
-        if pipeline == "native":
-            with pytest.raises(conversation.ConversationProviderError):
-                await pending
-        else:
-            await pending
-            assert handler._send_json.call_args.args[1]["type"] == "error"
+        await pending
+        assert handler._send_json.call_args.args[1]["type"] == "error"
     finally:
         release.set()
-        thread_release.set()
         if not pending.done():
             pending.cancel()
         await asyncio.gather(pending, return_exceptions=True)
@@ -916,8 +889,9 @@ async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
     handler.audio_engine.speak.assert_not_awaited()
     operator.process.assert_not_awaited()
     assert conversation.current_conversation_context() is None
-    if pipeline != "native":
-        assert metadata[0]["conversation_id"] == provider.prepared[0].conversation_id
+    assert metadata[0]["conversation_id"] == provider.prepared[0].conversation_id
+    handler._invoke_multi_runtime.assert_not_awaited()
+    handler.audio_engine.transcribe_checked.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -944,7 +918,9 @@ async def test_voice_input_scope_is_released_when_asr_does_not_produce_a_command
         return ""
 
     handler = AudioStreamHandler()
-    handler.audio_engine = SimpleNamespace(listen=AsyncMock(side_effect=asr))
+    handler.audio_engine = SimpleNamespace(
+        transcribe_checked=AsyncMock(side_effect=asr)
+    )
     monkeypatch.setattr(handler, "_persist_voice_session", lambda **_: tmp_path)
     monkeypatch.setattr(
         handler, "_handle_decoder_plan_pre_stt", AsyncMock(return_value=False)
@@ -961,7 +937,7 @@ async def test_voice_input_scope_is_released_when_asr_does_not_produce_a_command
     else:
         await operation
     provider.finish.assert_awaited_once()
-    handler.audio_engine.listen.assert_awaited_once()
+    handler.audio_engine.transcribe_checked.assert_awaited_once()
     assert provider.prepare.call_args.args[0] == ""
     assert provider.prepare.call_args.args[1] is provider.finish.call_args.args[0]
     assert not provider.calls and not registry._prepared
@@ -1134,6 +1110,7 @@ async def test_real_caller_cancellation_propagates_and_resets_context():
     pending.cancel()
     with pytest.raises(asyncio.CancelledError):
         await pending
+    await registry.drain()
     assert not registry._active and conversation.current_conversation_context() is None
     await registry.close()
 
@@ -1203,8 +1180,92 @@ async def test_provider_timeout_cancels_child_and_releases_active_tracking():
         conversation.ConversationProviderError, match="conversation_deadline"
     ):
         await registry.handle("/extension", context(timeout_s=0.02))
+    await registry.drain()
     assert cleaned.is_set() and not registry._active
     assert conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("late_error", [False, True])
+async def test_deadline_returns_while_suppressed_cancellation_is_tracked(late_error):
+    started, cancelled, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    class Suppressing(Provider):
+        async def handle(self, text, turn):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                await release.wait()
+            if late_error:
+                raise RuntimeError("late provider error")
+            return "stale response"
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Suppressing())
+    pending = asyncio.create_task(
+        registry.handle("/extension", context(timeout_s=0.02))
+    )
+    try:
+        await started.wait()
+        done, _ = await asyncio.wait({pending}, timeout=0.3)
+        assert pending in done, (
+            "provider cancellation must not extend the host deadline"
+        )
+        with pytest.raises(
+            conversation.ConversationProviderError, match="conversation_deadline"
+        ):
+            await pending
+        await cancelled.wait()
+        assert len(registry._active) == 1
+        assert not next(iter(registry._active)).done()
+        assert conversation.current_conversation_context() is None
+        drainer = asyncio.create_task(registry.drain())
+        await asyncio.sleep(0)
+        drainer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await drainer
+        assert len(registry._active) == 1
+    finally:
+        release.set()
+        await registry.drain()
+        await asyncio.gather(pending, return_exceptions=True)
+    assert not registry._active
+
+
+@pytest.mark.asyncio
+async def test_caller_cancellation_does_not_wait_for_suppressing_provider_cleanup():
+    started, cancelled, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    class Suppressing(Provider):
+        async def handle(self, text, turn):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                await release.wait()
+            return "stale response"
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Suppressing())
+    pending = asyncio.create_task(registry.handle("/extension", context()))
+    try:
+        await started.wait()
+        pending.cancel()
+        done, _ = await asyncio.wait({pending}, timeout=0.3)
+        assert pending in done, "provider cleanup must not swallow caller cancellation"
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        await cancelled.wait()
+        assert len(registry._active) == 1
+        assert conversation.current_conversation_context() is None
+    finally:
+        release.set()
+        await registry.drain()
+        await asyncio.gather(pending, return_exceptions=True)
+    assert not registry._active
 
 
 @pytest.mark.asyncio
@@ -1271,7 +1332,7 @@ async def test_disabling_child_provider_finishes_host_task_or_voice_error(
     else:
         handler = AudioStreamHandler()
         handler.audio_engine = SimpleNamespace(
-            listen=AsyncMock(return_value="/extension"), speak=AsyncMock()
+            transcribe_checked=AsyncMock(return_value="/extension"), speak=AsyncMock()
         )
         monkeypatch.setattr(handler, "_persist_voice_session", lambda **_: tmp_path)
         monkeypatch.setattr(
@@ -1338,7 +1399,7 @@ async def test_real_kernel_refresh_keeps_the_same_provider(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("explicit_transcription", [True, False])
-async def test_multimodal_native_voice_uses_only_real_transcript_before_tts(
+async def test_native_generation_never_routes_output_to_a_late_registered_provider(
     monkeypatch, tmp_path, explicit_transcription
 ):
     import numpy as np
@@ -1347,7 +1408,6 @@ async def test_multimodal_native_voice_uses_only_real_transcript_before_tts(
 
     registry = conversation.ConversationProviderRegistry(None)
     provider = Provider()
-    await registry.register("example", provider)
     conversation.set_conversation_registry(registry)
     handler = AudioStreamHandler()
     handler.audio_engine = SimpleNamespace(
@@ -1364,8 +1424,13 @@ async def test_multimodal_native_voice_uses_only_real_transcript_before_tts(
     result = {"text": "/extension", "response_text": "model reply"}
     if explicit_transcription:
         result["transcription"] = "/extension"
+
+    async def complete_native(*_):
+        await registry.register("example", provider)
+        return result
+
     monkeypatch.setattr(
-        handler, "_invoke_multi_runtime", AsyncMock(return_value=result)
+        handler, "_invoke_multi_runtime", AsyncMock(side_effect=complete_native)
     )
     monkeypatch.setattr(
         handler,
@@ -1382,14 +1447,254 @@ async def test_multimodal_native_voice_uses_only_real_transcript_before_tts(
         )
         is True
     )
-    expected = "handled" if explicit_transcription else "model reply"
-    handler.audio_engine.speak.assert_awaited_once_with(expected)
-    assert metadata[0]["conversation_provider_handled"] is explicit_transcription
-    assert len(provider.calls) == int(explicit_transcription)
-    if explicit_transcription:
-        assert provider.calls[0][1].actor == "voice"
-        assert provider.calls[0][1].conversation_id == "voice-session"
+    handler.audio_engine.speak.assert_awaited_once_with("model reply")
+    handler._invoke_multi_runtime.assert_awaited_once()
+    assert metadata[0]["conversation_provider_handled"] is False
+    assert not provider.calls
     assert conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+async def test_guarded_voice_detection_refreshes_factories_and_respects_lifecycle():
+    assert await conversation.has_voice_providers() is False
+    provider = Provider()
+    enabled = True
+    factory = Mock(return_value=provider)
+    registry = conversation.ConversationProviderRegistry(
+        None, lambda: {"example": factory} if enabled else {}
+    )
+    conversation.set_conversation_registry(registry)
+    assert await conversation.has_voice_providers() is True
+    assert await conversation.has_voice_providers() is True
+    factory.assert_called_once()
+    enabled = False
+    assert await conversation.has_voice_providers() is False
+    assert provider.closed
+    await registry.close()
+    assert await registry.has_voice_providers() is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pipeline", ["pcm", "encoded"])
+@pytest.mark.parametrize(
+    "outcome,invalid_contract",
+    [
+        (name, False)
+        for name in (
+            "stop",
+            "stop_without_agent",
+            "handled",
+            "ordinary",
+            "silence",
+            "error",
+            "cancel",
+            "no_agent",
+        )
+    ]
+    + [("stop_without_agent", True)],
+)
+async def test_guarded_voice_routes_one_real_asr_before_any_generation(
+    monkeypatch, tmp_path, pipeline, outcome, invalid_contract
+):
+    import numpy as np
+
+    from venom_core.api import audio_stream
+
+    class VoiceExtension(Provider):
+        enabled = False  # Emergency routing remains available while tools are off.
+
+        def __init__(self):
+            super().__init__()
+            self.prepared, self.finished = [], []
+
+        async def prepare(self, text, turn):
+            assert text == "" and turn.actor == "voice"
+            assert conversation.current_conversation_context() is turn
+            self.prepared.append(turn)
+
+        async def urgent(self, text, turn):
+            assert turn is self.prepared[0]
+            return "Stopped" if text == "/extension stop" else None
+
+        async def finish(self, turn):
+            self.finished.append(turn)
+
+    provider = VoiceExtension()
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", provider)
+    conversation.set_conversation_registry(registry)
+    text = (
+        "/extension stop"
+        if outcome.startswith("stop")
+        else "/extension status"
+        if outcome == "handled"
+        else ""
+        if outcome == "silence"
+        else "ordinary chat"
+    )
+
+    async def transcribe(*args, **kwargs):
+        assert conversation.current_conversation_context() is provider.prepared[0]
+        if outcome == "error":
+            raise RuntimeError("fixture ASR failed")
+        if outcome == "cancel":
+            raise asyncio.CancelledError()
+        return text
+
+    audio = np.array([1, 2], dtype=np.int16)
+    handler = audio_stream.AudioStreamHandler()
+    handler.audio_engine = SimpleNamespace(
+        transcribe_checked=AsyncMock(side_effect=transcribe),
+        listen=AsyncMock(side_effect=AssertionError("unchecked ASR")),
+        transcribe_file=Mock(side_effect=AssertionError("duplicate file ASR")),
+        speak=AsyncMock(return_value=audio),
+    )
+    initial_plan = {
+        "chain": ["gemma_native"],
+        "selected": "gemma_native",
+        "effective": "gemma_native",
+        "should_try_native": True,
+        "fallback_reason": "",
+    }
+    if invalid_contract:
+        initial_plan.update(
+            chain=[],
+            selected="",
+            effective="none",
+            should_try_native=False,
+            fallback_reason="voice route contract invalid",
+        )
+    monkeypatch.setattr(handler, "_resolve_audio_decoder_plan", lambda: initial_plan)
+    monkeypatch.setattr(handler, "_persist_voice_session", lambda **_: tmp_path)
+    monkeypatch.setattr(handler, "_persist_encoded_voice_session", lambda *_: tmp_path)
+    monkeypatch.setattr(handler, "_load_wav_int16", lambda _: (audio, 16000))
+    monkeypatch.setattr(handler, "_write_wav", lambda *_: None)
+    monkeypatch.setattr(handler, "_normalize_recorded_audio", lambda value: (value, {}))
+    monkeypatch.setattr(handler, "_build_runtime_metadata", lambda _: {})
+    monkeypatch.setattr(handler, "_connection_voice_mode", lambda _: "standard")
+    monkeypatch.setattr(handler, "_update_voice_session_metadata", Mock())
+    monkeypatch.setattr(handler, "_send_json", AsyncMock())
+    monkeypatch.setattr(handler, "_send_audio", AsyncMock())
+    monkeypatch.setattr(
+        handler,
+        "_invoke_multi_runtime",
+        AsyncMock(side_effect=AssertionError("native generation")),
+    )
+    monkeypatch.setattr(handler, "_multi_runtime_health_ok", AsyncMock())
+    monkeypatch.setattr(handler, "_multi_runtime_runtime_snapshot_live", AsyncMock())
+    monkeypatch.setattr(
+        audio_stream,
+        "assert_runtime_request_allowed",
+        Mock(side_effect=AssertionError("pre-ASR model guard")),
+    )
+    agent = SimpleNamespace(process=AsyncMock(return_value="ordinary reply"))
+    operator = None if outcome in {"stop_without_agent", "no_agent"} else agent
+    operation = (
+        handler._process_audio_buffer(1, [audio], operator)
+        if pipeline == "pcm"
+        else handler._process_encoded_audio_buffer(1, [b"fixture"], operator)
+    )
+    if outcome == "cancel":
+        with pytest.raises(asyncio.CancelledError):
+            await operation
+    else:
+        await operation
+    handler.audio_engine.transcribe_checked.assert_awaited_once()
+    handler.audio_engine.listen.assert_not_awaited()
+    handler.audio_engine.transcribe_file.assert_not_called()
+    handler._invoke_multi_runtime.assert_not_awaited()
+    handler._multi_runtime_health_ok.assert_not_awaited()
+    handler._multi_runtime_runtime_snapshot_live.assert_not_awaited()
+    assert provider.prepared == provider.finished and len(provider.prepared) == 1
+    assert not registry._prepared and not registry._active
+    assert conversation.current_conversation_context() is None
+    metadata = [
+        call.args[1] for call in handler._update_voice_session_metadata.call_args_list
+    ]
+    assert any(
+        item.get("voice_pipeline_mode") == "intermediary_local_stt" for item in metadata
+    )
+    assert any(item.get("guarded_voice") is True for item in metadata)
+    assert any(
+        item.get("decoder_selected") == initial_plan["selected"]
+        and item.get("decoder_effective") == "faster_whisper"
+        for item in metadata
+    )
+    if invalid_contract:
+        assert any(
+            "contract invalid" in item.get("decoder_fallback_reason", "")
+            for item in metadata
+        )
+    messages = [call.args[1] for call in handler._send_json.call_args_list]
+    if outcome in {"silence", "error", "cancel", "no_agent"}:
+        agent.process.assert_not_awaited()
+        handler.audio_engine.speak.assert_not_awaited()
+        assert not any(item["type"] == "response_text" for item in messages)
+        if outcome == "error":
+            assert messages[-1] == {"type": "error", "message": "fixture ASR failed"}
+        elif outcome != "cancel":
+            assert messages[-1]["type"] in {"complete", "transcription"}
+    else:
+        expected = (
+            "Stopped"
+            if outcome.startswith("stop")
+            else "handled"
+            if outcome == "handled"
+            else "ordinary reply"
+        )
+        handler.audio_engine.speak.assert_awaited_once_with(expected)
+        assert {"type": "response_text", "text": expected} in messages
+        assert messages[-1] == {"type": "complete"}
+        assert agent.process.await_count == int(outcome == "ordinary")
+
+
+@pytest.mark.asyncio
+async def test_registered_provider_overrides_invalid_native_decoder_contract(
+    monkeypatch,
+):
+    from venom_core.api.audio_stream import AudioStreamHandler
+
+    registry = conversation.ConversationProviderRegistry(None)
+    await registry.register("example", Provider())
+    conversation.set_conversation_registry(registry)
+    handler = AudioStreamHandler()
+    invalid = {
+        "chain": [],
+        "selected": "",
+        "effective": "none",
+        "should_try_native": False,
+        "fallback_reason": "voice route contract invalid",
+    }
+    monkeypatch.setattr(handler, "_resolve_audio_decoder_plan", lambda: invalid)
+    plan = await handler._resolve_voice_input_decoder_plan()
+    assert plan["selected"] == "" and plan["chain"] == []
+    assert plan["effective"] == "faster_whisper" and plan["guarded_voice"] is True
+    assert "guarded conversation" in plan["fallback_reason"]
+    assert "contract invalid" in plan["fallback_reason"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("registry_state", ["absent", "empty", "closed"])
+async def test_voice_without_registered_providers_preserves_native_plan(
+    monkeypatch, registry_state
+):
+    from venom_core.api.audio_stream import AudioStreamHandler
+
+    if registry_state != "absent":
+        registry = conversation.ConversationProviderRegistry(None)
+        if registry_state == "closed":
+            await registry.close()
+        conversation.set_conversation_registry(registry)
+    handler = AudioStreamHandler()
+    native = {
+        "chain": ["gemma_native"],
+        "selected": "gemma_native",
+        "effective": "gemma_native",
+        "should_try_native": True,
+        "fallback_reason": "",
+    }
+    monkeypatch.setattr(handler, "_resolve_audio_decoder_plan", lambda: native)
+    assert await handler._resolve_voice_input_decoder_plan() == native
 
 
 def manifest(tmp_path, factory="example_module:create_provider"):

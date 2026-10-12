@@ -224,6 +224,13 @@ class ConversationProviderRegistry:
                 catalog[module_id] = copy.deepcopy(tools)
         return catalog
 
+    async def has_voice_providers(self) -> bool:
+        """Refresh registered extensions before choosing a pre-generation voice route."""
+        if self.closed:
+            return False
+        await self.refresh()
+        return bool(self.providers) and not self.closed
+
     @staticmethod
     def _validate_context(context: ConversationContext) -> None:
         if not isinstance(context, ConversationContext):
@@ -281,11 +288,16 @@ class ConversationProviderRegistry:
             raise ConversationProviderError("conversation_provider_invalid", module_id)
         task = asyncio.create_task(self._collect_value(method, args, context))
         self._active[task] = module_id
+        task.add_done_callback(self._provider_done)
         try:
+            # Bound the host wait even when provider cleanup suppresses cancellation.
+            # The child remains tracked until its actual completion.
             outcomes = await asyncio.wait_for(
-                asyncio.gather(task, return_exceptions=True), timeout=remaining
+                asyncio.shield(asyncio.gather(task, return_exceptions=True)),
+                timeout=remaining,
             )
         except TimeoutError as exc:
+            task.cancel()
             raise ConversationProviderError("conversation_deadline", module_id) from exc
         except asyncio.CancelledError:
             task.cancel()
@@ -294,8 +306,6 @@ class ConversationProviderRegistry:
             raise ConversationProviderError(
                 "conversation_provider_failed", module_id
             ) from exc
-        finally:
-            self._active.pop(task, None)
         result = self._resolve_outcome(module_id, provider, outcomes[0])
         if not cleanup:
             if self.closed or self.providers.get(module_id) is not provider:
@@ -305,6 +315,21 @@ class ConversationProviderRegistry:
             if time.monotonic() > context.deadline:
                 raise ConversationProviderError("conversation_deadline", module_id)
         return result
+
+    def _provider_done(self, task: asyncio.Task[Any]) -> None:
+        self._active.pop(task, None)
+        if not task.cancelled():
+            task.exception()
+
+    async def drain(self) -> None:
+        """Observe pending provider cleanup without cancelling it through a waiter."""
+        tasks = tuple(self._active)
+        if tasks:
+            await asyncio.gather(
+                *(asyncio.shield(task) for task in tasks), return_exceptions=True
+            )
+            for task in tasks:
+                self._provider_done(task)
 
     @staticmethod
     async def _collect_value(
@@ -412,6 +437,11 @@ async def handle_conversation_turn(
     if registry is None:
         return None
     return await registry.handle(text, context)
+
+
+async def has_voice_providers() -> bool:
+    registry = get_conversation_registry()
+    return await registry.has_voice_providers() if registry is not None else False
 
 
 async def prepare_conversation_turn(text: str, context: ConversationContext) -> None:

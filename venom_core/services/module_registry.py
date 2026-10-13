@@ -386,17 +386,20 @@ def _install_conversation_provider_lifespan(app: FastAPI, settings: object) -> N
         set_conversation_registry,
     )
 
-    if getattr(app.state, "conversation_providers", None) is not None:
+    if getattr(app.state, "conversation_provider_lifespan_installed", False):
         return
-    registry = ConversationProviderRegistry(
-        app, factories=lambda: _conversation_provider_factories(settings)
-    )
-    app.state.conversation_providers = registry
+    app.state.conversation_provider_lifespan_installed = True
+    app.state.conversation_providers = None
     original_lifespan = app.router.lifespan_context
 
     @asynccontextmanager
     async def lifespan(application):
         async with original_lifespan(application) as state:
+            registry = ConversationProviderRegistry(
+                application,
+                factories=lambda: _conversation_provider_factories(settings),
+            )
+            application.state.conversation_providers = registry
             previous = None
             installed = False
             try:
@@ -406,7 +409,11 @@ def _install_conversation_provider_lifespan(app: FastAPI, settings: object) -> N
                 yield state
             finally:
                 if installed:
-                    set_conversation_registry(previous)
+                    set_conversation_registry(
+                        previous
+                        if previous is not None and not previous.closed
+                        else None
+                    )
                 await registry.close()
 
     app.router.lifespan_context = lifespan

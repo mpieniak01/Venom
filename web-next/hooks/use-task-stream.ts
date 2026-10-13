@@ -446,12 +446,12 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       source.onerror = () => {
         updateStateById(taskId, { connected: false, error: "SSE failure, polling..." });
         if (!pollTimers.has(taskId)) {
-          pollTask(taskId);
+          void pollTask(taskId);
         }
       };
 
       sources.set(taskId, source);
-      pollTask(taskId);
+      void pollTask(taskId);
     }
 
     return () => {

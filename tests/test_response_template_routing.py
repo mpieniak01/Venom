@@ -398,3 +398,27 @@ async def test_missing_classifier_debug_does_not_create_a_provider_template(regi
         resolve_response_template(TaskRequest(content="pomoc"), intent).handler
         == "help"
     )
+
+
+@pytest.mark.parametrize("tracing", [True, False])
+@pytest.mark.parametrize("classification_source", ["lexicon", "llm"])
+def test_unsupported_retains_skipped_metadata_only_without_llm_classification(
+    tracing, classification_source
+):
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    orch = SimpleNamespace(
+        request_tracer=Mock() if tracing else None,
+        NON_LLM_INTENTS={"UNSUPPORTED_TASK"},
+    )
+    updates = dispatch._collect_non_llm_metadata_updates(
+        orch,
+        uuid4(),
+        "UNSUPPORTED_TASK",
+        {"source": classification_source},
+        TaskRequest(content="unsupported request"),
+    )
+    if classification_source == "llm":
+        assert updates == {}
+    else:
+        assert updates["llm_runtime"]["status"] == "skipped"

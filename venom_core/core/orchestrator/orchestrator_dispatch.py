@@ -685,11 +685,11 @@ def _collect_non_llm_metadata_updates(
 ) -> dict[str, object]:
     if intent_debug.get("source") == "llm":
         return {}
-    if request is not None:
-        template = resolve_response_template(request, intent)
-        if template is None or template.requires_llm is not False:
-            return {}
-    elif intent not in orch.NON_LLM_INTENTS:
+    template = (
+        resolve_response_template(request, intent) if request is not None else None
+    )
+    template_skips_llm = template is not None and template.requires_llm is False
+    if not template_skips_llm and intent not in getattr(orch, "NON_LLM_INTENTS", set()):
         return {}
     if orch.request_tracer:
         orch.request_tracer.set_llm_metadata(

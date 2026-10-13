@@ -1,3 +1,5 @@
+import pytest
+
 from venom_core.core.slash_commands import (
     normalize_forced_provider,
     parse_slash_command,
@@ -27,12 +29,17 @@ def test_parse_clear_command():
     assert result.cleaned == ""
 
 
-def test_parse_unknown_command():
-    result = parse_slash_command("/unknown foo bar")
+@pytest.mark.parametrize(
+    "content",
+    ["/unknown foo bar", "/rider stan", " \t/rider STOP", "/optional-module\nstatus"],
+)
+def test_parse_unknown_command(content):
+    result = parse_slash_command(content)
     assert result is not None
     assert result.forced_tool is None
     assert result.forced_provider is None
-    assert result.cleaned == "foo bar"
+    assert result.cleaned == content
+    assert result.forced_intent is None and not result.session_reset
 
 
 def test_normalize_forced_provider():

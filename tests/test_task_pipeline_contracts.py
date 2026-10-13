@@ -832,6 +832,38 @@ class TestExecutionStrategy:
 
 @pytest.mark.asyncio
 class TestContextBuilderPreprocessRequest:
+    async def test_unknown_provider_prefix_survives_preprocessing_without_a_forced_route(
+        self,
+    ):
+        state = SimpleNamespace(update_context=MagicMock(), add_log=MagicMock())
+        builder = ContextBuilder(
+            SimpleNamespace(state_manager=state, request_tracer=None)
+        )
+        request = TaskRequest(content="/rider stan")
+
+        await builder.preprocess_request(uuid4(), request)
+
+        assert request.content == "/rider stan"
+        assert request.forced_tool is None
+        assert request.forced_provider is None
+        assert request.forced_intent is None
+        state.update_context.assert_not_called()
+
+    async def test_explicit_forced_tool_is_preserved_for_a_provider_prefixed_message(
+        self,
+    ):
+        state = SimpleNamespace(update_context=MagicMock(), add_log=MagicMock())
+        builder = ContextBuilder(
+            SimpleNamespace(state_manager=state, request_tracer=None)
+        )
+        request = TaskRequest(content="/rider stan", forced_tool="git")
+
+        await builder.preprocess_request(uuid4(), request)
+
+        assert request.content == "/rider stan"
+        assert request.forced_tool == "git"
+        assert request.forced_intent == "VERSION_CONTROL"
+
     async def test_preprocess_request_session_reset_handled(self, monkeypatch):
         """preprocess_request should handle session_reset=True from parsed slash command."""
         logs = []

@@ -418,6 +418,7 @@ export interface UnifiedModelCatalogResponse {
     models?: RuntimeCatalogModelInfo[];
     adapter_deploy_supported?: boolean;
     adapter_deploy_mode?: string;
+    adapter_deploy_reason?: string | null;
     supports_native_training?: boolean;
     supports_adapter_import_safetensors?: boolean;
     supports_adapter_import_gguf?: boolean;
@@ -822,6 +823,7 @@ type RuntimeOptionsPayload = {
     models?: RuntimeCatalogModelInfo[];
     adapter_deploy_supported?: boolean;
     adapter_deploy_mode?: string;
+    adapter_deploy_reason?: string | null;
     supports_native_training?: boolean;
     supports_adapter_import_safetensors?: boolean;
     supports_adapter_import_gguf?: boolean;

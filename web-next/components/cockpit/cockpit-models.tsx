@@ -11,6 +11,7 @@ import { SelectMenu } from "@/components/ui/select-menu";
 import { useTranslation } from "@/lib/i18n";
 import type { LlmRuntimeTargetOption, LlmServerInfo } from "@/lib/types";
 import type { ActiveRuntimeInfo } from "@/lib/cockpit-runtime-selection";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import {
   buildRuntimeStateViewFromActiveServer,
   formatVoiceRuntimeTuple,
@@ -77,6 +78,9 @@ export function CockpitModels({
   gemma4AudioRuntimeInfo,
 }: CockpitModelsProps) {
   const t = useTranslation();
+  const selectedRuntimeDisabled = llmServerOptions.find(
+    (option) => normalizeRuntimeId(option.value) === normalizeRuntimeId(selectedLlmServer),
+  )?.disabled === true;
   const runtimeState = buildRuntimeStateViewFromActiveServer(activeServerInfo ?? null, {
     runtimeId: selectedLlmServer,
     modelName: selectedLlmModel,
@@ -152,7 +156,7 @@ export function CockpitModels({
                   ? t("cockpit.models.chooseModel")
                   : t("cockpit.models.noModels")
               }
-              disabled={llmServers.length === 0 || availableModelsForServer.length === 0 || gateSwitching}
+              disabled={llmServers.length === 0 || availableModelsForServer.length === 0 || gateSwitching || selectedRuntimeDisabled}
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"
             />
@@ -182,7 +186,8 @@ export function CockpitModels({
             {!gateSwitching && !runtimeSelectionApplied && !runtimeSwitchFailedHint && (
               <p className="text-xs text-amber-300">Wybór runtime oczekuje na aktywację.</p>
             )}
-            {selectedLlmServer && availableModelsForServer.length === 0 && (
+            {selectedRuntimeDisabled ? <p className="text-xs text-amber-300">{t("cockpit.models.runtimeUnavailable")}</p> : null}
+            {selectedLlmServer && !selectedRuntimeDisabled && availableModelsForServer.length === 0 && (
               <div className="space-y-2">
                 <EmptyState
                   icon={<Package className="h-4 w-4" />}
@@ -274,6 +279,7 @@ export function CockpitModels({
             onClick={onActivateServer}
             disabled={
               gateSwitching ||
+              selectedRuntimeDisabled ||
               llmActionPending === `activate:${selectedLlmServer}` ||
               !selectedLlmServer
             }

@@ -14,7 +14,7 @@ import httpx
 import psutil
 from fastapi import APIRouter, HTTPException
 
-from venom_core.api.routes import system_deps
+from venom_core.api.routes import academy, system_deps
 from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
 from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
@@ -135,15 +135,27 @@ _CODING_MODEL_MARKERS: tuple[str, ...] = (
 _INBOUND_MODEL_OPS_SCOPE = "inbound:model_ops"
 
 
-def _runtime_adapter_deploy_capability(runtime_id: str) -> tuple[bool, str]:
+def _runtime_adapter_deploy_capability(runtime_id: str) -> tuple[bool, str, str | None]:
     runtime = runtime_id.strip().lower()
-    if runtime == "ollama":
-        return True, "ollama_modelfile"
-    if runtime == "vllm":
-        return True, "vllm_exported_runtime_model"
-    if runtime == "onnx":
-        return True, "onnx_merge_export_runtime_model"
-    return False, "none"
+    modes = {
+        "ollama": "ollama_modelfile",
+        "vllm": "vllm_exported_runtime_model",
+        "onnx": "onnx_merge_export_runtime_model",
+    }
+    mode = modes.get(runtime, "none")
+    if mode == "none":
+        return False, mode, "runtime_not_supported"
+    if not SETTINGS.ENABLE_ACADEMY:
+        return False, mode, "academy_disabled"
+    if not all(
+        (
+            academy._get_professor(),
+            academy._get_dataset_curator(),
+            academy._get_gpu_habitat(),
+        )
+    ):
+        return False, mode, "academy_not_ready"
+    return True, mode, None
 
 
 def _runtime_profile_name() -> str:
@@ -1435,9 +1447,15 @@ def _runtime_target_payload(
     models: list[dict[str, Any]],
     active_runtime: Any,
 ) -> dict[str, Any]:
-    adapter_deploy_supported, adapter_deploy_mode = _runtime_adapter_deploy_capability(
-        runtime_id
+    adapter_deploy_supported, adapter_deploy_mode, adapter_deploy_reason = (
+        _runtime_adapter_deploy_capability(runtime_id)
     )
+    if not configured:
+        adapter_deploy_supported = False
+        adapter_deploy_reason = reason or "runtime_disabled_by_profile"
+    elif status.strip().lower() == "offline" or not available:
+        adapter_deploy_supported = False
+        adapter_deploy_reason = reason or "runtime_offline"
     runtime_capabilities = _runtime_capabilities(
         runtime_id=runtime_id,
         source_type=source_type,
@@ -1453,6 +1471,7 @@ def _runtime_target_payload(
         "models": models,
         "adapter_deploy_supported": adapter_deploy_supported,
         "adapter_deploy_mode": adapter_deploy_mode,
+        "adapter_deploy_reason": adapter_deploy_reason,
         "supports_native_training": runtime_capabilities["supports_native_training"],
         "supports_adapter_import_safetensors": runtime_capabilities[
             "supports_adapter_import_safetensors"

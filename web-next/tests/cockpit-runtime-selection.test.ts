@@ -3,14 +3,61 @@ import { describe, it } from "node:test";
 import { performance } from "node:perf_hooks";
 
 import {
+  isCockpitAdapterDeployAvailable,
+  isCockpitRuntimeDisabled,
   resolveCockpitActiveRuntimeInfo,
+  resolveCockpitSelectedRuntimeId,
   resolveCockpitRuntimeModelSelection,
 } from "../lib/cockpit-runtime-selection";
+import type { LlmRuntimeTargetOption } from "../lib/types";
 
 const runtimePerfIt =
   process.env.VENOM_ENABLE_WEB_RUNTIME_PERF_ASSERT === "1" ? it : it.skip;
 
 describe("cockpit runtime model selection", () => {
+  it("uses the active runtime when no server selection was persisted", () => {
+    const runtime: LlmRuntimeTargetOption = {
+      runtime_id: "ollama", source_type: "local-runtime", configured: true,
+      available: true, status: "running", active: true, models: [],
+    };
+    const catalog = { active: { runtime_id: "ollama" }, runtimes: [runtime] };
+    const resolved = resolveCockpitSelectedRuntimeId("", catalog, { active_server: "vllm" });
+    assert.equal(resolved, "ollama");
+    assert.equal(isCockpitRuntimeDisabled(catalog.runtimes.find((item) => item.runtime_id === resolved)), false);
+    assert.equal(resolveCockpitSelectedRuntimeId("VLLM@localhost", catalog, null), "vllm");
+    assert.equal(resolveCockpitSelectedRuntimeId("", null, { active_server: "ollama" }), "ollama");
+  });
+
+  it("blocks profile-disabled and unsupported runtimes while preserving offline activation", () => {
+    const runtime: LlmRuntimeTargetOption = {
+      runtime_id: "ollama", source_type: "local-runtime", configured: true,
+      available: false, status: "offline", active: false, models: [],
+      supports_adapter_runtime_apply: true,
+    };
+    assert.equal(isCockpitRuntimeDisabled(runtime), false);
+    assert.equal(isCockpitAdapterDeployAvailable(runtime), false);
+    assert.equal(isCockpitRuntimeDisabled({ ...runtime, configured: false }), true);
+    assert.equal(isCockpitRuntimeDisabled({ ...runtime, status: "disabled" }), true);
+    for (const reason of ["runtime_disabled_by_profile", "runtime_not_installed", "runtime_not_supported"]) {
+      assert.equal(isCockpitRuntimeDisabled({ ...runtime, reason }), true);
+    }
+    assert.equal(isCockpitRuntimeDisabled(null), true);
+  });
+
+  it("gives operational adapter availability priority over static engine support", () => {
+    const runtime: LlmRuntimeTargetOption = {
+      runtime_id: "ollama", source_type: "local-runtime", configured: true,
+      available: true, status: "running", active: true, models: [],
+      supports_adapter_runtime_apply: true, adapter_deploy_supported: false,
+      adapter_deploy_reason: "academy_disabled",
+    };
+    assert.equal(isCockpitAdapterDeployAvailable(runtime), false);
+    assert.equal(isCockpitAdapterDeployAvailable({ ...runtime, adapter_deploy_supported: true }), true);
+    assert.equal(isCockpitAdapterDeployAvailable({ ...runtime, adapter_deploy_supported: undefined }), true);
+    assert.equal(isCockpitAdapterDeployAvailable({ ...runtime, configured: false, adapter_deploy_supported: true }), false);
+    assert.equal(isCockpitAdapterDeployAvailable(undefined), false);
+  });
+
   it("restores the active model only when it belongs to the current runtime catalog", () => {
     assert.equal(
       resolveCockpitRuntimeModelSelection("gemma3:latest", ["gemma3:latest"]),

@@ -25,6 +25,7 @@ tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_edges_contract.py
 tests/test_academy_conversion_contracts.py
 tests/test_academy_conversion_light_coverage.py
+tests/test_academy_dataset_conversion.py
 tests/test_academy_file_resolution_service.py
 tests/test_academy_history_module.py
 tests/test_academy_models_module.py
@@ -300,6 +301,7 @@ tests/test_update_sonar_scope_group.py
 tests/test_ux_analyst.py
 tests/test_venom_core_init_compat.py
 tests/test_voice_metadata.py
+tests/test_web_skill.py
 tests/test_workflow_control_api.py
 tests/test_workflow_control_contract.py
 tests/test_workflow_operations.py

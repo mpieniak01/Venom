@@ -305,15 +305,15 @@ export function useInspectorState(t: Translator) {
   );
 
   useEffect(() => {
-    refreshHistory();
-    refreshTasks();
+    void refreshHistory();
+    void refreshTasks();
   }, [refreshHistory, refreshTasks]);
 
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState !== "visible") return;
-      refreshHistory();
-      refreshTasks();
+      void refreshHistory();
+      void refreshTasks();
     };
     document.addEventListener("visibilitychange", handleVisibility);
     globalThis.window.addEventListener("focus", handleVisibility);
@@ -441,7 +441,7 @@ export function useInspectorState(t: Translator) {
     };
 
     if (diagram && mermaidApi) {
-      render();
+      void render();
     } else if (svgRef.current) {
       svgRef.current.innerHTML = "";
     }
@@ -533,7 +533,7 @@ export function useInspectorState(t: Translator) {
     if (selectedId) return;
     const firstHistoryItem = history[0];
     if (!firstHistoryItem) return;
-    handleHistorySelect(firstHistoryItem.request_id);
+    void handleHistorySelect(firstHistoryItem.request_id);
   }, [historyLoading, history, selectedId, handleHistorySelect]);
 
   useEffect(() => {
@@ -548,7 +548,7 @@ export function useInspectorState(t: Translator) {
       return;
     }
     lastHistoryAutoRefreshRef.current = now;
-    refreshHistory();
+    void refreshHistory();
   }, [inspectorStreams, selectedId, refreshHistory]);
 
   const handleCopySteps = useCallback(async () => {

@@ -82,7 +82,7 @@ export function useAppMeta() {
     let active = true;
 
     if (cachedMeta) {
-      Promise.resolve().then(() => {
+      void Promise.resolve().then(() => {
         if (active && cachedMeta) {
           setMeta(cachedMeta);
         }
@@ -92,7 +92,7 @@ export function useAppMeta() {
       };
     }
     metaLoadPromise ??= loadMeta();
-    metaLoadPromise.then((loadedMeta) => {
+    void metaLoadPromise.then((loadedMeta) => {
       if (active) {
         setMeta(loadedMeta);
       }

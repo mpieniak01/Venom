@@ -12,6 +12,58 @@ class ExecutionTemplateDecision:
     source: str
 
 
+@dataclass(frozen=True, slots=True)
+class ResponseTemplateDecision:
+    template_id: str
+    intent: str
+    handler: str
+    requires_llm: bool | None = False
+
+
+# One catalogue for deterministic replies; handlers own data retrieval/rendering.
+RESPONSE_TEMPLATES = {
+    "HELP_REQUEST": ResponseTemplateDecision("help_v1", "HELP_REQUEST", "help"),
+    "TIME_REQUEST": ResponseTemplateDecision("time_v1", "TIME_REQUEST", "dispatcher"),
+    "INFRA_STATUS": ResponseTemplateDecision(
+        "infra_status_v1", "INFRA_STATUS", "dispatcher"
+    ),
+    "STATUS_REPORT": ResponseTemplateDecision(
+        "project_status_v1", "STATUS_REPORT", "dispatcher"
+    ),
+}
+
+
+def wants_status_analysis(content: str) -> bool:
+    words = content.casefold().split()
+    prefixes = (
+        "analiz",
+        "przeanaliz",
+        "wyjaś",
+        "wyjas",
+        "interpret",
+        "analys",
+        "explain",
+        "erklär",
+        "erklar",
+    )
+    return any(word.startswith(prefixes) for word in words)
+
+
+def resolve_response_template(
+    request: TaskRequest, intent: str, *, provider_id: str | None = None
+) -> ResponseTemplateDecision | None:
+    if provider_id:
+        return ResponseTemplateDecision(
+            provider_id + ":conversation",
+            "MODULE_CONVERSATION",
+            "conversation_provider",
+            requires_llm=None,
+        )
+    if intent == "STATUS_REPORT" and wants_status_analysis(request.content):
+        return None
+    return RESPONSE_TEMPLATES.get(intent)
+
+
 class BrowserProfilePolicy(TypedDict):
     verify_checks: list[str]
     required_artifacts: list[str]

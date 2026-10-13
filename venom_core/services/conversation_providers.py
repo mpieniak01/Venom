@@ -384,6 +384,40 @@ class ConversationProviderRegistry:
             raise ConversationProviderError("conversation_provider_invalid", module_id)
         return accepted
 
+    def match(self, text: str, context: ConversationContext) -> str | None:
+        """Select an explicitly declared template without executing its handler."""
+        if self.closed:
+            raise ConversationProviderError("conversation_registry_closed")
+        self._validate_context(context)
+        providers = self._prepared.get(context, {})
+        with conversation_turn(context):
+            for module_id, provider in providers.items():
+                if self.providers.get(module_id) is not provider:
+                    continue
+                if getattr(provider, "accepts", None) is not None and self._accepts(
+                    module_id, provider, text, context
+                ):
+                    return module_id
+        return None
+
+    async def handle_selected(
+        self, module_id: str, text: str, context: ConversationContext
+    ) -> str:
+        """Execute the bound handler after policy, without an LLM fallback."""
+        self._validate_context(context)
+        provider = self._prepared.get(context, {}).get(module_id)
+        if (
+            self.closed
+            or provider is None
+            or self.providers.get(module_id) is not provider
+        ):
+            raise ConversationProviderError("conversation_provider_disabled", module_id)
+        with conversation_turn(context):
+            result = await self._invoke(module_id, provider, "handle", context, text)
+        if not isinstance(result, str) or len(result) > 32_768:
+            raise ConversationProviderError("conversation_invalid_output", module_id)
+        return result
+
     async def _route(
         self, operation: str, text: str, context: ConversationContext
     ) -> str | None:

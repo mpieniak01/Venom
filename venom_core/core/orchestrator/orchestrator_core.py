@@ -333,6 +333,8 @@ class Orchestrator:
     NON_LEARNING_INTENTS = {
         "TIME_REQUEST",
         "INFRA_STATUS",
+        "MODULE_CONVERSATION",
+        "STATUS_REPORT",
     }
 
     NON_LLM_INTENTS = {

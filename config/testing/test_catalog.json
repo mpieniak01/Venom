@@ -106,13 +106,14 @@
       "domain": "api",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
-        "release",
-        "new-code"
+        "new-code",
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage with changed-code allowance."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/integration/test_verify_backend.py",
@@ -584,13 +585,14 @@
       "domain": "academy",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Workspace conversion contract with isolated filesystem and API fixtures; safe for changed-code regression."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_academy_file_resolution_service.py",
@@ -1014,8 +1016,8 @@
     {
       "path": "tests/test_audio_compute_contracts.py",
       "domain": "runtime",
-      "test_type": "service_contract",
-      "intent": "contract",
+      "test_type": "unit",
+      "intent": "regression",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -1023,7 +1025,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "R2 shared checked speech contract and singleton reuse; offline unit fixtures only."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_audio_engine.py",
@@ -1079,7 +1081,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "CI-lite dependency audit guard and changed-scope coverage reinforcement."
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_audit_stream_api.py",
@@ -1706,6 +1708,20 @@
       "domain": "core",
       "test_type": "service_contract",
       "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_conversation_providers.py",
+      "domain": "orchestrator",
+      "test_type": "unit",
+      "intent": "regression",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -3471,8 +3487,8 @@
     },
     {
       "path": "tests/test_main_internal_helpers.py",
-      "domain": "environment",
-      "test_type": "service_contract",
+      "domain": "system",
+      "test_type": "route_contract",
       "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
@@ -4194,24 +4210,10 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_conversation_providers.py",
-      "domain": "orchestrator",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Host-owned conversation context and shared optional providers for chat and voice."
-    },
-    {
       "path": "tests/test_module_registry.py",
-      "domain": "misc",
-      "test_type": "unit",
-      "intent": "regression",
+      "domain": "system",
+      "test_type": "route_contract",
+      "intent": "contract",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
@@ -5202,6 +5204,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_response_template_routing.py",
+      "domain": "orchestrator",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Deterministic template routing, policy ordering and runtime synchronization regressions."
+    },
+    {
       "path": "tests/test_retention_optimization.py",
       "domain": "orchestrator",
       "test_type": "unit",
@@ -5714,7 +5730,7 @@
     },
     {
       "path": "tests/test_slash_commands.py",
-      "domain": "tasks",
+      "domain": "misc",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
@@ -5724,7 +5740,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Optional conversation prefixes retained across task preprocessing."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_sonar_agents_init.py",
@@ -6384,13 +6400,14 @@
       "domain": "skills",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Mocked search providers and scraping dependencies; safe for changed-code fallback regression."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_web_skill_tavily.py",

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.models import TaskRequest
+from venom_core.services.execution_template_planner import resolve_response_template
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -154,7 +155,8 @@ class ExecutionStrategy:
                 status="ok",
                 details=f"📤 Routing to {agent_name} (intent={intent})",
             )
-        self.orch._trace_llm_start(task_id, intent)
+        if resolve_response_template(request, intent) is None:
+            self.orch._trace_llm_start(task_id, intent)
 
         if request.generation_params:
             return await self.orch.task_dispatcher.dispatch(

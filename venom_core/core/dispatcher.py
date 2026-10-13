@@ -32,6 +32,7 @@ from venom_core.core.goal_store import GoalStore
 from venom_core.core.models import Intent
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.assistant_skill import AssistantSkill
+from venom_core.services.execution_template_planner import wants_status_analysis
 from venom_core.skills.mcp.skill_adapter import (
     FileSkillMcpAdapter,
     GitSkillMcpAdapter,
@@ -395,7 +396,9 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         try:
             logger.info(f"Agent {agent.__class__.__name__} przejmuje zadanie")
             if intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
-                result = await agent.generate_status_report()
+                result = await agent.generate_status_report(
+                    include_analysis=wants_status_analysis(content)
+                )
             else:
                 # Sprawdź czy agent wspiera generation_params
                 if generation_params and hasattr(agent, "process_with_params"):

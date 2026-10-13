@@ -251,6 +251,7 @@ tests/test_release_manager.py
 tests/test_remote_models_service.py
 tests/test_render_skill.py
 tests/test_research_skill.py
+tests/test_response_template_routing.py
 tests/test_retrieval_policy.py
 tests/test_route_service_extractions.py
 tests/test_routing_contract.py

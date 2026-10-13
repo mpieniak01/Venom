@@ -265,7 +265,20 @@ async def _prepare_intent_and_context(
         request, intent, provider_id=intent_debug.get("provider_id")
     )
     if template:
-        context_updates["response_template"] = asdict(template)
+        template_metadata = asdict(template)
+        skipped_stages = ["model_context"]
+        if intent_debug.get("source") != "llm":
+            skipped_stages.append("intent_llm")
+        template_metadata["skipped_stages"] = skipped_stages
+        context_updates["response_template"] = template_metadata
+        if orch.request_tracer:
+            orch.request_tracer.add_step(
+                task_id,
+                "ResponseTemplate",
+                "select",
+                status="ok",
+                details=json.dumps(template_metadata, ensure_ascii=False),
+            )
 
     context_updates.update(_collect_generation_params_context_updates(task_id, request))
     context_updates.update(

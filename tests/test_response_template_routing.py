@@ -118,6 +118,7 @@ async def test_replaced_provider_cannot_execute_prepared_template(registry):
         {"forced_tool": "git"},
         {"forced_provider": "openai"},
         {"forced_intent": "VERSION_CONTROL"},
+        {"forced_intent": "COMPLEX_PLANNING"},
     ],
 )
 async def test_forced_routes_preserve_existing_selection(registry, forced):
@@ -294,3 +295,89 @@ def test_non_llm_report_metadata_does_not_depend_on_tracing(tracing):
     assert updates["llm_runtime"]["status"] == "skipped"
     if tracing:
         orch.request_tracer.set_llm_metadata.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_direct_mode_same_status_prompt_reaches_llm_without_templates(
+    registry, monkeypatch
+):
+    from venom_core.api.schemas.llm_simple import SimpleChatRequest
+    from venom_core.services import execution_template_planner, llm_simple_service
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Direct entered the template/orchestrator path")
+
+    monkeypatch.setattr(registry, "match", forbidden)
+    monkeypatch.setattr(
+        execution_template_planner, "resolve_response_template", forbidden
+    )
+    monkeypatch.setattr(
+        llm_simple_service,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            provider="ollama",
+            service_type="local",
+            model_name="fixture",
+            endpoint="http://fixture/v1",
+            config_hash="fixture",
+            runtime_id="fixture",
+        ),
+    )
+    monkeypatch.setattr(
+        llm_simple_service, "_get_active_adapter_id", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: None)
+    payloads = []
+
+    async def model_stream(**kwargs):
+        payloads.append(kwargs["payload"])
+        yield "model answer"
+
+    monkeypatch.setattr(llm_simple_service, "_stream_simple_chunks", model_stream)
+    response = await llm_simple_service.stream_simple_chat(
+        SimpleChatRequest(content="status projektu", stream=True)
+    )
+    assert [chunk async for chunk in response.body_iterator] == ["model answer"]
+    assert payloads[0]["model"] == "fixture"
+    assert payloads[0]["messages"][-1]["content"] == "status projektu"
+
+
+@pytest.mark.asyncio
+async def test_complex_keeps_planning_and_full_context_for_known_module_command(
+    registry,
+):
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    provider = StatusProvider()
+    await registry.register("device", provider)
+    turn = conversation.create_conversation_context("chat")
+    await registry.prepare("/device status", turn)
+    task = SimpleNamespace(context_history={})
+    state = Mock()
+    state.get_task.return_value = task
+    state.update_context.side_effect = lambda _, values: task.context_history.update(
+        values
+    )
+    orch = SimpleNamespace(
+        state_manager=state,
+        request_tracer=Mock(),
+        intent_manager=SimpleNamespace(
+            classify_intent=AsyncMock(side_effect=AssertionError("forced intent lost")),
+            requires_tool=Mock(return_value=False),
+        ),
+        context_builder=SimpleNamespace(
+            build_context=AsyncMock(return_value="full planning context")
+        ),
+    )
+    request = TaskRequest(content="/device status", forced_intent="COMPLEX_PLANNING")
+    with conversation.conversation_turn(turn):
+        intent, context, _, debug = await dispatch._prepare_intent_and_context(
+            orch, uuid4(), request, request.content, False
+        )
+    assert intent == "COMPLEX_PLANNING"
+    assert context == "full planning context" and debug["source"] == "forced"
+    assert "response_template" not in task.context_history
+    orch.context_builder.build_context.assert_awaited_once()
+    provider.handle.assert_not_awaited()
+    await registry.finish(turn)
+    await registry.close()

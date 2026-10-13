@@ -381,3 +381,20 @@ async def test_complex_keeps_planning_and_full_context_for_known_module_command(
     provider.handle.assert_not_awaited()
     await registry.finish(turn)
     await registry.close()
+
+
+@pytest.mark.asyncio
+async def test_missing_classifier_debug_does_not_create_a_provider_template(registry):
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    manager = Mock()
+    manager.classify_intent = AsyncMock(return_value="HELP_REQUEST")
+    orch = SimpleNamespace(intent_manager=manager, request_tracer=Mock())
+    intent, debug = await dispatch._classify_intent_and_log(
+        orch, uuid4(), TaskRequest(content="pomoc"), "pomoc"
+    )
+    assert intent == "HELP_REQUEST" and debug == {}
+    assert (
+        resolve_response_template(TaskRequest(content="pomoc"), intent).handler
+        == "help"
+    )

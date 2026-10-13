@@ -93,7 +93,8 @@ def parse_slash_command(content: str) -> Optional[SlashCommandResult]:
             forced_intent=TOOL_INTENT_ALIASES[token],
         )
 
-    return SlashCommandResult(token=token, cleaned=remaining)
+    # Optional conversation namespaces must retain their addressing for providers.
+    return SlashCommandResult(token=token, cleaned=content)
 
 
 def resolve_forced_intent(forced_tool: str) -> Optional[str]:

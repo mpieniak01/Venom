@@ -1,3 +1,5 @@
+import type { LlmRuntimeTargetOption } from "./types";
+
 export function resolveCockpitRuntimeModelSelection(
   currentSelection: string,
   runtimeModels: ReadonlyArray<string>,
@@ -163,4 +165,32 @@ export function resolveCockpitActiveRuntimeInfo(
       ? { source_type: activeRuntime?.source_type ?? fallback?.source_type }
       : {}),
   };
+}
+export function resolveCockpitSelectedRuntimeId(
+  selectedRuntime: string,
+  catalog: UnifiedModelCatalogLike,
+  fallback: ActiveRuntimeInfo,
+): string {
+  return normalizeRuntimeId(
+    selectedRuntime || resolveCockpitActiveRuntimeInfo(catalog, fallback)?.active_server,
+  );
+}
+
+export function isCockpitRuntimeDisabled(
+  runtime: Pick<LlmRuntimeTargetOption, "configured" | "status" | "reason"> | null | undefined,
+): boolean {
+  if (!runtime) return true;
+  return runtime.configured === false
+    || (runtime.status || "").trim().toLowerCase() === "disabled"
+    || ["runtime_disabled_by_profile", "runtime_not_installed", "runtime_not_supported"].includes(runtime.reason ?? "");
+}
+
+export function isCockpitAdapterDeployAvailable(
+  runtime: Pick<LlmRuntimeTargetOption,
+    "configured" | "status" | "reason" | "adapter_deploy_supported" | "supports_adapter_runtime_apply"
+  > | null | undefined,
+): boolean {
+  if (!runtime || isCockpitRuntimeDisabled(runtime)) return false;
+  const supported = runtime.adapter_deploy_supported ?? runtime.supports_adapter_runtime_apply;
+  return supported === true && (runtime.status || "").trim().toLowerCase() !== "offline";
 }

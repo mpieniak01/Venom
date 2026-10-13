@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -319,7 +319,16 @@ def test_build_model_catalog_inference_artifacts_come_from_explicit_flag() -> No
     ]
 
 
-def test_runtime_target_payload_contains_adapter_deploy_capability() -> None:
+@pytest.fixture
+def academy_ready(monkeypatch):
+    monkeypatch.setattr(system_llm.SETTINGS, "ENABLE_ACADEMY", True)
+    for name in ("_get_professor", "_get_dataset_curator", "_get_gpu_habitat"):
+        monkeypatch.setattr(system_llm.academy, name, lambda: object())
+
+
+def test_runtime_target_payload_contains_adapter_deploy_capability(
+    academy_ready,
+) -> None:
     active_runtime = SimpleNamespace(provider="vllm")
     payload = system_llm._runtime_target_payload(  # noqa: SLF001
         runtime_id="vllm",
@@ -339,7 +348,9 @@ def test_runtime_target_payload_contains_adapter_deploy_capability() -> None:
     assert payload["supports_adapter_runtime_apply"] is True
 
 
-def test_runtime_target_payload_contains_onnx_adapter_deploy_capability() -> None:
+def test_runtime_target_payload_contains_onnx_adapter_deploy_capability(
+    academy_ready,
+) -> None:
     active_runtime = SimpleNamespace(provider="onnx")
     payload = system_llm._runtime_target_payload(  # noqa: SLF001
         runtime_id="onnx",
@@ -357,6 +368,43 @@ def test_runtime_target_payload_contains_onnx_adapter_deploy_capability() -> Non
     assert payload["supports_adapter_import_safetensors"] is False
     assert payload["supports_adapter_import_gguf"] is False
     assert payload["supports_adapter_runtime_apply"] is True
+
+
+@pytest.mark.parametrize(
+    "enabled,ready,configured,status,expected_reason",
+    [
+        (False, False, True, "running", "academy_disabled"),
+        (True, False, True, "running", "academy_not_ready"),
+        (True, True, False, "disabled", "runtime_disabled_by_profile"),
+        (True, True, True, "offline", "runtime_offline"),
+    ],
+)
+def test_adapter_deployment_capability_reports_operational_availability(
+    monkeypatch, enabled, ready, configured, status, expected_reason
+):
+    monkeypatch.setattr(system_llm.SETTINGS, "ENABLE_ACADEMY", enabled)
+    getters = []
+    for name in ("_get_professor", "_get_dataset_curator", "_get_gpu_habitat"):
+        getter = Mock(return_value=object() if ready else None)
+        monkeypatch.setattr(system_llm.academy, name, getter)
+        getters.append(getter)
+    payload = system_llm._runtime_target_payload(
+        runtime_id="ollama",
+        source_type="local-runtime",
+        configured=configured,
+        available=True,
+        status=status,
+        reason=None,
+        models=[],
+        active_runtime=SimpleNamespace(provider="ollama"),
+    )
+    assert payload["adapter_deploy_supported"] is False
+    assert payload["adapter_deploy_reason"] == expected_reason
+    assert payload["adapter_deploy_mode"] == "ollama_modelfile"
+    assert payload["supports_adapter_runtime_apply"] is True
+    if not enabled:
+        for getter in getters:
+            getter.assert_not_called()
 
 
 def test_apply_vllm_runtime_autofix_updates_invalid_config(tmp_path: Path) -> None:

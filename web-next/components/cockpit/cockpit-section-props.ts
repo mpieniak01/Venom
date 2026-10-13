@@ -17,7 +17,12 @@ import { useCockpitContext } from "@/components/cockpit/cockpit-context";
 import { mapTelemetryTone, type TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
 import { setActiveLlmServer } from "@/hooks/use-api";
 import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
-import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
+import {
+  isCockpitAdapterDeployAvailable,
+  isCockpitRuntimeDisabled,
+  normalizeRuntimeId,
+  resolveCockpitSelectedRuntimeId,
+} from "@/lib/cockpit-runtime-selection";
 
 
 
@@ -115,6 +120,21 @@ export function useCockpitSectionProps() {
     interactive.setters.setGenerationParams(params);
   }, [interactive.setters]);
   const handleActivateModel = logic.handleActivateModel;
+  const runtimeTargets = useMemo(
+    () => data.unifiedModelCatalog?.runtimes ?? [],
+    [data.unifiedModelCatalog],
+  );
+  const resolvedServerId = resolveCockpitSelectedRuntimeId(
+    selectedLlmServer,
+    data.unifiedModelCatalog,
+    data.activeServerInfo,
+  );
+  const selectedRuntimeTarget = useMemo(
+    () => runtimeTargets.find(
+      (runtime) => normalizeRuntimeId(runtime.runtime_id) === resolvedServerId,
+    ) ?? null,
+    [resolvedServerId, runtimeTargets],
+  );
 
   const composerRef = logic.chatUi.composerRef;
   const onSend = useCallback(
@@ -124,8 +144,14 @@ export function useCockpitSectionProps() {
     [logic.chatUi],
   );
   const onActivateModel = useCallback(
-    async (model: string) => handleActivateModel(model),
-    [handleActivateModel],
+    async (model: string) => {
+      if (isCockpitRuntimeDisabled(selectedRuntimeTarget)) {
+        interactive.setters.setMessage(t("cockpit.models.runtimeUnavailable"));
+        return false;
+      }
+      return handleActivateModel(model);
+    },
+    [handleActivateModel, interactive.setters, selectedRuntimeTarget, t],
   );
   const handleSelectLlmServer = useCallback(
     (value: string) => {
@@ -134,29 +160,19 @@ export function useCockpitSectionProps() {
       if (!normalizedValue || normalizedValue === normalizedSelected) {
         return;
       }
+      const target = data.unifiedModelCatalog?.runtimes.find(
+        (runtime) => normalizeRuntimeId(runtime.runtime_id) === normalizedValue,
+      );
+      if (isCockpitRuntimeDisabled(target)) return;
       setSelectedLlmServer(value.trim());
       setSelectedLlmModel("");
     },
-    [selectedLlmServer, setSelectedLlmModel, setSelectedLlmServer],
+    [data.unifiedModelCatalog, selectedLlmServer, setSelectedLlmModel, setSelectedLlmServer],
   );
 
-  const runtimeTargets = useMemo(
-    () => data.unifiedModelCatalog?.runtimes ?? [],
-    [data.unifiedModelCatalog],
-  );
-  const normalizedSelectedLlmServer = useMemo(
-    () => normalizeRuntimeId(selectedLlmServer),
-    [selectedLlmServer],
-  );
   const llmServerOptions = useMemo(
-    () => runtimeTargets.map((runtime) => ({ label: runtime.runtime_id, value: runtime.runtime_id })),
+    () => runtimeTargets.map((runtime) => ({ label: runtime.runtime_id, value: runtime.runtime_id, disabled: isCockpitRuntimeDisabled(runtime) })),
     [runtimeTargets],
-  );
-  const resolvedServerId = normalizeRuntimeId(
-    normalizedSelectedLlmServer ||
-      data.activeServerInfo?.active_server ||
-      data.unifiedModelCatalog?.active?.active_server ||
-      "",
   );
   const activeRuntimeModel = useMemo(
     () =>
@@ -176,32 +192,30 @@ export function useCockpitSectionProps() {
       (target?.models ?? []).filter((model) => model.chat_compatible !== false),
     );
   }, [resolvedServerId, runtimeTargets]);
-  const selectedRuntimeTarget = useMemo(
-    () =>
-      runtimeTargets.find(
-        (runtime) => normalizeRuntimeId(runtime.runtime_id) === resolvedServerId,
-      ) ?? null,
-    [resolvedServerId, runtimeTargets],
-  );
-  const adapterDeployCapability = Boolean(
-    selectedRuntimeTarget?.supports_adapter_runtime_apply ??
-      selectedRuntimeTarget?.adapter_deploy_supported,
-  );
+  const runtimeSelectionDisabled = isCockpitRuntimeDisabled(selectedRuntimeTarget);
+  const adapterDeployCapability = selectedRuntimeTarget?.adapter_deploy_supported ?? selectedRuntimeTarget?.supports_adapter_runtime_apply;
   const runtimeStatus = String(selectedRuntimeTarget?.status || "")
     .trim()
     .toLowerCase();
   const runtimeOfflineForAdapterDeploy = runtimeStatus === "offline";
-  const runtimeOnlineForAdapterDeploy = !runtimeOfflineForAdapterDeploy;
-  const adapterDeploySupported =
-    adapterDeployCapability && runtimeOnlineForAdapterDeploy;
+  const adapterDeploySupported = isCockpitAdapterDeployAvailable(selectedRuntimeTarget);
   let adapterDeployReason: string | null = null;
   if (!adapterDeploySupported) {
-    if (!adapterDeployCapability) {
-      adapterDeployReason = t("cockpit.models.adapterRuntimeNotSupported", {
+    if (selectedRuntimeTarget?.adapter_deploy_reason === "academy_disabled") {
+      adapterDeployReason = t("cockpit.models.academyDisabled");
+    } else if (selectedRuntimeTarget?.adapter_deploy_reason === "academy_not_ready") {
+      adapterDeployReason = t("cockpit.models.academyUnavailable");
+    } else if (runtimeSelectionDisabled) {
+      adapterDeployReason = t("cockpit.models.runtimeUnavailable");
+    } else if (
+      selectedRuntimeTarget?.adapter_deploy_reason === "runtime_offline" ||
+      runtimeOfflineForAdapterDeploy
+    ) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeOffline", {
         runtime: resolvedServerId || "unknown",
       });
-    } else if (runtimeOfflineForAdapterDeploy) {
-      adapterDeployReason = t("cockpit.models.adapterRuntimeOffline", {
+    } else if (!adapterDeployCapability) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeNotSupported", {
         runtime: resolvedServerId || "unknown",
       });
     }
@@ -214,21 +228,24 @@ export function useCockpitSectionProps() {
       const options = selectedRuntimeModels.map((model) => ({
         label: formatRuntimeModelOptionLabel(model, t),
         value: model.name,
+        disabled: runtimeSelectionDisabled,
       }));
       options.unshift({
         label: t("cockpit.models.noneSelected"),
         value: "__none__",
+        disabled: false,
       });
       const selected = (selectedLlmModel || "").trim();
       if (selected && !options.some((option) => option.value === selected)) {
         options.unshift({
           label: selected,
           value: selected,
+          disabled: runtimeSelectionDisabled,
         });
       }
       return options;
     },
-    [selectedLlmModel, selectedRuntimeModels, t],
+    [runtimeSelectionDisabled, selectedLlmModel, selectedRuntimeModels, t],
   );
   const llmModelMetadata = useMemo(
     () => {
@@ -247,8 +264,8 @@ export function useCockpitSectionProps() {
     [selectedLlmModel, selectedRuntimeModels],
   );
   const hasModels = useMemo(
-    () => llmModelOptions.length > 0,
-    [llmModelOptions],
+    () => !runtimeSelectionDisabled && llmModelOptions.length > 0,
+    [llmModelOptions, runtimeSelectionDisabled],
   );
 
   const onOpenTuning = logic.chatUi.handleOpenTuning;
@@ -263,16 +280,16 @@ export function useCockpitSectionProps() {
   const llmModelOptionsPanel = llmModelOptions;
 
   const availableModelsForServer = useMemo(
-    () => selectedRuntimeModels.map((model) => ({ name: model.name, provider: model.provider })),
-    [selectedRuntimeModels],
+    () => runtimeSelectionDisabled ? [] : selectedRuntimeModels.map((model) => ({ name: model.name, provider: model.provider })),
+    [runtimeSelectionDisabled, selectedRuntimeModels],
   );
 
   const selectedServerEntry = useMemo(
     () =>
       data.llmServers?.find(
-        (s) => normalizeRuntimeId(s.name) === normalizedSelectedLlmServer,
+        (s) => normalizeRuntimeId(s.name) === resolvedServerId,
       ) || null,
-    [data.llmServers, normalizedSelectedLlmServer],
+    [data.llmServers, resolvedServerId],
   );
 
   const resolveServerStatus = useCallback((name?: string, fallback?: string | null) => {
@@ -301,6 +318,10 @@ export function useCockpitSectionProps() {
     const selectedServer = (selectedRuntimeTarget?.runtime_id || interactive.state.selectedLlmServer || "").trim();
     const selectedModel = interactive.state.selectedLlmModel;
     if (!selectedServer) return;
+    if (isCockpitRuntimeDisabled(selectedRuntimeTarget)) {
+      interactive.setters.setMessage(t("cockpit.models.runtimeUnavailable"));
+      return;
+    }
     if (availableModelsForServer.length > 0 && !selectedModel) {
       interactive.setters.setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
       return;
@@ -342,7 +363,7 @@ export function useCockpitSectionProps() {
     interactive.state.selectedLlmModel,
     interactive.state.selectedLlmServer,
     interactive.setters,
-    selectedRuntimeTarget?.runtime_id,
+    selectedRuntimeTarget,
     t,
   ]);
 
@@ -531,7 +552,7 @@ export function useCockpitSectionProps() {
     setChatMode,
     labMode,
     setLabMode,
-    selectedLlmServer: normalizedSelectedLlmServer,
+    selectedLlmServer: resolvedServerId,
     llmServerOptions,
     setSelectedLlmServer: handleSelectLlmServer,
     selectedLlmModel,
@@ -565,7 +586,7 @@ export function useCockpitSectionProps() {
     handleSelectLlmServer,
     selectedLlmModel,
     activeRuntimeModel,
-    normalizedSelectedLlmServer,
+    resolvedServerId,
     sending,
     setChatMode,
     setLabMode,
@@ -591,7 +612,7 @@ export function useCockpitSectionProps() {
   const llmOpsPanelProps = useMemo(() => ({
     llmServersLoading,
     llmServers,
-    selectedLlmServer: normalizedSelectedLlmServer,
+    selectedLlmServer: resolvedServerId,
     llmServerOptions: llmServerOptionsPanel,
     onSelectLlmServer: handleSelectLlmServer,
     selectedLlmModel,
@@ -649,7 +670,7 @@ export function useCockpitSectionProps() {
     resolveServerStatus,
     handleSelectLlmServer,
     selectedLlmModel,
-    normalizedSelectedLlmServer,
+    resolvedServerId,
     selectedServerEntry,
     setSelectedLlmModel,
     sessionId,

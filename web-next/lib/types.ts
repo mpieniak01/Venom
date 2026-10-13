@@ -149,6 +149,7 @@ export interface LlmRuntimeTargetOption {
   models: LlmRuntimeModelOption[];
   adapter_deploy_supported?: boolean;
   adapter_deploy_mode?: string;
+  adapter_deploy_reason?: string | null;
   supports_native_training?: boolean;
   supports_adapter_import_safetensors?: boolean;
   supports_adapter_import_gguf?: boolean;

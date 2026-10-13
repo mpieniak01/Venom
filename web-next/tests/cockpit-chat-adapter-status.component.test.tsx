@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, it, mock } from "node:test";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { ChatComposer } from "../components/cockpit/cockpit-chat-thread";
 import { LanguageProvider } from "../lib/i18n";
@@ -8,16 +8,21 @@ import { LanguageProvider } from "../lib/i18n";
 const originalFetch = globalThis.fetch;
 const LANGUAGE_STORAGE_KEY = "venom-language";
 
-function renderComposer(params?: {
+type ComposerParams = {
   server?: string;
   selectedModel?: string;
   activeRuntimeModel?: string;
   adapterDeploySupported?: boolean;
-}) {
+  adapterDeployReason?: string;
+  runtimeDisabled?: boolean;
+  onActivateModel?: (model: string) => Promise<boolean>;
+};
+
+function ComposerHarness(params: ComposerParams) {
   const selectedServer = params?.server ?? "ollama";
   const selectedModel = params?.selectedModel ?? "gemma3:latest";
   const activeRuntimeModel = params?.activeRuntimeModel ?? "venom-adapter-training_1234";
-  return render(
+  return (
     <LanguageProvider>
       <ChatComposer
         onSend={async () => true}
@@ -28,7 +33,7 @@ function renderComposer(params?: {
         setLabMode={() => {}}
         selectedLlmServer={selectedServer}
         llmServerOptions={[
-          { value: "ollama", label: "OLLAMA" },
+          { value: "ollama", label: "OLLAMA", disabled: params.runtimeDisabled },
           { value: "onnx", label: "ONNX" },
         ]}
         setSelectedLlmServer={() => {}}
@@ -42,13 +47,19 @@ function renderComposer(params?: {
           "gemma3:latest": { canonical_model_id: "gemma-3-4b-it" },
         }}
         setSelectedLlmModel={() => {}}
+        onActivateModel={params.onActivateModel}
         hasModels
         onOpenTuning={() => {}}
         tuningLabel="Tune"
         adapterDeploySupported={params?.adapterDeploySupported ?? true}
+        adapterDeployReason={params.adapterDeployReason}
       />
-    </LanguageProvider>,
+    </LanguageProvider>
   );
+}
+
+function renderComposer(params: ComposerParams = {}) {
+  return render(<ComposerHarness {...params} />);
 }
 
 async function flushEffects() {
@@ -182,12 +193,95 @@ function installFetchMock(params: {
 }
 
 afterEach(() => {
+  mock.restoreAll();
   cleanup();
   globalThis.fetch = originalFetch;
   window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
 });
 
 describe("ChatComposer adapter status", () => {
+  it("does not request Academy audit when deployment is unavailable", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    installFetchMock({ auditCategory: "compatible", auditMessage: "unused" });
+    const originalMock = globalThis.fetch;
+    let auditCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).includes("/academy/adapters/audit")) auditCalls += 1;
+      return originalMock(input, init);
+    }) as typeof fetch;
+    const errors = mock.method(console, "error", () => {});
+    renderComposer({ adapterDeploySupported: false, adapterDeployReason: "Academy is disabled." });
+    await flushEffects();
+    assert.ok(screen.getByText("Academy is disabled."));
+    assert.equal(auditCalls, 0);
+    assert.equal(errors.mock.callCount(), 0);
+  });
+
+  it("shows expected Academy 503 as unavailable without a console error", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    installFetchMock({ auditCategory: "compatible", auditMessage: "unused" });
+    const originalMock = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => String(input).includes("/academy/adapters/audit")
+      ? new Response(JSON.stringify({ detail: "Academy disabled" }), { status: 503 })
+      : originalMock(input, init)) as typeof fetch;
+    const errors = mock.method(console, "error", () => {});
+    renderComposer();
+    await waitFor(() => assert.ok(screen.getByText("Academy is unavailable.")), { timeout: 3000 });
+    assert.equal(errors.mock.callCount(), 0);
+  });
+
+  it("keeps unexpected audit failures visible", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    installFetchMock({ auditCategory: "compatible", auditMessage: "unused" });
+    const originalMock = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => String(input).includes("/academy/adapters/audit")
+      ? new Response(JSON.stringify({ detail: "Audit storage failed" }), { status: 500 })
+      : originalMock(input, init)) as typeof fetch;
+    const errors = mock.method(console, "error", () => {});
+    renderComposer();
+    await waitFor(() => assert.ok(screen.getByText(/Audit storage failed/)), { timeout: 3000 });
+    assert.equal(errors.mock.callCount(), 1);
+  });
+
+  it("ignores an old audit response after adapter deployment becomes unavailable", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    installFetchMock({ auditCategory: "compatible", auditMessage: "STALE AUDIT" });
+    const originalMock = globalThis.fetch;
+    let releaseAudit: (() => void) | undefined;
+    const pendingAudit = new Promise<void>((resolve) => { releaseAudit = resolve; });
+    let auditCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).includes("/academy/adapters/audit")) {
+        auditCalls += 1;
+        await pendingAudit;
+      }
+      return originalMock(input, init);
+    }) as typeof fetch;
+    const view = renderComposer();
+    await waitFor(() => assert.equal(auditCalls, 1));
+    view.rerender(<ComposerHarness adapterDeploySupported={false} adapterDeployReason="Academy is disabled." />);
+    await act(async () => { releaseAudit?.(); await pendingAudit; });
+    await flushEffects();
+    assert.equal(screen.queryByText("STALE AUDIT"), null);
+    assert.ok(screen.getByText("Academy is disabled."));
+  });
+
+  it("does not offer model activation for a disabled runtime", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    installFetchMock({ auditCategory: "compatible", auditMessage: "unused" });
+    const activate = mock.fn(async () => true);
+    renderComposer({ runtimeDisabled: true, adapterDeploySupported: false, onActivateModel: activate });
+    await flushEffects();
+    const modelSelect = screen.getByTestId("llm-model-select") as HTMLButtonElement;
+    assert.equal(modelSelect.disabled, true);
+    fireEvent.click(modelSelect);
+    assert.equal(screen.queryByTestId("llm-model-option-gemma3:latest"), null);
+    fireEvent.click(screen.getByTestId("llm-server-select"));
+    const disabledOption = screen.getByTestId("llm-server-option-ollama") as HTMLButtonElement;
+    assert.equal(disabledOption.disabled, true);
+    assert.equal(activate.mock.callCount(), 0);
+  });
+
   it("shows active adapter as compatible for current runtime model", async () => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
     installFetchMock({

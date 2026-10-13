@@ -5714,15 +5714,17 @@
     },
     {
       "path": "tests/test_slash_commands.py",
-      "domain": "misc",
+      "domain": "tasks",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Optional conversation prefixes retained across task preprocessing."
     },
     {
       "path": "tests/test_sonar_agents_init.py",

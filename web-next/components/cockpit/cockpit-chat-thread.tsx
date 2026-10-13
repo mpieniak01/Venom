@@ -216,6 +216,7 @@ function useChatAdapterSelection({
   const [adapterSelectLoading, setAdapterSelectLoading] = useState(false);
   const [adapterMutationPending, setAdapterMutationPending] = useState(false);
   const [adapterMutationError, setAdapterMutationError] = useState("");
+  const [adapterAuditError, setAdapterAuditError] = useState("");
   const [adapterAuditById, setAdapterAuditById] = useState<Record<string, AdapterAuditItem>>({});
   const [adapters, setAdapters] = useState<
     Array<{
@@ -286,6 +287,8 @@ function useChatAdapterSelection({
   }, [adapterDeploySupported, baseModelAdapterValue, selectedAdapter]);
 
   useEffect(() => {
+    let cancelled = false;
+    setAdapterAuditError("");
     if (
       !adapterDeploySupported ||
       !selectedRuntimeId ||
@@ -301,24 +304,31 @@ function useChatAdapterSelection({
           model_id: hasExplicitBaseModelSelection ? selectedLlmModel : undefined,
         });
         const auditedAdapters = payload.adapters ?? [];
+        if (cancelled) return;
         setAdapterAuditById(buildAdapterAuditMap(auditedAdapters));
         const activeAudited = auditedAdapters.find((item) => item.is_active);
         setSelectedAdapter(activeAudited?.adapter_id ?? baseModelAdapterValue);
       } catch (error) {
-        console.error("Failed to load adapter audit for chat selector:", error);
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 503) {
+          setAdapterAuditError(t("cockpit.models.academyUnavailable"));
+        } else {
+          console.error("Failed to load adapter audit for chat selector:", error);
+          setAdapterAuditError(resolveAcademyApiErrorMessage(error));
+        }
         setAdapterAuditById({});
         setSelectedAdapter(baseModelAdapterValue);
       }
     }
-    loadAdapterAudit().catch((error) => {
-      console.error("Failed to refresh adapter audit for chat selector:", error);
-    });
+    void loadAdapterAudit();
+    return () => { cancelled = true; };
   }, [
     adapterDeploySupported,
     baseModelAdapterValue,
     hasExplicitBaseModelSelection,
     selectedLlmModel,
     selectedRuntimeId,
+    t,
   ]);
 
   useEffect(() => {
@@ -381,6 +391,7 @@ function useChatAdapterSelection({
     adapterSelectLoading,
     adapterMutationPending,
     adapterMutationError,
+    adapterAuditError,
     activeAdapterAudit,
     activeAdapterBlocked,
     selectedAdapter,
@@ -670,6 +681,7 @@ export const ChatComposer = memo(
       adapterSelectLoading,
       adapterMutationPending,
       adapterMutationError,
+      adapterAuditError,
       activeAdapterAudit,
       activeAdapterBlocked,
       selectedAdapter,
@@ -746,6 +758,9 @@ export const ChatComposer = memo(
       actionsClassName,
     } = useMemo(() => resolveComposerLayoutClasses(compactControls), [compactControls]);
     const adapterDeployUnsupported = adapterDeploySupported === false;
+    const selectedRuntimeDisabled = llmServerOptions.find(
+      (option) => normalizeRuntimeId(option.value) === selectedRuntimeId,
+    )?.disabled === true;
     const showAdapterRuntimeContext = Boolean(
       adapterDeploySupported && selectedRuntimeId && hasExplicitBaseModelSelection,
     );
@@ -779,6 +794,7 @@ export const ChatComposer = memo(
       : t("cockpit.models.adapterSelectionAdapterHint");
 
     const handleModelSelect = useCallback((value: string) => {
+      if (!hasModels || selectedRuntimeDisabled) return;
       applyModelSelectionChange({
         value,
         noModelOptionValue,
@@ -794,10 +810,12 @@ export const ChatComposer = memo(
     }, [
       baseModelAdapterValue,
       handleAdapterSelect,
+      hasModels,
       noModelOptionValue,
       onActivateModel,
       selectedAdapter,
       selectedLlmModel,
+      selectedRuntimeDisabled,
       setSelectedLlmModel,
     ]);
 
@@ -864,7 +882,7 @@ export const ChatComposer = memo(
                 buttonTestId="llm-model-select"
                 optionTestIdPrefix="llm-model-option"
                 placeholder={t("cockpit.models.noModels")}
-                disabled={!hasModels}
+                disabled={!hasModels || selectedRuntimeDisabled}
                 menuWidth="content"
                 buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis"
                 menuClassName="w-full max-h-72 overflow-y-auto"
@@ -924,6 +942,7 @@ export const ChatComposer = memo(
             </div>
           </div>
           <div className={secondaryRowClassName}>
+            {adapterAuditError ? <p role="status" className="text-[11px] text-amber-300">{adapterAuditError}</p> : null}
             {showActiveRuntimeModelContext ? (
               <p className="text-[11px] text-hint">
                 <span className="font-medium">{t("cockpit.models.activeRuntimeModelLabel")}:</span>{" "}

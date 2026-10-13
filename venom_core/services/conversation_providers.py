@@ -413,6 +413,10 @@ class ConversationProviderRegistry:
         ):
             raise ConversationProviderError("conversation_provider_disabled", module_id)
         with conversation_turn(context):
+            if not self._accepts(module_id, provider, text, context):
+                raise ConversationProviderError(
+                    "conversation_template_changed", module_id
+                )
             result = await self._invoke(module_id, provider, "handle", context, text)
         if not isinstance(result, str) or len(result) > 32_768:
             raise ConversationProviderError("conversation_invalid_output", module_id)

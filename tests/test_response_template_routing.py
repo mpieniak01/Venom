@@ -7,10 +7,7 @@ from uuid import uuid4
 import pytest
 from semantic_kernel import Kernel
 
-from venom_core.agents.executive import ExecutiveAgent
 from venom_core.core.models import TaskRequest
-from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
-from venom_core.core.orchestrator.orchestrator_core import Orchestrator
 from venom_core.services import conversation_providers as conversation
 from venom_core.services.execution_template_planner import resolve_response_template
 
@@ -34,6 +31,8 @@ class StatusProvider:
 
 @pytest.mark.asyncio
 async def test_template_skips_classifier_context_and_executes_bound_handler(registry):
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
     provider = StatusProvider()
     await registry.register("device", provider)
     task_id = uuid4()
@@ -122,6 +121,8 @@ async def test_replaced_provider_cannot_execute_prepared_template(registry):
     ],
 )
 async def test_forced_routes_preserve_existing_selection(registry, forced):
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
     provider = StatusProvider()
     await registry.register("device", provider)
     turn = conversation.create_conversation_context("chat")
@@ -167,6 +168,8 @@ async def test_provider_without_explicit_matcher_is_not_an_early_template(regist
 )
 @pytest.mark.asyncio
 async def test_project_report_analysis_is_explicit(content, expected):
+    from venom_core.agents.executive import ExecutiveAgent
+
     request = TaskRequest(content=content)
     assert (resolve_response_template(request, "STATUS_REPORT") is None) == expected
     agent = ExecutiveAgent(
@@ -193,6 +196,7 @@ async def test_project_report_analysis_is_explicit(content, expected):
 )
 def test_classifier_follows_executor_refresh(monkeypatch, method, updated):
     from venom_core.core.orchestrator import orchestrator_core
+    from venom_core.core.orchestrator.orchestrator_core import Orchestrator
 
     old, new = Kernel(), Kernel()
     dispatcher = SimpleNamespace(kernel=new)
@@ -217,6 +221,8 @@ def test_classifier_follows_executor_refresh(monkeypatch, method, updated):
 async def test_selected_template_executes_only_after_global_policy(
     registry, monkeypatch
 ):
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
     provider = StatusProvider()
     await registry.register("device", provider)
     task = SimpleNamespace(context_history={})
@@ -254,3 +260,37 @@ async def test_selected_template_executes_only_after_global_policy(
     orch.result_processor.process_error.assert_not_awaited()
     assert not registry._prepared
     await registry.close()
+
+
+@pytest.mark.asyncio
+async def test_changed_template_is_rejected_before_execution(registry):
+    provider = StatusProvider()
+    await registry.register("device", provider)
+    turn = conversation.create_conversation_context("chat")
+    await registry.prepare("/device status", turn)
+    assert registry.match("/device status", turn) == "device"
+    provider.accepts = lambda *_: False
+    with pytest.raises(
+        conversation.ConversationProviderError, match="template_changed"
+    ):
+        await registry.handle_selected("device", "/device status", turn)
+    provider.handle.assert_not_awaited()
+    await registry.finish(turn)
+    await registry.close()
+
+
+@pytest.mark.parametrize("tracing", [True, False])
+def test_non_llm_report_metadata_does_not_depend_on_tracing(tracing):
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    orch = SimpleNamespace(request_tracer=Mock() if tracing else None)
+    updates = dispatch._collect_non_llm_metadata_updates(
+        orch,
+        uuid4(),
+        "STATUS_REPORT",
+        {"source": "lexicon"},
+        TaskRequest(content="status projektu"),
+    )
+    assert updates["llm_runtime"]["status"] == "skipped"
+    if tracing:
+        orch.request_tracer.set_llm_metadata.assert_called_once()

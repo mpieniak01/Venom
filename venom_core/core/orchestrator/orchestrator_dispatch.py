@@ -668,8 +668,6 @@ def _collect_non_llm_metadata_updates(
     intent_debug: dict,
     request: TaskRequest | None = None,
 ) -> dict[str, object]:
-    if not orch.request_tracer:
-        return {}
     if intent_debug.get("source") == "llm":
         return {}
     if request is not None:
@@ -678,9 +676,10 @@ def _collect_non_llm_metadata_updates(
             return {}
     elif intent not in orch.NON_LLM_INTENTS:
         return {}
-    orch.request_tracer.set_llm_metadata(
-        task_id, provider=None, model=None, endpoint=None
-    )
+    if orch.request_tracer:
+        orch.request_tracer.set_llm_metadata(
+            task_id, provider=None, model=None, endpoint=None
+        )
     return {
         "llm_runtime": {
             "status": "skipped",

@@ -1791,6 +1791,67 @@ async def test_late_voice_provider_fallback_uses_only_checked_host_asr(
     assert conversation.current_conversation_context() is None
 
 
+@pytest.mark.parametrize("previous_closed", [None, False, True])
+def test_reused_app_lifespan_owns_a_fresh_registry_each_cycle(
+    monkeypatch, previous_closed
+):
+    instances = []
+    previous = None
+    if previous_closed is not None:
+        previous = conversation.ConversationProviderRegistry(None)
+        previous.closed = previous_closed
+    conversation.set_conversation_registry(previous)
+
+    @asynccontextmanager
+    async def startup(app):
+        app.state.started = getattr(app.state, "started", 0) + 1
+        yield
+
+    app = FastAPI(lifespan=startup)
+
+    def factory(host):
+        assert host is app and app.state.started == len(instances) + 1
+        provider = Provider()
+        instances.append(provider)
+        return provider
+
+    monkeypatch.setattr(
+        module_registry,
+        "_conversation_provider_factories",
+        lambda _: {"example": factory},
+    )
+    module_registry._install_conversation_provider_lifespan(app, SimpleNamespace())
+    module_registry._install_conversation_provider_lifespan(app, SimpleNamespace())
+
+    @app.post("/task/{task_id}")
+    async def task_turn(task_id: str):
+        turn = conversation.create_conversation_context("chat", task_id=task_id)
+        registry = conversation.get_conversation_registry()
+        assert registry is app.state.conversation_providers and not registry.closed
+        await registry.prepare("/extension", turn)
+        try:
+            result = await conversation.handle_conversation_turn("/extension", turn)
+            return {"task_id": task_id, "result": result}
+        finally:
+            await registry.finish(turn)
+
+    registries = []
+    for index in range(2):
+        with TestClient(app) as client:
+            registry = app.state.conversation_providers
+            registries.append(registry)
+            response = client.post(f"/task/task-{index}")
+            assert response.status_code == 200
+            assert response.json() == {"task_id": f"task-{index}", "result": "handled"}
+            assert not instances[-1].closed
+        assert registry.closed and instances[-1].closed
+        expected = previous if previous_closed is False else None
+        assert conversation.get_conversation_registry() is expected
+    assert registries[0] is not registries[1]
+    assert len(instances) == 2
+    assert [len(provider.calls) for provider in instances] == [1, 1]
+
+
 def manifest(tmp_path, factory="example_module:create_provider"):
     path = tmp_path / "module.json"
     path.write_text(

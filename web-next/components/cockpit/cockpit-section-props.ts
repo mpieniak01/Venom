@@ -207,12 +207,15 @@ export function useCockpitSectionProps() {
       adapterDeployReason = t("cockpit.models.academyUnavailable");
     } else if (runtimeSelectionDisabled) {
       adapterDeployReason = t("cockpit.models.runtimeUnavailable");
-    } else if (!adapterDeployCapability) {
-      adapterDeployReason = t("cockpit.models.adapterRuntimeNotSupported", {
+    } else if (
+      selectedRuntimeTarget?.adapter_deploy_reason === "runtime_offline" ||
+      runtimeOfflineForAdapterDeploy
+    ) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeOffline", {
         runtime: resolvedServerId || "unknown",
       });
-    } else if (runtimeOfflineForAdapterDeploy) {
-      adapterDeployReason = t("cockpit.models.adapterRuntimeOffline", {
+    } else if (!adapterDeployCapability) {
+      adapterDeployReason = t("cockpit.models.adapterRuntimeNotSupported", {
         runtime: resolvedServerId || "unknown",
       });
     }

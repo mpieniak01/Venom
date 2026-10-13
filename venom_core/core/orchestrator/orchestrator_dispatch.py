@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import asdict
 from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -29,6 +30,7 @@ from venom_core.services.conversation_providers import (
     create_conversation_context,
     current_conversation_context,
     finish_conversation_turn,
+    get_conversation_registry,
     handle_conversation_turn,
     prepare_conversation_turn,
     urgent_conversation_turn,
@@ -41,6 +43,7 @@ from venom_core.services.execution_template_planner import (
     resolve_api_skill_template,
     resolve_browser_execution_contract,
     resolve_browser_profile,
+    resolve_response_template,
 )
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -52,7 +55,6 @@ from .constants import (
     HISTORY_SUMMARY_TRIGGER_MSGS,
     LEARNING_LOG_PATH,
     MAX_LEARNING_SNIPPET,
-    STATIC_INTENTS,
     SUMMARY_STRATEGY_DEFAULT,
 )
 
@@ -259,10 +261,28 @@ async def _prepare_intent_and_context(
     context_updates: dict[str, object] = {}
     if intent_debug:
         context_updates["intent_debug"] = intent_debug
+    template = resolve_response_template(
+        request, intent, provider_id=intent_debug.get("provider_id")
+    )
+    if template:
+        template_metadata = asdict(template)
+        skipped_stages = ["model_context"]
+        if intent_debug.get("source") != "llm":
+            skipped_stages.append("intent_llm")
+        template_metadata["skipped_stages"] = skipped_stages
+        context_updates["response_template"] = template_metadata
+        if orch.request_tracer:
+            orch.request_tracer.add_step(
+                task_id,
+                "ResponseTemplate",
+                "select",
+                status="ok",
+                details=json.dumps(template_metadata, ensure_ascii=False),
+            )
 
     context_updates.update(_collect_generation_params_context_updates(task_id, request))
     context_updates.update(
-        _collect_non_llm_metadata_updates(orch, task_id, intent, intent_debug)
+        _collect_non_llm_metadata_updates(orch, task_id, intent, intent_debug, request)
     )
     context_updates.update(
         _build_execution_mode_metadata(orch, task_id, request, intent)
@@ -596,8 +616,24 @@ async def _classify_intent_and_log(
         intent = request.forced_intent
         intent_debug = {"source": "forced", "intent": request.forced_intent}
     else:
-        intent = await orch.intent_manager.classify_intent(request_content)
-        intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
+        turn = current_conversation_context()
+        registry = get_conversation_registry()
+        provider_id = (
+            registry.match(request_content, turn)
+            if registry is not None
+            and turn is not None
+            and not request.forced_tool
+            and not request.forced_provider
+            else None
+        )
+        if provider_id is not None:
+            intent = "MODULE_CONVERSATION"
+            intent_debug = {"source": "template", "provider_id": provider_id}
+        else:
+            intent = await orch.intent_manager.classify_intent(request_content)
+            intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
+            if not isinstance(intent_debug, dict):
+                intent_debug = {}
     if intent_debug and orch.request_tracer:
         try:
             details = json.dumps(intent_debug, ensure_ascii=False)
@@ -617,7 +653,8 @@ async def _build_context_for_intent(
     intent: str,
     fast_path: bool,
 ) -> str:
-    if intent in STATIC_INTENTS:
+    template = resolve_response_template(request, intent)
+    if intent == "MODULE_CONVERSATION" or template is not None:
         logger.info(f"Fast path: Skipping context build for intent {intent}")
         orch.state_manager.add_log(
             task_id, "🚀 Fast Path: Pominięto budowanie kontekstu"
@@ -640,15 +677,24 @@ def _collect_generation_params_context_updates(
 
 
 def _collect_non_llm_metadata_updates(
-    orch: "Orchestrator", task_id: UUID, intent: str, intent_debug: dict
+    orch: "Orchestrator",
+    task_id: UUID,
+    intent: str,
+    intent_debug: dict,
+    request: TaskRequest | None = None,
 ) -> dict[str, object]:
-    if not orch.request_tracer:
+    if intent_debug.get("source") == "llm":
         return {}
-    if intent not in orch.NON_LLM_INTENTS or intent_debug.get("source") == "llm":
-        return {}
-    orch.request_tracer.set_llm_metadata(
-        task_id, provider=None, model=None, endpoint=None
+    template = (
+        resolve_response_template(request, intent) if request is not None else None
     )
+    template_skips_llm = template is not None and template.requires_llm is False
+    if not template_skips_llm and intent not in getattr(orch, "NON_LLM_INTENTS", set()):
+        return {}
+    if orch.request_tracer:
+        orch.request_tracer.set_llm_metadata(
+            task_id, provider=None, model=None, endpoint=None
+        )
     return {
         "llm_runtime": {
             "status": "skipped",
@@ -661,7 +707,9 @@ def _collect_non_llm_metadata_updates(
 def _evaluate_tool_requirement_and_routing(
     orch: "Orchestrator", task_id: UUID, intent: str
 ) -> tuple[bool, str, dict[str, object]]:
-    tool_required = orch.intent_manager.requires_tool(intent)
+    tool_required = (
+        intent == "MODULE_CONVERSATION" or orch.intent_manager.requires_tool(intent)
+    )
     tool_requirement_update: dict[str, object] = {
         "tool_requirement": {"required": tool_required, "intent": intent}
     }
@@ -681,7 +729,7 @@ def _evaluate_tool_requirement_and_routing(
         else:
             collector.increment_llm_only_request()
 
-    if not tool_required:
+    if not tool_required or intent == "MODULE_CONVERSATION":
         return tool_required, intent, tool_requirement_update
 
     agent = orch.task_dispatcher.agent_map.get(intent)
@@ -727,11 +775,22 @@ async def _execute_with_stream_callback(
             language=request.preferred_language,
         )
         with conversation_turn(turn):
-            response = (
-                await handle_conversation_turn(request.content, turn)
-                if request.forced_tool is None
-                else None
-            )
+            if intent == "MODULE_CONVERSATION":
+                task = orch.state_manager.get_task(task_id)
+                template = task.context_history["response_template"]
+                provider_id = template["template_id"].removesuffix(":conversation")
+                registry = get_conversation_registry()
+                if registry is None:
+                    raise RuntimeError("conversation_provider_disabled")
+                response = await registry.handle_selected(
+                    provider_id, request.content, turn
+                )
+            else:
+                response = (
+                    await handle_conversation_turn(request.content, turn)
+                    if request.forced_tool is None
+                    else None
+                )
             if response is not None:
                 callback = orch.streaming_handler.create_stream_callback(task_id)
                 callback(response)

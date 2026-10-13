@@ -5202,6 +5202,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_response_template_routing.py",
+      "domain": "orchestrator",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Deterministic template routing, policy ordering and runtime synchronization regressions."
+    },
+    {
       "path": "tests/test_retention_optimization.py",
       "domain": "orchestrator",
       "test_type": "unit",

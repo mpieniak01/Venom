@@ -6,7 +6,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple
 
 from anyio import fail_after
 from semantic_kernel import Kernel
@@ -626,12 +626,6 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         if self._contains_keyword(normalized, self.HELP_KEYWORDS):
             logger.debug("Wykryto słowa kluczowe pomocy - zwracam HELP_REQUEST")
             self.last_intent_debug["source"] = "keyword"
-            if self.kernel:
-                try:
-                    llm_service = cast(Any, self.kernel.get_service())
-                    await llm_service.get_chat_message_content()
-                except Exception as exc:
-                    logger.debug(f"LLM service not available for intent: {exc}")
             self._append_user_phrase("HELP_REQUEST", user_input, language)
             return "HELP_REQUEST"
         if self._contains_keyword(normalized, self.TIME_KEYWORDS):

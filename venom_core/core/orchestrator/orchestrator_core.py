@@ -110,7 +110,7 @@ class Orchestrator:
             request_tracer: Opcjonalny tracer do śledzenia przepływu zadań
         """
         self.state_manager = state_manager
-        self.intent_manager: IntentManager = intent_manager or IntentManager()
+        self.intent_manager: IntentManager
         self.event_broadcaster: Optional[EventBroadcaster] = event_broadcaster
         self.lessons_store: Optional[Any] = lessons_store
         self.node_manager: Optional[Any] = node_manager
@@ -126,6 +126,9 @@ class Orchestrator:
             )
 
         self.task_dispatcher: TaskDispatcher = task_dispatcher
+        self.intent_manager = intent_manager or IntentManager(
+            kernel=task_dispatcher.kernel
+        )
 
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
@@ -207,6 +210,7 @@ class Orchestrator:
         self.task_dispatcher = refresh_kernel(
             self.kernel_manager, self.flow_coordinator, runtime_info
         )
+        self.intent_manager.kernel = self.task_dispatcher.kernel
 
     def _refresh_kernel_if_needed(self) -> None:
         """Sprawdza drift konfiguracji i odświeża kernel przy zmianie (delegacja do KernelManager)."""
@@ -215,6 +219,7 @@ class Orchestrator:
         )
         if updated_dispatcher is not None:
             self.task_dispatcher = updated_dispatcher
+            self.intent_manager.kernel = updated_dispatcher.kernel
 
     @property
     def is_paused(self) -> bool:
@@ -328,6 +333,8 @@ class Orchestrator:
     NON_LEARNING_INTENTS = {
         "TIME_REQUEST",
         "INFRA_STATUS",
+        "MODULE_CONVERSATION",
+        "STATUS_REPORT",
     }
 
     NON_LLM_INTENTS = {

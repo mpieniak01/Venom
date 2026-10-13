@@ -51,6 +51,7 @@ tests/test_policy_gate_integration.py
 tests/test_preprod_ops_regression.py
 tests/test_preprod_readiness_check.py
 tests/test_providers_service.py
+tests/test_response_template_routing.py
 tests/test_runtime_controller_api.py
 tests/test_runtime_conversion_contracts.py
 tests/test_runtime_policy_regression_contracts.py

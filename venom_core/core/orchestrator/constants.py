@@ -10,6 +10,7 @@ from venom_core.core.flows.council import (
 )
 from venom_core.core.flows.council import COUNCIL_TASK_THRESHOLD as COUNCIL_THRESHOLD
 from venom_core.core.flows.council import ENABLE_COUNCIL_MODE as COUNCIL_ENABLE_FLAG
+from venom_core.services.execution_template_planner import RESPONSE_TEMPLATES
 
 # Ustawienia dla pętli meta-uczenia
 MAX_LESSONS_IN_CONTEXT = 3  # Maksymalna liczba lekcji dołączanych do promptu
@@ -30,7 +31,7 @@ SEMANTIC_CACHE_THRESHOLD = 0.85
 SEMANTIC_CACHE_COLLECTION_NAME = "hidden_prompts"
 
 # Fast-Path Configuration
-STATIC_INTENTS = {"HELP_REQUEST", "TIME_REQUEST", "INFRA_STATUS"}
+STATIC_INTENTS = set(RESPONSE_TEMPLATES)
 
 # Alias dla kompatybilności z testami i innymi modułami
 MAX_REPAIR_ATTEMPTS = CODE_REVIEW_MAX_REPAIR_ATTEMPTS

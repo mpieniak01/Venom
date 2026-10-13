@@ -405,9 +405,11 @@ async def test_initialize_shadow_stack_enabled_paths_and_callbacks():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("missing_component", ["Notifier", "ShadowAgent"])
-async def test_initialize_shadow_stack_rejects_empty_factory_before_start(
-    missing_component,
+@pytest.mark.parametrize(
+    "failure_stage", ["Notifier", "ShadowAgent", "ShadowAgent.start"]
+)
+async def test_initialize_shadow_stack_disables_on_constructor_or_start_error(
+    failure_stage,
 ):
     logger = _logger()
     settings = SimpleNamespace(
@@ -416,13 +418,20 @@ async def test_initialize_shadow_stack_rejects_empty_factory_before_start(
         ENABLE_DESKTOP_SENSOR=True,
         SHADOW_PRIVACY_FILTER=False,
     )
-    shadow = SimpleNamespace(start=AsyncMock())
+    failure = RuntimeError(f"{failure_stage} failed")
+    shadow = SimpleNamespace(
+        start=AsyncMock(
+            side_effect=failure if failure_stage == "ShadowAgent.start" else None
+        )
+    )
     notifier = SimpleNamespace(send_toast=AsyncMock())
     shadow_factory = Mock(
-        return_value=None if missing_component == "ShadowAgent" else shadow
+        return_value=shadow,
+        side_effect=failure if failure_stage == "ShadowAgent" else None,
     )
     notifier_factory = Mock(
-        return_value=None if missing_component == "Notifier" else notifier
+        return_value=notifier,
+        side_effect=failure if failure_stage == "Notifier" else None,
     )
     sensor_factory = Mock()
     modules = {}
@@ -451,57 +460,15 @@ async def test_initialize_shadow_stack_rejects_empty_factory_before_start(
         )
 
     assert result == (None, None, None)
-    shadow.start.assert_not_awaited()
+    if failure_stage == "ShadowAgent.start":
+        shadow.start.assert_awaited_once()
+    else:
+        shadow.start.assert_not_awaited()
     sensor_factory.assert_not_called()
-    if missing_component == "Notifier":
+    if failure_stage == "Notifier":
         shadow_factory.assert_not_called()
     logger.warning.assert_called_once()
-    assert (
-        f"{missing_component} initialization returned None"
-        in logger.warning.call_args.args[0]
-    )
-
-
-@pytest.mark.asyncio
-async def test_initialize_shadow_stack_returns_none_on_exception():
-    logger = _logger()
-    settings = SimpleNamespace(
-        ENABLE_PROACTIVE_MODE=True,
-        SHADOW_CONFIDENCE_THRESHOLD=0.1,
-        ENABLE_DESKTOP_SENSOR=False,
-        SHADOW_PRIVACY_FILTER=False,
-    )
-
-    shadow_module = ModuleType("venom_core.agents.shadow")
-    shadow_module.ShadowAgent = None  # will fail at ShadowAgent(...)
-    kernel_module = ModuleType("venom_core.execution.kernel_builder")
-    kernel_module.KernelBuilder = lambda: SimpleNamespace(build_kernel=lambda: object())
-    desktop_module = ModuleType("venom_core.perception.desktop_sensor")
-    desktop_module.DesktopSensor = object
-    notifier_module = ModuleType("venom_core.ui.notifier")
-    notifier_module.Notifier = lambda webhook_handler: SimpleNamespace(
-        webhook_handler=webhook_handler, send_toast=AsyncMock()
-    )
-
-    with patch.dict(
-        "sys.modules",
-        {
-            shadow_module.__name__: shadow_module,
-            kernel_module.__name__: kernel_module,
-            desktop_module.__name__: desktop_module,
-            notifier_module.__name__: notifier_module,
-        },
-    ):
-        result = await stack.initialize_shadow_stack(
-            settings=settings,
-            logger=logger,
-            orchestrator=SimpleNamespace(goal_store=None),
-            lessons_store=None,
-            event_broadcaster=SimpleNamespace(broadcast_event=AsyncMock()),
-            system_log_event_type="SYS",
-        )
-
-    assert result == (None, None, None)
+    assert f"{failure_stage} failed" in logger.warning.call_args.args[0]
 
 
 @pytest.mark.asyncio

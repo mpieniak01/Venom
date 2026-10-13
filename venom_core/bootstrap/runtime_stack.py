@@ -455,8 +455,6 @@ async def initialize_shadow_stack(
             )
 
         notifier = Notifier(webhook_handler=handle_shadow_action)
-        if notifier is None:
-            raise RuntimeError("Notifier initialization returned None")
         logger.info("Notifier zainicjalizowany")
 
         shadow_kernel = KernelBuilder().build_kernel()
@@ -467,8 +465,6 @@ async def initialize_shadow_stack(
             lessons_store=lessons_store,
             confidence_threshold=settings.SHADOW_CONFIDENCE_THRESHOLD,
         )
-        if shadow_agent is None:
-            raise RuntimeError("ShadowAgent initialization returned None")
         await shadow_agent.start()
         logger.info("ShadowAgent uruchomiony")
 

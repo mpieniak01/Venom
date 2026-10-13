@@ -112,7 +112,7 @@ function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number
     fetching: false,
   };
   pollingRegistry.set(key, entry);
-  triggerFetch(entry);
+  void triggerFetch(entry);
   return entry;
 }
 
@@ -259,7 +259,7 @@ function usePolling<T>(
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
         startEntryTimer(entry);
-        Promise.resolve().then(() => {
+        void Promise.resolve().then(() => {
           void triggerFetch(entry);
         });
       }

@@ -260,3 +260,46 @@ class TestWebSearchSkill:
         response = {"answer": "none", "results": []}
         result = web_skill._format_tavily_response("q", response, 5)
         assert "Nie znaleziono wyników" in result
+
+    @pytest.mark.parametrize("client_state", ["missing", "failed", "ready"])
+    def test_tavily_dependency_and_error_fallback(
+        self, web_skill, monkeypatch, client_state
+    ):
+        fallback = MagicMock(return_value="DDG fallback")
+        monkeypatch.setattr(web_skill, "_search_with_duckduckgo", fallback)
+        monkeypatch.setattr(web_skill, "_should_use_free_search", lambda: False)
+        client = MagicMock()
+        client.search.return_value = {
+            "results": [
+                {
+                    "title": "Tavily result",
+                    "url": "https://example.com",
+                    "content": "Found",
+                }
+            ]
+        }
+        if client_state == "failed":
+            client.search.side_effect = RuntimeError("provider unavailable")
+        web_skill.tavily_client = None if client_state == "missing" else client
+
+        if client_state == "missing":
+            assert web_skill._search_with_tavily("query", 5) is None
+        result = web_skill.search("query", 5)
+
+        if client_state == "ready":
+            assert "Tavily result" in result
+            assert "Tavily AI Search" in result
+            fallback.assert_not_called()
+        else:
+            assert result == "DDG fallback"
+            fallback.assert_called_once()
+            assert fallback.call_args.args[:2] == ("query", 5)
+        if client_state == "missing":
+            client.search.assert_not_called()
+        else:
+            client.search.assert_called_once_with(
+                query="query",
+                max_results=5,
+                include_answer=True,
+                include_raw_content=False,
+            )

@@ -210,9 +210,11 @@ class WebSearchSkill:
         return force_free and self.ai_mode in ("LOCAL", "ECO")
 
     def _search_with_tavily(self, query: str, max_results: int) -> str | None:
+        client = self.tavily_client
+        if client is None:
+            return None
         try:
-            assert self.tavily_client is not None
-            response = self.tavily_client.search(
+            response = client.search(
                 query=query,
                 max_results=max_results,
                 include_answer=True,

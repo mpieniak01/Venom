@@ -7,6 +7,7 @@ import io
 import json
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.helpers.academy_wiring import build_academy_app
@@ -639,13 +640,11 @@ def test_conversion_workspace_path_resolution_prefers_global_then_legacy(tmp_pat
         )
         assert resolved_legacy == legacy_file.resolve()
 
-        try:
+        with pytest.raises(academy_routes.AcademyRouteError) as exc_info:
             academy_routes._resolve_workspace_file_path(  # noqa: SLF001
                 workspace, file_id=source_id, category="invalid"
             )
-            assert False, "Expected HTTPException for invalid category"
-        except Exception as exc:
-            assert getattr(exc, "status_code", None) == 400
+        assert exc_info.value.status_code == 400
 
 
 def test_conversion_write_records_cleanup_on_write_error(tmp_path):

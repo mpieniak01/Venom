@@ -238,6 +238,7 @@ class CoreSkill:
         if not confirm:
             return "❌ Restart wymaga potwierdzenia (confirm=True). Operacja anulowana."
 
+        require_core_patch_permission()
         logger.warning("🔄 RESTART PROCESU VENOM...")
 
         try:

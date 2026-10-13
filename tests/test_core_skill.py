@@ -1,6 +1,7 @@
 """Testy jednostkowe dla CoreSkill."""
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -99,9 +100,63 @@ def test_list_backups_empty_and_filtered(
     assert "b.py.1.bak" not in result
 
 
-def test_restart_service_requires_confirmation(allowed_core_skill: CoreSkill) -> None:
+def test_restart_service_requires_confirmation(
+    allowed_core_skill: CoreSkill, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    execv = Mock()
+    permission = Mock()
+    monkeypatch.setattr(core_skill_module.os, "execv", execv)
+    monkeypatch.setattr(core_skill_module, "require_core_patch_permission", permission)
     result = allowed_core_skill.restart_service(confirm=False)
     assert "wymaga potwierdzenia" in result
+    execv.assert_not_called()
+    permission.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "launch_argv",
+    [
+        [
+            "/opt/venom/.venv/bin/uvicorn",
+            "venom_core.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8800",
+        ],
+        [
+            "/opt/venom/.venv/lib/python3.12/site-packages/uvicorn/__main__.py",
+            "venom_core.main:app",
+            "--reload",
+        ],
+        ["/opt/venom/scripts/start_backend.py", "--profile", "local"],
+    ],
+)
+def test_restart_preserves_process_launch_arguments(
+    allowed_core_skill: CoreSkill, monkeypatch: pytest.MonkeyPatch, launch_argv
+) -> None:
+    executable = "/opt/venom/.venv/bin/python"
+    expected_argv = list(launch_argv)
+    execv = Mock()
+    monkeypatch.setattr(core_skill_module.sys, "executable", executable)
+    monkeypatch.setattr(core_skill_module.sys, "argv", launch_argv)
+    monkeypatch.setattr(core_skill_module.os, "execv", execv)
+
+    result = allowed_core_skill.restart_service(confirm=True)
+
+    execv.assert_called_once_with(executable, [executable, *expected_argv])
+    assert core_skill_module.sys.argv == expected_argv
+    assert "Restarting" in result
+
+
+def test_restart_rejects_untrusted_command_arguments(
+    allowed_core_skill: CoreSkill, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    execv = Mock()
+    monkeypatch.setattr(core_skill_module.os, "execv", execv)
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        allowed_core_skill.restart_service(confirm=True, argv="untrusted-argument")
+    execv.assert_not_called()
 
 
 def test_restart_service_handles_execv_exception(
@@ -113,6 +168,7 @@ def test_restart_service_handles_execv_exception(
     monkeypatch.setattr(core_skill_module.os, "execv", _raise_execv)
     result = allowed_core_skill.restart_service(confirm=True)
     assert "Błąd podczas restartu" in result
+    assert "execv failed" in result
 
 
 def test_verify_syntax_success_and_wrong_extension(

@@ -1,7 +1,10 @@
 """Security regression tests for autonomy enforcement on mutating paths."""
 
+from unittest.mock import Mock
+
 import pytest
 
+import venom_core.execution.skills.core_skill as core_skill_module
 from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.core_skill import CoreSkill
 from venom_core.services.audit_stream import get_audit_stream
@@ -36,6 +39,51 @@ def test_core_rollback_blocked_when_not_root(tmp_path):
 
     with pytest.raises(PermissionError, match="AutonomyViolation"):
         skill.rollback(str(test_file))
+
+
+@pytest.mark.parametrize(
+    "mode,level,allowed,audit_action",
+    [
+        ("hard", 0, False, "autonomy.blocked"),
+        ("hard", 30, False, "autonomy.blocked"),
+        ("hard", 40, True, None),
+        ("soft", 0, True, "autonomy.degraded_allow"),
+    ],
+)
+def test_confirmed_core_restart_respects_existing_autonomy_policy(
+    monkeypatch, tmp_path, mode, level, allowed, audit_action
+):
+    monkeypatch.setenv("AUTONOMY_ENFORCEMENT_MODE", mode)
+    permission_guard.set_level(level)
+    execv = Mock()
+    monkeypatch.setattr(core_skill_module.os, "execv", execv)
+    monkeypatch.setattr(core_skill_module.sys, "executable", "/opt/venom/bin/python")
+    monkeypatch.setattr(
+        core_skill_module.sys, "argv", ["/opt/venom/bin/uvicorn", "venom_core.main:app"]
+    )
+    skill = CoreSkill(backup_dir=str(tmp_path / "backups"))
+
+    if allowed:
+        assert "Restarting" in skill.restart_service(confirm=True)
+        execv.assert_called_once_with(
+            "/opt/venom/bin/python",
+            ["/opt/venom/bin/python", "/opt/venom/bin/uvicorn", "venom_core.main:app"],
+        )
+    else:
+        with pytest.raises(PermissionError, match="AutonomyViolation"):
+            skill.restart_service(confirm=True)
+        execv.assert_not_called()
+
+    if audit_action:
+        entries = get_audit_stream().get_entries(action=audit_action, limit=5)
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry.details["operation"] == "core_patch"
+        assert entry.details["required_level"] == 40
+        assert entry.details["enforcement_mode"] == mode
+        assert entry.status == ("degraded" if allowed else "blocked")
+    else:
+        assert not get_audit_stream().get_entries(action="autonomy.blocked", limit=5)
 
 
 @pytest.mark.asyncio

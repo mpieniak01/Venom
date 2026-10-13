@@ -369,7 +369,7 @@ Pamiętaj:
                 "raw_response": llm_response,
             }
 
-    async def generate_status_report(self) -> str:
+    async def generate_status_report(self, *, include_analysis: bool = False) -> str:
         """
         Generuje raport statusu projektu.
 
@@ -380,6 +380,8 @@ Pamiętaj:
 
         # Pobierz dane z GoalStore
         roadmap_report = self.goal_store.generate_roadmap_report()
+        if not include_analysis:
+            return roadmap_report
 
         # Dodaj analizę Executive
         vision = self.goal_store.get_vision()

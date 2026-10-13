@@ -76,7 +76,7 @@ export function useGemma4Daemon(pollingIntervalMs = 10_000): Gemma4DaemonState {
       }
     };
 
-    tick();
+    void tick();
     return () => {
       mountedRef.current = false;
       if (timerRef.current) clearTimeout(timerRef.current);

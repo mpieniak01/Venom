@@ -405,6 +405,64 @@ async def test_initialize_shadow_stack_enabled_paths_and_callbacks():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("missing_component", ["Notifier", "ShadowAgent"])
+async def test_initialize_shadow_stack_rejects_empty_factory_before_start(
+    missing_component,
+):
+    logger = _logger()
+    settings = SimpleNamespace(
+        ENABLE_PROACTIVE_MODE=True,
+        SHADOW_CONFIDENCE_THRESHOLD=0.1,
+        ENABLE_DESKTOP_SENSOR=True,
+        SHADOW_PRIVACY_FILTER=False,
+    )
+    shadow = SimpleNamespace(start=AsyncMock())
+    notifier = SimpleNamespace(send_toast=AsyncMock())
+    shadow_factory = Mock(
+        return_value=None if missing_component == "ShadowAgent" else shadow
+    )
+    notifier_factory = Mock(
+        return_value=None if missing_component == "Notifier" else notifier
+    )
+    sensor_factory = Mock()
+    modules = {}
+    for module_name, attribute, factory in (
+        ("venom_core.agents.shadow", "ShadowAgent", shadow_factory),
+        ("venom_core.ui.notifier", "Notifier", notifier_factory),
+        ("venom_core.perception.desktop_sensor", "DesktopSensor", sensor_factory),
+        (
+            "venom_core.execution.kernel_builder",
+            "KernelBuilder",
+            lambda: SimpleNamespace(build_kernel=lambda: object()),
+        ),
+    ):
+        module = ModuleType(module_name)
+        setattr(module, attribute, factory)
+        modules[module_name] = module
+
+    with patch.dict("sys.modules", modules):
+        result = await stack.initialize_shadow_stack(
+            settings=settings,
+            logger=logger,
+            orchestrator=SimpleNamespace(goal_store=None),
+            lessons_store=None,
+            event_broadcaster=SimpleNamespace(broadcast_event=AsyncMock()),
+            system_log_event_type="SYS",
+        )
+
+    assert result == (None, None, None)
+    shadow.start.assert_not_awaited()
+    sensor_factory.assert_not_called()
+    if missing_component == "Notifier":
+        shadow_factory.assert_not_called()
+    logger.warning.assert_called_once()
+    assert (
+        f"{missing_component} initialization returned None"
+        in logger.warning.call_args.args[0]
+    )
+
+
+@pytest.mark.asyncio
 async def test_initialize_shadow_stack_returns_none_on_exception():
     logger = _logger()
     settings = SimpleNamespace(

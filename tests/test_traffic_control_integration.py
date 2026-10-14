@@ -212,3 +212,57 @@ class TestTrafficControlMiddleware:
             # Memory has higher limit (10), should still work
             response = client.get("/api/v1/memory/recall")
             assert response.status_code == 200
+
+
+def test_rider_polling_cannot_exhaust_control_and_stop_still_reaches_auth():
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
+
+    config = TrafficControlConfig()
+    config.global_inbound.rate_limit.capacity = 1
+    config.global_inbound.rate_limit.refill_rate = 0.00001
+    controller = TrafficController(config)
+    with patch(
+        "venom_core.api.middleware.traffic_control.get_traffic_controller",
+        return_value=controller,
+    ):
+        app = FastAPI()
+        app.add_middleware(TrafficControlMiddleware)
+
+        @app.get("/api/v1/rider/status")
+        async def status():
+            return {"ok": True}
+
+        @app.post("/api/v1/rider/control")
+        async def control(request: Request):
+            body = await request.json()
+            if request.headers.get("X-Rider-Session") != "authorized":
+                return JSONResponse({"error": "stale_device_session"}, status_code=403)
+            return {"action": body["action"]}
+
+        with TestClient(app) as client:
+            assert client.get("/api/v1/rider/status").status_code == 200
+            assert client.get("/api/v1/rider/status").status_code == 429
+            headers = {"X-Rider-Session": "authorized"}
+            assert (
+                client.post(
+                    "/api/v1/rider/control", json={"action": "arm"}, headers=headers
+                ).status_code
+                == 200
+            )
+            assert (
+                client.post(
+                    "/api/v1/rider/control", json={"action": "arm"}, headers=headers
+                ).status_code
+                == 429
+            )
+            assert client.post(
+                "/api/v1/rider/control", json={"action": "stop"}, headers=headers
+            ).json() == {"action": "stop"}
+            assert (
+                client.post(
+                    "/api/v1/rider/control", json={"action": "disarm"}
+                ).status_code
+                == 403
+            )

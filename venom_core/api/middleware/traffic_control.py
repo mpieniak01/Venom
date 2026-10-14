@@ -18,6 +18,12 @@ logger = get_logger(__name__)
 
 # Mapowanie ścieżek na grupy endpointów
 ENDPOINT_GROUP_MAPPING = {
+    "/api/v1/rider/compute": "rider_compute",
+    "/api/v1/rider/camera": "rider_media",
+    "/api/v1/rider/status": "rider_status",
+    "/api/v1/rider/navigation": "rider_status",
+    "/api/v1/rider/control": "rider_control",
+    "/api/v1/rider/": "rider_operator",
     "/api/v1/models/introspection": "models_introspection",
     "/api/v1/chat": "chat",
     "/api/v1/memory": "memory",
@@ -76,6 +82,24 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
         # Skip traffic control dla endpointów statusowych i health checks
         if request.url.path in ["/health", "/api/v1/status", "/docs", "/openapi.json"]:
             return await call_next(request)
+
+        # Stop still passes router authentication and its hardware contract.
+        # Telemetry saturation must never prevent an operator from stopping.
+        if (
+            request.method == "POST"
+            and request.url.path == "/api/v1/rider/control"
+            and request.headers.get("content-length", "").isdigit()
+            and int(request.headers["content-length"]) <= 65536
+        ):
+            try:
+                payload = await request.json()
+            except (ValueError, UnicodeDecodeError):
+                payload = None
+            if isinstance(payload, dict) and payload.get("action") in {
+                "stop",
+                "disarm",
+            }:
+                return await call_next(request)
 
         # Określ grupę endpointów
         endpoint_group = _get_endpoint_group(request.url.path)

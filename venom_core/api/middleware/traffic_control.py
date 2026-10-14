@@ -95,10 +95,11 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
                 payload = await request.json()
             except (ValueError, UnicodeDecodeError):
                 payload = None
-            if isinstance(payload, dict) and payload.get("action") in {
-                "stop",
-                "disarm",
-            }:
+            if (
+                isinstance(payload, dict)
+                and isinstance(payload.get("action"), str)
+                and payload["action"] in {"stop", "disarm"}
+            ):
                 return await call_next(request)
 
         # Określ grupę endpointów

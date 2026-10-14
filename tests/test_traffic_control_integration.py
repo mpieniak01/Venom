@@ -266,3 +266,15 @@ def test_rider_polling_cannot_exhaust_control_and_stop_still_reaches_auth():
                 ).status_code
                 == 403
             )
+            assert (
+                client.post(
+                    "/api/v1/rider/control", content=b"{", headers=headers
+                ).status_code
+                == 429
+            )
+            assert (
+                client.post(
+                    "/api/v1/rider/control", json={"action": []}, headers=headers
+                ).status_code
+                == 429
+            )

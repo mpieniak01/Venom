@@ -14,6 +14,7 @@ from pydantic import SecretStr
 
 from venom_core.infrastructure.providers.vast.models import (
     INSTANCE_FIELDS,
+    amount,
     offer_snapshot,
     project,
 )
@@ -124,13 +125,18 @@ class VastClient:
         data = self._request("GET", "/api/v0/ssh/")
         if not isinstance(data, list):
             raise VastError("vast.invalid_response")
-        return [
-            ssh_fingerprint(
-                self._object(row).get("public_key") or self._object(row).get("key", "")
-            )
-            for row in data
-            if not self._object(row).get("deleted_at")
-        ]
+        fingerprints = []
+        for row in data:
+            if not isinstance(row, dict) or row.get("deleted_at"):
+                continue
+            key = row.get("public_key") or row.get("key")
+            if not isinstance(key, str):
+                continue
+            try:
+                fingerprints.append(ssh_fingerprint(key))
+            except VastError:
+                continue
+        return fingerprints
 
     def templates(
         self, template_hash: str | None = None, recommended: bool = False
@@ -185,15 +191,19 @@ class VastClient:
         rows = data if isinstance(data, list) else self._object(data).get("benchmarks")
         if not isinstance(rows, list):
             raise VastError("vast.invalid_response")
+        selected = [
+            project(self._object(row), fields)
+            for row in rows
+            if self._object(row).get("machine_id") == machine_id
+        ]
         return {
             "source": "provider_history",
             "score_unit": "unknown",
-            "results": [
-                project(self._object(row), fields)
-                for row in rows
-                if self._object(row).get("machine_id") == machine_id
-            ],
-            "status": "available" if rows else "not_available",
+            "results": selected,
+            "status": "available" if selected else "not_available",
+            "score_status": "available"
+            if any(amount(row.get("score")) is not None for row in selected)
+            else "not_available",
         }
 
     def offers(self, disk_gb: int, filters: dict[str, Any] | None = None) -> list[dict]:

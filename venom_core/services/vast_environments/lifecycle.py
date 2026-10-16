@@ -174,10 +174,9 @@ class Environments:
                     return self._event(record, "outcome_unknown")
                 match = matches[0]
                 for key in ("host_id", "machine_id"):
-                    if (
-                        match.get(key) is not None
-                        and match[key] != plan.assessment.offer[key]
-                    ):
+                    if match.get(key) is None:
+                        return self._event(record, "outcome_unknown")
+                    if match[key] != plan.assessment.offer[key]:
                         raise VastError("vast.recovery_mismatch")
                 record.instance_id = match["id"]
             try:

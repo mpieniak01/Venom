@@ -393,3 +393,32 @@ def test_performance_fields(profile, offer):
     assert provider_order("performance")[0] == ["dlperf", "desc"]
     assert provider_order("value")[0] == ["dlperf_per_dphtotal", "desc"]
     assert rank([assess(offer, profile), out], cfg)[0].host.dlperf is not None
+
+
+def test_history_never_reports_other_machine_as_available():
+    api, _ = client([(200, [{"machine_id": 2, "score": 50}])])
+    assert api.benchmarks(1)["status"] == "not_available"
+    api, _ = client([(200, [{"machine_id": 1}])])
+    assert api.benchmarks(1)["score_status"] == "not_available"
+
+
+def test_ssh_list_skips_only_invalid_rows():
+    public = "ssh-ed25519 YWJjZA== fixture"
+    api, _ = client(
+        [
+            (
+                200,
+                [
+                    {"public_key": public},
+                    {},
+                    {"public_key": 1},
+                    {"key": "invalid"},
+                    {"key": public, "deleted_at": "yesterday"},
+                    "invalid",
+                ],
+            )
+        ]
+    )
+    from venom_core.infrastructure.providers.vast.client import ssh_fingerprint
+
+    assert api.ssh_fingerprints() == [ssh_fingerprint(public)]

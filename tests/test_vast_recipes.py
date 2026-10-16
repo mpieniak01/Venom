@@ -363,3 +363,42 @@ def test_registry_error_contracts():
     ) as client:
         with pytest.raises(VastError, match="registry_failed"):
             resolve_image("org/model:tag", "arm64", client)
+
+
+def test_template_fingerprint_ignores_popularity():
+    from venom_core.infrastructure.providers.vast.templates import template_snapshot
+
+    base = {
+        "hash_id": "abc",
+        "name": "name",
+        "image": "org/image",
+        "tag": "v1",
+        "env": "-e FLAG=1",
+        "count_created": 10,
+    }
+    first = template_snapshot(base)
+    assert (
+        first["configuration_sha256"]
+        == template_snapshot({**base, "count_created": 11, "name": "new name"})[
+            "configuration_sha256"
+        ]
+    )
+    assert (
+        first["configuration_sha256"]
+        != template_snapshot({**base, "env": "-e FLAG=2"})["configuration_sha256"]
+    )
+
+
+@pytest.mark.parametrize(
+    "image,expected",
+    [
+        ("docker.io/org/image:tag", "org/image"),
+        ("org/image@sha256:" + HASH, "org/image"),
+        ("registry.example:5000/team/image:tag", "registry.example:5000/team/image"),
+        ("registry.example:5000/team/image", "registry.example:5000/team/image"),
+    ],
+)
+def test_template_repository_preserves_registry_port(image, expected):
+    from venom_core.services.vast_environments.recipes import repository
+
+    assert repository(image) == expected

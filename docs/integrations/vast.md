@@ -168,7 +168,9 @@ Amounts use Decimal and separate:
 
 Invoices describe payments, not resource charges. Account credit and balance
 are distinct fields. Credit changes cannot attribute one experiment's costs.
-If Vast reports that host accounts cannot retrieve instance charges, or denies\nbilling access, the report is unavailable while quote/estimate remain available.\nThis is not a zero bill. Missing charges are pending. Present charges are provisional: provider
+If Vast reports that host accounts cannot retrieve instance charges, or denies
+billing access, the report is unavailable while quote/estimate remain available.
+This is not a zero bill. Missing charges are pending. Present charges are provisional: provider
 finalization timing is unknown.
 
 Stop retains billable storage. Destroy requires a saved export and a subsequent
@@ -205,7 +207,10 @@ Local reports may include private host coordinates; sanitize before publication.
 - [Charges](https://docs.vast.ai/api-reference/billing/show-charges)
 - [Volume inventory](https://docs.vast.ai/api-reference/volumes/list-volumes)
 - [Billing](https://docs.vast.ai/guides/reference/billing)
-\n- [Official CLI network labels](https://github.com/vast-ai/vast-cli/blob/master/vast.py)\n- [Provider verification](https://docs.vast.ai/host/verification-stages)\n
+
+- [Official CLI network labels](https://github.com/vast-ai/vast-cli/blob/master/vast.py)
+- [Provider verification](https://docs.vast.ai/host/verification-stages)
+
 
 
 ## Runtime recipes and installation templates

@@ -208,3 +208,111 @@ def test_monitor_timeout_and_destroyed(service):
         )
     svc.reconcile = Mock(return_value=Mock(state="destroyed"))
     assert monitor(svc, plan.plan_id)["state"] == "destroyed"
+
+
+def test_billing_window_does_not_include_previous_day(service):
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from venom_core.infrastructure.providers.vast.models import now
+    from venom_core.services.vast_environments.billing import costs
+
+    svc, plan, _ = service
+    rec = svc.create(plan.plan_id)
+    fixed = now()
+    rec.submitted_at = fixed - timedelta(days=1)
+    svc.client.charges.return_value = []
+    with patch("venom_core.services.vast_environments.billing.now", return_value=fixed):
+        result = costs(svc.client, plan, rec, fixed - timedelta(hours=1), fixed)
+    assert Decimal(result["estimate"]["usd"]) == Decimal("0.4")
+
+
+def test_recovery_needs_both_host_identifiers(service):
+    svc, plan, _ = service
+    rec = svc.journal.record(plan.plan_id)
+    svc._event(rec, "submitting")
+    svc.client.instances.return_value = [{"id": 88, "label": "venom-" + plan.plan_id}]
+    assert svc.reconcile(plan.plan_id).state == "outcome_unknown"
+    assert svc.journal.record(plan.plan_id).instance_id is None
+    svc.client.instances.return_value[0].update(host_id=3, machine_id=4)
+    assert svc.reconcile(plan.plan_id).instance_id == 88
+    svc.client.create.assert_not_called()
+
+
+def test_monitor_preserves_finish_policy_on_transient_read(service):
+    from datetime import timedelta
+
+    from venom_core.infrastructure.providers.vast.models import now
+
+    svc, plan, _ = service
+    rec = svc.create(plan.plan_id)
+    plan.finish_policy = "stop"
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    rec.submitted_at = now() - timedelta(hours=1)
+    svc.journal.save_record(rec)
+    svc.reconcile = Mock(side_effect=VastError("vast.transport_error"))
+    assert monitor(svc, plan.plan_id)["state"] == "stop_requested"
+    svc.client.set_state.assert_called_once_with(88, "stopped")
+    svc.reconcile = Mock(side_effect=VastError("vast.http_error", 403))
+    with pytest.raises(VastError):
+        monitor(svc, plan.plan_id)
+
+
+def test_streaming_tools_before_final_chunk(service):
+    from venom_core.services.vast_environments.evaluation import OllamaProbe
+
+    _, plan, _ = service
+    cfg = plan.profile.model_copy(
+        update={"model": "fixture", "model_digest": "fixture"}
+    )
+    rows = [
+        {
+            "done": False,
+            "message": {
+                "tool_calls": [{"function": {"name": "read_benchmark_sensor"}}]
+            },
+        },
+        {"done": True, "message": {}},
+    ]
+    with httpx.Client(
+        base_url="http://127.0.0.1",
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200, content="\n".join(json.dumps(row) for row in rows) + "\n"
+            )
+        ),
+    ) as client:
+        assert OllamaProbe(client, cfg).sample("tools", {})["correct"] is True
+
+
+def test_cli_profile_validation_and_late_cost_window(service, tmp_path):
+    from datetime import timedelta
+
+    from venom_core.infrastructure.providers.vast.models import now
+    from venom_core.services.vast_environments.cli import dispatch, parser, ssh_profile
+
+    svc, plan, _ = service
+    config = tmp_path / "ssh.json"
+    for content in ["not json", "[]", "{}", '{"identity_file":"", "known_hosts":1}']:
+        config.write_text(content)
+        with pytest.raises(VastError, match="invalid_ssh_profile"):
+            ssh_profile(config)
+    config.write_text('{"identity_file":"id","known_hosts":"hosts"}')
+    assert ssh_profile(config)["identity_file"] == "id"
+    with pytest.raises(SystemExit):
+        parser().parse_args(
+            ["costs", "--plan", plan.plan_id, "--from-utc", "2026-10-16T12:00:00"]
+        )
+    args = parser().parse_args(["costs", "--plan", plan.plan_id])
+    assert args.from_utc is None and args.to_utc is None
+    fixed = now()
+    with (
+        patch("venom_core.services.vast_environments.cli.now", return_value=fixed),
+        patch(
+            "venom_core.services.vast_environments.cli.costs",
+            return_value={"status": "fixture"},
+        ) as called,
+    ):
+        assert dispatch(args, svc)["status"] == "fixture"
+    assert called.call_args.args[-2:] == (fixed - timedelta(days=7), fixed)

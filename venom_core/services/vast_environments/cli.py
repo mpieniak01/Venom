@@ -27,6 +27,29 @@ from venom_core.services.vast_environments.store import Journal
 DEFAULT_STATE = ".venom_runtime/vast"
 
 
+def utc_argument(value: str) -> datetime:
+    try:
+        result = datetime.fromisoformat(value)
+        if result.tzinfo is None:
+            raise ValueError
+        return result
+    except ValueError:
+        raise argparse.ArgumentTypeError("vast.utc_offset_required") from None
+
+
+def ssh_profile(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, ValueError):
+        raise VastError("vast.invalid_ssh_profile") from None
+    if not isinstance(value, dict) or any(
+        not isinstance(value.get(key), str) or not value[key].strip()
+        for key in ("identity_file", "known_hosts")
+    ):
+        raise VastError("vast.invalid_ssh_profile")
+    return value
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Vast.ai environment operations")
     root.add_argument("--env-file", type=Path)
@@ -122,10 +145,10 @@ def parser() -> argparse.ArgumentParser:
         if command == "costs":
             item.add_argument(
                 "--from-utc",
-                type=datetime.fromisoformat,
-                default=now() - timedelta(days=7),
+                type=utc_argument,
+                default=None,
             )
-            item.add_argument("--to-utc", type=datetime.fromisoformat, default=now())
+            item.add_argument("--to-utc", type=utc_argument, default=None)
     item = sub.add_parser("compare")
     item.add_argument("reports", type=Path, nargs="+")
     return root
@@ -208,7 +231,7 @@ def dispatch(args, service: Environments):
             if len(selected) != 1:
                 raise VastError("vast.offer_expired")
             return assess(selected[0], profile).model_dump(mode="json")
-        ssh = json.loads(args.ssh_profile.read_text())
+        ssh = ssh_profile(args.ssh_profile)
         return service.plan(
             profile,
             args.offer,
@@ -240,7 +263,9 @@ def dispatch(args, service: Environments):
         plan = service.journal.plan(args.plan)
         with service.journal.lock(args.plan):
             record = service.journal.record(args.plan)
-            result = costs(service.client, plan, record, args.from_utc, args.to_utc)
+            end = args.to_utc or now()
+            start = args.from_utc or end - timedelta(days=7)
+            result = costs(service.client, plan, record, start, end)
             record.reports["costs"] = result
             service.journal.save_record(record)
         return result

@@ -93,6 +93,7 @@ class OllamaProbe:
         first = None
         text = ""
         last = {}
+        tool_calls: list[dict] = []
         row: dict[str, Any] = {
             "case": name,
             "request_sha256": digest(body),
@@ -115,6 +116,7 @@ class OllamaProbe:
                     if message.get("content") and first is None:
                         first = time.monotonic() - started
                     text += message.get("content") or ""
+                    tool_calls.extend(message.get("tool_calls") or [])
                     if item.get("done"):
                         last = item
                         break
@@ -151,10 +153,9 @@ class OllamaProbe:
             if name == "image":
                 row["correct"] = "green" in text.lower() and "yellow" in text.lower()
             if name == "tools":
-                calls = (last.get("message") or {}).get("tool_calls") or []
                 row["correct"] = any(
                     x.get("function", {}).get("name") == "read_benchmark_sensor"
-                    for x in calls
+                    for x in tool_calls
                 )
         except (httpx.HTTPError, ValueError, TypeError, VastError):
             row.update(

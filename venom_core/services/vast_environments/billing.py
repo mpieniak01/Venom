@@ -39,7 +39,7 @@ def costs(
     values = [amount(row.get("amount")) for row in attributed]
     known = [value for value in values if value is not None]
     total = sum(known, Decimal(0)) if known else None
-    reference = record.submitted_at or record.observed_at
+    reference = max(start, record.submitted_at or record.observed_at)
     # Quote-based exposure estimate: not a usage meter; stopped storage is separate.
     seconds = max(
         Decimal(0), Decimal(str((min(end, now()) - reference).total_seconds()))
@@ -63,7 +63,7 @@ def costs(
         "estimate": {
             "usd": str(estimate) if estimate is not None else None,
             "kind": "quote_based_exposure_not_metered",
-            "assumption": "Continuous quoted rate from submission; transfer budget included; stopped storage still billed.",
+            "assumption": "Continuous quoted rate within requested window from submission; transfer budget included; stopped storage still billed.",
         },
         "provider_reported": {
             "usd": str(total) if total is not None else None,

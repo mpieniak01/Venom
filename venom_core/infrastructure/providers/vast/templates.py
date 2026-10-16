@@ -16,6 +16,19 @@ TEMPLATE_FIELDS = (
     "runtype",
     "count_created",
 )
+# Only effective configuration affects the fingerprint. Popularity/name changes
+# must not invalidate a reviewed plan.
+CONFIGURATION_FIELDS = (
+    "image",
+    "tag",
+    "recommended_disk_space",
+    "use_ssh",
+    "runtype",
+    "env",
+    "onstart",
+    "args_str",
+    "extra_filters",
+)
 # Read dangerous configuration only to fingerprint it, never return its contents.
 TEMPLATE_COLUMNS = (*TEMPLATE_FIELDS, "env", "onstart", "args_str", "extra_filters")
 
@@ -26,7 +39,9 @@ def template_snapshot(row: dict[str, Any]) -> dict:
         has_environment=bool(row.get("env")),
         has_startup=bool(row.get("onstart")),
         has_arguments=bool(row.get("args_str")),
-        configuration_sha256=digest({key: row.get(key) for key in TEMPLATE_COLUMNS}),
+        configuration_sha256=digest(
+            {key: row.get(key) for key in CONFIGURATION_FIELDS}
+        ),
         constraints_policy="replaced_by_workload_profile",
     )
     return result

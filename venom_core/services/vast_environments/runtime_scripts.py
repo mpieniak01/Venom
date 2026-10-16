@@ -40,7 +40,7 @@ def pytorch_script(profile: WorkloadProfile) -> str:
         imports += ["PIL", "ultralytics"]
     if "audio" in profile.worker_tasks:
         imports += ["faster_whisper"]
-    setup = ""
+    setup = "python3 -c 'import torch; assert torch.cuda.is_available()'\n"
     interpreter = "python3"
     if profile.worker_packages:
         interpreter = "/workspace/venom-vast/worker-venv/bin/python"
@@ -50,7 +50,7 @@ def pytorch_script(profile: WorkloadProfile) -> str:
             + "installed={d.metadata['Name'].lower():d.version for d in m.distributions()}; "
             + "print('\\n'.join(n+'=='+installed[n] for n in names if n in installed))"
         )
-        setup = (
+        setup += (
             "python3 -m venv --system-site-packages /workspace/venom-vast/worker-venv\n"
             + "python3 -c "
             + shlex.quote(constraints)

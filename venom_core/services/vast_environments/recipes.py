@@ -60,7 +60,9 @@ def selected_template(client: VastClient, template_hash: str) -> dict:
 
 
 def repository(image: str) -> str:
-    return image.split("@", 1)[0].split(":", 1)[0].removeprefix("docker.io/")
+    name = image.split("@", 1)[0].removeprefix("docker.io/")
+    separator = name.rfind(":")
+    return name[:separator] if separator > name.rfind("/") else name
 
 
 def verify_template(client: VastClient, profile: WorkloadProfile) -> None:

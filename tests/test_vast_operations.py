@@ -107,7 +107,9 @@ def test_reconcile_unknown_never_rerents(service):
     rec = svc.journal.record(plan.plan_id)
     svc._event(rec, "submitting")
     assert svc.reconcile(plan.plan_id).state == "outcome_unknown"
-    svc.client.instances.return_value = [{"id": 88, "label": "venom-" + plan.plan_id}]
+    svc.client.instances.return_value = [
+        {"id": 88, "label": "venom-" + plan.plan_id, "host_id": 3, "machine_id": 4}
+    ]
     assert svc.reconcile(plan.plan_id).instance_id == 88
     svc.client.create.assert_not_called()
 

@@ -113,7 +113,19 @@ def monitor(
         raise VastError("vast.manual_cleanup_required")
     deadline = time.monotonic() + max_seconds
     while True:
-        record = service.reconcile(plan_id)
+        try:
+            record = service.reconcile(plan_id)
+        except VastError as error:
+            transient = error.code in {
+                "vast.transport_error",
+                "vast.retry_exhausted",
+            } or (
+                error.status is not None
+                and (error.status in {408, 429} or error.status >= 500)
+            )
+            if not transient:
+                raise
+            record = service.journal.record(plan_id)
         if record.state == "destroyed":
             return {"state": "destroyed"}
         if record.submitted_at:

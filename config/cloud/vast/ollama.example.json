@@ -8,5 +8,12 @@
   "download_gb": "0",
   "upload_gb": "0",
   "model": "REPLACE_WITH_MODEL_NAME",
-  "model_digest": "REPLACE_WITH_VERIFIED_MODEL_DIGEST"
+  "model_digest": "REPLACE_WITH_VERIFIED_MODEL_DIGEST",
+  "preferred_countries": [
+    "PL"
+  ],
+  "sort_by": "balanced",
+  "min_reliability": 0.99,
+  "min_download_mbps": 500,
+  "min_upload_mbps": 200
 }

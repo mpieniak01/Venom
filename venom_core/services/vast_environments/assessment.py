@@ -12,6 +12,12 @@ from venom_core.infrastructure.providers.vast.models import (
     amount,
     offer_snapshot,
 )
+from venom_core.services.vast_environments.selection import (
+    country_code,
+    host_signals,
+    provider_order,
+    reliability,
+)
 
 
 def quote(offer: dict, profile: WorkloadProfile) -> CostQuote:
@@ -75,14 +81,13 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
         "disk_space": profile.disk_gb,
         "duration": profile.duration_minutes * 60,
         "disk_bw": profile.min_disk_mb_s,
-        "inet_down": profile.min_download_mb_s,
+        "inet_down": profile.min_download_mbps,
+        "inet_up": profile.min_upload_mbps,
         "direct_port_count": 1,
         "gpu_frac": profile.min_gpu_fraction,
     }
     for key, minimum in requirements.items():
-        raw = offer.get(key)
-        if key == "reliability" and raw is None:
-            raw = offer.get("reliability2")
+        raw = reliability(offer) if key == "reliability" else offer.get(key)
         value = amount(raw)
         if value is None:
             if minimum:
@@ -92,9 +97,8 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
     if profile.gpu_names and offer.get("gpu_name") not in profile.gpu_names:
         reasons.append("gpu_name")
     if profile.countries:
-        location = str(offer.get("geolocation") or "")
-        country = location.rsplit(",", 1)[-1].strip()
-        if len(country) != 2:
+        country = country_code(offer)
+        if country is None:
             unknown.append("country")
         elif country not in profile.countries:
             reasons.append("country")
@@ -109,6 +113,7 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
         reasons=reasons,
         unknown=unknown,
         quote=cost,
+        host=host_signals(offer, profile),
     )
 
 
@@ -117,7 +122,13 @@ def search_filters(profile: WorkloadProfile) -> dict[str, Any]:
         "cpu_arch": {"eq": profile.cpu_arch},
         "verified": {"eq": True},
         "num_gpus": {"eq": 1},
+        "order": provider_order(profile.sort_by),
+        "reliability": {"gte": profile.min_reliability},
     }
+    if profile.min_download_mbps:
+        result["inet_down"] = {"gte": profile.min_download_mbps}
+    if profile.min_upload_mbps:
+        result["inet_up"] = {"gte": profile.min_upload_mbps}
     if profile.countries:
         result["geolocation"] = {"in": profile.countries}
     if profile.gpu_names:

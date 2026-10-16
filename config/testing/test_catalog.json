@@ -6386,6 +6386,20 @@
       "rationale": "Vast provider HTTP, pricing and offer contracts without paid resources."
     },
     {
+      "path": "tests/test_vast_selection.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast country preferences, price/network/reliability ranking and server-side search filters."
+    },
+    {
       "path": "tests/test_venom_core_init_compat.py",
       "domain": "misc",
       "test_type": "unit",

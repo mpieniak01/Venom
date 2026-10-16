@@ -36,6 +36,16 @@ def parser() -> argparse.ArgumentParser:
     for command in ("offers", "assess", "plan"):
         item = sub.add_parser(command)
         item.add_argument("--profile", type=Path, required=True)
+        item.add_argument(
+            "--sort", choices=["balanced", "price", "network", "reliability"]
+        )
+        item.add_argument("--country", action="append")
+        preferences = item.add_mutually_exclusive_group()
+        preferences.add_argument("--prefer-country", action="append")
+        preferences.add_argument("--no-country-preference", action="store_true")
+        item.add_argument("--min-download-mbps", type=float)
+        item.add_argument("--min-upload-mbps", type=float)
+        item.add_argument("--min-reliability", type=float)
         if command != "offers":
             item.add_argument("--offer", type=int, required=True)
         if command == "plan":
@@ -86,6 +96,25 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+def workload_profile(args) -> WorkloadProfile:
+    profile = WorkloadProfile.model_validate_json(args.profile.read_text())
+    overrides = {
+        field: getattr(args, argument)
+        for field, argument in (
+            ("sort_by", "sort"),
+            ("countries", "country"),
+            ("preferred_countries", "prefer_country"),
+            ("min_download_mbps", "min_download_mbps"),
+            ("min_upload_mbps", "min_upload_mbps"),
+            ("min_reliability", "min_reliability"),
+        )
+        if getattr(args, argument, None) is not None
+    }
+    if args.no_country_preference:
+        overrides["preferred_countries"] = []
+    return WorkloadProfile.model_validate({**profile.model_dump(), **overrides})
+
+
 def dispatch(args, service: Environments):
     command = args.command
     if command == "account":
@@ -95,7 +124,7 @@ def dispatch(args, service: Environments):
     if command == "volumes":
         return service.client.volumes()
     if command in {"offers", "assess", "plan"}:
-        profile = WorkloadProfile.model_validate_json(args.profile.read_text())
+        profile = workload_profile(args)
         if command == "offers":
             return [row.model_dump(mode="json") for row in service.search(profile)]
         if command == "assess":

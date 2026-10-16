@@ -16,11 +16,13 @@ from venom_core.infrastructure.providers.vast.client import (
 from venom_core.infrastructure.providers.vast.models import (
     EnvironmentPlan,
     EnvironmentRecord,
+    OfferAssessment,
     WorkloadProfile,
     digest,
     now,
 )
 from venom_core.services.vast_environments.assessment import assess, search_filters
+from venom_core.services.vast_environments.selection import preferred_queries, rank
 from venom_core.services.vast_environments.startup import startup
 from venom_core.services.vast_environments.store import Journal
 
@@ -30,20 +32,19 @@ class Environments:
         self.client = client
         self.journal = journal
 
-    def search(self, profile: WorkloadProfile):
-        results = [
-            assess(row, profile)
-            for row in self.client.offers(profile.disk_gb, search_filters(profile))
-        ]
-        return sorted(
-            results,
-            key=lambda row: (
-                row.status != "eligible",
-                row.quote.hourly_usd
-                if row.quote.hourly_usd is not None
-                else Decimal("Infinity"),
-            ),
-        )
+    def search(self, profile: WorkloadProfile) -> list[OfferAssessment]:
+        filters = search_filters(profile)
+        offers = list(self.client.offers(profile.disk_gb, filters))
+        for query in preferred_queries(profile, filters):
+            offers.extend(self.client.offers(profile.disk_gb, query))
+        merged: dict[int | str, dict] = {}
+        for row in offers:
+            value = row.get("id")
+            key = (
+                value if type(value) is int and value > 0 else f"unknown-{len(merged)}"
+            )
+            merged[key] = row
+        return rank([assess(row, profile) for row in merged.values()], profile)
 
     def plan(
         self,
@@ -85,7 +86,7 @@ class Environments:
 
     def _offer(self, profile: WorkloadProfile, offer_id: int) -> dict:
         filters = {**search_filters(profile), "id": {"eq": offer_id}}
-        offers = self.client.offers(profile.disk_gb, filters)
+        offers = list(self.client.offers(profile.disk_gb, filters))
         matching = [x for x in offers if x.get("id") == offer_id]
         if len(matching) != 1:
             raise VastError("vast.offer_expired")

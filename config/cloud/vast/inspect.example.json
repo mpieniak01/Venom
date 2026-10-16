@@ -6,5 +6,12 @@
   "disk_gb": 150,
   "duration_minutes": 30,
   "download_gb": "0",
-  "upload_gb": "0"
+  "upload_gb": "0",
+  "preferred_countries": [
+    "PL"
+  ],
+  "sort_by": "balanced",
+  "min_reliability": 0.99,
+  "min_download_mbps": 500,
+  "min_upload_mbps": 200
 }

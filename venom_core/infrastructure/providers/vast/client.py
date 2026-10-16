@@ -143,7 +143,7 @@ class VastClient:
                 "rented": {"eq": False},
                 "allocated_storage": disk_gb,
                 "limit": 100,
-                "order": [["dph_total", "asc"]],
+                "order": (filters or {}).get("order", [["dph_total", "asc"]]),
             },
         )
         rows = self._object(data).get("offers")

@@ -47,6 +47,52 @@ A positive download budget explicitly permits ollama pull at startup/provision;
 zero forbids downloads. Free space is checked first. Transfer budgets are estimates,
 not enforced traffic caps. Gated/private models are outside this bootstrap profile.
 
+## Host location, link and ranking
+
+Poland is preferred by default (preferred_countries: ["PL"]), with other countries
+as fallback. This is a preference, not a hard restriction. countries: ["PL"] or
+--country PL restricts the search to Poland. Country codes are normalized.
+Preferred countries are queried separately so that a global top 100 does not hide
+Polish offers. Queries remain bounded: one global plus at most eight country
+queries; rankings describe those candidates, not an exhaustive marketplace scan.
+
+All sort modes put eligible offers first, then preferred countries in their
+configured order. Within each group:
+
+- balanced: reliability descending, weakest link direction descending, total cost ascending;
+- price: quoted experiment total ascending, reliability, then link;
+- network: min(download, upload) descending, reliability, then cost;
+- reliability: provider reliability descending, cost, then link.
+
+Use --no-country-preference for a global ranking without the Poland-first group.
+Unknown metrics stay unknown and sort after known metrics for that criterion.
+Invalid/missing required metrics cannot make an offer eligible. Rank alone never
+rents a host and never changes the offer of an existing plan.
+
+Recommended example profiles require at least 500 Mbps download, 200 Mbps upload
+and 0.99 reliability, plus verified status. Change these explicit minima if needed.
+Reliability is the provider's availability indicator, not customer reviews.
+The API contract does not expose a customer-review count or star rating; reports
+say user_reviews=not_provided. Verification also does not prove real application
+performance, low latency or an uncongested route from the operator.
+
+Network values are Mbps, matching Net Mbps in the maintained official CLI.
+The endpoint reference currently labels inet_up/inet_down MB/s inconsistently;
+raw fields are preserved and no implicit factor-of-eight conversion is applied.
+Disk bandwidth remains MB/s. Country proximity is a preference, not measured RTT.
+Host signals in each assessment show country, both link directions and reliability
+in percent, alongside provider-declared provenance.
+
+    python scripts/cloud/vast/vast.py --json offers --profile .venom_runtime/inspect.json --sort price
+    python scripts/cloud/vast/vast.py --json offers --profile .venom_runtime/inspect.json --sort network --country PL
+    python scripts/cloud/vast/vast.py --json offers --profile .venom_runtime/inspect.json --sort reliability --min-reliability 0.99
+    python scripts/cloud/vast/vast.py --json offers --profile .venom_runtime/inspect.json --sort price --no-country-preference
+    python scripts/cloud/vast/vast.py --json plan --profile .venom_runtime/inspect.json --offer OFFER_ID --min-download-mbps 500 --min-upload-mbps 200 --max-hourly 0.50 --max-total 1.00
+
+The same overrides apply to offers, assess and plan. A plan stores its effective
+profile, so create rechecks the exact saved minima and hard country restrictions.
+Changing a search never silently changes a saved plan.
+
 ## Terminal flow
 
 From repository root:
@@ -159,3 +205,4 @@ Local reports may include private host coordinates; sanitize before publication.
 - [Charges](https://docs.vast.ai/api-reference/billing/show-charges)
 - [Volume inventory](https://docs.vast.ai/api-reference/volumes/list-volumes)
 - [Billing](https://docs.vast.ai/guides/reference/billing)
+\n- [Official CLI network labels](https://github.com/vast-ai/vast-cli/blob/master/vast.py)\n- [Provider verification](https://docs.vast.ai/host/verification-stages)\n

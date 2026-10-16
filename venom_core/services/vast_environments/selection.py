@@ -78,49 +78,49 @@ def preferred_queries(profile: WorkloadProfile, base: dict[str, Any]) -> list[di
     ]
 
 
+INFINITY = Decimal("Infinity")
+
+
+def _ascending(value: Decimal | None) -> Decimal:
+    return value if value is not None else INFINITY
+
+
+def _descending(value: Decimal | None) -> Decimal:
+    return -value if value is not None else INFINITY
+
+
+def _preference(country: str | None, profile: WorkloadProfile) -> int:
+    if country is not None and country in profile.preferred_countries:
+        return profile.preferred_countries.index(country)
+    return len(profile.preferred_countries)
+
+
+def _criteria(row: OfferAssessment, sort_by: str) -> tuple:
+    host = row.host
+    price = _ascending(row.quote.total_usd)
+    quality = _descending(host.reliability_percent)
+    down, up = host.download_mbps, host.upload_mbps
+    network = -min(down, up) if down is not None and up is not None else INFINITY
+    return {
+        "performance": (_descending(host.dlperf), price, quality),
+        "value": (_descending(host.dlperf_per_hourly_usd), price, quality),
+        "balanced": (quality, network, price),
+        "price": (price, quality, network),
+        "network": (network, quality, price),
+        "reliability": (quality, price, network),
+    }[sort_by]
+
+
 def rank(
     rows: list[OfferAssessment], profile: WorkloadProfile
 ) -> list[OfferAssessment]:
-    infinity = Decimal("Infinity")
-
     def key(row: OfferAssessment):
-        host = row.host
-        code = host.country_code
-        preference = (
-            profile.preferred_countries.index(code)
-            if code is not None and code in profile.preferred_countries
-            else len(profile.preferred_countries)
-        )
-        total = row.quote.total_usd
-        price = total if total is not None else infinity
-        quality = (
-            -host.reliability_percent
-            if host.reliability_percent is not None
-            else infinity
-        )
-        down, up = host.download_mbps, host.upload_mbps
-        network = -min(down, up) if down is not None and up is not None else infinity
-        performance = -host.dlperf if host.dlperf is not None else infinity
-        value = (
-            -host.dlperf_per_hourly_usd
-            if host.dlperf_per_hourly_usd is not None
-            else infinity
-        )
-        criteria = {
-            "performance": (performance, price, quality),
-            "value": (value, price, quality),
-            "balanced": (quality, network, price),
-            "price": (price, quality, network),
-            "network": (network, quality, price),
-            "reliability": (quality, price, network),
-        }[profile.sort_by]
         status = {"eligible": 0, "unknown": 1, "ineligible": 2}[row.status]
-        offer_id = amount(row.offer.get("id"))
         return (
             status,
-            preference,
-            *criteria,
-            offer_id if offer_id is not None else infinity,
+            _preference(row.host.country_code, profile),
+            *_criteria(row, profile.sort_by),
+            _ascending(amount(row.offer.get("id"))),
         )
 
     return sorted(rows, key=key)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import random
+import secrets
 import time
 from typing import Any
 
@@ -23,6 +23,7 @@ from venom_core.infrastructure.traffic_control.http_client import (
 )
 
 ORIGIN = "https://console.vast.ai"
+INVALID_RESPONSE = "vast.invalid_response"
 
 
 class VastError(RuntimeError):
@@ -59,62 +60,66 @@ class VastClient:
     def close(self) -> None:
         self._http.close()
 
+    def _send(self, method: str, path: str, mutation: bool, **kwargs: Any):
+        try:
+            return self._http.request(
+                method,
+                ORIGIN + path,
+                headers={"Authorization": "Bearer " + self._key.get_secret_value()},
+                follow_redirects=False,
+                disable_retry=True,
+                raise_for_status=False,
+                **kwargs,
+            )
+        except (httpx.HTTPError, RuntimeError, ValueError, TypeError):
+            raise VastError("vast.transport_error", ambiguous=mutation) from None
+
+    @staticmethod
+    def _decode(response, path: str, mutation: bool) -> Any:
+        if response.status_code >= 300:
+            ambiguous = mutation and (
+                response.status_code >= 500 or response.status_code < 400
+            )
+            raise VastError(
+                "vast.http_error", response.status_code, ambiguous=ambiguous
+            )
+        try:
+            data = response.json()
+        except ValueError:
+            raise VastError(INVALID_RESPONSE, ambiguous=mutation) from None
+        if not isinstance(data, (dict, list)):
+            raise VastError(INVALID_RESPONSE, ambiguous=mutation)
+        if isinstance(data, dict) and data.get("success") is False:
+            if (
+                path == "/api/v0/charges/"
+                and data.get("msg") == "Host users do not have instance charges"
+            ):
+                raise VastError(
+                    "vast.charges_unavailable_for_host", response.status_code
+                )
+            raise VastError("vast.provider_rejected", response.status_code)
+        return data
+
     def _request(
         self, method: str, path: str, *, mutation: bool = False, **kwargs: Any
     ) -> Any:
-        # Paths are internal constants, never supplied by provider redirect/CLI.
+        # Internal paths only. Never follow redirects with the provider credential.
         if not path.startswith("/api/") or "?" in path or "#" in path:
             raise VastError("vast.invalid_path")
         attempts = 1 if mutation else 3
         for attempt in range(attempts):
-            try:
-                response = self._http.request(
-                    method,
-                    ORIGIN + path,
-                    headers={"Authorization": "Bearer " + self._key.get_secret_value()},
-                    follow_redirects=False,
-                    disable_retry=True,
-                    raise_for_status=False,
-                    **kwargs,
-                )
-            except (httpx.HTTPError, RuntimeError, ValueError, TypeError):
-                # Never include request headers, raw bodies, URLs or exception text.
-                raise VastError("vast.transport_error", ambiguous=mutation) from None
-            if (
-                response.status_code == 429 or response.status_code >= 500
-            ) and not mutation:
-                if attempt + 1 < attempts:
-                    self._sleep(min(2**attempt, 4) + random.uniform(0, 0.25))
-                    continue
-            if response.status_code >= 300:
-                raise VastError(
-                    "vast.http_error",
-                    response.status_code,
-                    ambiguous=mutation
-                    and (response.status_code >= 500 or response.status_code < 400),
-                )
-            try:
-                data = response.json()
-            except ValueError:
-                raise VastError("vast.invalid_response", ambiguous=mutation) from None
-            if not isinstance(data, (dict, list)):
-                raise VastError("vast.invalid_response", ambiguous=mutation)
-            if isinstance(data, dict) and data.get("success") is False:
-                if (
-                    path == "/api/v0/charges/"
-                    and data.get("msg") == "Host users do not have instance charges"
-                ):
-                    raise VastError(
-                        "vast.charges_unavailable_for_host", response.status_code
-                    )
-                raise VastError("vast.provider_rejected", response.status_code)
-            return data
+            response = self._send(method, path, mutation, **kwargs)
+            retryable = response.status_code == 429 or response.status_code >= 500
+            if retryable and not mutation and attempt + 1 < attempts:
+                self._sleep(min(2**attempt, 4) + secrets.randbelow(250) / 1000)
+                continue
+            return self._decode(response, path, mutation)
         raise VastError("vast.retry_exhausted")
 
     @staticmethod
     def _object(data: Any) -> dict:
         if not isinstance(data, dict):
-            raise VastError("vast.invalid_response")
+            raise VastError(INVALID_RESPONSE)
         return data
 
     def account(self) -> dict[str, Any]:
@@ -124,7 +129,7 @@ class VastClient:
     def ssh_fingerprints(self) -> list[str]:
         data = self._request("GET", "/api/v0/ssh/")
         if not isinstance(data, list):
-            raise VastError("vast.invalid_response")
+            raise VastError(INVALID_RESPONSE)
         fingerprints = []
         for row in data:
             if not isinstance(row, dict) or row.get("deleted_at"):
@@ -163,7 +168,7 @@ class VastClient:
         )
         rows = data.get("templates")
         if not isinstance(rows, list):
-            raise VastError("vast.invalid_response")
+            raise VastError(INVALID_RESPONSE)
         return [template_snapshot(self._object(row)) for row in rows]
 
     def benchmarks(self, machine_id: int) -> dict:
@@ -190,7 +195,7 @@ class VastClient:
         )
         rows = data if isinstance(data, list) else self._object(data).get("benchmarks")
         if not isinstance(rows, list):
-            raise VastError("vast.invalid_response")
+            raise VastError(INVALID_RESPONSE)
         selected = [
             project(self._object(row), fields)
             for row in rows
@@ -222,7 +227,7 @@ class VastClient:
         )
         rows = self._object(data).get("offers")
         if not isinstance(rows, list):
-            raise VastError("vast.invalid_response")
+            raise VastError(INVALID_RESPONSE)
         return [offer_snapshot(self._object(row)) for row in rows]
 
     def _pages(self, path: str, field: str, params: dict[str, Any]) -> list[dict]:
@@ -232,7 +237,7 @@ class VastClient:
             data = self._request("GET", path, params=params)
             page = self._object(data).get(field)
             if not isinstance(page, list):
-                raise VastError("vast.invalid_response")
+                raise VastError(INVALID_RESPONSE)
             rows.extend(self._object(row) for row in page)
             cursor = data.get("next_token")
             if not cursor:
@@ -253,7 +258,7 @@ class VastClient:
         data = self._request("GET", f"/api/v0/instances/{instance_id}/")
         row = self._object(data).get("instances")
         if not isinstance(row, dict) or row.get("id") != instance_id:
-            raise VastError("vast.invalid_response")
+            raise VastError(INVALID_RESPONSE)
         return project(row, INSTANCE_FIELDS)
 
     def create(self, offer_id: int, payload: dict) -> int:
@@ -262,7 +267,7 @@ class VastClient:
         )
         value = data.get("new_contract") if isinstance(data, dict) else None
         if type(value) is not int or value <= 0:
-            raise VastError("vast.invalid_response", ambiguous=True)
+            raise VastError(INVALID_RESPONSE, ambiguous=True)
         return value
 
     def set_state(self, instance_id: int, state: str) -> None:
@@ -298,7 +303,7 @@ class VastClient:
         data = self._request("GET", "/api/v0/volumes/")
         rows = data if isinstance(data, list) else data.get("volumes")
         if not isinstance(rows, list):
-            raise VastError("vast.invalid_response")
+            raise VastError(INVALID_RESPONSE)
         return [
             project(
                 row,

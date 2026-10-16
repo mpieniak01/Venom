@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from venom_core.infrastructure.providers.vast.models import (
     CostQuote,
@@ -49,18 +49,24 @@ def quote(offer: dict, profile: WorkloadProfile) -> CostQuote:
         transfer_usd=total_transfer,
         total_usd=cost(profile.duration_minutes),
         samples_minutes_usd={str(m): cost(m) for m in (15, 30, 60)},
-        rates={
-            k: v
-            for k, v in offer.items()
-            if k.endswith("_cost") or k.endswith("_per_tb")
-        },
+        rates={k: v for k, v in offer.items() if k.endswith(("_cost", "_per_tb"))},
         unknown=unknown,
     )
 
 
-def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
-    reasons: list[str] = []
-    unknown: list[str] = []
+def _status(
+    reasons: list[str], unknown: list[str]
+) -> Literal["eligible", "ineligible", "unknown"]:
+    if reasons:
+        return "ineligible"
+    if unknown:
+        return "unknown"
+    return "eligible"
+
+
+def _check_expected(
+    offer: dict, profile: WorkloadProfile, reasons: list[str], unknown: list[str]
+) -> None:
     for key, expected in (
         ("cpu_arch", profile.cpu_arch),
         ("num_gpus", 1),
@@ -73,6 +79,11 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
             unknown.append(key)
         elif value != expected:
             reasons.append(key)
+
+
+def _check_minimums(
+    offer: dict, profile: WorkloadProfile, reasons: list[str], unknown: list[str]
+) -> None:
     requirements = {
         "dlperf": profile.min_dlperf,
         "gpu_mem_bw": profile.min_gpu_mem_bw_gb_s,
@@ -91,11 +102,15 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
     for key, minimum in requirements.items():
         raw = reliability(offer) if key == "reliability" else offer.get(key)
         value = amount(raw)
-        if value is None:
-            if minimum:
-                unknown.append(key)
-        elif value < Decimal(str(minimum)):
+        if value is None and minimum:
+            unknown.append(key)
+        if value is not None and value < Decimal(str(minimum)):
             reasons.append(key)
+
+
+def _check_identity(
+    offer: dict, profile: WorkloadProfile, reasons: list[str], unknown: list[str]
+) -> None:
     if profile.gpu_names and offer.get("gpu_name") not in profile.gpu_names:
         reasons.append("gpu_name")
     if profile.countries:
@@ -107,11 +122,19 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
     for key in ("id", "machine_id", "host_id"):
         if type(offer.get(key)) is not int or offer[key] <= 0:
             unknown.append(key)
+
+
+def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
+    reasons: list[str] = []
+    unknown: list[str] = []
+    _check_expected(offer, profile, reasons, unknown)
+    _check_minimums(offer, profile, reasons, unknown)
+    _check_identity(offer, profile, reasons, unknown)
     cost = quote(offer, profile)
     unknown.extend(cost.unknown)
     return OfferAssessment(
         offer=offer_snapshot(offer),
-        status="ineligible" if reasons else "unknown" if unknown else "eligible",
+        status=_status(reasons, unknown),
         reasons=reasons,
         unknown=unknown,
         quote=cost,

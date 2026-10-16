@@ -1,0 +1,10 @@
+{
+  "name": "inspect-example",
+  "mode": "inspect",
+  "cpu_arch": "arm64",
+  "image": "REPLACE_WITH_VERIFIED_IMAGE@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "disk_gb": 150,
+  "duration_minutes": 30,
+  "download_gb": "0",
+  "upload_gb": "0"
+}

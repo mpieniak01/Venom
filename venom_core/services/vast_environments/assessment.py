@@ -24,7 +24,7 @@ def quote(offer: dict, profile: WorkloadProfile) -> CostQuote:
         rate = amount(offer.get(f"internet_{direction}_cost_per_tb"))
         if gb and rate is None:
             unknown.append(f"transfer_{direction}_unit")
-        elif gb:
+        elif gb and rate is not None:
             transfer += gb * rate / Decimal(1000)
     if hourly is None:
         unknown.append("hourly_price")
@@ -92,8 +92,12 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
     if profile.gpu_names and offer.get("gpu_name") not in profile.gpu_names:
         reasons.append("gpu_name")
     if profile.countries:
-        # Search API accepts country codes but response geolocation is descriptive.
-        unknown.append("country_checked_by_search_only")
+        location = str(offer.get("geolocation") or "")
+        country = location.rsplit(",", 1)[-1].strip()
+        if len(country) != 2:
+            unknown.append("country")
+        elif country not in profile.countries:
+            reasons.append("country")
     for key in ("id", "machine_id", "host_id"):
         if type(offer.get(key)) is not int or offer[key] <= 0:
             unknown.append(key)

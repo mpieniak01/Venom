@@ -1,0 +1,5 @@
+{
+  "pl": {"ok": "Operacja zakończona. Wynik:", "error": "Operacja nie powiodła się. Kod błędu:"},
+  "en": {"ok": "Operation completed. Result:", "error": "Operation failed. Error code:"},
+  "de": {"ok": "Vorgang abgeschlossen. Ergebnis:", "error": "Vorgang fehlgeschlagen. Fehlercode:"}
+}

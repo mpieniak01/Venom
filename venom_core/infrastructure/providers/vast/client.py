@@ -76,7 +76,7 @@ class VastClient:
                     raise_for_status=False,
                     **kwargs,
                 )
-            except (httpx.HTTPError, RuntimeError):
+            except (httpx.HTTPError, RuntimeError, ValueError, TypeError):
                 # Never include request headers, raw bodies, URLs or exception text.
                 raise VastError("vast.transport_error", ambiguous=mutation) from None
             if (
@@ -103,18 +103,26 @@ class VastClient:
             return data
         raise VastError("vast.retry_exhausted")
 
+    @staticmethod
+    def _object(data: Any) -> dict:
+        if not isinstance(data, dict):
+            raise VastError("vast.invalid_response")
+        return data
+
     def account(self) -> dict[str, Any]:
         data = self._request("GET", "/api/v0/users/current/")
-        return project(data, ("credit", "balance"))
+        return project(self._object(data), ("credit", "balance"))
 
     def ssh_fingerprints(self) -> list[str]:
         data = self._request("GET", "/api/v0/ssh/")
         if not isinstance(data, list):
             raise VastError("vast.invalid_response")
         return [
-            ssh_fingerprint(row.get("public_key") or row.get("key", ""))
+            ssh_fingerprint(
+                self._object(row).get("public_key") or self._object(row).get("key", "")
+            )
             for row in data
-            if not row.get("deleted_at")
+            if not self._object(row).get("deleted_at")
         ]
 
     def offers(self, disk_gb: int, filters: dict[str, Any] | None = None) -> list[dict]:
@@ -131,20 +139,20 @@ class VastClient:
                 "order": [["dph_total", "asc"]],
             },
         )
-        rows = data.get("offers")
+        rows = self._object(data).get("offers")
         if not isinstance(rows, list):
             raise VastError("vast.invalid_response")
-        return [offer_snapshot(row) for row in rows]
+        return [offer_snapshot(self._object(row)) for row in rows]
 
     def _pages(self, path: str, field: str, params: dict[str, Any]) -> list[dict]:
         rows: list[dict] = []
         seen: set[str] = set()
         for _ in range(100):
             data = self._request("GET", path, params=params)
-            page = data.get(field)
+            page = self._object(data).get(field)
             if not isinstance(page, list):
                 raise VastError("vast.invalid_response")
-            rows.extend(page)
+            rows.extend(self._object(row) for row in page)
             cursor = data.get("next_token")
             if not cursor:
                 return rows
@@ -162,7 +170,7 @@ class VastClient:
 
     def instance(self, instance_id: int) -> dict:
         data = self._request("GET", f"/api/v0/instances/{instance_id}/")
-        row = data.get("instances")
+        row = self._object(data).get("instances")
         if not isinstance(row, dict) or row.get("id") != instance_id:
             raise VastError("vast.invalid_response")
         return project(row, INSTANCE_FIELDS)
@@ -171,7 +179,7 @@ class VastClient:
         data = self._request(
             "PUT", f"/api/v0/asks/{offer_id}/", mutation=True, json=payload
         )
-        value = data.get("new_contract")
+        value = data.get("new_contract") if isinstance(data, dict) else None
         if type(value) is not int or value <= 0:
             raise VastError("vast.invalid_response", ambiguous=True)
         return value
@@ -211,6 +219,17 @@ class VastClient:
         if not isinstance(rows, list):
             raise VastError("vast.invalid_response")
         return [
-            project(row, ("id", "size", "host_id", "status", "storage_cost"))
+            project(
+                row,
+                (
+                    "id",
+                    "size",
+                    "disk_space",
+                    "host_id",
+                    "status",
+                    "storage_cost",
+                    "storage_total_cost",
+                ),
+            )
             for row in rows
         ]

@@ -301,6 +301,9 @@ tests/test_training_metrics_parser.py
 tests/test_translation_service.py
 tests/test_update_sonar_scope_group.py
 tests/test_ux_analyst.py
+tests/test_vast_cli.py
+tests/test_vast_faults.py
+tests/test_vast_operations.py
 tests/test_vast_provider.py
 tests/test_venom_core_init_compat.py
 tests/test_voice_metadata.py

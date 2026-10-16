@@ -6330,6 +6330,48 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_vast_cli.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast terminal delegates and existing environment credential loading."
+    },
+    {
+      "path": "tests/test_vast_faults.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast SSH cleanup, cgroup limits and error/readiness recovery."
+    },
+    {
+      "path": "tests/test_vast_operations.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast rental recovery, SSH, synthetic evaluation and costs without live resources."
+    },
+    {
       "path": "tests/test_vast_provider.py",
       "domain": "providers",
       "test_type": "service_contract",

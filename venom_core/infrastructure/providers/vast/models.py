@@ -64,7 +64,12 @@ class WorkloadProfile(Contract):
             raise ValueError("vast.image_digest_required")
         if any(c not in "0123456789abcdef" for c in sha):
             raise ValueError("vast.image_digest_required")
-        if any(c.isspace() for c in name) or name.startswith("-"):
+        if (
+            any(c.isspace() for c in name)
+            or name.startswith("-")
+            or "REPLACE" in name
+            or sha == "0" * 64
+        ):
             raise ValueError("vast.invalid_image")
         return value
 
@@ -202,6 +207,7 @@ class EnvironmentRecord(Contract):
     observed_at: datetime = Field(default_factory=now)
     submitted_at: datetime | None = None
     instance: dict[str, Any] = Field(default_factory=dict)
+    pending_action: Literal["start", "stop", "destroy"] | None = None
     ssh_state: str = "unknown"
     runtime_state: str = "unknown"
     reports: dict[str, Any] = Field(default_factory=dict)

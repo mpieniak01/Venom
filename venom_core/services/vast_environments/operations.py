@@ -11,6 +11,8 @@ from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import now
 from venom_core.services.vast_environments.evaluation import OllamaProbe
 from venom_core.services.vast_environments.lifecycle import Environments
+from venom_core.services.vast_environments.openai_probe import ready as openai_ready
+from venom_core.services.vast_environments.recipes import validate_recipe
 from venom_core.services.vast_environments.ssh import inspect, ssh_args, tunnel
 from venom_core.services.vast_environments.startup import startup
 
@@ -19,6 +21,7 @@ def workload(
     service: Environments, plan_id: str, operation: str, accept_new: bool = False
 ) -> dict:
     plan = service.journal.plan(plan_id)
+    validate_recipe(plan.profile)
     record = service.reconcile(plan_id)
     if record.instance_id is None:
         raise VastError("vast.instance_required")
@@ -38,7 +41,9 @@ def workload(
                 raise VastError("vast.provision_failed")
             result = {"startup": "completed", "readiness": "unknown"}
         elif operation in {"ready", "benchmark"}:
-            if plan.profile.mode != "ollama":
+            if plan.profile.mode == "vllm" and operation == "benchmark":
+                raise VastError("vast.vllm_benchmark_not_supported")
+            if plan.profile.mode not in {"ollama", "vllm"}:
                 raise VastError("vast.ollama_profile_required")
             inspection = inspect(plan, record.instance)
             if inspection["reasons"]:
@@ -50,10 +55,13 @@ def workload(
                     trust_env=False,
                     follow_redirects=False,
                 ) as client:
-                    probe = OllamaProbe(client, plan.profile)
-                    result = (
-                        probe.ready() if operation == "ready" else probe.benchmark()
-                    )
+                    if plan.profile.mode == "vllm":
+                        result = openai_ready(client, plan.profile)
+                    else:
+                        probe = OllamaProbe(client, plan.profile)
+                        result = (
+                            probe.ready() if operation == "ready" else probe.benchmark()
+                        )
                     result["inspection"] = inspection
                     if (
                         operation == "benchmark"

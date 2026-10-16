@@ -206,3 +206,128 @@ Local reports may include private host coordinates; sanitize before publication.
 - [Volume inventory](https://docs.vast.ai/api-reference/volumes/list-volumes)
 - [Billing](https://docs.vast.ai/guides/reference/billing)
 \n- [Official CLI network labels](https://github.com/vast-ai/vast-cli/blob/master/vast.py)\n- [Provider verification](https://docs.vast.ai/host/verification-stages)\n
+
+
+## Runtime recipes and installation templates
+
+Scope of this increment: inspect/select public or account templates; prepare a
+local immutable profile and its startup script; deploy using the existing
+budgeted plan/create flow. No frontend, production routing, or paid benchmark is
+enabled automatically.
+
+| Recipe | Remote workload | Image prerequisites | Acceptance |
+| --- | --- | --- | --- |
+| inspect | Hardware and environment inventory | Python 3, SSH, GPU tools | SSH/capacity report |
+| ollama | Text, vision and tool-capable models supported by Ollama | Ollama and curl | Actual generation; existing 12-case benchmark |
+| vllm | OpenAI-compatible model serving | vLLM, compatible CUDA/PyTorch, curl | Model listing and actual generation over SSH |
+| pytorch | Environment for Depth Anything/YOLO and Whisper | Compatible GPU PyTorch; selected task packages | Imports, CUDA availability and worker inventory |
+
+PyTorch prepares a worker environment, not an inference API. The vLLM readiness
+check is not the Ollama performance benchmark; that benchmark currently remains
+Ollama-only. A model supporting an API feature must still pass its workload test.
+
+### Commands
+
+Run from the repository root with the existing virtualenv activated.
+The following commands inspect or prepare configuration; they do not rent:
+
+    python scripts/cloud/vast/vast.py --json recipes
+    python scripts/cloud/vast/vast.py --json templates --recommended
+    python scripts/cloud/vast/vast.py --json templates --hash TEMPLATE_HASH
+    python scripts/cloud/vast/vast.py --json resolve-image --image vastai/ollama:TAG --arch arm64
+    python scripts/cloud/vast/vast.py --json prepare --recipe ollama --image vastai/ollama:TAG --arch arm64 --model MODEL --model-digest DIGEST --disk-gb 150 --download-gb 25 --template-hash TEMPLATE_HASH --output .venom_runtime/vast/ollama.json
+
+Replace TAG, MODEL, DIGEST and TEMPLATE_HASH with inspected values. Public Docker
+Hub tags passed to prepare are resolved to a verified Linux architecture manifest
+digest before saving. The dedicated resolve-image command works without a Vast
+key. Other registries can be supplied as an already pinned image in the profile;
+their authentication and resolution are outside this increment.
+
+prepare also accepts --profile for existing requirements and overrides for image,
+architecture, model/digest, disk and download allowance. It creates a new file
+with mode 0600 and refuses to overwrite operator configuration. Its JSON result
+includes the exact startup script, selected recipe and profile. Use this profile
+with offers, assess and plan, followed by explicit create, inspect, provision,
+ready and (Ollama) benchmark. Creating a plan alone has no paid side effect.
+
+For vLLM, --model is the Hugging Face repository and --model-digest must be its
+40-character commit revision. The script pins model/code revision, binds port
+8000 to loopback and does not enable trust-remote-code. GPU utilization (default
+0.85), concurrent sequences (4), and context are profile settings. /v1/models
+does not attest weight bytes: readiness reports the configured revision with that
+limitation. For Ollama, the digest is verified against /api/tags instead.
+Zero download allowance makes vLLM use offline Hugging Face cache.
+
+For PyTorch, --worker-task vision selects Pillow/Ultralytics and --worker-task
+audio selects faster-whisper; torch and transformers are always checked. Both
+tasks are selected by default. If these are missing from the image, explicitly
+supply --install-package NAME==VERSION and a positive --download-gb allowance.
+Allowed packages are ultralytics, transformers, faster-whisper and pillow.
+The generated script creates /workspace/venom-vast/worker-venv with access to the
+base image packages, pins installed torch/torchvision/torchaudio/numpy as pip
+constraints, and installs wheels into that venv. Missing compatible wheels or a
+dependency conflict fails provisioning instead of silently replacing the GPU
+stack. Root package versions are pinned; transitive dependencies are resolved at
+installation time, so use a prepared image/lock for fully reproducible workers.
+No model weights, dataset or full Venom installation are included in that recipe.
+
+### Template policy
+
+Vast templates can contain environment variables, credentials, port mappings,
+startup scripts and default commands. Listings export allowlisted metadata and
+only presence flags plus a configuration fingerprint for executable fields.
+Template hash identifies a template, not an image digest.
+
+Preparation imports image identity/provenance and checks the SSH capability and
+recommended disk size. The selected image repository must match the template.
+The existing explicit workload requirements replace template extra_filters;
+review CPU/GPU/CUDA/model requirements in the profile. Environment, port mappings,
+args and startup are replaced by the reviewed recipe. The native template_hash_id
+is intentionally not submitted to create: Vast merges inherited environment
+values, which would make an empty override insufficient to remove hidden ports
+or bootstrap commands. Profiles pin provenance; plan/create fetch the template
+again and reject a changed configuration. This also means web template features
+such as Jupyter, serverless launch scripts and automatic image-tag selection are
+not activated by this workflow.
+
+A compatible image architecture is necessary but does not prove a working GPU
+runtime on a particular host. Inspect and readiness must verify it after rental.
+In particular do not add shared CPU and GPU memory on GB10 to estimate capacity.
+Provider recommended disk sizes are template minima, not model-cache estimates;
+choose storage for image, weights, cache, temporary downloads and free reserve.
+The existing download_gb is an estimated budget, not a hard network quota.
+
+### Performance selection
+
+offers/assess/plan accept --sort performance (DLPerf) or --sort value (DLPerf per
+quoted USD/hour including disk), --min-dlperf and --min-gpu-mem-bw-gb-s.
+Existing country preferences still take precedence; use --no-country-preference
+for a global comparison. Metadata includes total_flops (TFLOPS), memory bandwidth
+(GB/s), CPU/GPU characteristics, declared CUDA/driver and PCIe capabilities.
+DLPerf is a provider benchmark, not measured LLM tokens/s. The API provides no
+universal MIPS number and CPU GHz is not converted into MIPS.
+
+    python scripts/cloud/vast/vast.py --json host-results --machine MACHINE_ID
+
+Historical provider scores retain unknown units, model and test identifiers.
+Empty history is not a zero score. A historical record without a score is not
+performance evidence. Ollama suite v2 additionally counts actual Unicode code
+points and reports characters_s over complete request wall time, including load,
+prefill and transport. This differs from backend decode_tokens_s and is never
+estimated by multiplying tokens by a fixed constant.
+
+### Read-only acceptance and limits
+
+On 2026-10-16 the authenticated API returned 37 recommended SSH-capable templates.
+Public Docker manifests resolved for Ollama ARM64, vLLM ARM64 and PyTorch AMD64.
+No instance was rented or package installed on a remote host during this check.
+Paid runtime/driver compatibility, model loading and billing settlement require
+a separately budgeted acceptance. Local raw evidence remains in ignored
+test-results/vast-recipes-live-readonly.json.
+
+Primary references:
+- [Template API](https://docs.vast.ai/api-reference/search/search-templates)
+- [Template inheritance and overrides](https://docs.vast.ai/api-reference/creating-and-using-templates-with-api)
+- [Provider benchmark API](https://docs.vast.ai/api-reference/search/search-benchmarks)
+- [vLLM Docker deployment](https://docs.vllm.ai/en/latest/deployment/docker/)
+- [Docker Registry API](https://docs.docker.com/reference/api/registry/latest/)

@@ -10,15 +10,18 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import httpx
 from pydantic import ValidationError
 
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
+from venom_core.infrastructure.providers.vast.images import resolve_image
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile, now
 from venom_core.services.vast_environments.assessment import assess, search_filters
 from venom_core.services.vast_environments.billing import costs
 from venom_core.services.vast_environments.evaluation import compare
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import monitor, workload
+from venom_core.services.vast_environments.recipes import RECIPES, prepare
 from venom_core.services.vast_environments.store import Journal
 
 DEFAULT_STATE = ".venom_runtime/vast"
@@ -31,6 +34,23 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--json", action="store_true")
     root.add_argument("--locale", choices=["en", "pl", "de"], default="pl")
     sub = root.add_subparsers(dest="command", required=True)
+    image = sub.add_parser("resolve-image")
+    image.add_argument("--image", required=True)
+    image.add_argument("--arch", choices=["amd64", "arm64"], required=True)
+    sub.add_parser("recipes")
+    recipe = sub.add_parser("prepare")
+    recipe.add_argument("--profile", type=Path)
+    recipe.add_argument("--image")
+    recipe.add_argument("--arch", choices=["amd64", "arm64"])
+    recipe.add_argument("--model")
+    recipe.add_argument("--model-digest")
+    recipe.add_argument("--disk-gb", type=int)
+    recipe.add_argument("--download-gb", type=Decimal)
+    recipe.add_argument("--install-package", action="append")
+    recipe.add_argument("--worker-task", action="append", choices=["vision", "audio"])
+    recipe.add_argument("--recipe", choices=list(RECIPES), required=True)
+    recipe.add_argument("--template-hash")
+    recipe.add_argument("--output", type=Path, required=True)
     templates = sub.add_parser("templates")
     templates.add_argument("--hash")
     templates.add_argument("--recommended", action="store_true")
@@ -134,6 +154,38 @@ def workload_profile(args) -> WorkloadProfile:
 
 def dispatch(args, service: Environments):
     command = args.command
+    if command == "recipes":
+        return RECIPES
+    if command == "prepare":
+        values = (
+            json.loads(args.profile.read_text())
+            if args.profile
+            else {"name": "venom-" + args.recipe}
+        )
+        for argument, field in (
+            ("image", "image"),
+            ("arch", "cpu_arch"),
+            ("model", "model"),
+            ("model_digest", "model_digest"),
+            ("disk_gb", "disk_gb"),
+            ("download_gb", "download_gb"),
+            ("install_package", "worker_packages"),
+            ("worker_task", "worker_tasks"),
+        ):
+            if getattr(args, argument) is not None:
+                values[field] = getattr(args, argument)
+        values["mode"] = args.recipe
+        if values.get("image") and "@sha256:" not in values["image"]:
+            with httpx.Client(
+                timeout=25, follow_redirects=False, trust_env=False
+            ) as registry:
+                values["image"] = resolve_image(
+                    values["image"], values.get("cpu_arch", ""), registry
+                )["image"]
+        profile = WorkloadProfile.model_validate(values)
+        return prepare(
+            service.client, profile, args.recipe, args.template_hash, args.output
+        )
     if command == "templates":
         return service.client.templates(args.hash, args.recommended)
     if command == "host-results":
@@ -205,7 +257,14 @@ def main(argv=None, client_factory=None) -> int:
         os.environ["ENV_FILE"] = str(args.env_file.expanduser().resolve())
     client = None
     try:
-        if args.command == "compare":
+        if args.command == "recipes":
+            result = RECIPES
+        elif args.command == "resolve-image":
+            with httpx.Client(
+                timeout=25, follow_redirects=False, trust_env=False
+            ) as registry:
+                result = resolve_image(args.image, args.arch, registry)
+        elif args.command == "compare":
             reports = [json.loads(path.read_text()) for path in args.reports]
             result = compare([report.get("result", report) for report in reports])
         else:

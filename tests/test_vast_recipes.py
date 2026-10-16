@@ -1,0 +1,365 @@
+"""Offline template preparation, runtime scripts and registry contracts."""
+
+import hashlib
+import json
+import subprocess
+from decimal import Decimal
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+import httpx
+import pytest
+
+from tests.test_vast_operations import service as source_service
+from venom_core.infrastructure.providers.vast.client import VastError
+from venom_core.infrastructure.providers.vast.images import resolve_image
+from venom_core.infrastructure.providers.vast.models import digest
+from venom_core.services.vast_environments.cli import dispatch, main, parser
+from venom_core.services.vast_environments.openai_probe import ready
+from venom_core.services.vast_environments.operations import workload
+from venom_core.services.vast_environments.recipes import prepare, verify_template
+from venom_core.services.vast_environments.startup import startup
+
+HASH = "a" * 64
+
+
+@pytest.fixture
+def service(tmp_path):
+    return source_service.__wrapped__(tmp_path)
+
+
+def template(svc):
+    row = {
+        "hash_id": "abc",
+        "configuration_sha256": HASH,
+        "image": "test",
+        "use_ssh": True,
+        "recommended_disk_space": 100,
+    }
+    svc.client.templates.return_value = [row]
+    return row
+
+
+def test_prepare_template_and_freshness(service, tmp_path):
+    svc, plan, _ = service
+    row = template(svc)
+    out = tmp_path / "profile.json"
+    result = prepare(svc.client, plan.profile, "inspect", "abc", out)
+    cfg = plan.profile.model_validate_json(out.read_text())
+    assert cfg.template_hash == "abc"
+    assert result["paid_resources_created"] is False
+    assert out.stat().st_mode & 0o777 == 0o600
+    verify_template(svc.client, cfg)
+    with pytest.raises(FileExistsError):
+        prepare(svc.client, plan.profile, "inspect", "abc", out)
+    changed = cfg.model_copy(update={"template_configuration_sha256": "b" * 64})
+    with pytest.raises(VastError, match="template_changed"):
+        verify_template(svc.client, changed)
+    for change, error in [
+        ({"use_ssh": False}, "image_or_ssh"),
+        ({"image": "other"}, "image_or_ssh"),
+        ({"recommended_disk_space": None}, "disk_unknown"),
+        ({"recommended_disk_space": 200}, "disk_insufficient"),
+    ]:
+        svc.client.templates.return_value = [{**row, **change}]
+        with pytest.raises(VastError, match=error):
+            verify_template(svc.client, cfg)
+    svc.client.templates.return_value = []
+    with pytest.raises(VastError, match="template_missing"):
+        verify_template(svc.client, cfg)
+
+
+@pytest.mark.parametrize("mode", ["inspect", "ollama", "vllm", "pytorch"])
+def test_recipe_scripts_and_validation(service, mode, tmp_path):
+    svc, plan, _ = service
+    cfg = plan.profile.model_copy(
+        update={
+            "mode": mode,
+            "model": "org/model",
+            "model_digest": "b" * 40,
+            "download_gb": Decimal(20),
+            "worker_tasks": ["vision", "audio"],
+        }
+    )
+    result = prepare(svc.client, cfg, mode, None, tmp_path / (mode + ".json"))
+    script = result["startup"]
+    assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
+    assert startup(cfg) == script
+    assert "docker run" not in script and "pip install" not in script
+    if mode == "vllm":
+        assert "--host 127.0.0.1" in script and "--revision " in script
+        assert "--gpu-memory-utilization 0.85" in script
+        assert "HF_HUB_OFFLINE" not in script
+        assert "HF_HUB_OFFLINE=1" in startup(
+            cfg.model_copy(update={"download_gb": Decimal(0)})
+        )
+    if mode == "pytorch":
+        assert "faster_whisper" in script and "ultralytics" in script
+        assert "worker_ready" in script
+        assert "faster_whisper" not in startup(
+            cfg.model_copy(update={"worker_tasks": []})
+        )
+
+
+def test_bad_recipe_and_plan_template_change(service, tmp_path):
+    svc, plan, _ = service
+    with pytest.raises(VastError, match="model_digest_required"):
+        prepare(svc.client, plan.profile, "ollama", None, tmp_path / "bad.json")
+    cfg = plan.profile.model_copy(
+        update={"mode": "vllm", "model": "org/x", "model_digest": "latest"}
+    )
+    with pytest.raises(VastError, match="huggingface_revision_required"):
+        prepare(svc.client, cfg, "vllm", None, tmp_path / "bad.json")
+    with pytest.raises(VastError, match="template_provenance_required"):
+        verify_template(
+            svc.client, plan.profile.model_copy(update={"template_hash": "abc"})
+        )
+    template(svc)
+    cfg = plan.profile.model_copy(
+        update={"template_hash": "abc", "template_configuration_sha256": HASH}
+    )
+    new = svc.plan(
+        cfg,
+        12,
+        plan.max_hourly_usd,
+        plan.max_total_usd,
+        Path(plan.ssh_identity_file),
+        tmp_path / "known",
+    )
+    svc.client.templates.return_value[0]["configuration_sha256"] = "b" * 64
+    with pytest.raises(VastError, match="template_changed"):
+        svc.create(new.plan_id)
+    svc.client.create.assert_not_called()
+
+
+def registry(arch="arm64", wrong=False, multi=False):
+    config = json.dumps({"architecture": arch, "os": "linux"}).encode()
+    config_sha = "sha256:" + hashlib.sha256(config).hexdigest()
+    manifest = json.dumps({"config": {"digest": config_sha}}).encode()
+    sha = "sha256:" + hashlib.sha256(manifest).hexdigest()
+
+    def respond(req):
+        if req.url.host == "auth.docker.io":
+            assert "Authorization" not in req.headers
+            return httpx.Response(200, json={"token": "fixture-registry-token"})
+        assert req.headers["Authorization"] == "Bearer fixture-registry-token"
+        if "/blobs/" in req.url.path:
+            return httpx.Response(200, content=config)
+        if multi and req.url.path.endswith("/latest"):
+            return httpx.Response(
+                200,
+                json={
+                    "manifests": [
+                        {
+                            "digest": sha,
+                            "platform": {"os": "linux", "architecture": arch},
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(
+            200,
+            content=manifest,
+            headers={"Docker-Content-Digest": "sha256:" + "c" * 64 if wrong else sha},
+        )
+
+    return httpx.Client(
+        transport=httpx.MockTransport(respond), follow_redirects=False
+    ), sha
+
+
+@pytest.mark.parametrize("multi", [False, True])
+def test_registry_resolution(multi):
+    client, sha = registry(multi=multi)
+    with client:
+        result = resolve_image("ollama/ollama:latest", "arm64", client)
+    assert result["image"] == "ollama/ollama@" + sha
+    assert "token" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        "evil.example/repo/image:tag",
+        "repo:latest",
+        "org/../bad:tag",
+        "org/a;id:tag",
+        "org/a",
+    ],
+)
+def test_registry_invalid_names(image):
+    client, _ = registry()
+    with client, pytest.raises(VastError, match="invalid_public_image"):
+        resolve_image(image, "arm64", client)
+
+
+def test_registry_bad_digest_and_architecture():
+    client, _ = registry(wrong=True)
+    with client, pytest.raises(VastError, match="digest_mismatch"):
+        resolve_image("org/model:tag", "arm64", client)
+    client, _ = registry(arch="amd64")
+    with client, pytest.raises(VastError, match="architecture_unavailable"):
+        resolve_image("org/model:tag", "arm64", client)
+
+
+def test_vllm_readiness(service):
+    _, plan, _ = service
+    cfg = plan.profile.model_copy(
+        update={"mode": "vllm", "model": "org/model", "model_digest": "b" * 40}
+    )
+
+    def respond(req):
+        return httpx.Response(
+            200,
+            json={"data": [{"id": cfg.model}]}
+            if req.method == "GET"
+            else {"choices": [{"message": {"content": "OK"}}]},
+        )
+
+    with httpx.Client(
+        base_url="http://127.0.0.1", transport=httpx.MockTransport(respond)
+    ) as client:
+        assert ready(client, cfg)["runtime"] == "ready"
+        with pytest.raises(VastError, match="model_missing"):
+            ready(client, cfg.model_copy(update={"model": "absent"}))
+    with httpx.Client(
+        base_url="http://127.0.0.1",
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200, json={"data": [{"id": cfg.model}], "choices": []}
+            )
+        ),
+    ) as client:
+        with pytest.raises(VastError, match="model_not_ready"):
+            ready(client, cfg)
+
+
+def test_vllm_workload_and_cli(service, tmp_path, capsys):
+    svc, plan, _ = service
+    plan.profile = plan.profile.model_copy(
+        update={"mode": "vllm", "model": "org/model", "model_digest": "b" * 40}
+    )
+    plan.startup_sha256 = digest(startup(plan.profile))
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    svc.create(plan.plan_id)
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.inspect",
+            return_value={"reasons": [], "unknown": []},
+        ),
+        patch("venom_core.services.vast_environments.operations.tunnel") as tunnel,
+        patch(
+            "venom_core.services.vast_environments.operations.openai_ready",
+            return_value={"runtime": "ready"},
+        ),
+    ):
+        tunnel.return_value.__enter__.return_value = "http://127.0.0.1"
+        assert workload(svc, plan.plan_id, "ready")["runtime"] == "ready"
+    with pytest.raises(VastError, match="vllm_benchmark_not_supported"):
+        workload(svc, plan.plan_id, "benchmark")
+    assert (
+        main(["--json", "recipes"], client_factory=Mock(side_effect=AssertionError))
+        == 0
+    )
+    assert "pytorch" in capsys.readouterr().out
+    template(svc)
+    args = parser().parse_args(["templates", "--hash", "abc", "--recommended"])
+    assert dispatch(args, svc)[0]["hash_id"] == "abc"
+    svc.client.benchmarks.return_value = {"status": "not_available"}
+    assert (
+        dispatch(parser().parse_args(["host-results", "--machine", "4"]), svc)["status"]
+        == "not_available"
+    )
+
+
+def test_worker_install_is_remote_scoped_and_pinned(service):
+    from pydantic import ValidationError
+
+    from venom_core.infrastructure.providers.vast.models import WorkloadProfile
+    from venom_core.services.vast_environments.recipes import validate_recipe
+
+    _, plan, _ = service
+    cfg = plan.profile.model_copy(
+        update={
+            "mode": "pytorch",
+            "worker_packages": ["ultralytics==8.3.0"],
+            "download_gb": Decimal(1),
+        }
+    )
+    validate_recipe(cfg)
+    script = startup(cfg)
+    assert "worker-venv/bin/python -m pip install" in script
+    assert "--system-site-packages" in script
+    assert "base-constraints.txt" in script and "'torch'" in script
+    assert "worker-venv/bin/python -c" in script
+    assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
+    for packages in [
+        ["torch==2.0"],
+        ["ultralytics"],
+        ["transformers==main"],
+        ["pillow==1;id"],
+        ["pillow==1", "pillow==2"],
+    ]:
+        with pytest.raises(ValidationError):
+            WorkloadProfile.model_validate(
+                {**cfg.model_dump(), "worker_packages": packages}
+            )
+    for update in [{"mode": "ollama"}, {"download_gb": Decimal(0)}]:
+        with pytest.raises(VastError, match="worker_install_download_budget_required"):
+            validate_recipe(cfg.model_copy(update=update))
+
+
+def test_prepare_cli_with_image_resolution(service, tmp_path):
+    svc, _, _ = service
+    out = tmp_path / "prepared.json"
+    args = parser().parse_args(
+        [
+            "prepare",
+            "--recipe",
+            "inspect",
+            "--image",
+            "ollama/ollama:latest",
+            "--arch",
+            "arm64",
+            "--disk-gb",
+            "200",
+            "--download-gb",
+            "2",
+            "--output",
+            str(out),
+        ]
+    )
+    with patch(
+        "venom_core.services.vast_environments.cli.resolve_image",
+        return_value={"image": "ollama/ollama@sha256:" + HASH},
+    ):
+        result = dispatch(args, svc)
+    assert result["profile"]["disk_gb"] == 200
+    assert result["profile"]["image"].endswith(HASH)
+    assert out.exists()
+    args = parser().parse_args(
+        [
+            "prepare",
+            "--profile",
+            str(out),
+            "--recipe",
+            "inspect",
+            "--output",
+            str(tmp_path / "second.json"),
+        ]
+    )
+    assert dispatch(args, svc)["profile"]["cpu_arch"] == "arm64"
+
+
+def test_registry_error_contracts():
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json={}))
+    ) as client:
+        with pytest.raises(VastError, match="registry_auth_failed"):
+            resolve_image("org/model:tag", "arm64", client)
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda req: httpx.Response(403))
+    ) as client:
+        with pytest.raises(VastError, match="registry_failed"):
+            resolve_image("org/model:tag", "arm64", client)

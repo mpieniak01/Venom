@@ -187,7 +187,7 @@ def tunnel(plan: EnvironmentPlan, instance: dict) -> Iterator[str]:
                 "-o",
                 "ExitOnForwardFailure=yes",
                 "-L",
-                f"127.0.0.1:{port}:127.0.0.1:11434",
+                f"127.0.0.1:{port}:127.0.0.1:{8000 if plan.profile.mode == 'vllm' else 11434}",
                 target,
             ],
             stdout=subprocess.DEVNULL,

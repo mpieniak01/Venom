@@ -152,7 +152,6 @@ class VastClient:
                 params={
                     "select_filters": json.dumps(filters),
                     "select_cols": json.dumps(TEMPLATE_COLUMNS),
-                    "order_by": "count_created",
                 },
             )
         )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
@@ -34,11 +35,17 @@ class Contract(BaseModel):
 
 class WorkloadProfile(Contract):
     name: str = Field(min_length=1, max_length=80)
-    mode: Literal["inspect", "ollama"] = "inspect"
+    mode: Literal["inspect", "ollama", "vllm", "pytorch"] = "inspect"
     cpu_arch: Literal["amd64", "arm64"]
     image: str
     model: str = ""
     model_digest: str = ""
+    template_hash: str = Field(default="", max_length=128, pattern=r"^[a-zA-Z0-9_-]*$")
+    template_configuration_sha256: str = Field(default="", pattern=r"^([a-f0-9]{64})?$")
+    gpu_memory_utilization: float = Field(default=0.85, gt=0, le=0.95)
+    max_parallel_requests: int = Field(default=4, ge=1, le=32)
+    worker_packages: list[str] = Field(default_factory=list, max_length=8)
+    worker_tasks: list[Literal["vision", "audio"]] = Field(default=["vision", "audio"])
     disk_gb: int = Field(default=150, ge=16, le=10000)
     min_free_disk_bytes: int = Field(default=10_000_000_000, ge=0)
     min_gpu_ram_mb: int = Field(default=24000, ge=0)
@@ -62,6 +69,22 @@ class WorkloadProfile(Contract):
     upload_gb: Decimal = Field(default=Decimal("0"), ge=0)
     context_tokens: int = Field(default=16384, ge=512, le=131072)
     output_tokens: int = Field(default=128, ge=8, le=512)
+
+    @field_validator("worker_packages")
+    @classmethod
+    def pinned_worker_packages(cls, values: list[str]) -> list[str]:
+        allowed = {"ultralytics", "transformers", "faster-whisper", "pillow"}
+        for value in values:
+            name, sep, version = value.partition("==")
+            if (
+                name not in allowed
+                or not sep
+                or not re.fullmatch(r"[0-9][A-Za-z0-9.+_-]{0,63}", version)
+            ):
+                raise ValueError("vast.pinned_worker_package_required")
+        if len({value.split("==")[0] for value in values}) != len(values):
+            raise ValueError("vast.duplicate_worker_package")
+        return values
 
     @field_validator("countries", "preferred_countries")
     @classmethod

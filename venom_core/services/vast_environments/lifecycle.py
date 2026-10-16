@@ -22,6 +22,7 @@ from venom_core.infrastructure.providers.vast.models import (
     now,
 )
 from venom_core.services.vast_environments.assessment import assess, search_filters
+from venom_core.services.vast_environments.recipes import verify_template
 from venom_core.services.vast_environments.selection import preferred_queries, rank
 from venom_core.services.vast_environments.startup import startup
 from venom_core.services.vast_environments.store import Journal
@@ -56,6 +57,7 @@ class Environments:
         known_hosts: Path,
         finish_policy: Literal["manual", "stop", "destroy"] = "manual",
     ) -> EnvironmentPlan:
+        verify_template(self.client, profile)
         offer = self._offer(profile, offer_id)
         assessment = assess(offer, profile)
         if assessment.status != "eligible":
@@ -119,6 +121,7 @@ class Environments:
                 raise VastError("vast.reconcile_required")
             if plan.expires_at < now():
                 raise VastError("vast.plan_expired")
+            verify_template(self.client, plan.profile)
             fresh = assess(
                 self._offer(plan.profile, plan.assessment.offer["id"]), plan.profile
             )

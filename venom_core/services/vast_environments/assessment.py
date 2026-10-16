@@ -1,0 +1,121 @@
+"""Assess declared capacity separately from measured workload suitability."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+from venom_core.infrastructure.providers.vast.models import (
+    CostQuote,
+    OfferAssessment,
+    WorkloadProfile,
+    amount,
+    offer_snapshot,
+)
+
+
+def quote(offer: dict, profile: WorkloadProfile) -> CostQuote:
+    search = offer.get("search") or {}
+    hourly = amount(search.get("totalHour", offer.get("dph_total")))
+    storage = amount(search.get("diskHour"))
+    unknown = []
+    transfer = Decimal(0)
+    for direction, gb in (("down", profile.download_gb), ("up", profile.upload_gb)):
+        rate = amount(offer.get(f"internet_{direction}_cost_per_tb"))
+        if gb and rate is None:
+            unknown.append(f"transfer_{direction}_unit")
+        elif gb:
+            transfer += gb * rate / Decimal(1000)
+    if hourly is None:
+        unknown.append("hourly_price")
+    total_transfer = (
+        None if unknown and any(x.startswith("transfer") for x in unknown) else transfer
+    )
+
+    def cost(minutes: int) -> Decimal | None:
+        if hourly is None or total_transfer is None:
+            return None
+        return hourly * Decimal(minutes) / Decimal(60) + total_transfer
+
+    return CostQuote(
+        hourly_usd=hourly,
+        storage_hourly_usd=storage,
+        transfer_usd=total_transfer,
+        total_usd=cost(profile.duration_minutes),
+        samples_minutes_usd={str(m): cost(m) for m in (15, 30, 60)},
+        rates={
+            k: v
+            for k, v in offer.items()
+            if k.endswith("_cost") or k.endswith("_per_tb")
+        },
+        unknown=unknown,
+    )
+
+
+def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
+    reasons: list[str] = []
+    unknown: list[str] = []
+    for key, expected in (
+        ("cpu_arch", profile.cpu_arch),
+        ("num_gpus", 1),
+        ("rentable", True),
+        ("rented", False),
+        ("verification", "verified"),
+    ):
+        value = offer.get(key)
+        if value is None:
+            unknown.append(key)
+        elif value != expected:
+            reasons.append(key)
+    requirements = {
+        "cpu_ram": profile.min_cpu_ram_mb,
+        "gpu_ram": profile.min_gpu_ram_mb,
+        "cpu_cores_effective": profile.min_cpu_cores,
+        "reliability": profile.min_reliability,
+        "disk_space": profile.disk_gb,
+        "duration": profile.duration_minutes * 60,
+        "disk_bw": profile.min_disk_mb_s,
+        "inet_down": profile.min_download_mb_s,
+        "direct_port_count": 1,
+        "gpu_frac": profile.min_gpu_fraction,
+    }
+    for key, minimum in requirements.items():
+        raw = offer.get(key)
+        if key == "reliability" and raw is None:
+            raw = offer.get("reliability2")
+        value = amount(raw)
+        if value is None:
+            if minimum:
+                unknown.append(key)
+        elif value < Decimal(str(minimum)):
+            reasons.append(key)
+    if profile.gpu_names and offer.get("gpu_name") not in profile.gpu_names:
+        reasons.append("gpu_name")
+    if profile.countries:
+        # Search API accepts country codes but response geolocation is descriptive.
+        unknown.append("country_checked_by_search_only")
+    for key in ("id", "machine_id", "host_id"):
+        if type(offer.get(key)) is not int or offer[key] <= 0:
+            unknown.append(key)
+    cost = quote(offer, profile)
+    unknown.extend(cost.unknown)
+    return OfferAssessment(
+        offer=offer_snapshot(offer),
+        status="ineligible" if reasons else "unknown" if unknown else "eligible",
+        reasons=reasons,
+        unknown=unknown,
+        quote=cost,
+    )
+
+
+def search_filters(profile: WorkloadProfile) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "cpu_arch": {"eq": profile.cpu_arch},
+        "verified": {"eq": True},
+        "num_gpus": {"eq": 1},
+    }
+    if profile.countries:
+        result["geolocation"] = {"in": profile.countries}
+    if profile.gpu_names:
+        result["gpu_name"] = {"in": profile.gpu_names}
+    return result

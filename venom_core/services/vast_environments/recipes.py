@@ -1,5 +1,6 @@
 """Reviewed runtime recipes, independent of public template executable payloads."""
 
+import os
 from pathlib import Path
 
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
@@ -100,10 +101,10 @@ def prepare(
     result = WorkloadProfile.model_validate(values)
     verify_template(client, result)
     # The profile is local configuration. Never overwrite an existing operator profile.
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("x") as handle:
+    output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = os.open(output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
         handle.write(result.model_dump_json(indent=2) + "\n")
-    output.chmod(0o600)
     return {
         "profile_path": str(output),
         "profile": result.model_dump(mode="json"),

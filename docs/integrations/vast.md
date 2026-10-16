@@ -316,7 +316,7 @@ universal MIPS number and CPU GHz is not converted into MIPS.
 
 Historical provider scores retain unknown units, model and test identifiers.
 Empty history is not a zero score. A historical record without a score is not
-performance evidence. Ollama suite v2 additionally counts actual Unicode code
+performance evidence. Ollama suite v3 additionally counts actual Unicode code
 points and reports characters_s over complete request wall time, including load,
 prefill and transport. This differs from backend decode_tokens_s and is never
 estimated by multiplying tokens by a fixed constant.
@@ -336,3 +336,18 @@ Primary references:
 - [Provider benchmark API](https://docs.vast.ai/api-reference/search/search-benchmarks)
 - [vLLM Docker deployment](https://docs.vllm.ai/en/latest/deployment/docker/)
 - [Docker Registry API](https://docs.docker.com/reference/api/registry/latest/)
+
+
+### Local file boundary
+
+The Vast command entry point is an operator CLI, not an HTTP route or a registered
+LLM tool. Its input profile, SSH profile, output path and report paths are explicit
+local operator choices. Profile creation is exclusive and mode 0600 from the
+first write; existing files are never overwritten. No file contents are returned
+as a generic file-reading capability. A future HTTP/agent adapter must select
+server-owned profiles and artifact destinations rather than forwarding arbitrary
+client-supplied CLI arguments.
+
+Benchmark suite v3 derives repeatable synthetic prompts from SHAKE-256 rather
+than a general-purpose random generator. Old suite versions remain separate in
+comparison reports; a prompt-suite change does not establish new host performance.

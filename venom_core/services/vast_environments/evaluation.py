@@ -6,11 +6,11 @@ import base64
 import concurrent.futures
 import hashlib
 import json
-import random
 import statistics
 import struct
 import time
 import zlib
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -18,7 +18,7 @@ import httpx
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile, digest, now
 
-SUITE_VERSION = "venom-vast-ollama-v2"
+SUITE_VERSION = "venom-vast-ollama-v3"
 
 
 def fixture_image() -> str:
@@ -43,6 +43,95 @@ def fixture_image() -> str:
         + chunk(b"IEND", b"")
     )
     return base64.b64encode(png).decode()
+
+
+@dataclass
+class StreamCapture:
+    started: float
+    size: int = 0
+    first: float | None = None
+    text: str = ""
+    last: dict = field(default_factory=dict)
+    tool_calls: list[dict] = field(default_factory=list)
+
+    def append(self, line: str) -> bool:
+        self.size += len(line)
+        if self.size > 2_000_000 or time.monotonic() - self.started > 60:
+            raise VastError("vast.sample_limit")
+        if not line:
+            return False
+        item = json.loads(line)
+        if item.get("error"):
+            raise VastError("vast.backend_error")
+        message = item.get("message") or {}
+        content = message.get("content") or ""
+        if content and self.first is None:
+            self.first = time.monotonic() - self.started
+        self.text += content
+        self.tool_calls.extend(message.get("tool_calls") or [])
+        if item.get("done"):
+            self.last = item
+            return True
+        return False
+
+
+def _capture(client: httpx.Client, body: dict, started: float) -> StreamCapture:
+    capture = StreamCapture(started)
+    with client.stream("POST", "/api/chat", json=body) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if capture.append(line):
+                break
+    return capture
+
+
+def _sample_metrics(capture: StreamCapture) -> dict:
+    elapsed = time.monotonic() - capture.started
+    result = {
+        "status": "ok" if capture.last else "incomplete",
+        "wall_s": round(elapsed, 6),
+        "ttft_s": round(capture.first, 6) if capture.first is not None else None,
+        "response": capture.text[:8192],
+        "output_characters": len(capture.text),
+        "characters_s": round(len(capture.text) / elapsed, 3) if elapsed > 0 else None,
+        "characters_s_basis": "Unicode code points / complete request wall time",
+    }
+    for key in (
+        "load_duration",
+        "prompt_eval_count",
+        "prompt_eval_duration",
+        "eval_count",
+        "eval_duration",
+    ):
+        result[key] = capture.last.get(key)
+    for prefix, count, duration in (
+        ("decode", "eval_count", "eval_duration"),
+        ("prefill", "prompt_eval_count", "prompt_eval_duration"),
+    ):
+        if capture.last.get(duration):
+            result[prefix + "_tokens_s"] = round(
+                capture.last.get(count, 0) * 1e9 / capture.last[duration], 3
+            )
+    return result
+
+
+def _sample_correct(name: str, capture: StreamCapture) -> bool | None:
+    if name == "json":
+        return json.loads(capture.text) == {"ok": True}
+    if name == "image":
+        return "green" in capture.text.lower() and "yellow" in capture.text.lower()
+    if name == "tools":
+        return any(
+            call.get("function", {}).get("name") == "read_benchmark_sensor"
+            for call in capture.tool_calls
+        )
+    return None
+
+
+def _suite_status(failed: list, count: int) -> str:
+    if failed:
+        return "unsuitable"
+    return "suitable" if count == 12 else "inconclusive"
 
 
 class OllamaProbe:
@@ -70,10 +159,10 @@ class OllamaProbe:
         }
 
     def _payload(self, name: str, words: int = 0) -> dict:
-        rng = random.Random(SUITE_VERSION + name)
-        reference = " ".join(
-            rng.choices(["red", "blue", "green", "one", "two", "three"], k=words)
-        )
+        vocabulary = ("red", "blue", "green", "one", "two", "three")
+        # Deterministic synthetic prompt data, independent of security randomness.
+        entropy = hashlib.shake_256((SUITE_VERSION + name).encode()).digest(words)
+        reference = " ".join(vocabulary[value % len(vocabulary)] for value in entropy)
         prompt = f"Run {name}. Reference data: {reference}. Write 30 numbered short steps for assessing a model server."
         return {
             "model": self.profile.model,
@@ -90,73 +179,17 @@ class OllamaProbe:
 
     def sample(self, name: str, body: dict) -> dict:
         started = time.monotonic()
-        first = None
-        text = ""
-        last = {}
-        tool_calls: list[dict] = []
         row: dict[str, Any] = {
             "case": name,
             "request_sha256": digest(body),
             "started_at": now().isoformat(),
         }
         try:
-            with self.client.stream("POST", "/api/chat", json=body) as response:
-                response.raise_for_status()
-                size = 0
-                for line in response.iter_lines():
-                    size += len(line)
-                    if size > 2_000_000 or time.monotonic() - started > 60:
-                        raise VastError("vast.sample_limit")
-                    if not line:
-                        continue
-                    item = json.loads(line)
-                    if item.get("error"):
-                        raise VastError("vast.backend_error")
-                    message = item.get("message") or {}
-                    if message.get("content") and first is None:
-                        first = time.monotonic() - started
-                    text += message.get("content") or ""
-                    tool_calls.extend(message.get("tool_calls") or [])
-                    if item.get("done"):
-                        last = item
-                        break
-            row.update(
-                status="ok" if last else "incomplete",
-                wall_s=round(time.monotonic() - started, 6),
-                ttft_s=round(first, 6) if first is not None else None,
-                response=text[:8192],
-            )
-            elapsed = time.monotonic() - started
-            row.update(
-                output_characters=len(text),
-                characters_s=round(len(text) / elapsed, 3) if elapsed > 0 else None,
-                characters_s_basis="Unicode code points / complete request wall time",
-            )
-            for key in (
-                "load_duration",
-                "prompt_eval_count",
-                "prompt_eval_duration",
-                "eval_count",
-                "eval_duration",
-            ):
-                row[key] = last.get(key)
-            for prefix, count, duration in (
-                ("decode", "eval_count", "eval_duration"),
-                ("prefill", "prompt_eval_count", "prompt_eval_duration"),
-            ):
-                if last.get(duration):
-                    row[prefix + "_tokens_s"] = round(
-                        last.get(count, 0) * 1e9 / last[duration], 3
-                    )
-            if name == "json":
-                row["correct"] = json.loads(text) == {"ok": True}
-            if name == "image":
-                row["correct"] = "green" in text.lower() and "yellow" in text.lower()
-            if name == "tools":
-                row["correct"] = any(
-                    x.get("function", {}).get("name") == "read_benchmark_sensor"
-                    for x in tool_calls
-                )
+            capture = _capture(self.client, body, started)
+            row.update(_sample_metrics(capture))
+            correct = _sample_correct(name, capture)
+            if correct is not None:
+                row["correct"] = correct
         except (httpx.HTTPError, ValueError, TypeError, VastError):
             row.update(
                 status="error",
@@ -239,13 +272,7 @@ class OllamaProbe:
             for row in rows
             if row.get("ttft_s") is not None and row["case"].startswith("short")
         ]
-        status = (
-            "unsuitable"
-            if failed
-            else "suitable"
-            if len(rows) == 12
-            else "inconclusive"
-        )
+        status = _suite_status(failed, len(rows))
         return {
             "schema_version": 1,
             "suite_version": SUITE_VERSION,

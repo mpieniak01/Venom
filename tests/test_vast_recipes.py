@@ -85,16 +85,19 @@ def test_recipe_scripts_and_validation(service, mode, tmp_path):
     script = result["startup"]
     assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
     assert startup(cfg) == script
-    assert "docker run" not in script and "pip install" not in script
+    assert "docker run" not in script
+    assert "pip install" not in script
     if mode == "vllm":
-        assert "--host 127.0.0.1" in script and "--revision " in script
+        assert "--host 127.0.0.1" in script
+        assert "--revision " in script
         assert "--gpu-memory-utilization 0.85" in script
         assert "HF_HUB_OFFLINE" not in script
         assert "HF_HUB_OFFLINE=1" in startup(
             cfg.model_copy(update={"download_gb": Decimal(0)})
         )
     if mode == "pytorch":
-        assert "faster_whisper" in script and "ultralytics" in script
+        assert "faster_whisper" in script
+        assert "ultralytics" in script
         assert "worker_ready" in script
         assert "faster_whisper" not in startup(
             cfg.model_copy(update={"worker_tasks": []})
@@ -110,10 +113,11 @@ def test_bad_recipe_and_plan_template_change(service, tmp_path):
     )
     with pytest.raises(VastError, match="huggingface_revision_required"):
         prepare(svc.client, cfg, "vllm", None, tmp_path / "bad.json")
+    unverified_template_profile = plan.profile.model_copy(
+        update={"template_hash": "abc"}
+    )
     with pytest.raises(VastError, match="template_provenance_required"):
-        verify_template(
-            svc.client, plan.profile.model_copy(update={"template_hash": "abc"})
-        )
+        verify_template(svc.client, unverified_template_profile)
     template(svc)
     cfg = plan.profile.model_copy(
         update={"template_hash": "abc", "template_configuration_sha256": HASH}
@@ -220,8 +224,9 @@ def test_vllm_readiness(service):
         base_url="http://127.0.0.1", transport=httpx.MockTransport(respond)
     ) as client:
         assert ready(client, cfg)["runtime"] == "ready"
+        missing_model_profile = cfg.model_copy(update={"model": "absent"})
         with pytest.raises(VastError, match="model_missing"):
-            ready(client, cfg.model_copy(update={"model": "absent"}))
+            ready(client, missing_model_profile)
     with httpx.Client(
         base_url="http://127.0.0.1",
         transport=httpx.MockTransport(
@@ -291,7 +296,8 @@ def test_worker_install_is_remote_scoped_and_pinned(service):
     script = startup(cfg)
     assert "worker-venv/bin/python -m pip install" in script
     assert "--system-site-packages" in script
-    assert "base-constraints.txt" in script and "'torch'" in script
+    assert "base-constraints.txt" in script
+    assert "'torch'" in script
     assert "worker-venv/bin/python -c" in script
     assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
     for packages in [
@@ -301,13 +307,13 @@ def test_worker_install_is_remote_scoped_and_pinned(service):
         ["pillow==1;id"],
         ["pillow==1", "pillow==2"],
     ]:
+        invalid_worker_profile = {**cfg.model_dump(), "worker_packages": packages}
         with pytest.raises(ValidationError):
-            WorkloadProfile.model_validate(
-                {**cfg.model_dump(), "worker_packages": packages}
-            )
+            WorkloadProfile.model_validate(invalid_worker_profile)
     for update in [{"mode": "ollama"}, {"download_gb": Decimal(0)}]:
+        invalid_install_profile = cfg.model_copy(update=update)
         with pytest.raises(VastError, match="worker_install_download_budget_required"):
-            validate_recipe(cfg.model_copy(update=update))
+            validate_recipe(invalid_install_profile)
 
 
 def test_prepare_cli_with_image_resolution(service, tmp_path):
@@ -402,3 +408,42 @@ def test_template_repository_preserves_registry_port(image, expected):
     from venom_core.services.vast_environments.recipes import repository
 
     assert repository(image) == expected
+
+
+def test_prepared_profile_is_private_before_first_write(service, tmp_path, monkeypatch):
+    import os
+    import stat
+
+    from venom_core.services.vast_environments import recipes
+
+    svc, plan, _ = service
+    original = os.fdopen
+    observed = []
+
+    def check_mode(descriptor, mode):
+        observed.append(stat.S_IMODE(os.fstat(descriptor).st_mode))
+        return original(descriptor, mode)
+
+    monkeypatch.setattr(recipes.os, "fdopen", check_mode)
+    out = tmp_path / "private" / "profile.json"
+    prepare(svc.client, plan.profile, "inspect", None, out)
+    assert observed == [0o600]
+    assert stat.S_IMODE(out.parent.stat().st_mode) == 0o700
+
+
+@pytest.mark.parametrize("package", ["pillow==١.٠", "pillow==１.０"])
+def test_worker_version_digits_stay_ascii(service, package):
+    from pydantic import ValidationError
+
+    from venom_core.infrastructure.providers.vast.models import WorkloadProfile
+
+    _, plan, _ = service
+    data = {**plan.profile.model_dump(), "worker_packages": [package]}
+    with pytest.raises(ValidationError):
+        WorkloadProfile.model_validate(data)
+
+
+def test_registry_tag_stays_ascii():
+    client, _ = registry()
+    with client, pytest.raises(VastError, match="invalid_public_image"):
+        resolve_image("org/image:é", "arm64", client)

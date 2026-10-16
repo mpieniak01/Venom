@@ -13,6 +13,8 @@ from typing import Iterator
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import EnvironmentPlan
 
+SSH_FAILED = "vast.ssh_failed"
+
 INSPECT_SCRIPT = """
 import importlib.metadata, json, os, platform, shutil, subprocess
 from pathlib import Path
@@ -103,6 +105,43 @@ def ssh_args(
     ]
 
 
+def _memory_bytes(facts: dict) -> float:
+    memory = str(facts.get("memory") or "")
+    line = next((row for row in memory.splitlines() if row.startswith("MemTotal:")), "")
+    value = int(line.split()[1]) * 1024
+    cgroup = str(facts.get("cgroup_memory_max") or "").strip()
+    return min(value, int(cgroup)) if cgroup and cgroup != "max" else value
+
+
+def _cpu_cores(facts: dict) -> float:
+    cores = float(facts["cpu_count"])
+    quota = str(facts.get("cgroup_cpu_max") or "max").split()
+    return min(cores, float(quota[0]) / float(quota[1])) if quota[0] != "max" else cores
+
+
+def _gpu_bytes(facts: dict) -> float:
+    rows = str(facts.get("gpu") or "").strip().splitlines()
+    if len(rows) != 1:
+        raise ValueError("vast.inspect_gpu_count")
+    # nvidia-smi reports MiB; profile requirements use native MB.
+    return float(rows[0].split(",")[2]) * 1024 * 1024
+
+
+def _capacity_limits(
+    facts: dict, plan: EnvironmentPlan, failures: list[str], unknown: list[str]
+) -> None:
+    for name, parse, minimum in (
+        ("cpu_ram", _memory_bytes, plan.profile.min_cpu_ram_mb * 1_000_000),
+        ("cpu_cores", _cpu_cores, plan.profile.min_cpu_cores),
+        ("gpu_ram", _gpu_bytes, plan.profile.min_gpu_ram_mb * 1_000_000),
+    ):
+        try:
+            if parse(facts) < minimum:
+                failures.append(name)
+        except (ValueError, KeyError, IndexError, ZeroDivisionError, TypeError):
+            unknown.append(name)
+
+
 def inspect(plan: EnvironmentPlan, instance: dict, accept_new: bool = False) -> dict:
     try:
         result = subprocess.run(
@@ -114,9 +153,9 @@ def inspect(plan: EnvironmentPlan, instance: dict, accept_new: bool = False) -> 
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        raise VastError("vast.ssh_failed") from None
+        raise VastError(SSH_FAILED) from None
     if result.returncode:
-        raise VastError("vast.ssh_failed")
+        raise VastError(SSH_FAILED)
     try:
         facts = json.loads(result.stdout)
         if not isinstance(facts, dict) or facts.get("schema_version") != 1:
@@ -124,44 +163,15 @@ def inspect(plan: EnvironmentPlan, instance: dict, accept_new: bool = False) -> 
     except ValueError:
         raise VastError("vast.inspect_invalid") from None
     expected = {"arm64": "aarch64", "amd64": "x86_64"}[plan.profile.cpu_arch]
-    failures = []
-    unknown = []
+    failures: list[str] = []
+    unknown: list[str] = []
     if facts.get("arch") != expected:
         failures.append("cpu_arch")
     if facts.get("disk", {}).get("free_bytes", 0) < plan.profile.min_free_disk_bytes:
         failures.append("free_disk")
     if str(facts.get("startup_state") or "").strip() == "failed":
         failures.append("startup")
-    memory = str(facts.get("memory") or "")
-    memline = next((x for x in memory.splitlines() if x.startswith("MemTotal:")), "")
-    try:
-        memory_bytes = int(memline.split()[1]) * 1024
-        cgroup = str(facts.get("cgroup_memory_max") or "").strip()
-        if cgroup and cgroup != "max":
-            memory_bytes = min(memory_bytes, int(cgroup))
-        if memory_bytes < plan.profile.min_cpu_ram_mb * 1_000_000:
-            failures.append("cpu_ram")
-    except (ValueError, IndexError):
-        unknown.append("cpu_ram")
-    try:
-        cores = float(facts["cpu_count"])
-        quota = str(facts.get("cgroup_cpu_max") or "max").split()
-        if quota[0] != "max":
-            cores = min(cores, float(quota[0]) / float(quota[1]))
-        if cores < plan.profile.min_cpu_cores:
-            failures.append("cpu_cores")
-    except (ValueError, KeyError, IndexError, ZeroDivisionError):
-        unknown.append("cpu_cores")
-    gpu = str(facts.get("gpu") or "").strip().splitlines()
-    try:
-        if len(gpu) != 1:
-            raise ValueError
-        # nvidia-smi reports MiB; API requirements use native MB.
-        gpu_bytes = float(gpu[0].split(",")[2]) * 1024 * 1024
-        if gpu_bytes < plan.profile.min_gpu_ram_mb * 1_000_000:
-            failures.append("gpu_ram")
-    except (ValueError, IndexError):
-        unknown.append("gpu_ram")
+    _capacity_limits(facts, plan, failures, unknown)
     return {
         "ssh": "ready",
         "facts": facts,
@@ -194,7 +204,7 @@ def tunnel(plan: EnvironmentPlan, instance: dict) -> Iterator[str]:
             stderr=subprocess.DEVNULL,
         )
     except OSError:
-        raise VastError("vast.ssh_failed") from None
+        raise VastError(SSH_FAILED) from None
     try:
         deadline = time.monotonic() + 20
         while True:

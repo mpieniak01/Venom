@@ -158,27 +158,37 @@ class Environments:
                 raise
             return self._event(record, "created")
 
+    def _recover(self, plan: EnvironmentPlan, record: EnvironmentRecord) -> bool:
+        if record.state not in {"submitting", "outcome_unknown"}:
+            return False
+        matches = [
+            row
+            for row in self.client.instances()
+            if row.get("label") == "venom-" + plan.plan_id
+        ]
+        if len(matches) != 1:
+            self._event(record, "outcome_unknown")
+            return False
+        match = matches[0]
+        if any(match.get(key) is None for key in ("host_id", "machine_id")):
+            self._event(record, "outcome_unknown")
+            return False
+        if any(
+            match[key] != plan.assessment.offer[key]
+            for key in ("host_id", "machine_id")
+        ):
+            raise VastError("vast.recovery_mismatch")
+        record.instance_id = match["id"]
+        return True
+
     def reconcile(self, plan_id: str) -> EnvironmentRecord:
         with self.journal.lock(plan_id):
             plan = self.journal.plan(plan_id)
             record = self.journal.record(plan_id)
             if record.instance_id is None:
-                if record.state not in {"submitting", "outcome_unknown"}:
-                    return record
-                matches = [
-                    x
-                    for x in self.client.instances()
-                    if x.get("label") == "venom-" + plan_id
-                ]
-                if len(matches) != 1:
-                    return self._event(record, "outcome_unknown")
-                match = matches[0]
-                for key in ("host_id", "machine_id"):
-                    if match.get(key) is None:
-                        return self._event(record, "outcome_unknown")
-                    if match[key] != plan.assessment.offer[key]:
-                        raise VastError("vast.recovery_mismatch")
-                record.instance_id = match["id"]
+                self._recover(plan, record)
+            if record.instance_id is None:
+                return record
             try:
                 instance = self.client.instance(record.instance_id)
             except VastError as exc:

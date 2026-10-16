@@ -38,9 +38,13 @@ def test_tunnel_closes_after_success_and_exception(service):
     ):
         with tunnel(plan, svc.client.instance.return_value) as endpoint:
             assert endpoint.startswith("http://127.0.0.1:")
-        with pytest.raises(ValueError):
+
+        def interrupted():
             with tunnel(plan, svc.client.instance.return_value):
                 raise ValueError("fixture")
+
+        with pytest.raises(ValueError):
+            interrupted()
     assert process.terminate.call_count == 2
     assert process.wait.call_count == 2
 
@@ -159,7 +163,8 @@ def test_workload_records_error_and_success(service):
         with pytest.raises(VastError):
             workload(svc, plan.plan_id, "ready")
     rec = svc.journal.record(plan.plan_id)
-    assert rec.runtime_state == "error" and rec.ssh_state == "unknown"
+    assert rec.runtime_state == "error"
+    assert rec.ssh_state == "unknown"
     assert rec.reports["ready"]["status"] == "error"
     with patch(
         "venom_core.services.vast_environments.operations.subprocess.run",
@@ -300,12 +305,14 @@ def test_cli_profile_validation_and_late_cost_window(service, tmp_path):
             ssh_profile(config)
     config.write_text('{"identity_file":"id","known_hosts":"hosts"}')
     assert ssh_profile(config)["identity_file"] == "id"
+    cli_parser = parser()
     with pytest.raises(SystemExit):
-        parser().parse_args(
+        cli_parser.parse_args(
             ["costs", "--plan", plan.plan_id, "--from-utc", "2026-10-16T12:00:00"]
         )
     args = parser().parse_args(["costs", "--plan", plan.plan_id])
-    assert args.from_utc is None and args.to_utc is None
+    assert args.from_utc is None
+    assert args.to_utc is None
     fixed = now()
     with (
         patch("venom_core.services.vast_environments.cli.now", return_value=fixed),

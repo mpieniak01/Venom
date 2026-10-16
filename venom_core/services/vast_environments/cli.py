@@ -50,37 +50,7 @@ def ssh_profile(path: Path) -> dict:
     return value
 
 
-def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(description="Vast.ai environment operations")
-    root.add_argument("--env-file", type=Path)
-    root.add_argument("--state-dir", type=Path, default=Path(DEFAULT_STATE))
-    root.add_argument("--json", action="store_true")
-    root.add_argument("--locale", choices=["en", "pl", "de"], default="pl")
-    sub = root.add_subparsers(dest="command", required=True)
-    image = sub.add_parser("resolve-image")
-    image.add_argument("--image", required=True)
-    image.add_argument("--arch", choices=["amd64", "arm64"], required=True)
-    sub.add_parser("recipes")
-    recipe = sub.add_parser("prepare")
-    recipe.add_argument("--profile", type=Path)
-    recipe.add_argument("--image")
-    recipe.add_argument("--arch", choices=["amd64", "arm64"])
-    recipe.add_argument("--model")
-    recipe.add_argument("--model-digest")
-    recipe.add_argument("--disk-gb", type=int)
-    recipe.add_argument("--download-gb", type=Decimal)
-    recipe.add_argument("--install-package", action="append")
-    recipe.add_argument("--worker-task", action="append", choices=["vision", "audio"])
-    recipe.add_argument("--recipe", choices=list(RECIPES), required=True)
-    recipe.add_argument("--template-hash")
-    recipe.add_argument("--output", type=Path, required=True)
-    templates = sub.add_parser("templates")
-    templates.add_argument("--hash")
-    templates.add_argument("--recommended", action="store_true")
-    history = sub.add_parser("host-results")
-    history.add_argument("--machine", type=int, required=True)
-    for command in ("account", "list", "volumes"):
-        sub.add_parser(command)
+def _add_offer_commands(sub) -> None:
     for command in ("offers", "assess", "plan"):
         item = sub.add_parser(command)
         item.add_argument("--profile", type=Path, required=True)
@@ -117,6 +87,9 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument(
                 "--finish", choices=["manual", "stop", "destroy"], default="manual"
             )
+
+
+def _add_record_commands(sub) -> None:
     for command in (
         "create",
         "status",
@@ -149,6 +122,41 @@ def parser() -> argparse.ArgumentParser:
                 default=None,
             )
             item.add_argument("--to-utc", type=utc_argument, default=None)
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(description="Vast.ai environment operations")
+    root.add_argument("--env-file", type=Path)
+    root.add_argument("--state-dir", type=Path, default=Path(DEFAULT_STATE))
+    root.add_argument("--json", action="store_true")
+    root.add_argument("--locale", choices=["en", "pl", "de"], default="pl")
+    sub = root.add_subparsers(dest="command", required=True)
+    image = sub.add_parser("resolve-image")
+    image.add_argument("--image", required=True)
+    image.add_argument("--arch", choices=["amd64", "arm64"], required=True)
+    sub.add_parser("recipes")
+    recipe = sub.add_parser("prepare")
+    recipe.add_argument("--profile", type=Path)
+    recipe.add_argument("--image")
+    recipe.add_argument("--arch", choices=["amd64", "arm64"])
+    recipe.add_argument("--model")
+    recipe.add_argument("--model-digest")
+    recipe.add_argument("--disk-gb", type=int)
+    recipe.add_argument("--download-gb", type=Decimal)
+    recipe.add_argument("--install-package", action="append")
+    recipe.add_argument("--worker-task", action="append", choices=["vision", "audio"])
+    recipe.add_argument("--recipe", choices=list(RECIPES), required=True)
+    recipe.add_argument("--template-hash")
+    recipe.add_argument("--output", type=Path, required=True)
+    templates = sub.add_parser("templates")
+    templates.add_argument("--hash")
+    templates.add_argument("--recommended", action="store_true")
+    history = sub.add_parser("host-results")
+    history.add_argument("--machine", type=int, required=True)
+    for command in ("account", "list", "volumes"):
+        sub.add_parser(command)
+    _add_offer_commands(sub)
+    _add_record_commands(sub)
     item = sub.add_parser("compare")
     item.add_argument("reports", type=Path, nargs="+")
     return root
@@ -175,82 +183,130 @@ def workload_profile(args) -> WorkloadProfile:
     return WorkloadProfile.model_validate({**profile.model_dump(), **overrides})
 
 
-def dispatch(args, service: Environments):
+def _prepare_action(args, service: Environments):
+    values = (
+        json.loads(args.profile.read_text())
+        if args.profile
+        else {"name": "venom-" + args.recipe}
+    )
+    for argument, field in (
+        ("image", "image"),
+        ("arch", "cpu_arch"),
+        ("model", "model"),
+        ("model_digest", "model_digest"),
+        ("disk_gb", "disk_gb"),
+        ("download_gb", "download_gb"),
+        ("install_package", "worker_packages"),
+        ("worker_task", "worker_tasks"),
+    ):
+        if getattr(args, argument) is not None:
+            values[field] = getattr(args, argument)
+    values["mode"] = args.recipe
+    if values.get("image") and "@sha256:" not in values["image"]:
+        with httpx.Client(
+            timeout=25, follow_redirects=False, trust_env=False
+        ) as registry:
+            values["image"] = resolve_image(
+                values["image"], values.get("cpu_arch", ""), registry
+            )["image"]
+    profile = WorkloadProfile.model_validate(values)
+    return prepare(
+        service.client, profile, args.recipe, args.template_hash, args.output
+    )
+
+
+def _offer_action(args, service: Environments):
     command = args.command
-    if command == "recipes":
+    profile = workload_profile(args)
+    if command == "offers":
+        return [row.model_dump(mode="json") for row in service.search(profile)]
+    if command == "assess":
+        rows = service.client.offers(
+            profile.disk_gb, {**search_filters(profile), "id": {"eq": args.offer}}
+        )
+        selected = [row for row in rows if row.get("id") == args.offer]
+        if len(selected) != 1:
+            raise VastError("vast.offer_expired")
+        return assess(selected[0], profile).model_dump(mode="json")
+    ssh = ssh_profile(args.ssh_profile)
+    return service.plan(
+        profile,
+        args.offer,
+        args.max_hourly,
+        args.max_total,
+        Path(ssh["identity_file"]),
+        Path(ssh["known_hosts"]),
+        args.finish,
+    ).model_dump(mode="json")
+
+
+def _cost_action(args, service: Environments):
+    plan = service.journal.plan(args.plan)
+    with service.journal.lock(args.plan):
+        record = service.journal.record(args.plan)
+        end = args.to_utc or now()
+        start = args.from_utc or end - timedelta(days=7)
+        result = costs(service.client, plan, record, start, end)
+        record.reports["costs"] = result
+        service.journal.save_record(record)
+    return result
+
+
+def _offline(args):
+    if args.command == "recipes":
         return RECIPES
-    if command == "prepare":
-        values = (
-            json.loads(args.profile.read_text())
-            if args.profile
-            else {"name": "venom-" + args.recipe}
-        )
-        for argument, field in (
-            ("image", "image"),
-            ("arch", "cpu_arch"),
-            ("model", "model"),
-            ("model_digest", "model_digest"),
-            ("disk_gb", "disk_gb"),
-            ("download_gb", "download_gb"),
-            ("install_package", "worker_packages"),
-            ("worker_task", "worker_tasks"),
-        ):
-            if getattr(args, argument) is not None:
-                values[field] = getattr(args, argument)
-        values["mode"] = args.recipe
-        if values.get("image") and "@sha256:" not in values["image"]:
-            with httpx.Client(
-                timeout=25, follow_redirects=False, trust_env=False
-            ) as registry:
-                values["image"] = resolve_image(
-                    values["image"], values.get("cpu_arch", ""), registry
-                )["image"]
-        profile = WorkloadProfile.model_validate(values)
-        return prepare(
-            service.client, profile, args.recipe, args.template_hash, args.output
-        )
-    if command == "templates":
-        return service.client.templates(args.hash, args.recommended)
-    if command == "host-results":
-        return service.client.benchmarks(args.machine)
-    if command == "account":
-        return service.client.account()
-    if command == "list":
-        return service.client.instances()
-    if command == "volumes":
-        return service.client.volumes()
-    if command in {"offers", "assess", "plan"}:
-        profile = workload_profile(args)
-        if command == "offers":
-            return [row.model_dump(mode="json") for row in service.search(profile)]
-        if command == "assess":
-            rows = service.client.offers(
-                profile.disk_gb, {**search_filters(profile), "id": {"eq": args.offer}}
-            )
-            selected = [row for row in rows if row.get("id") == args.offer]
-            if len(selected) != 1:
-                raise VastError("vast.offer_expired")
-            return assess(selected[0], profile).model_dump(mode="json")
-        ssh = ssh_profile(args.ssh_profile)
-        return service.plan(
-            profile,
-            args.offer,
-            args.max_hourly,
-            args.max_total,
-            Path(ssh["identity_file"]),
-            Path(ssh["known_hosts"]),
-            args.finish,
-        ).model_dump(mode="json")
-    if command == "create":
-        return service.create(args.plan).model_dump(mode="json")
-    if command in {"status", "reconcile"}:
-        return service.reconcile(args.plan).model_dump(mode="json")
+    if args.command == "resolve-image":
+        with httpx.Client(
+            timeout=25, follow_redirects=False, trust_env=False
+        ) as registry:
+            return resolve_image(args.image, args.arch, registry)
+    reports = [json.loads(path.read_text()) for path in args.reports]
+    return compare([row.get("result", row) for row in reports])
+
+
+def _record_action(args, service: Environments):
+    command = args.command
     if command in {"start", "stop", "destroy"}:
         return service.change(args.plan, command).model_dump(mode="json")
     if command == "export":
         return service.export(args.plan)
-    if command == "cleanup":
-        return service.cleanup(args.plan).model_dump(mode="json")
+    methods = {
+        "create": service.create,
+        "status": service.reconcile,
+        "reconcile": service.reconcile,
+        "cleanup": service.cleanup,
+    }
+    return methods[command](args.plan).model_dump(mode="json")
+
+
+def dispatch(args, service: Environments):
+    command = args.command
+    if command in {"recipes", "resolve-image", "compare"}:
+        return _offline(args)
+    if command in {"account", "list", "volumes"}:
+        methods = {
+            "account": service.client.account,
+            "list": service.client.instances,
+            "volumes": service.client.volumes,
+        }
+        return methods[command]()
+    if command == "templates":
+        return service.client.templates(args.hash, args.recommended)
+    if command == "host-results":
+        return service.client.benchmarks(args.machine)
+    if command in {"offers", "assess", "plan"}:
+        return _offer_action(args, service)
+    if command in {
+        "create",
+        "status",
+        "reconcile",
+        "start",
+        "stop",
+        "destroy",
+        "export",
+        "cleanup",
+    }:
+        return _record_action(args, service)
     if command == "wait":
         return service.wait(args.plan, args.timeout).model_dump(mode="json")
     if command == "monitor":
@@ -259,50 +315,41 @@ def dispatch(args, service: Environments):
         return workload(
             service, args.plan, command, getattr(args, "accept_new_host_key", False)
         )
-    if command == "costs":
-        plan = service.journal.plan(args.plan)
-        with service.journal.lock(args.plan):
-            record = service.journal.record(args.plan)
-            end = args.to_utc or now()
-            start = args.from_utc or end - timedelta(days=7)
-            result = costs(service.client, plan, record, start, end)
-            record.reports["costs"] = result
-            service.journal.save_record(record)
-        return result
-    if command == "compare":
-        reports = [json.loads(path.read_text()) for path in args.reports]
-        return compare([r.get("result", r) for r in reports])
-    raise VastError("vast.invalid_action")
+    handlers = {"prepare": _prepare_action, "costs": _cost_action}
+    handler = handlers.get(command)
+    if handler is None:
+        raise VastError("vast.invalid_action")
+    return handler(args, service)
+
+
+def _run(args, client_factory):
+    if args.command in {"recipes", "resolve-image", "compare"}:
+        return _offline(args)
+    from venom_core.config import Settings
+
+    options: dict[str, Any] = {"_env_file": os.environ.get("ENV_FILE") or ".env.dev"}
+    client = (client_factory or VastClient)(Settings(**options).VAST_API_KEY)
+    try:
+        return dispatch(args, Environments(client, Journal(args.state_dir)))
+    finally:
+        client.close()
+
+
+def _error_output(exc: Exception) -> dict[str, Any]:
+    error = exc.code if isinstance(exc, VastError) else "vast.invalid_input"
+    result = {"ok": False, "error": error}
+    if isinstance(exc, VastError):
+        result.update(http_status=exc.status, outcome_unknown=exc.ambiguous)
+    return result
 
 
 def main(argv=None, client_factory=None) -> int:
+    # Local operator CLI only: this function is not an HTTP route or LLM tool.
     args = parser().parse_args(argv)
-    # Must precede importing Settings, which resolves ENV_FILE at class creation.
     if args.env_file:
         os.environ["ENV_FILE"] = str(args.env_file.expanduser().resolve())
-    client = None
     try:
-        if args.command == "recipes":
-            result = RECIPES
-        elif args.command == "resolve-image":
-            with httpx.Client(
-                timeout=25, follow_redirects=False, trust_env=False
-            ) as registry:
-                result = resolve_image(args.image, args.arch, registry)
-        elif args.command == "compare":
-            reports = [json.loads(path.read_text()) for path in args.reports]
-            result = compare([report.get("result", report) for report in reports])
-        else:
-            from venom_core.config import Settings
-
-            env_options: dict[str, Any] = {
-                "_env_file": os.environ.get("ENV_FILE") or ".env.dev"
-            }
-            settings = Settings(**env_options)
-            client = (client_factory or VastClient)(settings.VAST_API_KEY)
-            result = dispatch(args, Environments(client, Journal(args.state_dir)))
-        output = {"ok": True, "result": result}
-        code = 0
+        output = {"ok": True, "result": _run(args, client_factory)}
     except (
         VastError,
         ValidationError,
@@ -311,16 +358,9 @@ def main(argv=None, client_factory=None) -> int:
         KeyError,
         TypeError,
     ) as exc:
-        error = exc.code if isinstance(exc, VastError) else "vast.invalid_input"
-        output = {"ok": False, "error": error}
-        if isinstance(exc, VastError):
-            output.update(http_status=exc.status, outcome_unknown=exc.ambiguous)
-        code = 1
-    finally:
-        if client is not None:
-            client.close()
+        output = _error_output(exc)
     if not args.json:
         labels = json.loads((Path(__file__).parent / "messages.json").read_text())
         print(labels[args.locale]["ok" if output["ok"] else "error"])
     print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
-    return code
+    return 0 if output["ok"] else 1

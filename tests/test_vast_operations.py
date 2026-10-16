@@ -262,13 +262,17 @@ def test_billing_uses_parent_only_and_distinct_sources(service):
         costs(svc.client, plan, record, now() - timedelta(hours=1), now())["status"]
         == "pending"
     )
+    window_start = now()
+    window_end = now() - timedelta(seconds=1)
     with pytest.raises(VastError):
-        costs(svc.client, plan, record, now(), now() - timedelta(seconds=1))
+        costs(svc.client, plan, record, window_start, window_end)
 
 
 def test_startup_is_deterministic(service):
     _, plan, _ = service
-    assert startup(plan.profile) == startup(plan.profile)
+    expected = startup(plan.profile)
+    restored = WorkloadProfile.model_validate_json(plan.profile.model_dump_json())
+    assert startup(restored) == expected
     assert "docker run" not in startup(plan.profile)
     cfg = plan.profile.model_copy(
         update={"mode": "ollama", "model": "test", "download_gb": Decimal("25")}
@@ -401,7 +405,7 @@ def test_ready_and_full_suite(service):
     assert len(result["samples"]) == 12
     assert result["samples"][0]["output_characters"] == 5
     assert result["samples"][0]["characters_s"] > 0
-    assert result["suite_version"].endswith("v2")
+    assert result["suite_version"].endswith("v3")
     assert compare([result, result])["comparable"]
     assert fixture_image().startswith("iVBOR")
     p.client.close()
@@ -445,7 +449,8 @@ def test_cli_account_and_error(service, capsys, tmp_path):
         == 1
     )
     out = capsys.readouterr().out
-    assert "403" in out and "vast.http_error" in out
+    assert "403" in out
+    assert "vast.http_error" in out
     svc.client.close.assert_called()
 
 
@@ -459,5 +464,21 @@ def test_billing_unavailable_preserves_quote(service):
     assert result["provider_reported"]["usd"] is None
     assert result["provider_reported"]["error"] == "vast.charges_unavailable_for_host"
     svc.client.charges.side_effect = VastError("vast.transport_error")
+    window_start = now() - timedelta(hours=1)
+    window_end = now()
     with pytest.raises(VastError):
-        costs(svc.client, plan, record, now() - timedelta(hours=1), now())
+        costs(svc.client, plan, record, window_start, window_end)
+
+
+def test_synthetic_prompt_is_repeatable_across_profile_roundtrip(service):
+    _, plan, _ = service
+    first = probe(plan.profile)
+    restored = WorkloadProfile.model_validate_json(plan.profile.model_dump_json())
+    second = probe(restored)
+    try:
+        expected = first._payload("synthetic", 64)
+        assert second._payload("synthetic", 64) == expected
+        assert first._payload("other", 64) != expected
+    finally:
+        first.client.close()
+        second.client.close()

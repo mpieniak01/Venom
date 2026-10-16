@@ -28,7 +28,7 @@ def _image_parts(image: str, arch: str) -> tuple[str, str]:
         arch not in {"amd64", "arm64"}
         or not sep
         or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*", repo)
-        or not re.fullmatch(r"\w[A-Za-z0-9_.-]{0,127}", tag, flags=re.ASCII)
+        or not re.fullmatch(r"\w[\w.-]{0,127}", tag, flags=re.ASCII)
         or ".." in repo
         or "//" in repo
     ):

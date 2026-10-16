@@ -178,8 +178,9 @@ def test_offer_query_and_sanitize(profile, offer):
 
 
 def test_missing_key():
+    empty_key = SecretStr("")
     with pytest.raises(VastError, match="vast.missing_key"):
-        VastClient(SecretStr(""))
+        VastClient(empty_key)
 
 
 def test_object_and_invalid_wire_shapes():
@@ -297,8 +298,9 @@ def test_missing_rate_and_local_filters(profile, offer):
     ],
 )
 def test_profile_validators(profile, updates):
+    invalid_profile_data = {**profile.model_dump(), **updates}
     with pytest.raises(ValidationError):
-        WorkloadProfile.model_validate({**profile.model_dump(), **updates})
+        WorkloadProfile.model_validate(invalid_profile_data)
 
 
 def test_host_billing_rejection_is_explicit():
@@ -344,7 +346,8 @@ def test_template_and_history_boundary():
         ]
     )
     template = api.templates("abc", True)[0]
-    assert template["has_environment"] and template["has_startup"]
+    assert template["has_environment"]
+    assert template["has_startup"]
     assert "secret" not in json.dumps(template)
     assert len(template["configuration_sha256"]) == 64
     filters = json.loads(wire.calls[0][2]["params"]["select_filters"])
@@ -362,8 +365,10 @@ def test_template_and_history_boundary():
 @pytest.mark.parametrize("action", ["templates", "benchmarks"])
 def test_catalog_invalid_shapes(action):
     api, _ = client([(200, {})])
+    operation = getattr(api, action)
+    arguments = [42] if action == "benchmarks" else []
     with pytest.raises(VastError, match="vast.invalid_response"):
-        getattr(api, action)(42) if action == "benchmarks" else api.templates()
+        operation(*arguments)
 
 
 def test_performance_fields(profile, offer):

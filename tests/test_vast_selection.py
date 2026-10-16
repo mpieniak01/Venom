@@ -151,7 +151,8 @@ def test_country_filters_and_preferred_queries(service):
     _, plan, _ = service
     profile = plan.profile
     queries = preferred_queries(profile, search_filters(profile))
-    assert len(queries) == 1 and queries[0]["geolocation"] == {"eq": "PL"}
+    assert len(queries) == 1
+    assert queries[0]["geolocation"] == {"eq": "PL"}
     assert "geolocation" not in search_filters(profile)
     restricted = profile.model_copy(update={"countries": ["DE"]})
     assert preferred_queries(restricted, search_filters(restricted)) == []
@@ -187,10 +188,12 @@ def test_candidate_deduplication_and_fallback(service):
 @pytest.mark.parametrize("code", ["POL", "1P", "łł", ""])
 def test_bad_country_validation(service, code):
     _, plan, _ = service
+    invalid_profile_data = {
+        **plan.profile.model_dump(),
+        "preferred_countries": [code],
+    }
     with pytest.raises(ValidationError):
-        WorkloadProfile.model_validate(
-            {**plan.profile.model_dump(), "preferred_countries": [code]}
-        )
+        WorkloadProfile.model_validate(invalid_profile_data)
 
 
 def test_cli_overrides_are_validated_and_persistable(service, tmp_path):
@@ -218,8 +221,10 @@ def test_cli_overrides_are_validated_and_persistable(service, tmp_path):
     )
     profile = workload_profile(args)
     assert profile.sort_by == "price"
-    assert profile.countries == ["PL"] and profile.preferred_countries == ["PL"]
-    assert profile.min_download_mbps == 500 and profile.min_upload_mbps == 200
+    assert profile.countries == ["PL"]
+    assert profile.preferred_countries == ["PL"]
+    assert profile.min_download_mbps == 500
+    assert profile.min_upload_mbps == 200
     assert profile.min_reliability == 0.99
     args = parser().parse_args(
         ["offers", "--profile", str(path), "--no-country-preference"]

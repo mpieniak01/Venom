@@ -79,7 +79,7 @@ class WorkloadProfile(Contract):
             if (
                 name not in allowed
                 or not sep
-                or not re.fullmatch(r"[0-9][A-Za-z0-9.+_-]{0,63}", version)
+                or not re.fullmatch(r"\d[\w.+-]{0,63}", version, flags=re.ASCII)
             ):
                 raise ValueError("vast.pinned_worker_package_required")
         if len({value.split("==")[0] for value in values}) != len(values):

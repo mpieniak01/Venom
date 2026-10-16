@@ -18,7 +18,7 @@ import httpx
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile, digest, now
 
-SUITE_VERSION = "venom-vast-ollama-v1"
+SUITE_VERSION = "venom-vast-ollama-v2"
 
 
 def fixture_image() -> str:
@@ -123,6 +123,12 @@ class OllamaProbe:
                 wall_s=round(time.monotonic() - started, 6),
                 ttft_s=round(first, 6) if first is not None else None,
                 response=text[:8192],
+            )
+            elapsed = time.monotonic() - started
+            row.update(
+                output_characters=len(text),
+                characters_s=round(len(text) / elapsed, 3) if elapsed > 0 else None,
+                characters_s_basis="Unicode code points / complete request wall time",
             )
             for key in (
                 "load_duration",

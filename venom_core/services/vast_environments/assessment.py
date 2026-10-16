@@ -74,6 +74,8 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
         elif value != expected:
             reasons.append(key)
     requirements = {
+        "dlperf": profile.min_dlperf,
+        "gpu_mem_bw": profile.min_gpu_mem_bw_gb_s,
         "cpu_ram": profile.min_cpu_ram_mb,
         "gpu_ram": profile.min_gpu_ram_mb,
         "cpu_cores_effective": profile.min_cpu_cores,
@@ -125,6 +127,10 @@ def search_filters(profile: WorkloadProfile) -> dict[str, Any]:
         "order": provider_order(profile.sort_by),
         "reliability": {"gte": profile.min_reliability},
     }
+    if profile.min_dlperf:
+        result["dlperf"] = {"gte": profile.min_dlperf}
+    if profile.min_gpu_mem_bw_gb_s:
+        result["gpu_mem_bw"] = {"gte": profile.min_gpu_mem_bw_gb_s}
     if profile.min_download_mbps:
         result["inet_down"] = {"gte": profile.min_download_mbps}
     if profile.min_upload_mbps:

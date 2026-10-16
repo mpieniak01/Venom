@@ -397,6 +397,9 @@ def test_ready_and_full_suite(service):
     result = p.benchmark()
     assert result["status"] == "suitable"
     assert len(result["samples"]) == 12
+    assert result["samples"][0]["output_characters"] == 5
+    assert result["samples"][0]["characters_s"] > 0
+    assert result["suite_version"].endswith("v2")
     assert compare([result, result])["comparable"]
     assert fixture_image().startswith("iVBOR")
     p.client.close()

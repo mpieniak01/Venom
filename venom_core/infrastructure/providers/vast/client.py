@@ -132,6 +132,71 @@ class VastClient:
             if not self._object(row).get("deleted_at")
         ]
 
+    def templates(
+        self, template_hash: str | None = None, recommended: bool = False
+    ) -> list[dict]:
+        from venom_core.infrastructure.providers.vast.templates import (
+            TEMPLATE_COLUMNS,
+            template_snapshot,
+        )
+
+        filters: dict[str, Any] = {"use_ssh": {"eq": True}}
+        if template_hash:
+            filters["hash_id"] = {"eq": template_hash}
+        if recommended:
+            filters["recommended"] = {"eq": True}
+        data = self._object(
+            self._request(
+                "GET",
+                "/api/v0/template/",
+                params={
+                    "select_filters": json.dumps(filters),
+                    "select_cols": json.dumps(TEMPLATE_COLUMNS),
+                    "order_by": "count_created",
+                },
+            )
+        )
+        rows = data.get("templates")
+        if not isinstance(rows, list):
+            raise VastError("vast.invalid_response")
+        return [template_snapshot(self._object(row)) for row in rows]
+
+    def benchmarks(self, machine_id: int) -> dict:
+        if machine_id <= 0:
+            raise VastError("vast.invalid_machine")
+        fields = (
+            "id",
+            "contract_id",
+            "machine_id",
+            "model",
+            "name",
+            "image",
+            "num_gpus",
+            "score",
+            "last_update",
+        )
+        data = self._request(
+            "GET",
+            "/api/v0/benchmarks/",
+            params={
+                "select_filters": json.dumps({"machine_id": {"eq": machine_id}}),
+                "select_cols": json.dumps(fields),
+            },
+        )
+        rows = data if isinstance(data, list) else self._object(data).get("benchmarks")
+        if not isinstance(rows, list):
+            raise VastError("vast.invalid_response")
+        return {
+            "source": "provider_history",
+            "score_unit": "unknown",
+            "results": [
+                project(self._object(row), fields)
+                for row in rows
+                if self._object(row).get("machine_id") == machine_id
+            ],
+            "status": "available" if rows else "not_available",
+        }
+
     def offers(self, disk_gb: int, filters: dict[str, Any] | None = None) -> list[dict]:
         data = self._request(
             "POST",

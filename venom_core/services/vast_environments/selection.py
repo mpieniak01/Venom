@@ -30,7 +30,13 @@ def host_signals(offer: dict, profile: WorkloadProfile) -> HostSignals:
     country = country_code(offer)
     quality = reliability(offer)
     verification = offer.get("verification")
+    dlperf = amount(offer.get("dlperf"))
+    price = amount((offer.get("search") or {}).get("totalHour", offer.get("dph_total")))
     return HostSignals(
+        dlperf=dlperf,
+        total_tflops=amount(offer.get("total_flops")),
+        gpu_memory_bandwidth_gb_s=amount(offer.get("gpu_mem_bw")),
+        dlperf_per_hourly_usd=dlperf / price if dlperf is not None and price else None,
         country_code=country,
         preferred_country=country is not None
         and country in profile.preferred_countries,
@@ -48,6 +54,8 @@ def provider_order(sort_by: str) -> list[list[str]]:
             ["inet_down", "desc"],
             ["dph_total", "asc"],
         ],
+        "performance": [["dlperf", "desc"], ["dph_total", "asc"]],
+        "value": [["dlperf_per_dphtotal", "desc"], ["dph_total", "asc"]],
         "price": [["dph_total", "asc"], ["reliability", "desc"]],
         "network": [["inet_down", "desc"], ["inet_up", "desc"], ["dph_total", "asc"]],
         "reliability": [["reliability", "desc"], ["dph_total", "asc"]],
@@ -92,7 +100,15 @@ def rank(
         )
         down, up = host.download_mbps, host.upload_mbps
         network = -min(down, up) if down is not None and up is not None else infinity
+        performance = -host.dlperf if host.dlperf is not None else infinity
+        value = (
+            -host.dlperf_per_hourly_usd
+            if host.dlperf_per_hourly_usd is not None
+            else infinity
+        )
         criteria = {
+            "performance": (performance, price, quality),
+            "value": (value, price, quality),
             "balanced": (quality, network, price),
             "price": (price, quality, network),
             "network": (network, quality, price),

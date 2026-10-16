@@ -307,3 +307,89 @@ def test_host_billing_rejection_is_explicit():
     )
     with pytest.raises(VastError, match="vast.charges_unavailable_for_host"):
         api.charges(1, 2)
+
+
+def test_template_and_history_boundary():
+    api, wire = client(
+        [
+            (
+                200,
+                {
+                    "templates": [
+                        {
+                            "hash_id": "abc",
+                            "image": "ollama/ollama",
+                            "env": "-e TOKEN=secret",
+                            "onstart": "secret",
+                            "docker_login_pass": "secret",
+                            "extra_filters": {"gpu_ram": {"gte": 24000}},
+                        }
+                    ]
+                },
+            ),
+            (
+                200,
+                {
+                    "benchmarks": [
+                        {
+                            "machine_id": 42,
+                            "score": 123,
+                            "name": "fixture",
+                            "private": "secret",
+                        }
+                    ]
+                },
+            ),
+            (200, []),
+        ]
+    )
+    template = api.templates("abc", True)[0]
+    assert template["has_environment"] and template["has_startup"]
+    assert "secret" not in json.dumps(template)
+    assert len(template["configuration_sha256"]) == 64
+    filters = json.loads(wire.calls[0][2]["params"]["select_filters"])
+    assert filters["hash_id"] == {"eq": "abc"}
+    assert filters["recommended"] == {"eq": True}
+    result = api.benchmarks(42)
+    assert result["score_unit"] == "unknown"
+    assert result["results"][0]["score"] == 123
+    assert "private" not in result["results"][0]
+    assert api.benchmarks(42)["status"] == "not_available"
+    with pytest.raises(VastError):
+        api.benchmarks(0)
+
+
+@pytest.mark.parametrize("action", ["templates", "benchmarks"])
+def test_catalog_invalid_shapes(action):
+    api, _ = client([(200, {})])
+    with pytest.raises(VastError, match="vast.invalid_response"):
+        getattr(api, action)(42) if action == "benchmarks" else api.templates()
+
+
+def test_performance_fields(profile, offer):
+    from venom_core.services.vast_environments.assessment import search_filters
+    from venom_core.services.vast_environments.selection import provider_order, rank
+
+    cfg = profile.model_copy(
+        update={"min_dlperf": 20, "min_gpu_mem_bw_gb_s": 100, "sort_by": "performance"}
+    )
+    row = {**offer, "dlperf": 25, "gpu_mem_bw": 120, "total_flops": 29.5}
+    out = assess(row, cfg)
+    assert out.status == "eligible"
+    assert out.host.dlperf_per_hourly_usd == Decimal("62.5")
+    assert out.host.total_tflops == Decimal("29.5")
+    assert out.host.gpu_memory_bandwidth_gb_s == Decimal("120")
+    assert "dlperf" in assess(offer, cfg).unknown
+    assert "gpu_mem_bw" in assess({**row, "gpu_mem_bw": 90}, cfg).reasons
+    assert search_filters(cfg)["dlperf"] == {"gte": 20}
+    assert search_filters(cfg)["gpu_mem_bw"] == {"gte": 100}
+    rows = [
+        out,
+        assess({**row, "id": 13, "dlperf": 30, "search": {"totalHour": "1"}}, cfg),
+    ]
+    assert rank(rows, cfg)[0].offer["id"] == 13
+    cfg = cfg.model_copy(update={"sort_by": "value"})
+    assert rank(rows, cfg)[0].offer["id"] == 12
+    assert provider_order("performance")[0] == ["dlperf", "desc"]
+    assert provider_order("value")[0] == ["dlperf_per_dphtotal", "desc"]
+    assert rank([assess(offer, profile), out], cfg)[0].host.dlperf is not None

@@ -31,13 +31,26 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--json", action="store_true")
     root.add_argument("--locale", choices=["en", "pl", "de"], default="pl")
     sub = root.add_subparsers(dest="command", required=True)
+    templates = sub.add_parser("templates")
+    templates.add_argument("--hash")
+    templates.add_argument("--recommended", action="store_true")
+    history = sub.add_parser("host-results")
+    history.add_argument("--machine", type=int, required=True)
     for command in ("account", "list", "volumes"):
         sub.add_parser(command)
     for command in ("offers", "assess", "plan"):
         item = sub.add_parser(command)
         item.add_argument("--profile", type=Path, required=True)
         item.add_argument(
-            "--sort", choices=["balanced", "price", "network", "reliability"]
+            "--sort",
+            choices=[
+                "balanced",
+                "price",
+                "network",
+                "reliability",
+                "performance",
+                "value",
+            ],
         )
         item.add_argument("--country", action="append")
         preferences = item.add_mutually_exclusive_group()
@@ -46,6 +59,8 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--min-download-mbps", type=float)
         item.add_argument("--min-upload-mbps", type=float)
         item.add_argument("--min-reliability", type=float)
+        item.add_argument("--min-dlperf", type=float)
+        item.add_argument("--min-gpu-mem-bw-gb-s", type=float)
         if command != "offers":
             item.add_argument("--offer", type=int, required=True)
         if command == "plan":
@@ -107,6 +122,8 @@ def workload_profile(args) -> WorkloadProfile:
             ("min_download_mbps", "min_download_mbps"),
             ("min_upload_mbps", "min_upload_mbps"),
             ("min_reliability", "min_reliability"),
+            ("min_dlperf", "min_dlperf"),
+            ("min_gpu_mem_bw_gb_s", "min_gpu_mem_bw_gb_s"),
         )
         if getattr(args, argument, None) is not None
     }
@@ -117,6 +134,10 @@ def workload_profile(args) -> WorkloadProfile:
 
 def dispatch(args, service: Environments):
     command = args.command
+    if command == "templates":
+        return service.client.templates(args.hash, args.recommended)
+    if command == "host-results":
+        return service.client.benchmarks(args.machine)
     if command == "account":
         return service.client.account()
     if command == "list":

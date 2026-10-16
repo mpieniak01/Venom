@@ -48,10 +48,14 @@ class WorkloadProfile(Contract):
     min_disk_mb_s: float = Field(default=0, ge=0)
     min_download_mbps: float = Field(default=0, ge=0)
     min_upload_mbps: float = Field(default=0, ge=0)
+    min_dlperf: float = Field(default=0, ge=0)
+    min_gpu_mem_bw_gb_s: float = Field(default=0, ge=0)
     min_gpu_fraction: float = Field(default=1, gt=0, le=1)
     countries: list[str] = Field(default_factory=list, max_length=50)
     preferred_countries: list[str] = Field(default_factory=lambda: ["PL"], max_length=8)
-    sort_by: Literal["balanced", "price", "network", "reliability"] = "balanced"
+    sort_by: Literal[
+        "balanced", "price", "network", "reliability", "performance", "value"
+    ] = "balanced"
     gpu_names: list[str] = Field(default_factory=list)
     duration_minutes: int = Field(default=30, ge=1, le=1440)
     download_gb: Decimal = Field(default=Decimal("0"), ge=0)
@@ -129,6 +133,20 @@ OFFER_FIELDS = (
     "inet_up_cost",
     "internet_down_cost_per_tb",
     "internet_up_cost_per_tb",
+    "total_flops",
+    "dlperf_per_dphtotal",
+    "flops_per_dphtotal",
+    "gpu_mem_bw",
+    "gpu_total_ram",
+    "cpu_name",
+    "cpu_ghz",
+    "cpu_cores",
+    "compute_cap",
+    "pcie_bw",
+    "pci_gen",
+    "gpu_lanes",
+    "bw_nvlink",
+    "has_avx",
     "dlperf",
     "cuda_max_good",
     "driver_version",
@@ -193,6 +211,10 @@ class HostSignals(Contract):
     reliability_percent: Decimal | None = None
     verified: bool | None = None
     user_reviews: Literal["not_provided"] = "not_provided"
+    dlperf: Decimal | None = None
+    total_tflops: Decimal | None = None
+    gpu_memory_bandwidth_gb_s: Decimal | None = None
+    dlperf_per_hourly_usd: Decimal | None = None
     source: Literal["provider_declared"] = "provider_declared"
 
 

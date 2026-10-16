@@ -299,3 +299,11 @@ def test_missing_rate_and_local_filters(profile, offer):
 def test_profile_validators(profile, updates):
     with pytest.raises(ValidationError):
         WorkloadProfile.model_validate({**profile.model_dump(), **updates})
+
+
+def test_host_billing_rejection_is_explicit():
+    api, _ = client(
+        [(200, {"success": False, "msg": "Host users do not have instance charges"})]
+    )
+    with pytest.raises(VastError, match="vast.charges_unavailable_for_host"):
+        api.charges(1, 2)

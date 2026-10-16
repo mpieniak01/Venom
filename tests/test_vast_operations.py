@@ -442,3 +442,17 @@ def test_cli_account_and_error(service, capsys, tmp_path):
     out = capsys.readouterr().out
     assert "403" in out and "vast.http_error" in out
     svc.client.close.assert_called()
+
+
+def test_billing_unavailable_preserves_quote(service):
+    svc, plan, _ = service
+    record = svc.create(plan.plan_id)
+    svc.client.charges.side_effect = VastError("vast.charges_unavailable_for_host", 200)
+    result = costs(svc.client, plan, record, now() - timedelta(hours=1), now())
+    assert result["status"] == "unavailable"
+    assert result["quote"]["hourly_usd"] == "0.4"
+    assert result["provider_reported"]["usd"] is None
+    assert result["provider_reported"]["error"] == "vast.charges_unavailable_for_host"
+    svc.client.charges.side_effect = VastError("vast.transport_error")
+    with pytest.raises(VastError):
+        costs(svc.client, plan, record, now() - timedelta(hours=1), now())

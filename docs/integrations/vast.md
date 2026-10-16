@@ -122,7 +122,7 @@ Amounts use Decimal and separate:
 
 Invoices describe payments, not resource charges. Account credit and balance
 are distinct fields. Credit changes cannot attribute one experiment's costs.
-Missing charges are pending, not zero. Present charges are provisional: provider
+If Vast reports that host accounts cannot retrieve instance charges, or denies\nbilling access, the report is unavailable while quote/estimate remain available.\nThis is not a zero bill. Missing charges are pending. Present charges are provisional: provider
 finalization timing is unknown.
 
 Stop retains billable storage. Destroy requires a saved export and a subsequent

@@ -25,7 +25,14 @@ def costs(
         raise VastError("vast.invalid_window")
     if record.instance_id is None:
         raise VastError("vast.instance_required")
-    rows = client.charges(int(start.timestamp()), int(end.timestamp()))
+    unavailable = None
+    try:
+        rows = client.charges(int(start.timestamp()), int(end.timestamp()))
+    except VastError as exc:
+        if exc.code != "vast.charges_unavailable_for_host" and exc.status != 403:
+            raise
+        rows = []
+        unavailable = exc.code
     attributed = [
         row for row in rows if row.get("source") == f"instance-{record.instance_id}"
     ]
@@ -47,7 +54,11 @@ def costs(
         "instance_id": record.instance_id,
         "observed_at": now().isoformat(),
         "window_utc": [start.isoformat(), end.isoformat()],
-        "status": "provisional" if total is not None else "pending",
+        "status": "unavailable"
+        if unavailable
+        else "provisional"
+        if total is not None
+        else "pending",
         "quote": plan.assessment.quote.model_dump(mode="json"),
         "estimate": {
             "usd": str(estimate) if estimate is not None else None,
@@ -57,6 +68,7 @@ def costs(
         "provider_reported": {
             "usd": str(total) if total is not None else None,
             "source": "/api/v0/charges",
+            "error": unavailable,
             "rows": attributed,
             "unknown_amounts": len(values) - len(known),
         },

@@ -8,7 +8,8 @@ STARTUP_VERSION = "venom-vast-startup-v1"
 
 
 def startup(profile: WorkloadProfile) -> str:
-    base = """#!/bin/bash
+    base = f"""#!/bin/bash
+# {STARTUP_VERSION}
 set -euo pipefail
 umask 077
 mkdir -p /workspace/venom-vast

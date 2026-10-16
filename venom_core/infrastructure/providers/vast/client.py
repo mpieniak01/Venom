@@ -99,6 +99,13 @@ class VastClient:
             if not isinstance(data, (dict, list)):
                 raise VastError("vast.invalid_response", ambiguous=mutation)
             if isinstance(data, dict) and data.get("success") is False:
+                if (
+                    path == "/api/v0/charges/"
+                    and data.get("msg") == "Host users do not have instance charges"
+                ):
+                    raise VastError(
+                        "vast.charges_unavailable_for_host", response.status_code
+                    )
                 raise VastError("vast.provider_rejected", response.status_code)
             return data
         raise VastError("vast.retry_exhausted")

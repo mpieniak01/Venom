@@ -12,6 +12,7 @@ tests/test_audio_smoke_script.py
 tests/test_audio_stream_handler_roi.py
 tests/test_audit_lite_deps.py
 tests/test_browser_skill.py
+tests/test_component_runtime.py
 tests/test_dependency_profiles.py
 tests/test_external_discovery_integration.py
 tests/test_file_operations_integration.py
@@ -21,6 +22,7 @@ tests/test_knowledge_memory_tasks_integration.py
 tests/test_lesson_management_api.py
 tests/test_module_observations.py
 tests/test_motor_cortex_integration.py
+tests/test_onnx_gpu_bridge.py
 tests/test_orchestrator_council_integration.py
 tests/test_overmind_integration.py
 tests/test_planning_integration.py

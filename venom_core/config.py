@@ -385,7 +385,7 @@ class Settings(BaseSettings):
     )
 
     # Konfiguracja THE_ACADEMY (Knowledge Distillation & Fine-tuning)
-    ENABLE_ACADEMY: bool = True  # Włącz system uczenia maszynowego
+    ENABLE_ACADEMY: bool = False  # Training is an explicit opt-in extension.
     ACADEMY_TRAINING_DIR: str = _storage_path("./data/training")  # Katalog z datasetami
     ACADEMY_MODELS_DIR: str = _storage_path("./data/models")  # Katalog z modelami
     ACADEMY_MIN_LESSONS: int = 100  # Minimum lekcji do rozpoczęcia treningu

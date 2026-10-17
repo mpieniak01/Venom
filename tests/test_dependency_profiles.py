@@ -490,6 +490,11 @@ def bootstrap_runner(monkeypatch):
         return SimpleNamespace(returncode=0, stdout=stdout)
 
     monkeypatch.setattr(bootstrap, "run", run)
+    monkeypatch.setattr(
+        bootstrap.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=100 * 1024**3),
+    )
     return bootstrap, commands
 
 
@@ -503,6 +508,7 @@ def test_bootstrap_uses_hashes_audit_and_correct_build_boundary(
     installs = [command for command in commands if "install" in command]
     assert len(installs) == 2
     assert all("--require-hashes" in command for command in installs)
+    assert all("--no-cache-dir" in command for command in installs)
     assert "audit-locks" in next(
         command for command in commands if "audit-locks" in command
     )
@@ -829,3 +835,204 @@ def test_bootstrap_canonicalizes_dotted_distribution_names(
     monkeypatch.setattr(bootstrap, "run", run)
     bootstrap.install_profile(profiles.ROOT, "ci", tmp_path, update=True)
     assert any("install" in command for command in commands)
+
+
+def test_academy_requires_explicit_opt_in():
+    from venom_core.config import Settings
+
+    assert Settings(_env_file=None).model_fields["ENABLE_ACADEMY"].default is False
+
+
+def test_bootstrap_host_storage_blocks_before_venv_mutation(
+    tmp_path, bootstrap_runner, monkeypatch
+):
+    bootstrap, commands = bootstrap_runner
+    host = tmp_path / "host-volume"
+    host.mkdir()
+    target = tmp_path / "new-parent" / "target"
+    probes = []
+
+    def disk_usage(path):
+        probes.append(path)
+        return SimpleNamespace(free=(1 if path == host else 100) * bootstrap.GIB)
+
+    monkeypatch.setattr(bootstrap.shutil, "disk_usage", disk_usage)
+    with pytest.raises(OSError, match="Insufficient free space.*host-volume"):
+        bootstrap.install_profile(profiles.ROOT, "light", target, storage_root=host)
+    assert probes == [tmp_path, host]
+    assert commands == []
+    assert not target.parent.exists()
+
+
+@pytest.mark.parametrize("fail_check, expected_installs", [(2, 0), (3, 1)])
+def test_bootstrap_rechecks_storage_before_each_pip_mutation(
+    tmp_path, bootstrap_runner, monkeypatch, fail_check, expected_installs
+):
+    bootstrap, commands = bootstrap_runner
+    host = tmp_path / "host-volume"
+    host.mkdir()
+    target = tmp_path / "target"
+    host_checks = 0
+
+    def disk_usage(path):
+        nonlocal host_checks
+        if path == host:
+            host_checks += 1
+            if host_checks == fail_check:
+                return SimpleNamespace(free=0)
+        return SimpleNamespace(free=100 * bootstrap.GIB)
+
+    monkeypatch.setattr(bootstrap.shutil, "disk_usage", disk_usage)
+    with pytest.raises(OSError, match="Insufficient free space"):
+        bootstrap.install_profile(profiles.ROOT, "light", target, storage_root=host)
+    assert target.is_dir()
+    assert host_checks == fail_check
+    assert (
+        len([command for command in commands if "install" in command])
+        == expected_installs
+    )
+    assert not (target / ".venom-dependency-profile.json").exists()
+
+
+@pytest.mark.parametrize("enough", [False, True])
+def test_bootstrap_update_checks_storage_without_recreating_venv(
+    tmp_path, bootstrap_runner, monkeypatch, enough
+):
+    bootstrap, commands = bootstrap_runner
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/python").write_text("fake interpreter")
+    (tmp_path / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+    host = tmp_path / "host-volume"
+    host.mkdir()
+
+    def disk_usage(path):
+        if path == host and not enough:
+            return SimpleNamespace(free=0)
+        return SimpleNamespace(free=100 * bootstrap.GIB)
+
+    monkeypatch.setattr(bootstrap.shutil, "disk_usage", disk_usage)
+    if enough:
+        bootstrap.install_profile(
+            profiles.ROOT, "ci", tmp_path, update=True, storage_root=host
+        )
+    else:
+        with pytest.raises(OSError, match="Insufficient free space"):
+            bootstrap.install_profile(
+                profiles.ROOT, "ci", tmp_path, update=True, storage_root=host
+            )
+    assert not any(command[1:3] == ["-m", "venv"] for command in commands)
+    installs = [command for command in commands if "install" in command]
+    assert len(installs) == int(enough)
+    assert all("--no-cache-dir" in command for command in installs)
+    assert (tmp_path / ".venom-dependency-profile.json").exists() == enough
+
+
+@pytest.mark.parametrize("threshold", [0, -1, float("inf"), float("nan")])
+def test_bootstrap_rejects_invalid_storage_threshold_before_mutation(
+    tmp_path, bootstrap_runner, threshold
+):
+    bootstrap, commands = bootstrap_runner
+    target = tmp_path / "target"
+    with pytest.raises(ValueError, match="finite and > 0"):
+        bootstrap.install_profile(
+            profiles.ROOT, "light", target, minimum_free_gib=threshold
+        )
+    assert not commands
+    assert not target.exists()
+
+
+def test_bootstrap_cannot_lower_profile_storage_floor(bootstrap_runner):
+    bootstrap, _ = bootstrap_runner
+    for profile, floor in bootstrap.MINIMUM_FREE_GIB.items():
+        assert bootstrap.required_storage_bytes(profile, 0.01) == floor * bootstrap.GIB
+        assert (
+            bootstrap.required_storage_bytes(profile, floor + 1)
+            == (floor + 1) * bootstrap.GIB
+        )
+
+
+@pytest.mark.parametrize("kind", ["missing", "file"])
+def test_bootstrap_invalid_backing_volume_is_not_silently_ignored(
+    tmp_path, bootstrap_runner, kind
+):
+    bootstrap, commands = bootstrap_runner
+    host = tmp_path / "host-volume"
+    if kind == "file":
+        host.write_text("not a mount directory")
+    with pytest.raises((OSError, ValueError)):
+        bootstrap.install_profile(
+            profiles.ROOT, "light", tmp_path / "target", storage_root=host
+        )
+    assert not commands
+
+
+@pytest.mark.parametrize("threshold", ["0", "-1", "inf", "nan", "invalid"])
+def test_bootstrap_cli_rejects_invalid_storage_threshold(
+    tmp_path, monkeypatch, threshold
+):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    monkeypatch.setattr(
+        bootstrap.sys,
+        "argv",
+        [
+            "bootstrap",
+            "--profile",
+            "light",
+            "--venv",
+            str(tmp_path),
+            "--min-free-gib",
+            threshold,
+        ],
+    )
+    with pytest.raises(SystemExit) as error:
+        bootstrap.main()
+    assert error.value.code == 2
+
+
+def test_bootstrap_cli_forwards_storage_options(tmp_path, monkeypatch):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    calls = []
+    monkeypatch.setattr(
+        bootstrap, "install_profile", lambda *args, **kwargs: calls.append(kwargs)
+    )
+    monkeypatch.setattr(
+        bootstrap.sys,
+        "argv",
+        [
+            "bootstrap",
+            "--profile",
+            "light",
+            "--venv",
+            str(tmp_path),
+            "--storage-root",
+            str(tmp_path),
+            "--min-free-gib",
+            "4.5",
+        ],
+    )
+    assert bootstrap.main() == 0
+    assert calls == [
+        {"update": False, "storage_root": tmp_path, "minimum_free_gib": 4.5}
+    ]
+
+
+@pytest.mark.parametrize("free_delta", [-1, 0])
+def test_bootstrap_target_volume_floor_is_inclusive_and_enforced_without_host_option(
+    tmp_path, bootstrap_runner, monkeypatch, free_delta
+):
+    bootstrap, commands = bootstrap_runner
+    free = bootstrap.MINIMUM_FREE_GIB["light"] * bootstrap.GIB + free_delta
+    monkeypatch.setattr(
+        bootstrap.shutil, "disk_usage", lambda _path: SimpleNamespace(free=free)
+    )
+    target = tmp_path / "target"
+    if free_delta < 0:
+        with pytest.raises(OSError, match="Insufficient free space"):
+            bootstrap.install_profile(profiles.ROOT, "light", target)
+        assert not commands
+        assert not target.exists()
+    else:
+        bootstrap.install_profile(profiles.ROOT, "light", target)
+        assert (target / ".venom-dependency-profile.json").exists()

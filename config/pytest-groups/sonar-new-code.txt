@@ -41,6 +41,7 @@ tests/test_admin_audit.py
 tests/test_agents.py
 tests/test_agents_ghost_runtime_store.py
 tests/test_agents_release_integration_contracts.py
+tests/test_agents_routes_integration_regression.py
 tests/test_agents_skill_manager_paths.py
 tests/test_agents_strategy_ux_contracts.py
 tests/test_analyst_agent.py
@@ -78,6 +79,8 @@ tests/test_coding_run_routes.py
 tests/test_coding_run_service.py
 tests/test_command_execution_loop.py
 tests/test_complexity_skill.py
+tests/test_component_runtime.py
+tests/test_compose_skill.py
 tests/test_config_manager.py
 tests/test_config_sync.py
 tests/test_contracts_init.py
@@ -87,6 +90,8 @@ tests/test_control_plane_service_edges.py
 tests/test_conversation_providers.py
 tests/test_core_nervous_system.py
 tests/test_core_skill.py
+tests/test_council.py
+tests/test_council_maf_runtime.py
 tests/test_creative_director_agent.py
 tests/test_critic_agent.py
 tests/test_dataset_curator.py
@@ -107,6 +112,7 @@ tests/test_environment_policy.py
 tests/test_error_mappings.py
 tests/test_execution_mode_planner.py
 tests/test_executive_agent_roi.py
+tests/test_external_discovery_integration.py
 tests/test_eyes.py
 tests/test_feedback_hidden_prompts.py
 tests/test_feedback_loop_policy.py
@@ -114,9 +120,11 @@ tests/test_file_skill.py
 tests/test_flow_coordinator.py
 tests/test_foreman_agent.py
 tests/test_forge_flow.py
+tests/test_forge_integration.py
 tests/test_gemma4_audio_models.py
 tests/test_gemma4_audio_runtime_main.py
 tests/test_generation_params_adapter.py
+tests/test_generation_params_integration.py
 tests/test_ghost_agent.py
 tests/test_git_skill.py
 tests/test_git_skill_roi.py
@@ -148,6 +156,7 @@ tests/test_knowledge_context_map_api.py
 tests/test_knowledge_context_service.py
 tests/test_knowledge_entries_service.py
 tests/test_knowledge_graph_service.py
+tests/test_launchpad_agents.py
 tests/test_learning.py
 tests/test_learning_logs.py
 tests/test_lessons_manager.py
@@ -220,6 +229,7 @@ tests/test_notifier.py
 tests/test_ollama_agent_loop.py
 tests/test_ollama_runtime_policy.py
 tests/test_ollama_tuning.py
+tests/test_onnx_gpu_bridge.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_openai_semantic_kernel_compat.py
@@ -262,6 +272,7 @@ tests/test_release_manager.py
 tests/test_remote_models_service.py
 tests/test_render_skill.py
 tests/test_research_skill.py
+tests/test_researcher_agent.py
 tests/test_response_template_routing.py
 tests/test_retrieval_policy.py
 tests/test_route_service_extractions.py
@@ -301,6 +312,7 @@ tests/test_swarm_wrapper.py
 tests/test_system_connections.py
 tests/test_system_governance_runtime_contracts.py
 tests/test_system_llm_service.py
+tests/test_system_routes_integration_regression.py
 tests/test_system_routes_roi.py
 tests/test_task_pipeline_contracts.py
 tests/test_tasks_stream_service.py

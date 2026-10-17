@@ -10,15 +10,79 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+GIB = 1024**3
+# Reserve room for downloads, unpacking/builds and the installed environment.
+# A caller may increase these floors, but cannot lower them to bypass the guard.
+MINIMUM_FREE_GIB = {
+    "light": 2,
+    "ci": 3,
+    "full": 24,
+    "full-ci": 24,
+    "vllm": 24,
+    "onnx-gpu": 12,
+    "academy": 24,
+    "build": 1,
+}
+
+
+def positive_gib(value: str) -> float:
+    try:
+        result = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "Free-space threshold must be a number"
+        ) from error
+    if not math.isfinite(result) or result <= 0:
+        raise argparse.ArgumentTypeError("Free-space threshold must be finite and > 0")
+    return result
+
+
+def required_storage_bytes(profile: str, minimum_free_gib: float | None) -> int:
+    floor: float = MINIMUM_FREE_GIB[profile]
+    if minimum_free_gib is not None:
+        if not math.isfinite(minimum_free_gib) or minimum_free_gib <= 0:
+            raise ValueError("Free-space threshold must be finite and > 0")
+        floor = max(floor, minimum_free_gib)
+    return math.ceil(floor * GIB)
+
+
+def check_storage_space(
+    target: Path, required_bytes: int, *, storage_root: Path | None = None
+) -> None:
+    locations = [target]
+    if storage_root is not None:
+        # Never silently fall back to the guest volume for a missing host mount.
+        storage_root = storage_root.resolve(strict=True)
+        if not storage_root.is_dir():
+            raise ValueError("Storage root must be an existing directory")
+        locations.append(storage_root)
+    checked = set()
+    for location in locations:
+        probe = location
+        while not probe.exists():
+            probe = probe.parent
+        if not probe.is_dir():
+            raise ValueError(f"Storage location is not a directory: {probe}")
+        if probe in checked:
+            continue
+        checked.add(probe)
+        free = shutil.disk_usage(probe).free
+        if free < required_bytes:
+            raise OSError(
+                f"Insufficient free space at {probe}: {free / GIB:.2f} GiB available; "
+                f"{required_bytes / GIB:.2f} GiB required. Installation stopped."
+            )
 
 
 def run(
@@ -42,7 +106,13 @@ def checked_lock(root: Path, policy: dict[str, Any], profile: str) -> Path:
 
 
 def install_profile(
-    root: Path, profile: str, target: Path, *, update: bool = False
+    root: Path,
+    profile: str,
+    target: Path,
+    *,
+    update: bool = False,
+    storage_root: Path | None = None,
+    minimum_free_gib: float | None = None,
 ) -> None:
     policy = json.loads((root / "config/dependency-profiles.json").read_text())
     if profile not in policy["profiles"]:
@@ -75,7 +145,9 @@ def install_profile(
         )
     if existed and not (target / "pyvenv.cfg").is_file():
         raise ValueError("Existing target is not a virtual environment")
+    required_bytes = required_storage_bytes(profile, minimum_free_gib)
     if not existed:
+        check_storage_space(target, required_bytes, storage_root=storage_root)
         run([sys.executable, "-m", "venv", str(target)])
     python = target / "bin/python"
     if not python.is_file():
@@ -140,12 +212,14 @@ def install_profile(
     if not existed:
         # A mapped, hash-locked toolchain bootstraps packaging for the generator.
         # Do not downgrade build tools in an already-populated application.
+        check_storage_space(target, required_bytes, storage_root=storage_root)
         run(
             [
                 str(python),
                 "-m",
                 "pip",
                 "install",
+                "--no-cache-dir",
                 "--require-hashes",
                 "--disable-pip-version-check",
                 "-r",
@@ -160,6 +234,7 @@ def install_profile(
         "-m",
         "pip",
         "install",
+        "--no-cache-dir",
         "--require-hashes",
         "--disable-pip-version-check",
         "-r",
@@ -171,6 +246,7 @@ def install_profile(
         )
     else:
         command.append("--only-binary=:all:")
+    check_storage_space(target, required_bytes, storage_root=storage_root)
     run(command)
     run(
         [
@@ -203,12 +279,29 @@ def main() -> int:
     parser.add_argument("--venv", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--update", action="store_true")
+    parser.add_argument(
+        "--storage-root",
+        type=Path,
+        help="Also check the physical backing volume (for WSL, e.g. /mnt/f)",
+    )
+    parser.add_argument(
+        "--min-free-gib",
+        type=positive_gib,
+        help="Increase the profile's minimum free space in GiB (cannot lower it)",
+    )
     args = parser.parse_args()
-    # Deterministic build inputs; callers retain control over the private cache.
+    # Deterministic build inputs; pip installations explicitly disable caching.
     os.environ.setdefault("SOURCE_DATE_EPOCH", "946684800")
     os.environ.setdefault("PYTHONHASHSEED", "0")
     try:
-        install_profile(args.root, args.profile, args.venv, update=args.update)
+        install_profile(
+            args.root,
+            args.profile,
+            args.venv,
+            update=args.update,
+            storage_root=args.storage_root,
+            minimum_free_gib=args.min_free_gib,
+        )
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         print(f"Profile installation ERROR: {error}", file=sys.stderr)
         return 1

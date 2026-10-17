@@ -760,6 +760,37 @@ def test_bootstrap_lock_path_cannot_escape_repository(tmp_path):
         bootstrap.checked_lock(tmp_path, policy, "light")
 
 
+@pytest.mark.parametrize("flags", ["", "-O2 -g3", "-O2 -g0"])
+def test_bootstrap_build_flags_reach_child_without_mutating_caller(monkeypatch, flags):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    monkeypatch.setenv("CFLAGS", flags)
+    monkeypatch.delenv("CXXFLAGS", raising=False)
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    monkeypatch.delenv("PYTHONHASHSEED", raising=False)
+    result = bootstrap.run(
+        [
+            bootstrap.sys.executable,
+            "-c",
+            "import json,os; print(json.dumps({k:os.environ[k] for k in "
+            "('SOURCE_DATE_EPOCH','PYTHONHASHSEED','CFLAGS','CXXFLAGS')}))",
+        ],
+        capture=True,
+    )
+    observed = json.loads(result.stdout)
+    assert observed["SOURCE_DATE_EPOCH"] == "946684800"
+    assert observed["PYTHONHASHSEED"] == "0"
+    assert observed["CFLAGS"].endswith("-g0")
+    assert observed["CFLAGS"].count("-g0") == 1
+    assert observed["CFLAGS"].startswith(flags)
+    assert observed["CXXFLAGS"] == "-g0"
+    assert bootstrap.os.environ["CFLAGS"] == flags
+    assert "CXXFLAGS" not in bootstrap.os.environ
+    assert "SOURCE_DATE_EPOCH" not in bootstrap.os.environ
+    monkeypatch.setenv("CFLAGS", observed["CFLAGS"])
+    assert bootstrap.source_build_environment()["CFLAGS"] == observed["CFLAGS"]
+
+
 def test_bootstrap_subprocess_wrapper_propagates_failure(monkeypatch):
     from scripts import bootstrap_dependency_profile as bootstrap
 

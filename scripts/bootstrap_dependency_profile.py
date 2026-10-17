@@ -86,10 +86,31 @@ def check_storage_space(
             )
 
 
+def source_build_environment() -> dict[str, str]:
+    """Deterministic release build inputs, scoped to child processes only."""
+    environment = dict(os.environ)
+    environment.setdefault("SOURCE_DATE_EPOCH", "946684800")
+    environment.setdefault("PYTHONHASHSEED", "0")
+    # CPython's default -g embeds temporary source/venv paths in native wheels.
+    # Keep caller optimization flags while omitting those debug-only sections.
+    for name in ("CFLAGS", "CXXFLAGS"):
+        flags = environment.get(name, "").strip()
+        if not flags.endswith("-g0"):
+            flags = f"{flags} -g0".strip()
+        environment[name] = flags
+    return environment
+
+
 def run(
     command: list[str], *, capture: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, check=True, text=True, capture_output=capture)
+    return subprocess.run(
+        command,
+        env=source_build_environment(),
+        check=True,
+        text=True,
+        capture_output=capture,
+    )
 
 
 def checked_lock(root: Path, policy: dict[str, Any], profile: str) -> Path:
@@ -336,6 +357,15 @@ def install_profile(
             {
                 "profile": profile,
                 "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+                "source_build_environment": {
+                    key: source_build_environment()[key]
+                    for key in (
+                        "SOURCE_DATE_EPOCH",
+                        "PYTHONHASHSEED",
+                        "CFLAGS",
+                        "CXXFLAGS",
+                    )
+                },
             },
             indent=2,
         )
@@ -360,9 +390,6 @@ def main() -> int:
         help="Increase the profile's minimum free space in GiB (cannot lower it)",
     )
     args = parser.parse_args()
-    # Deterministic build inputs; pip installations explicitly disable caching.
-    os.environ.setdefault("SOURCE_DATE_EPOCH", "946684800")
-    os.environ.setdefault("PYTHONHASHSEED", "0")
     try:
         install_profile(
             args.root,

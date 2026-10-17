@@ -227,3 +227,14 @@ starts with the selected component's interpreter directory and system tools;
 application credentials, Python hooks and arbitrary VLLM/Torch flags do not cross
 that boundary. Private cache and telemetry settings are constructed by the
 controller. This preserves device selection without inheriting an operator venv.
+
+Native source builds use `-g0` for C/C++ so CPython's default debug information
+does not embed random temporary source/venv paths in wheels. Optimization flags
+are preserved. `SOURCE_DATE_EPOCH`, `PYTHONHASHSEED` and the resulting compiler
+flags are passed only to installer subprocesses and recorded in the target
+receipt. The caller's environment is not mutated. This omits native debug
+symbols; it does not disable dependency checks or runtime validation.
+Compare built wheel hashes separately from source archive hashes and package
+inventories. Matching versions alone did not reveal the earlier differing
+evdev/webrtcvad native wheels. [GCC debugging options](https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html)
+describe the effect of `-g0`.

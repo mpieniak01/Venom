@@ -91,6 +91,7 @@ tests/test_conversation_providers.py
 tests/test_core_nervous_system.py
 tests/test_core_skill.py
 tests/test_council.py
+tests/test_council_basic.py
 tests/test_council_maf_runtime.py
 tests/test_creative_director_agent.py
 tests/test_critic_agent.py

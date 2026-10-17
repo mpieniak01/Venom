@@ -31,6 +31,15 @@ propozycją do recenzji. Każdy etap wykonawczy wymaga uprawnień istniejących 
 Dla zadania tekstowego przygotuj odpowiedź tekstową; operacje wykonuj tylko wtedy,
 gdy są wymagane przez użytkownika. Uwzględnij uwagi poprzednich uczestników.
 """
+CRITIC_REVIEW_INSTRUCTIONS = """
+Oceń ostatni wynik Coder względem zadania użytkownika, także gdy jest to tekst,
+a nie kod. Pierwsza niepusta linia odpowiedzi musi być jednym z:
+APPROVED — wynik gotowy do końcowej kontroli Guardian,
+REVISE — Coder musi poprawić wynik (dalej opisz konkretne poprawki),
+REPLAN — konieczna zmiana planu przez Architect (dalej podaj przyczynę).
+Zapisz samo słowo decyzji w pierwszej linii, uzasadnienie w kolejnych liniach.
+Nie wymagaj kodu, plików ani testów programu dla zadania wyłącznie tekstowego.
+"""
 GUARDIAN_COMPLETION_INSTRUCTIONS = """
 Oceń końcowy wynik względem zadania. Jeżeli zadanie wymaga kodu lub wykonania
 operacji, wymagaj rzeczywistych dowodów ich weryfikacji; nie wymyślaj wyników testów.
@@ -95,14 +104,13 @@ class GroupChatManager:
         elif speaker == "Architect":
             selected = "Coder"
         elif speaker == "Coder":
-            selected = (
-                "Guardian"
-                if any(m.author_name == "Critic" for m in state.conversation)
-                else "Critic"
-            )
+            selected = "Critic"
         elif speaker == "Critic":
-            selected = (
-                "Architect" if last.text.strip().startswith("REPLAN") else "Coder"
+            decision = next(
+                (line.strip() for line in last.text.splitlines() if line.strip()), ""
+            )
+            selected = {"APPROVED": "Guardian", "REPLAN": "Architect"}.get(
+                decision, "Coder"
             )
         elif speaker == "Guardian":
             selected = "Coder"
@@ -227,7 +235,11 @@ class CouncilConfig:
         critic_wrapper = create_venom_agent_wrapper(
             agent=self.critic_agent,
             name="Critic",
-            system_message=self.critic_agent.SYSTEM_PROMPT + COUNCIL_TURN_INSTRUCTIONS,
+            system_message=(
+                self.critic_agent.SYSTEM_PROMPT
+                + COUNCIL_TURN_INSTRUCTIONS
+                + CRITIC_REVIEW_INSTRUCTIONS
+            ),
             llm_config=self.llm_config,
             deliberation=True,
         )
@@ -257,18 +269,9 @@ class CouncilConfig:
         # Format: {from_agent: [to_agent1, to_agent2, ...]}
         allowed_transitions = {
             user_proxy: [architect_wrapper],  # User -> Architect
-            architect_wrapper: [
-                coder_wrapper,
-                critic_wrapper,
-            ],  # Architect -> Coder/Critic
-            coder_wrapper: [
-                critic_wrapper,
-                guardian_wrapper,
-            ],  # Coder -> Critic/Guardian
-            critic_wrapper: [
-                coder_wrapper,
-                architect_wrapper,
-            ],  # Critic -> Coder (naprawa) lub Architect (replan)
+            architect_wrapper: [coder_wrapper],
+            coder_wrapper: [critic_wrapper],  # Every new candidate requires review
+            critic_wrapper: [coder_wrapper, architect_wrapper, guardian_wrapper],
             guardian_wrapper: [
                 coder_wrapper,
                 user_proxy,

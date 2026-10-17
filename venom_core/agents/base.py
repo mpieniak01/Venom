@@ -84,6 +84,10 @@ class BaseAgent(ABC):
         )
         return await self.process(input_text)
 
+    def validate_deliberation_input(self, content: str) -> tuple[bool, str]:
+        """Return a blocking decision/report before a Council model turn."""
+        return False, ""
+
     async def deliberate(
         self,
         input_text: str,

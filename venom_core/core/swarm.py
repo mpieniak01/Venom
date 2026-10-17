@@ -12,6 +12,9 @@ from agent_framework_orchestrations import (
 )
 
 from venom_core.agents.base import BaseAgent
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class VenomAgent(Executor):
@@ -59,12 +62,32 @@ class VenomAgent(Executor):
         # Errors and cancellation propagate to CouncilSession. No fake successful
         # participant output is generated when an underlying model/tool fails.
         if self.deliberation:
-            result = await self.venom_agent.deliberate(
-                transcript,
-                system_message=self.system_message,
-                generation_params=self.generation_params,
-                enable_functions=self.name in {"Coder", "Guardian"},
+            candidate = transcript
+            if self.name == "Critic":
+                candidates = [
+                    message
+                    for message in self.conversation
+                    if message.author_name == "Coder"
+                ]
+                if not candidates:
+                    raise ValueError("council_critic_missing_coder_candidate")
+                candidate = candidates[-1].text
+            blocked, policy_report = self.venom_agent.validate_deliberation_input(
+                candidate
             )
+            logger.info(f"Council turn started: {self.name}; policy_blocked={blocked}")
+            if blocked:
+                result = policy_report
+            else:
+                result = await self.venom_agent.deliberate(
+                    transcript,
+                    system_message=self.system_message,
+                    generation_params=self.generation_params,
+                    enable_functions=self.name in {"Coder", "Guardian"},
+                )
+                if policy_report:
+                    result = f"{policy_report}\n\nDODATKOWE UWAGI LLM:\n{result}"
+            logger.info(f"Council turn finished: {self.name}")
         else:
             result = await self.venom_agent.process(transcript)
         response = Message("assistant", [result], author_name=self.name)

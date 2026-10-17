@@ -85,6 +85,14 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
         self.policy_engine = PolicyEngine()
         logger.info("CriticAgent zainicjalizowany z PolicyEngine")
 
+    def validate_deliberation_input(self, content: str) -> tuple[bool, str]:
+        """Keep deterministic policy checks on the actual Coder candidate."""
+        violations = self.policy_engine.check_safety(content)
+        return (
+            any(violation.severity == "critical" for violation in violations),
+            self._format_policy_violations(violations) if violations else "",
+        )
+
     async def process(self, input_text: str) -> str:
         """
         Ocenia kod pod kątem jakości i bezpieczeństwa.

@@ -89,3 +89,10 @@ existing transcript string; this is an intentional correction to error behavior.
 The configured model selection also takes precedence over the legacy llama3
 metadata default. These changes require a real API Complex test in addition to
 deterministic native-workflow fixtures.
+
+Every Coder candidate, including a revision requested by Guardian, goes through
+Critic before Guardian. Only an exact first-line `APPROVED` from Critic advances;
+`REPLAN` returns to Architect, other responses require Coder revision. Critic's
+PolicyEngine checks the latest typed Coder message rather than a user-supplied
+`CODE:` delimiter. Critical findings bypass the model, lesser findings stay in
+its report. A provider failure never becomes implicit approval in Council.

@@ -189,7 +189,7 @@ async def test_council_session_run_integration(
     coder_agent.deliberate = AsyncMock(
         side_effect=["First implementation", "Corrected implementation"]
     )
-    critic_agent.deliberate = AsyncMock(return_value="Revise")
+    critic_agent.deliberate = AsyncMock(side_effect=["REVISE\nFix", "APPROVED"])
     guardian_agent.deliberate = AsyncMock(return_value="Approved\nTERMINATE")
     council_config = CouncilConfig(
         coder_agent=coder_agent,
@@ -213,7 +213,7 @@ async def test_council_session_run_integration(
     assert result is not None
     assert len(result) > 0
     assert "Guardian zatwierdził" in result
-    assert session.get_message_count() == 6
+    assert session.get_message_count() == 7
     assert set(session.get_speakers()) == {
         "User",
         "Architect",
@@ -223,7 +223,7 @@ async def test_council_session_run_integration(
     }
     architect_agent.deliberate.assert_awaited_once()
     assert coder_agent.deliberate.await_count == 2
-    critic_agent.deliberate.assert_awaited_once()
+    assert critic_agent.deliberate.await_count == 2
     guardian_agent.deliberate.assert_awaited_once()
 
 

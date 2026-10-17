@@ -62,6 +62,7 @@ async def test_native_maf_completion_preserves_messages_options_and_model():
     assert requests[0]["model"] == "fixture-model"
     assert [m["role"] for m in requests[0]["messages"]] == ["system", "user"]
     assert requests[0]["temperature"] == 0.2
+    assert requests[0]["max_tokens"] == 12
     assert len(history) == 2
     await model.aclose()
 
@@ -281,3 +282,56 @@ async def test_chat_agent_reaches_maf_once_without_test_shortcut_or_tool_planner
     assert len(requests) == 1
     assert "tools" not in requests[0]
     await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_local_aliases_and_nonstandard_options_use_chat_completion_contract():
+    bodies = []
+
+    def respond(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json=completion())
+
+    model = service(respond)
+    history = ConversationHistory()
+    history.add_user_message("test")
+    await model.get_chat_message_content(
+        chat_history=history,
+        settings=CompletionOptions(num_predict=17, top_k=7, repeat_penalty=1.1),
+    )
+    assert bodies[0]["max_tokens"] == 17
+    assert "num_predict" not in bodies[0]
+    assert bodies[0]["top_k"] == 7
+    assert bodies[0]["repeat_penalty"] == 1.1
+    await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_optional_settings_preserve_existing_dispatcher_call():
+    model = service(lambda request: httpx.Response(200, json=completion()))
+    history = ConversationHistory()
+    history.add_user_message("test")
+    assert (
+        await model.get_chat_message_content(chat_history=history, settings=None)
+    ).content == "odpowiedź"
+    await model.aclose()
+
+
+@pytest.mark.parametrize("field", ["model", "messages", "tools", "stream"])
+def test_generation_extensions_cannot_override_routing_or_tool_policy(field):
+    with pytest.raises(ValueError, match="cannot_override_transport"):
+        MafChatService._options(CompletionOptions(extra_body={field: "override"}))
+
+
+def test_default_service_alias_preserves_named_local_runtime_selection():
+    from types import SimpleNamespace
+
+    runtime = AgentRuntime()
+    local = SimpleNamespace(service_id="local")
+    runtime.add_service(local)
+    assert runtime.get_service("default") is local
+    assert runtime.get_service() is local
+    with pytest.raises(KeyError):
+        runtime.get_service("missing")
+    with pytest.raises(ValueError, match="duplicate_model_service"):
+        runtime.add_service(local)

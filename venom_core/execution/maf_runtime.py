@@ -11,7 +11,11 @@ from collections.abc import AsyncIterator
 from functools import wraps
 from typing import TYPE_CHECKING, Any, cast
 
-from .agent_contracts import CompletionOptions, ConversationHistory, ConversationMessage
+from venom_core.execution.agent_contracts import (
+    CompletionOptions,
+    ConversationHistory,
+    ConversationMessage,
+)
 
 if TYPE_CHECKING:
     from agent_framework import AgentResponse, ChatResponse
@@ -32,8 +36,10 @@ class AgentRuntime:
         self.services[service.service_id] = service
 
     def get_service(self, service_id: str | None = None):
-        if service_id:
+        if service_id in self.services:
             return self.services[service_id]
+        if service_id and service_id != "default":
+            raise KeyError(service_id)
         if not self.services:
             raise LookupError("model_service_not_configured")
         return next(iter(self.services.values()))
@@ -166,26 +172,71 @@ class MafChatService:
         ]
 
     @staticmethod
-    def _options(settings: CompletionOptions) -> OpenAIChatCompletionOptions:
+    def _options(settings: CompletionOptions | None) -> OpenAIChatCompletionOptions:
+        settings = settings or CompletionOptions()
         options = settings.model_dump(
             exclude_none=True,
             exclude={"service_id", "function_choice_behavior", "extra_body"},
         )
-        if settings.extra_body:
-            options["extra_body"] = settings.extra_body
+        standard = {
+            "max_tokens",
+            "temperature",
+            "top_p",
+            "stop",
+            "seed",
+            "presence_penalty",
+            "frequency_penalty",
+            "logit_bias",
+            "response_format",
+            "reasoning_effort",
+            "max_completion_tokens",
+            "logprobs",
+            "top_logprobs",
+            "user",
+        }
+        # Venom uses provider-native aliases internally, while this boundary
+        # always targets Chat Completions (including local engines).
+        for alias in ("max_new_tokens", "num_predict"):
+            value = options.pop(alias, None)
+            if value is not None:
+                options.setdefault("max_tokens", value)
+        extensions = {
+            key: options.pop(key) for key in list(options) if key not in standard
+        }
+        extensions.update(settings.extra_body or {})
+        if set(extensions) & {
+            "model",
+            "messages",
+            "tools",
+            "stream",
+            "api_key",
+            "base_url",
+        }:
+            raise ValueError("generation_options_cannot_override_transport")
+        if "max_tokens" in options and "max_completion_tokens" not in options:
+            # MAF's generic option is translated to max_completion_tokens. Local
+            # Chat Completions servers in Venom still expose max_tokens. Use the
+            # SDK's public extra_body mechanism to retain that wire contract.
+            extensions["max_tokens"] = options.pop("max_tokens")
+        if extensions:
+            options["extra_body"] = extensions
         return cast("OpenAIChatCompletionOptions", options)
 
     async def get_chat_message_content(
         self,
         *,
         chat_history: ConversationHistory,
-        settings: CompletionOptions,
+        settings: CompletionOptions | None = None,
         kernel: AgentRuntime | None = None,
     ):
         messages = self._messages(chat_history)
         options = self._options(settings)
         response: AgentResponse[Any] | ChatResponse[Any]
-        if settings.function_choice_behavior is not None and kernel is not None:
+        if (
+            settings is not None
+            and settings.function_choice_behavior is not None
+            and kernel is not None
+        ):
             tools = kernel.native_tools(settings.function_choice_behavior.filters)
             response = await self.client.as_agent(tools=tools).run(
                 messages, options=options
@@ -212,7 +263,7 @@ class MafChatService:
         self,
         *,
         chat_history: ConversationHistory,
-        settings: CompletionOptions,
+        settings: CompletionOptions | None = None,
         **kwargs,
     ) -> AsyncIterator[list[ConversationMessage]]:
         async for update in self.client.get_response(

@@ -3,7 +3,8 @@
 from typing import TYPE_CHECKING, Annotated, Optional, cast
 
 import httpx
-from semantic_kernel.functions import kernel_function
+
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 if TYPE_CHECKING:
     from github import Github

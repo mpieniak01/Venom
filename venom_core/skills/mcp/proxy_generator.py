@@ -59,7 +59,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class {skill_name}(BaseSkill):
     \"\"\"

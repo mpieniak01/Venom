@@ -185,9 +185,13 @@ Tekst do analizy:
 Odpowiedź (JSON):"""
 
     async def _run_extraction_prompt(self, llm_service: LLMService, prompt: str) -> str:
-        from semantic_kernel.contents import ChatHistory
-        from semantic_kernel.contents.chat_message_content import ChatMessageContent
-        from semantic_kernel.contents.utils.author_role import AuthorRole
+        from venom_core.execution.agent_contracts import (
+            ConversationHistory as ChatHistory,
+        )
+        from venom_core.execution.agent_contracts import (
+            ConversationMessage as ChatMessageContent,
+        )
+        from venom_core.execution.agent_contracts import MessageRole as AuthorRole
 
         chat_history = ChatHistory()
         chat_history.add_message(
@@ -378,9 +382,13 @@ Odpowiedź (JSON):"""
             return f"Znaleziono {len(communities)} społeczności w grafie wiedzy.\n\n{context}"
 
         try:
-            from semantic_kernel.contents import ChatHistory
-            from semantic_kernel.contents.chat_message_content import ChatMessageContent
-            from semantic_kernel.contents.utils.author_role import AuthorRole
+            from venom_core.execution.agent_contracts import (
+                ConversationHistory as ChatHistory,
+            )
+            from venom_core.execution.agent_contracts import (
+                ConversationMessage as ChatMessageContent,
+            )
+            from venom_core.execution.agent_contracts import MessageRole as AuthorRole
 
             chat_history = ChatHistory()
             chat_history.add_message(
@@ -539,9 +547,13 @@ Odpowiedź (JSON):"""
     async def _synthesize_local_answer(
         self, llm_service: LLMService, context: str, query: str
     ) -> str:
-        from semantic_kernel.contents import ChatHistory
-        from semantic_kernel.contents.chat_message_content import ChatMessageContent
-        from semantic_kernel.contents.utils.author_role import AuthorRole
+        from venom_core.execution.agent_contracts import (
+            ConversationHistory as ChatHistory,
+        )
+        from venom_core.execution.agent_contracts import (
+            ConversationMessage as ChatMessageContent,
+        )
+        from venom_core.execution.agent_contracts import MessageRole as AuthorRole
 
         chat_history = ChatHistory()
         chat_history.add_message(

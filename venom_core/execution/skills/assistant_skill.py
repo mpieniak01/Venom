@@ -5,9 +5,9 @@ from datetime import datetime
 from typing import Annotated, Any, Dict, Optional
 
 import httpx
-from semantic_kernel.functions import kernel_function
 
 from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 

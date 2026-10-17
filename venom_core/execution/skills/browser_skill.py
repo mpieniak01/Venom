@@ -9,9 +9,8 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Optional
 from urllib.parse import urlparse
 
-from semantic_kernel.functions import kernel_function
-
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import resolve_http_scheme
 

@@ -4,10 +4,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.architect import ArchitectAgent
 from venom_core.core.models import ExecutionPlan, ExecutionStep
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
 
 @pytest.fixture

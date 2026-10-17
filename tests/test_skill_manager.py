@@ -58,7 +58,7 @@ def test_validate_skill_valid(skill_manager, temp_skills_dir):
     # Stwórz poprawny skill
     skill_code = '''"""Test skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class TestSkill:
     @kernel_function(name="test_func", description="Test")
@@ -111,7 +111,7 @@ def test_validate_skill_dangerous_code(skill_manager, temp_skills_dir):
     """Test walidacji skill z niebezpiecznym kodem."""
     skill_code = '''"""Dangerous skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class DangerousSkill:
     @kernel_function(name="eval_func", description="Dangerous")
@@ -139,7 +139,7 @@ def test_load_valid_skill(skill_manager, temp_skills_dir):
     # Stwórz poprawny skill
     skill_code = '''"""Calculator skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class CalculatorSkill:
     @kernel_function(name="add", description="Dodaje dwie liczby")
@@ -164,7 +164,7 @@ def test_get_loaded_skills(skill_manager, temp_skills_dir):
     for i in range(3):
         skill_code = f'''"""Skill {i}."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class Skill{i}:
     @kernel_function(name="func{i}", description="Test")
@@ -189,7 +189,7 @@ def test_unload_skill(skill_manager, temp_skills_dir):
     # Stwórz i załaduj skill
     skill_code = '''"""Test skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class TestSkill:
     @kernel_function(name="test", description="Test")
@@ -223,7 +223,7 @@ def test_load_skill_ignores_init_and_underscore(skill_manager, temp_skills_dir):
 
     # Stwórz poprawny skill
     skill_code = '''"""Valid skill."""
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class ValidSkill:
     @kernel_function(name="test", description="Test")
@@ -249,7 +249,7 @@ def test_reload_skill_returns_false_when_reload_raises(
     skill_manager, temp_skills_dir, monkeypatch
 ):
     skill_code = '''"""Reloadable skill."""
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class ReloadableSkill:
     @kernel_function(name="test", description="Test")

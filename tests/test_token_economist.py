@@ -1,11 +1,13 @@
 """Testy dla TokenEconomist."""
 
 import pytest
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.core.token_economist import TokenEconomist
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
 
 
 class TestTokenEconomist:

@@ -7,10 +7,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from semantic_kernel import Kernel
-
 from venom_core.config import SETTINGS
 from venom_core.core.permission_guard import permission_guard
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
@@ -445,10 +444,11 @@ class SkillManager:
     def _has_kernel_function(self, classes: list[ast.ClassDef]) -> bool:
         for class_node in classes:
             for item in class_node.body:
-                if not isinstance(item, ast.FunctionDef):
+                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
                 if any(
-                    self._decorator_name(decorator) == "kernel_function"
+                    self._decorator_name(decorator)
+                    in {"kernel_function", "tool_function"}
                     for decorator in item.decorator_list
                 ):
                     return True

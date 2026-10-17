@@ -38,6 +38,7 @@ tests/test_academy_training_service.py
 tests/test_adapter_audit_service.py
 tests/test_adapter_runtime_service.py
 tests/test_admin_audit.py
+tests/test_agents.py
 tests/test_agents_ghost_runtime_store.py
 tests/test_agents_release_integration_contracts.py
 tests/test_agents_skill_manager_paths.py
@@ -93,6 +94,7 @@ tests/test_dead_code_audit.py
 tests/test_dependency_profiles.py
 tests/test_designer_agent.py
 tests/test_devops_agent.py
+tests/test_dispatcher.py
 tests/test_dispatcher_audit_regression.py
 tests/test_docker_habitat.py
 tests/test_docker_habitat_contracts.py
@@ -135,9 +137,11 @@ tests/test_ingestion_engine_roi.py
 tests/test_input_skill.py
 tests/test_integrator_agent.py
 tests/test_intent_embedding_router_edges.py
+tests/test_intent_manager.py
 tests/test_intent_manager_contracts.py
 tests/test_issue_handler_flow_light.py
 tests/test_jobs_scheduler_cleanup.py
+tests/test_kernel_builder.py
 tests/test_knowledge_context_map_api.py
 tests/test_knowledge_context_service.py
 tests/test_knowledge_entries_service.py
@@ -303,6 +307,7 @@ tests/test_test_intelligence_report.py
 tests/test_test_lane_contracts_guard.py
 tests/test_test_skill.py
 tests/test_test_skill_local.py
+tests/test_token_economist.py
 tests/test_toolmaker_agent.py
 tests/test_training_metrics_parser.py
 tests/test_translation_service.py

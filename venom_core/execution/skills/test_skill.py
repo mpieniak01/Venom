@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from typing import Annotated, List, Optional
 
 from anyio import fail_after
-from semantic_kernel.functions import kernel_function
 
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 from venom_core.utils.logger import get_logger
 

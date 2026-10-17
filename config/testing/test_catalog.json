@@ -766,6 +766,7 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
@@ -1947,6 +1948,7 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
+        "new-code",
         "ci-lite",
         "release"
       ],
@@ -3000,6 +3002,7 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
@@ -3076,8 +3079,10 @@
       "domain": "misc",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
@@ -6227,6 +6232,7 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,

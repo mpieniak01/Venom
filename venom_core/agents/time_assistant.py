@@ -1,8 +1,7 @@
 """Moduł: time_assistant - Agent do obsługi zapytań o aktualną godzinę."""
 
-from semantic_kernel import Kernel
-
 from venom_core.agents.base import BaseAgent
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skills.assistant_skill import AssistantSkill
 from venom_core.utils.logger import get_logger
 

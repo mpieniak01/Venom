@@ -4,9 +4,8 @@ import os
 import re
 from typing import Annotated, Optional
 
-from semantic_kernel.functions import kernel_function
-
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.infrastructure.stack_manager import StackManager
 from venom_core.utils.logger import get_logger
 from venom_core.utils.port_authority import is_port_in_use

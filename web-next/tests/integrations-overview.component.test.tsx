@@ -2,10 +2,11 @@ import "./component-test-setup";
 import assert from "node:assert/strict";
 import { afterEach, it } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { resetIntegrationInventory } from "../lib/integration-inventory";
 import { ApiMap } from "../components/config/api-map";
 
 const originalFetch = globalThis.fetch;
-afterEach(() => { cleanup(); globalThis.fetch = originalFetch; });
+afterEach(() => { cleanup(); resetIntegrationInventory(); globalThis.fetch = originalFetch; });
 
 function entry(id: string, label: string, extra: Record<string, unknown> = {}) {
   return { id, label, scope: "external", kind: "infrastructure", location: "cloud", state: "configured", configuration: "configured", activation: "enabled", connectivity: "unknown", source: "configuration", reason_code: "not_probed", capabilities: [], configuration_keys: [], access: [], resources: [], resources_complete: false, resource_count: null, active_resource_count: null, ...extra };

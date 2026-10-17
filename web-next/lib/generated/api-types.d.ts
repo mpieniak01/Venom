@@ -7047,6 +7047,36 @@ export interface components {
             state: "connected" | "offline" | "stale" | "unverified";
             /** Observed At */
             observed_at?: string | null;
+            /**
+             * Configuration
+             * @default unknown
+             * @enum {string}
+             */
+            configuration: "configured" | "unconfigured" | "unknown";
+            /**
+             * Selected
+             * @default false
+             */
+            selected: boolean;
+            /** Mode */
+            mode?: ("demo" | "device") | null;
+            /**
+             * Source
+             * @default configuration
+             * @enum {string}
+             */
+            source: "configuration" | "device_cache";
+            /**
+             * Reason Code
+             * @default not_observed
+             */
+            reason_code: string;
+            /** Supported Capabilities */
+            supported_capabilities?: string[];
+            /** Reported Capabilities */
+            reported_capabilities?: string[] | null;
+            /** Available Capabilities */
+            available_capabilities?: string[] | null;
         };
         /**
          * IoTReconnectResponse

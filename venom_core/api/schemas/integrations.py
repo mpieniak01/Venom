@@ -14,6 +14,14 @@ class IntegrationResource(BaseModel):
     kind: Literal["robot", "worker", "instance", "runtime", "device"]
     state: Literal["connected", "offline", "stale", "unverified"] = "unverified"
     observed_at: str | None = None
+    configuration: Literal["configured", "unconfigured", "unknown"] = "unknown"
+    selected: bool = False
+    mode: Literal["demo", "device"] | None = None
+    source: Literal["configuration", "device_cache"] = "configuration"
+    reason_code: str = "not_observed"
+    supported_capabilities: list[str] = Field(default_factory=list, max_length=32)
+    reported_capabilities: list[str] | None = Field(default=None, max_length=32)
+    available_capabilities: list[str] | None = Field(default=None, max_length=32)
 
 
 class IntegrationObservation(BaseModel):
@@ -24,6 +32,8 @@ class IntegrationObservation(BaseModel):
     resources_complete: bool = False
     connectivity: ConnectionStatus = ConnectionStatus.UNKNOWN
     observed_at: str | None = None
+    configuration: Literal["configured", "unconfigured", "unknown"] | None = None
+    reason_code: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,79}$")
 
 
 class IntegrationEntry(BaseModel):

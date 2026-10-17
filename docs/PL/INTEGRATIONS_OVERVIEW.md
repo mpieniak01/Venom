@@ -51,3 +51,35 @@ Host ogranicza oczekiwanie na start i zamykanie routera modułu do dwóch sekund
 Błąd oznacza niedostępność danego modułu i kontrolowane 503 na jego trasach;
 pozostałe trasy core działają. Osłona nie ukrywa błędów samego core i nie zmienia
 trwale współdzielonego kontekstu cyklu życia routera dla innej aplikacji.
+
+## Nawigacja konfiguracji
+
+/config?tab=integrations otwiera przegląd. Starsze tab=apiMap i section=parameters
+pozostają obsługiwane. integration, scope, visibility i q zapisują wybór, filtry
+i wyszukiwanie w URL. Nieznana zakładka wraca do Usług; brak wybranej integracji
+jest opisany wprost. Wstecz przeglądarki przywraca wybór.
+
+Klucz integracji prowadzi do istniejącego edytora przez parameter=NAZWA_KLUCZA.
+Wyszukiwanie obejmuje nazwy i opisy, bez wartości i sekretów. Nieudostępniony klucz
+ma jawny komunikat; nie rozszerzamy listy kluczy zapisywalnych w backendzie.
+Niezapisany formularz pozostaje podczas przełączania zakładek; pełne odświeżenie
+strony nadal usuwa niezapisane zmiany. Zapis, Reset, profile usług, Audyt
+i Uprawnienia zachowują istniejące endpointy i znaczenie. Wyszukane sekcje otwierają
+się automatycznie.
+
+Starszy ENABLE_IOT_BRIDGE / RIDER_PI_* pozostaje niezależny od modułu Rider
+i nadal jest używany w bootstrapie core. Nie usuwamy ani nie migrujemy tych kluczy.
+Kokpit korzysta z identyfikatorów i obserwacji wspólnego przeglądu; nie wyznacza
+integracji z nazw usług. Modele prowadzą do wpisu runtime; nawigacja opcjonalnego
+modułu pochodzi wyłącznie z manifestu. Ukryte zakładki nie odpytują przeglądu.
+
+Kontekst zasobu obejmuje configuration, selected, mode (demo/device), source,
+reason_code oraz supported/reported/available_capabilities. Brak dowodu możliwości
+oznacza null. Online nie nadaje zgody na ruch. Pełna lista skonfigurowanych
+urządzeń potwierdza łączną liczbę, lecz aktywne pozostają nieznane, jeśli nie
+zaobserwowano stanu każdego urządzenia. Opcjonalne pola configuration i reason_code
+obserwacji odróżniają brak urządzeń od błędnej konfiguracji. Starsze hooki działają.
+
+Kolejność wydania: core 263, nawigacja i kontekst 264, adapter modułu 263R. Starszy
+core ignoruje opcjonalny hook manifestu i zachowuje sterowanie Rider; nie importuje
+adaptera na tej ścieżce.

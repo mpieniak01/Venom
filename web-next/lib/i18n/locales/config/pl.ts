@@ -398,6 +398,7 @@ export const configLocale = {
     "device": "Urządzenie"
   },
   "sources": {
+"device_cache": "Cache urządzenia",
 "module_manifest": "Manifest modułu",
 "provider_api": "API dostawcy",
     "configuration": "Konfiguracja",
@@ -409,6 +410,12 @@ export const configLocale = {
     "module_observation": "Obserwacja modułu"
   },
   "capabilities": {
+"manual_control": "Sterowanie ręczne",
+"camera": "Kamera",
+"vision": "Analiza obrazu",
+"samples": "Próbki obrazu",
+"navigation": "Nawigacja",
+
     "gpu_environments": "Środowiska GPU",
     "billing": "Rozliczenia",
     "model_inference": "Wnioskowanie modeli",
@@ -420,6 +427,15 @@ export const configLocale = {
     "image_generation": "Generowanie obrazów"
   },
   "reasons": {
+"not_observed": "Nie ma obserwacji urządzenia.",
+"device_online": "Urządzenie odpowiedziało; zgoda na ruch jest sprawdzana oddzielnie.",
+"device_offline": "Ostatni odczyt urządzenia zakończył się niepowodzeniem.",
+"device_observation_stale": "Ostatnia obserwacja urządzenia jest przestarzała.",
+"device_not_selected": "Urządzenie nie jest wybrane; nie jest odpytywane przez przegląd.",
+"device_configuration_invalid": "Konfiguracja urządzeń modułu jest niepoprawna.",
+"device_not_configured": "Brak skonfigurowanych urządzeń.",
+"demo_observation": "Obserwacja dotyczy symulatora, nie fizycznego robota.",
+
 "module_initialization_failed": "Inicjalizacja modułu nie powiodła się; reszta systemu działa.",
 "module_cleanup_failed": "Zamknięcie modułu nie powiodło się.",
 "module_not_registered": "Moduł jest znany z lokalnego manifestu, ale jego API nie zostało zarejestrowane.",
@@ -454,6 +470,37 @@ export const configLocale = {
     "observation_failed": "Nie udało się odczytać poprawnej obserwacji modułu.",
     "observation_stale": "Obserwacja modułu jest przestarzała.",
     "provider_observation": "Dane pochodzą z opcjonalnego dostawcy obserwacji modułu."
+  }
+},
+    navigation: {
+  "searchIntegrations": "Szukaj integracji",
+  "searchParameters": "Szukaj parametrów",
+  "relatedIntegrations": "Powiązane integracje",
+  "unknownTab": "Nieznana zakładka. Wyświetlono Usługi.",
+  "missingIntegration": "Wybrana integracja nie jest już dostępna. Wybierz inny wpis z listy.",
+  "filteredIntegration": "Wybrana integracja jest poza bieżącymi filtrami. Jej szczegóły pozostają widoczne.",
+  "missingParameter": "Ten parametr nie jest udostępniony w edytorze core. Sprawdź panel domenowy lub konfigurację instancji.",
+  "allParameters": "Pokaż wszystkie parametry",
+  "noParameters": "Brak parametrów dla wybranego filtra.",
+  "parameterSearchHint": "Wyszukiwanie obejmuje nazwy i opisy, bez wartości i sekretów. Zmiany formularza pozostają przy przełączaniu zakładek.",
+  "legacyIotExplanation": "Starszy mostek IoT używa RIDER_PI_* do połączenia SSH/HTTP. Moduł Rider ma własną konfigurację urządzeń i panel /rider. Te ustawienia są niezależne; nie zmieniają aktywnego robota modułu.",
+  "deviceMode": "Tryb urządzenia",
+  "selectedDevice": "Wybrane urządzenie",
+  "supportedCapabilities": "Obsługiwane przez moduł",
+  "reportedCapabilities": "Zgłoszone przez urządzenie",
+  "availableCapabilities": "Obecnie dostępne",
+  "noCapabilities": "Brak potwierdzonych możliwości",
+  "overviewShortcut": "Otwórz integracje i węzły",
+  "overviewDescription": "Konfiguracja, łączność i zasoby z tego samego źródła co konfiguracja systemu.",
+  "operations": "Ostatnie zdarzenia",
+  "noEvents": "Brak ostatnich zdarzeń.",
+  "systemEvent": "Zdarzenie systemowe",
+  "eventDetails": "Szczegóły w konsoli.",
+  "otherParameters": "Pozostałe parametry",
+  "otherParametersDescription": "Pozostałe ustawienia udostępnione przez istniejący edytor core.",
+  "modes": {
+    "demo": "Demo",
+    "device": "Urządzenie fizyczne"
   }
 },
     apiMap: {

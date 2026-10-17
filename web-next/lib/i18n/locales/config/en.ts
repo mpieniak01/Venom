@@ -398,6 +398,7 @@ export const configLocale = {
     "device": "Device"
   },
   "sources": {
+"device_cache": "Device cache",
 "module_manifest": "Module manifest",
 "provider_api": "Provider API",
     "configuration": "Configuration",
@@ -409,6 +410,12 @@ export const configLocale = {
     "module_observation": "Module observation"
   },
   "capabilities": {
+"manual_control": "Manual control",
+"camera": "Camera",
+"vision": "Vision analysis",
+"samples": "Image samples",
+"navigation": "Navigation",
+
     "gpu_environments": "GPU environments",
     "billing": "Billing",
     "model_inference": "Model inference",
@@ -420,6 +427,15 @@ export const configLocale = {
     "image_generation": "Image generation"
   },
   "reasons": {
+"not_observed": "No device observation is available.",
+"device_online": "The device responded; motion consent is checked separately.",
+"device_offline": "The last device read failed.",
+"device_observation_stale": "The latest device observation is stale.",
+"device_not_selected": "The device is not selected; the inventory does not poll it.",
+"device_configuration_invalid": "The module device configuration is invalid.",
+"device_not_configured": "No devices are configured.",
+"demo_observation": "This observation is from a simulator, not a physical robot.",
+
 "module_initialization_failed": "Module initialization failed; the rest of the system remains available.",
 "module_cleanup_failed": "Module cleanup failed.",
 "module_not_registered": "The module is known from a local manifest but its API is not registered.",
@@ -454,6 +470,37 @@ export const configLocale = {
     "observation_failed": "A valid module observation could not be read.",
     "observation_stale": "The module observation is stale.",
     "provider_observation": "Data comes from the optional module observation provider."
+  }
+},
+    navigation: {
+  "searchIntegrations": "Search integrations",
+  "searchParameters": "Search parameters",
+  "relatedIntegrations": "Related integrations",
+  "unknownTab": "Unknown tab. Services are shown.",
+  "missingIntegration": "The selected integration is no longer available. Select another entry.",
+  "filteredIntegration": "The selected integration is outside the current filters. Its details remain visible.",
+  "missingParameter": "This parameter is not exposed in the core editor. Check its domain panel or instance configuration.",
+  "allParameters": "Show all parameters",
+  "noParameters": "No parameters match the current filter.",
+  "parameterSearchHint": "Search covers names and descriptions, without values or secrets. Form changes survive tab switches.",
+  "legacyIotExplanation": "The older IoT bridge uses RIDER_PI_* for SSH/HTTP connections. The Rider module has its own device configuration and /rider panel. These settings are independent and do not change the module’s active robot.",
+  "deviceMode": "Device mode",
+  "selectedDevice": "Selected device",
+  "supportedCapabilities": "Supported by module",
+  "reportedCapabilities": "Reported by device",
+  "availableCapabilities": "Currently available",
+  "noCapabilities": "No confirmed capabilities",
+  "overviewShortcut": "Open integrations and nodes",
+  "overviewDescription": "Configuration, connectivity and resources from the same source as system configuration.",
+  "operations": "Recent events",
+  "noEvents": "No recent events.",
+  "systemEvent": "System event",
+  "eventDetails": "See console for details.",
+  "otherParameters": "Other parameters",
+  "otherParametersDescription": "Remaining settings exposed by the existing core editor.",
+  "modes": {
+    "demo": "Demo",
+    "device": "Physical device"
   }
 },
     apiMap: {

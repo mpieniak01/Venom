@@ -398,6 +398,7 @@ export const configLocale = {
     "device": "Gerät"
   },
   "sources": {
+"device_cache": "Gerätecache",
 "module_manifest": "Modulmanifest",
 "provider_api": "Anbieter-API",
     "configuration": "Konfiguration",
@@ -409,6 +410,12 @@ export const configLocale = {
     "module_observation": "Modulbeobachtung"
   },
   "capabilities": {
+"manual_control": "Manuelle Steuerung",
+"camera": "Kamera",
+"vision": "Bildanalyse",
+"samples": "Bildproben",
+"navigation": "Navigation",
+
     "gpu_environments": "GPU-Umgebungen",
     "billing": "Abrechnung",
     "model_inference": "Modellinferenz",
@@ -420,6 +427,15 @@ export const configLocale = {
     "image_generation": "Bilderzeugung"
   },
   "reasons": {
+"not_observed": "Keine Gerätebeobachtung verfügbar.",
+"device_online": "Das Gerät hat geantwortet; die Bewegungsfreigabe wird separat geprüft.",
+"device_offline": "Die letzte Geräteabfrage ist fehlgeschlagen.",
+"device_observation_stale": "Die letzte Gerätebeobachtung ist veraltet.",
+"device_not_selected": "Das Gerät ist nicht ausgewählt; die Übersicht fragt es nicht ab.",
+"device_configuration_invalid": "Die Gerätekonfiguration des Moduls ist ungültig.",
+"device_not_configured": "Keine Geräte konfiguriert.",
+"demo_observation": "Diese Beobachtung stammt aus einem Simulator, nicht vom physischen Roboter.",
+
 "module_initialization_failed": "Modulinitialisierung fehlgeschlagen; das übrige System bleibt verfügbar.",
 "module_cleanup_failed": "Modulbereinigung fehlgeschlagen.",
 "module_not_registered": "Das Modul ist aus einem lokalen Manifest bekannt, aber seine API ist nicht registriert.",
@@ -454,6 +470,37 @@ export const configLocale = {
     "observation_failed": "Keine gültige Modulbeobachtung verfügbar.",
     "observation_stale": "Die Modulbeobachtung ist veraltet.",
     "provider_observation": "Daten des optionalen Modulbeobachtungsanbieters."
+  }
+},
+    navigation: {
+  "searchIntegrations": "Integrationen suchen",
+  "searchParameters": "Parameter suchen",
+  "relatedIntegrations": "Zugehörige Integrationen",
+  "unknownTab": "Unbekannte Registerkarte. Dienste werden angezeigt.",
+  "missingIntegration": "Die ausgewählte Integration ist nicht mehr verfügbar. Wählen Sie einen anderen Eintrag.",
+  "filteredIntegration": "Die ausgewählte Integration liegt außerhalb der aktuellen Filter. Ihre Details bleiben sichtbar.",
+  "missingParameter": "Dieser Parameter ist im Core-Editor nicht verfügbar. Prüfen Sie das zuständige Panel oder die Instanzkonfiguration.",
+  "allParameters": "Alle Parameter anzeigen",
+  "noParameters": "Keine Parameter entsprechen dem Filter.",
+  "parameterSearchHint": "Die Suche umfasst Namen und Beschreibungen, keine Werte oder Geheimnisse. Formularänderungen bleiben beim Registerwechsel erhalten.",
+  "legacyIotExplanation": "Die ältere IoT-Brücke nutzt RIDER_PI_* für SSH/HTTP. Das Rider-Modul besitzt eine eigene Gerätekonfiguration und das Panel /rider. Diese Einstellungen sind unabhängig und ändern nicht den aktiven Roboter des Moduls.",
+  "deviceMode": "Gerätemodus",
+  "selectedDevice": "Ausgewähltes Gerät",
+  "supportedCapabilities": "Vom Modul unterstützt",
+  "reportedCapabilities": "Vom Gerät gemeldet",
+  "availableCapabilities": "Derzeit verfügbar",
+  "noCapabilities": "Keine bestätigten Fähigkeiten",
+  "overviewShortcut": "Integrationen und Knoten öffnen",
+  "overviewDescription": "Konfiguration, Verbindung und Ressourcen aus derselben Quelle wie die Systemkonfiguration.",
+  "operations": "Letzte Ereignisse",
+  "noEvents": "Keine aktuellen Ereignisse.",
+  "systemEvent": "Systemereignis",
+  "eventDetails": "Details in der Konsole.",
+  "otherParameters": "Weitere Parameter",
+  "otherParametersDescription": "Weitere vom bestehenden Core-Editor bereitgestellte Einstellungen.",
+  "modes": {
+    "demo": "Demo",
+    "device": "Physisches Gerät"
   }
 },
     apiMap: {

@@ -85,7 +85,10 @@ async def _apply(app, record, item, cache):
     item.connectivity = result.connectivity if observed else "unknown"
     item.resource_support = "supported"
     item.resources_complete = result.resources_complete and observed is not None
-    item.reason_code, item.source = "provider_observation", "module_observation"
+    item.reason_code = result.reason_code or "provider_observation"
+    item.source = "module_observation"
+    if result.configuration is not None:
+        item.configuration = result.configuration
     item.state = (
         "connected"
         if item.connectivity == "ok"
@@ -95,10 +98,19 @@ async def _apply(app, record, item, cache):
         if item.connectivity == "degraded"
         else "available"
     )
+    if item.configuration == "unconfigured":
+        item.state = "unconfigured"
+    if item.reason_code == "device_configuration_invalid":
+        item.state = "unavailable"
     if item.resources_complete:
         item.resource_count = len(item.resources)
-        item.active_resource_count = sum(
-            resource.state == "connected" for resource in item.resources
+        item.active_resource_count = (
+            sum(resource.state == "connected" for resource in item.resources)
+            if all(
+                resource.state in {"connected", "offline"}
+                for resource in item.resources
+            )
+            else None
         )
 
 

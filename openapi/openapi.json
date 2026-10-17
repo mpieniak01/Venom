@@ -16096,6 +16096,88 @@
               }
             ],
             "title": "Observed At"
+          },
+          "configuration": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "unconfigured",
+              "unknown"
+            ],
+            "title": "Configuration",
+            "default": "unknown"
+          },
+          "selected": {
+            "type": "boolean",
+            "title": "Selected",
+            "default": false
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "demo",
+                  "device"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "configuration",
+              "device_cache"
+            ],
+            "title": "Source",
+            "default": "configuration"
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code",
+            "default": "not_observed"
+          },
+          "supported_capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Supported Capabilities"
+          },
+          "reported_capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Capabilities"
+          },
+          "available_capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Capabilities"
           }
         },
         "additionalProperties": false,

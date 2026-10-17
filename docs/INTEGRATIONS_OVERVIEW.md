@@ -63,3 +63,37 @@ Optional router startup and cleanup have a two-second host wait. A failure marks
 that module unavailable and its routes return a controlled 503; unrelated core
 routes remain available. A shared module router retains its original lifecycle
 context for other host applications. Core application errors are not swallowed.
+
+## Configuration navigation
+
+/config?tab=integrations selects the inventory. The previous tab=apiMap and
+section= parameters remain accepted. integration, scope, visibility and q retain
+the selected integration, filters and search in the URL. Unknown tabs fall back
+to Services; missing integrations are reported instead of showing a healthy
+replacement. Browser Back restores the previous selection.
+
+Integration configuration keys link to the existing Parameters editor via
+parameter=KEY_NAME. Search covers names and descriptions, never secret values.
+Unavailable keys have an explicit message; this change does not expand the
+backend's editable-key allowlist. Draft parameter edits survive local tab switches;
+a full page reload still discards unsaved edits. Save, Reset, service profiles,
+Audit and Permissions use the existing endpoints and semantics. Search results
+open their sections automatically.
+
+The older ENABLE_IOT_BRIDGE / RIDER_PI_* bridge remains independent of the Rider
+module and is still consumed by core bootstrap. It is not migrated or removed.
+Cockpit links use the same inventory IDs and observations, not service-name
+heuristics. Models link to the runtime entry; optional modules expose only the
+navigation declared in their manifest. Hidden tabs do not poll the inventory.
+
+Optional resource context includes configuration, selected, mode (demo/device),
+source, reason_code and supported/reported/available capabilities. Missing
+capability evidence is null. Being online never grants motion consent. A complete
+configured-device inventory can establish a total while the active count remains
+unknown until every resource state is observed. The optional observation-level
+configuration and reason_code distinguish missing devices from invalid config.
+Old hooks omitting these additive fields continue to work.
+
+Release core inventory 263 first, navigation/context 264 next, then the optional
+Rider observation adapter 263R. Older core ignores the opt-in manifest hook and
+keeps normal Rider controls working; the adapter is not imported on that path.

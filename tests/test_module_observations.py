@@ -207,3 +207,132 @@ def test_optional_lifecycle_does_not_swallow_core_request_failures():
         with pytest.raises(RuntimeError, match="core failure"):
             client.get("/core/failure")
     assert record["state"] == "loaded"
+
+
+@pytest.mark.asyncio
+async def test_device_inventory_preserves_unknown_connectivity_and_resource_context(
+    monkeypatch,
+):
+    from datetime import datetime, timezone
+
+    from venom_core.api.schemas.integrations import (
+        IntegrationEntry,
+        IntegrationObservation,
+    )
+    from venom_core.services import integration_hooks
+
+    app = FastAPI()
+    app.state.optional_module_diagnostics = [
+        {
+            "module_id": "rider",
+            "state": "loaded",
+            "integration_provider_import": "example:observe",
+        }
+    ]
+    observation = IntegrationObservation.model_validate(
+        {
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "configuration": "configured",
+            "resources_complete": True,
+            "resources": [
+                {
+                    "id": "robot-1",
+                    "label": "Robot",
+                    "kind": "robot",
+                    "state": "unverified",
+                    "mode": "device",
+                    "selected": True,
+                    "configuration": "configured",
+                    "reason_code": "not_observed",
+                    "supported_capabilities": ["camera"],
+                    "reported_capabilities": None,
+                    "available_capabilities": None,
+                }
+            ],
+        }
+    )
+    read = AsyncMock(return_value=observation)
+    monkeypatch.setattr(integration_hooks, "_read", read)
+    entry = IntegrationEntry(
+        id="module:rider", label="Rider", scope="internal", kind="module"
+    )
+    await integration_hooks.apply_module_observations(app, [entry])
+    assert entry.resource_count == 1
+    assert entry.active_resource_count is None
+    assert entry.resources[0].id.startswith("module:rider:")
+    assert entry.resources[0].mode == "device"
+    assert entry.resources[0].selected is True
+    assert entry.resources[0].reported_capabilities is None
+    assert entry.resources[0].available_capabilities is None
+    assert entry.connectivity == "unknown"
+    assert entry.configuration == "configured"
+    await integration_hooks.apply_module_observations(app, [entry])
+    read.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "configuration,reason,complete,expected",
+    [
+        ("unconfigured", "device_not_configured", True, "unconfigured"),
+        ("unknown", "device_configuration_invalid", False, "unavailable"),
+    ],
+)
+async def test_empty_and_invalid_device_configuration_are_distinct(
+    monkeypatch, configuration, reason, complete, expected
+):
+    from datetime import datetime, timezone
+
+    from venom_core.api.schemas.integrations import (
+        IntegrationEntry,
+        IntegrationObservation,
+    )
+    from venom_core.services import integration_hooks
+
+    app = FastAPI()
+    app.state.optional_module_diagnostics = [
+        {
+            "module_id": "rider",
+            "state": "loaded",
+            "integration_provider_import": "example:observe",
+        }
+    ]
+    monkeypatch.setattr(
+        integration_hooks,
+        "_read",
+        AsyncMock(
+            return_value=IntegrationObservation(
+                observed_at=datetime.now(timezone.utc).isoformat(),
+                configuration=configuration,
+                reason_code=reason,
+                resources_complete=complete,
+            )
+        ),
+    )
+    entry = IntegrationEntry(
+        id="module:rider", label="Rider", scope="internal", kind="module"
+    )
+    await integration_hooks.apply_module_observations(app, [entry])
+    assert entry.state == expected
+    assert entry.reason_code == reason
+    assert entry.resource_count == (0 if complete else None)
+    assert entry.active_resource_count == (0 if complete else None)
+
+
+def test_observation_context_defaults_and_public_reason_validation():
+    from pydantic import ValidationError
+
+    from venom_core.api.schemas.integrations import (
+        IntegrationObservation,
+        IntegrationResource,
+    )
+
+    legacy = IntegrationObservation(
+        resources=[IntegrationResource(id="x", label="Legacy", kind="robot")]
+    )
+    assert legacy.configuration is None
+    assert legacy.reason_code is None
+    assert legacy.resources[0].mode is None
+    assert legacy.resources[0].available_capabilities is None
+    with pytest.raises(ValidationError):
+        IntegrationObservation(reason_code="http://private-host?token=secret")

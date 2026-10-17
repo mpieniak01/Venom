@@ -8,7 +8,7 @@ export function IntegrationStatusDetails({ entry, resource, generatedAt }: Reado
   const t = useTranslation();
   const observedAt = resource ? resource.observed_at : entry.observed_at;
   const date = observedAt ? new Date(observedAt) : null;
-  const snapshotTime = generatedAt ? new Date(generatedAt).getTime() : NaN;
+  const snapshotTime = generatedAt ? new Date(generatedAt).getTime() : Number.NaN;
   const minutes = date && Number.isFinite(date.getTime()) && Number.isFinite(snapshotTime) ? Math.max(0, Math.floor((snapshotTime - date.getTime()) / 60000)) : null;
   return <>
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 break-words text-sm">

@@ -61,7 +61,11 @@ export function IntegrationTopology({ navigation }: Readonly<{ navigation: Retur
     navigation.navigate({ integration: node.data.entry?.id ?? null, resource: node.data.resource?.id ?? null });
   };
   const missing = data && ((navigation.integration && !selected) || (navigation.resource && !resource));
-  const countKey = selected ? (failed ? "config.topology.notObserved" : resourceCountKey(selected)) : null;
+  let countKey: string | null = null;
+  if (selected) {
+    countKey = resourceCountKey(selected);
+    if (failed) countKey = "config.topology.notObserved";
+  }
   return <section className="min-w-0 space-y-4" aria-label={t("config.topology.title")} aria-busy={loading}>
     <p className="text-sm text-theme-muted">{t("config.topology.legend")}</p>
     <div className="flex flex-wrap items-center gap-3">
@@ -72,7 +76,7 @@ export function IntegrationTopology({ navigation }: Readonly<{ navigation: Retur
     </div>
     {failed && <p role="alert">{t(data ? "config.integrations.refreshFailed" : "config.apiMap.errorLoading")}</p>}
     {!data && <p>{t(loading ? "config.integrations.loading" : "config.apiMap.noResults")}</p>}
-    {missing && <p role="status">{t("config.topology.missing")}</p>}
+    {missing && <output className="block">{t("config.topology.missing")}</output>}
     <div className={selected ? "grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]" : "min-w-0"}>
       <div className="h-[560px] min-w-0 overflow-hidden rounded-xl border border-theme" data-testid="integration-topology-canvas" onKeyDownCapture={(event) => {
         if (event.key !== "Enter" && event.key !== " ") return;

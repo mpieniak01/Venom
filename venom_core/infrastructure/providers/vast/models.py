@@ -9,7 +9,11 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from venom_core.infrastructure.providers.vast.runtime_contracts import (
+    RuntimeRequirements,
+)
 
 
 def now() -> datetime:
@@ -35,6 +39,7 @@ class Contract(BaseModel):
 
 class WorkloadProfile(Contract):
     name: str = Field(min_length=1, max_length=80)
+    runtime: RuntimeRequirements = Field(default_factory=RuntimeRequirements)
     mode: Literal["inspect", "ollama", "vllm", "pytorch"] = "inspect"
     cpu_arch: Literal["amd64", "arm64"]
     image: str
@@ -171,6 +176,7 @@ OFFER_FIELDS = (
     "bw_nvlink",
     "has_avx",
     "dlperf",
+    "gpu_arch",
     "cuda_max_good",
     "driver_version",
     "os_version",
@@ -250,11 +256,14 @@ class OfferAssessment(Contract):
     quote: CostQuote
     performance: Literal["unknown"] = "unknown"
     host: HostSignals = Field(default_factory=HostSignals)
+    runtime: dict[str, Any] = Field(default_factory=dict)
+    history: dict[str, Any] = Field(default_factory=dict)
 
 
 class EnvironmentPlan(Contract):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 2
     plan_id: str
+    retest: bool = False
     profile: WorkloadProfile
     assessment: OfferAssessment
     expires_at: datetime
@@ -267,8 +276,25 @@ class EnvironmentPlan(Contract):
     startup_sha256: str
     checksum: str = ""
 
+    @model_validator(mode="after")
+    def legacy_defaults(self):
+        if self.schema_version == 1 and (
+            self.retest
+            or self.profile.runtime != RuntimeRequirements()
+            or self.assessment.runtime
+            or self.assessment.history
+        ):
+            raise ValueError("vast.legacy_plan_runtime_changed")
+        return self
+
     def calculate_checksum(self) -> str:
-        return digest(self.model_dump(mode="json", exclude={"checksum"}))
+        data = self.model_dump(mode="json", exclude={"checksum"})
+        if self.schema_version == 1:
+            data.pop("retest", None)
+            data["profile"].pop("runtime", None)
+            data["assessment"].pop("runtime", None)
+            data["assessment"].pop("history", None)
+        return digest(data)
 
 
 class EnvironmentRecord(Contract):

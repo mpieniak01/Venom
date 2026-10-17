@@ -16,14 +16,17 @@ from pydantic import ValidationError
 from venom_core.infrastructure.providers.vast.client import VastClient, VastError
 from venom_core.infrastructure.providers.vast.images import resolve_image
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile, now
-from venom_core.services.vast_environments.assessment import assess, search_filters
+from venom_core.services.vast_environments.assessment import search_filters
 from venom_core.services.vast_environments.billing import costs
 from venom_core.services.vast_environments.evaluation import compare
+from venom_core.services.vast_environments.history import entries
+from venom_core.services.vast_environments.history import report as qualification_report
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.operations import monitor, workload
 from venom_core.services.vast_environments.recipes import RECIPES, prepare
 from venom_core.services.vast_environments.store import Journal
 
+INVALID_INPUT = "vast.invalid_input"
 DEFAULT_STATE = ".venom_runtime/vast"
 SSH_PROFILE_ROOT = Path(__file__).resolve().parents[3] / "secrets" / "ssh"
 
@@ -62,6 +65,7 @@ def _add_offer_commands(sub) -> None:
     for command in ("offers", "assess", "plan"):
         item = sub.add_parser(command)
         item.add_argument("--profile", type=Path, required=True)
+        item.add_argument("--retest", action="store_true")
         item.add_argument(
             "--sort",
             choices=[
@@ -110,6 +114,8 @@ def _add_record_commands(sub) -> None:
         "wait",
         "monitor",
         "inspect",
+        "qualify",
+        "report",
         "provision",
         "ready",
         "benchmark",
@@ -117,7 +123,7 @@ def _add_record_commands(sub) -> None:
     ):
         item = sub.add_parser(command)
         item.add_argument("--plan", required=True)
-        if command in {"inspect", "provision"}:
+        if command in {"inspect", "provision", "qualify"}:
             item.add_argument("--accept-new-host-key", action="store_true")
         if command in {"wait", "monitor"}:
             item.add_argument(
@@ -143,6 +149,7 @@ def parser() -> argparse.ArgumentParser:
     image.add_argument("--image", required=True)
     image.add_argument("--arch", choices=["amd64", "arm64"], required=True)
     sub.add_parser("recipes")
+    sub.add_parser("qualifications")
     recipe = sub.add_parser("prepare")
     recipe.add_argument("--profile", type=Path)
     recipe.add_argument("--image")
@@ -153,6 +160,9 @@ def parser() -> argparse.ArgumentParser:
     recipe.add_argument("--download-gb", type=Decimal)
     recipe.add_argument("--install-package", action="append")
     recipe.add_argument("--worker-task", action="append", choices=["vision", "audio"])
+    recipe.add_argument(
+        "--capability", action="append", choices=["json", "vision", "tools"]
+    )
     recipe.add_argument("--recipe", choices=list(RECIPES), required=True)
     recipe.add_argument("--template-hash")
     recipe.add_argument("--output", type=Path, required=True)
@@ -212,13 +222,22 @@ def _prepare_action(args, service: Environments):
         if getattr(args, argument) is not None:
             values[field] = getattr(args, argument)
     values["mode"] = args.recipe
+    if args.capability is not None:
+        values.setdefault("runtime", {})["capabilities"] = args.capability
     if values.get("image") and "@sha256:" not in values["image"]:
         with httpx.Client(
             timeout=25, follow_redirects=False, trust_env=False
         ) as registry:
-            values["image"] = resolve_image(
+            resolved = resolve_image(
                 values["image"], values.get("cpu_arch", ""), registry
-            )["image"]
+            )
+            values["image"] = resolved["image"]
+            metadata = resolved.get("runtime_metadata") or {}
+            values.setdefault("runtime", {}).update(
+                image_cuda=metadata.get("cuda", ""),
+                image_min_cuda=metadata.get("min_cuda", ""),
+                image_metadata_source=metadata.get("source", "operator"),
+            )
     profile = WorkloadProfile.model_validate(values)
     return prepare(
         service.client, profile, args.recipe, args.template_hash, args.output
@@ -229,7 +248,10 @@ def _offer_action(args, service: Environments):
     command = args.command
     profile = workload_profile(args)
     if command == "offers":
-        return [row.model_dump(mode="json") for row in service.search(profile)]
+        return [
+            row.model_dump(mode="json")
+            for row in service.search(profile, retest=args.retest)
+        ]
     if command == "assess":
         rows = service.client.offers(
             profile.disk_gb, {**search_filters(profile), "id": {"eq": args.offer}}
@@ -237,7 +259,9 @@ def _offer_action(args, service: Environments):
         selected = [row for row in rows if row.get("id") == args.offer]
         if len(selected) != 1:
             raise VastError("vast.offer_expired")
-        return assess(selected[0], profile).model_dump(mode="json")
+        return service.assess(profile, selected[0], retest=args.retest).model_dump(
+            mode="json"
+        )
     ssh = ssh_profile(args.ssh_profile)
     return service.plan(
         profile,
@@ -247,6 +271,7 @@ def _offer_action(args, service: Environments):
         Path(ssh["identity_file"]),
         Path(ssh["known_hosts"]),
         args.finish,
+        retest=args.retest,
     ).model_dump(mode="json")
 
 
@@ -263,6 +288,10 @@ def _cost_action(args, service: Environments):
 
 
 def _offline(args):
+    if args.command == "qualifications":
+        return entries(Journal(args.state_dir))
+    if args.command == "report":
+        return qualification_report(Journal(args.state_dir), args.plan)
     if args.command == "recipes":
         return RECIPES
     if args.command == "resolve-image":
@@ -274,10 +303,10 @@ def _offline(args):
     for path in args.reports:
         document = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(document, dict):
-            raise ValueError("vast.invalid_input")
+            raise ValueError(INVALID_INPUT)
         report = document.get("result", document)
         if not isinstance(report, dict):
-            raise ValueError("vast.invalid_input")
+            raise ValueError(INVALID_INPUT)
         reports.append(report)
     return compare(reports)
 
@@ -299,7 +328,7 @@ def _record_action(args, service: Environments):
 
 def dispatch(args, service: Environments):
     command = args.command
-    if command in {"recipes", "resolve-image", "compare"}:
+    if command in {"recipes", "resolve-image", "compare", "qualifications", "report"}:
         return _offline(args)
     if command in {"account", "list", "volumes"}:
         methods = {
@@ -329,7 +358,7 @@ def dispatch(args, service: Environments):
         return service.wait(args.plan, args.timeout).model_dump(mode="json")
     if command == "monitor":
         return monitor(service, args.plan, args.timeout)
-    if command in {"inspect", "provision", "ready", "benchmark"}:
+    if command in {"inspect", "provision", "ready", "benchmark", "qualify"}:
         return workload(
             service, args.plan, command, getattr(args, "accept_new_host_key", False)
         )
@@ -341,7 +370,13 @@ def dispatch(args, service: Environments):
 
 
 def _run(args, client_factory):
-    if args.command in {"recipes", "resolve-image", "compare"}:
+    if args.command in {
+        "recipes",
+        "resolve-image",
+        "compare",
+        "qualifications",
+        "report",
+    }:
         return _offline(args)
     from venom_core.config import Settings
 
@@ -354,7 +389,7 @@ def _run(args, client_factory):
 
 
 def _error_output(exc: Exception) -> dict[str, Any]:
-    error = exc.code if isinstance(exc, VastError) else "vast.invalid_input"
+    error = exc.code if isinstance(exc, VastError) else INVALID_INPUT
     result = {"ok": False, "error": error}
     if isinstance(exc, VastError):
         result.update(http_status=exc.status, outcome_unknown=exc.ambiguous)

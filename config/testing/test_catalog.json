@@ -6583,6 +6583,48 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_vast_runtime_contracts.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Runtime GPU declarations, safe template constraints and legacy plan checksums without rented resources."
+    },
+    {
+      "path": "tests/test_vast_qualification.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Bounded GPU diagnostic, persistent scoped stack decisions and safe retest without hardware or rentals."
+    },
+    {
+      "path": "tests/test_vast_serving.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared Ollama/vLLM serving cases, registry metadata and environment discovery with synthetic transports only."
     }
   ]
 }

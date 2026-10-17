@@ -400,12 +400,13 @@ def test_ready_and_full_suite(service):
     _, plan, _ = service
     p = probe(plan.profile)
     assert p.ready()["runtime"] == "ready"
+    p.profile.runtime.capabilities = ["json", "vision", "tools"]
     result = p.benchmark()
     assert result["status"] == "suitable"
     assert len(result["samples"]) == 12
     assert result["samples"][0]["output_characters"] == 5
     assert result["samples"][0]["characters_s"] > 0
-    assert result["suite_version"].endswith("v3")
+    assert result["suite_version"].endswith("v4")
     assert compare([result, result])["comparable"]
     assert fixture_image().startswith("iVBOR")
     p.client.close()

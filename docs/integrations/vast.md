@@ -147,8 +147,8 @@ Provision explicitly repeats the same startup, including approved downloads.
 Ready/benchmark never pull, install or restart managed services. Temporary private
 SSH tunnels close on success/failure. Readiness checks installed digest and actual
 generation. The bounded suite covers natural first load, three short cases, two
-medium, two long, two concurrent requests, JSON, a synthetic image and a fictitious
-tool that is never executed. Reports preserve context, engine/model versions,
+medium, two long, two concurrent requests and optional JSON, a synthetic image and a fictitious
+tool that is never executed. Optional cases run only when listed in runtime.capabilities. Reports preserve context, engine/model versions,
 prompt hashes, TTFT, prefill/decode and errors. OS/prefix cache may already be warm.
 A CUDA error rejects this stack, not the GPU hardware. Incomplete runs are inconclusive.
 Different suites/engines/models/settings are explicitly marked non-comparable.
@@ -228,13 +228,13 @@ enabled automatically.
 | Recipe | Remote workload | Image prerequisites | Acceptance |
 | --- | --- | --- | --- |
 | inspect | Hardware and environment inventory | Python 3, SSH, GPU tools | SSH/capacity report |
-| ollama | Text, vision and tool-capable models supported by Ollama | Ollama and curl | Actual generation; existing 12-case benchmark |
-| vllm | OpenAI-compatible model serving | vLLM, compatible CUDA/PyTorch, curl | Model listing and actual generation over SSH |
+| ollama | Text, vision and tool-capable models supported by Ollama | Ollama and curl | Generation; shared text suite + required capabilities |
+| vllm | OpenAI-compatible model serving | vLLM, compatible CUDA/PyTorch, curl | Generation and shared benchmark over SSH |
 | pytorch | Environment for Depth Anything/YOLO and Whisper | Compatible GPU PyTorch; selected task packages | Imports, CUDA availability and worker inventory |
 
 PyTorch prepares a worker environment, not an inference API. The vLLM readiness
-check is not the Ollama performance benchmark; that benchmark currently remains
-Ollama-only. A model supporting an API feature must still pass its workload test.
+check is distinct from the shared performance benchmark for Ollama and vLLM.
+A model supporting an API feature must still pass its workload test.
 
 ### Commands
 
@@ -248,17 +248,18 @@ The following commands inspect or prepare configuration; they do not rent:
     python scripts/cloud/vast/vast.py --json prepare --recipe ollama --image vastai/ollama:TAG --arch arm64 --model MODEL --model-digest DIGEST --disk-gb 150 --download-gb 25 --template-hash TEMPLATE_HASH --output .venom_runtime/vast/ollama.json
 
 Replace TAG, MODEL, DIGEST and TEMPLATE_HASH with inspected values. Public Docker
-Hub tags passed to prepare are resolved to a verified Linux architecture manifest
+Hub and nvcr.io/nvidia tags passed to prepare are resolved to a verified Linux architecture manifest
 digest before saving. The dedicated resolve-image command works without a Vast
 key. Other registries can be supplied as an already pinned image in the profile;
-their authentication and resolution are outside this increment.
+their authentication and resolution are outside this increment. NVCR uses anonymous
+pull tokens scoped to the selected public NVIDIA repository. No Vast key is sent.
 
 prepare also accepts --profile for existing requirements and overrides for image,
 architecture, model/digest, disk and download allowance. It creates a new file
 with mode 0600 and refuses to overwrite operator configuration. Its JSON result
 includes the exact startup script, selected recipe and profile. Use this profile
 with offers, assess and plan, followed by explicit create, inspect, provision,
-ready and (Ollama) benchmark. Creating a plan alone has no paid side effect.
+ready, qualify and benchmark. Creating a plan alone has no paid side effect.
 
 For vLLM, --model is the Hugging Face repository and --model-digest must be its
 40-character commit revision. The script pins model/code revision, binds port
@@ -274,7 +275,7 @@ tasks are selected by default. If these are missing from the image, explicitly
 supply --install-package NAME==VERSION and a positive --download-gb allowance.
 Allowed packages are ultralytics, transformers, faster-whisper and pillow.
 The generated script creates /workspace/venom-vast/worker-venv with access to the
-base image packages, pins installed torch/torchvision/torchaudio/numpy as pip
+selected image interpreter packages through a fixed .pth file (including when\nthe image uses /venv/main), pins installed torch/torchvision/torchaudio/numpy as pip
 constraints, and installs wheels into that venv. Missing compatible wheels or a
 dependency conflict fails provisioning instead of silently replacing the GPU
 stack. Root package versions are pinned; transitive dependencies are resolved at
@@ -290,8 +291,9 @@ Template hash identifies a template, not an image digest.
 
 Preparation imports image identity/provenance and checks the SSH capability and
 recommended disk size. The selected image repository must match the template.
-The existing explicit workload requirements replace template extra_filters;
-review CPU/GPU/CUDA/model requirements in the profile. Environment, port mappings,
+Safe CPU/GPU/CUDA/driver/capacity constraints from extra_filters are preserved in
+runtime.template_constraints. Known contradictions reject the offer; unresolved
+rules remain explicit unknowns. Review CPU/GPU/CUDA/model requirements in the profile. Environment, port mappings,
 args and startup are replaced by the reviewed recipe. The native template_hash_id
 is intentionally not submitted to create: Vast merges inherited environment
 values, which would make an empty override insufficient to remove hidden ports
@@ -321,7 +323,7 @@ universal MIPS number and CPU GHz is not converted into MIPS.
 
 Historical provider scores retain unknown units, model and test identifiers.
 Empty history is not a zero score. A historical record without a score is not
-performance evidence. Ollama suite v3 additionally counts actual Unicode code
+performance evidence. Shared suite v4 additionally counts actual Unicode code
 points and reports characters_s over complete request wall time, including load,
 prefill and transport. This differs from backend decode_tokens_s and is never
 estimated by multiplying tokens by a fixed constant.
@@ -353,6 +355,95 @@ as a generic file-reading capability. A future HTTP/agent adapter must select
 server-owned profiles and artifact destinations rather than forwarding arbitrary
 client-supplied CLI arguments.
 
-Benchmark suite v3 derives repeatable synthetic prompts from SHAKE-256 rather
+Benchmark suite v4 derives repeatable synthetic prompts from SHAKE-256 rather
 than a general-purpose random generator. Old suite versions remain separate in
 comparison reports; a prompt-suite change does not establish new host performance.
+
+
+## Runtime qualification and remembered suitability
+
+Selection, runtime readiness and workload suitability are separate observations.
+A missing CUDA declaration is a candidate for diagnosis, not a rejection. Known
+contradictory declarations reject selection; a matching declaration does not
+prove actual GPU execution. Version comparisons use numeric components
+(12.10 is newer than 12.9), never floating point. Driver version predicates are
+enforced locally: the official Vast CLI documents reliable equality only, so a
+server-side string range must not silently remove a compatible driver.
+
+A profile has one runtime contract, saved into a checksummed schema-2 plan:
+
+    "runtime": {
+      "acceleration": "cuda",
+      "min_cuda": "",
+      "min_driver": "",
+      "min_engine_version": "",
+      "compute_capabilities": [],
+      "capabilities": ["json"],
+      "allow_cpu_offload": false,
+      "max_ttft_s": null,
+      "min_characters_s": null
+    }
+
+Set only requirements that the workload actually needs. Compute capabilities are
+an exact allowlist (1210 means sm_121), not an ordered proxy for architecture
+compatibility. prepare --capability json/vision/tools declares optional acceptance
+cases; absent capabilities are reported as skipped rather than failed. CUDA and
+driver declarations from OCI config are allowlisted and tied to the verified
+config/image digest. Complex NVIDIA_REQUIRE_CUDA alternatives remain unverified;
+they are not reduced to a guessed global minimum. Automatic image tags require
+an explicit concrete tag before resolution. No registry layers are downloaded.
+
+    python scripts/cloud/vast/vast.py --json qualify --plan PLAN_ID
+    python scripts/cloud/vast/vast.py --json qualifications
+    python scripts/cloud/vast/vast.py --json report --plan PLAN_ID
+
+qualify warms the already installed model where applicable, then runs a bounded
+CUDA driver kernel with readback and a small real PyTorch CUDA matrix operation
+for PyTorch/vLLM. It records driver, exact compute capability, interpreter and
+package versions. Existing image environments (including /venv/main and the
+isolated worker venv) are discovered by the same helper used at startup.
+No package installation, model pull, driver repair or service restart occurs.
+
+Ollama qualification combines the loaded model digest from /api/ps with the
+processor split reported by ollama ps. Unknown split stays inconclusive; partial
+CPU offload fails unless explicitly allowed. Unsupported diagnostic PTX/JIT
+results stay inconclusive rather than condemning the template. A successful
+tiny probe does not prove all kernels or production workload stability.
+
+ready reports API/model generation separately from qualification. benchmark
+requires a suitable runtime observation before running the shared text suite.
+It records synthetic request hashes, real Unicode characters per complete request
+wall time, TTFT and provider token counts. Ollama-specific decode/prefill timing
+is reported only when supplied; vLLM SSE usage does not invent decode duration.
+Full workload suitability additionally evaluates required capabilities and
+explicit TTFT/character-rate thresholds. Interrupted/partial evidence stays
+inconclusive. The same suite version is used for both engine adapters.
+
+The private journal retains scoped qualification evidence and an atomic index.
+Known unsuitable exact image/configuration/workload/GPU/driver combinations are
+excluded from offers/assess/plan/create by default. --retest on offers/assess/plan
+is an explicit override of previous negative history, not of budget or known
+compatibility checks. A new image digest, requirements or driver needs a new
+qualification. Partial context is a hint and never a template-wide ban.
+A transport error cannot overwrite a decisive prior observation. API readiness and runtime-only evidence cannot clear a failed workload. A
+successful benchmark for the same host/configuration can supersede it. The
+operation report is saved before updating the index; index failures are reported
+separately without discarding the measured result. Report/index files remain after destruction.
+
+report and qualifications are local-only and need no cloud credential. report
+combines saved requirements, declarations, observations, suite and budget with
+the last explicitly requested costs report. Missing final charges remain
+pending/unavailable; no local report claims provider settlement or a hard cap.
+
+### Acceptance boundary
+
+All runtime tests in this increment use synthetic HTTP/SSH/driver fixtures.
+Public registry metadata was inspected without renting a GPU. Actual image load,
+kernels on rented hardware, engine offload and final billing require a separately
+approved paid acceptance. PyTorch preparation/qualification does not yet expose a
+remote vision/audio worker API, route Venom production requests or change the UI.
+
+References:
+- [NVIDIA NGC registry](https://docs.nvidia.com/ngc/latest/ngc-catalog-user-guide.html)
+- [vLLM OpenAI-compatible serving](https://docs.vllm.ai/en/stable/serving/online_serving/openai_compatible_server/)
+- [Ollama loaded models](https://docs.ollama.com/api/ps)

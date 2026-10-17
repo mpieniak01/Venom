@@ -256,14 +256,16 @@ def test_vllm_workload_and_cli(service, tmp_path, capsys):
         ),
         patch("venom_core.services.vast_environments.operations.tunnel") as tunnel,
         patch(
+            "venom_core.services.vast_environments.operations.probe_gpu",
+            return_value={"status": "passed", "engine_kernel": "passed"},
+        ),
+        patch(
             "venom_core.services.vast_environments.operations.openai_ready",
             return_value={"runtime": "ready"},
         ),
     ):
         tunnel.return_value.__enter__.return_value = "http://127.0.0.1"
         assert workload(svc, plan.plan_id, "ready")["runtime"] == "ready"
-    with pytest.raises(VastError, match="vllm_benchmark_not_supported"):
-        workload(svc, plan.plan_id, "benchmark")
     assert (
         main(["--json", "recipes"], client_factory=Mock(side_effect=AssertionError))
         == 0

@@ -10,8 +10,12 @@ import httpx
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import now
 from venom_core.services.vast_environments.evaluation import OllamaProbe
+from venom_core.services.vast_environments.gpu_probe import probe_gpu
+from venom_core.services.vast_environments.history import remember
 from venom_core.services.vast_environments.lifecycle import Environments
+from venom_core.services.vast_environments.openai_probe import OpenAIProbe
 from venom_core.services.vast_environments.openai_probe import ready as openai_ready
+from venom_core.services.vast_environments.qualification import qualify
 from venom_core.services.vast_environments.recipes import validate_recipe
 from venom_core.services.vast_environments.runtime_scripts import vllm_wait_seconds
 from venom_core.services.vast_environments.ssh import inspect, ssh_args, tunnel
@@ -34,9 +38,22 @@ def _provision(plan, instance: dict, accept_new: bool) -> dict:
     return {"startup": "completed", "readiness": "unknown"}
 
 
+def _gpu_facts(plan, instance: dict, accept_new: bool = False) -> dict:
+    try:
+        return probe_gpu(plan, instance, accept_new)
+    except VastError as error:
+        return {"status": "error", "reason": error.code}
+
+
+def _engine_ready(client, profile) -> dict:
+    if profile.mode == "vllm":
+        return openai_ready(client, profile)
+    engine = OllamaProbe(client, profile).ready()
+    engine["loaded_model"] = _loaded_model(client, profile)
+    return engine
+
+
 def _model_operation(plan, instance: dict, operation: str) -> dict:
-    if plan.profile.mode == "vllm" and operation == "benchmark":
-        raise VastError("vast.vllm_benchmark_not_supported")
     if plan.profile.mode not in {"ollama", "vllm"}:
         raise VastError("vast.ollama_profile_required")
     inspection = inspect(plan, instance)
@@ -48,19 +65,72 @@ def _model_operation(plan, instance: dict, operation: str) -> dict:
             base_url=endpoint, timeout=30, trust_env=False, follow_redirects=False
         ) as client,
     ):
-        if plan.profile.mode == "vllm":
-            result = openai_ready(client, plan.profile)
+        engine = _engine_ready(client, plan.profile)
+        facts = _gpu_facts(plan, instance)
+        preliminary = qualify(
+            plan, inspection, facts, engine, evaluate_performance=False
+        )
+        if operation == "ready":
+            result = dict(engine)
+        elif preliminary["status"] != "suitable":
+            result = {
+                "status": preliminary["status"],
+                "samples": [],
+                "errors": preliminary["reasons"],
+                "not_run": "runtime_not_qualified",
+            }
         else:
-            probe = OllamaProbe(client, plan.profile)
-            result = probe.ready() if operation == "ready" else probe.benchmark()
+            probe_type = OpenAIProbe if plan.profile.mode == "vllm" else OllamaProbe
+            result = probe_type(client, plan.profile).benchmark()
+        qualification = qualify(
+            plan,
+            inspection,
+            facts,
+            engine,
+            dict(result)
+            if operation == "benchmark" and "not_run" not in result
+            else None,
+            evaluate_performance=operation == "benchmark",
+        )
+        result["qualification_report"] = qualification
+        if operation == "benchmark":
+            result["status"] = qualification["status"]
     result["inspection"] = inspection
-    if (
-        operation == "benchmark"
-        and inspection["unknown"]
-        and result["status"] == "suitable"
-    ):
-        result["status"] = "inconclusive"
     return result
+
+
+def _loaded_model(client: httpx.Client, profile) -> dict:
+    response = client.get("/api/ps")
+    response.raise_for_status()
+    rows = response.json().get("models", [])
+    matches = [
+        row
+        for row in rows
+        if isinstance(row, dict) and row.get("name") == profile.model
+    ]
+    if len(matches) != 1:
+        return {}
+    return {key: matches[0].get(key) for key in ["name", "digest", "size", "size_vram"]}
+
+
+def _qualify_operation(plan, instance: dict, accept_new: bool) -> dict:
+    inspection = inspect(plan, instance, accept_new)
+    engine = {}
+    if plan.profile.mode in {"ollama", "vllm"} and not inspection["reasons"]:
+        try:
+            with (
+                tunnel(plan, instance) as endpoint,
+                httpx.Client(
+                    base_url=endpoint,
+                    timeout=30,
+                    trust_env=False,
+                    follow_redirects=False,
+                ) as client,
+            ):
+                engine = _engine_ready(client, plan.profile)
+        except (VastError, httpx.HTTPError, ValueError, TypeError):
+            engine["readiness"] = "inconclusive"
+    return qualify(plan, inspection, _gpu_facts(plan, instance, accept_new), engine)
 
 
 def _perform(plan, instance: dict, operation: str, accept_new: bool) -> dict:
@@ -68,6 +138,8 @@ def _perform(plan, instance: dict, operation: str, accept_new: bool) -> dict:
         return inspect(plan, instance, accept_new)
     if operation == "provision":
         return _provision(plan, instance, accept_new)
+    if operation == "qualify":
+        return _qualify_operation(plan, instance, accept_new)
     if operation in {"ready", "benchmark"}:
         return _model_operation(plan, instance, operation)
     raise VastError("vast.invalid_action")
@@ -95,11 +167,33 @@ def _save_result(
 ) -> None:
     with service.journal.lock(plan_id):
         fresh = service.journal.record(plan_id)
+        qualification = (
+            result if operation == "qualify" else result.get("qualification_report")
+        )
         fresh.reports[operation] = result
         fresh.ssh_state = "ready"
         if operation == "ready":
             fresh.runtime_state = "ready"
         fresh.observed_at = now()
+        # Keep the paid operation's report even if the shared index is locked,
+        # corrupt or unwritable. Index failure is a separate observation.
+        service.journal.save_record(fresh)
+        if not isinstance(qualification, dict):
+            return
+        if qualification.get("performance_evaluated", True) is False:
+            return
+        try:
+            result["qualification_history"] = remember(
+                service.journal, service.journal.plan(plan_id), qualification
+            )
+        except (VastError, OSError) as error:
+            code = (
+                error.code
+                if isinstance(error, VastError)
+                else "vast.qualification_history_write_failed"
+            )
+            result["qualification_history"] = {"status": "error", "error": code}
+        fresh.reports[operation] = result
         service.journal.save_record(fresh)
 
 

@@ -23,6 +23,7 @@ const TAB_ALIASES: Record<string, ConfigTab> = {
   apiMap: "integrations", "api-map": "integrations", audit: "audit", permissions: "permissions",
 };
 
+/** Normalize unsupported filter values to the unfiltered view. */
 function allowedFilter(value: string | null, allowed: string[]) {
   return value && allowed.includes(value) ? value : "all";
 }
@@ -38,7 +39,7 @@ export function parseConfigNavigation(search: string): ConfigNavigation {
     tab: Object.hasOwn(TAB_ALIASES, requested) ? TAB_ALIASES[requested] : "services",
     invalidTab: !Object.hasOwn(TAB_ALIASES, requested),
     integration: params.get("integration")?.slice(0, 200) || null,
-    resource: resource && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(resource) ? resource : null,
+    resource: resource && /^[a-zA-Z0-9][a-zA-Z0-9_.:\/-]{0,199}$/.test(resource) ? resource : null,
     scope: scope === "internal" || scope === "external" ? scope : "all",
     visibility: params.get("visibility") === "all" ? "all" : "environment",
     source: allowedFilter(params.get("source"), ["local", "cloud", "hybrid"]),
@@ -63,6 +64,7 @@ export function configHref(patch: Partial<ConfigNavigation> = {}, search = "") {
   return query ? "/config?" + query : "/config";
 }
 
+/** Subscribe to browser history and local navigation changes with symmetric cleanup. */
 function subscribe(listener: () => void) {
   window.addEventListener("popstate", listener);
   window.addEventListener(CHANGE_EVENT, listener);
@@ -71,7 +73,9 @@ function subscribe(listener: () => void) {
     window.removeEventListener(CHANGE_EVENT, listener);
   };
 }
+/** Read the current URL for the client navigation store. */
 const browserSearch = () => window.location.search;
+/** Provide an empty server snapshot until client URL state is available. */
 const serverSearch = () => "";
 
 /** Synchronize configuration selection with Next.js routing and browser history. */

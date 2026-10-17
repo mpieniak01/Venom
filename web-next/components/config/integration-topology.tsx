@@ -7,7 +7,7 @@ import { ReactFlow, Background, Controls, Handle, Position, type NodeProps, type
 import { useTranslation } from "@/lib/i18n";
 import { configHref, type useConfigNavigation } from "@/lib/config-navigation";
 import { useIntegrationInventory } from "@/lib/integration-inventory";
-import { buildIntegrationTopology, isCoreApi, topologyEntries, visibleTopologyResources, resourceCountKey, type TopologyNode } from "@/lib/integration-topology";
+import { buildIntegrationTopology, isCoreApi, topologyEntries, topologyResourceLimits, visibleTopologyResources, resourceCountKey, type TopologyNode } from "@/lib/integration-topology";
 import { Button } from "@/components/ui/button";
 import { IntegrationStatusDetails } from "./integration-status-details";
 import { stateColor } from "./integration-connections";
@@ -54,10 +54,11 @@ export function IntegrationTopology({ navigation }: Readonly<{ navigation: Retur
   const entries = useMemo(() => topologyEntries(data?.integrations ?? [], navigation.visibility), [data, navigation.visibility]);
   const selected = data?.integrations?.find((entry) => entry.id === navigation.integration);
   const resource = selected?.resources?.find((item) => item.id === navigation.resource);
+  const resourceLimits = useMemo(() => topologyResourceLimits(entries, limits, navigation.integration, navigation.resource), [entries, limits, navigation.integration, navigation.resource]);
   const hierarchy = useMemo(() => {
-    const graph = buildIntegrationTopology(entries, coreExpanded, limits);
+    const graph = buildIntegrationTopology(entries, coreExpanded, resourceLimits);
     return { edges: graph.edges, nodes: graph.nodes.map((node) => ({ ...node, type: "topology", selected: node.data.entry?.id === navigation.integration && (node.data.resource?.id ?? null) === navigation.resource })) };
-  }, [entries, coreExpanded, limits, navigation.integration, navigation.resource]);
+  }, [entries, coreExpanded, resourceLimits, navigation.integration, navigation.resource]);
   const select = (node: TopologyNode) => {
     if (node.data.coreCount != null) { setCoreExpanded(true); return; }
     navigation.navigate({ integration: node.data.entry?.id ?? null, resource: node.data.resource?.id ?? null });
@@ -101,8 +102,8 @@ export function IntegrationTopology({ navigation }: Readonly<{ navigation: Retur
       <summary>{t("config.topology.tree")}</summary>
       <ul className="space-y-3 pt-3">{entries.filter((entry) => coreExpanded || !isCoreApi(entry)).map((entry) => <li key={entry.id} data-testid={`topology-entry-${entry.id}`} className="min-w-0 break-words">
         <button className="text-left underline" aria-pressed={selected?.id === entry.id && !resource} onClick={() => navigation.navigate({ integration: entry.id, resource: null })}>{entry.label} · {t(`config.apiMap.filters.status.${entry.connectivity}`)}</button>
-        <ul className="space-y-2 pl-4">{visibleTopologyResources(entry, limits[entry.id] ?? 4).map((item) => <li key={item.id}><button className="text-left underline" aria-pressed={selected?.id === entry.id && resource?.id === item.id} onClick={() => navigation.navigate({ integration: entry.id, resource: item.id })}>{item.label} · {t(`config.integrations.states.${item.state}`)}{item.selected ? ` · ${t("config.navigation.selectedDevice")}` : ""}</button></li>)}</ul>
-        {(entry.resources?.length ?? 0) > (limits[entry.id] ?? 4) && <Button variant="ghost" onClick={() => setLimits((previous) => ({ ...previous, [entry.id]: (previous[entry.id] ?? 4) + 8 }))}>{t("config.topology.more")} ({entry.resources!.length})</Button>}
+        <ul className="space-y-2 pl-4">{visibleTopologyResources(entry, resourceLimits[entry.id] ?? 4).map((item) => <li key={item.id}><button className="text-left underline" aria-pressed={selected?.id === entry.id && resource?.id === item.id} onClick={() => navigation.navigate({ integration: entry.id, resource: item.id })}>{item.label} · {t(`config.integrations.states.${item.state}`)}{item.selected ? ` · ${t("config.navigation.selectedDevice")}` : ""}</button></li>)}</ul>
+        {(entry.resources?.length ?? 0) > (resourceLimits[entry.id] ?? 4) && <Button variant="ghost" onClick={() => setLimits((previous) => ({ ...previous, [entry.id]: (resourceLimits[entry.id] ?? 4) + 8 }))}>{t("config.topology.more")} ({entry.resources!.length})</Button>}
       </li>)}</ul>
     </details>
   </section>;

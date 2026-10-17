@@ -16,20 +16,24 @@ export { shouldShowConnection } from "./integration-connections";
 type Integration = components["schemas"]["IntegrationEntry"];
 export type ApiConnection = components["schemas"]["ApiConnection"];
 
+/** Apply scope and environment visibility without inferring health from configuration. */
 export function visibleIntegrations(entries: Integration[], scope: string, environmentOnly: boolean) {
   return entries.filter((entry) => (scope === "all" || entry.scope === scope)
     && (!environmentOnly || entry.scope === "internal" || entry.configuration === "configured" || (entry.configuration === "not_required" && entry.activation === "enabled")));
 }
 
+/** Keep a valid selection or choose a configured external integration before falling back. */
 export function nextIntegrationSelection(entries: Integration[], previous: string | null) {
   return entries.some((entry) => entry.id === previous) ? previous : entries.find((entry) => entry.scope === "external" && entry.configuration === "configured")?.id ?? entries[0]?.id ?? null;
 }
 
+/** Translate capability evidence while distinguishing an empty list from unknown evidence. */
 function capabilityLabels(capabilities: string[], t: ReturnType<typeof useTranslation>) {
   if (!capabilities.length) return t("config.navigation.noCapabilities");
   return capabilities.map((capability) => t(`config.integrations.capabilities.${capability}`)).join(" · ");
 }
 
+/** Allow only application-local panel paths with no query strings or external origins. */
 function publicLink(path: string | null | undefined) {
   return path && /^\/[a-zA-Z0-9][a-zA-Z0-9/_-]*$/.test(path) ? path : null;
 }

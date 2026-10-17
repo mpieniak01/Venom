@@ -24,6 +24,15 @@ export function visibleTopologyResources(entry: Integration, limit = 4) {
   return (entry.resources ?? []).toSorted((a, b) => a.id.localeCompare(b.id)).slice(0, limit);
 }
 
+/** Expand the selected owner's page enough to retain a resource restored from the URL. */
+export function topologyResourceLimits(entries: Integration[], limits: Record<string, number>, integrationId: string | null, resourceId: string | null) {
+  const entry = entries.find((item) => item.id === integrationId);
+  if (!entry || !resourceId) return limits;
+  const index = visibleTopologyResources(entry, entry.resources?.length ?? 0).findIndex((item) => item.id === resourceId);
+  if (index < 0) return limits;
+  return { ...limits, [entry.id]: Math.max(limits[entry.id] ?? 4, index + 1) };
+}
+
 /** Build deterministic ownership edges from inventory nesting, never from labels. */
 export function buildIntegrationTopology(entries: Integration[], coreExpanded = false, resourceLimits: Record<string, number> = {}) {
   const nodes: TopologyNode[] = [{ id: "venom:root", position: { x: 0, y: 0 }, data: {} }];

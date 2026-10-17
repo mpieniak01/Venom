@@ -1,6 +1,7 @@
 import type { Inventory } from "../lib/integration-inventory";
 import { test, expect, type Page } from "@playwright/test";
 
+/** Block write requests during browser acceptance and collect attempted writes and page errors. */
 async function readOnly(page: Page) {
   const writes: string[] = [];
   const errors: string[] = [];
@@ -53,7 +54,9 @@ for (const viewport of [{ width: 1600, height: 1050 }, { width: 390, height: 844
   });
 }
 
+/** Create a cached resource fixture with literal regex punctuation in its label. */
 const resource = (id: string) => ({ id, label: `Robot [${id}] (demo)`, kind: "robot", state: "stale", configuration: "configured", selected: id === "0", source: "device_cache", reason_code: "not_observed" });
+/** Create a complete large inventory fixture for resource paging and stale-data regression. */
 const entry = (id: string, location = "local") => ({ id, label: "Same API", scope: "external", location, kind: "module", state: "unverified", configuration: "configured", activation: "enabled", connectivity: "unknown", source: "configuration", reason_code: "not_probed", resource_support: "supported", can_probe: false, resources_complete: true, resource_count: 64, observed_at: "2026-10-17T10:00:00Z", resources: Array.from({ length: 64 }, (_, index) => resource(String(index))) });
 
 test("real canvas retains viewport, focus and selection on polling and failed refresh", async ({ page }) => {
@@ -110,4 +113,26 @@ test("orphan resource selection and empty inventory remain local states", async 
   await expect(page.locator(".react-flow__node")).toHaveCount(1);
   await page.getByRole("tab", { name: /Integracje i węzły|Integrations/ }).click();
   await expect(page.getByText(/Wybrana integracja nie jest już dostępna|selected integration is no longer available/)).toBeVisible();
+});
+
+test("URL reload keeps a later resource and a namespaced worker visible in both views", async ({ page }) => {
+  await readOnly(page);
+  const fixture = entry("rider");
+  fixture.resources[62] = resource("nexus:worker/1");
+  await page.route("**/api/v1/system/api-map", (route) => route.fulfill({ json: { schema_version: 2, integrations: [fixture], internal_connections: [], external_connections: [] } }));
+  for (const id of ["63", "nexus:worker/1"]) {
+    await page.goto(`/config?tab=topology&integration=rider&resource=${encodeURIComponent(id)}`);
+    const node = page.getByTestId(`rf__node-resource:rider:${encodeURIComponent(id)}`);
+    const row = page.getByTestId("topology-entry-rider");
+    await expect(node).toHaveClass(/selected/);
+    await expect(row.getByRole("button", { name: `Robot [${id}] (demo)` })).toBeVisible();
+    await page.reload();
+    await expect(node).toHaveClass(/selected/);
+    await expect(row.getByRole("button", { name: `Robot [${id}] (demo)` })).toBeVisible();
+    if (id === "63") {
+      const count = await page.locator(".react-flow__node").count();
+      await row.getByRole("button", { name: /Pokaż więcej zasobów|Show more resources/ }).click();
+      await expect.poll(() => page.locator(".react-flow__node").count()).toBeGreaterThan(count);
+    }
+  }
 });

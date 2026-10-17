@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { buildIntegrationTopology, resourceCountKey, resourceNodeId, visibleTopologyResources, topologyEntries } from "../lib/integration-topology";
+import { buildIntegrationTopology, resourceCountKey, resourceNodeId, visibleTopologyResources, topologyResourceLimits, topologyEntries } from "../lib/integration-topology";
 import type { Integration } from "../lib/integration-inventory";
 import { parseConfigNavigation, configHref } from "../lib/config-navigation";
+/** Build independent inventory entries with explicit overrides for domain regressions. */
 const entry = (id: string, overrides: Partial<Integration> = {}): Integration => ({ id, label: "Same label", scope: "external", location: "local", kind: "module", state: "unverified", configuration: "configured", activation: "enabled", connectivity: "unknown", source: "configuration", reason_code: "not_probed", resource_support: "supported", can_probe: false, resources_complete: false, ...overrides });
 const resource = { id: "same", label: "Same label", kind: "robot", state: "offline", configuration: "configured", selected: true, source: "configuration", reason_code: "not_observed" } as const;
 it("builds ownership from stable IDs including duplicate labels and offline resources", () => {
@@ -51,4 +52,20 @@ it("keeps resource pages identical between graph and text list regardless of inv
   assert.deepEqual(graphResources, page.map((item) => item.id));
   assert.equal(visibleTopologyResources(integration, 12).length, 6);
   assert.deepEqual(integration.resources?.map((item) => item.id), ["3", "2", "11", "10", "1", "0"]);
+});
+
+it("restores resources beyond the initial page without changing other owners or manual expansion", () => {
+  const rows = [entry("rider", { resources: Array.from({ length: 64 }, (_, index) => ({ ...resource, id: String(index) })) })];
+  const limits = topologyResourceLimits(rows, { other: 12 }, "rider", "63");
+  const page = visibleTopologyResources(rows[0], limits.rider);
+  assert.ok(page.some((item) => item.id === "63"));
+  assert.equal(limits.other, 12);
+  assert.ok(buildIntegrationTopology(rows, false, limits).nodes.some((node) => node.data.resource?.id === "63"));
+  assert.equal(topologyResourceLimits(rows, { rider: 64 }, "rider", "0").rider, 64);
+  assert.deepEqual(topologyResourceLimits(rows, {}, "rider", "removed"), {});
+});
+it("retains namespaced worker IDs containing slashes across URL reloads", () => {
+  const href = configHref({ tab: "topology", integration: "core:nexus", resource: "nexus:worker/1" });
+  assert.equal(parseConfigNavigation(href.slice(href.indexOf("?"))).resource, "nexus:worker/1");
+  assert.equal(parseConfigNavigation("?resource=../private").resource, null);
 });

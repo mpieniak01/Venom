@@ -4208,6 +4208,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_module_observations.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Optional module quarantine and isolated provider lifecycle regression."
+    },
+    {
       "path": "tests/test_module_registry.py",
       "domain": "misc",
       "test_type": "unit",
@@ -6386,6 +6400,20 @@
       "rationale": "Vast provider HTTP, pricing and offer contracts without paid resources."
     },
     {
+      "path": "tests/test_vast_qualification.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Bounded GPU diagnostic, persistent scoped stack decisions and safe retest without hardware or rentals."
+    },
+    {
       "path": "tests/test_vast_recipes.py",
       "domain": "providers",
       "test_type": "service_contract",
@@ -6400,6 +6428,20 @@
       "rationale": "Vast runtime recipes, template provenance and image resolution without renting resources."
     },
     {
+      "path": "tests/test_vast_runtime_contracts.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Runtime GPU declarations, safe template constraints and legacy plan checksums without rented resources."
+    },
+    {
       "path": "tests/test_vast_selection.py",
       "domain": "providers",
       "test_type": "service_contract",
@@ -6412,6 +6454,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Vast country preferences, price/network/reliability ranking and server-side search filters."
+    },
+    {
+      "path": "tests/test_vast_serving.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared Ollama/vLLM serving cases, registry metadata and environment discovery with synthetic transports only."
     },
     {
       "path": "tests/test_venom_core_init_compat.py",
@@ -6583,48 +6639,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_vast_runtime_contracts.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Runtime GPU declarations, safe template constraints and legacy plan checksums without rented resources."
-    },
-    {
-      "path": "tests/test_vast_qualification.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Bounded GPU diagnostic, persistent scoped stack decisions and safe retest without hardware or rentals."
-    },
-    {
-      "path": "tests/test_vast_serving.py",
-      "domain": "providers",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Shared Ollama/vLLM serving cases, registry metadata and environment discovery with synthetic transports only."
     }
   ]
 }

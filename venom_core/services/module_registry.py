@@ -19,6 +19,7 @@ from venom_core.core.module_data_policy import (
     ModuleDataPolicy,
     parse_module_data_policy_payload,
 )
+from venom_core.services.module_observations import module_candidates
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +36,7 @@ class ApiModuleManifest:
     module_api_version: str | None = None
     min_core_version: str | None = None
     conversation_provider_import: str | None = None
+    integration_provider_import: str | None = None
 
 
 _FACTORY_IMPORT = re.compile(
@@ -195,6 +197,12 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
     feature_flag = str(backend.get("feature_flag", "")).strip() or None
     module_api_version = str(backend.get("module_api_version", "")).strip() or None
     min_core_version = str(backend.get("min_core_version", "")).strip() or None
+    integration_import = backend.get("integration_provider_import")
+    if integration_import is not None and (
+        not isinstance(integration_import, str)
+        or _FACTORY_IMPORT.fullmatch(integration_import) is None
+    ):
+        return None
     conversation_import = backend.get("conversation_provider_import")
     if conversation_import is not None and (
         not isinstance(conversation_import, str)
@@ -227,6 +235,7 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
         module_api_version=module_api_version,
         min_core_version=min_core_version,
         conversation_provider_import=conversation_import,
+        integration_provider_import=integration_import,
     )
 
 
@@ -329,34 +338,61 @@ def iter_api_module_manifests(
 def include_optional_api_routers(
     app: FastAPI, settings: object = SETTINGS
 ) -> list[str]:
-    config_errors = validate_optional_modules_config(settings)
-    if config_errors:
-        raise RuntimeError(
-            "Invalid optional modules configuration: " + " | ".join(config_errors)
-        )
-
     included: list[str] = []
-    for manifest in iter_api_module_manifests(settings):
+    diagnostics = []
+    for item, record in module_candidates(settings):
+        diagnostics.append(record)
+        entry_settings = type("ModuleSettings", (), {"API_OPTIONAL_MODULES": item})()
+        errors = validate_optional_modules_config(entry_settings)
+        if errors:
+            record["state"] = "unavailable"
+            record["reason_code"] = "invalid_manifest"
+            continue
+        manifest = _parse_manifest_file(item)
+        if manifest is None:
+            record["state"] = "unavailable"
+            record["reason_code"] = "invalid_manifest"
+            continue
         if not _is_enabled(manifest, settings):
+            record["state"] = "disabled"
+            record["reason_code"] = "feature_disabled"
             continue
         if not _is_compatible(manifest, settings):
+            record["state"] = "unavailable"
+            record["reason_code"] = "incompatible_module"
             continue
         router = _load_router(manifest.router_import, manifest.module_root)
         if router is None:
+            record["state"] = "unavailable"
+            record["reason_code"] = "router_import_failed"
             continue
-        app.include_router(router)
+        try:
+            app.include_router(router)
+        except Exception:
+            record["state"] = "unavailable"
+            record["reason_code"] = "router_registration_failed"
+            continue
+        record["state"] = "loaded"
+        record["reason_code"] = "router_loaded"
         included.append(manifest.module_id)
+    app.state.optional_module_diagnostics = diagnostics
     if included:
         logger.info("Included optional API modules: %s", ", ".join(included))
     _install_conversation_provider_lifespan(app, settings)
     return included
 
 
-def _conversation_provider_factories(settings: object):
+def _conversation_provider_factories(settings: object, diagnostics=None):
     factories = {}
+    eligible = (
+        None
+        if diagnostics is None
+        else {entry["module_id"] for entry in diagnostics if entry["state"] == "loaded"}
+    )
     for manifest in iter_api_module_manifests(settings):
         if (
             not manifest.conversation_provider_import
+            or (eligible is not None and manifest.module_id not in eligible)
             or not _is_enabled(manifest, settings)
             or not _is_compatible(manifest, settings)
         ):
@@ -374,6 +410,14 @@ def _conversation_provider_factories(settings: object):
             if not callable(factory):
                 raise ValueError("invalid_conversation_provider_factory")
             factories[manifest.module_id] = factory
+        except Exception:
+            logger.warning(
+                "Optional conversation provider import failed: %s", manifest.module_id
+            )
+            if diagnostics is not None:
+                for entry in diagnostics:
+                    if entry["module_id"] == manifest.module_id:
+                        entry["conversation_error"] = "provider_import_failed"
         finally:
             if inserted and root in sys.path:
                 sys.path.remove(root)
@@ -397,7 +441,11 @@ def _install_conversation_provider_lifespan(app: FastAPI, settings: object) -> N
         async with original_lifespan(application) as state:
             registry = ConversationProviderRegistry(
                 application,
-                factories=lambda: _conversation_provider_factories(settings),
+                factories=lambda: _conversation_provider_factories(
+                    settings,
+                    getattr(application.state, "optional_module_diagnostics", None),
+                ),
+                isolate_failures=True,
             )
             application.state.conversation_providers = registry
             previous = None

@@ -199,6 +199,7 @@ tests/test_models_remote_contracts.py
 tests/test_models_switch_single_model_policy.py
 tests/test_module_data_policy.py
 tests/test_module_example_data_policy_routes.py
+tests/test_module_observations.py
 tests/test_module_registry.py
 tests/test_multi_runtime_probe_logits_tokens.py
 tests/test_multi_runtime_profile_service.py

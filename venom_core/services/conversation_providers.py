@@ -119,8 +119,13 @@ class ConversationProviderRegistry:
         self,
         app: Any,
         factories: Callable[[], Mapping[str, Callable[[Any], Any]]] | None = None,
+        *,
+        isolate_failures: bool = False,
     ):
         self.app = app
+        self.isolate_failures = isolate_failures
+        self.failures: dict[str, str] = {}
+        self._retry_after: dict[str, float] = {}
         self.factories = factories
         self.providers: dict[str, Any] = {}
         self._registered_factories: dict[str, Callable[[Any], Any]] = {}
@@ -144,14 +149,24 @@ class ConversationProviderRegistry:
             for module_id, factory in desired.items():
                 if module_id in self.providers:
                     continue
-                provider = factory(self.app)
-                if inspect.isawaitable(provider):
-                    provider = await provider
-                if self.closed:
-                    await self._close_provider(module_id, provider)
-                    return
-                await self.register(module_id, provider)
-                self._registered_factories[module_id] = factory
+                if self._retry_after.get(module_id, 0) > time.monotonic():
+                    continue
+                try:
+                    provider = factory(self.app)
+                    if inspect.isawaitable(provider):
+                        provider = await asyncio.wait_for(provider, timeout=2.0)
+                    if self.closed:
+                        await self._close_provider(module_id, provider)
+                        return
+                    await self.register(module_id, provider)
+                    self._registered_factories[module_id] = factory
+                    self.failures.pop(module_id, None)
+                    self._retry_after.pop(module_id, None)
+                except Exception:
+                    if not self.isolate_failures:
+                        raise
+                    self.failures[module_id] = "provider_initialization_failed"
+                    self._retry_after[module_id] = time.monotonic() + 30.0
 
     async def register(self, module_id: str, provider: Any) -> None:
         if self.closed:
@@ -174,7 +189,12 @@ class ConversationProviderRegistry:
                 task.cancel()
         for prepared in self._prepared.values():
             prepared.pop(module_id, None)
-        await self._close_provider(module_id, provider)
+        try:
+            await self._close_provider(module_id, provider)
+        except ConversationProviderError:
+            if not self.isolate_failures:
+                raise
+            self.failures[module_id] = "provider_close_failed"
 
     @staticmethod
     async def _close_provider(module_id: str, provider: Any) -> None:

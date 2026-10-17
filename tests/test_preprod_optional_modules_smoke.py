@@ -92,5 +92,7 @@ def test_preprod_optional_modules_manifest_contract_smoke(tmp_path: Path) -> Non
         ALLOW_DATA_MUTATION=False,
     )
 
-    with pytest.raises(RuntimeError, match="backend.data_policy"):
-        module_registry.include_optional_api_routers(FastAPI(), settings_bad)
+    app_bad = FastAPI()
+    assert module_registry.include_optional_api_routers(app_bad, settings_bad) == []
+    assert app_bad.state.optional_module_diagnostics[0]["state"] == "unavailable"
+    assert module_registry.validate_optional_modules_config(settings_bad)

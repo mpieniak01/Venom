@@ -1818,7 +1818,7 @@ def test_reused_app_lifespan_owns_a_fresh_registry_each_cycle(
     monkeypatch.setattr(
         module_registry,
         "_conversation_provider_factories",
-        lambda _: {"example": factory},
+        lambda _, diagnostics=None: {"example": factory},
     )
     module_registry._install_conversation_provider_lifespan(app, SimpleNamespace())
     module_registry._install_conversation_provider_lifespan(app, SimpleNamespace())
@@ -1931,15 +1931,16 @@ def test_optional_provider_startup_failure_cleans_partial_registry(monkeypatch):
         "invalid": lambda app: object(),
     }
     monkeypatch.setattr(
-        module_registry, "_conversation_provider_factories", lambda _: factories
+        module_registry,
+        "_conversation_provider_factories",
+        lambda _, diagnostics=None: factories,
     )
     app = FastAPI()
     module_registry._install_conversation_provider_lifespan(app, object())
-    with pytest.raises(
-        conversation.ConversationProviderError, match="conversation_provider_invalid"
-    ):
-        with TestClient(app):
-            pass
+    with TestClient(app):
+        registry = app.state.conversation_providers
+        assert list(registry.providers) == ["first"]
+        assert registry.failures["invalid"] == "provider_initialization_failed"
     assert provider.closed and not app.state.conversation_providers.providers
     assert conversation.get_conversation_registry() is None
 
@@ -1965,6 +1966,5 @@ def test_provider_factories_skip_disabled_and_restore_import_paths(
         Mock(return_value=SimpleNamespace(create_provider=None)),
     )
     before = list(sys.path)
-    with pytest.raises(ValueError, match="invalid_conversation_provider_factory"):
-        module_registry._conversation_provider_factories(settings)
+    assert module_registry._conversation_provider_factories(settings) == {}
     assert sys.path == before

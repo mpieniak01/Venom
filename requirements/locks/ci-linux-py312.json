@@ -461,9 +461,9 @@
       "version": "32.0.1"
     },
     "platformdirs": {
-      "sha256": "f6ad7f447f24f8a3b82cce5976387428bff894a0eca6c3488f4a17f153c130c4",
-      "url": "https://files.pythonhosted.org/packages/45/b8/fd1af06b079af236f5423f7c1821264419cc8f6b4803f79353acbb8bfa53/platformdirs-4.13.3-py3-none-any.whl",
-      "version": "4.13.3"
+      "sha256": "502ce08e9d36cf90579ee44e1e764838842fa658e4975ef47344fd053011d2c8",
+      "url": "https://files.pythonhosted.org/packages/58/51/5614d0537dd830ca64d95a2f254bd66bdf3ac61d41cffcccaec62121fcfd/platformdirs-4.13.4-py3-none-any.whl",
+      "version": "4.13.4"
     },
     "pluggy": {
       "sha256": "7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec",
@@ -661,9 +661,9 @@
       "version": "2026.9.1"
     },
     "ruff": {
-      "sha256": "a6ef98e51de8ef38082f90653ceeb84944bd7673783eea13e1647c5b9b064189",
-      "url": "https://files.pythonhosted.org/packages/62/86/5566290219708ce2928f3a29c4f843a1185b341ec6111c4631a33c5ceced/ruff-0.17.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-      "version": "0.17.1"
+      "sha256": "cb6e8bf7b4f627548daa1b69283dac5a296bfe9ce856703b03130732e20ddfe2",
+      "url": "https://files.pythonhosted.org/packages/96/bc/058fe0aefc0fbf0d19614cb6d1a3e2c048f7dc77ca64957f33b12cfdc5ef/ruff-0.14.8-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "version": "0.14.8"
     },
     "smmap": {
       "sha256": "c106e05d5a61449cf6ba9a1e650227ecfb141590d2a98412103ff35d89fc7b2f",
@@ -821,15 +821,15 @@
       "version": "1.25.1"
     }
   },
-  "lock_sha256": "9ef840adf4b3cceb33f2bfaa0ce21bd9e3a4be8bc2bdfed5698bceec647d9691",
+  "lock_sha256": "048bb18f9a321096c4e7eb479d01cbac0e095ea291cad7839bc5f3a2c9addf49",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "60fa3f0730d6c2b5eb0d102545375567c04ab908d16d3d56187df0d3e2d600af",
+  "policy_sha256": "a4adfe691a895bfd02c414314be203007e33ccb5572d9357ec3c319ae0d94d7f",
   "profile": "ci",
-  "profile_policy_sha256": "5532ad0b25dd7c692dbf2d4dfb83da5f6fa0bf1d063f2008a229ca130ba50d92",
+  "profile_policy_sha256": "2df30e2cdbed2de0ae1731ff79da1f67eff53c34a334bb3621aa6e29629a3f86",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

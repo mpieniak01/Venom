@@ -73,16 +73,15 @@
       "types-aiofiles",
       "types-PyYAML",
       "types-docker",
-      "ruff",
+      "ruff==0.14.8",
       "huggingface_hub>=1.31.0,<2",
       "pip-audit==2.10.1",
       "flake8==7.4.1",
       "types-bleach==6.4.0.20260728"
     ],
     "full": [
-      "graphrag==2.7.2",
-      "litellm==1.105.1",
       "lancedb==0.25.3",
+      "pyarrow==25.0.1",
       "pypdf>=6.13.3,<7",
       "marshmallow>=4.1.2,<5",
       "markitdown",

@@ -330,7 +330,7 @@ def lock_profile(root: Path, policy: dict[str, Any], profile: str, python: str) 
                 ):
                     continue
                 if (
-                    f"# Policy SHA256: {policy_hash(policy)}"
+                    f"# Profile policy SHA256: {profile_policy_hash(policy, other_name)}"
                     not in other_path.read_text()
                 ):
                     continue

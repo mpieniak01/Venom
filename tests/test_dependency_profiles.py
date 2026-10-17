@@ -299,6 +299,41 @@ def test_lock_uses_clean_resolver_report_and_frozen_parent(
     assert len(commands) == 1
 
 
+@pytest.mark.parametrize("current_profile", [True, False])
+def test_other_application_lock_freezes_overlap_by_effective_policy(
+    tmp_path, policy, pip_report, monkeypatch, current_profile
+):
+    policy["groups"]["light"] = ["example==1.2.3"]
+    policy["groups"]["ci"] = ["extra>=1"]
+    policy["groups"]["full"] = ["extra>=1"]
+    policy["constraint_groups"] = {}
+    profiles.generate(tmp_path, policy)
+    light = tmp_path / policy["profiles"]["light"]["lock"]
+    light.parent.mkdir(parents=True)
+    light.write_text(
+        f"# Profile policy SHA256: {profiles.profile_policy_hash(policy, 'light')}\nexample==1.2.3\n"
+    )
+    digest = (
+        profiles.profile_policy_hash(policy, "full") if current_profile else "stale"
+    )
+    full = tmp_path / policy["profiles"]["full"]["lock"]
+    full.write_text(
+        f"# Policy SHA256: unrelated-build-policy\n# Profile policy SHA256: {digest}\n"
+        "example==1.2.3\nextra==1.2.3\n"
+    )
+
+    def resolve(command, **_kwargs):
+        constraint = Path(command[command.index("--constraint") + 1]).read_text()
+        assert ("extra==1.2.3" in constraint) == current_profile
+        Path(command[command.index("--report") + 1]).write_text(
+            json.dumps(pip_report("example", "extra"))
+        )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", resolve)
+    profiles.lock_profile(tmp_path, policy, "ci", "/isolated/bin/python")
+
+
 @pytest.mark.parametrize(
     "failure",
     [

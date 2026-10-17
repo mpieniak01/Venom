@@ -197,10 +197,33 @@ Initial local dependency qualification used two independent installations for
 Light, CI, Full, vLLM, ONNX GPU and Academy, then extended both Full environments
 to Full+CI. Every pair had identical complete inventories and successful
 `pip check`; no model or service was activated by those installation checks.
-The 296 locked Full package versions remain unchanged in Full+CI. The build policy
+The complete locked Full package graph must remain unchanged in Full+CI. The build policy
 and the CI graph both pin `pip` 26.2.1. Earlier local receipts
 with bootstrap pip 24.0/25.3 are historical: those tool versions fail the current
 bootstrap check. Updating that tool is recorded separately from product package
 invariance and does not qualify model behavior or security of other packages.
 Raw local receipts belong under ignored `docs_dev/266/`, rather than pretending
 `RESOLVED_ONLY` checked-in lock metadata is full runtime qualification.
+
+## Compatibility decisions from real consumer probes (266)
+
+Full uses Venom's own NetworkX/LanceDB RAG implementation. The standalone
+`graphrag` and `litellm` SDKs have no runtime consumers and are removed from the
+profile; this does not remove Venom graph storage, retrieval or MAF synthesis.
+Qualification blocks both SDK imports while exercising actual local embeddings,
+LanceDB retrieval and graph persistence. Its raw result remains separate from
+lock integrity and installation results.
+
+PyArrow is pinned to 25.0.1 while the shared application NumPy stays at 1.26.4.
+A real RAG write exposed an import failure with PyArrow 26 despite `pip check`
+passing: Arrow 26 requires NumPy 2 at runtime. This is a compatibility pin,
+not a scanner exclusion. See [Arrow 26 release notes](https://arrow.apache.org/release/26.0.0.html)
+and [Arrow 25.0.1 release notes](https://arrow.apache.org/release/25.0.1.html).
+CI pins Ruff 0.14.8 to match the repository's pre-commit hook; newer Ruff defaults
+are a separate lint-policy migration, not an implicit consequence of resolving CI.
+
+Engine processes inherit only explicit OS/locale/device variables. Their PATH
+starts with the selected component's interpreter directory and system tools;
+application credentials, Python hooks and arbitrary VLLM/Torch flags do not cross
+that boundary. Private cache and telemetry settings are constructed by the
+controller. This preserves device selection without inheriting an operator venv.

@@ -25,7 +25,7 @@ Examples:
 
 Notes:
 - legacy `module_id|module.path:router|...` format is no longer supported.
-- missing manifest file or invalid manifest blocks optional-modules startup.
+- missing or invalid optional manifests are quarantined per entry; core continues to start.
 
 ## 3. Compatibility contract
 
@@ -38,8 +38,8 @@ Core compares module manifest values with:
   - `state_files=[...]` (list of module state files)
 
 If manifest is invalid or contract requirements are not met:
-- optional-modules startup is blocked with a configuration error,
-- the entry must be fixed before startup.
+- the affected entry remains inactive with a public diagnostic reason,
+- other modules and core remain available; authoring validation still reports the error.
 
 ## 4. Module structure (target model only)
 
@@ -260,3 +260,9 @@ Before releasing an optional module to a shared environment:
 4. Validation:
 - module and core contract tests pass,
 - `make pr-fast` passes in the core repository.
+
+Optional router lifecycle handlers must be async and cooperate with cancellation.
+Synchronous on_startup/on_shutdown handlers are rejected before entering the module
+context, with module_lifecycle_async_required; they are never moved to host threads
+that could continue changing resources after a timeout. Convert these callbacks to
+async implementations with bounded nonblocking I/O. Core lifecycle is unchanged.

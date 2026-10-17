@@ -1663,3 +1663,29 @@ def test_operator_trends_stores_new_metrics() -> None:
     assert normalized["residual_l2"] == 0.416533
     assert normalized["delta_l2"] == 0.05
     assert normalized["cosine_similarity"] == 0.95
+
+
+def test_collect_layer_identifiers_handles_partial_probe_payloads():
+    result = analysis_service._collect_layer_ids(
+        checkpoints=[
+            {"layer": 5},
+            {},
+            {"layer": None},
+            {"layer": "5"},
+            {"layer": 2},
+            {"layer": 5},
+        ],
+        attention_layers=[{"layer": 3}, {"layer": 1}, {"layer": 2.5}, {"layer": None}],
+        activation_layers=[{"layer": None}, {"layer": 7}, {"layer": "7"}],
+        mlp_activation={"mlp_layer": {"layer": 9}, "residual_layer": {"layer": 4}},
+    )
+    assert result == ([2, 5], [1, 3], 5, [1, 2, 3, 4, 5, 7, 9])
+
+
+def test_collect_layer_identifiers_keeps_empty_probe_unavailable():
+    assert analysis_service._collect_layer_ids(
+        checkpoints=[{"layer": None}],
+        attention_layers=[{}],
+        activation_layers=[],
+        mlp_activation={"mlp_layer": None, "residual_layer": {"layer": "missing"}},
+    ) == ([], [], None, [])

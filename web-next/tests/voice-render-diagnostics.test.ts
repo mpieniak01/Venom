@@ -55,6 +55,9 @@ const BASE_CONFIG: OrbEffectsConfig = {
   particles: true,
   stateLabel: true,
   orbMetricsBars: true,
+  parallaxTilt: true,
+  interactiveGlow: true,
+  clickShockwave: true,
 };
 
 describe("voice render diagnostics", () => {

@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -283,14 +284,14 @@ class ServiceHealthMonitor:
 
             latency = (time.time() - start_time) * 1000  # ms
             service.latency_ms = round(latency, 2)
-            service.last_check = time.strftime("%Y-%m-%d %H:%M:%S")
+            service.last_check = datetime.now(timezone.utc).isoformat()
 
         except Exception as e:
             logger.error(f"Błąd sprawdzania usługi {service.name}: {e}")
             service.status = ServiceStatus.OFFLINE
             service.error_message = str(e)
             service.latency_ms = 0.0
-            service.last_check = time.strftime("%Y-%m-%d %H:%M:%S")
+            service.last_check = datetime.now(timezone.utc).isoformat()
         finally:
             # Powiadomienie przez WebSocket o zmianie statusu (independently for each service)
             if self.event_broadcaster:

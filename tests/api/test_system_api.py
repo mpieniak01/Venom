@@ -38,7 +38,7 @@ def test_get_api_map_contract():
     )
     assert backend_conn is not None
     assert backend_conn.protocol in ["http", "ws"]
-    assert backend_conn.status == ConnectionStatus.OK
+    assert backend_conn.status == ConnectionStatus.UNKNOWN
     assert backend_conn.is_critical is True
 
 

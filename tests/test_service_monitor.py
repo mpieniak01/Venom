@@ -176,6 +176,11 @@ async def test_check_http_service_online(service_monitor):
         assert result.status == ServiceStatus.ONLINE
         assert result.latency_ms >= 0
         assert result.last_check is not None
+        from datetime import datetime, timezone
+
+        assert datetime.fromisoformat(
+            result.last_check
+        ).utcoffset() == timezone.utc.utcoffset(None)
 
 
 @pytest.mark.asyncio

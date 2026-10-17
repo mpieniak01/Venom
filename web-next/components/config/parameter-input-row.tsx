@@ -42,7 +42,7 @@ export function ParameterInputRow(input: Readonly<{
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-zinc-300">
+        <label htmlFor={`config-value-${keyName}`} className="text-sm font-medium text-theme-primary">
           {keyName.replaceAll(/[_-]+/g, " ").replaceAll(/\b\w/g, (m) => m.toUpperCase())}
         </label>
         <div className="flex items-center gap-2">
@@ -71,21 +71,25 @@ export function ParameterInputRow(input: Readonly<{
       </div>
       {isBool ? (
         <SelectMenu
+          ariaLabel={keyName}
           value={value.toLowerCase() === "true" ? "true" : "false"}
           options={[
-            { value: "true", label: "True" },
-            { value: "false", label: "False" },
+            { value: "true", label: t("config.permissions.values.enabled") },
+            { value: "false", label: t("config.permissions.values.disabled") },
           ]}
           onChange={(newValue) => onChange(newValue)}
-          buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white hover:bg-white/5 hover:border-white/20 transition-colors"
+          buttonClassName="w-full justify-between rounded-lg border border-theme bg-theme-overlay px-3 py-2 text-sm text-theme-primary transition-colors"
           menuClassName="w-full"
         />
       ) : (
         <input
+          id={`config-value-${keyName}`}
+          aria-label={keyName}
+          autoComplete="off"
           type={showValue ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white outline-none focus:border-emerald-400 focus:ring-0"
+          className="w-full rounded-lg border border-theme bg-theme-overlay px-3 py-2 font-mono text-sm text-theme-primary outline-none focus:border-emerald-400 focus:ring-0"
         />
       )}
       {valueSource === "default" ? (

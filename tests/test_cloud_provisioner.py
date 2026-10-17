@@ -1,6 +1,8 @@
 """Testy jednostkowe dla CloudProvisioner."""
 
 import asyncio
+import builtins
+import importlib.util
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -228,25 +230,34 @@ async def test_check_deployment_health(mock_connect, temp_ssh_key):
     assert "app_container" in result["containers"]
 
 
-def test_start_broadcasting():
-    """Test uruchamiania mDNS broadcasting."""
+def test_start_broadcasting(monkeypatch):
+    """Exercise registration and cleanup without publishing on the host LAN."""
+    from venom_core.infrastructure import cloud_provisioner as module
+
+    service_info = MagicMock()
+    info_factory = MagicMock(return_value=service_info)
+    client = MagicMock()
+    socket_context = MagicMock()
+    socket_context.__enter__.return_value.getsockname.return_value = ("192.0.2.10", 0)
+    monkeypatch.setattr(module, "ZEROCONF_AVAILABLE", True)
+    monkeypatch.setattr(module, "ServiceInfo", info_factory)
+    monkeypatch.setattr(module, "Zeroconf", MagicMock(return_value=client))
+    monkeypatch.setattr(module.socket, "socket", MagicMock(return_value=socket_context))
+    monkeypatch.setattr(module.socket, "gethostname", lambda: "fixture-host")
     provisioner = CloudProvisioner(service_port=8000)
+
     result = provisioner.start_broadcasting(service_name="test-venom")
 
-    # Broadcasting może nie działać w środowisku testowym bez pełnej sieci
-    # Ale powinien zwrócić odpowiedź
-    assert "status" in result
-    assert result["status"] in ["active", "error"]
-
-    if result["status"] == "active":
-        assert "service_name" in result
-        assert "ip" in result
-        assert "port" in result
-        assert result["port"] == 8000
-        assert "service_url" in result
-
-    # Cleanup
-    provisioner.stop_broadcasting()
+    assert result["status"] == "active"
+    assert result["port"] == 8000
+    assert result["ip"] == "192.0.2.10"
+    assert result["service_name"] == "test-venom.local"
+    info_factory.assert_called_once()
+    assert info_factory.call_args.kwargs["properties"]["hostname"] == "fixture-host"
+    client.register_service.assert_called_once_with(service_info)
+    assert provisioner.stop_broadcasting() == {"status": "stopped"}
+    client.unregister_service.assert_called_once_with(service_info)
+    client.close.assert_called_once()
 
 
 def test_stop_broadcasting():
@@ -454,3 +465,32 @@ async def test_register_in_hive_with_metadata():
     assert "location" in payload
     assert payload["location"] == "datacenter-1"
     assert payload["environment"] == "production"
+
+
+def test_missing_zeroconf_does_not_break_import_or_attempt_network(monkeypatch):
+    from venom_core.infrastructure import cloud_provisioner as module
+
+    real_import = builtins.__import__
+
+    def without_zeroconf(name, *args, **kwargs):
+        if name == "zeroconf":
+            raise ImportError("optional zeroconf absent")
+        return real_import(name, *args, **kwargs)
+
+    spec = importlib.util.spec_from_file_location(
+        "cloud_without_zeroconf", module.__file__
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    isolated = importlib.util.module_from_spec(spec)
+    with patch("builtins.__import__", side_effect=without_zeroconf):
+        spec.loader.exec_module(isolated)
+    assert isolated.ZEROCONF_AVAILABLE is False
+    assert isolated.ServiceInfo is None
+    assert isolated.Zeroconf is None
+    network = MagicMock(side_effect=AssertionError("network must not be touched"))
+    monkeypatch.setattr(isolated.socket, "socket", network)
+    provisioner = isolated.CloudProvisioner()
+    assert provisioner.start_broadcasting()["status"] == "error"
+    assert provisioner.stop_broadcasting() == {"status": "not_running"}
+    network.assert_not_called()

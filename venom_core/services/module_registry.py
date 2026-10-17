@@ -6,10 +6,11 @@ import importlib
 import json
 import re
 import sys
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Callable, Iterable, TypeGuard
 
 from fastapi import FastAPI
 from fastapi.routing import APIRouter
@@ -19,6 +20,8 @@ from venom_core.core.module_data_policy import (
     ModuleDataPolicy,
     parse_module_data_policy_payload,
 )
+from venom_core.services.module_observations import module_candidates
+from venom_core.services.module_runtime import include_isolated_router
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +38,7 @@ class ApiModuleManifest:
     module_api_version: str | None = None
     min_core_version: str | None = None
     conversation_provider_import: str | None = None
+    integration_provider_import: str | None = None
 
 
 _FACTORY_IMPORT = re.compile(
@@ -166,6 +170,12 @@ def _resolve_manifest_path(raw_item: str) -> Path:
     return manifest_path
 
 
+def _valid_factory_import(value: object) -> TypeGuard[str | None]:
+    return value is None or (
+        isinstance(value, str) and _FACTORY_IMPORT.fullmatch(value) is not None
+    )
+
+
 def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
     manifest_path = _resolve_manifest_path(raw_item)
 
@@ -195,11 +205,11 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
     feature_flag = str(backend.get("feature_flag", "")).strip() or None
     module_api_version = str(backend.get("module_api_version", "")).strip() or None
     min_core_version = str(backend.get("min_core_version", "")).strip() or None
+    integration_import = backend.get("integration_provider_import")
+    if not _valid_factory_import(integration_import):
+        return None
     conversation_import = backend.get("conversation_provider_import")
-    if conversation_import is not None and (
-        not isinstance(conversation_import, str)
-        or _FACTORY_IMPORT.fullmatch(conversation_import) is None
-    ):
+    if not _valid_factory_import(conversation_import):
         logger.warning("Invalid conversation provider import for module %s", module_id)
         return None
     data_policy, data_policy_errors = parse_module_data_policy_payload(
@@ -227,6 +237,7 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
         module_api_version=module_api_version,
         min_core_version=min_core_version,
         conversation_provider_import=conversation_import,
+        integration_provider_import=integration_import,
     )
 
 
@@ -280,11 +291,13 @@ def _validate_manifest_item(item: str, errors: list[str]) -> None:
         )
         return
     router_import = str(backend.get("router_import", "")).strip()
+    integration_import = backend.get("integration_provider_import")
+    if not _valid_factory_import(integration_import):
+        errors.append(
+            "invalid optional module integration_provider_import: " + module_id
+        )
     conversation_import = backend.get("conversation_provider_import")
-    if conversation_import is not None and (
-        not isinstance(conversation_import, str)
-        or _FACTORY_IMPORT.fullmatch(conversation_import) is None
-    ):
+    if not _valid_factory_import(conversation_import):
         errors.append(
             "invalid optional module conversation_provider_import: " + module_id
         )
@@ -326,57 +339,153 @@ def iter_api_module_manifests(
     yield from _extra_manifests(settings)
 
 
+def _candidate_manifest(
+    item: str, record: dict[str, Any], seen_modules: set[str], settings: object
+) -> ApiModuleManifest | None:
+    entry_settings = type("ModuleSettings", (), {"API_OPTIONAL_MODULES": item})()
+    if validate_optional_modules_config(entry_settings):
+        record["state"], record["reason_code"] = "unavailable", "invalid_manifest"
+        return None
+    manifest = _parse_manifest_file(item)
+    if manifest is None:
+        record["state"], record["reason_code"] = "unavailable", "invalid_manifest"
+        return None
+    if manifest.module_id in seen_modules:
+        record["module_id"] = manifest.module_id
+        record["state"], record["reason_code"] = "unavailable", "duplicate_module"
+        return None
+    seen_modules.add(manifest.module_id)
+    if not _is_enabled(manifest, settings):
+        record["state"], record["reason_code"] = "disabled", "feature_disabled"
+        return None
+    if not _is_compatible(manifest, settings):
+        record["state"], record["reason_code"] = "unavailable", "incompatible_module"
+        return None
+    return manifest
+
+
+def _register_optional_router(
+    app: FastAPI, manifest: ApiModuleManifest, record: dict[str, Any]
+) -> bool:
+    router = _load_router(manifest.router_import, manifest.module_root)
+    if router is None:
+        record["state"], record["reason_code"] = "unavailable", "router_import_failed"
+        return False
+    previous_routes = list(app.router.routes)
+    try:
+        include_isolated_router(app, router, record)
+    except Exception:
+        app.router.routes[:] = previous_routes
+        record["state"], record["reason_code"] = (
+            "unavailable",
+            "router_registration_failed",
+        )
+        return False
+    record.update(
+        integration_provider_import=manifest.integration_provider_import,
+        module_root=manifest.module_root,
+        state="loaded",
+        reason_code="router_loaded",
+    )
+    return True
+
+
 def include_optional_api_routers(
     app: FastAPI, settings: object = SETTINGS
 ) -> list[str]:
-    config_errors = validate_optional_modules_config(settings)
-    if config_errors:
-        raise RuntimeError(
-            "Invalid optional modules configuration: " + " | ".join(config_errors)
-        )
-
     included: list[str] = []
-    for manifest in iter_api_module_manifests(settings):
-        if not _is_enabled(manifest, settings):
-            continue
-        if not _is_compatible(manifest, settings):
-            continue
-        router = _load_router(manifest.router_import, manifest.module_root)
-        if router is None:
-            continue
-        app.include_router(router)
-        included.append(manifest.module_id)
+    diagnostics = []
+    seen_modules: set[str] = set()
+    for item, record in module_candidates(settings):
+        diagnostics.append(record)
+        manifest = _candidate_manifest(item, record, seen_modules, settings)
+        if manifest is not None and _register_optional_router(app, manifest, record):
+            included.append(manifest.module_id)
+    app.state.optional_module_diagnostics = diagnostics
     if included:
         logger.info("Included optional API modules: %s", ", ".join(included))
     _install_conversation_provider_lifespan(app, settings)
     return included
 
 
-def _conversation_provider_factories(settings: object):
-    factories = {}
+def _eligible_conversation_manifests(
+    settings: object, diagnostics: list[dict[str, Any]] | None
+) -> Iterable[ApiModuleManifest]:
+    eligible = None
+    if diagnostics is not None:
+        eligible = {
+            (entry["module_id"], entry.get("module_root"))
+            for entry in diagnostics
+            if entry["state"] == "loaded"
+        }
     for manifest in iter_api_module_manifests(settings):
+        if not manifest.conversation_provider_import:
+            continue
         if (
-            not manifest.conversation_provider_import
-            or not _is_enabled(manifest, settings)
-            or not _is_compatible(manifest, settings)
+            eligible is not None
+            and (manifest.module_id, manifest.module_root) not in eligible
         ):
             continue
-        root = (
-            str(Path(manifest.module_root).resolve()) if manifest.module_root else None
+        if _is_enabled(manifest, settings) and _is_compatible(manifest, settings):
+            yield manifest
+
+
+def _load_conversation_factory(manifest: ApiModuleManifest) -> Callable[[Any], Any]:
+    root = str(Path(manifest.module_root).resolve()) if manifest.module_root else None
+    inserted = bool(root and root not in sys.path)
+    if inserted:
+        assert root is not None
+        sys.path.insert(0, root)
+    try:
+        assert manifest.conversation_provider_import is not None
+        module_path, name = manifest.conversation_provider_import.split(":")
+        factory = getattr(importlib.import_module(module_path), name)
+        if not callable(factory):
+            raise ValueError("invalid_conversation_provider_factory")
+        return factory
+    finally:
+        if inserted and root in sys.path:
+            sys.path.remove(root)
+
+
+def _record_import_failure(
+    module_id: str, diagnostics: list[dict[str, Any]] | None
+) -> None:
+    logger.warning("Optional conversation provider import failed: %s", module_id)
+    for entry in diagnostics or []:
+        if entry["module_id"] == module_id and entry["state"] == "loaded":
+            entry["conversation_error"] = "provider_import_failed"
+            entry["conversation_retry_after"] = time.monotonic() + 30.0
+
+
+def _conversation_provider_factories(
+    settings: object, diagnostics: list[dict[str, Any]] | None = None
+) -> dict[str, Callable[[Any], Any]]:
+    factories = {}
+    for manifest in _eligible_conversation_manifests(settings, diagnostics):
+        diagnostic = next(
+            (
+                entry
+                for entry in diagnostics or []
+                if entry["module_id"] == manifest.module_id
+                and entry["state"] == "loaded"
+            ),
+            None,
         )
-        inserted = bool(root and root not in sys.path)
-        if inserted:
-            assert root is not None
-            sys.path.insert(0, root)
+        if (
+            diagnostic
+            and diagnostic.get("conversation_retry_after", 0) > time.monotonic()
+        ):
+            continue
         try:
-            module_path, name = manifest.conversation_provider_import.split(":")
-            factory = getattr(importlib.import_module(module_path), name)
-            if not callable(factory):
-                raise ValueError("invalid_conversation_provider_factory")
-            factories[manifest.module_id] = factory
-        finally:
-            if inserted and root in sys.path:
-                sys.path.remove(root)
+            factory = _load_conversation_factory(manifest)
+        except Exception:
+            _record_import_failure(manifest.module_id, diagnostics)
+            continue
+        factories[manifest.module_id] = factory
+        if diagnostic:
+            diagnostic.pop("conversation_error", None)
+            diagnostic.pop("conversation_retry_after", None)
     return factories
 
 
@@ -397,7 +506,11 @@ def _install_conversation_provider_lifespan(app: FastAPI, settings: object) -> N
         async with original_lifespan(application) as state:
             registry = ConversationProviderRegistry(
                 application,
-                factories=lambda: _conversation_provider_factories(settings),
+                factories=lambda: _conversation_provider_factories(
+                    settings,
+                    getattr(application.state, "optional_module_diagnostics", None),
+                ),
+                isolate_failures=True,
             )
             application.state.conversation_providers = registry
             previous = None

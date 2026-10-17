@@ -2,6 +2,7 @@
 # Do not edit manually. Run: make test-groups-sync
 
 tests/api/test_academy_openapi_contract.py
+tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/ollama_bench/test_common_and_scoreboard.py
 tests/ollama_bench/test_scheduler.py
@@ -199,6 +200,7 @@ tests/test_models_remote_contracts.py
 tests/test_models_switch_single_model_policy.py
 tests/test_module_data_policy.py
 tests/test_module_example_data_policy_routes.py
+tests/test_module_observations.py
 tests/test_module_registry.py
 tests/test_multi_runtime_probe_logits_tokens.py
 tests/test_multi_runtime_profile_service.py
@@ -286,6 +288,7 @@ tests/test_stack_stability_audit.py
 tests/test_strategist_agent.py
 tests/test_strategy_and_routes_regression.py
 tests/test_swarm_wrapper.py
+tests/test_system_connections.py
 tests/test_system_governance_runtime_contracts.py
 tests/test_system_llm_service.py
 tests/test_system_routes_roi.py
@@ -303,6 +306,7 @@ tests/test_update_sonar_scope_group.py
 tests/test_ux_analyst.py
 tests/test_vast_cli.py
 tests/test_vast_faults.py
+tests/test_vast_observation.py
 tests/test_vast_operations.py
 tests/test_vast_provider.py
 tests/test_vast_qualification.py

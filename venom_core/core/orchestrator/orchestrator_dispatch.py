@@ -774,9 +774,12 @@ async def _execute_with_stream_callback(
             conversation_id=request.session_id,
             language=request.preferred_language,
         )
+        response: str | None
         with conversation_turn(turn):
             if intent == "MODULE_CONVERSATION":
                 task = orch.state_manager.get_task(task_id)
+                if task is None:
+                    raise RuntimeError("conversation_task_missing")
                 template = task.context_history["response_template"]
                 provider_id = template["template_id"].removesuffix(":conversation")
                 registry = get_conversation_registry()

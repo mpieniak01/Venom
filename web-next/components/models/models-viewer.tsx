@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
+import { configHref } from "@/lib/config-navigation";
 import { Layers, Newspaper, Server, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -32,6 +34,7 @@ export const ModelsViewer = () => {
         rightSlot={<Layers className="page-heading-icon" />}
       />
 
+      <Link className="inline-block text-sm underline underline-offset-4" href={configHref({ tab: "integrations", integration: "core:local-runtime", visibility: "all" })}>{t("config.navigation.overviewShortcut")}</Link>
       {/* Tabs */}
       <div className={THEME_TAB_BAR_CLASS}>
         <Button

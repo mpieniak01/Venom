@@ -4,7 +4,7 @@ import os
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -314,7 +314,14 @@ def _effective_audio_decoder_chain(
     return effective_chain
 
 
-def _voice_route_config_snapshot() -> dict[str, object]:
+class _VoiceRouteConfigSnapshot(TypedDict):
+    voice_route_profile: str
+    audio_decoder_profile: str
+    audio_decoder_chain: list[str]
+    audio_decoder_chain_effective: list[str]
+
+
+def _voice_route_config_snapshot() -> _VoiceRouteConfigSnapshot:
     voice_route_profile = _normalize_voice_route_profile(
         getattr(SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
     )

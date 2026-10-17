@@ -119,8 +119,13 @@ class ConversationProviderRegistry:
         self,
         app: Any,
         factories: Callable[[], Mapping[str, Callable[[Any], Any]]] | None = None,
+        *,
+        isolate_failures: bool = False,
     ):
         self.app = app
+        self.isolate_failures = isolate_failures
+        self.failures: dict[str, str] = {}
+        self._retry_after: dict[str, float] = {}
         self.factories = factories
         self.providers: dict[str, Any] = {}
         self._registered_factories: dict[str, Callable[[Any], Any]] = {}
@@ -142,16 +147,51 @@ class ConversationProviderRegistry:
                 ):
                     await self.unregister(module_id)
             for module_id, factory in desired.items():
-                if module_id in self.providers:
+                if (
+                    module_id in self.providers
+                    or self._retry_after.get(module_id, 0) > time.monotonic()
+                ):
                     continue
-                provider = factory(self.app)
-                if inspect.isawaitable(provider):
-                    provider = await provider
-                if self.closed:
-                    await self._close_provider(module_id, provider)
-                    return
-                await self.register(module_id, provider)
-                self._registered_factories[module_id] = factory
+                try:
+                    await self._initialize_provider(module_id, factory)
+                except Exception:
+                    if not self.isolate_failures:
+                        raise
+                    self.failures[module_id] = "provider_initialization_failed"
+                    self._retry_after[module_id] = time.monotonic() + 30.0
+
+    async def _discard_provider(self, module_id: str, provider: Any) -> None:
+        task = asyncio.create_task(self._close_provider(module_id, provider))
+        self._active[task] = module_id
+        task.add_done_callback(self._provider_done)
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
+        except TimeoutError:
+            task.cancel()
+            self.failures[module_id] = "provider_close_failed"
+        except ConversationProviderError:
+            self.failures[module_id] = "provider_close_failed"
+
+    async def _initialize_provider(
+        self, module_id: str, factory: Callable[[Any], Any]
+    ) -> None:
+        provider = None
+        try:
+            created = factory(self.app)
+            if inspect.isawaitable(created):
+                created = await asyncio.wait_for(created, timeout=2.0)
+            provider = created
+            if self.closed:
+                await self._discard_provider(module_id, provider)
+                return
+            await self.register(module_id, provider)
+        except BaseException:
+            if provider is not None and self.providers.get(module_id) is not provider:
+                await self._discard_provider(module_id, provider)
+            raise
+        self._registered_factories[module_id] = factory
+        self.failures.pop(module_id, None)
+        self._retry_after.pop(module_id, None)
 
     async def register(self, module_id: str, provider: Any) -> None:
         if self.closed:
@@ -174,7 +214,26 @@ class ConversationProviderRegistry:
                 task.cancel()
         for prepared in self._prepared.values():
             prepared.pop(module_id, None)
-        await self._close_provider(module_id, provider)
+        try:
+            if self.isolate_failures:
+                close_task = asyncio.create_task(
+                    self._close_provider(module_id, provider)
+                )
+                self._active[close_task] = module_id
+                close_task.add_done_callback(self._provider_done)
+                try:
+                    await asyncio.wait_for(asyncio.shield(close_task), timeout=2.0)
+                except TimeoutError:
+                    close_task.cancel()
+                    raise ConversationProviderError(
+                        "conversation_provider_close_failed", module_id
+                    ) from None
+            else:
+                await self._close_provider(module_id, provider)
+        except ConversationProviderError:
+            if not self.isolate_failures:
+                raise
+            self.failures[module_id] = "provider_close_failed"
 
     @staticmethod
     async def _close_provider(module_id: str, provider: Any) -> None:

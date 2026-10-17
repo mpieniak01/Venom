@@ -3422,6 +3422,7 @@
           "llm"
         ],
         "summary": "Stream Simple Chat",
+        "description": "Delegate the whole simple-stream flow to the service layer.",
         "operationId": "stream_simple_chat_api_v1_llm_simple_stream_post",
         "requestBody": {
           "content": {
@@ -5043,6 +5044,26 @@
         }
       }
     },
+    "/api/v1/system/llm-runtime/queue-snapshot": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Get Llm Runtime Queue Snapshot",
+        "description": "Snapshot kolejki i metryk ruchu dla aktywnego runtime.\n\nCel: 231C — separacja kolejki statusowej od inferencyjnej i obserwowalność\naktywnego runtime bez aktywnego sondowania nieaktywnych stosów.",
+        "operationId": "get_llm_runtime_queue_snapshot_api_v1_system_llm_runtime_queue_snapshot_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/runtime/status": {
       "get": {
         "tags": [
@@ -5096,6 +5117,80 @@
           },
           "500": {
             "description": "Błąd wewnętrzny podczas aplikowania profilu runtime"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/multi-runtime/profile": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Get Multi Runtime Profile",
+        "description": "Zwraca aktywny profil wykonawczy multi_runtime.\n\nProxy do GET /v1/daemon/profile na daemonie. Gdy daemon jest niedostępny,\nzwraca profil domyślny z daemon_reachable=False.",
+        "operationId": "get_multi_runtime_profile_api_v1_runtime_multi_runtime_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultiRuntimeProfileResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon multi_runtime niedostępny"
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas obsługi profilu multi_runtime"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Update Multi Runtime Profile",
+        "description": "Aktualizuje profil wykonawczy multi_runtime.\n\nProxy do POST /v1/daemon/profile na daemonie.\nZwraca jawne apply_mode i listę odrzuconych pól.",
+        "operationId": "update_multi_runtime_profile_api_v1_runtime_multi_runtime_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MultiRuntimeProfileUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultiRuntimeProfileUpdateResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon multi_runtime niedostępny"
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas obsługi profilu multi_runtime"
           },
           "422": {
             "description": "Validation Error",
@@ -5941,6 +6036,28 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiMapResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/integrations/vast/probe": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Probe Vast Integration",
+        "description": "Explicit account/instance GETs only; opening the map never triggers this.",
+        "operationId": "probe_vast_integration_api_v1_system_integrations_vast_probe_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationEntry"
                 }
               }
             }
@@ -7112,6 +7229,53 @@
         }
       }
     },
+    "/api/v1/models/{model_name}/runtime-capabilities": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get Model Runtime Capabilities Endpoint",
+        "description": "Pobiera runtime capabilities modelu Ollama na podstawie `/api/show`.",
+        "operationId": "get_model_runtime_capabilities_endpoint_api_v1_models__model_name__runtime_capabilities_get",
+        "parameters": [
+          {
+            "name": "model_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Model Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "500": {
+            "description": "Błąd serwera"
+          },
+          "404": {
+            "description": "Model nie znaleziony"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/models/{model_name}/config": {
       "get": {
         "tags": [
@@ -7210,6 +7374,188 @@
           },
           "500": {
             "description": "Błąd serwera"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/introspection": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get Model Introspection",
+        "description": "Return a read-only introspection snapshot for the active model/runtime.",
+        "operationId": "get_model_introspection_api_v1_models_introspection_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Model Introspection Api V1 Models Introspection Get"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas budowania snapshotu modelu"
+          }
+        }
+      }
+    },
+    "/api/v1/models/introspection/analyze": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Analyze Model Introspection",
+        "description": "Optionally run the active model on a prompt and return the result.",
+        "operationId": "analyze_model_introspection_api_v1_models_introspection_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelIntrospectionAnalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Analyze Model Introspection Api V1 Models Introspection Analyze Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nieprawidłowy prompt lub opcje analizy"
+          },
+          "429": {
+            "description": "Introspection queue is busy. Retry later."
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas analizy modelu"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/introspection/analyze/stream": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Stream Model Introspection Analysis Endpoint",
+        "description": "Stream model introspection analysis as SSE for live UI updates.",
+        "operationId": "stream_model_introspection_analysis_endpoint_api_v1_models_introspection_analyze_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelIntrospectionAnalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Nieprawidłowy prompt lub opcje analizy"
+          },
+          "429": {
+            "description": "Introspection queue is busy. Retry later."
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas analizy modelu"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/introspection/probe": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Probe Model Introspection",
+        "description": "Proxy probe request to active multi_runtime endpoint with safe fallback.",
+        "operationId": "probe_model_introspection_api_v1_models_introspection_probe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelIntrospectionProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Probe Model Introspection Api V1 Models Introspection Probe Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nieprawidłowe parametry probe"
+          },
+          "429": {
+            "description": "Introspection queue is busy. Retry later."
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas wykonania probe"
           },
           "422": {
             "description": "Validation Error",
@@ -8481,6 +8827,63 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/workflow/control/workflow/{request_id}/step/{step_id}/{operation}": {
+      "post": {
+        "tags": [
+          "workflow-control"
+        ],
+        "summary": "Workflow Step Operation Gateway",
+        "description": "Execute operation scoped to a concrete execution step.",
+        "operationId": "workflow_step_operation_gateway_api_v1_workflow_control_workflow__request_id__step__step_id___operation__post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Step Id"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowStepOperation"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request scope"
+          },
+          "422": {
+            "description": "Validation error (unknown step operation)"
+          },
+          "500": {
+            "description": "Internal server error"
           }
         }
       }
@@ -10493,6 +10896,169 @@
         }
       }
     },
+    "/api/v1/audio/status": {
+      "get": {
+        "summary": "Audio Status Endpoint",
+        "description": "Zwraca stan kanału audio i gotowość stacka STT/TTS.",
+        "operationId": "audio_status_endpoint_api_v1_audio_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio/tts/models": {
+      "get": {
+        "summary": "List Audio Tts Models",
+        "operationId": "list_audio_tts_models_api_v1_audio_tts_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "Endpoint only available from localhost."
+          }
+        }
+      },
+      "post": {
+        "summary": "Update Audio Tts Model",
+        "operationId": "update_audio_tts_model_api_v1_audio_tts_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AudioTtsModelUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid TTS model identifier or unsupported extension."
+          },
+          "403": {
+            "description": "Endpoint only available from localhost."
+          },
+          "404": {
+            "description": "Requested TTS model was not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio/routes/profile": {
+      "get": {
+        "summary": "Get Audio Route Profile",
+        "description": "Zwraca aktywną konfigurację toru voice i dekoderów audio.",
+        "operationId": "get_audio_route_profile_api_v1_audio_routes_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Update Audio Route Profile",
+        "description": "Aktualizuje konfigurację toru voice i dekoderów audio.",
+        "operationId": "update_audio_route_profile_api_v1_audio_routes_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AudioRouteProfileUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid voice route profile or audio decoder contract."
+          },
+          "403": {
+            "description": "Endpoint only available from localhost."
+          },
+          "500": {
+            "description": "Failed to persist audio route configuration."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audio/sessions/latest/download": {
+      "get": {
+        "summary": "Download Latest Voice Session",
+        "description": "Pobiera ostatnie zapisane nagranie voice jako WAV.",
+        "operationId": "download_latest_voice_session_api_v1_audio_sessions_latest_download_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Nieprawidłowa ścieżka nagrania."
+          },
+          "404": {
+            "description": "Brak zapisanej sesji lub pliku nagrania."
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "summary": "Healthz",
@@ -10744,6 +11310,31 @@
             "title": "Exact Only",
             "description": "Gdy true, blokuje fallback przy rozwiązywaniu aliasu modelu",
             "default": false
+          },
+          "switch_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Switch Source",
+            "description": "Źródło przełączenia runtime/modelu (np. ui, make_start).",
+            "default": "ui"
+          },
+          "ownership_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownership Token",
+            "description": "Opcjonalny token ownership operatora dla przełączeń runtime."
           }
         },
         "type": "object",
@@ -10907,6 +11498,17 @@
       },
       "ApiConnection": {
         "properties": {
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
           "source_component": {
             "type": "string",
             "title": "Source Component",
@@ -10978,6 +11580,29 @@
       },
       "ApiMapResponse": {
         "properties": {
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version",
+            "default": 2
+          },
+          "integrations": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationEntry"
+            },
+            "type": "array",
+            "title": "Integrations"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
           "internal_connections": {
             "items": {
               "$ref": "#/components/schemas/ApiConnection"
@@ -11053,6 +11678,61 @@
         ],
         "title": "ApplyMode",
         "description": "Mode of applying configuration changes."
+      },
+      "AudioRouteProfileUpdateRequest": {
+        "properties": {
+          "voice_route_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Route Profile"
+          },
+          "audio_decoder_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Decoder Profile"
+          },
+          "audio_decoder_chain": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Decoder Chain"
+          }
+        },
+        "type": "object",
+        "title": "AudioRouteProfileUpdateRequest"
+      },
+      "AudioTtsModelUpdateRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "AudioTtsModelUpdateRequest"
       },
       "AuditEntry": {
         "properties": {
@@ -15169,6 +15849,346 @@
         "title": "InitRepoRequest",
         "description": "Payload dla inicjalizacji repozytorium."
       },
+      "IntegrationEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "external"
+            ],
+            "title": "Scope"
+          },
+          "location": {
+            "type": "string",
+            "enum": [
+              "local",
+              "lan",
+              "cloud",
+              "unknown"
+            ],
+            "title": "Location",
+            "default": "unknown"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "api",
+              "module",
+              "runtime",
+              "infrastructure",
+              "catalog",
+              "notifications"
+            ],
+            "title": "Kind",
+            "default": "api"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "default": "unverified"
+          },
+          "configuration": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "unconfigured",
+              "not_required",
+              "unknown"
+            ],
+            "title": "Configuration",
+            "default": "unknown"
+          },
+          "activation": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "disabled",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Activation",
+            "default": "unknown"
+          },
+          "connectivity": {
+            "$ref": "#/components/schemas/ConnectionStatus",
+            "default": "unknown"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "configuration"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code",
+            "default": "not_probed"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities"
+          },
+          "configuration_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Configuration Keys"
+          },
+          "access": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "panel",
+                "cli",
+                "api"
+              ]
+            },
+            "type": "array",
+            "title": "Access"
+          },
+          "panel_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Panel Path"
+          },
+          "documentation_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation Url"
+          },
+          "resource_support": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "not_applicable",
+              "unknown"
+            ],
+            "title": "Resource Support",
+            "default": "unknown"
+          },
+          "can_probe": {
+            "type": "boolean",
+            "title": "Can Probe",
+            "default": false
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationResource"
+            },
+            "type": "array",
+            "title": "Resources"
+          },
+          "resource_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Count"
+          },
+          "active_resource_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Resource Count"
+          },
+          "resources_complete": {
+            "type": "boolean",
+            "title": "Resources Complete",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "scope"
+        ],
+        "title": "IntegrationEntry"
+      },
+      "IntegrationResource": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "robot",
+              "worker",
+              "instance",
+              "runtime",
+              "device"
+            ],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "offline",
+              "stale",
+              "unverified"
+            ],
+            "title": "State",
+            "default": "unverified"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "configuration": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "unconfigured",
+              "unknown"
+            ],
+            "title": "Configuration",
+            "default": "unknown"
+          },
+          "selected": {
+            "type": "boolean",
+            "title": "Selected",
+            "default": false
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "demo",
+                  "device"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "configuration",
+              "device_cache"
+            ],
+            "title": "Source",
+            "default": "configuration"
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code",
+            "default": "not_observed"
+          },
+          "supported_capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Supported Capabilities"
+          },
+          "reported_capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Capabilities"
+          },
+          "available_capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Capabilities"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind"
+        ],
+        "title": "IntegrationResource"
+      },
       "IoTReconnectResponse": {
         "properties": {
           "connected": {
@@ -15871,6 +16891,31 @@
             ],
             "title": "Model",
             "description": "Opcjonalny model LLM"
+          },
+          "switch_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Switch Source",
+            "description": "Źródło przełączenia runtime/modelu (np. ui, make_start).",
+            "default": "ui"
+          },
+          "ownership_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownership Token",
+            "description": "Opcjonalny token ownership operatora dla przełączeń runtime."
           }
         },
         "type": "object",
@@ -16487,6 +17532,29 @@
           "runtime": {
             "type": "string",
             "title": "Runtime"
+          },
+          "switch_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Switch Source",
+            "default": "ui"
+          },
+          "ownership_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownership Token"
           }
         },
         "type": "object",
@@ -16534,6 +17602,127 @@
         "title": "ModelInstallRequest",
         "description": "Request do instalacji modelu."
       },
+      "ModelIntrospectionAnalyzeRequest": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "live_analysis_enabled": {
+            "type": "boolean",
+            "title": "Live Analysis Enabled",
+            "description": "Enable live model execution; disabled by default to avoid stack load",
+            "default": false
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 8192.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens",
+            "default": 128
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "default": 0.2
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top P",
+            "default": 0.9
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "ModelIntrospectionAnalyzeRequest",
+        "description": "Request for optional live model analysis from Inspector."
+      },
+      "ModelIntrospectionProbeRequest": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "attention",
+              "logits",
+              "saliency"
+            ],
+            "title": "Mode",
+            "default": "hidden"
+          },
+          "layer_selection": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 64,
+            "title": "Layer Selection"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "default": 8
+          },
+          "target_output_token_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 255.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Output Token Index",
+            "description": "Dla trybu saliency: indeks rangi tokenu next-token logits (0 = top-1, 1 = top-2, ...), nie pozycja tokenu w wygenerowanej sekwencji.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "ModelIntrospectionProbeRequest",
+        "description": "Request for probe-level model internals through active multi_runtime."
+      },
       "ModelRegistryInstallRequest": {
         "properties": {
           "name": {
@@ -16574,6 +17763,29 @@
               }
             ],
             "title": "Role"
+          },
+          "switch_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Switch Source",
+            "default": "ui"
+          },
+          "ownership_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ownership Token"
           }
         },
         "type": "object",
@@ -16582,6 +17794,846 @@
         ],
         "title": "ModelSwitchRequest",
         "description": "Request do zmiany aktywnego modelu."
+      },
+      "MultiRuntimeApplyMatrix": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Model Id",
+            "default": "hard_restart"
+          },
+          "assistant_model_id": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Assistant Model Id",
+            "default": "hard_restart"
+          },
+          "cache_implementation": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Cache Implementation",
+            "default": "soft_reload"
+          },
+          "max_new_tokens": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Max New Tokens",
+            "default": "live"
+          },
+          "image_token_budget": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Image Token Budget",
+            "default": "live"
+          },
+          "enable_thinking": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Enable Thinking",
+            "default": "live"
+          },
+          "reasoning_summary_enabled": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Reasoning Summary Enabled",
+            "default": "live"
+          },
+          "emotion_detection_enabled": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Emotion Detection Enabled",
+            "default": "live"
+          },
+          "emotion_response_style_enabled": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Emotion Response Style Enabled",
+            "default": "live"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Execution Mode",
+            "default": "live"
+          },
+          "image_strategy": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Image Strategy",
+            "default": "live"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Retrieval Mode",
+            "default": "live"
+          },
+          "audio_output_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Audio Output Mode",
+            "default": "live"
+          },
+          "assistant_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Assistant Mode",
+            "default": "live"
+          },
+          "economy_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Economy Mode",
+            "default": "live"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Precision",
+            "default": "soft_reload"
+          },
+          "quantization_backend": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Quantization Backend",
+            "default": "soft_reload"
+          },
+          "device_target": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Device Target",
+            "default": "soft_reload"
+          }
+        },
+        "type": "object",
+        "title": "MultiRuntimeApplyMatrix",
+        "description": "Documents the required apply_mode for every profile field."
+      },
+      "MultiRuntimeFieldRejection": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unsupported_field",
+              "unsupported_combination",
+              "requires_restart",
+              "model_not_available",
+              "assistant_model_not_available",
+              "quantization_backend_unavailable",
+              "device_target_unavailable",
+              "value_out_of_range"
+            ],
+            "title": "Reason"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "value",
+          "reason"
+        ],
+        "title": "MultiRuntimeFieldRejection",
+        "description": "Describes why a single field was rejected during a profile update."
+      },
+      "MultiRuntimeProfile": {
+        "properties": {
+          "profile_id": {
+            "type": "string",
+            "title": "Profile Id",
+            "description": "Profile identifier",
+            "default": "default"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "description": "Human-readable profile name",
+            "default": "Default"
+          },
+          "runtime_id": {
+            "type": "string",
+            "title": "Runtime Id",
+            "description": "Runtime this profile belongs to",
+            "default": "multi_runtime"
+          },
+          "compatibility": {
+            "type": "string",
+            "title": "Compatibility",
+            "description": "Compatibility profile string",
+            "default": "multi_runtime_native"
+          },
+          "model_id": {
+            "type": "string",
+            "title": "Model Id",
+            "description": "Primary model HuggingFace ID"
+          },
+          "assistant_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Model Id",
+            "description": "Drafter/assistant model ID (None = disabled)"
+          },
+          "cache_implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Implementation",
+            "description": "KV-cache strategy (None = framework default)"
+          },
+          "max_new_tokens": {
+            "type": "integer",
+            "maximum": 32768.0,
+            "minimum": 1.0,
+            "title": "Max New Tokens",
+            "description": "Generation token budget",
+            "default": 128
+          },
+          "image_token_budget": {
+            "type": "integer",
+            "maximum": 1120.0,
+            "minimum": 70.0,
+            "title": "Image Token Budget",
+            "description": "Vision token budget for image inputs",
+            "default": 280
+          },
+          "enable_thinking": {
+            "type": "boolean",
+            "title": "Enable Thinking",
+            "description": "Enable chain-of-thought reasoning",
+            "default": false
+          },
+          "reasoning_summary_enabled": {
+            "type": "boolean",
+            "title": "Reasoning Summary Enabled",
+            "description": "Surface compressed reasoning summary in response",
+            "default": false
+          },
+          "emotion_detection_enabled": {
+            "type": "boolean",
+            "title": "Emotion Detection Enabled",
+            "description": "Run emotion inference on voice input",
+            "default": false
+          },
+          "emotion_response_style_enabled": {
+            "type": "boolean",
+            "title": "Emotion Response Style Enabled",
+            "description": "Adapt response style based on detected emotion",
+            "default": false
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "balanced",
+              "vision_priority",
+              "voice_priority"
+            ],
+            "title": "Execution Mode",
+            "description": "High-level execution mode selector",
+            "default": "balanced"
+          },
+          "image_strategy": {
+            "type": "string",
+            "enum": [
+              "vlm_only",
+              "ocr_first",
+              "hybrid"
+            ],
+            "title": "Image Strategy",
+            "description": "Image processing strategy",
+            "default": "vlm_only"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "auto",
+              "always"
+            ],
+            "title": "Retrieval Mode",
+            "description": "Retrieval stage activation mode",
+            "default": "off"
+          },
+          "audio_output_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "text_first",
+              "voice_first"
+            ],
+            "title": "Audio Output Mode",
+            "description": "Audio output behavior mode",
+            "default": "off"
+          },
+          "assistant_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "attached",
+              "conditional"
+            ],
+            "title": "Assistant Mode",
+            "description": "Assistant usage mode",
+            "default": "off"
+          },
+          "economy_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "auto"
+            ],
+            "title": "Economy Mode",
+            "description": "Economy/degradation mode",
+            "default": "off"
+          },
+          "precision": {
+            "type": "string",
+            "title": "Precision",
+            "description": "Model precision. Supported values include auto, float16, bfloat16, float32, int4, and int8.",
+            "default": "auto"
+          },
+          "quantization_backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantization Backend",
+            "description": "Quantization backend (e.g. 'bitsandbytes') used for int4/int8 loads."
+          },
+          "device_target": {
+            "type": "string",
+            "title": "Device Target",
+            "description": "Compute device target ('auto', 'cpu', 'cuda'). Applied on soft reload.",
+            "default": "auto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id"
+        ],
+        "title": "MultiRuntimeProfile",
+        "description": "Execution profile for the multi_runtime daemon.\n\nFields are grouped into two tiers:\n- Active MVP: applied immediately or on soft-reload.\n- Prepared limited: present in the contract, but apply_mode is 'unsupported'\n  until the underlying loader supports them. Backend never lies about these."
+      },
+      "MultiRuntimeProfileResponse": {
+        "properties": {
+          "runtime_id": {
+            "type": "string",
+            "title": "Runtime Id",
+            "default": "multi_runtime"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/MultiRuntimeProfile"
+          },
+          "apply_matrix": {
+            "$ref": "#/components/schemas/MultiRuntimeApplyMatrix"
+          },
+          "supported_options": {
+            "$ref": "#/components/schemas/MultiRuntimeSupportedOptions"
+          },
+          "daemon_reachable": {
+            "type": "boolean",
+            "title": "Daemon Reachable",
+            "description": "True when values were read from a live daemon",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile",
+          "apply_matrix",
+          "supported_options"
+        ],
+        "title": "MultiRuntimeProfileResponse",
+        "description": "Full read response for the multi_runtime profile endpoint."
+      },
+      "MultiRuntimeProfileUpdateRequest": {
+        "properties": {
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "assistant_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Model Id"
+          },
+          "cache_implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Implementation"
+          },
+          "max_new_tokens": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 32768.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max New Tokens"
+          },
+          "image_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1120.0,
+                "minimum": 70.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Token Budget"
+          },
+          "enable_thinking": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enable Thinking"
+          },
+          "reasoning_summary_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Summary Enabled"
+          },
+          "emotion_detection_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion Detection Enabled"
+          },
+          "emotion_response_style_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotion Response Style Enabled"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "balanced",
+                  "vision_priority",
+                  "voice_priority"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
+          },
+          "image_strategy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "vlm_only",
+                  "ocr_first",
+                  "hybrid"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Strategy"
+          },
+          "retrieval_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "auto",
+                  "always"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Mode"
+          },
+          "audio_output_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "text_first",
+                  "voice_first"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Output Mode"
+          },
+          "assistant_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "attached",
+                  "conditional"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Mode"
+          },
+          "economy_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "auto"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Economy Mode"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "quantization_backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantization Backend"
+          },
+          "device_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Target"
+          }
+        },
+        "type": "object",
+        "title": "MultiRuntimeProfileUpdateRequest",
+        "description": "Partial update request — only fields that should change are included."
+      },
+      "MultiRuntimeProfileUpdateResponse": {
+        "properties": {
+          "accepted": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Accepted",
+            "description": "Fields accepted for application, keyed by field name"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/MultiRuntimeFieldRejection"
+            },
+            "type": "array",
+            "title": "Rejected",
+            "description": "Fields that could not be applied and why"
+          },
+          "required_apply_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "soft_reload",
+              "hard_restart",
+              "unsupported"
+            ],
+            "title": "Required Apply Mode",
+            "description": "Most restrictive apply_mode among all accepted fields",
+            "default": "live"
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied",
+            "description": "True when the update was immediately applied to a live daemon",
+            "default": false
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "MultiRuntimeProfileUpdateResponse",
+        "description": "Result of a profile update attempt."
+      },
+      "MultiRuntimeSupportedOptions": {
+        "properties": {
+          "cache_implementation": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Cache Implementation"
+          },
+          "precision": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Precision"
+          },
+          "device_target": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Device Target"
+          },
+          "quantization_backend": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Quantization Backend"
+          },
+          "execution_mode": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Execution Mode"
+          },
+          "image_strategy": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Image Strategy"
+          },
+          "retrieval_mode": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retrieval Mode"
+          },
+          "audio_output_mode": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Audio Output Mode"
+          },
+          "assistant_mode": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assistant Mode"
+          },
+          "economy_mode": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Economy Mode"
+          }
+        },
+        "type": "object",
+        "title": "MultiRuntimeSupportedOptions",
+        "description": "Enumerated valid values for constrained fields."
       },
       "NodeExecuteRequest": {
         "properties": {
@@ -16870,6 +18922,13 @@
             "type": "string",
             "title": "Severity",
             "default": "normal"
+          },
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Actions"
           }
         },
         "type": "object",
@@ -18488,6 +20547,54 @@
               }
             ],
             "title": "Temperature"
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top P"
+          },
+          "logprobs": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logprobs"
+          },
+          "top_logprobs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Logprobs"
+          },
+          "stream": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream"
           },
           "response_format": {
             "anyOf": [
@@ -20207,6 +22314,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -20408,6 +22522,16 @@
         ],
         "title": "WorkflowStatus",
         "description": "Status of a workflow execution."
+      },
+      "WorkflowStepOperation": {
+        "type": "string",
+        "enum": [
+          "retry_from_step",
+          "replay_step",
+          "skip_step"
+        ],
+        "title": "WorkflowStepOperation",
+        "description": "Operations that can be performed on a single workflow step."
       },
       "WorkflowTargetState": {
         "properties": {

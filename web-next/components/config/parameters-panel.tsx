@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
+import Link from "next/link";
+import { configHref, type useConfigNavigation } from "@/lib/config-navigation";
+import { IntegrationLinks } from "./integration-links";
+import { useIntegrationInventory } from "@/lib/integration-inventory";
 import { ConfigSection } from "./config-section";
 import { ParameterInputRow } from "./parameter-input-row";
 import { getParametersSections } from "./parameters-sections";
@@ -20,8 +24,12 @@ interface ConfigSources {
   [key: string]: "env" | "default";
 }
 
-export function ParametersPanel() {
+export function ParametersPanel({ active = true, navigation }: { active?: boolean; navigation?: ReturnType<typeof useConfigNavigation> } = {}) {
   const t = useTranslation();
+  const [localQuery, setLocalQuery] = useState("");
+  const query = navigation?.query ?? localQuery;
+  const focusedKey = navigation?.parameter ?? null;
+  const { data: inventory } = useIntegrationInventory(active);
   const [config, setConfig] = useState<Config>({});
   const [originalConfig, setOriginalConfig] = useState<Config>({});
   const [loading, setLoading] = useState(false);
@@ -128,14 +136,18 @@ export function ParametersPanel() {
   };
 
   const isSecret = (key: string) =>
-    key.includes("KEY") || key.includes("TOKEN") || key.includes("PASSWORD");
+    ["KEY", "TOKEN", "PASSWORD", "SECRET", "CREDENTIAL", "WEBHOOK"].some((part) => key.includes(part));
 
   const runtimeProfile = (config.VENOM_RUNTIME_PROFILE || "full").toLowerCase();
   const vllmAvailableInProfile = runtimeProfile === "full";
 
   const sections = useMemo(
-    () => getParametersSections({ t, vllmAvailableInProfile }),
-    [t, vllmAvailableInProfile]
+    () => {
+      const known = getParametersSections({ t, vllmAvailableInProfile });
+      const declared = new Set(known.flatMap((section) => section.keys));
+      return [...known, { title: t("config.navigation.otherParameters"), description: t("config.navigation.otherParametersDescription"), keys: Object.keys(config).filter((key) => !declared.has(key)) }];
+    },
+    [t, vllmAvailableInProfile, config]
   );
 
   if (loading) {
@@ -149,23 +161,37 @@ export function ParametersPanel() {
   return (
     <div className="space-y-6">
       <ParametersMessage message={message} />
+      <label className="block space-y-1 text-sm">
+        <span>{t("config.navigation.searchParameters")}</span>
+        <input type="search" maxLength={120} value={query} onChange={(event) => navigation ? navigation.navigate({ query: event.target.value, parameter: null }, true) : setLocalQuery(event.target.value)} className="w-full rounded-lg border border-theme bg-theme-overlay p-3 sm:max-w-lg" />
+      </label>
+      {focusedKey && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theme p-3 text-sm">
+        <span>{focusedKey}</span>
+        {!Object.hasOwn(config, focusedKey) && <output>{t("config.navigation.missingParameter")}</output>}
+        <button className="underline" onClick={() => navigation?.navigate({ parameter: null })}>{t("config.navigation.allParameters")}</button>
+        <IntegrationLinks parameter={focusedKey} active={false} />
+      </div>}
+      <p className="text-sm text-theme-muted">{t("config.navigation.parameterSearchHint")}</p>
 
       <RestartRequiredNotice t={t} restartRequired={restartRequired} />
 
       <RuntimeInfoCard t={t} vllmAvailableInProfile={vllmAvailableInProfile} />
 
       {sections.map((section) => {
-        const sectionKeys = section.keys.filter((key) => Object.hasOwn(config, key));
+        const sectionKeys = section.keys.filter((key) => Object.hasOwn(config, key)
+          && (!focusedKey || key === focusedKey)
+          && `${key} ${section.title} ${section.description}`.toLowerCase().includes(query.toLowerCase().trim()));
         if (sectionKeys.length === 0) return null;
         return (
-          <ConfigSection key={section.title} title={section.title} description={section.description}>
+          <ConfigSection key={section.title} title={section.title} description={section.description} forceOpen={Boolean(focusedKey || query.trim())}>
+            {section.keys.includes("ENABLE_IOT_BRIDGE") && <p className="mb-4 rounded-lg border border-theme p-3 text-sm text-theme-muted">{t("config.navigation.legacyIotExplanation")}</p>}
             {sectionKeys.map((key) => {
               const secret = isSecret(key);
               const showValue = !secret || !!showSecrets[key];
               const valueSource = configSources[key] || "env";
               return (
+                <div key={key} id={`parameter-${key}`} className="space-y-2">
                 <ParameterInputRow
-                  key={key}
                   t={t}
                   keyName={key}
                   value={config[key] || ""}
@@ -175,12 +201,17 @@ export function ParametersPanel() {
                   onToggleSecret={() => toggleSecret(key)}
                   onChange={(value) => handleChange(key, value)}
                 />
+                <nav className="flex flex-wrap gap-3 text-xs" aria-label={t("config.navigation.relatedIntegrations")}>
+                  {(inventory?.integrations ?? []).filter((entry) => entry.configuration_keys?.includes(key)).map((entry) => <Link key={entry.id} className="underline" href={configHref({ tab: "integrations", integration: entry.id, visibility: "all", query: "" }, navigation?.search)}>{entry.label}</Link>)}
+                </nav>
+                </div>
               );
             })}
           </ConfigSection>
         );
       })}
 
+      {!sections.some((section) => section.keys.some((key) => Object.hasOwn(config, key) && (!focusedKey || key === focusedKey) && `${key} ${section.title} ${section.description}`.toLowerCase().includes(query.toLowerCase().trim()))) && <output className="block">{t("config.navigation.noParameters")}</output>}
       <ParametersActionBar
         t={t}
         hasChanges={hasChanges}

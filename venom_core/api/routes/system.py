@@ -3,6 +3,7 @@ from typing import List, Optional, TypedDict
 
 from fastapi import APIRouter, FastAPI, Request
 
+from venom_core.api.schemas.integrations import IntegrationEntry
 from venom_core.api.schemas.system import (
     ApiConnection,
     ApiMapResponse,
@@ -13,12 +14,15 @@ from venom_core.api.schemas.system import (
     SourceType,
 )
 from venom_core.config import SETTINGS
+from venom_core.services.integration_catalog import DEFINITIONS, core_catalog
+from venom_core.services.integration_overview import integration_overview
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
 # --- Cache for API Map Structure (Connections without status) ---
 _API_MAP_CACHE: Optional[ApiMapResponse] = None
+_API_MAP_CACHE_OWNER: FastAPI | None = None
 _LAST_CACHE_TIME: float = 0
 _CACHE_TTL: float = 60.0  # 60 seconds
 
@@ -31,7 +35,6 @@ _SERVICE_MAP = {
     OPENAI_API_LABEL: OPENAI_API_LABEL,
     "Redis": "Redis",
     "LanceDB": "LanceDB",
-    "Docker Daemon": NODES_API_LABEL,
     "Semantic Kernel": "Orchestrator",
 }
 _STATUS_MAP = {
@@ -240,7 +243,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
             direction=ConnectionDirection.BIDIRECTIONAL,
             auth_type=AuthType.NONE,
             source_type=SourceType.LOCAL,
-            status=ConnectionStatus.OK,
+            status=ConnectionStatus.UNKNOWN,
             description=item["desc"],
             is_critical=item["critical"],
             methods=sorted(set(methods)),
@@ -257,7 +260,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
                 direction=ConnectionDirection.BIDIRECTIONAL,
                 auth_type=AuthType.SERVICE_TOKEN,
                 source_type=SourceType.LOCAL,
-                status=ConnectionStatus.OK,
+                status=ConnectionStatus.UNKNOWN,
                 description="Magistrala rozproszona Venom Nexus",
                 is_critical=False,
                 methods=["WS /nexus/connect", "WS /nexus/stream"],
@@ -273,7 +276,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
                 direction=ConnectionDirection.BIDIRECTIONAL,
                 auth_type=AuthType.NONE,
                 source_type=SourceType.LOCAL,
-                status=ConnectionStatus.OK,
+                status=ConnectionStatus.UNKNOWN,
                 description="Kolejka zadań i broker wiadomości",
                 is_critical=False,
                 methods=["LPUSH job_queue", "BRPOP job_queue", "PUBLISH events"],
@@ -289,7 +292,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
             direction=ConnectionDirection.BIDIRECTIONAL,
             auth_type=AuthType.NONE,
             source_type=SourceType.LOCAL,
-            status=ConnectionStatus.OK,
+            status=ConnectionStatus.UNKNOWN,
             description="Pamięć długoterminowa (wektorowa)",
             is_critical=True,
             methods=["query_vectors", "add_vectors", "create_table"],
@@ -300,126 +303,47 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
 
 
 def _generate_external_map() -> List[ApiConnection]:
-    """Generates external API connections based on configuration settings."""
+    """Compatibility projection of the same core integration declarations."""
     external = []
-    runtime = None
     try:
         runtime = get_active_llm_runtime()
     except Exception:
         runtime = None
-    runtime_provider = str(getattr(runtime, "provider", "") or "").strip().lower()
-    runtime_endpoint = str(getattr(runtime, "endpoint", "") or "").strip()
-
     if SETTINGS.LLM_SERVICE_TYPE == "local":
-        external.append(_build_local_llm_connection(runtime_provider, runtime_endpoint))
-
+        external.append(
+            _build_local_llm_connection(str(getattr(runtime, "provider", "") or ""))
+        )
     if SETTINGS.AI_MODE in ["HYBRID", "CLOUD"]:
         external.append(_build_cloud_llm_connection())
-
-    external.append(_build_search_connection())
-
-    if SETTINGS.ENABLE_GOOGLE_CALENDAR:
+    definitions = {"core:" + definition.id: definition for definition in DEFINITIONS}
+    for item in core_catalog(SETTINGS):
+        definition = definitions[item.id]
         external.append(
             ApiConnection(
-                source_component="Calendar Skill",
-                target_component="Google Calendar API",
-                protocol=ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.BIDIRECTIONAL,
-                auth_type=AuthType.OAUTH,
-                source_type=SourceType.CLOUD,
-                status=ConnectionStatus.OK,
-                description="Integracja z kalendarzem użytkownika",
+                source_component=definition.source_component,
+                target_component=item.label,
+                description=definition.description,
                 is_critical=False,
-                methods=[
-                    "GET /calendars/primary/events",
-                    "POST /calendars/primary/events",
-                ],
+                protocol=ConnectionProtocol.HTTP
+                if item.location == "local"
+                else ConnectionProtocol.HTTPS,
+                direction=definition.direction,
+                auth_type=definition.auth_type
+                or (AuthType.API_KEY if item.configuration_keys else AuthType.NONE),
+                source_type=SourceType.LOCAL
+                if item.location == "local"
+                else SourceType.CLOUD,
+                status=ConnectionStatus.UNKNOWN,
+                methods=list(definition.methods),
             )
         )
-
-    # Hugging Face
-    if SETTINGS.ENABLE_HF_INTEGRATION:
-        external.append(
-            ApiConnection(
-                source_component="Model Manager",
-                target_component="Hugging Face Hub",
-                protocol=ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.OUTBOUND,
-                auth_type=AuthType.API_KEY
-                if SETTINGS.HF_TOKEN.get_secret_value()
-                else AuthType.NONE,
-                source_type=SourceType.CLOUD,
-                status=ConnectionStatus.OK,
-                description="Pobieranie modeli i metadanych",
-                is_critical=False,
-                methods=["GET /api/models/{model_id}", "GET /api/datasets"],
-            )
-        )
-
-    # OpenAI Direct
-    if SETTINGS.OPENAI_API_KEY:
-        external.append(
-            ApiConnection(
-                source_component=MODEL_ROUTER_LABEL,
-                target_component=OPENAI_API_LABEL,
-                protocol=ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.OUTBOUND,
-                auth_type=AuthType.API_KEY,
-                source_type=SourceType.CLOUD,
-                status=ConnectionStatus.OK,
-                description="Modele GPT-4o / GPT-3.5 Turbo",
-                is_critical=False,
-                methods=[
-                    "POST /v1/chat/completions",
-                    "POST /v1/embeddings",
-                    "POST /v1/images/generations",
-                ],
-            )
-        )
-
-    # Google AI Direct
-    if SETTINGS.GOOGLE_API_KEY:
-        external.append(
-            ApiConnection(
-                source_component=MODEL_ROUTER_LABEL,
-                target_component="Google AI Studio",
-                protocol=ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.OUTBOUND,
-                auth_type=AuthType.API_KEY,
-                source_type=SourceType.CLOUD,
-                status=ConnectionStatus.OK,
-                description="Modele Gemini 1.5 Pro / Flash",
-                is_critical=False,
-                methods=["POST /v1beta/models/gemini-pro:generateContent"],
-            )
-        )
-
-    # Stable Diffusion (Always local if enabled/configured)
-    # Assuming enabled for map purposes
-    external.append(
-        ApiConnection(
-            source_component="Image Generator",
-            target_component="Stable Diffusion",
-            protocol=ConnectionProtocol.HTTP,
-            direction=ConnectionDirection.OUTBOUND,
-            auth_type=AuthType.NONE,
-            source_type=SourceType.LOCAL,
-            status=ConnectionStatus.OK,
-            description="Generowanie obrazów (Automatic1111)",
-            is_critical=False,
-            methods=["POST /sdapi/v1/txt2img", "GET /sdapi/v1/options"],
-        )
-    )
-
     return external
 
 
 def _build_local_llm_connection(
     runtime_provider: str,
-    runtime_endpoint: str,
 ) -> ApiConnection:
     local_runtime_label = runtime_provider or "auto"
-    local_runtime_endpoint = runtime_endpoint or SETTINGS.LLM_LOCAL_ENDPOINT
     return ApiConnection(
         source_component=MODEL_ROUTER_LABEL,
         target_component=f"Local LLM ({local_runtime_label})",
@@ -427,8 +351,8 @@ def _build_local_llm_connection(
         direction=ConnectionDirection.BIDIRECTIONAL,
         auth_type=AuthType.NONE,
         source_type=SourceType.LOCAL,
-        status=ConnectionStatus.OK,
-        description=f"Lokalny model językowy ({local_runtime_endpoint})",
+        status=ConnectionStatus.UNKNOWN,
+        description="Lokalny runtime LLM",
         is_critical=True,
         methods=["POST /api/generate", "POST /api/chat", "GET /api/tags"],
     )
@@ -443,38 +367,10 @@ def _build_cloud_llm_connection() -> ApiConnection:
         direction=ConnectionDirection.OUTBOUND,
         auth_type=AuthType.API_KEY,
         source_type=SourceType.CLOUD,
-        status=ConnectionStatus.OK,
+        status=ConnectionStatus.UNKNOWN,
         description="Zewnętrzny model dla zadań złożonych",
         is_critical=SETTINGS.AI_MODE == "CLOUD",
         methods=["POST /v1/chat/completions", "POST /v1/embeddings"],
-    )
-
-
-def _build_search_connection() -> ApiConnection:
-    if SETTINGS.TAVILY_API_KEY.get_secret_value():
-        return ApiConnection(
-            source_component="Researcher",
-            target_component="Tavily AI Search",
-            protocol=ConnectionProtocol.HTTPS,
-            direction=ConnectionDirection.OUTBOUND,
-            auth_type=AuthType.API_KEY,
-            source_type=SourceType.CLOUD,
-            status=ConnectionStatus.OK,
-            description="Silnik wyszukiwania AI",
-            is_critical=False,
-            methods=["POST /search", "POST /extract"],
-        )
-    return ApiConnection(
-        source_component="Researcher",
-        target_component="DuckDuckGo",
-        protocol=ConnectionProtocol.HTTPS,
-        direction=ConnectionDirection.OUTBOUND,
-        auth_type=AuthType.NONE,
-        source_type=SourceType.CLOUD,
-        status=ConnectionStatus.OK,
-        description="Publiczny silnik wyszukiwania (Privacy-First)",
-        is_critical=False,
-        methods=["GET /search?q=..."],
     )
 
 
@@ -497,6 +393,7 @@ def _update_runtime_statuses(connections: List[ApiConnection], service_monitor) 
         if not svc:
             continue
         conn.status = _map_connection_status(svc.status.value)
+        conn.observed_at = getattr(svc, "last_check", None)
         # We don't change description to keep structure clean, but status is live.
 
 
@@ -507,19 +404,24 @@ def _map_connection_status(svc_status: str) -> ConnectionStatus:
 @router.get("/system/api-map")
 async def get_system_api_map(request: Request) -> ApiMapResponse:
     """Returns the map of internal and external API connections."""
-    global _API_MAP_CACHE, _LAST_CACHE_TIME
+    global _API_MAP_CACHE, _LAST_CACHE_TIME, _API_MAP_CACHE_OWNER
     import time
 
     now = time.time()
 
     # Generate Structure if not cached or expired
-    if _API_MAP_CACHE is None or (now - _LAST_CACHE_TIME > _CACHE_TTL):
+    if (
+        _API_MAP_CACHE is None
+        or _API_MAP_CACHE_OWNER is not request.app
+        or (now - _LAST_CACHE_TIME > _CACHE_TTL)
+    ):
         internal = _generate_internal_map(request)
         external = _generate_external_map()
         _API_MAP_CACHE = ApiMapResponse(
             internal_connections=internal, external_connections=external
         )
         _LAST_CACHE_TIME = now
+        _API_MAP_CACHE_OWNER = request.app
 
     # Clone from cache to update statuses without mutating cache structure per se
     # (though deepcopy is expensive, structure is small enough)
@@ -534,4 +436,26 @@ async def get_system_api_map(request: Request) -> ApiMapResponse:
         _update_runtime_statuses(response.internal_connections, service_monitor)
         _update_runtime_statuses(response.external_connections, service_monitor)
 
+    from venom_core.api.routes import nodes
+
+    response.integrations = await integration_overview(
+        request.app, response, SETTINGS, getattr(nodes, "_node_manager", None)
+    )
+    current = {item.label: item for item in response.integrations}
+    for connection in response.internal_connections + response.external_connections:
+        item = current.get(connection.target_component)
+        if item is not None:
+            connection.status = item.connectivity
+            connection.observed_at = item.observed_at
+    from datetime import datetime, timezone
+
+    response.generated_at = datetime.now(timezone.utc).isoformat()
     return response
+
+
+@router.post("/system/integrations/vast/probe")
+async def probe_vast_integration(request: Request) -> IntegrationEntry:
+    """Explicit account/instance GETs only; opening the map never triggers this."""
+    from venom_core.services.vast_observation import probe_vast
+
+    return await probe_vast(request.app, SETTINGS)

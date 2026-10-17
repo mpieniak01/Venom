@@ -126,16 +126,17 @@ def test_include_optional_api_routers_respects_feature_flag(
     assert included == []
 
 
-def test_include_optional_api_routers_raises_for_legacy_entry() -> None:
+def test_include_optional_api_routers_quarantines_legacy_entry() -> None:
     settings = _Settings()
     settings.API_OPTIONAL_MODULES = "x_test|x_test_mod:router"
     app = FastAPI()
 
-    with pytest.raises(RuntimeError, match="legacy format unsupported"):
-        module_registry.include_optional_api_routers(app, settings)
+    assert module_registry.include_optional_api_routers(app, settings) == []
+    assert app.state.optional_module_diagnostics[0]["state"] == "unavailable"
+    assert module_registry.validate_optional_modules_config(settings)
 
 
-def test_include_optional_api_routers_raises_for_missing_data_policy(
+def test_include_optional_api_routers_quarantines_missing_data_policy(
     tmp_path: Path,
 ) -> None:
     manifest_path = tmp_path / "module.json"
@@ -149,8 +150,9 @@ def test_include_optional_api_routers_raises_for_missing_data_policy(
     settings.API_OPTIONAL_MODULES = str(manifest_path)
     app = FastAPI()
 
-    with pytest.raises(RuntimeError, match="backend.data_policy"):
-        module_registry.include_optional_api_routers(app, settings)
+    assert module_registry.include_optional_api_routers(app, settings) == []
+    assert app.state.optional_module_diagnostics[0]["reason_code"] == "invalid_manifest"
+    assert module_registry.validate_optional_modules_config(settings)
 
 
 def test_include_optional_api_routers_skips_api_version_mismatch(

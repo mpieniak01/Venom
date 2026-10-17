@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from venom_core.services import model_introspection_operator_trends_service as service
 
 
@@ -327,3 +329,84 @@ def test_upsert_record_keeps_descending_ts_order() -> None:
     record = {"request_id": "new", "ts_ms": now_ms - 2000}
     result = service._upsert_record(records, record, max_records=10)
     assert [entry["request_id"] for entry in result] == ["old-b", "new", "old-a"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        True,
+        False,
+        "12.5",
+        {},
+        [],
+        float("nan"),
+        float("inf"),
+        -float("inf"),
+        10**400,
+    ],
+)
+def test_normalize_record_rejects_nonfinite_or_unrepresentable_metrics(
+    monkeypatch, value
+):
+    monkeypatch.setattr(service.time, "time", lambda: 123.0)
+    fields = [
+        "coverage_percent",
+        "first_content_ms",
+        "token_noise_ratio",
+        "mlp_l2",
+        "residual_l2",
+        "delta_l2",
+        "cosine_similarity",
+    ]
+    record = service._normalize_record(
+        {
+            "request_id": "malformed-metrics",
+            "ts_ms": value,
+            **dict.fromkeys(fields, value),
+        }
+    )
+    assert record is not None
+    assert record["ts_ms"] == 123000
+    assert all(record[field] is None for field in fields)
+
+
+@pytest.mark.parametrize("value", [0, 12, -3, 0.25])
+def test_normalize_record_preserves_finite_numeric_metrics(value):
+    record = service._normalize_record(
+        {
+            "request_id": "valid-metrics",
+            "ts_ms": 321000,
+            "coverage_percent": value,
+            "mlp_l2": value,
+        }
+    )
+    assert record is not None
+    assert record["ts_ms"] == 321000
+    assert record["coverage_percent"] == float(value)
+    assert record["mlp_l2"] == float(value)
+
+
+@pytest.mark.parametrize(
+    "invalid", [True, float("nan"), float("inf"), float("-inf"), 10**400]
+)
+def test_direct_trends_reject_invalid_metrics_without_normalization(invalid):
+    from venom_core.services.model_introspection_operator_trends_service import (
+        compute_run_trends,
+    )
+
+    keys = [
+        "first_content_ms",
+        "token_noise_ratio",
+        "mlp_l2",
+        "cosine_similarity",
+        "coverage_percent",
+    ]
+    valid = dict.fromkeys(keys, 1.0)
+    valid["coverage_percent"] = 80.0
+    result = compute_run_trends([valid, dict.fromkeys(keys, invalid)])
+    assert result["avg_first_content_ms"] == 1.0
+    assert result["avg_noise_ratio"] == 1.0
+    assert result["avg_mlp_l2"] == 1.0
+    assert result["avg_cosine_similarity"] == 1.0
+    assert result["high_coverage_rate"] == 50.0

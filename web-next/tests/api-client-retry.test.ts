@@ -59,9 +59,9 @@ describe("apiFetch retry policy", () => {
   });
 
   it("preserves HeadersInit entries for Headers instance input", async () => {
-    let capturedHeaders: Headers | null = null;
+    const capture: { headers?: Headers } = {};
     globalThis.fetch = (async (_input, init) => {
-      capturedHeaders = new Headers(init?.headers as HeadersInit);
+      capture.headers = new Headers(init?.headers as HeadersInit);
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }) as typeof fetch;
 
@@ -69,8 +69,8 @@ describe("apiFetch retry policy", () => {
       headers: new Headers([["X-Test-Header", "abc"]]),
     });
 
-    assert.ok(capturedHeaders);
-    assert.equal(capturedHeaders?.get("X-Test-Header"), "abc");
-    assert.equal(capturedHeaders?.get("Content-Type"), "application/json");
+    assert.ok(capture.headers);
+    assert.equal(capture.headers.get("X-Test-Header"), "abc");
+    assert.equal(capture.headers.get("Content-Type"), "application/json");
   });
 });

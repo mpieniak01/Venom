@@ -12,6 +12,10 @@ from venom_core.infrastructure.providers.vast.models import (
     amount,
     offer_snapshot,
 )
+from venom_core.services.vast_environments.compatibility import (
+    declared_compatibility,
+    runtime_filters,
+)
 from venom_core.services.vast_environments.selection import (
     country_code,
     host_signals,
@@ -130,6 +134,8 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
     _check_expected(offer, profile, reasons, unknown)
     _check_minimums(offer, profile, reasons, unknown)
     _check_identity(offer, profile, reasons, unknown)
+    runtime = declared_compatibility(offer, profile)
+    reasons.extend("runtime." + value for value in runtime["reasons"])
     cost = quote(offer, profile)
     unknown.extend(cost.unknown)
     return OfferAssessment(
@@ -139,6 +145,7 @@ def assess(offer: dict[str, Any], profile: WorkloadProfile) -> OfferAssessment:
         unknown=unknown,
         quote=cost,
         host=host_signals(offer, profile),
+        runtime=runtime,
     )
 
 
@@ -162,4 +169,6 @@ def search_filters(profile: WorkloadProfile) -> dict[str, Any]:
         result["geolocation"] = {"in": profile.countries}
     if profile.gpu_names:
         result["gpu_name"] = {"in": profile.gpu_names}
+    for key, value in runtime_filters(profile).items():
+        result.setdefault(key, value)
     return result

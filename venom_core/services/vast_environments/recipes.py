@@ -80,6 +80,12 @@ def verify_template(client: VastClient, profile: WorkloadProfile) -> None:
     disk = amount(row.get("recommended_disk_space"))
     if disk is None:
         raise VastError("vast.template_disk_unknown")
+    constraints = row.get("runtime_constraints", {"constraints": {}, "unresolved": []})
+    if (
+        profile.runtime.template_constraints != constraints["constraints"]
+        or profile.runtime.unresolved_constraints != constraints["unresolved"]
+    ):
+        raise VastError("vast.template_constraints_changed")
     if profile.disk_gb < disk:
         raise VastError("vast.template_disk_insufficient")
 
@@ -94,6 +100,14 @@ def prepare(
     values = {**profile.model_dump(), "mode": mode}
     if template_hash:
         row = selected_template(client, template_hash)
+        constraints = row.get(
+            "runtime_constraints", {"constraints": {}, "unresolved": []}
+        )
+        values["runtime"] = {
+            **profile.runtime.model_dump(),
+            "template_constraints": constraints["constraints"],
+            "unresolved_constraints": constraints["unresolved"],
+        }
         values.update(
             template_hash=template_hash,
             template_configuration_sha256=row["configuration_sha256"],
@@ -110,7 +124,7 @@ def prepare(
         "profile": result.model_dump(mode="json"),
         "startup": startup(result),
         "recipe": RECIPES[result.mode],
-        "template_policy": "image_and_provenance_only; environment/startup/args/extra_filters_replaced",
+        "template_policy": "reviewed_constraints; environment/startup/args_replaced",
         "readiness": "not_tested",
         "paid_resources_created": False,
     }

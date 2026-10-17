@@ -1716,6 +1716,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_conversation_providers.py",
+      "domain": "orchestrator",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Host-owned conversation context and shared optional providers for chat and voice."
+    },
+    {
       "path": "tests/test_core_nervous_system.py",
       "domain": "system",
       "test_type": "route_contract",
@@ -4194,20 +4208,6 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_conversation_providers.py",
-      "domain": "orchestrator",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Host-owned conversation context and shared optional providers for chat and voice."
-    },
-    {
       "path": "tests/test_module_registry.py",
       "domain": "misc",
       "test_type": "unit",
@@ -6328,6 +6328,90 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_vast_cli.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast terminal delegates and existing environment credential loading."
+    },
+    {
+      "path": "tests/test_vast_faults.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast SSH cleanup, cgroup limits and error/readiness recovery."
+    },
+    {
+      "path": "tests/test_vast_operations.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast rental recovery, SSH, synthetic evaluation and costs without live resources."
+    },
+    {
+      "path": "tests/test_vast_provider.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast provider HTTP, pricing and offer contracts without paid resources."
+    },
+    {
+      "path": "tests/test_vast_recipes.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast runtime recipes, template provenance and image resolution without renting resources."
+    },
+    {
+      "path": "tests/test_vast_selection.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Vast country preferences, price/network/reliability ranking and server-side search filters."
     },
     {
       "path": "tests/test_venom_core_init_compat.py",

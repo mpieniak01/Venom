@@ -39,6 +39,10 @@ SLOW_FASTLANE_PATH_PATTERNS = (
     "test_core_nervous_system.py",
 )
 DEFAULT_COVERAGE_FLOOR_FILE = Path("config/coverage-file-floor.txt")
+# A mere module reference can be a mock; pin the test that executes this floor target.
+COVERAGE_FLOOR_TEST_OVERRIDES = {
+    "venom_core/core/orchestrator/task_pipeline/context_builder.py": "tests/test_runtime_registry_contracts.py",
+}
 
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
 MARKER_RE = re.compile(
@@ -414,6 +418,7 @@ def coverage_floor_anchor_tests(
         stem = Path(module_path).stem
         direct = f"tests/test_{stem}.py"
         preferred_candidates = (
+            COVERAGE_FLOOR_TEST_OVERRIDES.get(module_path, ""),
             direct,
             f"tests/test_{stem}_agent.py",
             f"tests/test_{stem}_coverage.py",
@@ -446,7 +451,7 @@ def coverage_floor_anchor_tests(
             filtered.append(candidate)
         if not filtered:
             continue
-        best = min(filtered, key=lambda item: estimate_test_cost(item, timings))
+        best = min(filtered, key=lambda item: (estimate_test_cost(item, timings), item))
         anchors.add(best)
     return anchors
 

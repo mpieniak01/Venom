@@ -1,0 +1,19 @@
+{
+  "name": "ollama-example",
+  "mode": "ollama",
+  "cpu_arch": "arm64",
+  "image": "REPLACE_WITH_VERIFIED_IMAGE@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "disk_gb": 150,
+  "duration_minutes": 30,
+  "download_gb": "0",
+  "upload_gb": "0",
+  "model": "REPLACE_WITH_MODEL_NAME",
+  "model_digest": "REPLACE_WITH_VERIFIED_MODEL_DIGEST",
+  "preferred_countries": [
+    "PL"
+  ],
+  "sort_by": "balanced",
+  "min_reliability": 0.99,
+  "min_download_mbps": 500,
+  "min_upload_mbps": 200
+}

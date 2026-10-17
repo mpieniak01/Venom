@@ -148,14 +148,21 @@ def qualify(
     if evaluate_performance:
         _performance(runtime, benchmark, failed, unknown)
     failed, unknown = sorted(set(failed)), sorted(set(unknown))
+    status, scope = "suitable", "stack_gpu"
+    if benchmark is not None:
+        scope = "workload"
+    if unknown:
+        status = "inconclusive"
+    if failed:
+        status, scope = "unsuitable", _scope(failed)
     return {
         "schema_version": 1,
         "policy_version": POLICY_VERSION,
         "observed_at": now().isoformat(),
-        "status": "unsuitable" if failed else "inconclusive" if unknown else "suitable",
+        "status": status,
         "reasons": failed,
         "unknown": unknown,
-        "cause_scope": _scope(failed) if failed else "stack_gpu",
+        "cause_scope": scope,
         "requirements": runtime.model_dump(mode="json"),
         "declared": plan.assessment.runtime,
         "observed": {"probe": probe, "engine_version": version, "engine": engine},

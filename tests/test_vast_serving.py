@@ -99,11 +99,10 @@ def test_shared_openai_suite(service, capabilities, expected):
 
 def test_openai_errors_and_incomplete_stream(service):
     _, plan, _ = service
-    with (
-        openai_client(plan.profile, missing=True) as client,
-        pytest.raises(VastError, match="model_missing"),
-    ):
-        OpenAIProbe(client, plan.profile).metadata()
+    with openai_client(plan.profile, missing=True) as client:
+        probe = OpenAIProbe(client, plan.profile)
+        with pytest.raises(VastError, match="model_missing"):
+            probe.metadata()
     with openai_client(plan.profile, broken=True) as client:
         result = OpenAIProbe(client, plan.profile).benchmark()
         assert result["status"] == "unsuitable"
@@ -371,3 +370,52 @@ def test_provision_selects_image_base_instead_of_recreating_own_venv():
         exec(SELECT_SCRIPT, {})
     assert "worker-venv" not in out.getvalue()
     assert run.call_count == 1
+
+
+def test_worker_venv_sees_selected_image_environment_without_installing(tmp_path):
+    import sys
+    from pathlib import Path
+
+    from venom_core.services.vast_environments.interpreters import WORKER_PATHS_SCRIPT
+
+    outer = tmp_path / "image env"
+    inner = tmp_path / "worker env"
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--without-pip", str(outer)],
+        check=True,
+        capture_output=True,
+    )
+    base = str(outer / "bin/python")
+    subprocess.run(
+        [base, "-m", "venv", "--without-pip", "--system-site-packages", str(inner)],
+        check=True,
+        capture_output=True,
+    )
+    worker = str(inner / "bin/python")
+    directory = subprocess.run(
+        [base, "-I", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    package = Path(directory)
+    (package / "venom_image_gpu_fixture.py").write_text("VERSION = 'base-gpu-stack'\n")
+    dist = package / "venom_image_gpu_fixture-1.0.dist-info"
+    dist.mkdir()
+    (dist / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: venom-image-gpu-fixture\nVersion: 1.0\n"
+    )
+    test = "import importlib.metadata as m, venom_image_gpu_fixture as f; assert f.VERSION == 'base-gpu-stack'; assert m.version('venom-image-gpu-fixture') == '1.0'"
+    assert (
+        subprocess.run([worker, "-I", "-c", test], capture_output=True).returncode != 0
+    )
+    for _ in range(2):
+        subprocess.run(
+            [base, "-I", "-c", WORKER_PATHS_SCRIPT, worker],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run([worker, "-I", "-c", test], check=True, capture_output=True)
+    files = list(inner.rglob("venom-image-site-packages.pth"))
+    assert len(files) == 1
+    assert str(package) in files[0].read_text().splitlines()

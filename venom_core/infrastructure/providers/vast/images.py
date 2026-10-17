@@ -18,6 +18,7 @@ ACCEPT = ", ".join(
 )
 
 
+NVCR_PREFIX = "nvcr.io/"
 SHA256_PREFIX = "sha256:"
 DIGEST_MISMATCH = "vast.registry_digest_mismatch"
 MANIFEST_PATTERN = r"sha256:[a-f0-9]{64}"
@@ -26,8 +27,10 @@ MANIFEST_PATTERN = r"sha256:[a-f0-9]{64}"
 def _image_parts(image: str, arch: str) -> tuple[str, str, str]:
     if "@vastai-automatic-tag" in image:
         raise VastError("vast.concrete_image_tag_required")
-    nvcr = image.startswith("nvcr.io/")
-    value = image.removeprefix("nvcr.io/") if nvcr else image.removeprefix("docker.io/")
+    nvcr = image.startswith(NVCR_PREFIX)
+    value = (
+        image.removeprefix(NVCR_PREFIX) if nvcr else image.removeprefix("docker.io/")
+    )
     if "@sha256:" in value:
         repo, _, sha = value.partition("@")
         ref = _manifest_digest(sha)
@@ -133,7 +136,7 @@ def resolve_image(image: str, arch: str, client: httpx.Client) -> dict:
             doc, sha = reader.manifest(reference)
         metadata = reader.check_config(doc, arch)
         return {
-            "image": ("nvcr.io/" if registry == "nvcr" else "") + f"{repo}@{sha}",
+            "image": (NVCR_PREFIX if registry == "nvcr" else "") + f"{repo}@{sha}",
             "runtime_metadata": metadata,
             "source_tag": image,
             "cpu_arch": arch,

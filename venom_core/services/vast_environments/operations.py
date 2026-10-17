@@ -170,15 +170,30 @@ def _save_result(
         qualification = (
             result if operation == "qualify" else result.get("qualification_report")
         )
-        if isinstance(qualification, dict):
-            result["qualification_history"] = remember(
-                service.journal, service.journal.plan(plan_id), qualification
-            )
         fresh.reports[operation] = result
         fresh.ssh_state = "ready"
         if operation == "ready":
             fresh.runtime_state = "ready"
         fresh.observed_at = now()
+        # Keep the paid operation's report even if the shared index is locked,
+        # corrupt or unwritable. Index failure is a separate observation.
+        service.journal.save_record(fresh)
+        if not isinstance(qualification, dict):
+            return
+        if qualification.get("performance_evaluated", True) is False:
+            return
+        try:
+            result["qualification_history"] = remember(
+                service.journal, service.journal.plan(plan_id), qualification
+            )
+        except (VastError, OSError) as error:
+            code = (
+                error.code
+                if isinstance(error, VastError)
+                else "vast.qualification_history_write_failed"
+            )
+            result["qualification_history"] = {"status": "error", "error": code}
+        fresh.reports[operation] = result
         service.journal.save_record(fresh)
 
 

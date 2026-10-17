@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-VERSION_PATTERN = r"[0-9]{1,4}(?:\.[0-9]{1,4}){0,3}"
+VERSION_PATTERN = r"\d{1,4}(?:\.\d{1,4}){0,3}"
 
 
 def version_parts(value: Any) -> tuple[int, ...] | None:

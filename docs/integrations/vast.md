@@ -275,7 +275,7 @@ tasks are selected by default. If these are missing from the image, explicitly
 supply --install-package NAME==VERSION and a positive --download-gb allowance.
 Allowed packages are ultralytics, transformers, faster-whisper and pillow.
 The generated script creates /workspace/venom-vast/worker-venv with access to the
-base image packages, pins installed torch/torchvision/torchaudio/numpy as pip
+selected image interpreter packages through a fixed .pth file (including when\nthe image uses /venv/main), pins installed torch/torchvision/torchaudio/numpy as pip
 constraints, and installs wheels into that venv. Missing compatible wheels or a
 dependency conflict fails provisioning instead of silently replacing the GPU
 stack. Root package versions are pinned; transitive dependencies are resolved at
@@ -425,8 +425,10 @@ excluded from offers/assess/plan/create by default. --retest on offers/assess/pl
 is an explicit override of previous negative history, not of budget or known
 compatibility checks. A new image digest, requirements or driver needs a new
 qualification. Partial context is a hint and never a template-wide ban.
-A transport error cannot overwrite a decisive prior observation. A successful
-explicit retest can supersede it. Report/index files remain after destruction.
+A transport error cannot overwrite a decisive prior observation. API readiness and runtime-only evidence cannot clear a failed workload. A
+successful benchmark for the same host/configuration can supersede it. The
+operation report is saved before updating the index; index failures are reported
+separately without discarding the measured result. Report/index files remain after destruction.
 
 report and qualifications are local-only and need no cloud credential. report
 combines saved requirements, declarations, observations, suite and budget with

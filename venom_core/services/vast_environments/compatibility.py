@@ -40,9 +40,8 @@ def _matches(key: str, raw: Any, op: str, expected: Any) -> bool | None:
     return operators[op]()
 
 
-def declared_compatibility(offer: dict, profile: WorkloadProfile) -> dict:
+def _requirements(profile: WorkloadProfile) -> dict:
     runtime = profile.runtime
-    failed, unknown, checks = [], list(runtime.unresolved_constraints), []
     requirements: dict[str, dict] = {}
     if runtime.acceleration == "cuda":
         requirements["gpu_arch"] = {"eq": "nvidia"}
@@ -60,32 +59,45 @@ def declared_compatibility(offer: dict, profile: WorkloadProfile) -> dict:
         )
     if runtime.compute_capabilities:
         requirements["compute_cap"] = {"in": runtime.compute_capabilities}
+    return requirements
+
+
+def _checks(offer: dict, source: str, rules: dict):
+    for key, predicates in rules.items():
+        for op, expected in predicates.items():
+            yield {
+                "source": source,
+                "field": key,
+                "operator": op,
+                "expected": expected,
+                "actual": offer.get(key),
+                "matches": _matches(key, offer.get(key), op, expected),
+            }
+
+
+def declared_compatibility(offer: dict, profile: WorkloadProfile) -> dict:
+    runtime = profile.runtime
+    failed, unknown, checks = [], list(runtime.unresolved_constraints), []
     template = template_constraints(runtime.template_constraints)
     unknown.extend(template["unresolved"])
     for source, rules in [
-        ("profile", requirements),
+        ("profile", _requirements(profile)),
         ("template", template["constraints"]),
     ]:
-        for key, predicates in rules.items():
-            for op, expected in predicates.items():
-                match = _matches(key, offer.get(key), op, expected)
-                reason = source + "." + key
-                if match is False:
-                    failed.append(reason)
-                elif match is None:
-                    unknown.append(reason)
-                checks.append(
-                    {
-                        "source": source,
-                        "field": key,
-                        "operator": op,
-                        "expected": expected,
-                        "actual": offer.get(key),
-                        "matches": match,
-                    }
-                )
+        for check in _checks(offer, source, rules):
+            reason = source + "." + check["field"]
+            if check["matches"] is False:
+                failed.append(reason)
+            elif check["matches"] is None:
+                unknown.append(reason)
+            checks.append(check)
+    status = "compatible"
+    if unknown:
+        status = "unknown"
+    if failed:
+        status = "incompatible"
     return {
-        "status": "incompatible" if failed else "unknown" if unknown else "compatible",
+        "status": status,
         "reasons": sorted(set(failed)),
         "unknown": sorted(set(unknown)),
         "checks": checks,

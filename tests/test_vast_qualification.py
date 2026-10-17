@@ -348,3 +348,92 @@ def test_history_rejects_malformed_index(service, content):
     (svc.journal.root / "qualifications.json").write_text(content)
     with pytest.raises(VastError, match="qualification_history_invalid"):
         entries(svc.journal)
+
+
+def test_ready_and_runtime_only_qualification_do_not_erase_workload_failure(service):
+    from venom_core.services.vast_environments.operations import _save_result
+
+    svc, plan, offer = service
+    context = {"gpu_name": "GB10", "compute_cap": 1210, "driver_version": "580.29.04"}
+    offer.update(context)
+    plan.assessment.offer.update(context)
+    plan.checksum = plan.calculate_checksum()
+    svc.journal.save_plan(plan)
+    failed = qualify(plan, inspection(), gpu(), benchmark={"status": "unsuitable"})
+    _save_result(
+        svc,
+        plan.plan_id,
+        "benchmark",
+        {"status": "unsuitable", "qualification_report": failed},
+    )
+    assert lookup(svc.journal, plan.profile, offer)["excluded"] is True
+    ready = qualify(plan, inspection(), gpu(), evaluate_performance=False)
+    _save_result(
+        svc, plan.plan_id, "ready", {"runtime": "ready", "qualification_report": ready}
+    )
+    assert len(entries(svc.journal)) == 1
+    assert lookup(svc.journal, plan.profile, offer)["excluded"] is True
+    runtime_only = qualify(plan, inspection(), gpu())
+    _save_result(svc, plan.plan_id, "qualify", runtime_only)
+    assert lookup(svc.journal, plan.profile, offer)["excluded"] is True
+    complete = qualify(
+        plan, inspection(), gpu(), benchmark={"status": "suitable", "samples": []}
+    )
+    _save_result(
+        svc,
+        plan.plan_id,
+        "benchmark",
+        {"status": "suitable", "qualification_report": complete},
+    )
+    assert lookup(svc.journal, plan.profile, offer)["excluded"] is False
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "vast.plan_busy",
+        "vast.qualification_history_invalid",
+        "vast.qualification_history_limit",
+        "os_error",
+    ],
+)
+def test_history_failure_keeps_operation_report_durable(service, code):
+    from venom_core.services.vast_environments.operations import _save_result
+
+    svc, plan, _ = service
+    report = qualify(plan, inspection(), gpu())
+    result = {
+        "status": "suitable",
+        "samples": [{"characters_s": 10}],
+        "qualification_report": report,
+    }
+
+    def unavailable(*_):
+        saved = svc.journal.record(plan.plan_id).reports["benchmark"]
+        assert saved["samples"] == [{"characters_s": 10}]
+        if code == "os_error":
+            raise OSError("private path must not escape")
+        raise VastError(code)
+
+    with patch(
+        "venom_core.services.vast_environments.operations.remember",
+        side_effect=unavailable,
+    ):
+        _save_result(svc, plan.plan_id, "benchmark", result)
+    saved = svc.journal.record(plan.plan_id).reports["benchmark"]
+    assert saved["status"] == "suitable"
+    assert saved["qualification_history"]["status"] == "error"
+    assert saved["qualification_history"]["error"] == (
+        "vast.qualification_history_write_failed" if code == "os_error" else code
+    )
+    assert "private path" not in json.dumps(saved)
+
+
+def test_legacy_qualification_report_without_performance_flag_is_retained(service):
+    from venom_core.services.vast_environments.operations import _save_result
+
+    svc, plan, _ = service
+    report = qualify(plan, inspection(), gpu())
+    report.pop("performance_evaluated")
+    _save_result(svc, plan.plan_id, "qualify", report)
+    assert len(entries(svc.journal)) == 1

@@ -4,7 +4,10 @@ import shlex
 from decimal import Decimal
 
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile
-from venom_core.services.vast_environments.interpreters import select_shell
+from venom_core.services.vast_environments.interpreters import (
+    WORKER_PATHS_SCRIPT,
+    select_shell,
+)
 
 
 def vllm_wait_seconds(profile: WorkloadProfile) -> int:
@@ -75,6 +78,11 @@ def pytorch_script(profile: WorkloadProfile) -> str:
         )
         setup += (
             '"$PYTHON" -m venv --system-site-packages /workspace/venom-vast/worker-venv\n'
+            + '"$PYTHON" -c '
+            + shlex.quote(WORKER_PATHS_SCRIPT)
+            + " "
+            + interpreter
+            + "\n"
             + '"$PYTHON" -c '
             + shlex.quote(constraints)
             + " > /workspace/venom-vast/base-constraints.txt\n"

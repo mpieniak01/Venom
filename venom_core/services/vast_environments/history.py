@@ -157,6 +157,11 @@ def lookup(journal: Journal, profile: WorkloadProfile, offer: dict) -> dict:
     rows = [x for x in entries(journal) if x["workload_key"] == workload_key(profile)]
     exact = [x for x in rows if _context_match(x, offer)]
     decisive = [row for row in exact if row["status"] != "inconclusive"]
+    negatives = [row for row in decisive if row["status"] == "unsuitable"]
+    # Runtime evidence cannot clear a failed workload. A successful benchmark
+    # replaces that workload entry with the same host/configuration key.
+    if any(row["cause_scope"] == "workload" for row in negatives):
+        decisive = negatives
     candidates = decisive or exact or rows
     if not candidates:
         return {"status": "not_tested", "excluded": False, "match": "none"}

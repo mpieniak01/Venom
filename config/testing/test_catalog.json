@@ -5526,6 +5526,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_security_scan.py",
+      "domain": "security",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Task266 fail-closed scanner completeness and command execution evidence."
+    },
+    {
       "path": "tests/test_service_monitor.py",
       "domain": "core",
       "test_type": "service_contract",

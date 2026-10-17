@@ -5,8 +5,8 @@ This script is intentionally operational (not a hard gate):
 - Python: `pip check` + optional `pip-audit -f json`
 - Web: `npm audit --omit=dev --json` in `web-next/`
 
-By default it exits with code 0 and prints a summary.
-Use `--strict` to return non-zero when vulnerabilities are found.
+Exit 2 means a failed or incomplete scan, including a failed pip check.
+A complete scan exits 0 by default; --strict additionally exits 1 for findings.
 """
 
 from __future__ import annotations
@@ -31,13 +31,19 @@ class CmdResult:
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> CmdResult:
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=180,
+        )
+    except OSError as exc:
+        return CmdResult(False, 127, "", str(exc))
+    except subprocess.TimeoutExpired:
+        return CmdResult(False, 124, "", "scanner_timeout")
     return CmdResult(
         ok=proc.returncode == 0,
         returncode=proc.returncode,
@@ -51,7 +57,8 @@ def _json_or_none(text: str) -> dict[str, Any] | None:
     if not text:
         return None
     try:
-        return json.loads(text)
+        payload = json.loads(text)
+        return payload if isinstance(payload, dict) else None
     except json.JSONDecodeError:
         return None
 
@@ -77,6 +84,8 @@ def _scan_python(root: Path) -> dict[str, Any]:
     if not pip_audit_cmd:
         result["pip_audit"] = {
             "available": False,
+            "complete": False,
+            "status": "unavailable",
             "note": "pip-audit not found in current environment",
             "vuln_total": None,
             "packages_with_vulns": [],
@@ -84,37 +93,66 @@ def _scan_python(root: Path) -> dict[str, Any]:
         return result
 
     pip_audit = _run([pip_audit_cmd, "-f", "json"])
-    payload = _json_or_none(pip_audit.stdout) or {"dependencies": []}
+    payload = _json_or_none(pip_audit.stdout)
+    details = _parse_python_audit(payload)
+    return {**result, "pip_audit": _audit_result(pip_audit, details)}
 
-    packages_with_vulns: list[dict[str, Any]] = []
-    vuln_total = 0
-    for dep in payload.get("dependencies", []):
-        vulns = dep.get("vulns") or []
-        if not vulns:
-            continue
-        vuln_total += len(vulns)
-        packages_with_vulns.append(
-            {
-                "name": dep.get("name"),
-                "version": dep.get("version"),
-                "vulns": [
-                    {
-                        "id": vuln.get("id"),
-                        "fix_versions": vuln.get("fix_versions", []),
-                    }
-                    for vuln in vulns
-                ],
-            }
-        )
 
-    result["pip_audit"] = {
-        "available": True,
-        "ok": pip_audit.ok,
-        "returncode": pip_audit.returncode,
-        "stderr": pip_audit.stderr.strip(),
-        "vuln_total": vuln_total,
-        "packages_with_vulns": packages_with_vulns,
+def _parse_python_audit(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if payload is None or not isinstance(payload.get("dependencies"), list):
+        return None
+    packages = []
+    for dependency in payload["dependencies"]:
+        if not isinstance(dependency, dict) or dependency.get("skip_reason"):
+            return None
+        if not all(
+            isinstance(dependency.get(key), str) and dependency[key]
+            for key in ("name", "version")
+        ):
+            return None
+        vulnerabilities = dependency.get("vulns")
+        if not isinstance(vulnerabilities, list):
+            return None
+        if any(
+            not isinstance(row, dict) or not row.get("id") for row in vulnerabilities
+        ):
+            return None
+        if vulnerabilities:
+            packages.append(
+                {
+                    "name": dependency.get("name"),
+                    "version": dependency.get("version"),
+                    "vulns": [
+                        {"id": row["id"], "fix_versions": row.get("fix_versions", [])}
+                        for row in vulnerabilities
+                    ],
+                }
+            )
+    return {
+        "vuln_total": sum(len(row["vulns"]) for row in packages),
+        "packages_with_vulns": packages,
     }
+
+
+def _audit_result(command: CmdResult, details: dict[str, Any] | None) -> dict[str, Any]:
+    complete = details is not None and (
+        (command.returncode == 0 and details["vuln_total"] == 0)
+        or (command.returncode == 1 and details["vuln_total"] > 0)
+    )
+    status = "error"
+    if complete:
+        status = "findings" if details["vuln_total"] else "pass"
+    result: dict[str, Any] = {
+        "available": True,
+        "ok": command.ok,
+        "returncode": command.returncode,
+        "stderr": command.stderr.strip(),
+        "complete": complete,
+        "status": status,
+        "vuln_total": None,
+    }
+    if details is not None:
+        result.update(details)
     return result
 
 
@@ -126,6 +164,8 @@ def _scan_web(root: Path) -> dict[str, Any]:
     if not package_json.exists():
         result["npm_audit_prod"] = {
             "available": False,
+            "complete": False,
+            "status": "unavailable",
             "note": "web-next/package.json not found",
             "vuln_total": None,
         }
@@ -134,31 +174,51 @@ def _scan_web(root: Path) -> dict[str, Any]:
     if shutil.which("npm") is None:
         result["npm_audit_prod"] = {
             "available": False,
+            "complete": False,
+            "status": "unavailable",
             "note": "npm not found in PATH",
             "vuln_total": None,
         }
         return result
 
     npm_audit = _run(["npm", "audit", "--omit=dev", "--json"], cwd=web_next)
-    payload = _json_or_none(npm_audit.stdout) or {"metadata": {"vulnerabilities": {}}}
-    vulns = payload.get("metadata", {}).get("vulnerabilities", {})
-    vuln_total = int(vulns.get("total", 0))
-
-    result["npm_audit_prod"] = {
-        "available": True,
-        "ok": npm_audit.ok,
-        "returncode": npm_audit.returncode,
-        "stderr": npm_audit.stderr.strip(),
-        "vuln_total": vuln_total,
-        "severity": {
-            "critical": int(vulns.get("critical", 0)),
-            "high": int(vulns.get("high", 0)),
-            "moderate": int(vulns.get("moderate", 0)),
-            "low": int(vulns.get("low", 0)),
-            "info": int(vulns.get("info", 0)),
-        },
+    return {
+        "npm_audit_prod": _audit_result(
+            npm_audit, _parse_web_audit(_json_or_none(npm_audit.stdout))
+        )
     }
-    return result
+
+
+def _parse_web_audit(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if payload is None or payload.get("error"):
+        return None
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    vulnerabilities = metadata.get("vulnerabilities")
+    if not isinstance(vulnerabilities, dict):
+        return None
+    names = ("critical", "high", "moderate", "low", "info")
+    for name in (*names, "total"):
+        value = vulnerabilities.get(name)
+        if type(value) is not int or value < 0:
+            return None
+    if sum(vulnerabilities[name] for name in names) != vulnerabilities["total"]:
+        return None
+    return {
+        "vuln_total": vulnerabilities["total"],
+        "severity": {name: vulnerabilities[name] for name in names},
+    }
+
+
+def report_exit_code(report: dict[str, Any], strict: bool) -> int:
+    """Separate completeness from findings; diagnostic mode never hides errors."""
+    audits = (report["python"]["pip_audit"], report["web"]["npm_audit_prod"])
+    if not report["python"]["pip_check"].get("ok") or any(
+        audit.get("complete") is not True for audit in audits
+    ):
+        return 2
+    return int(strict and any(audit["vuln_total"] > 0 for audit in audits))
 
 
 def _build_report(root: Path) -> dict[str, Any]:
@@ -168,6 +228,10 @@ def _build_report(root: Path) -> dict[str, Any]:
         "python": _scan_python(root),
         "web": _scan_web(root),
     }
+    report["complete"] = report_exit_code(report, False) != 2
+    report["status"] = "error"
+    if report["complete"]:
+        report["status"] = "findings" if report_exit_code(report, True) == 1 else "pass"
     return report
 
 
@@ -180,6 +244,8 @@ def _print_summary(report: dict[str, Any]) -> None:
     npm_total = web["npm_audit_prod"].get("vuln_total")
 
     print("Security delta scan summary")
+    print(f"- status: {report['status']}")
+    print(f"- complete: {report['complete']}")
     print(f"- generated_at_utc: {report['generated_at_utc']}")
     print(f"- pip_check_ok: {pip_check_ok}")
     print(f"- pip_audit_vuln_total: {pip_audit_total}")
@@ -207,7 +273,7 @@ def main() -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Return non-zero when vulnerabilities are found.",
+        help="Exit 1 for findings; failed or incomplete scans always exit 2.",
     )
     args = parser.parse_args()
 
@@ -220,12 +286,7 @@ def main() -> int:
         args.out_json.write_text(json.dumps(report, ensure_ascii=True, indent=2) + "\n")
         print(f"- report_json: {args.out_json}")
 
-    if not args.strict:
-        return 0
-
-    py_total = report["python"]["pip_audit"].get("vuln_total") or 0
-    npm_total = report["web"]["npm_audit_prod"].get("vuln_total") or 0
-    return 1 if (py_total + npm_total) > 0 else 0
+    return report_exit_code(report, args.strict)
 
 
 if __name__ == "__main__":

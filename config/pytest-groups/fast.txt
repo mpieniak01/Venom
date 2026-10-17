@@ -374,6 +374,7 @@ tests/test_runtime_switch_telemetry.py
 tests/test_scenario_weaver.py
 tests/test_scheduler.py
 tests/test_scheduler_swarm_flow_streaming.py
+tests/test_security_scan.py
 tests/test_service_monitor.py
 tests/test_service_monitor_contracts.py
 tests/test_service_monitor_streaming.py

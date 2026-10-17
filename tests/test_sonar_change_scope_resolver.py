@@ -419,3 +419,35 @@ def test_resolve_tests_with_metadata_includes_domain_reason(monkeypatch, tmp_pat
     assert by_path["tests/test_base.py"]["domain"] == "workflow"
     assert by_path["tests/test_new.py"]["legacy_targeted"] is True
     assert "new_code_group" in by_path["tests/test_new.py"]["selection_reason"]
+
+
+def test_context_builder_floor_uses_executing_test_even_when_mock_test_is_cheaper(
+    monkeypatch,
+):
+    module = _load_module()
+    target = "venom_core/core/orchestrator/task_pipeline/context_builder.py"
+    real_test = "tests/test_runtime_registry_contracts.py"
+    mock_test = "tests/test_orchestrator_decision_gates.py"
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: True)
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: {mock_test})
+    anchors = module.coverage_floor_anchor_tests(
+        [mock_test, real_test],
+        {mock_test: 0.1, real_test: 10},
+        floor_targets=[target],
+        exclude_slow_fastlane=True,
+    )
+    assert anchors == {real_test}
+
+
+def test_floor_fallback_breaks_equal_cost_ties_by_path(monkeypatch):
+    module = _load_module()
+    first = "tests/test_alpha.py"
+    last = "tests/test_zeta.py"
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(
+        module, "related_tests_for_modules", lambda *_args: [last, first]
+    )
+    assert module.coverage_floor_anchor_tests(
+        [first, last], {}, floor_targets=["venom_core/example.py"]
+    ) == {first}

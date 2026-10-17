@@ -134,8 +134,6 @@ def remember(journal: Journal, plan: EnvironmentPlan, report: dict) -> dict:
 
 def _context_match(entry: dict, offer: dict) -> bool:
     context, scope = entry["context"], entry["cause_scope"]
-    if scope == "image":
-        return True
     keys = ["gpu_name", "compute_cap", "driver_version"]
     if scope in {"host", "workload"}:
         keys += ["host_id", "machine_id", "gpu_ram", "cpu_ram"]

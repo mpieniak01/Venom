@@ -25,12 +25,8 @@ def _acceleration(
     if runtime.acceleration == "any":
         return
     if runtime.acceleration == "cpu":
-        if (
-            profile.mode == "ollama"
-            and (probe.get("ollama_processor") or {}).get("cpu_percent") != 100
-        ):
-            unknown.append("cpu_backend")
-        elif profile.mode != "ollama":
+        processor = probe.get("ollama_processor") or {}
+        if profile.mode != "ollama" or processor.get("cpu_percent") != 100:
             unknown.append("cpu_backend")
         return
     if probe.get("status") == "failed" and probe.get("cuda_error") in {
@@ -51,18 +47,24 @@ def _acceleration(
         elif state != "passed":
             unknown.append("engine_kernel")
     if profile.mode == "ollama":
-        processor = probe.get("ollama_processor") or {}
-        percent = processor.get("gpu_percent")
-        if percent is None:
-            unknown.append("model_gpu_backend")
-        elif percent == 0 or (percent < 100 and not runtime.allow_cpu_offload):
-            failed.append("model_gpu_backend")
-        loaded = engine.get("loaded_model") or {}
-        if loaded.get("digest") != profile.model_digest:
-            unknown.append("loaded_model_digest")
+        _ollama_backend(profile, probe, engine, failed, unknown)
 
 
-def _scope(failed: list, probe: dict) -> str:
+def _ollama_backend(
+    profile, probe: dict, engine: dict, failed: list, unknown: list
+) -> None:
+    processor = probe.get("ollama_processor") or {}
+    percent = processor.get("gpu_percent")
+    if percent is None:
+        unknown.append("model_gpu_backend")
+    elif percent == 0 or (percent < 100 and not profile.runtime.allow_cpu_offload):
+        failed.append("model_gpu_backend")
+    loaded = engine.get("loaded_model") or {}
+    if loaded.get("digest") != profile.model_digest:
+        unknown.append("loaded_model_digest")
+
+
+def _scope(failed: list) -> str:
     if any(
         x in failed
         for x in [
@@ -153,7 +155,7 @@ def qualify(
         "status": "unsuitable" if failed else "inconclusive" if unknown else "suitable",
         "reasons": failed,
         "unknown": unknown,
-        "cause_scope": _scope(failed, probe) if failed else "stack_gpu",
+        "cause_scope": _scope(failed) if failed else "stack_gpu",
         "requirements": runtime.model_dump(mode="json"),
         "declared": plan.assessment.runtime,
         "observed": {"probe": probe, "engine_version": version, "engine": engine},

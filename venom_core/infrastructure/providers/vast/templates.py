@@ -79,41 +79,50 @@ def _safe_value(value: Any) -> bool:
     )
 
 
-def template_constraints(value: Any) -> dict:
+def _decoded_constraints(value: Any) -> dict | None:
     if value is None or value == "" or value == {}:
-        return {"constraints": {}, "unresolved": []}
+        return {}
     if isinstance(value, str):
         if len(value) > 8192:
-            return {"constraints": {}, "unresolved": ["extra_filters"]}
+            return None
         try:
             value = json.loads(value)
         except ValueError:
-            return {"constraints": {}, "unresolved": ["extra_filters"]}
-    if not isinstance(value, dict) or len(value) > 64:
+            return None
+    return value if isinstance(value, dict) and len(value) <= 64 else None
+
+
+def _review_rules(rules: dict) -> tuple[dict, bool]:
+    accepted, unresolved = {}, False
+    for op, expected in rules.items():
+        values = expected if isinstance(expected, list) else [expected]
+        list_operator = op in {"in", "notin"}
+        valid_shape = isinstance(expected, list) == list_operator
+        if (
+            op not in CONSTRAINT_OPS
+            or not valid_shape
+            or not 1 <= len(values) <= 32
+            or not all(_safe_value(x) for x in values)
+        ):
+            unresolved = True
+        else:
+            accepted[op] = expected
+    return accepted, unresolved
+
+
+def template_constraints(value: Any) -> dict:
+    decoded = _decoded_constraints(value)
+    if decoded is None:
         return {"constraints": {}, "unresolved": ["extra_filters"]}
     known, unresolved = {}, []
-    for key, rules in value.items():
+    for key, rules in decoded.items():
         label = key if re.fullmatch(r"[a-z_]{1,40}", str(key)) else "unknown_field"
         if key not in CONSTRAINT_FIELDS or not isinstance(rules, dict) or not rules:
             unresolved.append(label)
             continue
-        accepted = {}
-        for op, expected in rules.items():
-            values = expected if isinstance(expected, list) else [expected]
-            valid_shape = (
-                isinstance(expected, list)
-                if op in {"in", "notin"}
-                else not isinstance(expected, list)
-            )
-            if (
-                op not in CONSTRAINT_OPS
-                or not valid_shape
-                or not 1 <= len(values) <= 32
-                or not all(_safe_value(x) for x in values)
-            ):
-                unresolved.append(label)
-            else:
-                accepted[op] = expected
+        accepted, rejected = _review_rules(rules)
+        if rejected:
+            unresolved.append(label)
         if accepted:
             known[key] = accepted
     return {"constraints": known, "unresolved": sorted(set(unresolved))}

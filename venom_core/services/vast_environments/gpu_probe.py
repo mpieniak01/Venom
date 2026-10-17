@@ -90,16 +90,13 @@ print(json.dumps(result))
 """
 
 REMOTE_SCRIPT = """
-import importlib.metadata, json, re, subprocess, sys
+import json, re, subprocess, sys
 def run(args, seconds=5):
     try:
         result=subprocess.run(args, text=True, capture_output=True, timeout=seconds)
         return result.stdout[:8192] if result.returncode==0 else None
     except (OSError, subprocess.TimeoutExpired):
         return None
-def version(name):
-    try: return importlib.metadata.version(name)
-    except importlib.metadata.PackageNotFoundError: return None
 try:
     selected=subprocess.run([sys.executable,"-c",SELECT_SCRIPT,ENGINE_MODE],
                             text=True,capture_output=True,timeout=14)

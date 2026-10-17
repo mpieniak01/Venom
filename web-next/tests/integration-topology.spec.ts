@@ -72,7 +72,7 @@ test("real canvas retains viewport, focus and selection on polling and failed re
     await expect(page.getByTestId(`rf__node-resource:rider:${id}`)).toHaveClass(/selected/);
   }
   await riderRow.getByRole("button", { name: "Robot [0] (demo)" }).click();
-  await expect(page.locator("aside").last()).toContainText(/Zasoby: 64|Resources: 64/);
+  await expect(page.locator("aside").last()).toContainText(/zasoby: 64|resources: 64/i);
   await page.getByRole("button", { name: /Pokaż więcej zasobów|Show more resources/ }).first().click();
   await expect(page.locator(".react-flow__node")).toHaveCount(19);
   const zoom = page.locator(".react-flow__controls-zoomin");
@@ -92,7 +92,7 @@ test("real canvas retains viewport, focus and selection on polling and failed re
   await expect(page.locator(".react-flow__node")).toHaveCount(19);
   expect(await viewport.getAttribute("style")).toBe(transform);
   expect(requests).toBe(3);
-  await expect(page.locator("aside").last()).toContainText(/Zasoby: 64|Resources: 64/);
+  await expect(page.locator("aside").last()).toContainText(/zasoby: 64|resources: 64/i);
   await page.getByRole("tab", { name: /Uprawnienia|Permissions/ }).click();
   await expect(page.getByTestId("integration-topology-canvas")).toHaveCount(0);
   await page.clock.install();

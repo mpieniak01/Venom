@@ -84,6 +84,8 @@ def qualify(
     probe: dict,
     engine: dict | None = None,
     benchmark: dict | None = None,
+    *,
+    evaluate_performance: bool = True,
 ) -> dict:
     profile, runtime = plan.profile, plan.profile.runtime
     engine = engine or {}
@@ -119,13 +121,13 @@ def qualify(
             failed.append("benchmark")
         elif benchmark.get("status") != "suitable":
             unknown.append("benchmark")
-    if runtime.max_ttft_s is not None:
+    if evaluate_performance and runtime.max_ttft_s is not None:
         value = (benchmark or {}).get("short_ttft_median_s")
         if value is None:
             unknown.append("ttft")
         elif value > runtime.max_ttft_s:
             failed.append("ttft")
-    if runtime.min_characters_s is not None:
+    if evaluate_performance and runtime.min_characters_s is not None:
         samples = (benchmark or {}).get("samples", [])
         values = [
             x["characters_s"]
@@ -152,5 +154,6 @@ def qualify(
         "observed": {"probe": probe, "engine_version": version, "engine": engine},
         "inspection": inspection,
         "benchmark": benchmark,
+        "performance_evaluated": evaluate_performance,
         "automatic_repair": False,
     }

@@ -150,6 +150,14 @@ def test_workload_records_error_and_success(service):
         ),
         patch("venom_core.services.vast_environments.operations.tunnel", fake_tunnel),
         patch(
+            "venom_core.services.vast_environments.operations._loaded_model",
+            return_value={"digest": "digest"},
+        ),
+        patch(
+            "venom_core.services.vast_environments.operations.probe_gpu",
+            return_value={"status": "passed", "ollama_processor": {"gpu_percent": 100}},
+        ),
+        patch(
             "venom_core.services.vast_environments.operations.OllamaProbe",
             return_value=p,
         ),

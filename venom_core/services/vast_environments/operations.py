@@ -13,6 +13,7 @@ from venom_core.services.vast_environments.evaluation import OllamaProbe
 from venom_core.services.vast_environments.gpu_probe import probe_gpu
 from venom_core.services.vast_environments.history import remember
 from venom_core.services.vast_environments.lifecycle import Environments
+from venom_core.services.vast_environments.openai_probe import OpenAIProbe
 from venom_core.services.vast_environments.openai_probe import ready as openai_ready
 from venom_core.services.vast_environments.qualification import qualify
 from venom_core.services.vast_environments.recipes import validate_recipe
@@ -37,9 +38,22 @@ def _provision(plan, instance: dict, accept_new: bool) -> dict:
     return {"startup": "completed", "readiness": "unknown"}
 
 
+def _gpu_facts(plan, instance: dict, accept_new: bool = False) -> dict:
+    try:
+        return probe_gpu(plan, instance, accept_new)
+    except VastError as error:
+        return {"status": "error", "reason": error.code}
+
+
+def _engine_ready(client, profile) -> dict:
+    if profile.mode == "vllm":
+        return openai_ready(client, profile)
+    engine = OllamaProbe(client, profile).ready()
+    engine["loaded_model"] = _loaded_model(client, profile)
+    return engine
+
+
 def _model_operation(plan, instance: dict, operation: str) -> dict:
-    if plan.profile.mode == "vllm" and operation == "benchmark":
-        raise VastError("vast.vllm_benchmark_not_supported")
     if plan.profile.mode not in {"ollama", "vllm"}:
         raise VastError("vast.ollama_profile_required")
     inspection = inspect(plan, instance)
@@ -51,18 +65,37 @@ def _model_operation(plan, instance: dict, operation: str) -> dict:
             base_url=endpoint, timeout=30, trust_env=False, follow_redirects=False
         ) as client,
     ):
-        if plan.profile.mode == "vllm":
-            result = openai_ready(client, plan.profile)
+        engine = _engine_ready(client, plan.profile)
+        facts = _gpu_facts(plan, instance)
+        preliminary = qualify(
+            plan, inspection, facts, engine, evaluate_performance=False
+        )
+        if operation == "ready":
+            result = dict(engine)
+        elif preliminary["status"] != "suitable":
+            result = {
+                "status": preliminary["status"],
+                "samples": [],
+                "errors": preliminary["reasons"],
+                "not_run": "runtime_not_qualified",
+            }
         else:
-            probe = OllamaProbe(client, plan.profile)
-            result = probe.ready() if operation == "ready" else probe.benchmark()
+            probe_type = OpenAIProbe if plan.profile.mode == "vllm" else OllamaProbe
+            result = probe_type(client, plan.profile).benchmark()
+        qualification = qualify(
+            plan,
+            inspection,
+            facts,
+            engine,
+            dict(result)
+            if operation == "benchmark" and "not_run" not in result
+            else None,
+            evaluate_performance=operation == "benchmark",
+        )
+        result["qualification_report"] = qualification
+        if operation == "benchmark":
+            result["status"] = qualification["status"]
     result["inspection"] = inspection
-    if (
-        operation == "benchmark"
-        and inspection["unknown"]
-        and result["status"] == "suitable"
-    ):
-        result["status"] = "inconclusive"
     return result
 
 
@@ -94,18 +127,10 @@ def _qualify_operation(plan, instance: dict, accept_new: bool) -> dict:
                     follow_redirects=False,
                 ) as client,
             ):
-                if plan.profile.mode == "ollama":
-                    engine = OllamaProbe(client, plan.profile).ready()
-                    engine["loaded_model"] = _loaded_model(client, plan.profile)
-                else:
-                    engine = openai_ready(client, plan.profile)
+                engine = _engine_ready(client, plan.profile)
         except (VastError, httpx.HTTPError, ValueError, TypeError):
             engine["readiness"] = "inconclusive"
-    try:
-        probe = probe_gpu(plan, instance, accept_new)
-    except VastError as error:
-        probe = {"status": "error", "reason": error.code}
-    return qualify(plan, inspection, probe, engine)
+    return qualify(plan, inspection, _gpu_facts(plan, instance, accept_new), engine)
 
 
 def _perform(plan, instance: dict, operation: str, accept_new: bool) -> dict:

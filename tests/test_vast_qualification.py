@@ -55,7 +55,7 @@ def test_probe_is_bounded_and_serializes_constant_script(service):
             probe_gpu(plan, {"ssh_host": "example.test", "ssh_port": 22})["status"]
             == "passed"
         )
-    assert run.call_args.kwargs["timeout"] == 40
+    assert run.call_args.kwargs["timeout"] == 60
     script = run.call_args.kwargs["input"]
     compile(script, "<generated>", "exec")
     assert "timeout=25" in script
@@ -236,3 +236,115 @@ def test_qualify_operation_persists_and_offline_report_needs_no_cloud_key(
     svc.export(plan.plan_id)
     svc.change(plan.plan_id, "destroy")
     assert entries(svc.journal)[0]["status"] == "suitable"
+
+
+@pytest.mark.parametrize(
+    "mode,runtime,probe,engine,expected",
+    [
+        ("inspect", {"acceleration": "any"}, {}, {}, "suitable"),
+        ("inspect", {"acceleration": "cpu"}, {}, {}, "inconclusive"),
+        (
+            "ollama",
+            {"acceleration": "cpu"},
+            {"ollama_processor": {"cpu_percent": 100}},
+            {},
+            "suitable",
+        ),
+        ("ollama", {"acceleration": "cpu"}, {}, {}, "inconclusive"),
+        ("pytorch", {}, {"status": "failed", "cuda_error": 209}, {}, "inconclusive"),
+        (
+            "pytorch",
+            {},
+            {"status": "failed", "cuda_error": 700, "engine_kernel": "failed"},
+            {},
+            "unsuitable",
+        ),
+        ("pytorch", {"min_driver": "999"}, gpu(), {}, "unsuitable"),
+        ("pytorch", {"min_cuda": "999"}, {}, {}, "inconclusive"),
+        ("pytorch", {"compute_capabilities": [1210]}, {}, {}, "inconclusive"),
+        ("pytorch", {}, gpu(), {"readiness": "inconclusive"}, "inconclusive"),
+    ],
+)
+def test_qualification_boundaries(service, mode, runtime, probe, engine, expected):
+    _, plan, _ = service
+    plan.profile.mode = mode
+    plan.profile.runtime = RuntimeRequirements(**runtime)
+    result = qualify(plan, inspection(), probe, engine)
+    assert result["status"] == expected
+
+
+def test_capacity_partial_suite_and_performance_phase(service):
+    _, plan, _ = service
+    plan.profile.mode = "pytorch"
+    plan.profile.runtime = RuntimeRequirements(max_ttft_s=1, min_characters_s=1)
+    assert (
+        qualify(plan, inspection(), gpu(), evaluate_performance=False)["status"]
+        == "suitable"
+    )
+    assert (
+        qualify(plan, {"reasons": ["disk"], "unknown": ["cpu"]}, gpu())["status"]
+        == "unsuitable"
+    )
+    assert (
+        qualify(plan, inspection(), gpu(), benchmark={"status": "unsuitable"})["status"]
+        == "unsuitable"
+    )
+    assert (
+        qualify(plan, inspection(), gpu(), benchmark={"status": "inconclusive"})[
+            "status"
+        ]
+        == "inconclusive"
+    )
+    result = qualify(
+        plan,
+        inspection(),
+        gpu(),
+        benchmark={
+            "status": "suitable",
+            "short_ttft_median_s": 0.1,
+            "samples": [{"case": "short-0", "status": "ok", "characters_s": 10}],
+        },
+    )
+    assert result["status"] == "suitable"
+
+
+def test_history_transport_preserves_negative_successful_retest_supersedes(service):
+    svc, plan, offer = service
+    plan.profile.mode = "pytorch"
+    offer.update(gpu_name="GB10", compute_cap=1210, driver_version="580.29.04")
+    remember(
+        svc.journal,
+        plan,
+        qualify(plan, inspection(), {**gpu(), "engine_kernel": "failed"}),
+    )
+    remember(
+        svc.journal,
+        plan,
+        qualify(
+            plan, inspection(), {**gpu(), "status": "error", "engine_kernel": None}
+        ),
+    )
+    assert lookup(svc.journal, plan.profile, offer)["excluded"] is True
+    assert (
+        lookup(svc.journal, plan.profile, {**offer, "driver_version": "580.29.4"})[
+            "excluded"
+        ]
+        is True
+    )
+    remember(svc.journal, plan, qualify(plan, inspection(), gpu()))
+    assert lookup(svc.journal, plan.profile, offer)["excluded"] is False
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "[]",
+        '{"schema_version":2,"entries":{}}',
+        '{"schema_version":1,"entries":{"x":{"status":"invalid"}}}',
+    ],
+)
+def test_history_rejects_malformed_index(service, content):
+    svc, _, _ = service
+    (svc.journal.root / "qualifications.json").write_text(content)
+    with pytest.raises(VastError, match="qualification_history_invalid"):
+        entries(svc.journal)

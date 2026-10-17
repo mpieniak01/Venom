@@ -10,6 +10,7 @@ from venom_core.infrastructure.providers.vast.models import (
     WorkloadProfile,
     digest,
 )
+from venom_core.infrastructure.providers.vast.runtime_contracts import version_parts
 from venom_core.services.vast_environments.qualification import POLICY_VERSION
 from venom_core.services.vast_environments.startup import startup
 from venom_core.services.vast_environments.store import Journal
@@ -113,7 +114,13 @@ def remember(journal: Journal, plan: EnvironmentPlan, report: dict) -> dict:
             ): x
             for x in current
         }
-        index[key] = row
+        previous = index.get(key)
+        if (
+            row["status"] != "inconclusive"
+            or not previous
+            or previous["status"] == "inconclusive"
+        ):
+            index[key] = row
         payload = {"schema_version": 1, "entries": index}
         if len(json.dumps(payload)) > 8_000_000:
             raise VastError("vast.qualification_history_limit")
@@ -134,16 +141,25 @@ def _context_match(entry: dict, offer: dict) -> bool:
         keys += ["host_id", "machine_id", "gpu_ram", "cpu_ram"]
     if scope not in {"stack_gpu", "host", "workload"}:
         return False
-    return all(
-        context.get(key) is not None and context.get(key) == offer.get(key)
-        for key in keys
-    )
+    for key in keys:
+        left, right = context.get(key), offer.get(key)
+        if left is None or right is None:
+            return False
+        if key == "driver_version":
+            if version_parts(left) is None or version_parts(left) != version_parts(
+                right
+            ):
+                return False
+        elif left != right:
+            return False
+    return True
 
 
 def lookup(journal: Journal, profile: WorkloadProfile, offer: dict) -> dict:
     rows = [x for x in entries(journal) if x["workload_key"] == workload_key(profile)]
     exact = [x for x in rows if _context_match(x, offer)]
-    candidates = exact or rows
+    decisive = [row for row in exact if row["status"] != "inconclusive"]
+    candidates = decisive or exact or rows
     if not candidates:
         return {"status": "not_tested", "excluded": False, "match": "none"}
     latest = max(candidates, key=lambda x: x["observed_at"])

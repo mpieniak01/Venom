@@ -160,6 +160,9 @@ def parser() -> argparse.ArgumentParser:
     recipe.add_argument("--download-gb", type=Decimal)
     recipe.add_argument("--install-package", action="append")
     recipe.add_argument("--worker-task", action="append", choices=["vision", "audio"])
+    recipe.add_argument(
+        "--capability", action="append", choices=["json", "vision", "tools"]
+    )
     recipe.add_argument("--recipe", choices=list(RECIPES), required=True)
     recipe.add_argument("--template-hash")
     recipe.add_argument("--output", type=Path, required=True)
@@ -219,13 +222,22 @@ def _prepare_action(args, service: Environments):
         if getattr(args, argument) is not None:
             values[field] = getattr(args, argument)
     values["mode"] = args.recipe
+    if args.capability is not None:
+        values.setdefault("runtime", {})["capabilities"] = args.capability
     if values.get("image") and "@sha256:" not in values["image"]:
         with httpx.Client(
             timeout=25, follow_redirects=False, trust_env=False
         ) as registry:
-            values["image"] = resolve_image(
+            resolved = resolve_image(
                 values["image"], values.get("cpu_arch", ""), registry
-            )["image"]
+            )
+            values["image"] = resolved["image"]
+            metadata = resolved.get("runtime_metadata") or {}
+            values.setdefault("runtime", {}).update(
+                image_cuda=metadata.get("cuda", ""),
+                image_min_cuda=metadata.get("min_cuda", ""),
+                image_metadata_source=metadata.get("source", "operator"),
+            )
     profile = WorkloadProfile.model_validate(values)
     return prepare(
         service.client, profile, args.recipe, args.template_hash, args.output

@@ -18,7 +18,7 @@ import httpx
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile, digest, now
 
-SUITE_VERSION = "venom-vast-ollama-v3"
+SUITE_VERSION = "venom-vast-model-v4"
 
 
 def fixture_image() -> str:
@@ -128,10 +128,10 @@ def _sample_correct(name: str, capture: StreamCapture) -> bool | None:
     return None
 
 
-def _suite_status(failed: list, count: int) -> str:
+def _suite_status(failed: list, count: int, expected: int) -> str:
     if failed:
         return "unsuitable"
-    return "suitable" if count == 12 else "inconclusive"
+    return "suitable" if count == expected else "inconclusive"
 
 
 class OllamaProbe:
@@ -177,6 +177,9 @@ class OllamaProbe:
             },
         }
 
+    def capture(self, body: dict, started: float) -> StreamCapture:
+        return _capture(self.client, body, started)
+
     def sample(self, name: str, body: dict) -> dict:
         started = time.monotonic()
         row: dict[str, Any] = {
@@ -185,7 +188,7 @@ class OllamaProbe:
             "started_at": now().isoformat(),
         }
         try:
-            capture = _capture(self.client, body, started)
+            capture = self.capture(body, started)
             row.update(_sample_metrics(capture))
             correct = _sample_correct(name, capture)
             if correct is not None:
@@ -258,7 +261,13 @@ class OllamaProbe:
             }
         ]
         cases.append(("tools", body))
-        for name, body in cases:
+        required = self.profile.runtime.capabilities
+        selected = [
+            (name, body)
+            for name, body in cases
+            if ("vision" if name == "image" else name) in required
+        ]
+        for name, body in selected:
             if time.monotonic() - started >= max_seconds:
                 break
             rows.append(self.sample(name, body))
@@ -272,13 +281,17 @@ class OllamaProbe:
             for row in rows
             if row.get("ttft_s") is not None and row["case"].startswith("short")
         ]
-        status = _suite_status(failed, len(rows))
+        status = _suite_status(failed, len(rows), 9 + len(selected))
         return {
             "schema_version": 1,
             "suite_version": SUITE_VERSION,
             "observed_at": now().isoformat(),
             "status": status,
             "errors": failed,
+            "required_capabilities": required,
+            "skipped_capabilities": [
+                name for name in ["json", "vision", "tools"] if name not in required
+            ],
             "metadata": meta,
             "profile": self.profile.model_dump(mode="json"),
             "transport": "SSH forwarding to instance loopback",

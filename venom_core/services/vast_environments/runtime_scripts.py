@@ -4,6 +4,7 @@ import shlex
 from decimal import Decimal
 
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile
+from venom_core.services.vast_environments.interpreters import select_shell
 
 
 def vllm_wait_seconds(profile: WorkloadProfile) -> int:
@@ -19,7 +20,7 @@ def vllm_script(profile: WorkloadProfile) -> str:
     model = shlex.quote(profile.model)
     revision = shlex.quote(profile.model_digest)
     args = (
-        f"python3 -m vllm.entrypoints.openai.api_server --model {model} "
+        f'"$PYTHON" -m vllm.entrypoints.openai.api_server --model {model} '
         f"--revision {revision} --code-revision {revision} --host 127.0.0.1 --port 8000 "
         f"--gpu-memory-utilization {profile.gpu_memory_utilization} "
         f"--max-num-seqs {profile.max_parallel_requests} --max-model-len {profile.context_tokens}"
@@ -27,8 +28,9 @@ def vllm_script(profile: WorkloadProfile) -> str:
     offline = "export HF_HUB_OFFLINE=1\n" if profile.download_gb == 0 else ""
     # No remote model code, public API port, image ENTRYPOINT assumption or driver installation.
     return (
-        offline
-        + f"""python3 -c 'import vllm, torch; assert torch.cuda.is_available()'
+        select_shell("vllm")
+        + offline
+        + f""""$PYTHON" -c 'import vllm, torch; assert torch.cuda.is_available()'
 command -v curl >/dev/null
 PID_FILE=/workspace/venom-vast/vllm.pid
 PID=$(cat "$PID_FILE" 2>/dev/null || true)
@@ -58,8 +60,11 @@ def pytorch_script(profile: WorkloadProfile) -> str:
         imports += ["PIL", "ultralytics"]
     if "audio" in profile.worker_tasks:
         imports += ["faster_whisper"]
-    setup = "python3 -c 'import torch; assert torch.cuda.is_available()'\n"
-    interpreter = "python3"
+    setup = (
+        select_shell("pytorch")
+        + "\"$PYTHON\" -c 'import torch; assert torch.cuda.is_available()'\n"
+    )
+    interpreter = '"$PYTHON"'
     if profile.worker_packages:
         interpreter = "/workspace/venom-vast/worker-venv/bin/python"
         constraints = (
@@ -69,8 +74,8 @@ def pytorch_script(profile: WorkloadProfile) -> str:
             + "print('\\n'.join(n+'=='+installed[n] for n in names if n in installed))"
         )
         setup += (
-            "python3 -m venv --system-site-packages /workspace/venom-vast/worker-venv\n"
-            + "python3 -c "
+            '"$PYTHON" -m venv --system-site-packages /workspace/venom-vast/worker-venv\n'
+            + '"$PYTHON" -c '
             + shlex.quote(constraints)
             + " > /workspace/venom-vast/base-constraints.txt\n"
             + interpreter

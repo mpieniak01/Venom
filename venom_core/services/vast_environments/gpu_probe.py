@@ -7,11 +7,15 @@ import subprocess
 
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import EnvironmentPlan
+from venom_core.services.vast_environments.interpreters import SELECT_SCRIPT
 from venom_core.services.vast_environments.ssh import ssh_args
 
 # Executed in a child with a hard remote timeout. The tiny PTX kernel writes 42.
 CUDA_SCRIPT = r"""
-import ctypes as c, json, sys
+import ctypes as c, importlib.metadata, json, sys
+def version(name):
+    try: return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError: return None
 result = {"status":"unavailable", "reason":"cuda_library_missing"}
 ctx = module = None
 memory = c.c_uint64()
@@ -80,6 +84,8 @@ finally:
         lib.cuModuleUnload(module)
     if ctx:
         lib.cuCtxDestroy_v2(ctx)
+result["python_executable"] = sys.executable
+result["packages"] = {name:version(name) for name in ["torch","vllm","transformers","ultralytics"]}
 print(json.dumps(result))
 """
 
@@ -95,7 +101,10 @@ def version(name):
     try: return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError: return None
 try:
-    result=subprocess.run([sys.executable,"-c",CUDA_SCRIPT,ENGINE_MODE],
+    selected=subprocess.run([sys.executable,"-c",SELECT_SCRIPT,ENGINE_MODE],
+                            text=True,capture_output=True,timeout=14)
+    interpreter=selected.stdout.strip() if selected.returncode==0 else sys.executable
+    result=subprocess.run([interpreter or sys.executable,"-c",CUDA_SCRIPT,ENGINE_MODE],
                           text=True,capture_output=True,timeout=25)
     probe=json.loads(result.stdout) if result.returncode==0 else {"status":"error","reason":"probe_process_failed"}
 except subprocess.TimeoutExpired:
@@ -104,7 +113,6 @@ except (ValueError, OSError):
     probe={"status":"error","reason":"probe_invalid"}
 driver=run(["nvidia-smi","--query-gpu=driver_version","--format=csv,noheader"])
 probe["driver_version"]=driver.strip() if driver and len(driver.splitlines())==1 else None
-probe["packages"]={name:version(name) for name in ["torch","vllm","transformers","ultralytics"]}
 probe["ollama_processor"]=None
 if ENGINE_MODE=="ollama":
     output=run(["ollama","ps"])
@@ -125,7 +133,9 @@ print(json.dumps(probe))
 
 def probe_gpu(plan: EnvironmentPlan, instance: dict, accept_new: bool = False) -> dict:
     script = (
-        "CUDA_SCRIPT="
+        "SELECT_SCRIPT="
+        + repr(SELECT_SCRIPT)
+        + "\nCUDA_SCRIPT="
         + repr(CUDA_SCRIPT)
         + "\nENGINE_MODE="
         + repr(plan.profile.mode)
@@ -140,7 +150,7 @@ def probe_gpu(plan: EnvironmentPlan, instance: dict, accept_new: bool = False) -
             input=script,
             text=True,
             capture_output=True,
-            timeout=40,
+            timeout=60,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):

@@ -436,6 +436,7 @@ tests/test_vast_qualification.py
 tests/test_vast_recipes.py
 tests/test_vast_runtime_contracts.py
 tests/test_vast_selection.py
+tests/test_vast_serving.py
 tests/test_venom_core_init_compat.py
 tests/test_verify_acceptance_criteria.py
 tests/test_vision_grounding.py

@@ -6611,6 +6611,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Bounded GPU diagnostic, persistent scoped stack decisions and safe retest without hardware or rentals."
+    },
+    {
+      "path": "tests/test_vast_serving.py",
+      "domain": "providers",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared Ollama/vLLM serving cases, registry metadata and environment discovery with synthetic transports only."
     }
   ]
 }

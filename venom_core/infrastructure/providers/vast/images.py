@@ -6,6 +6,7 @@ import re
 import httpx
 
 from venom_core.infrastructure.providers.vast.client import VastError
+from venom_core.infrastructure.providers.vast.image_metadata import runtime_metadata
 
 ACCEPT = ", ".join(
     (
@@ -22,18 +23,27 @@ DIGEST_MISMATCH = "vast.registry_digest_mismatch"
 MANIFEST_PATTERN = r"sha256:[a-f0-9]{64}"
 
 
-def _image_parts(image: str, arch: str) -> tuple[str, str]:
-    repo, sep, tag = image.removeprefix("docker.io/").rpartition(":")
+def _image_parts(image: str, arch: str) -> tuple[str, str, str]:
+    if "@vastai-automatic-tag" in image:
+        raise VastError("vast.concrete_image_tag_required")
+    nvcr = image.startswith("nvcr.io/")
+    value = image.removeprefix("nvcr.io/") if nvcr else image.removeprefix("docker.io/")
+    if "@sha256:" in value:
+        repo, _, sha = value.partition("@")
+        ref = _manifest_digest(sha)
+    else:
+        repo, sep, ref = value.rpartition(":")
+        if not sep or not re.fullmatch(r"\w[\w.-]{0,127}", ref, flags=re.ASCII):
+            raise VastError("vast.invalid_public_image")
     if (
         arch not in {"amd64", "arm64"}
-        or not sep
         or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*", repo)
-        or not re.fullmatch(r"\w[\w.-]{0,127}", tag, flags=re.ASCII)
         or ".." in repo
         or "//" in repo
+        or (nvcr and not repo.startswith("nvidia/"))
     ):
         raise VastError("vast.invalid_public_image")
-    return repo, tag
+    return repo, ref, "nvcr" if nvcr else "docker"
 
 
 def _digest(response: httpx.Response) -> str:
@@ -64,18 +74,24 @@ def _architecture_manifest(doc: dict, arch: str) -> str | None:
 
 
 class RegistryReader:
-    def __init__(self, client: httpx.Client, repo: str):
+    def __init__(self, client: httpx.Client, repo: str, registry: str = "docker"):
         self.client = client
-        self.base_url = f"https://registry-1.docker.io/v2/{repo}"
+        self.base_url = (
+            f"https://nvcr.io/v2/{repo}"
+            if registry == "nvcr"
+            else f"https://registry-1.docker.io/v2/{repo}"
+        )
         auth = client.get(
-            "https://auth.docker.io/token",
+            "https://nvcr.io/proxy_auth"
+            if registry == "nvcr"
+            else "https://auth.docker.io/token",
             params={
-                "service": "registry.docker.io",
+                "service": "registry" if registry == "nvcr" else "registry.docker.io",
                 "scope": f"repository:{repo}:pull",
             },
         )
         auth.raise_for_status()
-        token = auth.json().get("token")
+        token = auth.json().get("token") or auth.json().get("access_token")
         if not isinstance(token, str) or not token:
             raise VastError("vast.registry_auth_failed")
         self.headers = {"Authorization": f"Bearer {token}", "Accept": ACCEPT}
@@ -92,7 +108,7 @@ class RegistryReader:
             raise VastError(DIGEST_MISMATCH)
         return response.json(), sha
 
-    def check_config(self, doc: dict, arch: str) -> None:
+    def check_config(self, doc: dict, arch: str) -> dict:
         config = _manifest_digest(doc.get("config", {}).get("digest", ""))
         response = self.client.get(
             f"{self.base_url}/blobs/{config}",
@@ -104,19 +120,21 @@ class RegistryReader:
         metadata = response.json()
         if metadata.get("os") != "linux" or metadata.get("architecture") != arch:
             raise VastError("vast.image_architecture_unavailable")
+        return runtime_metadata(metadata, config)
 
 
 def resolve_image(image: str, arch: str, client: httpx.Client) -> dict:
-    repo, tag = _image_parts(image, arch)
+    repo, tag, registry = _image_parts(image, arch)
     try:
-        reader = RegistryReader(client, repo)
+        reader = RegistryReader(client, repo, registry)
         doc, sha = reader.manifest(tag)
         reference = _architecture_manifest(doc, arch)
         if reference is not None:
             doc, sha = reader.manifest(reference)
-        reader.check_config(doc, arch)
+        metadata = reader.check_config(doc, arch)
         return {
-            "image": f"{repo}@{sha}",
+            "image": ("nvcr.io/" if registry == "nvcr" else "") + f"{repo}@{sha}",
+            "runtime_metadata": metadata,
             "source_tag": image,
             "cpu_arch": arch,
             "runtime_compatibility": "requires_remote_inspection",

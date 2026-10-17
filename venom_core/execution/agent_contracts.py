@@ -88,6 +88,7 @@ class CompletionOptions(BaseModel):
     top_p: float | None = None
     function_choice_behavior: ToolPolicy | None = None
     extra_body: dict[str, Any] | None = None
+    response_format: dict[str, Any] | type[BaseModel] | None = None
 
 
 F = TypeVar("F", bound=Callable[..., Any])

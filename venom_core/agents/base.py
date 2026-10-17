@@ -15,6 +15,7 @@ from venom_core.execution.agent_contracts import (
     ConversationMessage as ChatMessageContent,
 )
 from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.agent_contracts import ToolPolicy
 from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -95,6 +96,7 @@ class BaseAgent(ABC):
         system_message: str,
         generation_params: Optional[Dict[str, Any]] = None,
         enable_functions: bool = False,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> str:
         """One Council turn on the existing model, without a nested agent workflow."""
         history = ChatHistory()
@@ -103,7 +105,9 @@ class BaseAgent(ABC):
         settings = self._create_execution_settings(
             generation_params=generation_params,
             default_settings={"max_tokens": 512, "temperature": 0.3},
+            function_choice_behavior=ToolPolicy.Auto() if enable_functions else None,
         )
+        settings.response_format = response_format
         result = await self._invoke_chat_with_fallbacks(
             chat_service=self.kernel.get_service(),
             chat_history=history,

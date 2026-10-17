@@ -1,5 +1,6 @@
 """Testy dla The Council (native MAF workflow)."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -189,8 +190,15 @@ async def test_council_session_run_integration(
     coder_agent.deliberate = AsyncMock(
         side_effect=["First implementation", "Corrected implementation"]
     )
-    critic_agent.deliberate = AsyncMock(side_effect=["REVISE\nFix", "APPROVED"])
-    guardian_agent.deliberate = AsyncMock(return_value="Approved\nTERMINATE")
+    critic_agent.deliberate = AsyncMock(
+        side_effect=[
+            json.dumps({"decision": "REVISE", "feedback": "Fix"}),
+            json.dumps({"decision": "APPROVED", "feedback": "verified"}),
+        ]
+    )
+    guardian_agent.deliberate = AsyncMock(
+        return_value=json.dumps({"decision": "APPROVED", "feedback": "verified"})
+    )
     council_config = CouncilConfig(
         coder_agent=coder_agent,
         critic_agent=critic_agent,

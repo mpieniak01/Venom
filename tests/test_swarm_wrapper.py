@@ -90,7 +90,10 @@ def test_swarm_schema_error_is_not_reported_as_empty_success():
 
 
 @pytest.mark.asyncio
-async def test_native_deliberation_reuses_service_and_preserves_budget(monkeypatch):
+@pytest.mark.parametrize("enable_functions", [False, True])
+async def test_native_deliberation_reuses_service_and_preserves_budget(
+    monkeypatch, enable_functions
+):
     from types import SimpleNamespace
 
     import venom_core.agents.base as base_module
@@ -113,13 +116,17 @@ async def test_native_deliberation_reuses_service_and_preserves_budget(monkeypat
         "task",
         system_message="planning role",
         generation_params={"max_tokens": 37, "temperature": 0},
+        response_format={"type": "json_object"},
+        enable_functions=enable_functions,
     )
     assert result == "single turn"
     call = agent._invoke_chat_with_fallbacks.await_args.kwargs
     assert call["chat_service"] is service
+    assert call["settings"].response_format == {"type": "json_object"}
     assert call["settings"].max_tokens == 37
     assert call["settings"].temperature == 0
-    assert call["enable_functions"] is False
+    assert call["enable_functions"] is enable_functions
+    assert (call["settings"].function_choice_behavior is not None) is enable_functions
     assert [m.content for m in call["chat_history"].messages] == [
         "planning role",
         "task",

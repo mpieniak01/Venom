@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from agent_framework import Executor, Message, WorkflowContext, handler
 from agent_framework_orchestrations import (
@@ -10,11 +10,24 @@ from agent_framework_orchestrations import (
     GroupChatRequestMessage,
     GroupChatResponseMessage,
 )
+from pydantic import BaseModel, ConfigDict
 
 from venom_core.agents.base import BaseAgent
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class _CriticReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["APPROVED", "REVISE", "REPLAN"]
+    feedback: str
+
+
+class _GuardianReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["APPROVED", "REVISE"]
+    feedback: str
 
 
 class VenomAgent(Executor):
@@ -39,6 +52,23 @@ class VenomAgent(Executor):
         self.conversation: list[Message] = []
         self.output_messages: list[Message] = []
 
+    def _turn_messages(self) -> list[Message]:
+        """Keep an auditable full transcript, but give each role its actual inputs."""
+        role_inputs = {
+            "Architect": {"User", "Critic"},
+            "Coder": {"User", "Architect", "Coder", "Critic", "Guardian"},
+            "Critic": {"User", "Coder"},
+            "Guardian": {"User", "Coder", "Critic"},
+        }
+        if not self.deliberation or self.name not in role_inputs:
+            return self.conversation
+        latest = {
+            message.author_name: index
+            for index, message in enumerate(self.conversation)
+            if message.author_name in role_inputs[self.name]
+        }
+        return [self.conversation[index] for index in sorted(latest.values())]
+
     @handler
     async def receive_messages(
         self,
@@ -55,7 +85,7 @@ class VenomAgent(Executor):
     ) -> None:
         transcript = "\n\n".join(
             f"[{message.author_name or message.role}]: {message.text}"
-            for message in self.conversation
+            for message in self._turn_messages()
         )
         if request.additional_instruction:
             transcript += "\n\n" + request.additional_instruction
@@ -81,12 +111,37 @@ class VenomAgent(Executor):
             if blocked:
                 result = policy_report
             else:
+                review_types: dict[str, type[_CriticReview] | type[_GuardianReview]] = {
+                    "Critic": _CriticReview,
+                    "Guardian": _GuardianReview,
+                }
+                review_type = review_types.get(self.name)
+                response_format = None
+                if review_type is not None:
+                    response_format = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": f"council_{self.name.lower()}_review",
+                            "strict": True,
+                            "schema": review_type.model_json_schema(),
+                        },
+                    }
                 result = await self.venom_agent.deliberate(
                     transcript,
                     system_message=self.system_message,
                     generation_params=self.generation_params,
                     enable_functions=self.name in {"Coder", "Guardian"},
+                    response_format=response_format,
                 )
+                if review_type is not None:
+                    review = review_type.model_validate_json(result)
+                    if self.name == "Guardian":
+                        final_line = (
+                            "TERMINATE" if review.decision == "APPROVED" else "REVISE"
+                        )
+                        result = f"{review.feedback}\n{final_line}"
+                    else:
+                        result = f"{review.decision}\n{review.feedback}"
                 if policy_report:
                     result = f"{policy_report}\n\nDODATKOWE UWAGI LLM:\n{result}"
             logger.info(f"Council turn finished: {self.name}")

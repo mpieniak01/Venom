@@ -431,3 +431,67 @@ async def test_tester_rejects_invalid_scenario_before_browser_action(step):
     actor.browser_skill.fill_form.assert_not_called()
     actor.browser_skill.get_text_content.assert_not_called()
     actor.browser_skill.close_browser.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+async def test_structured_review_schema_reaches_native_transport(stream):
+    bodies = []
+    text = json.dumps({"decision": "APPROVED", "feedback": "verified"})
+    format_spec = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "council_review",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "decision": {"type": "string", "enum": ["APPROVED", "REVISE"]},
+                    "feedback": {"type": "string"},
+                },
+                "required": ["decision", "feedback"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+    def respond(request):
+        bodies.append(json.loads(request.content))
+        if not stream:
+            return httpx.Response(200, json=completion(text))
+        chunk = {
+            "id": "structured",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "fixture-model",
+            "choices": [
+                {"index": 0, "delta": {"content": text}, "finish_reason": None}
+            ],
+        }
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text="data: " + json.dumps(chunk) + "\n\ndata: [DONE]\n\n",
+        )
+
+    model = service(respond)
+    history = ConversationHistory(system_message="Review using the JSON schema")
+    history.add_user_message("Candidate")
+    settings = CompletionOptions(max_tokens=96, response_format=format_spec)
+    if stream:
+        fragments = []
+        async for parts in model.get_streaming_chat_message_contents(
+            chat_history=history, settings=settings
+        ):
+            fragments.extend(part.content for part in parts)
+        result = "".join(fragments)
+    else:
+        result = (
+            await model.get_chat_message_content(
+                chat_history=history, settings=settings
+            )
+        ).content
+    assert json.loads(result) == {"decision": "APPROVED", "feedback": "verified"}
+    assert bodies[0]["response_format"] == format_spec
+    assert bodies[0]["max_tokens"] == 96
+    await model.aclose()

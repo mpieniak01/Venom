@@ -33,13 +33,10 @@ gdy są wymagane przez użytkownika. Uwzględnij uwagi poprzednich uczestników.
 """
 CRITIC_REVIEW_INSTRUCTIONS = """
 Oceń ostatni wynik Coder względem zadania użytkownika, także gdy jest to tekst,
-a nie kod. Pierwsza niepusta linia odpowiedzi musi być jednym z:
-APPROVED
-REVISE
-REPLAN
-APPROVED oznacza gotowość do kontroli Guardian. REVISE oznacza konkretny błąd do
-poprawy przez Coder. REPLAN oznacza konieczną zmianę planu przez Architect.
-Zapisz samo słowo decyzji w pierwszej linii, uzasadnienie w kolejnych liniach.
+a nie kod. Zwróć wyłącznie obiekt JSON z polami decision i feedback.
+decision: APPROVED oznacza gotowość do kontroli Guardian, REVISE oznacza konkretny
+błąd do poprawy przez Coder, REPLAN oznacza konieczną zmianę planu przez Architect.
+feedback: krótko uzasadnij decyzję, bez odgrywania innych ról.
 Nie wymagaj kodu, plików ani testów programu dla zadania wyłącznie tekstowego.
 """
 COUNCIL_ROLE_INSTRUCTIONS = {
@@ -66,9 +63,10 @@ wymagań. Dla zadania tekstowego oceń treść; testy programu dotyczą zmiany k
 GUARDIAN_COMPLETION_INSTRUCTIONS = """
 Oceń końcowy wynik względem zadania. Jeżeli zadanie wymaga kodu lub wykonania
 operacji, wymagaj rzeczywistych dowodów ich weryfikacji; nie wymyślaj wyników testów.
-Dla odpowiedzi tekstowej sprawdź jej poprawność i kompletność. Zakończ ostatnią
-linią TERMINATE wyłącznie po zatwierdzeniu wyniku. W innym przypadku opisz,
-co trzeba poprawić, bez słowa TERMINATE w ostatniej linii.
+Dla odpowiedzi tekstowej sprawdź jej poprawność i kompletność. Zwróć wyłącznie
+obiekt JSON z polami decision (APPROVED albo REVISE) i feedback (uzasadnienie).
+APPROVED oznacza zatwierdzenie wyniku. REVISE wymaga wskazania konkretnego błędu.
+Nie pisz kolejnych tur uczestników.
 """
 
 

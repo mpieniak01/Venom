@@ -103,3 +103,12 @@ they do not maintain alternate error handling or silently substitute an endpoint
 Council uses consultation role prompts rather than standalone workflow prompts
 (which required plan JSON/files even for a textual request). The same agents,
 services, tool permission enforcement and generation options remain in use.
+
+Review turns request a strict JSON Schema containing `decision` and `feedback`.
+Both transport modes forward it through the native SDK; Venom additionally
+validates the returned object. Invalid/truncated or unsupported responses fail,
+rather than imply approval or trigger an indefinite formatting conversation.
+Only explicit Guardian approval becomes the existing terminal `TERMINATE` line;
+a rejection's feedback cannot inject that terminal line. Reviewers receive the
+original task and current candidate/review rather than replaying old drafts and
+critiques. The complete typed conversation remains available for auditing.

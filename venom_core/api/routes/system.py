@@ -14,7 +14,7 @@ from venom_core.api.schemas.system import (
     SourceType,
 )
 from venom_core.config import SETTINGS
-from venom_core.services.integration_catalog import core_catalog
+from venom_core.services.integration_catalog import DEFINITIONS, core_catalog
 from venom_core.services.integration_overview import integration_overview
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
@@ -311,29 +311,30 @@ def _generate_external_map() -> List[ApiConnection]:
         runtime = None
     if SETTINGS.LLM_SERVICE_TYPE == "local":
         external.append(
-            _build_local_llm_connection(str(getattr(runtime, "provider", "") or ""), "")
+            _build_local_llm_connection(str(getattr(runtime, "provider", "") or ""))
         )
     if SETTINGS.AI_MODE in ["HYBRID", "CLOUD"]:
         external.append(_build_cloud_llm_connection())
+    definitions = {"core:" + definition.id: definition for definition in DEFINITIONS}
     for item in core_catalog(SETTINGS):
+        definition = definitions[item.id]
         external.append(
             ApiConnection(
-                source_component="Venom",
+                source_component=definition.source_component,
                 target_component=item.label,
-                description=None,
+                description=definition.description,
                 is_critical=False,
                 protocol=ConnectionProtocol.HTTP
                 if item.location == "local"
                 else ConnectionProtocol.HTTPS,
-                direction=ConnectionDirection.OUTBOUND,
-                auth_type=AuthType.API_KEY
-                if item.configuration_keys
-                else AuthType.NONE,
+                direction=definition.direction,
+                auth_type=definition.auth_type
+                or (AuthType.API_KEY if item.configuration_keys else AuthType.NONE),
                 source_type=SourceType.LOCAL
                 if item.location == "local"
                 else SourceType.CLOUD,
                 status=ConnectionStatus.UNKNOWN,
-                methods=[],
+                methods=list(definition.methods),
             )
         )
     return external
@@ -341,7 +342,6 @@ def _generate_external_map() -> List[ApiConnection]:
 
 def _build_local_llm_connection(
     runtime_provider: str,
-    runtime_endpoint: str,
 ) -> ApiConnection:
     local_runtime_label = runtime_provider or "auto"
     return ApiConnection(

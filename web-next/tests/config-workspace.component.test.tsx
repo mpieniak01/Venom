@@ -116,3 +116,15 @@ it("passes fresh history data so framework URL listeners observe selection chang
     window.history.pushState = push;
   }
 });
+
+it("does not carry integration search into parameters and restores connection filters from URL", async () => {
+  setup("?tab=integrations&integration=core%3Aopenai&q=OpenAI&source=cloud&status=unknown&protocol=https"); render(<ConfigHome />);
+  await screen.findByRole("heading", { name: "OpenAI" });
+  assert.equal((screen.getByLabelText("Źródło") as HTMLSelectElement).value, "cloud");
+  assert.equal((screen.getByLabelText("Status") as HTMLSelectElement).value, "unknown");
+  assert.equal((screen.getByLabelText("Protokół") as HTMLSelectElement).value, "https");
+  fireEvent.click(screen.getByRole("tab", { name: "Parametry" }));
+  assert.equal(new URLSearchParams(window.location.search).has("q"), false);
+  await screen.findByRole("button", { name: /Tryb AI Konfiguracja/ });
+  assert.equal((screen.getByRole("searchbox", { name: "Szukaj parametrów" }) as HTMLInputElement).value, "");
+});

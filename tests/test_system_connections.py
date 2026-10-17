@@ -266,3 +266,24 @@ def test_real_map_contract_exposes_inventory_and_legacy_fields_without_network(
         == "unknown"
     )
     assert all(item["status"] == "unknown" for item in body["internal_connections"])
+
+
+def test_external_map_keeps_existing_protocol_auth_direction_and_methods():
+    from venom_core.api.routes import system
+
+    connections = {row.target_component: row for row in system._generate_external_map()}
+    openai = connections["OpenAI API"]
+    assert openai.auth_type == "api_key"
+    assert openai.protocol == "https"
+    assert openai.source_component == "Model Router"
+    assert "POST /v1/chat/completions" in openai.methods
+    calendar = connections["Google Calendar API"]
+    assert calendar.auth_type == "oauth"
+    assert calendar.direction == "bidirectional"
+    assert "GET /calendars/primary/events" in calendar.methods
+    stable = connections["Stable Diffusion"]
+    assert stable.source_type == "local"
+    assert "POST /sdapi/v1/txt2img" in stable.methods
+    assert stable.description
+    # Declared methods never constitute a successful network observation.
+    assert all(row.status == "unknown" for row in connections.values())

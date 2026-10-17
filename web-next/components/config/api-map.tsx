@@ -4,21 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { configHref, type useConfigNavigation } from "@/lib/config-navigation";
 import { useIntegrationInventory } from "@/lib/integration-inventory";
-import { RefreshCw } from "lucide-react";
+import { Globe, Network, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 import type { components } from "@/lib/generated/api-types";
+
+import { ConnectionFilterControls, IntegrationCard, IntegrationConnectionDetails, integrationConnections, matchesConnectionFilters, stateColor, type ConnectionFilters } from "./integration-connections";
+export { shouldShowConnection } from "./integration-connections";
 
 type Integration = components["schemas"]["IntegrationEntry"];
 export type ApiConnection = components["schemas"]["ApiConnection"];
-
-// Retained for existing API-map clients and filters.
-export function shouldShowConnection(conn: ApiConnection, filters: { source: string; status: string; protocol: string }) {
-  return (filters.source === "all" || conn.source_type === filters.source)
-    && (filters.status === "all" || conn.status === filters.status)
-    && (filters.protocol === "all" || conn.protocol === filters.protocol);
-}
 
 export function visibleIntegrations(entries: Integration[], scope: string, environmentOnly: boolean) {
   return entries.filter((entry) => (scope === "all" || entry.scope === scope)
@@ -29,18 +24,16 @@ export function nextIntegrationSelection(entries: Integration[], previous: strin
   return entries.some((entry) => entry.id === previous) ? previous : entries.find((entry) => entry.scope === "external" && entry.configuration === "configured")?.id ?? entries[0]?.id ?? null;
 }
 
-function stateColor(state: string) {
-  if (state === "connected") return "text-[color:var(--badge-success-text)]";
-  if (["unavailable", "degraded", "offline"].includes(state)) return "text-[color:var(--badge-danger-text)]";
-  if (["unverified", "unconfigured", "stale"].includes(state)) return "text-[color:var(--badge-warning-text)]";
-  return "text-theme-muted";
+function capabilityLabels(capabilities: string[], t: ReturnType<typeof useTranslation>) {
+  if (!capabilities.length) return t("config.navigation.noCapabilities");
+  return capabilities.map((capability) => t(`config.integrations.capabilities.${capability}`)).join(" · ");
 }
 
 function publicLink(path: string | null | undefined) {
   return path && /^\/[a-zA-Z0-9][a-zA-Z0-9/_-]*$/.test(path) ? path : null;
 }
 
-export function ApiMap({ navigation }: { navigation?: ReturnType<typeof useConfigNavigation> } = {}) {
+export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof useConfigNavigation> }> = {}) {
   const t = useTranslation();
   const { data, loading, failed: inventoryFailed, refresh } = useIntegrationInventory();
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
@@ -50,6 +43,9 @@ export function ApiMap({ navigation }: { navigation?: ReturnType<typeof useConfi
   const [localScope, setLocalScope] = useState("all");
   const [localEnvironmentOnly, setLocalEnvironmentOnly] = useState(true);
   const [localQuery, setLocalQuery] = useState("");
+  const [localFilters, setLocalFilters] = useState<ConnectionFilters>({ source: "all", status: "all", protocol: "all" });
+  const filters: ConnectionFilters = navigation ?? localFilters;
+  const setFilter = (field: keyof ConnectionFilters, value: string) => navigation ? navigation.navigate({ [field]: value }) : setLocalFilters((previous) => ({ ...previous, [field]: value }));
   const selectedId = navigation ? navigation.integration : localSelectedId;
   const scope = navigation?.scope ?? localScope;
   const environmentOnly = navigation ? navigation.visibility === "environment" : localEnvironmentOnly;
@@ -81,17 +77,17 @@ export function ApiMap({ navigation }: { navigation?: ReturnType<typeof useConfi
     }
   };
 
+  const connections = useMemo(() => [...(data?.internal_connections ?? []), ...(data?.external_connections ?? [])], [data]);
   const entries = useMemo(() => data?.integrations ?? [], [data]);
   const filtered = useMemo(() => visibleIntegrations(entries, scope, environmentOnly).filter((entry) =>
-    [entry.label, entry.id, ...(entry.configuration_keys ?? [])].join(" ").toLowerCase().includes(query.toLowerCase().trim())), [entries, scope, environmentOnly, query]);
+    [entry.label, entry.id, ...(entry.configuration_keys ?? [])].join(" ").toLowerCase().includes(query.toLowerCase().trim()) && matchesConnectionFilters(entry, connections, filters)), [entries, scope, environmentOnly, query, connections, filters]);
   const effectiveId = selectedId ?? nextIntegrationSelection(filtered, null);
   const selected = entries.find((entry) => entry.id === effectiveId);
   const selectionMissing = Boolean(data && selectedId && !selected);
   const selectionFiltered = Boolean(selected && !filtered.some((entry) => entry.id === selected.id));
   const declaredPanel = publicLink(selected?.panel_path);
   const panel = declaredPanel === "/config" ? configHref({ tab: "parameters", parameter: selected?.configuration_keys?.[0] ?? null, query: "" }, navigation?.search) : declaredPanel;
-  const methods = selected ? [...(data?.internal_connections ?? []), ...(data?.external_connections ?? [])]
-    .find((connection) => connection.target_component === selected.label)?.methods ?? [] : [];
+  const selectedConnections = selected ? integrationConnections(selected, connections) : [];
 
   return (
     <section className="space-y-4" aria-busy={loading} aria-label={t("config.apiMap.title")}>
@@ -102,47 +98,44 @@ export function ApiMap({ navigation }: { navigation?: ReturnType<typeof useConfi
         </Button>
       </div>
       {failed && <p role="alert" className="rounded-lg border border-amber-500/40 p-3 text-[color:var(--badge-warning-text)]">{t(data ? "config.integrations.refreshFailed" : "config.apiMap.errorLoading")}</p>}
-      <div className="flex flex-wrap gap-4">
-        <label className="flex flex-col gap-1 text-sm">
+      <div className="grid grid-cols-2 items-end gap-3 xl:grid-cols-[minmax(180px,1.3fr)_repeat(5,minmax(100px,1fr))]">
+        <label className="col-span-2 flex min-w-0 flex-col gap-1 text-xs text-theme-muted xl:col-span-1">
           {t("config.navigation.searchIntegrations")}
-          <input value={query} onChange={(event) => setQuery(event.target.value)} type="search" maxLength={120} className="rounded-lg border border-theme bg-theme-overlay p-2" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} type="search" maxLength={120} className="h-9 min-w-0 rounded-lg border border-theme bg-theme-overlay-strong px-2 text-sm text-theme-primary" />
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex min-w-0 flex-col gap-1 text-xs text-theme-muted">
           {t("config.integrations.visibility")}
-          <select className="rounded-lg border border-theme bg-theme-overlay p-2" value={environmentOnly ? "environment" : "all"} onChange={(event) => setEnvironmentOnly(event.target.value === "environment")}>
+          <select className="h-9 min-w-0 rounded-lg border border-theme bg-theme-overlay-strong px-2 text-sm text-theme-primary" value={environmentOnly ? "environment" : "all"} onChange={(event) => setEnvironmentOnly(event.target.value === "environment")}>
             <option value="environment">{t("config.integrations.environment")}</option>
             <option value="all">{t("config.integrations.allKnown")}</option>
           </select>
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex min-w-0 flex-col gap-1 text-xs text-theme-muted">
           {t("config.apiMap.filters.type.label")}
-          <select className="rounded-lg border border-theme bg-theme-overlay p-2" value={scope} onChange={(event) => setScope(event.target.value)}>
+          <select className="h-9 min-w-0 rounded-lg border border-theme bg-theme-overlay-strong px-2 text-sm text-theme-primary" value={scope} onChange={(event) => setScope(event.target.value)}>
             <option value="all">{t("config.apiMap.filters.type.all")}</option>
             <option value="internal">{t("config.integrations.internal")}</option>
             <option value="external">{t("config.integrations.external")}</option>
           </select>
         </label>
+        <ConnectionFilterControls filters={filters} onChange={setFilter} />
       </div>
-      {selectionMissing && <p role="status" className="text-sm text-theme-muted">{t("config.navigation.missingIntegration")}</p>}
-      {selectionFiltered && <p role="status" className="text-sm text-theme-muted">{t("config.navigation.filteredIntegration")}</p>}
+      {selectionMissing && <output className="text-sm text-theme-muted">{t("config.navigation.missingIntegration")}</output>}
+      {selectionFiltered && <output className="text-sm text-theme-muted">{t("config.navigation.filteredIntegration")}</output>}
       {!data && <p className="text-theme-muted">{t(loading ? "config.integrations.loading" : "config.apiMap.noResults")}</p>}
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_minmax(0,1.4fr)]">
-        <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-2">
-          {(["external", "internal"] as const).map((group) => {
+      <div className="grid gap-4 lg:grid-cols-[minmax(300px,1fr)_minmax(0,1.15fr)]">
+        <div className="max-h-[70vh] min-w-0 space-y-5 overflow-y-auto pr-2">
+          {(["internal", "external"] as const).map((group) => {
             const rows = filtered.filter((entry) => entry.scope === group);
             return rows.length > 0 && <div key={group} className="space-y-2">
-              <h3 className="font-semibold">{t(`config.integrations.${group}`)} · {rows.length}</h3>
-              {rows.map((entry) => <button key={entry.id} onClick={() => setSelectedId(entry.id)} aria-pressed={selected?.id === entry.id}
-                className={cn("flex w-full items-start justify-between gap-3 rounded-xl border p-3 text-left", selected?.id === entry.id ? "border-emerald-500/50 bg-emerald-500/10" : "border-theme bg-theme-overlay")}>
-                <span><span className="block font-medium">{entry.label}</span><span className="text-xs text-theme-muted">{t(`config.integrations.kinds.${entry.kind}`)}</span></span>
-                <span className={cn("text-right text-xs", stateColor(entry.state ?? "unverified"))}>{t(`config.integrations.states.${entry.state}`)}</span>
-              </button>)}
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-theme-secondary">{group === "internal" ? <Network aria-hidden="true" className="h-4 w-4 text-emerald-400" /> : <Globe aria-hidden="true" className="h-4 w-4 text-blue-400" />}{t(`config.integrations.${group}`)} · {rows.length}</h3>
+              {rows.map((entry) => <IntegrationCard key={entry.id} entry={entry} connections={connections} selected={selected?.id === entry.id} onClick={() => setSelectedId(entry.id)} />)}
             </div>;
           })}
           {data && filtered.length === 0 && <p>{t("config.apiMap.noResults")}</p>}
         </div>
-        {selected && <div className="min-w-0 self-start space-y-4 rounded-xl border border-theme p-4">
-          <h3 className="text-lg font-semibold">{selected.label}</h3>
+        {selected && <div className="glass-panel min-w-0 self-start space-y-5 rounded-2xl border border-theme p-5 lg:p-6">
+          <h3 className="heading-h2 text-xl font-semibold">{selected.label}</h3>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
             <dt className="text-theme-muted">{t("config.integrations.configuration")}</dt><dd>{t(`config.integrations.configurationStates.${selected.configuration}`)}</dd>
             <dt className="text-theme-muted">{t("config.integrations.activation")}</dt><dd>{t(`config.integrations.activationStates.${selected.activation}`)}</dd>
@@ -168,7 +161,7 @@ export function ApiMap({ navigation }: { navigation?: ReturnType<typeof useConfi
                 <p>{t(`config.integrations.reasons.${resource.reason_code}`)}</p>
                 {(["supported", "reported", "available"] as const).map((kind) => {
                   const capabilities = resource[`${kind}_capabilities`];
-                  return <p key={kind}>{t(`config.navigation.${kind}Capabilities`)}: {capabilities == null ? t("config.integrations.unknown") : capabilities.length ? capabilities.map((capability) => t(`config.integrations.capabilities.${capability}`)).join(" · ") : t("config.navigation.noCapabilities")}</p>;
+                  return <p key={kind}>{t(`config.navigation.${kind}Capabilities`)}: {capabilities == null ? t("config.integrations.unknown") : capabilityLabels(capabilities, t)}</p>;
                 })}
               </div>}
             </li>)}</ul>
@@ -179,7 +172,7 @@ export function ApiMap({ navigation }: { navigation?: ReturnType<typeof useConfi
             {(selected.access ?? []).includes("cli") && <span>{t("config.integrations.cliAvailable")}</span>}
             {selected.documentation_url === "https://github.com/mpieniak01/Venom/blob/main/docs/integrations/vast.md" && <a className="underline underline-offset-4" href={selected.documentation_url} target="_blank" rel="noreferrer">{t("config.integrations.documentation")}</a>}
           </div>
-          {methods.length > 0 && <details><summary className="cursor-pointer text-sm">{t("config.apiMap.methods")}</summary><ul className="mt-2 space-y-1 break-all font-mono text-xs">{methods.map((method) => <li key={method}>{method}</li>)}</ul></details>}
+          <IntegrationConnectionDetails connections={selectedConnections} />
         </div>}
       </div>
       <p className="text-xs text-theme-muted">{t("config.integrations.safetyNote")}</p>

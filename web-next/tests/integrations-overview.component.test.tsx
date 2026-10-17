@@ -84,3 +84,36 @@ it("opens configuration-backed integrations in the existing parameter editor", a
   assert.ok(panel.getAttribute("href")?.includes("tab=parameters"));
   assert.ok(panel.getAttribute("href")?.includes("parameter=OPENAI_API_KEY"));
 });
+
+const mapConnection = { source_component: "Model Router", target_component: "OpenAI API", protocol: "https", direction: "outbound", auth_type: "api_key", source_type: "cloud", status: "unknown", description: "Existing provider description", is_critical: true, methods: ["POST /v1/chat/completions"] };
+
+it("preserves connection descriptions, criticality, authentication, direction and visible methods alongside inventory", async () => {
+  globalThis.fetch = async () => Response.json({ ...payload([entry("core:openai", "OpenAI API")]), external_connections: [mapConnection] });
+  render(<ApiMap />);
+  await screen.findByRole("heading", { name: "OpenAI API" });
+  assert.equal(screen.getAllByText("Existing provider description").length, 2);
+  assert.ok(screen.getByText("POST /v1/chat/completions"));
+  assert.ok(screen.getByText("Klucz API"));
+  assert.ok(screen.getByText("Wychodzące"));
+  assert.ok(screen.getByText("Krytyczne"));
+  assert.ok(screen.getByLabelText("Krytyczne"));
+  assert.ok(screen.getByText("Konfiguracja", { selector: "dt" }));
+});
+
+it("restores source, connectivity and protocol filters without treating configured as healthy", async () => {
+  globalThis.fetch = async () => Response.json({ ...payload([
+    entry("core:openai", "OpenAI API"), entry("core:local-runtime", "Local LLM", { scope: "internal", location: "local", connectivity: "ok", state: "connected" }),
+  ]), internal_connections: [{ ...mapConnection, target_component: "Local LLM", protocol: "http", source_type: "local", status: "ok" }], external_connections: [mapConnection] });
+  render(<ApiMap />);
+  await screen.findByRole("button", { name: /OpenAI API/ });
+  fireEvent.change(screen.getByLabelText("Status"), { target: { value: "ok" } });
+  assert.equal(screen.queryByRole("button", { name: /OpenAI API/ }), null);
+  assert.ok(screen.getByRole("button", { name: /Local LLM/ }));
+  fireEvent.change(screen.getByLabelText("Status"), { target: { value: "all" } });
+  fireEvent.change(screen.getByLabelText("Źródło"), { target: { value: "cloud" } });
+  assert.equal(screen.queryByRole("button", { name: /Local LLM/ }), null);
+  fireEvent.change(screen.getByLabelText("Protokół"), { target: { value: "http" } });
+  assert.ok(screen.getByText("Brak wyników"));
+  fireEvent.change(screen.getByLabelText("Protokół"), { target: { value: "https" } });
+  assert.ok(screen.getByRole("button", { name: /OpenAI API/ }));
+});

@@ -11,6 +11,9 @@ export type ConfigNavigation = {
   visibility: "environment" | "all";
   query: string;
   parameter: string | null;
+  source: string;
+  status: string;
+  protocol: string;
   invalidTab: boolean;
 };
 const CHANGE_EVENT = "venom:config-navigation";
@@ -18,6 +21,10 @@ const TAB_ALIASES: Record<string, ConfigTab> = {
   services: "services", parameters: "parameters", integrations: "integrations",
   apiMap: "integrations", "api-map": "integrations", audit: "audit", permissions: "permissions",
 };
+
+function allowedFilter(value: string | null, allowed: string[]) {
+  return value && allowed.includes(value) ? value : "all";
+}
 
 export function parseConfigNavigation(search: string): ConfigNavigation {
   const params = new URLSearchParams(search);
@@ -30,6 +37,9 @@ export function parseConfigNavigation(search: string): ConfigNavigation {
     integration: params.get("integration")?.slice(0, 200) || null,
     scope: scope === "internal" || scope === "external" ? scope : "all",
     visibility: params.get("visibility") === "all" ? "all" : "environment",
+    source: allowedFilter(params.get("source"), ["local", "cloud", "hybrid"]),
+    status: allowedFilter(params.get("status"), ["ok", "down", "degraded", "unknown"]),
+    protocol: allowedFilter(params.get("protocol"), ["http", "https", "ws", "sse", "tcp"]),
     query: (params.get("q") ?? "").slice(0, 120),
     parameter: parameter && /^[A-Z][A-Z0-9_]{0,119}$/.test(parameter) ? parameter : null,
   };
@@ -45,7 +55,7 @@ export function configHref(patch: Partial<ConfigNavigation> = {}, search = "") {
     else params.set(name, String(value));
   }
   const query = params.toString();
-  return `/config${query ? `?${query}` : ""}`;
+  return query ? "/config?" + query : "/config";
 }
 
 function subscribe(listener: () => void) {

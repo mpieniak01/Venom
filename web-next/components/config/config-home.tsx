@@ -28,16 +28,26 @@ export function ConfigHome() {
   ] as const;
   const selectTab = (tab: ConfigTab) => {
     if (tab === "parameters") setParametersVisited(true);
-    navigation.navigate({ tab });
+    navigation.navigate(tab === activeTab ? { tab } : { tab, query: "" });
+  };
+
+  const tabKeyIndex = (key: string, index: number) => {
+    switch (key) {
+      case "ArrowRight": return (index + 1) % tabs.length;
+      case "ArrowLeft": return (index + tabs.length - 1) % tabs.length;
+      case "Home": return 0;
+      case "End": return tabs.length - 1;
+      default: return null;
+    }
   };
 
   return <div className="space-y-6 pb-48 sm:pb-12">
     <SectionHeading eyebrow={t("config.title")} title={t("config.title")} description={t("config.description")} as="h1" size="lg" rightSlot={<Settings className="page-heading-icon" />} />
-    {navigation.invalidTab && <p role="status" className="text-sm text-theme-muted">{t("config.navigation.unknownTab")}</p>}
+    {navigation.invalidTab && <output className="text-sm text-theme-muted">{t("config.navigation.unknownTab")}</output>}
     <div role="tablist" aria-label={t("config.title")} className={cn(THEME_TAB_BAR_CLASS, "flex-wrap sm:flex-nowrap")}>
       {tabs.map(([tab, Icon, label], index) => <Button key={tab} id={`config-tab-${tab}`} role="tab" aria-selected={activeTab === tab} aria-controls={`config-panel-${tab}`} tabIndex={activeTab === tab ? 0 : -1}
         onKeyDown={(event) => {
-          const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+          const next = tabKeyIndex(event.key, index);
           if (next === null) return;
           event.preventDefault(); selectTab(tabs[next][0]); document.getElementById(`config-tab-${tabs[next][0]}`)?.focus();
         }}

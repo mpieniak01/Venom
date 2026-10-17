@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Literal
 
 from venom_core.api.schemas.integrations import IntegrationEntry
+from venom_core.api.schemas.system import AuthType, ConnectionDirection
+
+MODELS_PANEL = "/models"
 
 
 @dataclass(frozen=True)
@@ -20,6 +23,11 @@ class Definition:
     panel: str | None = None
     cli: bool = False
     location: Literal["local", "lan", "cloud", "unknown"] = "cloud"
+    description: str | None = None
+    methods: tuple[str, ...] = ()
+    source_component: str = "Venom"
+    auth_type: AuthType | None = None
+    direction: ConnectionDirection = ConnectionDirection.OUTBOUND
 
 
 DEFINITIONS = (
@@ -28,6 +36,9 @@ DEFINITIONS = (
         "Stable Diffusion",
         capabilities=("image_generation",),
         location="local",
+        description="Generowanie obrazów (Automatic1111)",
+        methods=("POST /sdapi/v1/txt2img", "GET /sdapi/v1/options"),
+        source_component="Image Generator",
     ),
     Definition(
         "vast",
@@ -42,14 +53,24 @@ DEFINITIONS = (
         "OpenAI API",
         ("OPENAI_API_KEY",),
         capabilities=("model_inference",),
-        panel="/models",
+        panel=MODELS_PANEL,
+        description="Modele językowe i multimodalne OpenAI",
+        methods=(
+            "POST /v1/chat/completions",
+            "POST /v1/embeddings",
+            "POST /v1/images/generations",
+        ),
+        source_component="Model Router",
     ),
     Definition(
         "google",
         "Google AI Studio",
         ("GOOGLE_API_KEY",),
         capabilities=("model_inference",),
-        panel="/models",
+        panel=MODELS_PANEL,
+        description="Modele Gemini",
+        methods=("POST /v1beta/models/{model}:generateContent",),
+        source_component="Model Router",
     ),
     Definition(
         "huggingface",
@@ -58,7 +79,10 @@ DEFINITIONS = (
         "ENABLE_HF_INTEGRATION",
         "catalog",
         ("model_catalog",),
-        "/models",
+        MODELS_PANEL,
+        description="Pobieranie modeli i metadanych",
+        methods=("GET /api/models/{model_id}", "GET /api/datasets"),
+        source_component="Model Manager",
     ),
     Definition(
         "github",
@@ -90,6 +114,11 @@ DEFINITIONS = (
         ("GOOGLE_CALENDAR_CREDENTIALS_PATH", "GOOGLE_CALENDAR_TOKEN_PATH"),
         "ENABLE_GOOGLE_CALENDAR",
         capabilities=("calendar",),
+        description="Integracja z kalendarzem użytkownika",
+        methods=("GET /calendars/primary/events", "POST /calendars/primary/events"),
+        source_component="Calendar Skill",
+        auth_type=AuthType.OAUTH,
+        direction=ConnectionDirection.BIDIRECTIONAL,
     ),
 )
 
@@ -112,13 +141,11 @@ def core_catalog(settings: object) -> list[IntegrationEntry]:
                 Path(str(getattr(settings, key, ""))).is_file() for key in item.keys
             )
         enabled = bool(getattr(settings, item.flag, False)) if item.flag else True
-        state = (
-            "disabled"
-            if not enabled
-            else "configured"
-            if configured and item.keys
-            else "unverified"
-        )
+        state = "unverified"
+        if not enabled:
+            state = "disabled"
+        elif configured and item.keys:
+            state = "configured"
         if enabled and not configured:
             state = "unconfigured"
         access: list[Literal["panel", "cli", "api"]] = ["api"]

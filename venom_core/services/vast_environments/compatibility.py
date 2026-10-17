@@ -104,12 +104,12 @@ def runtime_filters(profile: WorkloadProfile) -> dict:
     )
     if cuda:
         result["cuda_max_good"] = {"gte": cuda}
-    if runtime.min_driver:
-        result["driver_version"] = {"gte": runtime.min_driver}
     if runtime.compute_capabilities:
         result["compute_cap"] = {"in": runtime.compute_capabilities}
     for key, rules in template_constraints(runtime.template_constraints)[
         "constraints"
     ].items():
-        result.setdefault(key, rules)
+        # Vast documents reliable driver equality only; enforce numeric version rules locally.
+        if key != "driver_version":
+            result.setdefault(key, rules)
     return result

@@ -366,7 +366,9 @@ Selection, runtime readiness and workload suitability are separate observations.
 A missing CUDA declaration is a candidate for diagnosis, not a rejection. Known
 contradictory declarations reject selection; a matching declaration does not
 prove actual GPU execution. Version comparisons use numeric components
-(12.10 is newer than 12.9), never floating point.
+(12.10 is newer than 12.9), never floating point. Driver version predicates are
+enforced locally: the official Vast CLI documents reliable equality only, so a
+server-side string range must not silently remove a compatible driver.
 
 A profile has one runtime contract, saved into a checksummed schema-2 plan:
 

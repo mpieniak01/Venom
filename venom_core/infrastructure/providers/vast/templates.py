@@ -1,6 +1,7 @@
 """Allowlisted template metadata; executable payloads and credentials never leave the adapter."""
 
 import json
+import math
 import re
 from typing import Any
 
@@ -72,7 +73,7 @@ CONSTRAINT_OPS = {"eq", "neq", "gte", "gt", "lte", "lt", "in", "notin"}
 
 def _safe_value(value: Any) -> bool:
     if type(value) in {int, float}:
-        return len(str(value)) <= 32
+        return len(str(value)) <= 32 and (type(value) is int or math.isfinite(value))
     return isinstance(value, str) and bool(
         re.fullmatch(r"[A-Za-z0-9_. +:-]{1,80}", value, flags=re.ASCII)
     )

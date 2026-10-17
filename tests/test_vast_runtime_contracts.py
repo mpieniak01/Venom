@@ -106,3 +106,24 @@ def test_legacy_plan_checksum_and_runtime_injection(service):
     old["profile"]["runtime"] = {"min_cuda": "13.0"}
     with pytest.raises(ValidationError, match="legacy_plan_runtime_changed"):
         EnvironmentPlan.model_validate(old)
+
+
+def test_driver_constraints_are_enforced_locally_and_never_string_sorted_by_provider(
+    service,
+):
+    _, plan, offer = service
+    plan.profile.runtime = RuntimeRequirements(
+        min_driver="580.29",
+        template_constraints={"driver_version": {"gte": "580.29"}},
+    )
+    assert "driver_version" not in search_filters(plan.profile)
+    assert (
+        assess({**offer, "driver_version": "580.100"}, plan.profile).status
+        == "eligible"
+    )
+    assert (
+        assess({**offer, "driver_version": "580.9"}, plan.profile).status
+        == "ineligible"
+    )
+    parsed = template_constraints({"gpu_ram": {"gte": float("nan")}})
+    assert parsed == {"constraints": {}, "unresolved": ["gpu_ram"]}

@@ -25,7 +25,7 @@ Przykłady:
 
 Uwaga:
 - format legacy `module_id|module.path:router|...` nie jest już wspierany.
-- brak pliku manifestu lub niepoprawny manifest blokuje start modułów optional.
+- brak lub niepoprawność manifestu izoluje dany wpis; core i inne moduły nadal startują.
 
 ## 3. Kontrakt kompatybilności
 
@@ -38,7 +38,7 @@ Core porównuje manifest modułu z:
   - `state_files=[...]` (lista nazw plików stanu modułu)
 
 Jeśli manifest jest niepoprawny lub niespełniony jest kontrakt:
-- start modułów optional jest blokowany błędem konfiguracji,
+- dany moduł pozostaje nieaktywny z diagnostyką błędu; core i pozostałe moduły działają,
 - wpis musi zostać poprawiony przed uruchomieniem.
 
 ## 4. Struktura modułu (jedyny wariant docelowy)

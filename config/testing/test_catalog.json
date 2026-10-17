@@ -5925,6 +5925,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_system_connections.py",
+      "domain": "system",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Truthful inventory, failure isolation, optional hooks and legacy API compatibility."
+    },
+    {
       "path": "tests/test_system_engineer_agent_mcp.py",
       "domain": "system",
       "test_type": "unit",
@@ -6370,6 +6384,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Vast SSH cleanup, cgroup limits and error/readiness recovery."
+    },
+    {
+      "path": "tests/test_vast_observation.py",
+      "domain": "providers",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Read-only Vast observation through existing client; no rentals, explicit probes and truthful totals."
     },
     {
       "path": "tests/test_vast_operations.py",

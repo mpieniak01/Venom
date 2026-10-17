@@ -1478,7 +1478,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stream Simple Chat */
+        /**
+         * Stream Simple Chat
+         * @description Delegate the whole simple-stream flow to the service layer.
+         */
         post: operations["stream_simple_chat_api_v1_llm_simple_stream_post"];
         delete?: never;
         options?: never;
@@ -2310,6 +2313,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/llm-runtime/queue-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Runtime Queue Snapshot
+         * @description Snapshot kolejki i metryk ruchu dla aktywnego runtime.
+         *
+         *     Cel: 231C — separacja kolejki statusowej od inferencyjnej i obserwowalność
+         *     aktywnego runtime bez aktywnego sondowania nieaktywnych stosów.
+         */
+        get: operations["get_llm_runtime_queue_snapshot_api_v1_system_llm_runtime_queue_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runtime/status": {
         parameters: {
             query?: never;
@@ -2344,6 +2370,36 @@ export interface paths {
          * @description Aplikuje profil konfiguracji (full, light, llm_off).
          */
         post: operations["apply_runtime_profile_api_v1_runtime_profile__profile_name__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runtime/multi-runtime/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Multi Runtime Profile
+         * @description Zwraca aktywny profil wykonawczy multi_runtime.
+         *
+         *     Proxy do GET /v1/daemon/profile na daemonie. Gdy daemon jest niedostępny,
+         *     zwraca profil domyślny z daemon_reachable=False.
+         */
+        get: operations["get_multi_runtime_profile_api_v1_runtime_multi_runtime_profile_get"];
+        put?: never;
+        /**
+         * Update Multi Runtime Profile
+         * @description Aktualizuje profil wykonawczy multi_runtime.
+         *
+         *     Proxy do POST /v1/daemon/profile na daemonie.
+         *     Zwraca jawne apply_mode i listę odrzuconych pól.
+         */
+        post: operations["update_multi_runtime_profile_api_v1_runtime_multi_runtime_profile_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2743,6 +2799,26 @@ export interface paths {
         get: operations["get_system_api_map_api_v1_system_api_map_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/integrations/vast/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Vast Integration
+         * @description Explicit account/instance GETs only; opening the map never triggers this.
+         */
+        post: operations["probe_vast_integration_api_v1_system_integrations_vast_probe_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3286,6 +3362,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/models/{model_name}/runtime-capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Runtime Capabilities Endpoint
+         * @description Pobiera runtime capabilities modelu Ollama na podstawie `/api/show`.
+         */
+        get: operations["get_model_runtime_capabilities_endpoint_api_v1_models__model_name__runtime_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/models/{model_name}/config": {
         parameters: {
             query?: never;
@@ -3304,6 +3400,86 @@ export interface paths {
          * @description Aktualizuje parametry generacji dla modelu (per runtime).
          */
         post: operations["update_model_config_endpoint_api_v1_models__model_name__config_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/introspection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Introspection
+         * @description Return a read-only introspection snapshot for the active model/runtime.
+         */
+        get: operations["get_model_introspection_api_v1_models_introspection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/introspection/analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze Model Introspection
+         * @description Optionally run the active model on a prompt and return the result.
+         */
+        post: operations["analyze_model_introspection_api_v1_models_introspection_analyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/introspection/analyze/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream Model Introspection Analysis Endpoint
+         * @description Stream model introspection analysis as SSE for live UI updates.
+         */
+        post: operations["stream_model_introspection_analysis_endpoint_api_v1_models_introspection_analyze_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/introspection/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Model Introspection
+         * @description Proxy probe request to active multi_runtime endpoint with safe fallback.
+         */
+        post: operations["probe_model_introspection_api_v1_models_introspection_probe_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3885,6 +4061,26 @@ export interface paths {
          * @description Execute workflow operation via workflow-control gateway.
          */
         post: operations["workflow_operation_gateway_api_v1_workflow_control_workflow__request_id___operation__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/control/workflow/{request_id}/step/{step_id}/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Workflow Step Operation Gateway
+         * @description Execute operation scoped to a concrete execution step.
+         */
+        post: operations["workflow_step_operation_gateway_api_v1_workflow_control_workflow__request_id__step__step_id___operation__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4629,6 +4825,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audio/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audio Status Endpoint
+         * @description Zwraca stan kanału audio i gotowość stacka STT/TTS.
+         */
+        get: operations["audio_status_endpoint_api_v1_audio_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audio/tts/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Audio Tts Models */
+        get: operations["list_audio_tts_models_api_v1_audio_tts_models_get"];
+        put?: never;
+        /** Update Audio Tts Model */
+        post: operations["update_audio_tts_model_api_v1_audio_tts_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audio/routes/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Audio Route Profile
+         * @description Zwraca aktywną konfigurację toru voice i dekoderów audio.
+         */
+        get: operations["get_audio_route_profile_api_v1_audio_routes_profile_get"];
+        put?: never;
+        /**
+         * Update Audio Route Profile
+         * @description Aktualizuje konfigurację toru voice i dekoderów audio.
+         */
+        post: operations["update_audio_route_profile_api_v1_audio_routes_profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audio/sessions/latest/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Latest Voice Session
+         * @description Pobiera ostatnie zapisane nagranie voice jako WAV.
+         */
+        get: operations["download_latest_voice_session_api_v1_audio_sessions_latest_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -4742,6 +5020,17 @@ export interface components {
              * @default false
              */
             exact_only: boolean;
+            /**
+             * Switch Source
+             * @description Źródło przełączenia runtime/modelu (np. ui, make_start).
+             * @default ui
+             */
+            switch_source: string | null;
+            /**
+             * Ownership Token
+             * @description Opcjonalny token ownership operatora dla przełączeń runtime.
+             */
+            ownership_token?: string | null;
         };
         /**
          * AdapterChatSignRequest
@@ -4812,6 +5101,8 @@ export interface components {
         };
         /** ApiConnection */
         ApiConnection: {
+            /** Observed At */
+            observed_at?: string | null;
             /**
              * Source Component
              * @description Nazwa komponentu źródłowego
@@ -4852,6 +5143,15 @@ export interface components {
         /** ApiMapResponse */
         ApiMapResponse: {
             /**
+             * Schema Version
+             * @default 2
+             */
+            schema_version: number;
+            /** Integrations */
+            integrations?: components["schemas"]["IntegrationEntry"][];
+            /** Generated At */
+            generated_at?: string | null;
+            /**
              * Internal Connections
              * @description Lista połączeń wewnętrznych
              */
@@ -4888,6 +5188,20 @@ export interface components {
          * @enum {string}
          */
         ApplyMode: "hot_swap" | "restart_required" | "rejected";
+        /** AudioRouteProfileUpdateRequest */
+        AudioRouteProfileUpdateRequest: {
+            /** Voice Route Profile */
+            voice_route_profile?: string | null;
+            /** Audio Decoder Profile */
+            audio_decoder_profile?: string | null;
+            /** Audio Decoder Chain */
+            audio_decoder_chain?: string[] | null;
+        };
+        /** AudioTtsModelUpdateRequest */
+        AudioTtsModelUpdateRequest: {
+            /** Model */
+            model: string;
+        };
         /**
          * AuditEntry
          * @description Audit trail entry for control plane operations.
@@ -6627,6 +6941,113 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /** IntegrationEntry */
+        IntegrationEntry: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "internal" | "external";
+            /**
+             * Location
+             * @default unknown
+             * @enum {string}
+             */
+            location: "local" | "lan" | "cloud" | "unknown";
+            /**
+             * Kind
+             * @default api
+             * @enum {string}
+             */
+            kind: "api" | "module" | "runtime" | "infrastructure" | "catalog" | "notifications";
+            /**
+             * State
+             * @default unverified
+             */
+            state: string;
+            /**
+             * Configuration
+             * @default unknown
+             * @enum {string}
+             */
+            configuration: "configured" | "unconfigured" | "not_required" | "unknown";
+            /**
+             * Activation
+             * @default unknown
+             * @enum {string}
+             */
+            activation: "enabled" | "disabled" | "unavailable" | "unknown";
+            /** @default unknown */
+            connectivity: components["schemas"]["ConnectionStatus"];
+            /**
+             * Source
+             * @default configuration
+             */
+            source: string;
+            /** Observed At */
+            observed_at?: string | null;
+            /**
+             * Reason Code
+             * @default not_probed
+             */
+            reason_code: string;
+            /** Capabilities */
+            capabilities?: string[];
+            /** Configuration Keys */
+            configuration_keys?: string[];
+            /** Access */
+            access?: ("panel" | "cli" | "api")[];
+            /** Panel Path */
+            panel_path?: string | null;
+            /** Documentation Url */
+            documentation_url?: string | null;
+            /**
+             * Resource Support
+             * @default unknown
+             * @enum {string}
+             */
+            resource_support: "supported" | "not_applicable" | "unknown";
+            /**
+             * Can Probe
+             * @default false
+             */
+            can_probe: boolean;
+            /** Resources */
+            resources?: components["schemas"]["IntegrationResource"][];
+            /** Resource Count */
+            resource_count?: number | null;
+            /** Active Resource Count */
+            active_resource_count?: number | null;
+            /**
+             * Resources Complete
+             * @default false
+             */
+            resources_complete: boolean;
+        };
+        /** IntegrationResource */
+        IntegrationResource: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "robot" | "worker" | "instance" | "runtime" | "device";
+            /**
+             * State
+             * @default unverified
+             * @enum {string}
+             */
+            state: "connected" | "offline" | "stale" | "unverified";
+            /** Observed At */
+            observed_at?: string | null;
+        };
         /**
          * IoTReconnectResponse
          * @description Response for Rider-Pi reconnect action.
@@ -6877,6 +7298,17 @@ export interface components {
              * @description Opcjonalny model LLM
              */
             model?: string | null;
+            /**
+             * Switch Source
+             * @description Źródło przełączenia runtime/modelu (np. ui, make_start).
+             * @default ui
+             */
+            switch_source: string | null;
+            /**
+             * Ownership Token
+             * @description Opcjonalny token ownership operatora dla przełączeń runtime.
+             */
+            ownership_token?: string | null;
         };
         /** MemoryEntryMutationResponse */
         MemoryEntryMutationResponse: {
@@ -7103,6 +7535,13 @@ export interface components {
             name: string;
             /** Runtime */
             runtime: string;
+            /**
+             * Switch Source
+             * @default ui
+             */
+            switch_source: string | null;
+            /** Ownership Token */
+            ownership_token?: string | null;
         };
         /**
          * ModelConfigUpdateRequest
@@ -7123,6 +7562,62 @@ export interface components {
         ModelInstallRequest: {
             /** Name */
             name: string;
+        };
+        /**
+         * ModelIntrospectionAnalyzeRequest
+         * @description Request for optional live model analysis from Inspector.
+         */
+        ModelIntrospectionAnalyzeRequest: {
+            /** Prompt */
+            prompt: string;
+            /**
+             * Live Analysis Enabled
+             * @description Enable live model execution; disabled by default to avoid stack load
+             * @default false
+             */
+            live_analysis_enabled: boolean;
+            /**
+             * Max Tokens
+             * @default 128
+             */
+            max_tokens: number | null;
+            /**
+             * Temperature
+             * @default 0.2
+             */
+            temperature: number | null;
+            /**
+             * Top P
+             * @default 0.9
+             */
+            top_p: number | null;
+        };
+        /**
+         * ModelIntrospectionProbeRequest
+         * @description Request for probe-level model internals through active multi_runtime.
+         */
+        ModelIntrospectionProbeRequest: {
+            /** Prompt */
+            prompt: string;
+            /**
+             * Mode
+             * @default hidden
+             * @enum {string}
+             */
+            mode: "hidden" | "attention" | "logits" | "saliency";
+            /** Layer Selection */
+            layer_selection?: number[];
+            /**
+             * Top K
+             * @default 8
+             */
+            top_k: number;
+            /**
+             * Target Output Token Index
+             * @description Dla trybu saliency: indeks rangi tokenu next-token logits (0 = top-1, 1 = top-2, ...), nie pozycja tokenu w wygenerowanej sekwencji.
+             * @default 0
+             */
+            target_output_token_index: number | null;
         };
         /**
          * ModelRegistryInstallRequest
@@ -7148,6 +7643,416 @@ export interface components {
             name: string;
             /** Role */
             role?: string | null;
+            /**
+             * Switch Source
+             * @default ui
+             */
+            switch_source: string | null;
+            /** Ownership Token */
+            ownership_token?: string | null;
+        };
+        /**
+         * MultiRuntimeApplyMatrix
+         * @description Documents the required apply_mode for every profile field.
+         */
+        MultiRuntimeApplyMatrix: {
+            /**
+             * Model Id
+             * @default hard_restart
+             * @enum {string}
+             */
+            model_id: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Assistant Model Id
+             * @default hard_restart
+             * @enum {string}
+             */
+            assistant_model_id: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Cache Implementation
+             * @default soft_reload
+             * @enum {string}
+             */
+            cache_implementation: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Max New Tokens
+             * @default live
+             * @enum {string}
+             */
+            max_new_tokens: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Image Token Budget
+             * @default live
+             * @enum {string}
+             */
+            image_token_budget: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Enable Thinking
+             * @default live
+             * @enum {string}
+             */
+            enable_thinking: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Reasoning Summary Enabled
+             * @default live
+             * @enum {string}
+             */
+            reasoning_summary_enabled: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Emotion Detection Enabled
+             * @default live
+             * @enum {string}
+             */
+            emotion_detection_enabled: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Emotion Response Style Enabled
+             * @default live
+             * @enum {string}
+             */
+            emotion_response_style_enabled: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Execution Mode
+             * @default live
+             * @enum {string}
+             */
+            execution_mode: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Image Strategy
+             * @default live
+             * @enum {string}
+             */
+            image_strategy: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Retrieval Mode
+             * @default live
+             * @enum {string}
+             */
+            retrieval_mode: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Audio Output Mode
+             * @default live
+             * @enum {string}
+             */
+            audio_output_mode: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Assistant Mode
+             * @default live
+             * @enum {string}
+             */
+            assistant_mode: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Economy Mode
+             * @default live
+             * @enum {string}
+             */
+            economy_mode: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Precision
+             * @default soft_reload
+             * @enum {string}
+             */
+            precision: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Quantization Backend
+             * @default soft_reload
+             * @enum {string}
+             */
+            quantization_backend: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Device Target
+             * @default soft_reload
+             * @enum {string}
+             */
+            device_target: "live" | "soft_reload" | "hard_restart" | "unsupported";
+        };
+        /**
+         * MultiRuntimeFieldRejection
+         * @description Describes why a single field was rejected during a profile update.
+         */
+        MultiRuntimeFieldRejection: {
+            /** Field */
+            field: string;
+            /** Value */
+            value: unknown;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "unsupported_field" | "unsupported_combination" | "requires_restart" | "model_not_available" | "assistant_model_not_available" | "quantization_backend_unavailable" | "device_target_unavailable" | "value_out_of_range";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+        };
+        /**
+         * MultiRuntimeProfile
+         * @description Execution profile for the multi_runtime daemon.
+         *
+         *     Fields are grouped into two tiers:
+         *     - Active MVP: applied immediately or on soft-reload.
+         *     - Prepared limited: present in the contract, but apply_mode is 'unsupported'
+         *       until the underlying loader supports them. Backend never lies about these.
+         */
+        MultiRuntimeProfile: {
+            /**
+             * Profile Id
+             * @description Profile identifier
+             * @default default
+             */
+            profile_id: string;
+            /**
+             * Display Name
+             * @description Human-readable profile name
+             * @default Default
+             */
+            display_name: string;
+            /**
+             * Runtime Id
+             * @description Runtime this profile belongs to
+             * @default multi_runtime
+             */
+            runtime_id: string;
+            /**
+             * Compatibility
+             * @description Compatibility profile string
+             * @default multi_runtime_native
+             */
+            compatibility: string;
+            /**
+             * Model Id
+             * @description Primary model HuggingFace ID
+             */
+            model_id: string;
+            /**
+             * Assistant Model Id
+             * @description Drafter/assistant model ID (None = disabled)
+             */
+            assistant_model_id?: string | null;
+            /**
+             * Cache Implementation
+             * @description KV-cache strategy (None = framework default)
+             */
+            cache_implementation?: string | null;
+            /**
+             * Max New Tokens
+             * @description Generation token budget
+             * @default 128
+             */
+            max_new_tokens: number;
+            /**
+             * Image Token Budget
+             * @description Vision token budget for image inputs
+             * @default 280
+             */
+            image_token_budget: number;
+            /**
+             * Enable Thinking
+             * @description Enable chain-of-thought reasoning
+             * @default false
+             */
+            enable_thinking: boolean;
+            /**
+             * Reasoning Summary Enabled
+             * @description Surface compressed reasoning summary in response
+             * @default false
+             */
+            reasoning_summary_enabled: boolean;
+            /**
+             * Emotion Detection Enabled
+             * @description Run emotion inference on voice input
+             * @default false
+             */
+            emotion_detection_enabled: boolean;
+            /**
+             * Emotion Response Style Enabled
+             * @description Adapt response style based on detected emotion
+             * @default false
+             */
+            emotion_response_style_enabled: boolean;
+            /**
+             * Execution Mode
+             * @description High-level execution mode selector
+             * @default balanced
+             * @enum {string}
+             */
+            execution_mode: "balanced" | "vision_priority" | "voice_priority";
+            /**
+             * Image Strategy
+             * @description Image processing strategy
+             * @default vlm_only
+             * @enum {string}
+             */
+            image_strategy: "vlm_only" | "ocr_first" | "hybrid";
+            /**
+             * Retrieval Mode
+             * @description Retrieval stage activation mode
+             * @default off
+             * @enum {string}
+             */
+            retrieval_mode: "off" | "auto" | "always";
+            /**
+             * Audio Output Mode
+             * @description Audio output behavior mode
+             * @default off
+             * @enum {string}
+             */
+            audio_output_mode: "off" | "text_first" | "voice_first";
+            /**
+             * Assistant Mode
+             * @description Assistant usage mode
+             * @default off
+             * @enum {string}
+             */
+            assistant_mode: "off" | "attached" | "conditional";
+            /**
+             * Economy Mode
+             * @description Economy/degradation mode
+             * @default off
+             * @enum {string}
+             */
+            economy_mode: "off" | "auto";
+            /**
+             * Precision
+             * @description Model precision. Supported values include auto, float16, bfloat16, float32, int4, and int8.
+             * @default auto
+             */
+            precision: string;
+            /**
+             * Quantization Backend
+             * @description Quantization backend (e.g. 'bitsandbytes') used for int4/int8 loads.
+             */
+            quantization_backend?: string | null;
+            /**
+             * Device Target
+             * @description Compute device target ('auto', 'cpu', 'cuda'). Applied on soft reload.
+             * @default auto
+             */
+            device_target: string;
+        };
+        /**
+         * MultiRuntimeProfileResponse
+         * @description Full read response for the multi_runtime profile endpoint.
+         */
+        MultiRuntimeProfileResponse: {
+            /**
+             * Runtime Id
+             * @default multi_runtime
+             */
+            runtime_id: string;
+            profile: components["schemas"]["MultiRuntimeProfile"];
+            apply_matrix: components["schemas"]["MultiRuntimeApplyMatrix"];
+            supported_options: components["schemas"]["MultiRuntimeSupportedOptions"];
+            /**
+             * Daemon Reachable
+             * @description True when values were read from a live daemon
+             * @default false
+             */
+            daemon_reachable: boolean;
+        };
+        /**
+         * MultiRuntimeProfileUpdateRequest
+         * @description Partial update request — only fields that should change are included.
+         */
+        MultiRuntimeProfileUpdateRequest: {
+            /** Model Id */
+            model_id?: string | null;
+            /** Assistant Model Id */
+            assistant_model_id?: string | null;
+            /** Cache Implementation */
+            cache_implementation?: string | null;
+            /** Max New Tokens */
+            max_new_tokens?: number | null;
+            /** Image Token Budget */
+            image_token_budget?: number | null;
+            /** Enable Thinking */
+            enable_thinking?: boolean | null;
+            /** Reasoning Summary Enabled */
+            reasoning_summary_enabled?: boolean | null;
+            /** Emotion Detection Enabled */
+            emotion_detection_enabled?: boolean | null;
+            /** Emotion Response Style Enabled */
+            emotion_response_style_enabled?: boolean | null;
+            /** Execution Mode */
+            execution_mode?: ("balanced" | "vision_priority" | "voice_priority") | null;
+            /** Image Strategy */
+            image_strategy?: ("vlm_only" | "ocr_first" | "hybrid") | null;
+            /** Retrieval Mode */
+            retrieval_mode?: ("off" | "auto" | "always") | null;
+            /** Audio Output Mode */
+            audio_output_mode?: ("off" | "text_first" | "voice_first") | null;
+            /** Assistant Mode */
+            assistant_mode?: ("off" | "attached" | "conditional") | null;
+            /** Economy Mode */
+            economy_mode?: ("off" | "auto") | null;
+            /** Precision */
+            precision?: string | null;
+            /** Quantization Backend */
+            quantization_backend?: string | null;
+            /** Device Target */
+            device_target?: string | null;
+        };
+        /**
+         * MultiRuntimeProfileUpdateResponse
+         * @description Result of a profile update attempt.
+         */
+        MultiRuntimeProfileUpdateResponse: {
+            /**
+             * Accepted
+             * @description Fields accepted for application, keyed by field name
+             */
+            accepted?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Rejected
+             * @description Fields that could not be applied and why
+             */
+            rejected?: components["schemas"]["MultiRuntimeFieldRejection"][];
+            /**
+             * Required Apply Mode
+             * @description Most restrictive apply_mode among all accepted fields
+             * @default live
+             * @enum {string}
+             */
+            required_apply_mode: "live" | "soft_reload" | "hard_restart" | "unsupported";
+            /**
+             * Applied
+             * @description True when the update was immediately applied to a live daemon
+             * @default false
+             */
+            applied: boolean;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+        };
+        /**
+         * MultiRuntimeSupportedOptions
+         * @description Enumerated valid values for constrained fields.
+         */
+        MultiRuntimeSupportedOptions: {
+            /** Cache Implementation */
+            cache_implementation?: (string | null)[];
+            /** Precision */
+            precision?: string[];
+            /** Device Target */
+            device_target?: string[];
+            /** Quantization Backend */
+            quantization_backend?: (string | null)[];
+            /** Execution Mode */
+            execution_mode?: string[];
+            /** Image Strategy */
+            image_strategy?: string[];
+            /** Retrieval Mode */
+            retrieval_mode?: string[];
+            /** Audio Output Mode */
+            audio_output_mode?: string[];
+            /** Assistant Mode */
+            assistant_mode?: string[];
+            /** Economy Mode */
+            economy_mode?: string[];
         };
         /**
          * NodeExecuteRequest
@@ -7301,6 +8206,8 @@ export interface components {
              * @default normal
              */
             severity: string;
+            /** Allowed Actions */
+            allowed_actions?: string[];
         };
         /**
          * OperatorGraph
@@ -8039,6 +8946,14 @@ export interface components {
             max_tokens?: number | null;
             /** Temperature */
             temperature?: number | null;
+            /** Top P */
+            top_p?: number | null;
+            /** Logprobs */
+            logprobs?: boolean | null;
+            /** Top Logprobs */
+            top_logprobs?: number | null;
+            /** Stream */
+            stream?: boolean | null;
             /** Response Format */
             response_format?: {
                 [key: string]: unknown;
@@ -8715,6 +9630,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /**
          * ValidationRequest
@@ -8817,6 +9736,12 @@ export interface components {
          * @enum {string}
          */
         WorkflowStatus: "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
+        /**
+         * WorkflowStepOperation
+         * @description Operations that can be performed on a single workflow step.
+         * @enum {string}
+         */
+        WorkflowStepOperation: "retry_from_step" | "replay_step" | "skip_step";
         /**
          * WorkflowTargetState
          * @description Selected workflow request target and operation context.
@@ -13501,6 +14426,26 @@ export interface operations {
             };
         };
     };
+    get_llm_runtime_queue_snapshot_api_v1_system_llm_runtime_queue_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     get_runtime_status_api_v1_runtime_status_get: {
         parameters: {
             query?: never;
@@ -13559,6 +14504,87 @@ export interface operations {
             };
             /** @description Błąd wewnętrzny podczas aplikowania profilu runtime */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_multi_runtime_profile_api_v1_runtime_multi_runtime_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MultiRuntimeProfileResponse"];
+                };
+            };
+            /** @description Błąd wewnętrzny podczas obsługi profilu multi_runtime */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Daemon multi_runtime niedostępny */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_multi_runtime_profile_api_v1_runtime_multi_runtime_profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MultiRuntimeProfileUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MultiRuntimeProfileUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Błąd wewnętrzny podczas obsługi profilu multi_runtime */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Daemon multi_runtime niedostępny */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14389,6 +15415,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiMapResponse"];
+                };
+            };
+        };
+    };
+    probe_vast_integration_api_v1_system_integrations_vast_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationEntry"];
                 };
             };
         };
@@ -15551,6 +16597,51 @@ export interface operations {
             };
         };
     };
+    get_model_runtime_capabilities_endpoint_api_v1_models__model_name__runtime_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Model nie znaleziony */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Błąd serwera */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_model_config_endpoint_api_v1_models__model_name__config_get: {
         parameters: {
             query?: {
@@ -15625,6 +16716,201 @@ export interface operations {
                 };
             };
             /** @description Błąd serwera */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_model_introspection_api_v1_models_introspection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Błąd wewnętrzny podczas budowania snapshotu modelu */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    analyze_model_introspection_api_v1_models_introspection_analyze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelIntrospectionAnalyzeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Nieprawidłowy prompt lub opcje analizy */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Introspection queue is busy. Retry later. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Błąd wewnętrzny podczas analizy modelu */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    stream_model_introspection_analysis_endpoint_api_v1_models_introspection_analyze_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelIntrospectionAnalyzeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Nieprawidłowy prompt lub opcje analizy */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Introspection queue is busy. Retry later. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Błąd wewnętrzny podczas analizy modelu */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    probe_model_introspection_api_v1_models_introspection_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelIntrospectionProbeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Nieprawidłowe parametry probe */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Introspection queue is busy. Retry later. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Błąd wewnętrzny podczas wykonania probe */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -16596,6 +17882,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    workflow_step_operation_gateway_api_v1_workflow_control_workflow__request_id__step__step_id___operation__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                step_id: string;
+                operation: components["schemas"]["WorkflowStepOperation"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid request scope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error (unknown step operation) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Internal server error */
             500: {
@@ -17929,6 +19260,215 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    audio_status_endpoint_api_v1_audio_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_audio_tts_models_api_v1_audio_tts_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Endpoint only available from localhost. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_audio_tts_model_api_v1_audio_tts_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudioTtsModelUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid TTS model identifier or unsupported extension. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Endpoint only available from localhost. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requested TTS model was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_audio_route_profile_api_v1_audio_routes_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    update_audio_route_profile_api_v1_audio_routes_profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudioRouteProfileUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid voice route profile or audio decoder contract. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Endpoint only available from localhost. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Failed to persist audio route configuration. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    download_latest_voice_session_api_v1_audio_sessions_latest_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Nieprawidłowa ścieżka nagrania. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Brak zapisanej sesji lub pliku nagrania. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

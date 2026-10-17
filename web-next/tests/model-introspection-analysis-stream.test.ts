@@ -112,11 +112,11 @@ describe("model introspection stream processor", () => {
   });
 
   it("applies analysis_done only after the stream finishes", async () => {
-    let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const controllerRef: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
     const response = new Response(
       new ReadableStream({
         start(controller) {
-          controllerRef = controller;
+          controllerRef.current = controller;
           controller.enqueue(encode(`event: analysis_start\ndata: ${JSON.stringify(makeRunningResult())}\n\n`));
           controller.enqueue(encode("event: done\ndata: {}\n\n"));
           controller.enqueue(
@@ -156,7 +156,7 @@ describe("model introspection stream processor", () => {
     assert.ok(collected.length >= 1);
     assert.equal(collected.at(-1)?.status, "running");
 
-    controllerRef?.close();
+    controllerRef.current?.close();
     await processing;
 
     assert.equal(collected.at(-1)?.status, "completed");

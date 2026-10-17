@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ def module_candidates(settings: object) -> list[tuple[str, dict[str, Any]]]:
         opaque_id = "unavailable-" + hashlib.sha256(item.encode()).hexdigest()[:12]
         record: dict[str, Any] = {
             "module_id": opaque_id,
+            "entry_id": opaque_id,
             "display_name": opaque_id,
             "state": "unavailable",
             "reason_code": "manifest_unavailable",
@@ -55,7 +57,16 @@ def module_candidates(settings: object) -> list[tuple[str, dict[str, Any]]]:
                 if isinstance(nav, str) and re.fullmatch(
                     r"/[a-zA-Z0-9][a-zA-Z0-9/_-]*", nav
                 ):
-                    record["nav_path"] = nav
+                    flag = (
+                        frontend.get("feature_flag")
+                        if isinstance(frontend, dict)
+                        else None
+                    )
+                    if not flag or (
+                        isinstance(flag, str)
+                        and os.getenv(flag, "").lower() in {"1", "true", "yes", "on"}
+                    ):
+                        record["nav_path"] = nav
                 record["state"] = "unverified"
                 record["reason_code"] = "activation_not_observed"
         result.append((item, record))

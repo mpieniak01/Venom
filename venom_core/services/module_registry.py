@@ -6,6 +6,7 @@ import importlib
 import json
 import re
 import sys
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -289,6 +290,14 @@ def _validate_manifest_item(item: str, errors: list[str]) -> None:
         )
         return
     router_import = str(backend.get("router_import", "")).strip()
+    integration_import = backend.get("integration_provider_import")
+    if integration_import is not None and (
+        not isinstance(integration_import, str)
+        or _FACTORY_IMPORT.fullmatch(integration_import) is None
+    ):
+        errors.append(
+            "invalid optional module integration_provider_import: " + module_id
+        )
     conversation_import = backend.get("conversation_provider_import")
     if conversation_import is not None and (
         not isinstance(conversation_import, str)
@@ -340,6 +349,7 @@ def include_optional_api_routers(
 ) -> list[str]:
     included: list[str] = []
     diagnostics = []
+    seen_modules: set[str] = set()
     for item, record in module_candidates(settings):
         diagnostics.append(record)
         entry_settings = type("ModuleSettings", (), {"API_OPTIONAL_MODULES": item})()
@@ -353,6 +363,11 @@ def include_optional_api_routers(
             record["state"] = "unavailable"
             record["reason_code"] = "invalid_manifest"
             continue
+        if manifest.module_id in seen_modules:
+            record["module_id"] += "-duplicate"
+            record["state"], record["reason_code"] = "unavailable", "duplicate_module"
+            continue
+        seen_modules.add(manifest.module_id)
         if not _is_enabled(manifest, settings):
             record["state"] = "disabled"
             record["reason_code"] = "feature_disabled"
@@ -366,12 +381,16 @@ def include_optional_api_routers(
             record["state"] = "unavailable"
             record["reason_code"] = "router_import_failed"
             continue
+        previous_routes = list(app.router.routes)
         try:
             app.include_router(router)
         except Exception:
+            app.router.routes[:] = previous_routes
             record["state"] = "unavailable"
             record["reason_code"] = "router_registration_failed"
             continue
+        record["integration_provider_import"] = manifest.integration_provider_import
+        record["module_root"] = manifest.module_root
         record["state"] = "loaded"
         record["reason_code"] = "router_loaded"
         included.append(manifest.module_id)
@@ -387,14 +406,35 @@ def _conversation_provider_factories(settings: object, diagnostics=None):
     eligible = (
         None
         if diagnostics is None
-        else {entry["module_id"] for entry in diagnostics if entry["state"] == "loaded"}
+        else {
+            (entry["module_id"], entry.get("module_root"))
+            for entry in diagnostics
+            if entry["state"] == "loaded"
+        }
     )
     for manifest in iter_api_module_manifests(settings):
         if (
             not manifest.conversation_provider_import
-            or (eligible is not None and manifest.module_id not in eligible)
+            or (
+                eligible is not None
+                and (manifest.module_id, manifest.module_root) not in eligible
+            )
             or not _is_enabled(manifest, settings)
             or not _is_compatible(manifest, settings)
+        ):
+            continue
+        diagnostic = next(
+            (
+                entry
+                for entry in diagnostics or []
+                if entry["module_id"] == manifest.module_id
+                and entry["state"] == "loaded"
+            ),
+            None,
+        )
+        if (
+            diagnostic
+            and diagnostic.get("conversation_retry_after", 0) > time.monotonic()
         ):
             continue
         root = (
@@ -410,6 +450,9 @@ def _conversation_provider_factories(settings: object, diagnostics=None):
             if not callable(factory):
                 raise ValueError("invalid_conversation_provider_factory")
             factories[manifest.module_id] = factory
+            if diagnostic:
+                diagnostic.pop("conversation_error", None)
+                diagnostic.pop("conversation_retry_after", None)
         except Exception:
             logger.warning(
                 "Optional conversation provider import failed: %s", manifest.module_id
@@ -418,6 +461,7 @@ def _conversation_provider_factories(settings: object, diagnostics=None):
                 for entry in diagnostics:
                     if entry["module_id"] == manifest.module_id:
                         entry["conversation_error"] = "provider_import_failed"
+                        entry["conversation_retry_after"] = time.monotonic() + 30.0
         finally:
             if inserted and root in sys.path:
                 sys.path.remove(root)

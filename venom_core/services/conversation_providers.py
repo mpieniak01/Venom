@@ -190,7 +190,21 @@ class ConversationProviderRegistry:
         for prepared in self._prepared.values():
             prepared.pop(module_id, None)
         try:
-            await self._close_provider(module_id, provider)
+            if self.isolate_failures:
+                close_task = asyncio.create_task(
+                    self._close_provider(module_id, provider)
+                )
+                self._active[close_task] = module_id
+                close_task.add_done_callback(self._provider_done)
+                try:
+                    await asyncio.wait_for(asyncio.shield(close_task), timeout=2.0)
+                except TimeoutError:
+                    close_task.cancel()
+                    raise ConversationProviderError(
+                        "conversation_provider_close_failed", module_id
+                    ) from None
+            else:
+                await self._close_provider(module_id, provider)
         except ConversationProviderError:
             if not self.isolate_failures:
                 raise

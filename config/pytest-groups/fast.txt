@@ -402,6 +402,7 @@ tests/test_strategy_and_routes_regression.py
 tests/test_streaming_handler.py
 tests/test_swarm_wrapper.py
 tests/test_sync_pytest_groups_from_catalog.py
+tests/test_system_connections.py
 tests/test_system_engineer_agent_mcp.py
 tests/test_system_governance_audit.py
 tests/test_system_governance_runtime_contracts.py
@@ -431,6 +432,7 @@ tests/test_ux_analyst.py
 tests/test_validate_sonar_architecture.py
 tests/test_vast_cli.py
 tests/test_vast_faults.py
+tests/test_vast_observation.py
 tests/test_vast_operations.py
 tests/test_vast_provider.py
 tests/test_vast_qualification.py

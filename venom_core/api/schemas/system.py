@@ -3,6 +3,11 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from venom_core.api.schemas.connection_status import (
+    ConnectionStatus as ConnectionStatus,
+)
+from venom_core.api.schemas.integrations import IntegrationEntry
+
 
 class ConnectionProtocol(str, Enum):
     HTTP = "http"
@@ -31,14 +36,8 @@ class SourceType(str, Enum):
     HYBRID = "hybrid"
 
 
-class ConnectionStatus(str, Enum):
-    OK = "ok"
-    DEGRADED = "degraded"
-    DOWN = "down"
-    UNKNOWN = "unknown"
-
-
 class ApiConnection(BaseModel):
+    observed_at: str | None = None
     source_component: str = Field(..., description="Nazwa komponentu źródłowego")
     target_component: str = Field(
         ..., description="Nazwa komponentu docelowego lub providera"
@@ -58,6 +57,10 @@ class ApiConnection(BaseModel):
 
 
 class ApiMapResponse(BaseModel):
+    schema_version: int = 2
+    integrations: List[IntegrationEntry] = Field(default_factory=list)
+    generated_at: str | None = None
+
     internal_connections: List[ApiConnection] = Field(
         ..., description="Lista połączeń wewnętrznych"
     )

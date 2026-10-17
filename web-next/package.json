@@ -15,7 +15,7 @@
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node scripts/start-server.mjs",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && printf \"\\033[32m\u2714 Lint OK\\033[0m\\n\"",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && printf \"\\033[32m✔ Lint OK\\033[0m\\n\"",
     "test:unit": "node --import tsx --test --test-reporter=dot tests/*.test.ts",
     "test:unit:components": "node --import tsx --import ./tests/component-test-setup.ts --test --test-concurrency=1 --test-reporter=spec tests/*.component.test.tsx",
     "test:unit:voice-runtime-contracts": "node --import tsx --import ./tests/component-test-setup.ts --test --test-concurrency=1 --test-reporter=spec tests/voice-status-sidebar.component.test.tsx tests/gemma4-runtime-control.component.test.tsx tests/runtime-diagnostics-panel.test.tsx",
@@ -55,7 +55,7 @@
     "dompurify": "^3.4.11",
     "eventsource-parser": "^3.0.6",
     "framer-motion": "^12.23.26",
-    "katex": "^0.16.27",
+    "katex": "0.18.2",
     "lucide-react": "^0.561.0",
     "marked": "^16.3.0",
     "mermaid": "^11.16.0",
@@ -91,7 +91,9 @@
     "lodash": "4.18.1",
     "lodash-es": "4.18.1",
     "postcss": "8.5.30",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "eslint-plugin-react-hooks": "7.0.1",
+    "katex": "0.18.2"
   },
   "packageManager": "npm@11.19.1"
 }

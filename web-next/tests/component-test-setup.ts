@@ -28,6 +28,7 @@ Object.assign(globalThis, {
   MouseEvent: window.MouseEvent,
   FocusEvent: window.FocusEvent,
   NodeFilter: window.NodeFilter,
+  HTMLFormElement: window.HTMLFormElement,
   HTMLInputElement: window.HTMLInputElement,
   HTMLButtonElement: window.HTMLButtonElement,
   HTMLTextAreaElement: window.HTMLTextAreaElement,

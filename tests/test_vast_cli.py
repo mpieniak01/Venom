@@ -223,3 +223,44 @@ def test_ssh_profile_stays_in_secret_store(tmp_path, monkeypatch):
         ):
             with pytest.raises(VastError, match="invalid_ssh_profile"):
                 cli.ssh_profile(path)
+
+
+def test_cli_json_reads_use_utf8(tmp_path, monkeypatch, capsys):
+    from pathlib import Path
+
+    from venom_core.services.vast_environments import cli
+
+    root = tmp_path / "ssh"
+    root.mkdir()
+    monkeypatch.setattr(cli, "SSH_PROFILE_ROOT", root)
+    profile = root / "connection.json"
+    identity = "/shared/klucz-łódź"
+    profile.write_text(
+        json.dumps(
+            {"identity_file": identity, "known_hosts": "/shared/hosts"},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {"suite_version": "próba", "profile": {}, "metadata": {}},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    original = Path.read_text
+    reads = []
+
+    def utf8_read(path, *args, **kwargs):
+        assert kwargs.get("encoding") == "utf-8"
+        reads.append(path)
+        return original(path, *args, **kwargs)
+
+    with patch.object(Path, "read_text", utf8_read):
+        assert cli.ssh_profile(profile)["identity_file"] == identity
+        assert main(["compare", str(report), str(report)]) == 0
+    assert profile in reads
+    assert report in reads
+    assert json.loads(capsys.readouterr().out.split("\n", 1)[1])["result"]["comparable"]

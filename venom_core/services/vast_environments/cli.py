@@ -47,7 +47,7 @@ def ssh_profile(path: Path) -> dict:
             raise ValueError
         if not resolved.is_file():
             raise ValueError
-        value = json.loads(resolved.read_text())
+        value = json.loads(resolved.read_text(encoding="utf-8"))
     except (OSError, ValueError, RuntimeError):
         raise VastError("vast.invalid_ssh_profile") from None
     if not isinstance(value, dict) or any(
@@ -171,7 +171,9 @@ def parser() -> argparse.ArgumentParser:
 
 
 def workload_profile(args) -> WorkloadProfile:
-    profile = WorkloadProfile.model_validate_json(args.profile.read_text())
+    profile = WorkloadProfile.model_validate_json(
+        args.profile.read_text(encoding="utf-8")
+    )
     overrides = {
         field: getattr(args, argument)
         for field, argument in (
@@ -193,7 +195,7 @@ def workload_profile(args) -> WorkloadProfile:
 
 def _prepare_action(args, service: Environments):
     values = (
-        json.loads(args.profile.read_text())
+        json.loads(args.profile.read_text(encoding="utf-8"))
         if args.profile
         else {"name": "venom-" + args.recipe}
     )
@@ -270,7 +272,7 @@ def _offline(args):
             return resolve_image(args.image, args.arch, registry)
     reports = []
     for path in args.reports:
-        document = json.loads(path.read_text())
+        document = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(document, dict):
             raise ValueError("vast.invalid_input")
         report = document.get("result", document)
@@ -376,7 +378,9 @@ def main(argv=None, client_factory=None) -> int:
     ) as exc:
         output = _error_output(exc)
     if not args.json:
-        labels = json.loads((Path(__file__).parent / "messages.json").read_text())
+        labels = json.loads(
+            (Path(__file__).parent / "messages.json").read_text(encoding="utf-8")
+        )
         print(labels[args.locale]["ok" if output["ok"] else "error"])
     print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
     return 0 if output["ok"] else 1

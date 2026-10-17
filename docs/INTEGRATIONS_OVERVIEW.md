@@ -58,3 +58,8 @@ with cancellation. They must not change the active device, ARM, session or camer
 They must not include secrets in labels or IDs. Without a hook the host shows the
 module's activation metadata and explicitly unknown device state. Full Rider
 observations belong to the independent module increment, not the core inventory.
+
+Optional router startup and cleanup have a two-second host wait. A failure marks
+that module unavailable and its routes return a controlled 503; unrelated core
+routes remain available. A shared module router retains its original lifecycle
+context for other host applications. Core application errors are not swallowed.

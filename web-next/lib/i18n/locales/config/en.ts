@@ -420,6 +420,8 @@ export const configLocale = {
     "image_generation": "Image generation"
   },
   "reasons": {
+"module_initialization_failed": "Module initialization failed; the rest of the system remains available.",
+"module_cleanup_failed": "Module cleanup failed.",
 "module_not_registered": "The module is known from a local manifest but its API is not registered.",
 "provider_unavailable": "The provider API is unavailable.",
 "resources_unavailable": "The account API responded but the instance list is unavailable.",

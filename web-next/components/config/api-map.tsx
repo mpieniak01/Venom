@@ -122,7 +122,7 @@ export function ApiMap() {
           <RefreshCw className="h-4 w-4" />{t(loading ? "config.integrations.refreshing" : "config.apiMap.refresh")}
         </Button>
       </div>
-      {failed && <p role="alert" className="rounded-lg border border-amber-500/40 p-3 text-amber-300">{t(data ? "config.integrations.refreshFailed" : "config.apiMap.errorLoading")}</p>}
+      {failed && <p role="alert" className="rounded-lg border border-amber-500/40 p-3 text-[color:var(--badge-warning-text)]">{t(data ? "config.integrations.refreshFailed" : "config.apiMap.errorLoading")}</p>}
       <div className="flex flex-wrap gap-4">
         <label className="flex items-center gap-2 text-sm">
           {t("config.integrations.visibility")}
@@ -172,7 +172,7 @@ export function ApiMap() {
           <div>
             <h4 className="font-medium">{t("config.integrations.resources")}</h4>
             {selected.resource_support === "not_applicable" ? <p className="text-sm text-theme-muted">{t("config.integrations.notApplicable")}</p> : <p className="text-sm text-theme-muted">{t("config.integrations.total")}: {selected.resource_count ?? t("config.integrations.unknown")} · {t("config.integrations.active")}: {selected.active_resource_count ?? t("config.integrations.unknown")}</p>}
-            {selected.resource_support !== "not_applicable" && !selected.resources_complete && <p className="text-xs text-amber-300">{t("config.integrations.partialResources")}</p>}
+            {selected.resource_support !== "not_applicable" && !selected.resources_complete && <p className="text-xs text-[color:var(--badge-warning-text)]">{t("config.integrations.partialResources")}</p>}
             <ul className="mt-2 space-y-2">{(selected.resources ?? []).map((resource) => <li key={resource.id} className="rounded-lg border border-theme p-2 text-sm">
               <span className="font-medium">{resource.label}</span> · {t(`config.integrations.resourceKinds.${resource.kind}`)} · <span className={stateColor(resource.state)}>{t(`config.integrations.states.${resource.state}`)}</span>
               <p className="text-xs text-theme-muted">{resource.observed_at ? new Date(resource.observed_at).toLocaleString() : t("config.integrations.unknown")}</p>

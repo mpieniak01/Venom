@@ -110,3 +110,100 @@ def test_activated_module_metadata_is_not_duplicated(tmp_path, monkeypatch):
     path.write_text(json.dumps({"module_id": "sample"}))
     original = {"module_id": "sample", "state": "loaded"}
     assert module_inventory(settings(""), [original]) == [original]
+
+
+def test_router_lifespan_failure_is_local_to_the_optional_module(tmp_path, monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import ModuleType
+
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    @asynccontextmanager
+    async def broken_lifespan(app):
+        raise RuntimeError("device unavailable")
+        yield
+
+    router = APIRouter(lifespan=broken_lifespan)
+
+    @router.get("/optional/health")
+    async def optional_health():
+        return {"ok": True}
+
+    module = ModuleType("test_optional_lifespan")
+    module.router = router
+    monkeypatch.setitem(__import__("sys").modules, module.__name__, module)
+    manifest = tmp_path / "module.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "module_id": "optional",
+                "backend": {
+                    "router_import": "test_optional_lifespan:router",
+                    "data_policy": {
+                        "storage_mode": "core_prefixed",
+                        "mutation_guard": "core_environment_policy",
+                        "state_files": [],
+                    },
+                },
+            }
+        )
+    )
+    app = FastAPI()
+
+    @app.get("/core/health")
+    async def core_health():
+        return {"ok": True}
+
+    include_optional_api_routers(app, settings(str(manifest)))
+    with TestClient(app) as client:
+        assert client.get("/core/health").status_code == 200
+        assert client.get("/optional/health").status_code == 503
+        assert (
+            app.state.optional_module_diagnostics[0]["reason_code"]
+            == "module_initialization_failed"
+        )
+
+
+def test_router_cleanup_failure_is_isolated_and_original_context_is_restored():
+    from contextlib import asynccontextmanager
+
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    from venom_core.services.module_runtime import include_isolated_router
+
+    @asynccontextmanager
+    async def cleanup_failure(app):
+        yield
+        raise RuntimeError("cleanup failed")
+
+    router = APIRouter(lifespan=cleanup_failure)
+    original = router.lifespan_context
+    record = {"state": "loaded"}
+    app = FastAPI()
+    include_isolated_router(app, router, record)
+    assert router.lifespan_context is original
+    with TestClient(app):
+        pass
+    assert record["reason_code"] == "module_cleanup_failed"
+
+
+def test_optional_lifecycle_does_not_swallow_core_request_failures():
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    from venom_core.services.module_runtime import include_isolated_router
+
+    app = FastAPI()
+    record = {"state": "loaded"}
+    include_isolated_router(app, APIRouter(), record)
+
+    @app.get("/core/failure")
+    async def failure():
+        raise RuntimeError("core failure")
+
+    with TestClient(app) as client:
+        with pytest.raises(RuntimeError, match="core failure"):
+            client.get("/core/failure")
+    assert record["state"] == "loaded"

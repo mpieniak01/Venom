@@ -420,6 +420,8 @@ export const configLocale = {
     "image_generation": "Generowanie obrazów"
   },
   "reasons": {
+"module_initialization_failed": "Inicjalizacja modułu nie powiodła się; reszta systemu działa.",
+"module_cleanup_failed": "Zamknięcie modułu nie powiodło się.",
 "module_not_registered": "Moduł jest znany z lokalnego manifestu, ale jego API nie zostało zarejestrowane.",
 "provider_unavailable": "API dostawcy jest niedostępne.",
 "resources_unavailable": "API konta odpowiada, ale lista instancji jest niedostępna.",

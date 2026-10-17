@@ -46,3 +46,8 @@ kamery. Etykiety i identyfikatory nie mogą zawierać sekretów.
 
 Brak dostawcy oznacza dostępne metadane modułu oraz nieznany stan urządzenia.
 Pełne obserwacje Rider należą do odrębnego przyrostu w jego repozytorium.
+
+Host ogranicza oczekiwanie na start i zamykanie routera modułu do dwóch sekund.
+Błąd oznacza niedostępność danego modułu i kontrolowane 503 na jego trasach;
+pozostałe trasy core działają. Osłona nie ukrywa błędów samego core i nie zmienia
+trwale współdzielonego kontekstu cyklu życia routera dla innej aplikacji.

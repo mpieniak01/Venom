@@ -420,6 +420,8 @@ export const configLocale = {
     "image_generation": "Bilderzeugung"
   },
   "reasons": {
+"module_initialization_failed": "Modulinitialisierung fehlgeschlagen; das übrige System bleibt verfügbar.",
+"module_cleanup_failed": "Modulbereinigung fehlgeschlagen.",
 "module_not_registered": "Das Modul ist aus einem lokalen Manifest bekannt, aber seine API ist nicht registriert.",
 "provider_unavailable": "Die Anbieter-API ist nicht verfügbar.",
 "resources_unavailable": "Die Konto-API antwortet, aber die Instanzliste ist nicht verfügbar.",

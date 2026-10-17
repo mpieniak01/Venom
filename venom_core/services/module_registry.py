@@ -21,6 +21,7 @@ from venom_core.core.module_data_policy import (
     parse_module_data_policy_payload,
 )
 from venom_core.services.module_observations import module_candidates
+from venom_core.services.module_runtime import include_isolated_router
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -383,7 +384,7 @@ def include_optional_api_routers(
             continue
         previous_routes = list(app.router.routes)
         try:
-            app.include_router(router)
+            include_isolated_router(app, router, record)
         except Exception:
             app.router.routes[:] = previous_routes
             record["state"] = "unavailable"

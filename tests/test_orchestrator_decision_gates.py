@@ -407,31 +407,7 @@ async def test_prepare_intent_and_context_batches_context_updates(
 
 
 @pytest.mark.asyncio
-async def test_run_council_uses_fallback_llm_config_when_local_builder_fails():
-    captured_llm_config: dict[str, object] = {}
-
-    class _FakeCouncilConfig:
-        def __init__(
-            self,
-            coder_agent,
-            critic_agent,
-            architect_agent,
-            guardian_agent,
-            llm_config,
-        ):
-            del coder_agent, critic_agent, architect_agent, guardian_agent
-            captured_llm_config.update(llm_config)
-
-        @staticmethod
-        def create_council():
-            group_chat = SimpleNamespace(agents=[SimpleNamespace(name="coder")])
-            return ("user_proxy", group_chat, "manager")
-
-    session = SimpleNamespace(
-        run=AsyncMock(return_value="ok"),
-        get_message_count=lambda: 1,
-        get_speakers=lambda: ["coder"],
-    )
+async def test_run_council_rejects_invalid_configuration_without_fake_endpoint():
     orch = SimpleNamespace(
         _council_config=None,
         task_dispatcher=SimpleNamespace(
@@ -440,24 +416,20 @@ async def test_run_council_uses_fallback_llm_config_when_local_builder_fails():
             architect_agent=object(),
             kernel=object(),
         ),
-        _normalize_council_tuple=lambda value: value,
-        _broadcast_event=AsyncMock(),
+        event_broadcaster=SimpleNamespace(broadcast_event=AsyncMock()),
         state_manager=SimpleNamespace(add_log=MagicMock()),
     )
-
     with (
         patch(
             "venom_core.core.council.create_local_llm_config",
             side_effect=RuntimeError("missing-local-endpoint"),
         ),
         patch(
-            "venom_core.agents.guardian.GuardianAgent",
-            return_value=SimpleNamespace(),
+            "venom_core.agents.guardian.GuardianAgent", return_value=SimpleNamespace()
         ),
-        patch("venom_core.core.council.CouncilConfig", _FakeCouncilConfig),
-        patch("venom_core.core.council.CouncilSession", return_value=session),
+        patch("venom_core.core.council.CouncilSession") as session,
     ):
-        result = await flows.run_council(orch, task_id=uuid4(), context="ctx")
-
-    assert result == "ok"
-    assert captured_llm_config["config_list"][0]["model"] == "council-fallback"
+        with pytest.raises(RuntimeError, match="missing-local-endpoint"):
+            await flows.run_council(orch, task_id=uuid4(), context="ctx")
+    session.assert_not_called()
+    assert orch._council_config is None

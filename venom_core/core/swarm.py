@@ -59,6 +59,8 @@ class VenomAgent(Executor):
         )
         if request.additional_instruction:
             transcript += "\n\n" + request.additional_instruction
+        if self.deliberation:
+            transcript += f"\n\nTeraz wyłącznie tura {self.name}. Wykonaj swoją rolę względem zadania [User]."
         # Errors and cancellation propagate to CouncilSession. No fake successful
         # participant output is generated when an underlying model/tool fails.
         if self.deliberation:

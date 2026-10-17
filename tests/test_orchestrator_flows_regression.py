@@ -79,11 +79,11 @@ async def test_run_council_success_with_existing_config():
     config = SimpleNamespace(
         create_council=lambda: ("user_proxy", group_chat, "manager")
     )
-    state_manager = SimpleNamespace(add_log=MagicMock())
+    state_manager = SimpleNamespace(add_log=MagicMock(), get_task=lambda _id: None)
     orch = SimpleNamespace(
         _council_config=config,
-        _normalize_council_tuple=lambda t: t,
-        _broadcast_event=AsyncMock(),
+        task_dispatcher=object(),
+        event_broadcaster=SimpleNamespace(broadcast_event=AsyncMock()),
         state_manager=state_manager,
     )
 
@@ -95,20 +95,20 @@ async def test_run_council_success_with_existing_config():
 
 
 @pytest.mark.asyncio
-async def test_run_council_error_path_returns_fallback_message():
+async def test_run_council_error_path_propagates_to_task_owner():
     config = SimpleNamespace(create_council=lambda: ("u", None, None))
     orch = SimpleNamespace(
         _council_config=config,
-        _normalize_council_tuple=lambda _t: (_t[0], _t[1], _t[2]),
-        _broadcast_event=AsyncMock(),
+        task_dispatcher=object(),
+        event_broadcaster=SimpleNamespace(broadcast_event=AsyncMock()),
         state_manager=SimpleNamespace(add_log=MagicMock()),
     )
     with patch(
         "venom_core.core.council.CouncilSession",
         side_effect=RuntimeError("session-failed"),
     ):
-        result = await flows.run_council(orch, uuid4(), "context")
-    assert "Council mode nie powiódł się" in result
+        with pytest.raises(RuntimeError, match="session-failed"):
+            await flows.run_council(orch, uuid4(), "context")
 
 
 @pytest.mark.asyncio

@@ -151,6 +151,10 @@ class CouncilFlow:
                 coder = self.task_dispatcher.coder_agent
                 critic = self.task_dispatcher.critic_agent
                 architect = self.task_dispatcher.architect_agent
+                if coder is None or critic is None or architect is None:
+                    raise RuntimeError(
+                        "Brak wymaganych agentów Council (coder/critic/architect)"
+                    )
 
                 # Guardian musimy utworzyć (nie ma go w standardowym dispatcher)
                 from venom_core.agents.guardian import GuardianAgent

@@ -4696,10 +4696,11 @@
       "intent": "integration",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Active Council API facade must propagate generation options and failures through the shared flow."
     },
     {
       "path": "tests/test_orchestrator_decision_gates.py",

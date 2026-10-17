@@ -96,3 +96,10 @@ Critic before Guardian. Only an exact first-line `APPROVED` from Critic advances
 PolicyEngine checks the latest typed Coder message rather than a user-supplied
 `CODE:` delimiter. Critical findings bypass the model, lesser findings stay in
 its report. A provider failure never becomes implicit approval in Council.
+
+Orchestrator and FlowCoordinator delegate Council execution to the existing
+CouncilFlow. They retain configuration reuse and their broadcast entry points;
+they do not maintain alternate error handling or silently substitute an endpoint.
+Council uses consultation role prompts rather than standalone workflow prompts
+(which required plan JSON/files even for a textual request). The same agents,
+services, tool permission enforcement and generation options remain in use.

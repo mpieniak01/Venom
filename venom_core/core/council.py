@@ -34,12 +34,35 @@ gdy są wymagane przez użytkownika. Uwzględnij uwagi poprzednich uczestników.
 CRITIC_REVIEW_INSTRUCTIONS = """
 Oceń ostatni wynik Coder względem zadania użytkownika, także gdy jest to tekst,
 a nie kod. Pierwsza niepusta linia odpowiedzi musi być jednym z:
-APPROVED — wynik gotowy do końcowej kontroli Guardian,
-REVISE — Coder musi poprawić wynik (dalej opisz konkretne poprawki),
-REPLAN — konieczna zmiana planu przez Architect (dalej podaj przyczynę).
+APPROVED
+REVISE
+REPLAN
+APPROVED oznacza gotowość do kontroli Guardian. REVISE oznacza konkretny błąd do
+poprawy przez Coder. REPLAN oznacza konieczną zmianę planu przez Architect.
 Zapisz samo słowo decyzji w pierwszej linii, uzasadnienie w kolejnych liniach.
 Nie wymagaj kodu, plików ani testów programu dla zadania wyłącznie tekstowego.
 """
+COUNCIL_ROLE_INSTRUCTIONS = {
+    "Architect": """Jesteś Architect w Council. Zaproponuj krótki plan realizacji
+oryginalnego zadania w 2–3 krokach. Nie wykonuj planu i nie generuj JSON planu
+samodzielnego workflow. Nie dodawaj plików ani operacji do zadania tekstowego.
+""",
+    "Coder": """Jesteś Coder w Council. Przygotuj lub popraw właściwy wynik zadania,
+uwzględniając ostatnią recenzję. Dla pytania tekstowego odpowiedz tekstem w formie
+wymaganej przez użytkownika. Kod lub operacje są potrzebne tylko wtedy, gdy wymaga
+ich zadanie. Dostępne narzędzia nadal podlegają uprawnieniom. Nie wymyślaj dowodów
+wykonania. Nie pisz recenzji ani kolejnych tur innych uczestników.
+""",
+    "Critic": """Jesteś Critic w Council. Recenzuj ostatni wynik Coder względem
+oryginalnego zadania. Jeżeli spełnia wymagania i nie zawiera błędów, zatwierdź go.
+Opcjonalny inny styl nie jest błędem wymagającym kolejnej poprawki. Nie kontynuuj
+dialogu innych ról i nie odgrywaj Codera.
+""",
+    "Guardian": """Jesteś Guardian w Council. Wykonaj końcową kontrolę ostatniego
+wyniku Coder i recenzji Critic względem oryginalnego zadania. Nie wprowadzaj nowych
+wymagań. Dla zadania tekstowego oceń treść; testy programu dotyczą zmiany kodu.
+""",
+}
 GUARDIAN_COMPLETION_INSTRUCTIONS = """
 Oceń końcowy wynik względem zadania. Jeżeli zadanie wymaga kodu lub wykonania
 operacji, wymagaj rzeczywistych dowodów ich weryfikacji; nie wymyślaj wyników testów.
@@ -218,7 +241,7 @@ class CouncilConfig:
         architect_wrapper = create_venom_agent_wrapper(
             agent=self.architect_agent,
             name="Architect",
-            system_message=self.architect_agent.PLANNING_PROMPT
+            system_message=COUNCIL_ROLE_INSTRUCTIONS["Architect"]
             + COUNCIL_TURN_INSTRUCTIONS,
             llm_config=self.llm_config,
             deliberation=True,
@@ -227,7 +250,8 @@ class CouncilConfig:
         coder_wrapper = create_venom_agent_wrapper(
             agent=self.coder_agent,
             name="Coder",
-            system_message=self.coder_agent.SYSTEM_PROMPT + COUNCIL_TURN_INSTRUCTIONS,
+            system_message=COUNCIL_ROLE_INSTRUCTIONS["Coder"]
+            + COUNCIL_TURN_INSTRUCTIONS,
             llm_config=self.llm_config,
             deliberation=True,
         )
@@ -236,7 +260,7 @@ class CouncilConfig:
             agent=self.critic_agent,
             name="Critic",
             system_message=(
-                self.critic_agent.SYSTEM_PROMPT
+                COUNCIL_ROLE_INSTRUCTIONS["Critic"]
                 + COUNCIL_TURN_INSTRUCTIONS
                 + CRITIC_REVIEW_INSTRUCTIONS
             ),
@@ -248,7 +272,7 @@ class CouncilConfig:
             agent=self.guardian_agent,
             name="Guardian",
             system_message=(
-                self.guardian_agent.SYSTEM_PROMPT
+                COUNCIL_ROLE_INSTRUCTIONS["Guardian"]
                 + COUNCIL_TURN_INSTRUCTIONS
                 + GUARDIAN_COMPLETION_INSTRUCTIONS
             ),

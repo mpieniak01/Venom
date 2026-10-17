@@ -99,3 +99,20 @@ it("uses inventory identities in cockpit instead of guessing integrations from s
   assert.equal(screen.queryByText("mysterious daemon"), null);
   assert.equal(writes.length, 0);
 });
+
+
+it("passes fresh history data so framework URL listeners observe selection changes", async () => {
+  setup("?tab=integrations&visibility=all");
+  const push = window.history.pushState.bind(window.history);
+  const received: unknown[] = [];
+  window.history.replaceState({ __NA: true, tree: "existing framework state" }, "", window.location.href);
+  window.history.pushState = (data, title, url) => { received.push(data); push(data, title, url); };
+  try {
+    render(<ConfigHome />);
+    fireEvent.click(await screen.findByRole("button", { name: /OpenAI/ }));
+    assert.deepEqual(received, [null]);
+    assert.equal(new URLSearchParams(window.location.search).get("integration"), "core:openai");
+  } finally {
+    window.history.pushState = push;
+  }
+});

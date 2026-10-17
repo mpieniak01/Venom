@@ -78,7 +78,7 @@ export function ParameterInputRow(input: Readonly<{
             { value: "false", label: t("config.permissions.values.disabled") },
           ]}
           onChange={(newValue) => onChange(newValue)}
-          buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white hover:bg-white/5 hover:border-white/20 transition-colors"
+          buttonClassName="w-full justify-between rounded-lg border border-theme bg-theme-overlay px-3 py-2 text-sm text-theme-primary transition-colors"
           menuClassName="w-full"
         />
       ) : (

@@ -67,7 +67,7 @@ context for other host applications. Core application errors are not swallowed.
 ## Configuration navigation
 
 /config?tab=integrations selects the inventory. The previous tab=apiMap and
-section= parameters remain accepted. integration, scope, visibility and q retain
+section=parameters remain accepted. integration, scope, visibility and q retain
 the selected integration, filters and search in the URL. Unknown tabs fall back
 to Services; missing integrations are reported instead of showing a healthy
 replacement. Browser Back restores the previous selection.

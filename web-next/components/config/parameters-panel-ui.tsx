@@ -11,7 +11,7 @@ export function ParametersMessage(input: Readonly<{
   if (!message) return null;
   return (
     <div
-      className={`rounded-xl border p-4 ${message.type === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-red-500/30 bg-red-500/10 text-red-300"}`}
+      className={`rounded-xl border p-4 ${message.type === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-[color:var(--badge-success-text)]" : "border-red-500/30 bg-red-500/10 text-[color:var(--badge-danger-text)]"}`}
     >
       {message.text}
     </div>
@@ -57,9 +57,9 @@ export function RuntimeInfoCard(input: Readonly<{
         <Info className="mt-0.5 h-5 w-5 text-cyan-400" />
         <div>
           <h3 className="heading-h3">{t("config.parameters.runtimeInfo.title")}</h3>
-          <p className="mt-2 text-sm text-zinc-300">{t("config.parameters.runtimeInfo.ollama")}</p>
+          <p className="mt-2 text-sm text-theme-secondary">{t("config.parameters.runtimeInfo.ollama")}</p>
           {vllmAvailableInProfile ? (
-            <p className="mt-2 text-sm text-zinc-300">
+            <p className="mt-2 text-sm text-theme-secondary">
               {t("config.parameters.runtimeInfo.vllm")}
             </p>
           ) : null}
@@ -86,7 +86,7 @@ export function ParametersActionBar(input: Readonly<{
   const { t, hasChanges, changedCount, saving, onReset, onSave } = input;
   return (
     <div className="glass-panel sticky bottom-6 rounded-2xl box-muted p-6 backdrop-blur-xl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           {hasChanges ? (
             <p className="text-sm text-yellow-300">

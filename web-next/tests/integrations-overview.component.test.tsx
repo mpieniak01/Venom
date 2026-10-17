@@ -75,3 +75,12 @@ it("checks Vast only after an explicit click and then refreshes inventory", asyn
   fireEvent.click(button);
   await waitFor(() => assert.deepEqual(methods, ["GET", "POST", "GET"]));
 });
+
+
+it("opens configuration-backed integrations in the existing parameter editor", async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify(payload([entry("core:openai", "OpenAI API", { panel_path: "/config", configuration_keys: ["OPENAI_API_KEY"] })])));
+  render(<ApiMap />);
+  const panel = await screen.findByRole("link", { name: "Otwórz panel" });
+  assert.ok(panel.getAttribute("href")?.includes("tab=parameters"));
+  assert.ok(panel.getAttribute("href")?.includes("parameter=OPENAI_API_KEY"));
+});

@@ -66,8 +66,9 @@ export function useConfigNavigation() {
   const navigate = useCallback((patch: Partial<ConfigNavigation>, replace = false) => {
     const href = configHref(patch, window.location.search);
     if (href === window.location.pathname + window.location.search) return;
-    if (replace) window.history.replaceState(window.history.state, "", href);
-    else window.history.pushState(window.history.state, "", href);
+    // Next.js copies its own history markers; replaying them bypasses URL updates.
+    if (replace) window.history.replaceState(null, "", href);
+    else window.history.pushState(null, "", href);
     window.dispatchEvent(new Event(CHANGE_EVENT));
   }, []);
   return { ...parseConfigNavigation(search), search, navigate };

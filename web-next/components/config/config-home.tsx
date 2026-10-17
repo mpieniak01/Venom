@@ -31,7 +31,7 @@ export function ConfigHome() {
     navigation.navigate({ tab });
   };
 
-  return <div className="space-y-6">
+  return <div className="space-y-6 pb-48 sm:pb-12">
     <SectionHeading eyebrow={t("config.title")} title={t("config.title")} description={t("config.description")} as="h1" size="lg" rightSlot={<Settings className="page-heading-icon" />} />
     {navigation.invalidTab && <p role="status" className="text-sm text-theme-muted">{t("config.navigation.unknownTab")}</p>}
     <div role="tablist" aria-label={t("config.title")} className={cn(THEME_TAB_BAR_CLASS, "flex-wrap sm:flex-nowrap")}>

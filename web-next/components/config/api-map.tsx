@@ -31,7 +31,7 @@ export function nextIntegrationSelection(entries: Integration[], previous: strin
 
 function stateColor(state: string) {
   if (state === "connected") return "text-[color:var(--badge-success-text)]";
-  if (["unavailable", "degraded"].includes(state)) return "text-[color:var(--badge-danger-text)]";
+  if (["unavailable", "degraded", "offline"].includes(state)) return "text-[color:var(--badge-danger-text)]";
   if (["unverified", "unconfigured", "stale"].includes(state)) return "text-[color:var(--badge-warning-text)]";
   return "text-theme-muted";
 }
@@ -88,7 +88,8 @@ export function ApiMap({ navigation }: { navigation?: ReturnType<typeof useConfi
   const selected = entries.find((entry) => entry.id === effectiveId);
   const selectionMissing = Boolean(data && selectedId && !selected);
   const selectionFiltered = Boolean(selected && !filtered.some((entry) => entry.id === selected.id));
-  const panel = publicLink(selected?.panel_path);
+  const declaredPanel = publicLink(selected?.panel_path);
+  const panel = declaredPanel === "/config" ? configHref({ tab: "parameters", parameter: selected?.configuration_keys?.[0] ?? null, query: "" }, navigation?.search) : declaredPanel;
   const methods = selected ? [...(data?.internal_connections ?? []), ...(data?.external_connections ?? [])]
     .find((connection) => connection.target_component === selected.label)?.methods ?? [] : [];
 

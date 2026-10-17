@@ -3,10 +3,11 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 
-export type ConfigTab = "services" | "parameters" | "integrations" | "audit" | "permissions";
+export type ConfigTab = "services" | "parameters" | "integrations" | "topology" | "audit" | "permissions";
 export type ConfigNavigation = {
   tab: ConfigTab;
   integration: string | null;
+  resource: string | null;
   scope: "all" | "internal" | "external";
   visibility: "environment" | "all";
   query: string;
@@ -18,7 +19,7 @@ export type ConfigNavigation = {
 };
 const CHANGE_EVENT = "venom:config-navigation";
 const TAB_ALIASES: Record<string, ConfigTab> = {
-  services: "services", parameters: "parameters", integrations: "integrations",
+  topology: "topology", services: "services", parameters: "parameters", integrations: "integrations",
   apiMap: "integrations", "api-map": "integrations", audit: "audit", permissions: "permissions",
 };
 
@@ -31,10 +32,12 @@ export function parseConfigNavigation(search: string): ConfigNavigation {
   const requested = params.get("tab") ?? params.get("section") ?? "services";
   const scope = params.get("scope");
   const parameter = params.get("parameter");
+  const resource = params.get("resource");
   return {
     tab: Object.hasOwn(TAB_ALIASES, requested) ? TAB_ALIASES[requested] : "services",
     invalidTab: !Object.hasOwn(TAB_ALIASES, requested),
     integration: params.get("integration")?.slice(0, 200) || null,
+    resource: resource && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(resource) ? resource : null,
     scope: scope === "internal" || scope === "external" ? scope : "all",
     visibility: params.get("visibility") === "all" ? "all" : "environment",
     source: allowedFilter(params.get("source"), ["local", "cloud", "hybrid"]),

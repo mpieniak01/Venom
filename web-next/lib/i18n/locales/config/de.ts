@@ -1,4 +1,23 @@
 export const configLocale = {
+    topology: {
+      controls: "Ansichtssteuerung",
+      zoomIn: "Vergrößern",
+      zoomOut: "Verkleinern",
+      fitView: "Ansicht einpassen",
+      keyboard: "Drücken Sie Enter oder die Leertaste, um einen Knoten auszuwählen.",
+      handle: "Verbindungspunkt",
+
+      ageMinutes: "Min. vor dem Snapshot",
+      title: "Topologie",
+      legend: "Kanten zeigen die Zuordnung von Integrationen und Ressourcen, keinen aktuellen Netzwerkverkehr. Venom ist ein Anwendungsanker, kein Gesamtzustandsindikator.",
+      core: "Interne Core-APIs",
+      notObserved: "Nicht geprüft",
+      missing: "Die ausgewählte Integration oder Ressource ist nicht mehr verfügbar.",
+      unavailable: "Die Topologie ist nicht verfügbar. Öffnen Sie die Integrationsliste.",
+      tree: "Zugängliche Liste der Integrationen und Ressourcen",
+      more: "Weitere Ressourcen anzeigen",
+    },
+
     title: "Konfiguration",
     description: "Venom-Systemdienste und Parameter verwalten",
     tabs: {

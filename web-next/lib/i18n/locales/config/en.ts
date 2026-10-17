@@ -1,4 +1,23 @@
 export const configLocale = {
+    topology: {
+      controls: "View controls",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      fitView: "Fit view",
+      keyboard: "Press Enter or Space to select a node.",
+      handle: "Connection handle",
+
+      ageMinutes: "min before snapshot",
+      title: "Topology",
+      legend: "Edges represent integration and resource ownership, not live network traffic. Venom is an application anchor, not an aggregate health indicator.",
+      core: "Internal core APIs",
+      notObserved: "Not observed",
+      missing: "The selected integration or resource is no longer available.",
+      unavailable: "Topology is unavailable. Open the integration list.",
+      tree: "Accessible integration and resource list",
+      more: "Show more resources",
+    },
+
     title: "Configuration",
     description: "Manage Venom system services and parameters",
     tabs: {

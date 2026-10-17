@@ -201,7 +201,9 @@ def _resolve_local_runtime(
         )
     if active_server == "ollama":
         candidate = _apply_http_policy_if_present(endpoint)
-        if infer_local_provider(candidate) != "ollama":
+        # Explicit selection disambiguates custom ports. Only a known other
+        # provider (or an absent endpoint) uses the legacy default fallback.
+        if not candidate or infer_local_provider(candidate) not in {"ollama", "local"}:
             candidate = apply_http_policy_to_url("http://localhost:11434/v1")
         return "ollama", candidate
     if active_server == "onnx":

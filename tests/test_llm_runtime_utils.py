@@ -646,3 +646,58 @@ def test_resolve_multi_runtime_target_model_edges(monkeypatch):
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["http://127.0.0.1:11666/v1", "http://custom.local:12666/v1"]
+)
+def test_explicit_ollama_preserves_a_valid_custom_endpoint(endpoint):
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(endpoint=endpoint, active_server="ollama")
+    )
+    assert runtime.provider == "ollama"
+    assert runtime.endpoint == endpoint
+    assert runtime.runtime_id == "ollama@" + endpoint
+
+
+def test_explicit_ollama_without_an_endpoint_retains_default():
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(endpoint=None, active_server="ollama")
+    )
+    assert runtime.endpoint == "http://localhost:11434/v1"
+
+
+def test_simple_url_reaches_the_configured_private_ollama_listener():
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.request import urlopen
+
+    paths = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            paths.append(self.path)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"model":"private-listener"}')
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/v1"
+        runtime = llm_runtime.get_active_llm_runtime(
+            DummySettings(endpoint=endpoint, active_server="ollama")
+        )
+        url = llm_runtime._build_chat_completions_url(runtime)
+        with urlopen(url, timeout=2) as response:
+            assert json.load(response) == {"model": "private-listener"}
+        assert paths == ["/v1/chat/completions"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

@@ -27,15 +27,37 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def component_environment(python: Path, state: Path) -> dict[str, str]:
-    environment = os.environ.copy()
-    for name in (
-        "PYTHONPATH",
-        "PYTHONHOME",
-        "VIRTUAL_ENV",
-        "LD_LIBRARY_PATH",
-        "LD_PRELOAD",
-    ):
-        environment.pop(name, None)
+    # An engine receives OS/locale/device selection, not the application's
+    # credentials, Python hooks or arbitrary VLLM/Torch feature overrides.
+    inherited = (
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TZ",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "CUDA_VISIBLE_DEVICES",
+        "CUDA_DEVICE_ORDER",
+        "NVIDIA_VISIBLE_DEVICES",
+        "NVIDIA_DRIVER_CAPABILITIES",
+    )
+    environment = {name: os.environ[name] for name in inherited if name in os.environ}
+    environment["PATH"] = os.pathsep.join(
+        map(
+            str,
+            [
+                python.parent,
+                Path("/usr/local/sbin"),
+                Path("/usr/local/bin"),
+                Path("/usr/sbin"),
+                Path("/usr/bin"),
+                Path("/sbin"),
+                Path("/bin"),
+            ],
+        )
+    )
     libraries = sorted(
         python.parent.parent.glob("lib/python*/site-packages/nvidia/*/lib")
     )

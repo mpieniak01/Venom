@@ -104,6 +104,34 @@ def test_environment_does_not_inherit_application_interpreter_or_cuda(
     assert "/operator" not in environment["LD_LIBRARY_PATH"]
 
 
+def test_environment_allowlist_keeps_device_lease_but_not_credentials_or_flags(
+    tmp_path, monkeypatch
+):
+    python = tmp_path / "component/bin/python"
+    for name in (
+        "OPENAI_API_KEY",
+        "HF_TOKEN",
+        "VLLM_ALLOW_LONG_MAX_MODEL_LEN",
+        "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
+        "PYTHONSTARTUP",
+        "LD_PRELOAD",
+    ):
+        monkeypatch.setenv(name, "must-not-reach-engine")
+    monkeypatch.setenv("PATH", "/operator/.venv/bin:/operator/tools")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    monkeypatch.setenv("LANG", "pl_PL.UTF-8")
+    environment = runtime.component_environment(python, tmp_path)
+    assert "must-not-reach-engine" not in environment.values()
+    assert environment["CUDA_VISIBLE_DEVICES"] == "-1"
+    assert environment["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
+    assert environment["LANG"] == "pl_PL.UTF-8"
+    assert environment["PATH"].split(":")[0] == str(python.parent)
+    assert "/operator" not in environment["PATH"]
+    assert environment["VLLM_NO_USAGE_STATS"] == "1"
+    assert environment["HF_HOME"] == str(tmp_path / "hf-cache")
+
+
 def test_engine_command_uses_explicit_separate_interpreter(tmp_path):
     component = tmp_path / "component"
     (component / "bin").mkdir(parents=True)

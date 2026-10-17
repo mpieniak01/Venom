@@ -160,7 +160,9 @@ def _module_entry(record, failures):
         access=["api"] if state == "loaded" else [],
         panel_path=record.get("nav_path") if state == "loaded" else None,
     )
-    error = record.get("conversation_error") or failures.get(record["module_id"])
+    error = None
+    if state == "loaded":
+        error = record.get("conversation_error") or failures.get(record["module_id"])
     if error:
         item.reason_code, item.state = error, "degraded"
     elif state == "loaded":

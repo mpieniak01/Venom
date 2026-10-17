@@ -351,7 +351,7 @@ def _candidate_manifest(
         record["state"], record["reason_code"] = "unavailable", "invalid_manifest"
         return None
     if manifest.module_id in seen_modules:
-        record["module_id"] += "-duplicate"
+        record["module_id"] = manifest.module_id
         record["state"], record["reason_code"] = "unavailable", "duplicate_module"
         return None
     seen_modules.add(manifest.module_id)
@@ -453,7 +453,7 @@ def _record_import_failure(
 ) -> None:
     logger.warning("Optional conversation provider import failed: %s", module_id)
     for entry in diagnostics or []:
-        if entry["module_id"] == module_id:
+        if entry["module_id"] == module_id and entry["state"] == "loaded":
             entry["conversation_error"] = "provider_import_failed"
             entry["conversation_retry_after"] = time.monotonic() + 30.0
 

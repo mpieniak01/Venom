@@ -595,3 +595,70 @@ def test_async_callable_lifecycle_remains_supported():
     with TestClient(app):
         assert calls == ["started"]
     assert record["state"] == "loaded"
+
+
+def test_duplicate_manifest_keeps_identity_and_does_not_inherit_other_provider_failure(
+    tmp_path, monkeypatch
+):
+    import sys
+    from types import ModuleType
+
+    from fastapi import APIRouter
+
+    from venom_core.services.integration_overview import _module_entries
+    from venom_core.services.module_registry import _record_import_failure
+
+    monkeypatch.chdir(tmp_path)
+    manifests = []
+    for index, module_id in enumerate(["alpha", "alpha", "alpha-duplicate"]):
+        name = f"test_duplicate_provider_{index}"
+        module = ModuleType(name)
+        module.router = APIRouter()
+        monkeypatch.setitem(sys.modules, name, module)
+        path = tmp_path / f"module-{index}.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "module_id": module_id,
+                    "backend": {
+                        "router_import": name + ":router",
+                        "data_policy": {
+                            "storage_mode": "core_prefixed",
+                            "mutation_guard": "core_environment_policy",
+                            "state_files": [],
+                        },
+                    },
+                }
+            )
+        )
+        manifests.append("manifest:" + str(path))
+    config = settings(",".join(manifests))
+    app = FastAPI()
+    assert include_optional_api_routers(app, config) == ["alpha", "alpha-duplicate"]
+    diagnostics = app.state.optional_module_diagnostics
+    original, duplicate, other = diagnostics
+    assert duplicate["module_id"] == "alpha"
+    assert duplicate["reason_code"] == "duplicate_module"
+    _record_import_failure("alpha", diagnostics)
+    assert original["conversation_error"] == "provider_import_failed"
+    assert "conversation_error" not in duplicate
+    assert "conversation_error" not in other
+    # An inactive record's own diagnostic remains intact, but cannot replace its
+    # primary disabled/duplicate reason in the public inventory.
+    duplicate["conversation_error"] = "provider_close_failed"
+    app.state.conversation_providers = SimpleNamespace(
+        failures={"alpha-duplicate": "provider_initialization_failed"}
+    )
+    entries = _module_entries(app, config)
+    assert len({entry.id for entry in entries}) == 3
+    active = next(entry for entry in entries if entry.id == "module:alpha")
+    rejected = next(
+        entry for entry in entries if entry.reason_code == "duplicate_module"
+    )
+    genuine = next(entry for entry in entries if entry.id == "module:alpha-duplicate")
+    assert active.reason_code == "provider_import_failed"
+    assert rejected.id.startswith("module:alpha:")
+    assert rejected.state == "unavailable"
+    assert rejected.reason_code == "duplicate_module"
+    assert genuine.reason_code == "provider_initialization_failed"
+    assert duplicate["conversation_error"] == "provider_close_failed"

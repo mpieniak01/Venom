@@ -84,6 +84,30 @@ class BaseAgent(ABC):
         )
         return await self.process(input_text)
 
+    async def deliberate(
+        self,
+        input_text: str,
+        *,
+        system_message: str,
+        generation_params: Optional[Dict[str, Any]] = None,
+        enable_functions: bool = False,
+    ) -> str:
+        """One Council turn on the existing model, without a nested agent workflow."""
+        history = ChatHistory()
+        history.add_system_message(system_message)
+        history.add_user_message(input_text)
+        settings = self._create_execution_settings(
+            generation_params=generation_params,
+            default_settings={"max_tokens": 512, "temperature": 0.3},
+        )
+        result = await self._invoke_chat_with_fallbacks(
+            chat_service=self.kernel.get_service(),
+            chat_history=history,
+            settings=settings,
+            enable_functions=enable_functions,
+        )
+        return str(result)
+
     def _get_safe_params_for_logging(
         self, generation_params: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:

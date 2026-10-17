@@ -69,13 +69,15 @@ def llm_config():
     )
 
 
-def test_create_local_llm_config():
+def test_create_local_llm_config(monkeypatch):
     """Test tworzenia konfiguracji lokalnego LLM."""
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "selected-model")
+    monkeypatch.setattr(SETTINGS, "LOCAL_LLAMA3_MODEL", "legacy-model")
     config = create_local_llm_config()
 
     assert "config_list" in config
     assert len(config["config_list"]) > 0
-    assert config["config_list"][0]["model"] == SETTINGS.LOCAL_LLAMA3_MODEL
+    assert config["config_list"][0]["model"] == "selected-model"
     assert config["config_list"][0]["api_key"] == "EMPTY"
     assert config["temperature"] == pytest.approx(0.7)
 
@@ -183,12 +185,12 @@ async def test_council_session_run_integration(
     coder_agent, critic_agent, architect_agent, guardian_agent, llm_config
 ):
     """Real MAF group workflow, with explicit deterministic actor boundaries."""
-    architect_agent.process = AsyncMock(return_value="Plan")
-    coder_agent.process = AsyncMock(
+    architect_agent.deliberate = AsyncMock(return_value="Plan")
+    coder_agent.deliberate = AsyncMock(
         side_effect=["First implementation", "Corrected implementation"]
     )
-    critic_agent.process = AsyncMock(return_value="Revise")
-    guardian_agent.process = AsyncMock(return_value="Approved\nTERMINATE")
+    critic_agent.deliberate = AsyncMock(return_value="Revise")
+    guardian_agent.deliberate = AsyncMock(return_value="Approved\nTERMINATE")
     council_config = CouncilConfig(
         coder_agent=coder_agent,
         critic_agent=critic_agent,
@@ -219,7 +221,13 @@ async def test_council_session_run_integration(
         "Critic",
         "Guardian",
     }
-    architect_agent.process.assert_awaited_once()
-    assert coder_agent.process.await_count == 2
-    critic_agent.process.assert_awaited_once()
-    guardian_agent.process.assert_awaited_once()
+    architect_agent.deliberate.assert_awaited_once()
+    assert coder_agent.deliberate.await_count == 2
+    critic_agent.deliberate.assert_awaited_once()
+    guardian_agent.deliberate.assert_awaited_once()
+
+
+def test_council_config_preserves_legacy_model_only_without_selection(monkeypatch):
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "")
+    monkeypatch.setattr(SETTINGS, "LOCAL_LLAMA3_MODEL", "legacy-model")
+    assert create_local_llm_config()["config_list"][0]["model"] == "legacy-model"

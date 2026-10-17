@@ -17,6 +17,9 @@ class Participant:
         self.calls = calls
         self.response = response
 
+    async def deliberate(self, text, **kwargs):
+        return await self.process(text)
+
     async def process(self, text):
         self.calls.append((self.name, text))
         return self.response or (
@@ -67,10 +70,10 @@ async def test_native_round_limit_returns_incomplete_not_success():
     calls = []
     run = session(calls, Guardian=Participant("Guardian", calls, "repair required"))
     run.group_chat.max_round = 7
-    result = await run.run("task")
+    with pytest.raises(module.CouncilExecutionError, match="no_guardian_approval"):
+        await run.run("task")
     assert len(calls) == 7
-    assert "Dyskusja przerwana" in result
-    assert "Zadanie zakończone sukcesem" not in result
+    assert "Dyskusja przerwana" in run._extract_result()
 
 
 @pytest.mark.asyncio
@@ -80,9 +83,8 @@ async def test_participant_failure_is_reported_without_success():
             raise RuntimeError("fixture_provider_error")
 
     run = session([], Architect=Broken("Architect", []))
-    result = await run.run("task")
-    assert "Błąd" in result
-    assert "Zadanie zakończone sukcesem" not in result
+    with pytest.raises(module.CouncilExecutionError, match="fixture_provider_error"):
+        await run.run("task")
 
 
 @pytest.mark.asyncio
@@ -98,7 +100,8 @@ async def test_native_timeout_cancels_participant(monkeypatch):
 
     monkeypatch.setattr(module, "COUNCIL_SESSION_TIMEOUT", 0.02)
     run = session([], Architect=Slow("Architect", []))
-    assert "timeout" in await run.run("task")
+    with pytest.raises(module.CouncilExecutionError, match="timeout"):
+        await run.run("task")
     assert cancelled.is_set()
 
 
@@ -118,6 +121,43 @@ async def test_invalid_transition_never_invokes_an_actor():
     calls = []
     run = session(calls)
     run.group_chat.allowed_or_disallowed_speaker_transitions.clear()
-    result = await run.run("task")
+    with pytest.raises(
+        module.CouncilExecutionError, match="council_transition_not_allowed"
+    ):
+        await run.run("task")
     assert calls == []
-    assert "council_transition_not_allowed" in result
+
+
+@pytest.mark.asyncio
+async def test_council_uses_deliberation_and_keeps_request_budget():
+    calls = []
+
+    class Consultation(Participant):
+        async def process(self, text):
+            raise AssertionError("Nested standalone workflow must not execute")
+
+        async def deliberate(self, text, **kwargs):
+            calls.append((self.name, kwargs))
+            return "verified\nTERMINATE" if self.name == "Guardian" else "role result"
+
+    actors = {
+        name: Consultation(name, [])
+        for name in ("Architect", "Coder", "Critic", "Guardian")
+    }
+    run = session([], **actors)
+    await run.run("text task", generation_params={"max_tokens": 32, "temperature": 0})
+    assert calls and all(
+        kwargs["generation_params"] == {"max_tokens": 32, "temperature": 0}
+        for _, kwargs in calls
+    )
+    assert all("Council" in kwargs["system_message"] for _, kwargs in calls)
+    assert (
+        next(kwargs for name, kwargs in calls if name == "Architect")[
+            "enable_functions"
+        ]
+        is False
+    )
+    assert (
+        next(kwargs for name, kwargs in calls if name == "Guardian")["enable_functions"]
+        is True
+    )

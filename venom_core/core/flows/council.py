@@ -192,7 +192,19 @@ class CouncilFlow:
             )
 
             # Uruchom dyskusję
-            result = await session.run(context)
+            task = self.state_manager.get_task(task_id)
+            task_context = getattr(task, "context_history", {})
+            generation_params = (
+                task_context.get("generation_params")
+                if isinstance(task_context, dict)
+                else None
+            )
+            result = await session.run(
+                context,
+                generation_params=generation_params
+                if isinstance(generation_params, dict)
+                else None,
+            )
 
             # Loguj szczegóły dyskusji
             message_count = session.get_message_count()
@@ -229,6 +241,6 @@ class CouncilFlow:
                 data={"task_id": str(task_id), "error": str(e)},
             )
 
-            # Fallback do standardowego flow
-            logger.warning("Council zawiódł - powrót do standardowego flow")
-            return f"{error_msg}\n\nPróbuję standardowy flow jako fallback..."
+            # Orchestrator owns the FAILED status. An error string was previously
+            # mistaken for a successful result and no fallback was executed.
+            raise

@@ -70,3 +70,22 @@ not qualify a model or physical Rider-Pi.
 fixtures. Existing factory, agent, dispatcher, intent, history and skill tests are
 migrated with each component. Clean Light/CI installation and lock integrity are
 reported separately from actual inference, hardware and Docker qualification.
+
+## Council turns and failure status
+
+Council invokes one native deliberation turn per participant on the existing
+Venom chat service. It does not call a standalone agent's `process()` workflow:
+Architect's standalone method also executes its plan, which previously launched
+subtasks before Council's coding/review stages. The Council role prompt now
+actually reaches the model, and the request's generation parameters reach each
+turn. The default turn budget is 512 tokens; explicit request values override it.
+Standalone Swarm calls retain their existing `process()` behavior.
+
+Only Guardian's final `TERMINATE` line completes the workflow. Missing approval,
+provider failure or timeout raises `CouncilExecutionError`; the flow propagates
+it to the orchestrator's failure handling. It no longer returns an error or
+incomplete transcript as a successful task result. Success still returns the
+existing transcript string; this is an intentional correction to error behavior.
+The configured model selection also takes precedence over the legacy llama3
+metadata default. These changes require a real API Complex test in addition to
+deterministic native-workflow fixtures.

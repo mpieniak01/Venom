@@ -20,6 +20,26 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+class CouncilExecutionError(RuntimeError):
+    """A failed/incomplete Council must not become a completed task transcript."""
+
+
+COUNCIL_TURN_INSTRUCTIONS = """
+Pracujesz jako uczestnik konsultacji Council. Wykonaj jedną turę swojej roli,
+uwzględniając zadanie użytkownika i dotychczasową dyskusję. Plan Architecta jest
+propozycją do recenzji. Każdy etap wykonawczy wymaga uprawnień istniejących narzędzi.
+Dla zadania tekstowego przygotuj odpowiedź tekstową; operacje wykonuj tylko wtedy,
+gdy są wymagane przez użytkownika. Uwzględnij uwagi poprzednich uczestników.
+"""
+GUARDIAN_COMPLETION_INSTRUCTIONS = """
+Oceń końcowy wynik względem zadania. Jeżeli zadanie wymaga kodu lub wykonania
+operacji, wymagaj rzeczywistych dowodów ich weryfikacji; nie wymyślaj wyników testów.
+Dla odpowiedzi tekstowej sprawdź jej poprawność i kompletność. Zakończ ostatnią
+linią TERMINATE wyłącznie po zatwierdzeniu wyniku. W innym przypadku opisz,
+co trzeba poprawić, bez słowa TERMINATE w ostatniej linii.
+"""
+
+
 class UserProxyAgent:
     """The human initiator, not an independently executing model."""
 
@@ -101,13 +121,16 @@ class GroupChatManager:
             raise ValueError("council_transition_not_allowed")
         return selected
 
-    async def run(self, task: str) -> None:
+    async def run(
+        self, task: str, *, generation_params: Dict[str, Any] | None = None
+    ) -> None:
         participants = [a for a in self.groupchat.agents if hasattr(a, "venom_agent")]
         initial = Message("user", [task], author_name="User")
         transcript = [initial]
         for participant in participants:
             participant.conversation.clear()
             participant.output_messages = transcript
+            participant.generation_params = dict(generation_params or {})
         workflow = GroupChatBuilder(
             participants=participants,
             selection_func=self._select,
@@ -121,6 +144,8 @@ class GroupChatManager:
             # history promised by older examples. Venom owns its transcript.
             if not outputs or not isinstance(outputs[-1], AgentResponse):
                 raise RuntimeError("council_workflow_missing_completion")
+            if not _guardian_finished(transcript):
+                raise CouncilExecutionError("council_incomplete_no_guardian_approval")
         finally:
             self.groupchat.messages = [
                 {"role": m.role, "name": m.author_name or m.role, "content": m.text}
@@ -185,29 +210,38 @@ class CouncilConfig:
         architect_wrapper = create_venom_agent_wrapper(
             agent=self.architect_agent,
             name="Architect",
-            system_message=self.architect_agent.PLANNING_PROMPT,
+            system_message=self.architect_agent.PLANNING_PROMPT
+            + COUNCIL_TURN_INSTRUCTIONS,
             llm_config=self.llm_config,
+            deliberation=True,
         )
 
         coder_wrapper = create_venom_agent_wrapper(
             agent=self.coder_agent,
             name="Coder",
-            system_message=self.coder_agent.SYSTEM_PROMPT,
+            system_message=self.coder_agent.SYSTEM_PROMPT + COUNCIL_TURN_INSTRUCTIONS,
             llm_config=self.llm_config,
+            deliberation=True,
         )
 
         critic_wrapper = create_venom_agent_wrapper(
             agent=self.critic_agent,
             name="Critic",
-            system_message=self.critic_agent.SYSTEM_PROMPT,
+            system_message=self.critic_agent.SYSTEM_PROMPT + COUNCIL_TURN_INSTRUCTIONS,
             llm_config=self.llm_config,
+            deliberation=True,
         )
 
         guardian_wrapper = create_venom_agent_wrapper(
             agent=self.guardian_agent,
             name="Guardian",
-            system_message=self.guardian_agent.SYSTEM_PROMPT,
+            system_message=(
+                self.guardian_agent.SYSTEM_PROMPT
+                + COUNCIL_TURN_INSTRUCTIONS
+                + GUARDIAN_COMPLETION_INSTRUCTIONS
+            ),
             llm_config=self.llm_config,
+            deliberation=True,
         )
 
         # 3. Zdefiniuj uczestników Group Chat
@@ -286,7 +320,9 @@ class CouncilSession:
 
         logger.info("CouncilSession zainicjalizowana")
 
-    async def run(self, task: str) -> str:
+    async def run(
+        self, task: str, *, generation_params: Dict[str, Any] | None = None
+    ) -> str:
         """
         Uruchamia dyskusję Council dla zadanego zadania.
 
@@ -302,7 +338,8 @@ class CouncilSession:
             import asyncio
 
             await asyncio.wait_for(
-                self.manager.run(task), timeout=COUNCIL_SESSION_TIMEOUT
+                self.manager.run(task, generation_params=generation_params),
+                timeout=COUNCIL_SESSION_TIMEOUT,
             )
 
             # Zbierz wyniki z historii czatu
@@ -314,11 +351,11 @@ class CouncilSession:
         except asyncio.TimeoutError:
             error_msg = f"Council przekroczył timeout ({COUNCIL_SESSION_TIMEOUT}s)"
             logger.error(error_msg)
-            return error_msg
+            raise CouncilExecutionError(error_msg) from None
         except Exception as e:
             error_msg = f"Błąd podczas dyskusji Council: {e}"
             logger.error(error_msg)
-            return error_msg
+            raise CouncilExecutionError(error_msg) from e
 
     def _extract_result(self) -> str:
         """
@@ -395,7 +432,7 @@ def create_local_llm_config(
 
     Args:
         base_url: URL do lokalnego serwera LLM. Jeśli None, użyje SETTINGS.LLM_LOCAL_ENDPOINT
-        model: Nazwa modelu. Jeśli None, użyje SETTINGS.LOCAL_LLAMA3_MODEL
+        model: Nazwa modelu. Jeśli None, użyje SETTINGS.LLM_MODEL_NAME
         temperature: Temperatura dla generacji (0.0-1.0)
 
     Returns:
@@ -412,7 +449,7 @@ def create_local_llm_config(
     if base_url is None:
         base_url = SETTINGS.LLM_LOCAL_ENDPOINT or DEFAULT_LOCAL_LLM_ENDPOINT
     if model is None:
-        model = SETTINGS.LOCAL_LLAMA3_MODEL
+        model = SETTINGS.LLM_MODEL_NAME or SETTINGS.LOCAL_LLAMA3_MODEL
 
     # Walidacja parametrów
     if not 0.0 <= temperature <= 1.0:

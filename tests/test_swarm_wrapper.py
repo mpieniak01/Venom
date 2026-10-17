@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from agent_framework import Executor
@@ -87,3 +87,40 @@ def test_swarm_schema_error_is_not_reported_as_empty_success():
     agent = DummyAgent(kernel=BrokenRuntime())
     with pytest.raises(RuntimeError, match="schema broken"):
         swarm_mod.extract_venom_tools(cast(BaseAgent, agent))
+
+
+@pytest.mark.asyncio
+async def test_native_deliberation_reuses_service_and_preserves_budget(monkeypatch):
+    from types import SimpleNamespace
+
+    import venom_core.agents.base as base_module
+
+    class ConsultationAgent(BaseAgent):
+        async def process(self, input_text):
+            raise AssertionError("Standalone workflow must not run in Council")
+
+    service = object()
+    kernel = MagicMock()
+    kernel.get_service.return_value = service
+    agent = ConsultationAgent(kernel)
+    agent._invoke_chat_with_fallbacks = AsyncMock(return_value="single turn")
+    monkeypatch.setattr(
+        base_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(provider="openai", model_name="fixture"),
+    )
+    result = await agent.deliberate(
+        "task",
+        system_message="planning role",
+        generation_params={"max_tokens": 37, "temperature": 0},
+    )
+    assert result == "single turn"
+    call = agent._invoke_chat_with_fallbacks.await_args.kwargs
+    assert call["chat_service"] is service
+    assert call["settings"].max_tokens == 37
+    assert call["settings"].temperature == 0
+    assert call["enable_functions"] is False
+    assert [m.content for m in call["chat_history"].messages] == [
+        "planning role",
+        "task",
+    ]

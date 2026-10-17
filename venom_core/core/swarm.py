@@ -23,6 +23,7 @@ class VenomAgent(Executor):
         venom_agent: BaseAgent,
         system_message: str,
         llm_config: dict | None = None,
+        deliberation: bool = False,
         **kwargs,
     ):
         super().__init__(id=name)
@@ -30,6 +31,8 @@ class VenomAgent(Executor):
         self.venom_agent = venom_agent
         self.system_message = system_message
         self.llm_config = llm_config or {}
+        self.deliberation = deliberation
+        self.generation_params: dict[str, Any] = {}
         self.conversation: list[Message] = []
         self.output_messages: list[Message] = []
 
@@ -55,7 +58,15 @@ class VenomAgent(Executor):
             transcript += "\n\n" + request.additional_instruction
         # Errors and cancellation propagate to CouncilSession. No fake successful
         # participant output is generated when an underlying model/tool fails.
-        result = await self.venom_agent.process(transcript)
+        if self.deliberation:
+            result = await self.venom_agent.deliberate(
+                transcript,
+                system_message=self.system_message,
+                generation_params=self.generation_params,
+                enable_functions=self.name in {"Coder", "Guardian"},
+            )
+        else:
+            result = await self.venom_agent.process(transcript)
         response = Message("assistant", [result], author_name=self.name)
         # GroupChat broadcasts a response to other participants, excluding its
         # author. Keep the author's own turn once and record Venom's transcript.
@@ -76,6 +87,7 @@ def create_venom_agent_wrapper(
     name: str,
     system_message: str | None = None,
     llm_config: dict | None = None,
+    deliberation: bool = False,
 ) -> VenomAgent:
     return VenomAgent(
         name,
@@ -83,6 +95,7 @@ def create_venom_agent_wrapper(
         system_message
         or str(getattr(agent, "SYSTEM_PROMPT", None) or f"Jesteś agentem {name}"),
         llm_config,
+        deliberation=deliberation,
     )
 
 

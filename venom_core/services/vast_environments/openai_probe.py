@@ -2,6 +2,7 @@
 
 import json
 import time
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -69,6 +70,47 @@ def openai_payload(body: dict) -> dict:
     return result
 
 
+@dataclass
+class SSECapture(StreamCapture):
+    finished: bool = False
+    calls: dict[int, dict] = field(default_factory=dict)
+
+    def _choice(self, choice: dict) -> None:
+        delta = choice.get("delta") or {}
+        text = delta.get("content") or ""
+        if text and self.first is None:
+            self.first = time.monotonic() - self.started
+        self.text += text
+        for call in delta.get("tool_calls", []):
+            target = self.calls.setdefault(call["index"], {"function": {"name": ""}})
+            target["function"]["name"] += call.get("function", {}).get("name") or ""
+        self.finished = self.finished or choice.get("finish_reason") is not None
+
+    def append(self, line: str) -> bool:
+        self.size += len(line)
+        if self.size > 2_000_000 or time.monotonic() - self.started > 60:
+            raise VastError("vast.sample_limit")
+        if not line.startswith("data:"):
+            return False
+        data = line[5:].strip()
+        if data == "[DONE]":
+            self.last = {**self.last, "done": True} if self.finished else {}
+            self.tool_calls = list(self.calls.values())
+            return True
+        item = json.loads(data)
+        if item.get("error"):
+            raise VastError("vast.backend_error")
+        for choice in item.get("choices", []):
+            self._choice(choice)
+        usage = item.get("usage") or {}
+        if usage:
+            self.last.update(
+                prompt_eval_count=usage.get("prompt_tokens"),
+                eval_count=usage.get("completion_tokens"),
+            )
+        return False
+
+
 class OpenAIProbe(OllamaProbe):
     """Same synthetic cases and metrics; SSE adapter for the vLLM wire format."""
 
@@ -88,48 +130,14 @@ class OpenAIProbe(OllamaProbe):
         }
 
     def capture(self, body: dict, started: float) -> StreamCapture:
-        capture = StreamCapture(started)
-        finished = False
-        calls: dict[int, dict] = {}
+        capture = SSECapture(started)
         with self.client.stream(
             "POST", "/v1/chat/completions", json=openai_payload(body)
         ) as response:
             response.raise_for_status()
             for line in response.iter_lines():
-                capture.size += len(line)
-                if capture.size > 2_000_000 or time.monotonic() - started > 60:
-                    raise VastError("vast.sample_limit")
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    if finished:
-                        capture.last["done"] = True
+                if capture.append(line):
                     break
-                item = json.loads(data)
-                if item.get("error"):
-                    raise VastError("vast.backend_error")
-                for choice in item.get("choices", []):
-                    delta = choice.get("delta") or {}
-                    text = delta.get("content") or ""
-                    if text and capture.first is None:
-                        capture.first = time.monotonic() - started
-                    capture.text += text
-                    for call in delta.get("tool_calls", []):
-                        target = calls.setdefault(
-                            call["index"], {"function": {"name": ""}}
-                        )
-                        target["function"]["name"] += (
-                            call.get("function", {}).get("name") or ""
-                        )
-                    finished = finished or choice.get("finish_reason") is not None
-                usage = item.get("usage") or {}
-                if usage:
-                    capture.last.update(
-                        prompt_eval_count=usage.get("prompt_tokens"),
-                        eval_count=usage.get("completion_tokens"),
-                    )
-        capture.tool_calls = list(calls.values())
         if not capture.last.get("done"):
             capture.last = {}
         return capture

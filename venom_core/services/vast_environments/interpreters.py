@@ -8,6 +8,8 @@ mode = sys.argv[1]
 required = ["torch", "vllm"] if mode == "vllm" else ["torch"] if mode == "pytorch" else []
 candidates = ["/workspace/venom-vast/worker-venv/bin/python", sys.executable,
               "/venv/main/bin/python", "/opt/venv/bin/python"]
+if len(sys.argv) > 2 and sys.argv[2] == "base":
+    candidates = candidates[1:]
 seen = set()
 for candidate in candidates:
     path = shutil.which(candidate)
@@ -31,7 +33,7 @@ def select_shell(mode: str) -> str:
     return (
         "PYTHON=$(python3 - "
         + shlex.quote(mode)
-        + " <<'VENOM_PYTHON'\n"
+        + " base <<'VENOM_PYTHON'\n"
         + SELECT_SCRIPT
         + "\nVENOM_PYTHON\n)\n"
         + 'test -n "$PYTHON" || PYTHON=python3\n'

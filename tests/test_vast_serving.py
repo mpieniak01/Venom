@@ -357,3 +357,17 @@ def test_wire_payload_uses_explicit_optional_fields(service):
     value = openai_payload(body)
     assert value["response_format"] == {"type": "json_object"}
     assert value["messages"][0]["content"][1]["image_url"]["url"].endswith("fixture")
+
+
+def test_provision_selects_image_base_instead_of_recreating_own_venv():
+    assert "pytorch base <<" in select_shell("pytorch")
+    out = io.StringIO()
+    with (
+        patch("sys.argv", ["select", "pytorch", "base"]),
+        patch("shutil.which", side_effect=lambda value: value),
+        patch("subprocess.run", return_value=Mock(returncode=0)) as run,
+        contextlib.redirect_stdout(out),
+    ):
+        exec(SELECT_SCRIPT, {})
+    assert "worker-venv" not in out.getvalue()
+    assert run.call_count == 1

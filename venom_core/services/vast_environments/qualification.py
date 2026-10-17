@@ -78,6 +78,33 @@ def _scope(failed: list, probe: dict) -> str:
     return "workload"
 
 
+def _performance(runtime, benchmark: dict | None, failed: list, unknown: list) -> None:
+    if benchmark is not None:
+        if benchmark.get("status") == "unsuitable":
+            failed.append("benchmark")
+        elif benchmark.get("status") != "suitable":
+            unknown.append("benchmark")
+    if runtime.max_ttft_s is not None:
+        value = (benchmark or {}).get("short_ttft_median_s")
+        if value is None:
+            unknown.append("ttft")
+        elif value > runtime.max_ttft_s:
+            failed.append("ttft")
+    if runtime.min_characters_s is not None:
+        samples = (benchmark or {}).get("samples", [])
+        values = [
+            x["characters_s"]
+            for x in samples
+            if x.get("status") == "ok"
+            and x.get("characters_s") is not None
+            and x.get("case", "").startswith("short")
+        ]
+        if not values:
+            unknown.append("characters_s")
+        elif min(values) < runtime.min_characters_s:
+            failed.append("characters_s")
+
+
 def qualify(
     plan: EnvironmentPlan,
     inspection: dict,
@@ -116,30 +143,8 @@ def qualify(
             unknown.append("compute_capability")
         elif compute not in runtime.compute_capabilities:
             failed.append("compute_capability")
-    if benchmark is not None:
-        if benchmark.get("status") == "unsuitable":
-            failed.append("benchmark")
-        elif benchmark.get("status") != "suitable":
-            unknown.append("benchmark")
-    if evaluate_performance and runtime.max_ttft_s is not None:
-        value = (benchmark or {}).get("short_ttft_median_s")
-        if value is None:
-            unknown.append("ttft")
-        elif value > runtime.max_ttft_s:
-            failed.append("ttft")
-    if evaluate_performance and runtime.min_characters_s is not None:
-        samples = (benchmark or {}).get("samples", [])
-        values = [
-            x["characters_s"]
-            for x in samples
-            if x.get("status") == "ok"
-            and x.get("characters_s") is not None
-            and x.get("case", "").startswith("short")
-        ]
-        if not values:
-            unknown.append("characters_s")
-        elif min(values) < runtime.min_characters_s:
-            failed.append("characters_s")
+    if evaluate_performance:
+        _performance(runtime, benchmark, failed, unknown)
     failed, unknown = sorted(set(failed)), sorted(set(unknown))
     return {
         "schema_version": 1,

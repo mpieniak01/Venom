@@ -228,8 +228,8 @@ enabled automatically.
 | Recipe | Remote workload | Image prerequisites | Acceptance |
 | --- | --- | --- | --- |
 | inspect | Hardware and environment inventory | Python 3, SSH, GPU tools | SSH/capacity report |
-| ollama | Text, vision and tool-capable models supported by Ollama | Ollama and curl | Actual generation; existing 12-case benchmark |
-| vllm | OpenAI-compatible model serving | vLLM, compatible CUDA/PyTorch, curl | Model listing and actual generation over SSH |
+| ollama | Text, vision and tool-capable models supported by Ollama | Ollama and curl | Generation; shared text suite + required capabilities |
+| vllm | OpenAI-compatible model serving | vLLM, compatible CUDA/PyTorch, curl | Generation and shared benchmark over SSH |
 | pytorch | Environment for Depth Anything/YOLO and Whisper | Compatible GPU PyTorch; selected task packages | Imports, CUDA availability and worker inventory |
 
 PyTorch prepares a worker environment, not an inference API. The vLLM readiness

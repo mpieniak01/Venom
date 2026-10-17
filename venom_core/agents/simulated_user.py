@@ -7,15 +7,14 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.function_choice_behavior import (
-    FunctionChoiceBehavior,
-)
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import ToolPolicy as FunctionChoiceBehavior
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skills.browser_skill import BrowserSkill
 from venom_core.simulation.persona_factory import Persona
 from venom_core.utils.logger import get_logger

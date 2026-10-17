@@ -23,3 +23,20 @@ test-results
 docs_dev
 workspace
 venom_spore
+
+# Component environments and credentials must never enter the build context.
+.venv-components
+.venom_runtime
+**/node_modules
+config/env-history
+config/google_calendar_credentials.json
+config/google_calendar_token.json
+config/*secret*
+config/*token*
+secrets
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer

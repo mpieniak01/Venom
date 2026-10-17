@@ -1,181 +1,48 @@
 #!/usr/bin/env bash
+# Explicit component lifecycle; never discover/stop arbitrary services by name.
 set -euo pipefail
-
 ACTION="${1:-}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=../lib/env_contract.sh
 source "$ROOT_DIR/scripts/lib/env_contract.sh"
+ENV_FILE="$(env_contract_resolve_file "${ENV_FILE:-.env.dev}" "$ROOT_DIR")"
 
-VENV_BIN="$ROOT_DIR/.venv/bin"
-VLLM_BIN="$VENV_BIN/vllm"
-LOG_DIR="$ROOT_DIR/logs"
-PID_FILE="$LOG_DIR/vllm.pid"
-LOG_FILE="$LOG_DIR/vllm.log"
-ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
-ENV_FILE="$(env_contract_resolve_file "$ENV_FILE_RAW" "$ROOT_DIR")"
-
-MODEL_PATH="$(env_contract_get VLLM_MODEL_PATH "$ROOT_DIR/models/gemma-2b-it" "$ENV_FILE")"
-HOST="$(env_contract_get VLLM_HOST "0.0.0.0" "$ENV_FILE")"
-PORT="$(env_contract_get VLLM_PORT "8001" "$ENV_FILE")"
-GPU_MEMORY_UTILIZATION="$(env_contract_get VLLM_GPU_MEMORY_UTILIZATION "0.85" "$ENV_FILE")"
-MAX_BATCHED_TOKENS="$(env_contract_get VLLM_MAX_BATCHED_TOKENS "2048" "$ENV_FILE")"
-MAX_MODEL_LEN="$(env_contract_get VLLM_MAX_MODEL_LEN "" "$ENV_FILE")"
-MAX_NUM_SEQS="$(env_contract_get VLLM_MAX_NUM_SEQS "" "$ENV_FILE")"
-SERVED_MODEL_NAME="$(env_contract_get VLLM_SERVED_MODEL_NAME "" "$ENV_FILE")"
-if [[ -z "$SERVED_MODEL_NAME" ]]; then
-  SERVED_MODEL_NAME="$(basename "$MODEL_PATH")"
-fi
-ENFORCE_EAGER="$(env_contract_get VLLM_ENFORCE_EAGER "" "$ENV_FILE")"
-CHAT_TEMPLATE="$(env_contract_get VLLM_CHAT_TEMPLATE "" "$ENV_FILE")"
-
-# Wykryj czy używamy systemd
-SYSTEMCTL_BIN="$(command -v systemctl || true)"
-SYSTEMD_UNIT="$(env_contract_get VLLM_SYSTEMD_UNIT "vllm.service" "$ENV_FILE")"
-SYSTEMD_SCOPE="$(env_contract_get VLLM_SYSTEMD_SCOPE "system" "$ENV_FILE")"
-SYSTEMD_SCOPE_ARGS=()
-if [[ "$SYSTEMD_SCOPE" == "user" ]]; then
-  SYSTEMD_SCOPE_ARGS=(--user)
-fi
-
-USE_SYSTEMD=false
-if [[ -n "$SYSTEMCTL_BIN" ]] && (
-  "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" list-unit-files "$SYSTEMD_UNIT" >/dev/null 2>&1 || \
-  "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" status "$SYSTEMD_UNIT" >/dev/null 2>&1
-); then
-  USE_SYSTEMD=true
-fi
-
-start() {
-  echo "🧭 vLLM config: model=${MODEL_PATH}, host=${HOST}, port=${PORT}, env_file=${ENV_FILE}"
-
-  if [[ "$USE_SYSTEMD" == "true" ]]; then
-    echo "Uruchamiam usługę systemd ${SYSTEMD_UNIT}"
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" start "$SYSTEMD_UNIT"
-    return 0
-  fi
-
-  if [[ ! -x "$VLLM_BIN" ]]; then
-    echo "Nie znaleziono binarki vLLM pod $VLLM_BIN" >&2
-    exit 1
-  fi
-
-  mkdir -p "$LOG_DIR"
-
-  if [[ -f "$PID_FILE" ]]; then
-    local existing_pid
-    existing_pid="$(cat "$PID_FILE")"
-    if kill -0 "$existing_pid" 2>/dev/null; then
-      echo "vLLM już działa (PID $existing_pid)"
-      exit 0
-    else
-      rm -f "$PID_FILE"
-    fi
-  fi
-
-  if [[ ! -e "$MODEL_PATH" ]]; then
-    echo "Brak ścieżki modelu: $MODEL_PATH" >&2
-    exit 1
-  fi
-
-  if [[ -d "$MODEL_PATH" ]]; then
-    if [[ ! -f "$MODEL_PATH/config.json" && ! -f "$MODEL_PATH/params.json" ]] && ! compgen -G "$MODEL_PATH/*.gguf" >/dev/null; then
-      echo "Nieprawidłowy katalog modelu vLLM: $MODEL_PATH" >&2
-      echo "Wymagane: config.json lub params.json (albo plik *.gguf)." >&2
-      exit 1
-    fi
-  elif [[ -f "$MODEL_PATH" ]]; then
-    if [[ "$MODEL_PATH" != *.gguf ]]; then
-      echo "Nieprawidłowy plik modelu vLLM: $MODEL_PATH" >&2
-      echo "Obsługiwany pojedynczy plik tylko dla GGUF (*.gguf)." >&2
-      exit 1
-    fi
-  else
-    echo "Nieprawidłowa ścieżka modelu vLLM: $MODEL_PATH" >&2
-    exit 1
-  fi
-
-  echo "Uruchamiam vLLM z modelem ${MODEL_PATH} na ${HOST}:${PORT} (gpu_mem=${GPU_MEMORY_UTILIZATION}, max_tokens=${MAX_BATCHED_TOKENS}, served_name=${SERVED_MODEL_NAME})"
-  cmd=(
-    "$VLLM_BIN" serve "$MODEL_PATH"
-    --host "$HOST"
-    --port "$PORT"
-    --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
-    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
-  )
-  if [[ -n "$MAX_MODEL_LEN" ]]; then
-    cmd+=(--max-model-len "$MAX_MODEL_LEN")
-  fi
-  if [[ -n "$MAX_NUM_SEQS" ]]; then
-    cmd+=(--max-num-seqs "$MAX_NUM_SEQS")
-  fi
-  if [[ -n "$SERVED_MODEL_NAME" ]]; then
-    cmd+=(--served-model-name "$SERVED_MODEL_NAME")
-  fi
-  if [[ -n "$CHAT_TEMPLATE" ]]; then
-    cmd+=(--chat-template "$CHAT_TEMPLATE")
-  fi
-  if [[ "${ENFORCE_EAGER,,}" == "1" || "${ENFORCE_EAGER,,}" == "true" || "${ENFORCE_EAGER,,}" == "yes" || "${ENFORCE_EAGER,,}" == "on" ]]; then
-    cmd+=(--enforce-eager)
-  fi
-  nohup "${cmd[@]}" >>"$LOG_FILE" 2>&1 &
-  echo $! >"$PID_FILE"
-  local pid
-  pid="$(cat "$PID_FILE")"
-  # Quick liveness check to fail fast on immediate startup errors.
-  sleep 1
-  if ! kill -0 "$pid" 2>/dev/null; then
-    echo "vLLM zakończył się zaraz po starcie (PID $pid)." >&2
-    echo "Ostatnie logi vLLM:" >&2
-    tail -n 40 "$LOG_FILE" >&2 || true
-    rm -f "$PID_FILE"
-    exit 1
-  fi
-  echo "vLLM start - PID $pid, log: $LOG_FILE"
-  return 0
-}
-
-stop() {
-  if [[ "$USE_SYSTEMD" == "true" ]]; then
-    echo "Zatrzymuję usługę systemd ${SYSTEMD_UNIT}"
-    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT"
-    return 0
-  fi
-
-  if [[ -f "$PID_FILE" ]]; then
-    local pid
-    pid="$(cat "$PID_FILE")"
-    if kill -0 "$pid" 2>/dev/null; then
-      echo "Zatrzymuję vLLM (PID $pid)"
-      kill "$pid" 2>/dev/null || true
-      # Graceful shutdown: poczekaj chwilę
-      sleep 2
-      # Jeśli jeszcze działa, wymuś
-      if kill -0 "$pid" 2>/dev/null; then
-        echo "Wymuszam zatrzymanie vLLM (SIGKILL)"
-        kill -9 "$pid" 2>/dev/null || true
-      fi
-    fi
-    rm -f "$PID_FILE"
-  fi
-
-  # Cleanup zombie processes
-  pkill -9 -f "vllm serve" 2>/dev/null || true
-  echo "vLLM zatrzymany"
-  return 0
-}
-
-restart() {
-  stop
-  start
-  return 0
-}
-
-case "$ACTION" in
-  start) start ;;
-  stop) stop ;;
-  restart) restart ;;
-  *)
-    echo "Użycie: $0 {start|stop|restart}" >&2
-    exit 1
-    ;;
+case "$ACTION" in start|stop|restart|status) ;; *)
+  echo "Usage: $0 {start|stop|restart|status}" >&2; exit 1 ;;
 esac
+
+# Existing unit names do not authorize touching systemd. It is an explicit mode.
+USE_SYSTEMD="$(env_contract_get VLLM_USE_SYSTEMD "false" "$ENV_FILE")"
+if [[ "${USE_SYSTEMD,,}" =~ ^(1|true|yes|on)$ ]]; then
+  UNIT="$(env_contract_get VLLM_SYSTEMD_UNIT "vllm.service" "$ENV_FILE")"
+  SCOPE="$(env_contract_get VLLM_SYSTEMD_SCOPE "user" "$ENV_FILE")"
+  [[ "$UNIT" =~ ^[[:alnum:]_][[:alnum:]_.@-]*$ ]] || { echo "Invalid systemd unit" >&2; exit 1; }
+  case "$SCOPE" in user) scope_args=(--user) ;; system) scope_args=() ;; *) echo "Invalid systemd scope" >&2; exit 1 ;; esac
+  exec systemctl "${scope_args[@]}" "$ACTION" -- "$UNIT"
+fi
+
+COMPONENTS="${VENOM_COMPONENTS_DIR:-$ROOT_DIR/.venv-components}"
+PYTHON="$(env_contract_get VLLM_COMPONENT_PYTHON "$COMPONENTS/vllm/bin/python" "$ENV_FILE")"
+MODEL="$(env_contract_get VLLM_MODEL_PATH "$ROOT_DIR/models/gemma-3-4b-it" "$ENV_FILE")"
+STATE="$(env_contract_get VLLM_COMPONENT_STATE_DIR "$ROOT_DIR/.venom_runtime/components" "$ENV_FILE")"
+OWNER="$(env_contract_get VLLM_COMPONENT_OWNER "vllm" "$ENV_FILE")"
+HOST="$(env_contract_get VLLM_HOST "127.0.0.1" "$ENV_FILE")"
+PORT="$(env_contract_get VLLM_PORT "8001" "$ENV_FILE")"
+NAME="$(env_contract_get VLLM_SERVED_MODEL_NAME "$(basename "$MODEL")" "$ENV_FILE")"
+MEMORY="$(env_contract_get VLLM_GPU_MEMORY_UTILIZATION "0.8" "$ENV_FILE")"
+BATCH="$(env_contract_get VLLM_MAX_BATCHED_TOKENS "512" "$ENV_FILE")"
+CONTEXT="$(env_contract_get VLLM_MAX_MODEL_LEN "512" "$ENV_FILE")"
+TEMPLATE="$(env_contract_get VLLM_CHAT_TEMPLATE "" "$ENV_FILE")"
+args=("$ACTION" --engine vllm --python "$PYTHON" --model "$MODEL"
+      --state-dir "$STATE" --owner "$OWNER" --host "$HOST" --port "$PORT"
+      --model-name "$NAME" --gpu-memory-utilization "${MEMORY:-0.8}"
+      --max-num-batched-tokens "${BATCH:-512}" --max-model-len "${CONTEXT:-512}")
+for flag in ENFORCE_EAGER TEXT_ONLY; do
+  value="$(env_contract_get "VLLM_$flag" "false" "$ENV_FILE")"
+  if [[ "${value,,}" =~ ^(1|true|yes|on)$ ]]; then
+    case "$flag" in ENFORCE_EAGER) args+=(--enforce-eager) ;; TEXT_ONLY) args+=(--text-only) ;; esac
+  fi
+done
+if [[ -n "$TEMPLATE" ]]; then args+=(--chat-template "$TEMPLATE"); fi
+# Stdlib controller is deliberately independent of application/model interpreters.
+cd "$ROOT_DIR"
+exec python3 -m scripts.llm.component_runtime "${args[@]}"

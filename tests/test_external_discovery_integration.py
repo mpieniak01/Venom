@@ -4,8 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytest.importorskip("github")
-
 from venom_core.execution.skills.github_skill import GitHubSkill
 from venom_core.execution.skills.huggingface_skill import HuggingFaceSkill
 
@@ -41,23 +39,29 @@ def test_huggingface_skill_can_be_instantiated(mock_hf_api):
 
 
 def test_github_skill_has_kernel_functions(mock_github_api):
-    """Test że metody GitHubSkill są ozdobione @kernel_function."""
+    """GitHub tools expose the public Venom declarations."""
     skill = GitHubSkill()
 
-    # Sprawdź czy metody mają odpowiednie atrybuty kernel_function
-    # (Semantic Kernel dodaje metadane do funkcji)
     assert callable(skill.search_repos)
     assert callable(skill.get_readme)
     assert callable(skill.get_trending)
+    for name in ("search_repos", "get_readme", "get_trending"):
+        declaration = getattr(skill, name).__venom_tool__
+        assert declaration["name"] == name
+        assert declaration["description"]
 
 
 def test_huggingface_skill_has_kernel_functions(mock_hf_api):
-    """Test że metody HuggingFaceSkill są ozdobione @kernel_function."""
+    """Hugging Face tools expose the public Venom declarations."""
     skill = HuggingFaceSkill()
 
     assert callable(skill.search_models)
     assert callable(skill.get_model_card)
     assert callable(skill.search_datasets)
+    for name in ("search_models", "get_model_card", "search_datasets"):
+        declaration = getattr(skill, name).__venom_tool__
+        assert declaration["name"] == name
+        assert declaration["description"]
 
 
 def test_github_skill_search_repos_integration(mock_github_api):
@@ -128,41 +132,41 @@ def test_skills_return_error_messages_not_exceptions():
 
 def test_github_and_huggingface_skills_work_together():
     """Test że oba skills mogą działać razem (ResearcherAgent używa obu)."""
-    with patch("venom_core.execution.skills.github_skill.Github"):
-        with patch("venom_core.execution.skills.huggingface_skill.HfApi"):
-            github_skill = GitHubSkill()
-            hf_skill = HuggingFaceSkill()
+    with (
+        patch("venom_core.execution.skills.github_skill.Github"),
+        patch("venom_core.execution.skills.huggingface_skill.HfApi"),
+    ):
+        github_skill = GitHubSkill()
+        hf_skill = HuggingFaceSkill()
 
-            # Oba powinny być niezależne
-            assert hasattr(github_skill, "search_repos")
-            assert hasattr(hf_skill, "search_models")
+        # Oba powinny być niezależne
+        assert hasattr(github_skill, "search_repos")
+        assert hasattr(hf_skill, "search_models")
 
-            # Mock repozytoriów
-            mock_repo = MagicMock()
-            mock_repo.full_name = "huggingface/transformers"
-            mock_repo.description = "Transformers library"
-            mock_repo.stargazers_count = 100000
-            mock_repo.forks_count = 20000
-            mock_repo.html_url = "https://github.com/huggingface/transformers"
-            mock_repo.language = "Python"
+        # Mock repozytoriów
+        mock_repo = MagicMock()
+        mock_repo.full_name = "huggingface/transformers"
+        mock_repo.description = "Transformers library"
+        mock_repo.stargazers_count = 100000
+        mock_repo.forks_count = 20000
+        mock_repo.html_url = "https://github.com/huggingface/transformers"
+        mock_repo.language = "Python"
 
-            github_skill.github.search_repositories = MagicMock(
-                return_value=[mock_repo]
-            )
+        github_skill.github.search_repositories = MagicMock(return_value=[mock_repo])
 
-            # Mock modeli
-            mock_model = MagicMock()
-            mock_model.id = "bert-base-uncased"
-            mock_model.pipeline_tag = "fill-mask"
-            mock_model.downloads = 50000
-            mock_model.likes = 500
-            mock_model.tags = ["pytorch", "transformers"]
+        # Mock modeli
+        mock_model = MagicMock()
+        mock_model.id = "bert-base-uncased"
+        mock_model.pipeline_tag = "fill-mask"
+        mock_model.downloads = 50000
+        mock_model.likes = 500
+        mock_model.tags = ["pytorch", "transformers"]
 
-            hf_skill.api.list_models = MagicMock(return_value=[mock_model])
+        hf_skill.api.list_models = MagicMock(return_value=[mock_model])
 
-            # Agent może użyć obu
-            github_result = github_skill.search_repos(query="transformers")
-            hf_result = hf_skill.search_models(query="bert")
+        # Agent może użyć obu
+        github_result = github_skill.search_repos(query="transformers")
+        hf_result = hf_skill.search_models(query="bert")
 
-            assert "huggingface/transformers" in github_result
-            assert "bert-base-uncased" in hf_result
+        assert "huggingface/transformers" in github_result
+        assert "bert-base-uncased" in hf_result

@@ -335,3 +335,99 @@ def test_default_service_alias_preserves_named_local_runtime_selection():
         runtime.get_service("missing")
     with pytest.raises(ValueError, match="duplicate_model_service"):
         runtime.add_service(local)
+
+
+@pytest.mark.asyncio
+async def test_action_specific_read_permission_does_not_grant_write(
+    monkeypatch, tmp_path
+):
+    from venom_core.core.permission_guard import permission_guard
+    from venom_core.execution.skills.file_skill import FileSkill
+
+    monkeypatch.setattr(permission_guard, "_current_level", 0)
+    (tmp_path / "existing.txt").write_text("read ok")
+    runtime = AgentRuntime()
+    runtime.add_plugin(FileSkill(workspace_root=str(tmp_path)), "Files")
+    tools = {tool.name: tool for tool in runtime.native_tools()}
+    assert await tools["Files-read_file"].func(file_path="existing.txt") == "read ok"
+    with pytest.raises(Exception, match="Brak uprawnień"):
+        await tools["Files-write_file"].func(file_path="forbidden.txt", content="no")
+    assert not (tmp_path / "forbidden.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_custom_tool_cannot_self_declare_read_permissions(monkeypatch):
+    from venom_core.core.permission_guard import permission_guard
+
+    monkeypatch.setattr(permission_guard, "_current_level", 0)
+
+    class CustomTool:
+        @tool_function(name="custom", description="Untrusted")
+        def custom(self) -> str:
+            raise AssertionError("must never execute")
+
+    CustomTool.custom.__venom_tool__["permission_skill"] = "FileReadSkill"
+    runtime = AgentRuntime()
+    runtime.add_plugin(CustomTool(), "Custom")
+    with pytest.raises(Exception, match="Brak uprawnień"):
+        runtime.native_tools()[0].func()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_async", [False, True])
+async def test_integrator_reads_sync_and_async_platform_results_without_awaiting_strings(
+    is_async,
+):
+    import threading
+    from types import SimpleNamespace
+
+    from venom_core.agents.integrator import IntegratorAgent
+
+    main_thread = threading.get_ident()
+    called_in = []
+
+    def sync_issues(**kwargs):
+        called_in.append(threading.get_ident())
+        return "#42: real synchronous result"
+
+    async def async_issues(**kwargs):
+        return "#42: async adapter result"
+
+    actor = object.__new__(IntegratorAgent)
+    actor.platform_skill = SimpleNamespace(
+        get_assigned_issues=async_issues if is_async else sync_issues
+    )
+    result = await actor.poll_issues()
+    assert len(result) == 1 and result[0].startswith("#42:")
+    if not is_async:
+        assert called_in and called_in[0] != main_thread
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "step",
+    [
+        {"action": "click"},
+        {"action": "fill", "selector": "input"},
+        {"action": "verify_text", "selector": "div"},
+    ],
+)
+async def test_tester_rejects_invalid_scenario_before_browser_action(step):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from venom_core.agents.tester import TesterAgent
+
+    actor = object.__new__(TesterAgent)
+    actor.browser_skill = SimpleNamespace(
+        click_element=AsyncMock(),
+        fill_form=AsyncMock(),
+        get_text_content=AsyncMock(),
+        close_browser=AsyncMock(),
+    )
+    report = await actor.run_e2e_scenario("http://fixture.invalid", [step])
+    assert "invalid_scenario_field:" in report
+    actor.browser_skill.click_element.assert_not_called()
+    actor.browser_skill.fill_form.assert_not_called()
+    actor.browser_skill.get_text_content.assert_not_called()
+    actor.browser_skill.close_browser.assert_awaited_once()

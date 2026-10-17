@@ -5,10 +5,9 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from semantic_kernel import Kernel
-
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
 

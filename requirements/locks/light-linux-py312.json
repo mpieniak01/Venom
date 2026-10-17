@@ -151,9 +151,9 @@
       "version": "4.0.12"
     },
     "gitpython": {
-      "sha256": "d352abe2908d07355014abdd21ddf798c2a961469239afec4962e9da884858f9",
-      "url": "https://files.pythonhosted.org/packages/20/7a/1c6e3562dfd8950adbb11ffbc65d21e7c89d01a6e4f137fa981056de25c5/gitpython-3.1.50-py3-none-any.whl",
-      "version": "3.1.50"
+      "sha256": "39548bffb8fa0f3a548133348868bb4838e79d73283052207dc97781a569b6b4",
+      "url": "https://files.pythonhosted.org/packages/71/63/ba28697918b7c190af9f3f21940d03e8814e25dd4ddd39d6929f3a553995/gitpython-3.1.60-py3-none-any.whl",
+      "version": "3.1.60"
     },
     "google-api-core": {
       "sha256": "a2e22a0c1d0f03eafff1858b38cf46f832d5902b0c052235bf0ab8402929fbdc",
@@ -561,19 +561,19 @@
       "version": "1.25.1"
     }
   },
-  "lock_sha256": "a9df9205b95bff38635caefb58a5cec7c510b83c97f923694378606e6953ad15",
+  "lock_sha256": "30d97ffd28ac0a9de1f1a9210855293fe3cd326747d5a83043a4ed1374f75193",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "49cb5ca14da6eec1921b66ccc383bb9d2fd9751b8a15bac4deec5e0f9cd2ba64",
+  "policy_sha256": "60fa3f0730d6c2b5eb0d102545375567c04ab908d16d3d56187df0d3e2d600af",
   "profile": "light",
-  "profile_policy_sha256": "ac9487caf62dce47c4d47880ec474428c28bd542e49342b7d7a677137eca89c2",
+  "profile_policy_sha256": "018ad211f70d71a3adf9450f706ec14cf5858f2d95b400f88377bff672c4123b",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",
-    "version": "26.1.1"
+    "version": "26.2.1"
   },
   "resolver_environment": {
     "implementation_name": "cpython",

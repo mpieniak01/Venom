@@ -467,3 +467,365 @@ def test_lock_audit_rejects_application_transitive_version_drift(
 def test_lock_cannot_omit_requested_direct_package(policy):
     with pytest.raises(ValueError, match="direct requirement"):
         profiles.check_direct_requirements(policy, "light", {"openai": "2.54.0"})
+
+
+# Bootstrap regressions execute the orchestration with a fake package runner;
+# these tests never install packages or start any application.
+@pytest.fixture
+def bootstrap_runner(monkeypatch):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    commands = []
+
+    def run(command, *, capture=False):
+        commands.append(command)
+        if command[1:3] == ["-m", "venv"]:
+            target = Path(command[3])
+            (target / "bin").mkdir(parents=True)
+            (target / "bin/python").write_text("fake interpreter")
+            (target / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+        stdout = "include-system-site-packages = false\n"
+        if "list" in command:
+            stdout = "[]"
+        return SimpleNamespace(returncode=0, stdout=stdout)
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    return bootstrap, commands
+
+
+@pytest.mark.parametrize("profile", ["light", "full", "vllm", "onnx-gpu", "academy"])
+def test_bootstrap_uses_hashes_audit_and_correct_build_boundary(
+    tmp_path, bootstrap_runner, profile
+):
+    bootstrap, commands = bootstrap_runner
+    target = tmp_path / "isolated"
+    bootstrap.install_profile(profiles.ROOT, profile, target)
+    installs = [command for command in commands if "install" in command]
+    assert len(installs) == 2
+    assert all("--require-hashes" in command for command in installs)
+    assert "audit-locks" in next(
+        command for command in commands if "audit-locks" in command
+    )
+    assert ("--build-constraint" in installs[-1]) == (profile == "full")
+    assert (
+        json.loads((target / ".venom-dependency-profile.json").read_text())["profile"]
+        == profile
+    )
+
+
+def test_bootstrap_will_not_overwrite_an_existing_directory_without_explicit_update(
+    tmp_path, bootstrap_runner
+):
+    bootstrap, commands = bootstrap_runner
+    with pytest.raises(ValueError, match="already exists"):
+        bootstrap.install_profile(profiles.ROOT, "light", tmp_path)
+    assert not commands
+
+
+def test_bootstrap_rejects_non_venv_updates_before_package_changes(
+    tmp_path, bootstrap_runner
+):
+    bootstrap, commands = bootstrap_runner
+    with pytest.raises(ValueError, match="not a virtual environment"):
+        bootstrap.install_profile(profiles.ROOT, "light", tmp_path, update=True)
+    assert not commands
+
+
+def test_bootstrap_never_installs_engine_components_into_application_venv(
+    bootstrap_runner,
+):
+    bootstrap, commands = bootstrap_runner
+    with pytest.raises(ValueError, match="cannot replace"):
+        bootstrap.install_profile(
+            profiles.ROOT, "vllm", profiles.ROOT / ".venv", update=True
+        )
+    assert not commands
+
+
+def test_bootstrap_existing_legacy_application_is_rejected_before_pip_install(
+    tmp_path, bootstrap_runner, monkeypatch
+):
+    bootstrap, _ = bootstrap_runner
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/python").write_text("fake interpreter")
+    (tmp_path / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+    commands = []
+
+    def run(command, *, capture=False):
+        commands.append(command)
+        return SimpleNamespace(
+            stdout='[{"name":"semantic-kernel"}]'
+            if "list" in command
+            else "include-system-site-packages = false\n",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    with pytest.raises(ValueError, match="legacy/engine"):
+        bootstrap.install_profile(profiles.ROOT, "ci", tmp_path, update=True)
+    assert not any("install" in command for command in commands)
+
+
+def test_bootstrap_refuses_system_site_packages(
+    tmp_path, bootstrap_runner, monkeypatch
+):
+    bootstrap, _ = bootstrap_runner
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/python").write_text("fake interpreter")
+    (tmp_path / "pyvenv.cfg").write_text("include-system-site-packages = true\n")
+    monkeypatch.setattr(
+        bootstrap,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            stdout="include-system-site-packages = true\n"
+        ),
+    )
+    with pytest.raises(ValueError, match="System-site-packages"):
+        bootstrap.install_profile(profiles.ROOT, "ci", tmp_path, update=True)
+
+
+def test_bootstrap_validates_artifact_receipt_before_environment_creation(
+    tmp_path, bootstrap_runner
+):
+    bootstrap, commands = bootstrap_runner
+    root = tmp_path / "repo"
+    (root / "config").mkdir(parents=True)
+    policy = profiles.load_policy()
+    (root / "config/dependency-profiles.json").write_text(json.dumps(policy))
+    lock = root / policy["profiles"]["light"]["lock"]
+    lock.parent.mkdir(parents=True)
+    lock.write_text("tampered")
+    lock.with_suffix(".json").write_text(
+        json.dumps({"profile": "light", "lock_sha256": "incorrect"})
+    )
+    with pytest.raises(ValueError, match="Invalid hash-lock"):
+        bootstrap.install_profile(root, "light", tmp_path / "target")
+    assert not commands
+
+
+def test_docker_runtime_requirement_payload_is_self_contained():
+    import shlex
+
+    dockerfile = (profiles.ROOT / "docker/backend.Dockerfile").read_text()
+    payload = set()
+    for line in dockerfile.splitlines():
+        if line.startswith("COPY "):
+            payload.update(shlex.split(line)[1:-1])
+    for source in payload:
+        assert (profiles.ROOT / source).exists(), source
+        if source.endswith(".txt"):
+            for line in (profiles.ROOT / source).read_text().splitlines():
+                if line.startswith(("-r ", "-c ")):
+                    assert line.split(maxsplit=1)[1] in payload, (
+                        "Docker omitted a transitive requirements include"
+                    )
+    assert "--require-hashes" in dockerfile
+
+
+def test_dependency_installing_workflows_do_not_install_unlocked_python_packages():
+    import yaml
+
+    for name in [
+        "ci.yml",
+        "full-ci.yml",
+        "copilot-setup-steps.yml",
+        "security-delta-nightly.yml",
+        "lint.yml",
+    ]:
+        workflow = yaml.safe_load(
+            (profiles.ROOT / ".github/workflows" / name).read_text()
+        )
+        commands = [
+            step.get("run", "")
+            for job in workflow["jobs"].values()
+            for step in job.get("steps", [])
+        ]
+        assert any(
+            "bootstrap_dependency_profile.py" in command for command in commands
+        ), name
+        assert not any(
+            "pip install" in command and "--require-hashes" not in command
+            for command in commands
+        ), name
+
+
+@pytest.mark.parametrize(
+    "failure", ["unknown", "platform", "system", "missing_python", "owner", "onnx_cpu"]
+)
+def test_bootstrap_rejects_invalid_targets_without_package_mutations(
+    tmp_path, bootstrap_runner, monkeypatch, failure
+):
+    bootstrap, commands = bootstrap_runner
+    profile = "unknown" if failure == "unknown" else "light"
+    target = tmp_path / "target"
+    update = False
+    if failure == "platform":
+        monkeypatch.setattr(bootstrap.platform, "machine", lambda: "unsupported")
+    elif failure == "system":
+        target = Path(bootstrap.sys.base_prefix)
+    elif failure in {"missing_python", "owner", "onnx_cpu"}:
+        target.mkdir()
+        (target / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+        update = True
+        if failure != "missing_python":
+            (target / "bin").mkdir()
+            (target / "bin/python").write_text("fake")
+        if failure == "owner":
+            profile = "vllm"
+            (target / ".venom-dependency-profile.json").write_text(
+                json.dumps({"profile": "light"})
+            )
+        if failure == "onnx_cpu":
+            profile = "onnx-gpu"
+
+            def run(command, *, capture=False):
+                commands.append(command)
+                return SimpleNamespace(
+                    stdout='[{"name":"onnxruntime"}]'
+                    if "list" in command
+                    else "include-system-site-packages = false\n",
+                    returncode=0,
+                )
+
+            monkeypatch.setattr(bootstrap, "run", run)
+    with pytest.raises(ValueError):
+        bootstrap.install_profile(profiles.ROOT, profile, target, update=update)
+    assert not any("install" in command for command in commands)
+
+
+def test_bootstrap_does_not_stamp_ownership_when_verification_fails(
+    tmp_path, bootstrap_runner, monkeypatch
+):
+    bootstrap, _ = bootstrap_runner
+    original = bootstrap.run
+
+    def run(command, **kwargs):
+        if "verify" in command:
+            raise subprocess.CalledProcessError(1, command)
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    target = tmp_path / "target"
+    with pytest.raises(subprocess.SubprocessError):
+        bootstrap.install_profile(profiles.ROOT, "light", target)
+    assert not (target / ".venom-dependency-profile.json").exists()
+
+
+def test_bootstrap_lock_path_cannot_escape_repository(tmp_path):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    policy = {"profiles": {"light": {"lock": "../outside.txt"}}}
+    with pytest.raises(ValueError, match="inside repository"):
+        bootstrap.checked_lock(tmp_path, policy, "light")
+
+
+def test_bootstrap_subprocess_wrapper_propagates_failure(monkeypatch):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    def fail(command, **kwargs):
+        assert kwargs["check"] is True
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fail)
+    with pytest.raises(subprocess.SubprocessError):
+        bootstrap.run(["fake"], capture=True)
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_bootstrap_cli_reports_real_failure(tmp_path, monkeypatch, capsys, failed):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    def install(*args, **kwargs):
+        if failed:
+            raise ValueError("failed profile")
+
+    monkeypatch.setattr(bootstrap, "install_profile", install)
+    monkeypatch.setattr(
+        bootstrap.sys,
+        "argv",
+        ["bootstrap", "--profile", "light", "--venv", str(tmp_path), "--update"],
+    )
+    assert bootstrap.main() == int(failed)
+    if failed:
+        assert "ERROR" in capsys.readouterr().err
+
+
+def test_light_verification_rejects_leftover_full_packages(
+    tmp_path, policy, monkeypatch
+):
+    lock = tmp_path / policy["profiles"]["light"]["lock"]
+    lock.parent.mkdir(parents=True)
+    lock.write_text(
+        f"# Profile policy SHA256: {profiles.profile_policy_hash(policy, 'light')}\nexample==1.2.3\n"
+    )
+
+    def run(command, **kwargs):
+        if "list" in command:
+            return SimpleNamespace(
+                stdout=json.dumps(
+                    [
+                        {"name": "example", "version": "1.2.3"},
+                        {"name": "torch", "version": "2.11.0"},
+                    ]
+                ),
+                returncode=0,
+            )
+        if "check" in command:
+            return SimpleNamespace(
+                stdout="No broken requirements found.", stderr="", returncode=0
+            )
+        return SimpleNamespace(
+            stdout="include-system-site-packages = false\n", returncode=0
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    result = profiles.verify_environment(
+        tmp_path, policy, "light", "/isolated/bin/python"
+    )
+    assert result["status"] == "FAIL"
+    assert result["unexpected_packages"] == ["torch"]
+
+
+def test_bootstrap_refuses_profile_downgrade_before_pip_changes(
+    tmp_path, bootstrap_runner, monkeypatch
+):
+    bootstrap, commands = bootstrap_runner
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/python").write_text("fake interpreter")
+    (tmp_path / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+
+    def run(command, *, capture=False):
+        commands.append(command)
+        return SimpleNamespace(
+            stdout='[{"name":"torch"}]'
+            if "list" in command
+            else "include-system-site-packages = false\n",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    with pytest.raises(ValueError, match="outside the selected profile"):
+        bootstrap.install_profile(profiles.ROOT, "light", tmp_path, update=True)
+    assert not any("install" in command for command in commands)
+
+
+def test_bootstrap_canonicalizes_dotted_distribution_names(
+    tmp_path, bootstrap_runner, monkeypatch
+):
+    bootstrap, commands = bootstrap_runner
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/python").write_text("fake interpreter")
+    (tmp_path / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+
+    def run(command, *, capture=False):
+        commands.append(command)
+        return SimpleNamespace(
+            stdout='[{"name":"boolean.py"}]'
+            if "list" in command
+            else "include-system-site-packages = false\n",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    bootstrap.install_profile(profiles.ROOT, "ci", tmp_path, update=True)
+    assert any("install" in command for command in commands)

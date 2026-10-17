@@ -63,11 +63,15 @@ def _json_or_none(text: str) -> dict[str, Any] | None:
         return None
 
 
-def _scan_python(root: Path) -> dict[str, Any]:
-    result: dict[str, Any] = {"pip_check": {}, "pip_audit": {}}
-
-    venv_python = root / ".venv" / "bin" / "python"
-    python_cmd = str(venv_python) if venv_python.exists() else sys.executable
+def _scan_python(root: Path, python_cmd: str | None = None) -> dict[str, Any]:
+    # Audit exactly the requested interpreter. A checkout's .venv may belong to
+    # another release and PATH may contain a scanner from a different profile.
+    python_cmd = python_cmd or sys.executable
+    result: dict[str, Any] = {
+        "interpreter": python_cmd,
+        "pip_check": {},
+        "pip_audit": {},
+    }
     pip_check = _run([python_cmd, "-m", "pip", "check"])
     result["pip_check"] = {
         "ok": pip_check.ok,
@@ -76,23 +80,18 @@ def _scan_python(root: Path) -> dict[str, Any]:
         "stderr": pip_check.stderr.strip(),
     }
 
-    venv_pip_audit = root / ".venv" / "bin" / "pip-audit"
-    pip_audit_cmd = (
-        str(venv_pip_audit) if venv_pip_audit.exists() else shutil.which("pip-audit")
-    )
-
-    if not pip_audit_cmd:
+    pip_audit = _run([python_cmd, "-m", "pip_audit", "-f", "json"])
+    if "No module named pip_audit" in pip_audit.stderr:
         result["pip_audit"] = {
             "available": False,
             "complete": False,
             "status": "unavailable",
-            "note": "pip-audit not found in current environment",
+            "note": "pip-audit not installed in selected interpreter",
             "vuln_total": None,
             "packages_with_vulns": [],
         }
         return result
 
-    pip_audit = _run([pip_audit_cmd, "-f", "json"])
     payload = _json_or_none(pip_audit.stdout)
     details = _parse_python_audit(payload)
     return {**result, "pip_audit": _audit_result(pip_audit, details)}
@@ -221,11 +220,13 @@ def report_exit_code(report: dict[str, Any], strict: bool) -> int:
     return int(strict and any(audit["vuln_total"] > 0 for audit in audits))
 
 
-def _build_report(root: Path) -> dict[str, Any]:
+def _build_report(root: Path, python_cmd: str | None = None) -> dict[str, Any]:
     report: dict[str, Any] = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "repo_root": str(root),
-        "python": _scan_python(root),
+        "python": _scan_python(root)
+        if python_cmd is None
+        else _scan_python(root, python_cmd),
         "web": _scan_web(root),
     }
     report["complete"] = report_exit_code(report, False) != 2
@@ -275,10 +276,17 @@ def main() -> int:
         action="store_true",
         help="Exit 1 for findings; failed or incomplete scans always exit 2.",
     )
+    parser.add_argument(
+        "--python",
+        type=Path,
+        help="Exact interpreter to audit; defaults to the interpreter running this script.",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[2]
-    report = _build_report(root)
+    report = (
+        _build_report(root, str(args.python)) if args.python else _build_report(root)
+    )
     _print_summary(report)
 
     if args.out_json:

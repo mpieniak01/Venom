@@ -1,75 +1,43 @@
-import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# --- Mocks for Heavy Dependencies (only for imports in this module) ---
-_module_backup: dict[str, object | None] = {}
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-
-def _set_mocked_module(name: str, module: object | None = None) -> object:
-    _module_backup[name] = sys.modules.get(name)
-    mocked = module if module is not None else MagicMock()
-    sys.modules[name] = mocked  # type: ignore[assignment]
-    return mocked
-
-
-_set_mocked_module("semantic_kernel")
-_set_mocked_module("semantic_kernel.kernel")
-_set_mocked_module("semantic_kernel.contents")
-_set_mocked_module("semantic_kernel.contents.chat_history")
-_set_mocked_module("semantic_kernel.contents.chat_message_content")
-_set_mocked_module("semantic_kernel.contents.function_result_content")
-_set_mocked_module("semantic_kernel.contents.text_content")
-_set_mocked_module("semantic_kernel.contents.utils")
-_set_mocked_module("semantic_kernel.contents.utils.author_role")
-_set_mocked_module("semantic_kernel.connectors")
-_set_mocked_module("semantic_kernel.connectors.ai")
-_set_mocked_module("semantic_kernel.connectors.ai.open_ai")
-
-config_module = MagicMock()
-config_module.SETTINGS = MagicMock()
-config_module.SETTINGS.AI_MODE = "HYBRID"
-_set_mocked_module("venom_core.config", config_module)
-
-# Mock venom_core.services.config_manager
-mock_config_manager = MagicMock()
-config_manager_module = MagicMock()
-config_manager_module.config_manager = mock_config_manager
-_set_mocked_module("venom_core.services.config_manager", config_manager_module)
-
-# Mock venom_core.core.permission_guard
-mock_permission_guard = MagicMock()
-permission_guard_module = MagicMock()
-permission_guard_module.permission_guard = mock_permission_guard
-_set_mocked_module("venom_core.core.permission_guard", permission_guard_module)
-
-# Mock venom_core.api.routes.system_deps
-mock_system_deps = MagicMock()
-_set_mocked_module("venom_core.api.routes.system_deps", mock_system_deps)
-
-import pytest  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-from venom_core.agents.unsupported import UnsupportedAgent  # noqa: E402
+from venom_core.agents.unsupported import UnsupportedAgent
 
 # Import modules to test
-from venom_core.api.routes import nodes as nodes_routes  # noqa: E402
-from venom_core.api.routes import queue as queue_routes  # noqa: E402
-from venom_core.api.routes import strategy  # noqa: E402
-from venom_core.api.routes import system_config  # noqa: E402
-from venom_core.api.routes import system_governance  # noqa: E402
-from venom_core.api.routes import system_runtime  # noqa: E402
-from venom_core.api.routes import system_scheduler  # noqa: E402
-from venom_core.api.routes import system_services  # noqa: E402
-from venom_core.utils.ttl_cache import TTLCache  # noqa: E402
+from venom_core.api.routes import nodes as nodes_routes
+from venom_core.api.routes import queue as queue_routes
+from venom_core.api.routes import (
+    strategy,
+    system_config,
+    system_governance,
+    system_runtime,
+    system_scheduler,
+    system_services,
+)
+from venom_core.utils.ttl_cache import TTLCache
 
 pytestmark = pytest.mark.integration
 
-for _name, _original in _module_backup.items():
-    if _original is None:
-        sys.modules.pop(_name, None)
-    else:
-        sys.modules[_name] = _original  # type: ignore[assignment]
+
+@pytest.fixture(autouse=True)
+def scoped_route_dependencies(monkeypatch):
+    global mock_config_manager, mock_permission_guard, mock_system_deps
+    mock_config_manager = MagicMock()
+    mock_permission_guard = MagicMock()
+    mock_system_deps = MagicMock()
+    monkeypatch.setattr(system_config, "config_manager", mock_config_manager)
+    monkeypatch.setattr(system_governance, "permission_guard", mock_permission_guard)
+    for module in (
+        system_governance,
+        system_runtime,
+        system_scheduler,
+        system_services,
+    ):
+        monkeypatch.setattr(module, "system_deps", mock_system_deps)
+
 
 # --- App Fixture ---
 
@@ -92,7 +60,10 @@ def test_system_config_routes(mock_app):
     mock_app.app.include_router(system_config.router)
 
     # Test get_runtime_config
-    mock_config_manager.get_config.return_value = {"key": "val"}
+    mock_config_manager.get_effective_config_with_sources.return_value = (
+        {"key": "val"},
+        {"key": "env"},
+    )
     resp = mock_app.client.get("/api/v1/config/runtime")
     assert resp.status_code == 200
     assert resp.json()["config"]["key"] == "val"
@@ -103,14 +74,14 @@ def test_system_config_routes(mock_app):
         "/api/v1/config/runtime", json={"updates": {"key": "new"}}
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "updated"
+    assert resp.json()["status"] == "success"
     mock_config_manager.update_config.assert_called_with({"key": "new"})
 
     # Test get_config_backups
-    mock_config_manager.get_backup_list.return_value = ["backup1.env"]
+    mock_config_manager.get_backup_list.return_value = [{"filename": "backup1.env"}]
     resp = mock_app.client.get("/api/v1/config/backups")
     assert resp.status_code == 200
-    assert "backup1.env" in resp.json()["backups"]
+    assert resp.json()["backups"][0]["filename"] == "backup1.env"
 
     # Test restore_config_backup
     mock_config_manager.restore_backup.return_value = {"status": "restored"}
@@ -118,7 +89,7 @@ def test_system_config_routes(mock_app):
         "/api/v1/config/restore", json={"backup_filename": "backup1.env"}
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "restored"
+    assert resp.json()["status"] == "success"
     mock_config_manager.restore_backup.assert_called_with("backup1.env")
 
 
@@ -241,9 +212,6 @@ def test_system_runtime_routes(mock_app):
 
     # Mock Runtime Controller
     mock_runtime_ctrl = MagicMock()
-    sys.modules[
-        "venom_core.services.runtime_controller"
-    ].runtime_controller = mock_runtime_ctrl
     # Re-import or patch where it is used
     # system_runtime imports runtime_controller directly
     # We can patch it in the module
@@ -503,7 +471,7 @@ async def test_nodes_routes_expanded(mock_app):
 async def test_unsupported_agent():
     mock_kernel = MagicMock()
     # Mock BaseAgent init if needed, but since we are testing the class directly
-    # and we mocked semantic_kernel, it should be fine.
+    # The optional service edge is mocked locally.
 
     agent = UnsupportedAgent(mock_kernel)
 

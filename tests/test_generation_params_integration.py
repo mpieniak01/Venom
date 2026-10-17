@@ -74,11 +74,14 @@ class TestGenerationParamsIntegration:
         Niższa temperatura (0.0) powinna dawać bardziej deterministyczne odpowiedzi,
         wyższa temperatura (2.0) - bardziej kreatywne i zmienne.
         """
-        # Import tu aby uniknąć błędów jeśli semantic_kernel nie jest zainstalowany
-        from semantic_kernel.contents import ChatHistory
-        from semantic_kernel.contents.chat_message_content import ChatMessageContent
-        from semantic_kernel.contents.utils.author_role import AuthorRole
-
+        # Public conversation contracts are independent of the provider SDK.
+        from venom_core.execution.agent_contracts import (
+            ConversationHistory as ChatHistory,
+        )
+        from venom_core.execution.agent_contracts import (
+            ConversationMessage as ChatMessageContent,
+        )
+        from venom_core.execution.agent_contracts import MessageRole as AuthorRole
         from venom_core.execution.kernel_builder import KernelBuilder
 
         # Prosty prompt do testowania
@@ -95,8 +98,8 @@ class TestGenerationParamsIntegration:
         )
 
         # Import settings class
-        from semantic_kernel.connectors.ai.open_ai import (
-            OpenAIChatPromptExecutionSettings,
+        from venom_core.execution.agent_contracts import (
+            CompletionOptions as OpenAIChatPromptExecutionSettings,
         )
 
         settings_low = OpenAIChatPromptExecutionSettings(**adapted_low)
@@ -162,13 +165,16 @@ class TestGenerationParamsIntegration:
         """
         Test sprawdzający czy max_tokens ogranicza długość odpowiedzi.
         """
-        from semantic_kernel.connectors.ai.open_ai import (
-            OpenAIChatPromptExecutionSettings,
+        from venom_core.execution.agent_contracts import (
+            CompletionOptions as OpenAIChatPromptExecutionSettings,
         )
-        from semantic_kernel.contents import ChatHistory
-        from semantic_kernel.contents.chat_message_content import ChatMessageContent
-        from semantic_kernel.contents.utils.author_role import AuthorRole
-
+        from venom_core.execution.agent_contracts import (
+            ConversationHistory as ChatHistory,
+        )
+        from venom_core.execution.agent_contracts import (
+            ConversationMessage as ChatMessageContent,
+        )
+        from venom_core.execution.agent_contracts import MessageRole as AuthorRole
         from venom_core.execution.kernel_builder import KernelBuilder
 
         # Prompt wymagający dłuższej odpowiedzi

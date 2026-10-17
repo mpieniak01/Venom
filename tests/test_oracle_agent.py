@@ -3,9 +3,9 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.oracle import OracleAgent
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.memory.graph_rag_service import GraphRAGService
 
 

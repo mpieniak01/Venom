@@ -56,10 +56,35 @@ class AgentRuntime:
         return functions
 
     def _guarded_tool(self, method):
-        policy_name = (
+        owner = (
             type(method.__self__).__name__
             if hasattr(method, "__self__")
             else method.__name__
+        )
+        # Policy belongs to core, never to metadata supplied by a custom tool.
+        action_permissions = {
+            (
+                "venom_core.execution.skills.file_skill",
+                "FileSkill",
+                name,
+            ): "FileReadSkill"
+            for name in ("read_file", "list_files", "file_exists")
+        }
+        action_permissions.update(
+            {
+                (
+                    "venom_core.memory.memory_skill",
+                    "MemorySkill",
+                    name,
+                ): "MemoryRecallSkill"
+                for name in ("recall", "memory_search")
+            }
+        )
+        action_permissions[
+            ("venom_core.memory.memory_skill", "MemorySkill", "memorize")
+        ] = "FileWriteSkill"
+        policy_name = action_permissions.get(
+            (method.__module__, owner, method.__name__), owner
         )
 
         def check_permission():

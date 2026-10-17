@@ -1,7 +1,5 @@
 """Tests for FlowRouter, StreamingHandler, BackgroundScheduler (gaps), and Swarm."""
 
-# ruff: noqa: E402
-
 from __future__ import annotations
 
 import time
@@ -12,6 +10,11 @@ from uuid import uuid4
 import pytest
 
 from venom_core.core.flow_router import FlowRouter
+from venom_core.core.scheduler import STATE_PAUSED, STATE_RUNNING, BackgroundScheduler
+from venom_core.core.streaming_handler import StreamingHandler
+from venom_core.core.swarm import create_venom_agent_wrapper, extract_venom_tools
+from venom_core.execution.agent_contracts import tool_function
+from venom_core.execution.maf_runtime import AgentRuntime
 
 # ---------------------------------------------------------------------------
 # FlowRouter
@@ -111,8 +114,6 @@ class TestFlowRouterDetermineFlow:
 # ---------------------------------------------------------------------------
 # StreamingHandler
 # ---------------------------------------------------------------------------
-
-from venom_core.core.streaming_handler import StreamingHandler
 
 
 class TestStreamingHandlerInit:
@@ -307,8 +308,6 @@ class TestStreamingHandlerCreateStreamCallback:
 # ---------------------------------------------------------------------------
 # BackgroundScheduler — uncovered gaps
 # ---------------------------------------------------------------------------
-
-from venom_core.core.scheduler import STATE_PAUSED, STATE_RUNNING, BackgroundScheduler
 
 
 @pytest.fixture
@@ -577,15 +576,8 @@ class TestBackgroundSchedulerScheduleMethods:
 
 
 # ---------------------------------------------------------------------------
-# Swarm — uncovered gaps (extract_venom_tools, _is_kernel_method)
+# Swarm — public native tools and wrapper contracts
 # ---------------------------------------------------------------------------
-
-import venom_core.core.swarm as swarm_mod
-from venom_core.core.swarm import (
-    VenomAgent,
-    create_venom_agent_wrapper,
-    extract_venom_tools,
-)
 
 
 class DummyAgent:
@@ -599,155 +591,109 @@ class DummyAgent:
         return f"processed: {message}"
 
 
-class DummyKernel:
-    def __init__(self, plugins=None):
-        self.plugins = plugins or {}
-
-
 class TestExtractVenomTools:
     def test_extract_tools_returns_empty_when_no_kernel(self):
-        """extract_venom_tools should return empty list when agent has no kernel."""
-        agent = DummyAgent()  # no kernel attribute
-        tools = extract_venom_tools(agent)
-        assert tools == []
+        assert extract_venom_tools(DummyAgent()) == []
 
     def test_extract_tools_returns_empty_when_no_plugins(self):
-        """extract_venom_tools should return empty list when kernel has no plugins."""
-        kernel = DummyKernel(plugins={})
-        agent = DummyAgent(kernel=kernel)
-        tools = extract_venom_tools(agent)
-        assert tools == []
+        assert extract_venom_tools(DummyAgent(kernel=AgentRuntime())) == []
 
-    def test_extract_tools_with_callable_functions(self):
-        """extract_venom_tools should produce tool defs for callable plugin members."""
+    def test_extract_tools_with_declared_functions(self):
+        class Plugin:
+            @tool_function(description="Does something")
+            def do_something(self, value: str) -> str:
+                return value
 
-        class DummyPlugin:
-            def do_something(self) -> str:
-                """Does something."""
-                return "result"
+        runtime = AgentRuntime()
+        runtime.add_plugin(Plugin(), "MyPlugin")
+        tools = extract_venom_tools(DummyAgent(kernel=runtime))
+        assert tools[0]["type"] == "function"
+        assert tools[0]["function"]["name"] == "MyPlugin-do_something"
+        assert tools[0]["function"]["description"] == "Does something"
+        assert tools[0]["function"]["parameters"]["required"] == ["value"]
 
-        kernel = DummyKernel(plugins={"MyPlugin": DummyPlugin()})
-        agent = DummyAgent(kernel=kernel)
-        tools = extract_venom_tools(agent)
-        # Should find at least do_something
-        tool_names = [t["function"]["name"] for t in tools]
-        assert any("do_something" in name for name in tool_names)
-        # Each entry should follow schema
-        for tool in tools:
-            assert tool["type"] == "function"
-            assert "function" in tool
-            assert "name" in tool["function"]
-            assert "description" in tool["function"]
+    def test_extract_tools_surfaces_schema_errors(self):
+        class BrokenRuntime:
+            def native_tools(self):
+                raise RuntimeError("schema broken")
 
-    def test_extract_tools_handles_kernel_error_gracefully(self):
-        """extract_venom_tools should catch exceptions and return empty list."""
+        with pytest.raises(RuntimeError, match="schema broken"):
+            extract_venom_tools(DummyAgent(kernel=BrokenRuntime()))
 
-        class ErrorKernel:
-            @property
-            def plugins(self):
-                raise RuntimeError("kernel broken")
-
-        agent = DummyAgent(kernel=ErrorKernel())
-        tools = extract_venom_tools(agent)
-        assert tools == []
-
-    def test_extract_tools_skips_private_functions(self):
-        """extract_venom_tools should skip members starting with '_'."""
-
-        class DummyPlugin:
+    def test_extract_tools_excludes_undeclared_members(self):
+        class Plugin:
             def _private_func(self):
                 return "private"
 
-            def public_func(self):
+            def unmarked_public(self):
+                return "not a tool"
+
+            @tool_function(description="Allowed")
+            def public_func(self) -> str:
                 return "public"
 
-        kernel = DummyKernel(plugins={"Plug": DummyPlugin()})
-        agent = DummyAgent(kernel=kernel)
-        tools = extract_venom_tools(agent)
-        tool_names = [t["function"]["name"] for t in tools]
-        assert not any("_private_func" in name for name in tool_names)
+        runtime = AgentRuntime()
+        runtime.add_plugin(Plugin(), "Plug")
+        tools = extract_venom_tools(DummyAgent(kernel=runtime))
+        assert [tool["function"]["name"] for tool in tools] == ["Plug-public_func"]
 
 
-class TestVenomAgentIsKernelMethod:
-    def _make_venom_agent(self, monkeypatch):
-        """Create a VenomAgent with stubbed registration."""
-        inner_agent = DummyAgent(kernel=DummyKernel())
-        monkeypatch.setattr(
-            swarm_mod.VenomAgent, "_register_venom_functions", lambda self: None
-        )
-        return VenomAgent(
-            name="TestAgent",
-            venom_agent=inner_agent,
-            system_message="test",
-        )
+class TestNativeToolDeclarations:
+    def test_group_without_declared_tools_is_rejected(self):
+        class Plugin:
+            def public_but_not_declared(self):
+                return "not a tool"
 
-    def test_is_kernel_method_returns_false_for_private(self, monkeypatch):
-        """_is_kernel_method should return False for private members."""
-        va = self._make_venom_agent(monkeypatch)
+        with pytest.raises(ValueError, match="tool_group_has_no_functions"):
+            AgentRuntime().add_plugin(Plugin(), "Plugin")
 
-        class MockPlugin:
-            def _private_func(self):
-                pass
+    def test_inherited_declared_tools_keep_their_public_schema(self):
+        class Base:
+            @tool_function(description="Inherited")
+            def inherited(self, count: int = 1) -> str:
+                return str(count)
 
-        plugin = MockPlugin()
+        class Child(Base):
+            pass
+
+        runtime = AgentRuntime()
+        runtime.add_plugin(Child(), "Child")
+        tools = extract_venom_tools(DummyAgent(kernel=runtime))
+        assert tools[0]["function"]["name"] == "Child-inherited"
         assert (
-            va._is_kernel_method(plugin, "_private_func", plugin._private_func) is False
+            tools[0]["function"]["parameters"]["properties"]["count"]["type"]
+            == "integer"
         )
 
-    def test_is_kernel_method_returns_false_when_not_in_class_dict(self, monkeypatch):
-        """_is_kernel_method should return False when method not in class __dict__."""
-        va = self._make_venom_agent(monkeypatch)
+    def test_public_decorator_preserves_callable_binding(self):
+        class Plugin:
+            @tool_function(name="named", description="Named tool")
+            def method(self, text: str) -> str:
+                return text
 
-        class MockPlugin:
-            pass
-
-        plugin = MockPlugin()
-
-        def not_in_class_dict():
-            pass
-
-        assert va._is_kernel_method(plugin, "some_func", not_in_class_dict) is False
-
-    def test_is_kernel_method_returns_true_for_kernel_decorated(self, monkeypatch):
-        """_is_kernel_method should return True for methods with __kernel_function__."""
-        va = self._make_venom_agent(monkeypatch)
-
-        class MockPlugin:
-            def my_func(self):
-                pass
-
-        MockPlugin.my_func.__kernel_function__ = True
-        plugin = MockPlugin()
-        assert va._is_kernel_method(plugin, "my_func", plugin.my_func) is True
+        plugin = Plugin()
+        runtime = AgentRuntime(permission_checker=lambda name: True)
+        runtime.add_plugin(plugin, "Plugin")
+        native = runtime.native_tools()[0]
+        assert native.name == "Plugin-named"
+        assert native.func(text="bound") == "bound"
 
 
 class TestCreateVenomAgentWrapper:
-    def test_uses_agent_system_prompt_when_not_provided(self, monkeypatch):
-        """create_venom_agent_wrapper should use agent.SYSTEM_PROMPT when system_message=None."""
-        monkeypatch.setattr(
-            swarm_mod.VenomAgent, "_register_venom_functions", lambda self: None
-        )
-        agent = DummyAgent(kernel=DummyKernel())
+    def test_uses_agent_system_prompt_when_not_provided(self):
+        agent = DummyAgent(kernel=AgentRuntime())
         wrapper = create_venom_agent_wrapper(agent, "MyAgent")
         assert wrapper.system_message == "dummy prompt"
 
     def test_uses_default_prompt_when_agent_has_no_system_prompt(self, monkeypatch):
-        """create_venom_agent_wrapper should fallback to generic prompt."""
-        monkeypatch.setattr(
-            swarm_mod.VenomAgent, "_register_venom_functions", lambda self: None
+        monkeypatch.delattr(DummyAgent, "SYSTEM_PROMPT")
+        wrapper = create_venom_agent_wrapper(
+            DummyAgent(kernel=AgentRuntime()), "GenAgent"
         )
-        monkeypatch.delattr(DummyAgent, "SYSTEM_PROMPT", raising=False)
-        agent = DummyAgent(kernel=DummyKernel())
-        wrapper = create_venom_agent_wrapper(agent, "GenAgent")
         assert "GenAgent" in wrapper.system_message
 
-    def test_uses_provided_system_message(self, monkeypatch):
-        """create_venom_agent_wrapper should use provided system_message."""
-        monkeypatch.setattr(
-            swarm_mod.VenomAgent, "_register_venom_functions", lambda self: None
-        )
-        agent = DummyAgent(kernel=DummyKernel())
+    def test_uses_provided_system_message(self):
         wrapper = create_venom_agent_wrapper(
-            agent, "Agent", system_message="Custom prompt"
+            DummyAgent(kernel=AgentRuntime()), "Agent", system_message="Custom prompt"
         )
         assert wrapper.system_message == "Custom prompt"

@@ -20,6 +20,41 @@
       "url": "https://files.pythonhosted.org/packages/0f/50/de23fde84e45f5c4fda2488c759b69990fd4512387a8632860f3ac9cd225/numpy-1.26.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
       "version": "1.26.4"
     },
+    "nvidia-cublas-cu12": {
+      "sha256": "e4f53a8ca8c5d6e8c492d0d0a3d565ecb59a751b19cfdaa4f6da0ab2104c1702",
+      "url": "https://files.pythonhosted.org/packages/cb/c0/0a517bfe63ccd3b92eb254d264e28fca3c7cab75d07daea315250fb1bf73/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_x86_64.whl",
+      "version": "12.9.2.10"
+    },
+    "nvidia-cuda-nvrtc-cu12": {
+      "sha256": "210cf05005a447e29214e9ce50851e83fc5f4358df8b453155d5e1918094dcb4",
+      "url": "https://files.pythonhosted.org/packages/b8/85/e4af82cc9202023862090bfca4ea827d533329e925c758f0cde964cb54b7/nvidia_cuda_nvrtc_cu12-12.9.86-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl",
+      "version": "12.9.86"
+    },
+    "nvidia-cuda-runtime-cu12": {
+      "sha256": "25bba2dfb01d48a9b59ca474a1ac43c6ebf7011f1b0b8cc44f54eb6ac48a96c3",
+      "url": "https://files.pythonhosted.org/packages/bc/46/a92db19b8309581092a3add7e6fceb4c301a3fd233969856a8cbf042cd3c/nvidia_cuda_runtime_cu12-12.9.79-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "version": "12.9.79"
+    },
+    "nvidia-cudnn-cu12": {
+      "sha256": "0a4aa3a7d2264256506c6857fc41fc0c499982f78d70195b1cfcc9055c1957cd",
+      "url": "https://files.pythonhosted.org/packages/65/e4/c5a205d48ff00ed8b27882bb45d338d8138e976c76385f328a326bbfaeda/nvidia_cudnn_cu12-9.27.0.42-py3-none-manylinux_2_27_x86_64.whl",
+      "version": "9.27.0.42"
+    },
+    "nvidia-cufft-cu12": {
+      "sha256": "c67884f2a7d276b4b80eb56a79322a95df592ae5e765cf1243693365ccab4e28",
+      "url": "https://files.pythonhosted.org/packages/95/f4/61e6996dd20481ee834f57a8e9dca28b1869366a135e0d42e2aa8493bdd4/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "version": "11.4.1.4"
+    },
+    "nvidia-curand-cu12": {
+      "sha256": "49b274db4780d421bd2ccd362e1415c13887c53c214f0d4b761752b8f9f6aa1e",
+      "url": "https://files.pythonhosted.org/packages/31/44/193a0e171750ca9f8320626e8a1f2381e4077a65e69e2fb9708bd479e34a/nvidia_curand_cu12-10.3.10.19-py3-none-manylinux_2_27_x86_64.whl",
+      "version": "10.3.10.19"
+    },
+    "nvidia-nvjitlink-cu12": {
+      "sha256": "e3f1171dbdc83c5932a45f0f4c99180a70de9bd2718c1ab77d14104f6d7147f9",
+      "url": "https://files.pythonhosted.org/packages/46/0c/c75bbfb967457a0b7670b8ad267bfc4fffdf341c074e0a80db06c24ccfd4/nvidia_nvjitlink_cu12-12.9.86-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl",
+      "version": "12.9.86"
+    },
     "onnx": {
       "sha256": "7abf381d278f31ac62487fddedc9dd42da842dce94d5d43536836ee3efdf4a2b",
       "url": "https://files.pythonhosted.org/packages/87/56/21509a657f9a73ab0ca307d325043f49ca6c4ff6bf79edeb9e159190d44d/onnx-1.23.2-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
@@ -61,19 +96,19 @@
       "version": "4.16.0"
     }
   },
-  "lock_sha256": "47a189c8bb471da78395d17f62a4290b49ea9618c4e37d851758e9f0587cefbf",
+  "lock_sha256": "9c4f575807555fd778bea9ecdf633ae3f03d4b3711be3f182994b3688eff21b8",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "49cb5ca14da6eec1921b66ccc383bb9d2fd9751b8a15bac4deec5e0f9cd2ba64",
+  "policy_sha256": "61a1aa8db797d5c49c4285279021f89816fbc92532a0a6e1c01649837073833c",
   "profile": "onnx-gpu",
-  "profile_policy_sha256": "89e7ce475ff05239b87d0c88aeaa289aa9635e44314d51ca1d15a24b5e3547fb",
+  "profile_policy_sha256": "503a536d852ce51149d5b7ce3c5b1db0b128b78cebf8cf6daa000a2ff19063a6",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",
-    "version": "26.1.1"
+    "version": "26.2.1"
   },
   "resolver_environment": {
     "implementation_name": "cpython",

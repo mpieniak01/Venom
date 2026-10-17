@@ -28,7 +28,7 @@ class SkillManager:
     - Dynamiczne ładowanie pluginów z katalogu custom/
     - Hot-reload pluginów bez restartu aplikacji
     - Walidację bezpieczeństwa pluginów przed załadowaniem
-    - Rejestrację pluginów w Semantic Kernel
+    - Rejestrację narzędzi w runtime Venoma
     """
 
     def __init__(
@@ -41,7 +41,7 @@ class SkillManager:
         Inicjalizacja SkillManager.
 
         Args:
-            kernel: Skonfigurowane jądro Semantic Kernel
+            kernel: Skonfigurowany runtime Venoma
             custom_skills_dir: Ścieżka do katalogu z custom skills
                               (domyślnie venom_core/execution/skills/custom/)
             event_broadcaster: Opcjonalny broadcaster eventów WebSocket (EventBroadcaster)
@@ -342,29 +342,17 @@ class SkillManager:
                 logger.info(f"✅ Załadowano nowy skill: {skill_name}")
                 return True
 
-            # Przeładuj istniejący moduł
-            old_module = self.loaded_skills[skill_name]
-
-            # Waliduj przed przeładowaniem
+            # Custom modules are loaded from explicit files, not a meta-path
+            # finder. importlib.reload cannot rediscover their synthetic names.
             skill_file = self.custom_skills_dir / f"{skill_name}.py"
+            self.validate_skill(str(skill_file))
+            old_module = self.loaded_skills[skill_name]
             try:
-                self.validate_skill(str(skill_file))
-            except SkillValidationError as e:
-                logger.error(f"Walidacja nie powiodła się: {e}")
-                return False
-
-            # Użyj importlib.reload z obsługą błędów
-            try:
-                reloaded_module = importlib.reload(old_module)
-            except Exception as e:
-                logger.error(f"Błąd podczas reload: {e}")
-                # Pozostaw stary moduł załadowany
-                return False
-
-            # Zarejestruj ponownie w kernelu (nadpisz)
-            self._register_skill_in_kernel(skill_name, reloaded_module)
-
-            # Zaktualizuj rejestr
+                reloaded_module = self._load_module(skill_name, skill_file)
+                self._register_skill_in_kernel(skill_name, reloaded_module)
+            except Exception:
+                sys.modules[old_module.__name__] = old_module
+                raise
             self.loaded_skills[skill_name] = reloaded_module
 
             logger.info(f"✅ Przeładowano skill: {skill_name}")
@@ -483,17 +471,24 @@ class SkillManager:
         # Załaduj moduł
         module = importlib.util.module_from_spec(spec)
 
-        # Dodaj do sys.modules aby można było go później przeładować
+        previous = sys.modules.get(module_name)
         sys.modules[module_name] = module
-
-        # Wykonaj moduł
-        spec.loader.exec_module(module)
-
+        try:
+            # Read source directly: same-second edits of equal size must not
+            # reuse a timestamp-based bytecode cache during hot reload.
+            code = compile(skill_file.read_bytes(), str(skill_file), "exec")
+            exec(code, module.__dict__)
+        except Exception:
+            if previous is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+            raise
         return module
 
     def _register_skill_in_kernel(self, skill_name: str, module: Any) -> None:
         """
-        Rejestruje skill w Semantic Kernel.
+        Rejestruje skill w runtime Venoma.
 
         Szuka wszystkich klas w module i próbuje je zarejestrować jako pluginy.
 
@@ -515,29 +510,24 @@ class SkillManager:
         # Moduł name z prefixem
         module_full_name = f"venom_custom_{skill_name}"
 
-        # Zarejestruj każdą klasę jako plugin
-        for cls in classes:
-            # Pomiń klasy zaimportowane z innych modułów
-            # Sprawdź czy klasa należy do tego modułu (z prefixem)
-            if (
-                not cls.__module__.endswith(skill_name)
-                and cls.__module__ != module_full_name
-            ):
-                continue
-
-            try:
-                # Utwórz instancję klasy
-                instance = cls()
-
-                # Zarejestruj w kernelu
-                self.kernel.add_plugin(instance, plugin_name=cls.__name__)
-
-                logger.info(
-                    f"Zarejestrowano plugin: {cls.__name__} z modułu {skill_name}"
-                )
-
-            except Exception as e:
-                logger.warning(f"Nie udało się zarejestrować klasy {cls.__name__}: {e}")
+        previous_plugins = dict(self.kernel.plugins)
+        try:
+            for cls in classes:
+                if cls.__module__ != module_full_name:
+                    continue
+                if not any(
+                    getattr(getattr(cls, name), "__venom_tool__", None)
+                    for name in dir(cls)
+                ):
+                    continue
+                self.kernel.add_plugin(cls(), plugin_name=cls.__name__)
+                logger.info(f"Zarejestrowano plugin: {cls.__name__} z {skill_name}")
+        except Exception:
+            # A constructor/schema failure must leave every previous callable
+            # available; do not publish a partially refreshed skill.
+            self.kernel.plugins.clear()
+            self.kernel.plugins.update(previous_plugins)
+            raise
 
     def get_loaded_skills(self) -> List[str]:
         """

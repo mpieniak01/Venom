@@ -12,11 +12,13 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from venom_core.api.routes import queue as queue_routes
 from venom_core.bootstrap import model_services as model_services_module
 from venom_core.bootstrap import observability as observability_module
 from venom_core.core import model_registry_providers as providers_module
+from venom_core.execution.agent_contracts import tool_function
 from venom_core.services import translation_service as translation_module
 from venom_core.skills.mcp import skill_adapter as skill_adapter_module
 
@@ -349,31 +351,24 @@ def test_queue_routes_error_branches(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_skill_adapter_async_and_missing_args() -> None:
     class _Skill:
-        def tool_noop(self):
+        @tool_function(name="noop", description="noop")
+        def tool_noop(self, x: int):
             return "ok"
-
-    _Skill.tool_noop.__kernel_function_name__ = "noop"
-    _Skill.tool_noop.__kernel_function_description__ = "noop"
-    _Skill.tool_noop.__kernel_function_parameters__ = [
-        {"name": "x", "type_": "int", "is_required": True, "description": "arg"}
-    ]
 
     adapter = skill_adapter_module.SkillMcpLikeAdapter(_Skill())
     tools = adapter.list_tools()
-    assert tools and tools[0].input_schema["properties"]["x"]["type"] == "number"
+    assert tools and tools[0].input_schema["properties"]["x"]["type"] == "integer"
     with pytest.raises(ValueError, match="Missing required arguments"):
         await adapter.invoke_tool("noop", {})
+    with pytest.raises(ValidationError):
+        await adapter.invoke_tool("noop", {"x": "not-an-integer"})
+    assert await adapter.invoke_tool("noop", {"x": 3}) == "ok"
 
     class _AsyncSkill:
+        @tool_function(name="ping", description="ping")
         async def tool_ping(self, value: str):
             await asyncio.sleep(0)
             return f"pong:{value}"
-
-    _AsyncSkill.tool_ping.__kernel_function_name__ = "ping"
-    _AsyncSkill.tool_ping.__kernel_function_description__ = "ping"
-    _AsyncSkill.tool_ping.__kernel_function_parameters__ = [
-        {"name": "value", "type_": "str", "is_required": True, "description": "v"}
-    ]
 
     async_adapter = skill_adapter_module.SkillMcpLikeAdapter(_AsyncSkill())
     assert (

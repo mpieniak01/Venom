@@ -27,7 +27,7 @@
       "rich==13.9.4",
       "tqdm==4.67.1",
       "psutil==5.9.8",
-      "gitpython==3.1.50",
+      "gitpython==3.1.60",
       "networkx==3.6.1",
       "pillow==12.3.0",
       "watchdog==6.0.0",
@@ -68,13 +68,16 @@
       "pre-commit>=4.5.1,<5",
       "mypy==1.17.1",
       "filelock>=3.20.3,<4",
-      "virtualenv>=20.36.1,<21",
+      "virtualenv>=21.7.13,<22",
       "types-psutil",
       "types-aiofiles",
       "types-PyYAML",
       "types-docker",
       "ruff",
-      "huggingface_hub>=1.31.0,<2"
+      "huggingface_hub>=1.31.0,<2",
+      "pip-audit==2.10.1",
+      "flake8==7.4.1",
+      "types-bleach==6.4.0.20260728"
     ],
     "full": [
       "graphrag==2.7.2",
@@ -85,7 +88,7 @@
       "markitdown",
       "python-docx>=1.1,<2",
       "openapi-core==0.23.1",
-      "torch==2.11.0",
+      "torch==2.13.0",
       "transformers>=5.5.0,<5.18",
       "sentence-transformers",
       "timm",
@@ -115,7 +118,7 @@
       "pandas<3",
       "radon",
       "peft>=0.18,<0.19",
-      "accelerate==1.14.0",
+      "accelerate==1.15.0",
       "huggingface_hub>=1.31.0,<2"
     ],
     "vllm": [
@@ -126,14 +129,14 @@
       "mcp==2.3.0"
     ],
     "onnx-gpu": [
-      "onnxruntime-gpu==1.26.0",
+      "onnxruntime-gpu[cuda,cudnn]==1.26.0",
       "onnxruntime-genai-cuda==0.12.2",
       "onnx>=1.21.0,<2",
       "onnx-ir>=0.1.16,<1",
       "numpy==1.26.4"
     ],
     "academy": [
-      "accelerate==1.14.0",
+      "accelerate==1.15.0",
       "datasets>=4.7,<5",
       "trl==1.16.0",
       "peft==0.21.2",
@@ -149,7 +152,7 @@
     ],
     "build": [
       "pip==25.3",
-      "setuptools==80.10.2",
+      "setuptools==83.0.0",
       "wheel==0.48.0",
       "packaging==26.0"
     ]

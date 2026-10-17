@@ -160,6 +160,8 @@ class FlowCoordinator:
                 council_tuple
             )
 
+            if user_proxy is None or group_chat is None or manager is None:
+                raise RuntimeError("Niekompletna konfiguracja Council")
             session = CouncilSession(user_proxy, group_chat, manager)
 
             members = []

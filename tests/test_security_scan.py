@@ -126,8 +126,11 @@ def test_inconsistent_severity_total_is_incomplete():
 
 
 def test_missing_scanner_returns_unavailable(monkeypatch, tmp_path):
-    monkeypatch.setattr(scan, "_run", lambda *a, **k: command())
-    monkeypatch.setattr(scan.shutil, "which", lambda name: None)
+    monkeypatch.setattr(
+        scan,
+        "_run",
+        lambda *a, **k: scan.CmdResult(False, 1, "", "No module named pip_audit"),
+    )
     result = scan._scan_python(tmp_path)
     assert result["pip_audit"]["status"] == "unavailable"
     assert result["pip_audit"]["complete"] is False
@@ -239,3 +242,25 @@ def test_report_and_printed_summary_preserve_completeness(
     assert result["status"] == status and result["complete"] is complete
     scan._print_summary(result)
     assert f"- status: {status}" in capsys.readouterr().out
+
+
+def test_python_audit_never_uses_checkout_or_path_interpreter(monkeypatch, tmp_path):
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        if "check" in argv:
+            return scan.CmdResult(True, 0, "OK", "")
+        return command(0, {"dependencies": []})
+
+    monkeypatch.setattr(scan, "_run", run)
+    checkout_python = tmp_path / ".venv/bin/python"
+    checkout_python.parent.mkdir(parents=True)
+    checkout_python.write_text("unrelated interpreter")
+    result = scan._scan_python(tmp_path, "/qualified/full/bin/python")
+    assert result["interpreter"] == "/qualified/full/bin/python"
+    assert commands == [
+        ["/qualified/full/bin/python", "-m", "pip", "check"],
+        ["/qualified/full/bin/python", "-m", "pip_audit", "-f", "json"],
+    ]
+    assert result["pip_audit"]["complete"]

@@ -1,4 +1,7 @@
-"""Testy dla The Council (AutoGen Integration)."""
+"""Testy dla The Council (native MAF workflow)."""
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -6,20 +9,30 @@ from venom_core.agents.architect import ArchitectAgent
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
 from venom_core.agents.guardian import GuardianAgent
+from venom_core.config import SETTINGS
 from venom_core.core.council import (
     CouncilConfig,
     CouncilSession,
     create_local_llm_config,
 )
 from venom_core.core.swarm import create_venom_agent_wrapper
-from venom_core.execution.kernel_builder import KernelBuilder
+from venom_core.execution.maf_runtime import AgentRuntime
 
 
 @pytest.fixture
 def kernel():
-    """Fixture dla Semantic Kernel."""
-    builder = KernelBuilder()
-    return builder.build_kernel()
+    """Use the public registry with an explicit forbidden model-call edge."""
+    runtime = AgentRuntime()
+    runtime.add_service(
+        SimpleNamespace(
+            service_id="default",
+            ai_model_id="controlled-actors",
+            get_chat_message_content=AsyncMock(
+                side_effect=AssertionError("actor fixture must not invoke a model")
+            ),
+        )
+    )
+    return runtime
 
 
 @pytest.fixture
@@ -62,7 +75,7 @@ def test_create_local_llm_config():
 
     assert "config_list" in config
     assert len(config["config_list"]) > 0
-    assert config["config_list"][0]["model"] == "llama3"
+    assert config["config_list"][0]["model"] == SETTINGS.LOCAL_LLAMA3_MODEL
     assert config["config_list"][0]["api_key"] == "EMPTY"
     assert config["temperature"] == pytest.approx(0.7)
 
@@ -165,16 +178,17 @@ def test_council_session_initialization(
     assert session.get_speakers() == []
 
 
-# Testy integracyjne z prawdziwym LLM są pomijane w standardowych testach
-# (wymagają uruchomionego Ollama z modelem llama3)
-
-
-@pytest.mark.skip(reason="Wymaga uruchomionego lokalnego LLM (Ollama)")
 @pytest.mark.asyncio
 async def test_council_session_run_integration(
     coder_agent, critic_agent, architect_agent, guardian_agent, llm_config
 ):
-    """Test integracyjny uruchamiania sesji Council (wymaga lokalnego LLM)."""
+    """Real MAF group workflow, with explicit deterministic actor boundaries."""
+    architect_agent.process = AsyncMock(return_value="Plan")
+    coder_agent.process = AsyncMock(
+        side_effect=["First implementation", "Corrected implementation"]
+    )
+    critic_agent.process = AsyncMock(return_value="Revise")
+    guardian_agent.process = AsyncMock(return_value="Approved\nTERMINATE")
     council_config = CouncilConfig(
         coder_agent=coder_agent,
         critic_agent=critic_agent,
@@ -196,3 +210,16 @@ async def test_council_session_run_integration(
     assert len(session.get_speakers()) > 0
     assert result is not None
     assert len(result) > 0
+    assert "Guardian zatwierdził" in result
+    assert session.get_message_count() == 6
+    assert set(session.get_speakers()) == {
+        "User",
+        "Architect",
+        "Coder",
+        "Critic",
+        "Guardian",
+    }
+    architect_agent.process.assert_awaited_once()
+    assert coder_agent.process.await_count == 2
+    critic_agent.process.assert_awaited_once()
+    guardian_agent.process.assert_awaited_once()

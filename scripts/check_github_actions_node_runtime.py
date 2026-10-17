@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
@@ -56,6 +57,43 @@ def run_check(workflow_dir: Path) -> list[str]:
     return issues
 
 
+def validate_project_runtime(root: Path) -> list[str]:
+    """One Node pin for native bootstrap, npm, Docker and workflow consumers."""
+    try:
+        version = (root / "web-next/.nvmrc").read_text().strip()
+        package = json.loads((root / "web-next/package.json").read_text())
+        lock = json.loads((root / "web-next/package-lock.json").read_text())
+        docker = (root / "docker/frontend.Dockerfile").read_text()
+    except (OSError, ValueError) as exc:
+        return [f"Node runtime contract cannot be read: {type(exc).__name__}"]
+    issues = []
+    if not re.fullmatch(r"24\.\d+\.\d+", version):
+        issues.append("web-next/.nvmrc must pin a qualified Node 24 patch release")
+    engines = package.get("engines", {})
+    if engines.get("node") != f">={version} <25":
+        issues.append("package.json Node engine differs from .nvmrc")
+    manager = package.get("packageManager", "")
+    if not re.fullmatch(r"npm@11\.\d+\.\d+", manager):
+        issues.append("packageManager must pin npm 11")
+    elif engines.get("npm") != f">={manager.removeprefix('npm@')} <12":
+        issues.append("npm engine differs from packageManager")
+    if lock.get("packages", {}).get("", {}).get("engines") != engines:
+        issues.append("package-lock root engines differ from package.json")
+    image = rf"node:{re.escape(version)}-alpine@sha256:[a-f0-9]{{64}}"
+    if not re.search(rf"^ARG NODE_IMAGE={image}$", docker, re.MULTILINE):
+        issues.append("frontend Docker image must pin the same Node patch and digest")
+    for path in collect_workflows(root / ".github/workflows"):
+        content = path.read_text()
+        if "uses: actions/setup-node@" not in content:
+            continue
+        if (
+            re.search(r"node-version\s*:", content)
+            or 'node-version-file: "web-next/.nvmrc"' not in content
+        ):
+            issues.append(f"{path.name}: setup-node must consume web-next/.nvmrc")
+    return issues
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate GitHub Actions workflows for Node runtime deprecations."
@@ -69,6 +107,7 @@ def main() -> int:
     args = parser.parse_args()
 
     issues = run_check(args.workflow_dir)
+    issues.extend(validate_project_runtime(Path(".")))
     if issues:
         print("❌ GitHub Actions Node runtime guard failed:")
         for issue in issues:

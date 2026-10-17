@@ -3,8 +3,8 @@
   "version": "1.9.0",
   "private": true,
   "engines": {
-    "node": ">=20.11.0",
-    "npm": ">=10.0.0"
+    "node": ">=24.22.0 <25",
+    "npm": ">=11.19.1 <12"
   },
   "scripts": {
     "predev": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
@@ -92,5 +92,6 @@
     "lodash-es": "4.18.1",
     "postcss": "8.5.10",
     "uuid": "11.1.1"
-  }
+  },
+  "packageManager": "npm@11.19.1"
 }

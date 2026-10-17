@@ -10,7 +10,6 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from semantic_kernel import Kernel
 
 import venom_core.main as main_app
 from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
@@ -23,6 +22,7 @@ from venom_core.core.intent_manager import IntentManager
 from venom_core.core.orchestrator import Orchestrator, orchestrator_submit
 from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.services import module_registry
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
 

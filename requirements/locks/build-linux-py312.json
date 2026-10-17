@@ -11,9 +11,9 @@
       "version": "25.3"
     },
     "setuptools": {
-      "sha256": "95b30ddfb717250edb492926c92b5221f7ef3fbcc2b07579bcd4a27da21d0173",
-      "url": "https://files.pythonhosted.org/packages/94/b8/f1f62a5e3c0ad2ff1d189590bfa4c46b4f3b6e49cef6f26c6ee4e575394d/setuptools-80.10.2-py3-none-any.whl",
-      "version": "80.10.2"
+      "sha256": "29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3",
+      "url": "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl",
+      "version": "83.0.0"
     },
     "wheel": {
       "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab",
@@ -21,19 +21,19 @@
       "version": "0.48.0"
     }
   },
-  "lock_sha256": "9a1ba3192ab5512cdd8d06c5bd87c97e09b4d2ad4224d1af34022dce532f648c",
+  "lock_sha256": "90486d498523f555642da189c4cf5edaf49e8f25972b9b8bfcd286613304e15d",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "24c893e45e22c6dab3c0c3fb7ec4436c16ede14938e76287c5f7256b481865fc",
+  "policy_sha256": "60fa3f0730d6c2b5eb0d102545375567c04ab908d16d3d56187df0d3e2d600af",
   "profile": "build",
-  "profile_policy_sha256": "e94305fe2a96c95222f723fa4627bcb200c60c5792702ce6a159681f4b5282bb",
+  "profile_policy_sha256": "56baaa726a2420c046df2a97626ac10929dbc4d621cf41bbbf12277c47e9ca27",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",
-    "version": "24.0"
+    "version": "26.2.1"
   },
   "resolver_environment": {
     "implementation_name": "cpython",

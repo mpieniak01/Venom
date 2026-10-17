@@ -3,8 +3,8 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from semantic_kernel import Kernel
 
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.services.memory_service import MemoryConsolidator
 
 
@@ -204,7 +204,7 @@ def test_parse_consolidation_response_no_sections(consolidator):
     """Test parsowania odpowiedzi bez sekcji."""
     response = "Just a plain text response without structure"
 
-    summary, lessons = consolidator._parse_consolidation_response(response)
+    summary, _lessons = consolidator._parse_consolidation_response(response)
 
     # Powinien użyć fallback
     assert len(summary) > 0
@@ -233,7 +233,7 @@ LEKCJE:
 2. Lekcja druga
 3. Lekcja trzecia"""
 
-    summary, lessons = consolidator._parse_consolidation_response(response)
+    _summary, lessons = consolidator._parse_consolidation_response(response)
 
     assert len(lessons) == 3
     assert "Lekcja pierwsza" in lessons

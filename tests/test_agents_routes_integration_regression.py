@@ -1,81 +1,25 @@
-import sys
 from unittest.mock import MagicMock, patch
 
-# Mock heavy dependencies only for import phase
-_module_backup: dict[str, object | None] = {}
+import numpy as np
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-
-def _set_mocked_module(name: str, module: object | None = None) -> object:
-    _module_backup[name] = sys.modules.get(name)
-    mocked = module if module is not None else MagicMock()
-    sys.modules[name] = mocked  # type: ignore[assignment]
-    return mocked
-
-
-_set_mocked_module("semantic_kernel")
-_set_mocked_module("semantic_kernel.kernel")
-_set_mocked_module("semantic_kernel.contents")
-_set_mocked_module("semantic_kernel.contents.chat_history")
-_set_mocked_module("semantic_kernel.contents.chat_message_content")
-_set_mocked_module("semantic_kernel.contents.function_result_content")
-_set_mocked_module("semantic_kernel.contents.text_content")
-_set_mocked_module("semantic_kernel.contents.utils")
-_set_mocked_module("semantic_kernel.contents.utils.author_role")
-_set_mocked_module("semantic_kernel.connectors")
-_set_mocked_module("semantic_kernel.connectors.ai")
-_set_mocked_module("semantic_kernel.connectors.ai.open_ai")
-_set_mocked_module("semantic_kernel.functions")
-
-
-# helper to allow @kernel_function decorator to work as identity or mock
-def mock_kernel_function(func=None, **kwargs):
-    def decorator(f):
-        return f
-
-    if func:
-        return decorator(func)
-    return decorator
-
-
-sys.modules["semantic_kernel.functions"].kernel_function = mock_kernel_function
-
-_set_mocked_module("venom_core.core.orchestrator")
-# Mock ModelDiagnosticSettings issue
-_set_mocked_module("semantic_kernel.utils.telemetry.model_diagnostics")
-# Mock Config Settings to avoid validation errors
-config_module = MagicMock()
-config_module.SETTINGS = MagicMock()
-config_module.SETTINGS.ENABLE_META_LEARNING = False
-_set_mocked_module("venom_core.config", config_module)
-
-import numpy as np  # noqa: E402
-import pytest  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-from venom_core.agents.analyst import AnalystAgent, TaskMetrics  # noqa: E402
-from venom_core.agents.unsupported import UnsupportedAgent  # noqa: E402
+from venom_core.agents.analyst import AnalystAgent, TaskMetrics
+from venom_core.agents.unsupported import UnsupportedAgent
 
 # Import modules to test
-from venom_core.api.routes import agents as agents_routes  # noqa: E402
-from venom_core.api.routes import calendar as calendar_routes  # noqa: E402
-from venom_core.api.routes import (  # noqa: E402
-    memory_projection as memory_projection_routes,
-)
-from venom_core.api.routes import nodes as nodes_routes  # noqa: E402
-from venom_core.api.routes import queue as queue_routes  # noqa: E402
-from venom_core.api.routes import system_status as system_status_routes  # noqa: E402
-from venom_core.core.model_router import ComplexityScore, ServiceId  # noqa: E402
-from venom_core.execution.skills.chrono_skill import ChronoSkill  # noqa: E402
-from venom_core.execution.skills.complexity_skill import ComplexitySkill  # noqa: E402
+from venom_core.api.routes import agents as agents_routes
+from venom_core.api.routes import calendar as calendar_routes
+from venom_core.api.routes import memory_projection as memory_projection_routes
+from venom_core.api.routes import nodes as nodes_routes
+from venom_core.api.routes import queue as queue_routes
+from venom_core.api.routes import system_status as system_status_routes
+from venom_core.core.model_router import ComplexityScore, ServiceId
+from venom_core.execution.skills.chrono_skill import ChronoSkill
+from venom_core.execution.skills.complexity_skill import ComplexitySkill
 
 pytestmark = pytest.mark.integration
-
-for _name, _original in _module_backup.items():
-    if _original is None:
-        sys.modules.pop(_name, None)
-    else:
-        sys.modules[_name] = _original  # type: ignore[assignment]
 
 # --- Agents & Skills Tests ---
 
@@ -167,16 +111,17 @@ async def test_chrono_skill():
     assert "zaawansowana funkcja" in res
 
 
-def test_complexity_estimate_time():
+@pytest.mark.asyncio
+async def test_complexity_estimate_time():
     skill = ComplexitySkill()
 
     # Simple task
-    res = skill.estimate_time("napisz prostą funkcję hello world")
+    res = await skill.estimate_time("napisz prostą funkcję hello world")
     print(f"DEBUG estimate_time result: {res}")
     assert "estimated_minutes" in res
 
     # Complex task
-    res = skill.estimate_time(
+    res = await skill.estimate_time(
         "zaprojektuj system mikroserwisów z testami i dokumentacją i optymalizacją"
     )
     # Relaxing assertions to ensures execution continues but we check key elements
@@ -185,43 +130,46 @@ def test_complexity_estimate_time():
     # We rely on execution for coverage, strict logic validaton is secondary here
 
 
-def test_complexity_estimate_complexity():
+@pytest.mark.asyncio
+async def test_complexity_estimate_complexity():
     skill = ComplexitySkill()
 
-    res = skill.estimate_complexity("zaprojektuj system mikroserwisów enterprise")
+    res = await skill.estimate_complexity("zaprojektuj system mikroserwisów enterprise")
     # Case insensitive check
     assert "epic" in res.lower() or "high" in res.lower()
 
-    res = skill.estimate_complexity("baza danych api")
+    res = await skill.estimate_complexity("baza danych api")
     assert "medium" in res.lower() or "low" in res.lower()
 
 
-def test_complexity_suggest_subtasks():
+@pytest.mark.asyncio
+async def test_complexity_suggest_subtasks():
     skill = ComplexitySkill()
 
     # Simple
-    res = skill.suggest_subtasks("napisz print")
+    res = await skill.suggest_subtasks("napisz print")
     assert "nie wymaga podziału" in res
 
     # Complex
-    res = skill.suggest_subtasks("zaprojektuj system api baza integracja")
+    res = await skill.suggest_subtasks("zaprojektuj system api baza integracja")
     assert "1. Analiza" in res
     # Just check one subtask to be safe
     assert "Implementacja" in res
 
 
-def test_complexity_flag_risks():
+@pytest.mark.asyncio
+async def test_complexity_flag_risks():
     skill = ComplexitySkill()
 
     # High risk
-    res = skill.flag_risks(
+    res = await skill.flag_risks(
         "zrób to szybko na wczoraj wszystkie funkcje integracja z api migracja danych optymalizacja"
     )
     assert "Presja czasowa" in res
     assert "Szeroki zakres" in res
 
     # Low risk
-    res = skill.flag_risks("prosta funkcja")
+    res = await skill.flag_risks("prosta funkcja")
     assert "Nie zidentyfikowano" in res
 
 
@@ -306,7 +254,8 @@ def test_calendar_routes(mock_app):
     assert resp.status_code == 200
 
 
-def test_memory_projection_routes(mock_app):
+def test_memory_projection_routes(mock_app, monkeypatch):
+    monkeypatch.setattr(memory_projection_routes, "PCA", MagicMock())
     mock_store = MagicMock()
     mock_store.list_entries.return_value = []
     # Mock embedding service

@@ -16,15 +16,24 @@ class MessageRole(StrEnum):
     TOOL = "tool"
 
 
-@dataclass
+@dataclass(init=False)
 class ConversationMessage:
-    role: MessageRole | str
+    role: MessageRole
     content: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     native_message: Any = field(default=None, repr=False, compare=False)
 
-    def __post_init__(self) -> None:
-        self.role = MessageRole(self.role)
+    def __init__(
+        self,
+        role: MessageRole | str,
+        content: str | None = "",
+        metadata: dict[str, Any] | None = None,
+        native_message: Any = None,
+    ) -> None:
+        self.role = MessageRole(role)
+        self.content = content or ""
+        self.metadata = metadata if metadata is not None else {}
+        self.native_message = native_message
 
     def __str__(self) -> str:
         return self.content
@@ -85,7 +94,9 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 def tool_function(
-    *, name: str | None = None, description: str = ""
+    *,
+    name: str | None = None,
+    description: str = "",
 ) -> Callable[[F], F]:
     """Declare a callable tool without replacing Python method binding semantics."""
 
@@ -93,7 +104,10 @@ def tool_function(
         setattr(
             function,
             "__venom_tool__",
-            {"name": name or function.__name__, "description": description},
+            {
+                "name": name or function.__name__,
+                "description": description,
+            },
         )
         return function
 

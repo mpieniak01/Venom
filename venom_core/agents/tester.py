@@ -191,6 +191,15 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
             except Exception as e:
                 logger.warning(f"Nie można zamknąć przeglądarki: {e}")
 
+    @staticmethod
+    def _scenario_text(
+        step: dict[str, Any], name: str, *, allow_empty: bool = False
+    ) -> str:
+        value = step.get(name)
+        if not isinstance(value, str) or (not allow_empty and not value.strip()):
+            raise ValueError(f"invalid_scenario_field:{name}")
+        return value
+
     async def run_e2e_scenario(self, url: str, scenario_steps: list[dict]) -> str:
         """
         Wykonuje zdefiniowany scenariusz E2E.
@@ -221,19 +230,19 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
                     report_lines.append(f"   {result}")
 
                 elif action == "click":
-                    selector = step.get("selector")
+                    selector = self._scenario_text(step, "selector")
                     result = await self.browser_skill.click_element(selector)
                     report_lines.append(f"   {result}")
 
                 elif action == "fill":
-                    selector = step.get("selector")
-                    value = step.get("value")
+                    selector = self._scenario_text(step, "selector")
+                    value = self._scenario_text(step, "value", allow_empty=True)
                     result = await self.browser_skill.fill_form(selector, value)
                     report_lines.append(f"   {result}")
 
                 elif action == "verify_text":
-                    selector = step.get("selector")
-                    expected = step.get("expected")
+                    selector = self._scenario_text(step, "selector")
+                    expected = self._scenario_text(step, "expected")
                     actual = await self.browser_skill.get_text_content(selector)
 
                     if expected in actual:
@@ -249,7 +258,7 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
                     report_lines.append(f"   {result}")
 
                 elif action == "wait":
-                    selector = step.get("selector")
+                    selector = self._scenario_text(step, "selector")
                     result = await self.browser_skill.wait_for_element(selector)
                     report_lines.append(f"   {result}")
 

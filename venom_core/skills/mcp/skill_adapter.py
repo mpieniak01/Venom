@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import inspect
 from typing import Any, Dict, List, Optional
 
@@ -9,17 +10,6 @@ from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.execution.skills.google_calendar_skill import GoogleCalendarSkill
 from venom_core.skills.mcp.proxy_generator import McpToolMetadata
-
-
-def _map_json_type(type_name: str) -> str:
-    lowered = (type_name or "").lower()
-    if lowered.startswith(("list", "typing.list")):
-        return "array"
-    if lowered in {"int", "float", "number"}:
-        return "number"
-    if lowered in {"bool", "boolean"}:
-        return "boolean"
-    return "string"
 
 
 class SkillMcpLikeAdapter:
@@ -36,46 +26,30 @@ class SkillMcpLikeAdapter:
             if not callable(method):
                 continue
 
-            kernel_name = getattr(method, "__kernel_function_name__", None)
-            if not kernel_name:
+            metadata = getattr(method, "__venom_tool__", None)
+            if not metadata:
                 continue
+            from agent_framework import FunctionTool
 
-            parameters = list(getattr(method, "__kernel_function_parameters__", []))
-            self._tools[kernel_name] = {
+            tool = FunctionTool(
+                name=metadata["name"], description=metadata["description"], func=method
+            )
+            self._tools[tool.name] = {
                 "method": method,
-                "description": getattr(method, "__kernel_function_description__", "")
-                or "",
-                "parameters": parameters,
+                "description": metadata["description"],
+                "schema": tool.parameters(),
+                "input_model": tool.input_model,
             }
 
     def list_tools(self) -> List[McpToolMetadata]:
-        tools: List[McpToolMetadata] = []
-        for tool_name, entry in self._tools.items():
-            properties: Dict[str, Dict[str, Any]] = {}
-            required: List[str] = []
-            for param in entry["parameters"]:
-                param_name = param["name"]
-                schema: Dict[str, Any] = {
-                    "type": _map_json_type(str(param.get("type_", "str"))),
-                    "description": param.get("description") or "",
-                }
-                if "default_value" in param:
-                    schema["default"] = param["default_value"]
-                properties[param_name] = schema
-                if param.get("is_required", False):
-                    required.append(param_name)
-
-            tools.append(
-                McpToolMetadata(
-                    name=tool_name,
-                    description=entry["description"],
-                    input_schema={
-                        "type": "object",
-                        "properties": properties,
-                        "required": required,
-                    },
-                )
+        tools = [
+            McpToolMetadata(
+                name=name,
+                description=entry["description"],
+                input_schema=copy.deepcopy(entry["schema"]),
             )
+            for name, entry in self._tools.items()
+        ]
         return sorted(tools, key=lambda item: item.name)
 
     async def invoke_tool(
@@ -88,17 +62,16 @@ class SkillMcpLikeAdapter:
         method = entry["method"]
         args = arguments or {}
 
-        required = {
-            param["name"]
-            for param in entry["parameters"]
-            if param.get("is_required", False)
-        }
+        schema = entry["schema"]
+        required = set(schema.get("required", []))
         missing = sorted(name for name in required if name not in args)
         if missing:
             raise ValueError(f"Missing required arguments for {tool_name}: {missing}")
-
-        accepted_names = {param["name"] for param in entry["parameters"]}
+        accepted_names = set(schema.get("properties", {}))
         kwargs = {name: value for name, value in args.items() if name in accepted_names}
+        model = entry["input_model"]
+        if model is not None:
+            kwargs = model.model_validate(kwargs).model_dump(exclude_unset=True)
 
         if inspect.iscoroutinefunction(method):
             return await method(**kwargs)

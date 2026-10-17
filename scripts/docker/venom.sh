@@ -20,7 +20,7 @@ Options:
   --lang <code>      Installer language: pl|en|de
   --profile <name>   Runtime profile: light|api_ollama|api|api_only|full|llm_off
   --addons <list>    Optional local runtime addons: none|vllm|onnx|vllm,onnx
-                     onnx installs ONNX LLM profile only; extras are separate
+                     engines use separate venvs; voice stays in Full application
   --action <name>    Action: auto|start|install|reinstall|uninstall|status
   --quick            Non-interactive mode
   -h, --help         Show this help
@@ -156,30 +156,30 @@ map_profile_label() {
 read_addons_from_menu() {
   case "$LANG_CODE" in
     pl)
-      echo "Dodatki lokalnego runtime (opcjonalne, instalowane w .venv):" >&2
+      echo "Komponenty lokalnego runtime (osobne środowiska .venv-components):" >&2
       echo "  1) Brak (domyślnie)" >&2
       echo "  2) vLLM" >&2
       echo "  3) ONNX LLM (profil silnika ONNX)" >&2
       echo "  4) vLLM + ONNX LLM" >&2
-      echo "  info: ONNX extras (faster-whisper, piper-tts) instaluj osobno z requirements-extras-onnx.txt" >&2
+      echo "  info: Głos korzysta z CPU ONNX w aplikacji Full; GPU ONNX ma własny interpreter." >&2
       read -r -p "Wybór [1/2/3/4] (domyślnie 1): " a
       ;;
     de)
-      echo "Optionale lokale Runtime-Add-ons (Installation in .venv):" >&2
+      echo "Optionale Runtime-Komponenten (getrennte .venv-components-Umgebungen):" >&2
       echo "  1) Keine (Standard)" >&2
       echo "  2) vLLM" >&2
       echo "  3) ONNX LLM (ONNX-Engine-Profil)" >&2
       echo "  4) vLLM + ONNX LLM" >&2
-      echo "  Hinweis: ONNX-Extras (faster-whisper, piper-tts) separat via requirements-extras-onnx.txt" >&2
+      echo "  Hinweis: Sprache nutzt CPU-ONNX in Full; GPU-ONNX hat einen eigenen Interpreter." >&2
       read -r -p "Auswahl [1/2/3/4] (Standard 1): " a
       ;;
     *)
-      echo "Optional local runtime addons (installed in .venv):" >&2
+      echo "Optional runtime components (separate .venv-components environments):" >&2
       echo "  1) None (default)" >&2
       echo "  2) vLLM" >&2
       echo "  3) ONNX LLM (ONNX engine profile)" >&2
       echo "  4) vLLM + ONNX LLM" >&2
-      echo "  note: ONNX extras (faster-whisper, piper-tts) are separate via requirements-extras-onnx.txt" >&2
+      echo "  note: Voice uses CPU ONNX in Full; GPU ONNX has its own interpreter." >&2
       read -r -p "Choice [1/2/3/4] (default 1): " a
       ;;
   esac
@@ -208,27 +208,23 @@ install_optional_addons() {
     exit 1
   fi
 
-  local pip_bin="$ROOT_DIR/.venv/bin/pip"
-  if [[ ! -x "$pip_bin" ]]; then
-    echo "[INFO] Creating local virtual environment: $ROOT_DIR/.venv"
-    python3 -m venv "$ROOT_DIR/.venv"
-    "$pip_bin" install --upgrade pip
-  fi
-
-  echo "[INFO] Installing optional local runtime addons: $addons"
-  local addon
+  local component_root="${VENOM_COMPONENTS_DIR:-$ROOT_DIR/.venv-components}"
+  local addon component
   IFS=',' read -r -a addon_list <<<"$addons"
   for addon in "${addon_list[@]}"; do
     case "$addon" in
-      vllm)
-        "$pip_bin" install -r "$ROOT_DIR/requirements-profile-vllm.txt"
-        ;;
-      onnx)
-        "$pip_bin" install -r "$ROOT_DIR/requirements-profile-onnx.txt"
-        echo "[INFO] ONNX addon installs ONNX LLM runtime. Optional extras: requirements-extras-onnx.txt (faster-whisper, piper-tts). Legacy HF conversion/probes live in requirements-full.txt."
-        ;;
+      vllm) component="vllm" ;;
+      onnx) component="onnx-gpu" ;;
     esac
+    echo "[INFO] Installing isolated component: $component -> $component_root/$component"
+    bootstrap_args=(--profile "$component" --venv "$component_root/$component")
+    if [[ -e "$component_root/$component" ]]; then
+      bootstrap_args+=(--update)
+    fi
+    python3 "$ROOT_DIR/scripts/bootstrap_dependency_profile.py" "${bootstrap_args[@]}"
   done
+  echo "[INFO] Components installed separately. Configure their executable/endpoint before activation; no engine was started."
+
 }
 
 validate_action() {

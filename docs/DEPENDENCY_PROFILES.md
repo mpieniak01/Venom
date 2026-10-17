@@ -61,6 +61,7 @@ python scripts/dev/dependency_profiles.py lock --profile light
 python scripts/dev/dependency_profiles.py lock --profile ci
 python scripts/dev/dependency_profiles.py lock --profile full
 python scripts/dev/dependency_profiles.py lock --profile full-ci
+python scripts/dev/dependency_profiles.py audit-locks
 ```
 
 The resolver uses `pip install --dry-run --ignore-installed`, a private cache,
@@ -69,6 +70,11 @@ parent lock; already-resolved application locks constrain overlapping packages.
 A genuine resolver conflict is an error, not an invitation to install with
 `--no-deps`. Components resolve independently with `--profile vllm`,
 `--profile onnx-gpu` and `--profile academy`.
+
+Each effective profile has its own policy fingerprint. Updating an unrelated
+training/engine component does not invalidate an unchanged Light graph. The
+full policy hash records the context at resolution; the effective profile hash
+is the current compatibility check.
 
 A lock receipt (`requirements/locks/*.json`) records the policy/lock hashes,
 resolver/interpreter platform and the exact official URL/hash of every selected
@@ -96,3 +102,91 @@ operator endpoint. Runtime/model/SSE/tool/cancellation/storage tests, scanner
 completeness and isolated lifecycle acceptance remain separate release gates.
 Do not declare Full, GPU engines or Academy qualified based on a successful
 Light/CI installation or mock-based contract tests.
+
+
+## Source builds in Full
+
+The initial Full graph contains source archives for optional GUI/VAD packages.
+Their hashes lock the sources, not unspecified future build dependencies. The
+technical `build` component pins pip, setuptools, wheel and packaging. Bootstrap
+it only into a **fresh** target before resolving/installing Full; it is not a
+runtime overlay to install after Full.
+
+```bash
+/absolute/path/to/new-full/bin/python -m pip install --require-hashes \
+  -r requirements/locks/build-linux-py312.txt
+SOURCE_DATE_EPOCH=946684800 PYTHONHASHSEED=0 \
+  /absolute/path/to/new-full/bin/python -m pip install --require-hashes \
+  --build-constraint requirements-build-constraints.txt \
+  -r requirements/locks/full-linux-py312.txt
+python scripts/dev/dependency_profiles.py verify --profile full \
+  --python /absolute/path/to/new-full/bin/python
+```
+
+Record the built wheel's SHA256 and source origin hash as well as the build
+constraint hash. Cached immutable built artifacts can be shared between clean
+installations; inventories and exact artifacts must still be compared. Source
+build success is not evidence for STT/TTS or model output. Test the CI extension
+by installing `full-ci`'s lock into each independently built Full environment and
+verify that every Full package remains at the same version. Keep both the Full
+and Full+CI phase receipts.
+
+`audit-locks` validates complete lock receipts and common application versions.
+It reports `LOCK_INTEGRITY_ONLY`, not product acceptance. It also checks that a
+resolver report has not silently omitted a requested direct dependency.
+
+
+## Bootstrap, CI and Docker entry points
+
+Use the standard-library bootstrap from the repository root, with an explicit
+new target and a Python 3.12 interpreter on Linux x86_64:
+
+```bash
+python3.12 scripts/bootstrap_dependency_profile.py --profile light \
+  --venv /absolute/path/to/new-application
+python3.12 scripts/bootstrap_dependency_profile.py --profile ci \
+  --venv /absolute/path/to/new-application --update
+python3.12 scripts/bootstrap_dependency_profile.py --profile vllm \
+  --venv /absolute/path/to/new-vllm-component
+```
+
+The bootstrap validates lock ownership and hashes, creates an isolated venv,
+installs the declared build toolchain in a fresh target, audits generated inputs
+and all locks, installs with artifact hashes and runs `pip check` plus inventory
+verification. Full and Full+CI additionally use the generated build constraints.
+It writes `.venom-dependency-profile.json` only after successful verification.
+There are no service starts or runtime configuration changes in this procedure.
+
+An existing target requires explicit `--update`. Additive transitions such as
+Light to CI or Full to Full+CI retain their common locked versions. A target
+with packages outside the selected profile and declared build toolchain is
+rejected before installation: choose a fresh target to reduce a profile. The
+bootstrap does not silently uninstall packages or repurpose an old SK/operator
+venv. Engine/training components cannot use the application's repository `.venv`.
+`verify` also rejects undeclared extra packages, so a populated Full environment
+cannot be reported as a clean Light installation.
+
+The Make CI bootstrap and dependency-installing GitHub workflows call this same
+entry point. CI includes the pinned `pip-audit` and `flake8` tools; workflow steps
+do not append independently resolved Python tools. `scripts/docker/venom.sh`
+installs optional engines under `${VENOM_COMPONENTS_DIR:-.venv-components}` in
+separate profile environments. Configure and qualify their executable/endpoint
+before activation; installing a component does not prove its lifecycle works.
+
+The backend Dockerfile installs the Light hash-lock directly in an isolated
+`/opt/venom-venv`, using an immutable Python 3.12 amd64 base image digest. Its
+build context excludes local venv/cache and credential files. A static payload
+regression test verifies that every referenced requirements include is copied;
+the old pair of requirements aliases omitted their dependent Light file.
+A Docker build and runtime acceptance still require an isolated usable Docker
+engine. Static checks and successful host installs are not a container smoke.
+
+Initial local dependency qualification used two independent installations for
+Light, CI, Full, vLLM, ONNX GPU and Academy, then extended both Full environments
+to Full+CI. Every pair had identical complete inventories and successful
+`pip check`; no model or service was activated by those installation checks.
+The 296 locked Full package versions remain unchanged in Full+CI. The separate
+bootstrap `pip` changes from 25.3 to the CI graph's locked 26.2.1 through
+`pip-audit`; that is recorded separately from product package invariance.
+Raw local receipts belong under ignored `docs_dev/266/`, rather than pretending
+`RESOLVED_ONLY` checked-in lock metadata is full runtime qualification.

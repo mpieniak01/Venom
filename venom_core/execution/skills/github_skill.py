@@ -4,8 +4,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Annotated, Any, Optional
 
-from semantic_kernel.functions import kernel_function
-
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

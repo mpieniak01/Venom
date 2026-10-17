@@ -13,6 +13,7 @@ from venom_core.services.vast_environments.evaluation import OllamaProbe
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.openai_probe import ready as openai_ready
 from venom_core.services.vast_environments.recipes import validate_recipe
+from venom_core.services.vast_environments.runtime_scripts import vllm_wait_seconds
 from venom_core.services.vast_environments.ssh import inspect, ssh_args, tunnel
 from venom_core.services.vast_environments.startup import startup
 
@@ -23,7 +24,9 @@ def _provision(plan, instance: dict, accept_new: bool) -> dict:
         input=startup(plan.profile),
         text=True,
         capture_output=True,
-        timeout=600,
+        timeout=(
+            vllm_wait_seconds(plan.profile) + 60 if plan.profile.mode == "vllm" else 600
+        ),
         check=False,
     )
     if process.returncode:

@@ -291,13 +291,16 @@ def test_streaming_tools_before_final_chunk(service):
         assert OllamaProbe(client, cfg).sample("tools", {})["correct"] is True
 
 
-def test_cli_profile_validation_and_late_cost_window(service, tmp_path):
+def test_cli_profile_validation_and_late_cost_window(service, tmp_path, monkeypatch):
     from datetime import timedelta
 
     from venom_core.infrastructure.providers.vast.models import now
     from venom_core.services.vast_environments.cli import dispatch, parser, ssh_profile
 
     svc, plan, _ = service
+    monkeypatch.setattr(
+        "venom_core.services.vast_environments.cli.SSH_PROFILE_ROOT", tmp_path
+    )
     config = tmp_path / "ssh.json"
     for content in ["not json", "[]", "{}", '{"identity_file":"", "known_hosts":1}']:
         config.write_text(content)

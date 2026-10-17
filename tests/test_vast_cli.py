@@ -80,7 +80,12 @@ def test_cli_profiles_compare_and_env(service, tmp_path, capsys, monkeypatch):
         if cmd == "assess":
             argv += ["--offer", "12"]
         assert dispatch(parser().parse_args(argv), svc)
-    ssh = tmp_path / "ssh.json"
+    ssh_root = tmp_path / "secrets" / "ssh"
+    ssh_root.mkdir(parents=True)
+    monkeypatch.setattr(
+        "venom_core.services.vast_environments.cli.SSH_PROFILE_ROOT", ssh_root
+    )
+    ssh = ssh_root / "ssh.json"
     ssh.write_text(
         json.dumps(
             {
@@ -164,3 +169,57 @@ def test_cli_validation(service, tmp_path, capsys):
         == 1
     )
     assert json.loads(capsys.readouterr().out)["error"] == "vast.invalid_input"
+
+
+@pytest.mark.parametrize(
+    "document", [[], None, "text", 1, {"result": []}, {"result": None}]
+)
+def test_compare_rejects_non_object_reports(document, tmp_path, capsys):
+    report = tmp_path / "bad.json"
+    report.write_text(json.dumps(document))
+    assert main(["--json", "compare", str(report)]) == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": False,
+        "error": "vast.invalid_input",
+    }
+
+
+def test_ssh_profile_stays_in_secret_store(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from venom_core.services.vast_environments import cli
+
+    root = tmp_path / "secrets" / "ssh"
+    root.mkdir(parents=True)
+    monkeypatch.setattr(cli, "SSH_PROFILE_ROOT", root)
+    monkeypatch.chdir(tmp_path)
+    profile = root / "connection.json"
+    content = json.dumps(
+        {"identity_file": "/existing/key", "known_hosts": "/existing/hosts"}
+    )
+    profile.write_text(content)
+    assert cli.ssh_profile(profile)["identity_file"] == "/existing/key"
+    assert (
+        cli.ssh_profile(Path("secrets/ssh/connection.json"))["known_hosts"]
+        == "/existing/hosts"
+    )
+    outside = tmp_path / "outside.json"
+    outside.write_text(content)
+    (root / "link.json").symlink_to(outside)
+    (root / "folder").symlink_to(tmp_path, target_is_directory=True)
+    invalid_suffix = root / "profile.txt"
+    invalid_suffix.write_text(content)
+    for path in [
+        outside,
+        root / ".." / ".." / "outside.json",
+        root / "link.json",
+        root / "folder" / "outside.json",
+        invalid_suffix,
+        root,
+        root / "missing.json",
+    ]:
+        with patch.object(
+            Path, "read_text", side_effect=AssertionError("must not read")
+        ):
+            with pytest.raises(VastError, match="invalid_ssh_profile"):
+                cli.ssh_profile(path)

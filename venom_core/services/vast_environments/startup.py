@@ -8,7 +8,7 @@ from venom_core.services.vast_environments.runtime_scripts import (
     vllm_script,
 )
 
-STARTUP_VERSION = "venom-vast-startup-v2"
+STARTUP_VERSION = "venom-vast-startup-v3"
 
 
 def startup(profile: WorkloadProfile) -> str:

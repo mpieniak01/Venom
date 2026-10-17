@@ -12,6 +12,11 @@ startup script, report, argument or another secret store.
 
 Reuse secrets/ssh/vast/connection.json with identity_file and known_hosts pointing
 to existing absolute paths. Its public fingerprint must be registered in Vast.
+The --ssh-profile override accepts only JSON files inside this checkout's
+secrets/ssh directory (absolute or repository-relative paths). Traversal and
+symlinks escaping that directory are rejected before reading. Key and known-hosts
+paths inside the profile can still reference the existing shared absolute paths;
+no key duplication is needed.
 No account keys are created/deleted. Recommended scopes: misc, user_read,
 instance_read, instance_write, billing_read; verify permissions per endpoint.
 

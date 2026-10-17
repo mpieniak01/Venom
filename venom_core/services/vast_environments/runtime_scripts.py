@@ -1,8 +1,18 @@
 """Deterministic remote scripts; runtimes come from the pinned container image."""
 
 import shlex
+from decimal import Decimal
 
 from venom_core.infrastructure.providers.vast.models import WorkloadProfile
+
+
+def vllm_wait_seconds(profile: WorkloadProfile) -> int:
+    """Download estimate plus model-load allowance, bounded by the rental duration."""
+    budget = profile.duration_minutes * 60
+    download = (
+        profile.download_gb * 8000 / Decimal(str(max(1, profile.min_download_mbps)))
+    )
+    return min(budget, 300 + int(min(Decimal(budget), download)))
 
 
 def vllm_script(profile: WorkloadProfile) -> str:
@@ -20,11 +30,19 @@ def vllm_script(profile: WorkloadProfile) -> str:
         offline
         + f"""python3 -c 'import vllm, torch; assert torch.cuda.is_available()'
 command -v curl >/dev/null
-if ! curl --fail --silent --max-time 5 http://127.0.0.1:8000/health >/dev/null; then
+PID_FILE=/workspace/venom-vast/vllm.pid
+PID=$(cat "$PID_FILE" 2>/dev/null || true)
+case "$PID" in
+  ''|*[!0-9]*) PID=0 ;;
+esac
+if ! curl --fail --silent --max-time 5 http://127.0.0.1:8000/health >/dev/null \\
+  && ! {{ test "$PID" -gt 0 && kill -0 "$PID" 2>/dev/null; }}; then
   nohup {args} > /workspace/venom-vast/vllm.log 2>&1 9>&- &
-  echo $! > /workspace/venom-vast/vllm.pid
+  PID=$!
+  echo "$PID" > "$PID_FILE"
 fi
-for i in $(seq 1 120); do
+DEADLINE=$((SECONDS + {vllm_wait_seconds(profile)}))
+while test "$SECONDS" -lt "$DEADLINE"; do
   curl --fail --silent --max-time 2 http://127.0.0.1:8000/health >/dev/null && break
   sleep 1
 done

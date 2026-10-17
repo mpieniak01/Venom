@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import subprocess
 from decimal import Decimal
 from pathlib import Path
@@ -447,3 +448,72 @@ def test_registry_tag_stays_ascii():
     client, _ = registry()
     with client, pytest.raises(VastError, match="invalid_public_image"):
         resolve_image("org/image:é", "arm64", client)
+
+
+def test_vllm_wait_includes_download_and_matches_ssh_timeout(service):
+    from venom_core.services.vast_environments.operations import _provision
+    from venom_core.services.vast_environments.runtime_scripts import vllm_wait_seconds
+
+    _, plan, _ = service
+    plan.profile = plan.profile.model_copy(
+        update={
+            "mode": "vllm",
+            "download_gb": Decimal(25),
+            "min_download_mbps": 500,
+            "duration_minutes": 30,
+        }
+    )
+    assert vllm_wait_seconds(plan.profile) == 700
+    assert "SECONDS + 700" in startup(plan.profile)
+    with (
+        patch(
+            "venom_core.services.vast_environments.operations.ssh_args",
+            return_value=["ssh"],
+        ),
+        patch(
+            "venom_core.services.vast_environments.operations.subprocess.run",
+            return_value=Mock(returncode=0),
+        ) as run,
+    ):
+        assert _provision(plan, {}, False)["startup"] == "completed"
+    assert run.call_args.kwargs["timeout"] == 760
+    capped = plan.profile.model_copy(
+        update={"duration_minutes": 1, "download_gb": Decimal("1e100")}
+    )
+    assert vllm_wait_seconds(capped) == 60
+    offline = plan.profile.model_copy(update={"download_gb": Decimal(0)})
+    assert vllm_wait_seconds(offline) == 300
+
+
+@pytest.mark.parametrize("existing", [True, False])
+def test_vllm_reuses_loading_process(service, tmp_path, existing):
+    from venom_core.services.vast_environments.runtime_scripts import vllm_script
+
+    _, plan, _ = service
+    cfg = plan.profile.model_copy(update={"mode": "vllm"})
+    pid_file = tmp_path / "vllm.pid"
+    # The surrounding test process stands in for an existing server that is still loading.
+    pid_file.write_text(str(os.getpid()) if existing else "invalid-pid")
+    script = vllm_script(cfg).replace("/workspace/venom-vast", str(tmp_path))
+    stubs = f"""set -euo pipefail
+exec 9>/dev/null
+python3() {{ :; }}
+sleep() {{ :; }}
+curl() {{
+  n=$(cat "{tmp_path}/polls" 2>/dev/null || echo 0)
+  n=$((n + 1))
+  echo "$n" > "{tmp_path}/polls"
+  test "$n" -ge 4
+}}
+nohup() {{ echo launched >> "{tmp_path}/launches"; }}
+"""
+    result = subprocess.run(
+        ["bash", "-s"], input=stubs + script, text=True, capture_output=True, timeout=10
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "startup.state").read_text().strip() == "ready"
+    launches = tmp_path / "launches"
+    if existing:
+        assert not launches.exists()
+    else:
+        assert launches.read_text().splitlines() == ["launched"]

@@ -25,6 +25,7 @@ from venom_core.services.vast_environments.recipes import RECIPES, prepare
 from venom_core.services.vast_environments.store import Journal
 
 DEFAULT_STATE = ".venom_runtime/vast"
+SSH_PROFILE_ROOT = Path(__file__).resolve().parents[3] / "secrets" / "ssh"
 
 
 def utc_argument(value: str) -> datetime:
@@ -39,8 +40,15 @@ def utc_argument(value: str) -> datetime:
 
 def ssh_profile(path: Path) -> dict:
     try:
-        value = json.loads(path.read_text())
-    except (OSError, ValueError):
+        # Profiles belong to the existing secret store, never to arbitrary CLI paths.
+        root = SSH_PROFILE_ROOT.resolve(strict=True)
+        resolved = path.expanduser().resolve(strict=True)
+        if not resolved.is_relative_to(root) or resolved.suffix != ".json":
+            raise ValueError
+        if not resolved.is_file():
+            raise ValueError
+        value = json.loads(resolved.read_text())
+    except (OSError, ValueError, RuntimeError):
         raise VastError("vast.invalid_ssh_profile") from None
     if not isinstance(value, dict) or any(
         not isinstance(value.get(key), str) or not value[key].strip()
@@ -260,8 +268,16 @@ def _offline(args):
             timeout=25, follow_redirects=False, trust_env=False
         ) as registry:
             return resolve_image(args.image, args.arch, registry)
-    reports = [json.loads(path.read_text()) for path in args.reports]
-    return compare([row.get("result", row) for row in reports])
+    reports = []
+    for path in args.reports:
+        document = json.loads(path.read_text())
+        if not isinstance(document, dict):
+            raise ValueError("vast.invalid_input")
+        report = document.get("result", document)
+        if not isinstance(report, dict):
+            raise ValueError("vast.invalid_input")
+        reports.append(report)
+    return compare(reports)
 
 
 def _record_action(args, service: Environments):

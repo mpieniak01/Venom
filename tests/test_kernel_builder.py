@@ -174,7 +174,7 @@ def test_kernel_builder_google_not_implemented():
 
 def test_kernel_builder_enable_grounding_parameter():
     """Test dodania parametru enable_grounding do _register_service."""
-    from semantic_kernel import Kernel
+    from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
     class GoogleSettings(MockSettings):
         GOOGLE_API_KEY: str = "test-google-key"
@@ -211,15 +211,14 @@ def test_register_google_service_registers_connector(monkeypatch):
         LLM_MODEL_NAME="gemini-2.5-flash",
     )
     builder = KernelBuilder(settings=settings)
-    from semantic_kernel import Kernel
+    from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
     kernel = MagicMock(spec=Kernel)
 
     fake_service = object()
     fake_connector = MagicMock(return_value=fake_service)
     monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", True)
-    monkeypatch.setattr(kbmod, "SK_GOOGLE_CONNECTOR_AVAILABLE", True)
-    monkeypatch.setattr(kbmod, "GoogleAIChatCompletion", fake_connector)
+    monkeypatch.setattr(kbmod, "MafChatService", fake_connector)
 
     builder._register_google_service(
         kernel=kernel,
@@ -230,8 +229,9 @@ def test_register_google_service_registers_connector(monkeypatch):
 
     fake_connector.assert_called_once_with(
         service_id="google",
-        gemini_model_id="gemini-2.5-flash",
+        ai_model_id="gemini-2.5-flash",
         api_key="test-google-key",
+        base_url=kbmod.GEMINI_OPENAI_ENDPOINT,
     )
     kernel.add_service.assert_called_once_with(fake_service)
 
@@ -242,15 +242,14 @@ def test_safe_find_spec_returns_none_on_internal_error(monkeypatch):
     monkeypatch.setattr(
         kbmod.importlib.util,
         "find_spec",
-        lambda _name: (_ for _ in ()).throw(RuntimeError("boom")),
+        lambda _name: (_ for _ in ()).throw(ValueError("boom")),
     )
     assert _safe_find_spec("x.any") is None
 
 
 def test_register_google_service_requires_key_when_google_available(monkeypatch):
-    from semantic_kernel import Kernel
-
     import venom_core.execution.kernel_builder as kbmod
+    from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
     class GoogleSettings(MockSettings):
         GOOGLE_API_KEY: str = ""
@@ -260,30 +259,22 @@ def test_register_google_service_requires_key_when_google_available(monkeypatch)
     kernel = MagicMock(spec=Kernel)
 
     monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", True)
-    monkeypatch.setattr(kbmod, "SK_GOOGLE_CONNECTOR_AVAILABLE", True)
-    monkeypatch.setattr(kbmod, "GoogleAIChatCompletion", MagicMock())
+    monkeypatch.setattr(kbmod, "MafChatService", MagicMock())
 
     with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
         builder._register_google_service(kernel, "google", "gemini-x", False)
 
 
-def test_register_google_service_requires_sk_connector(monkeypatch):
-    from semantic_kernel import Kernel
-
+def test_register_google_service_requires_maf_provider(monkeypatch):
     import venom_core.execution.kernel_builder as kbmod
 
     class GoogleSettings(MockSettings):
         GOOGLE_API_KEY: str = "test-google-key"
 
-    settings = GoogleSettings(LLM_SERVICE_TYPE="google", LLM_MODEL_NAME="gemini-x")
-    builder = KernelBuilder(settings=settings)
-    kernel = MagicMock(spec=Kernel)
-
-    monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", True)
-    monkeypatch.setattr(kbmod, "SK_GOOGLE_CONNECTOR_AVAILABLE", False)
-
-    with pytest.raises(ValueError, match="Connector GoogleAIChatCompletion"):
-        builder._register_google_service(kernel, "google", "gemini-x", False)
+    builder = KernelBuilder(settings=GoogleSettings())
+    monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", False)
+    with pytest.raises(ValueError, match="Provider MAF"):
+        builder._register_google_service(MagicMock(), "google", "gemini-x", False)
 
 
 def test_register_all_services_logs_openai_registration_failure(monkeypatch):

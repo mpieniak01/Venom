@@ -4,11 +4,12 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
 from venom_core.utils.config_paths import resolve_config_path
 from venom_core.utils.logger import get_logger
 

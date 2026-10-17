@@ -1875,6 +1875,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_dependency_profiles.py",
+      "domain": "environment",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Task266 generated profile graph, policy and installation lock contract."
+    },
+    {
       "path": "tests/test_designer_agent.py",
       "domain": "agents",
       "test_type": "unit",
@@ -3483,6 +3497,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_maf_runtime.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Native MAF SDK completion/tool/stream/provider error contract without models or network."
     },
     {
       "path": "tests/test_main_internal_helpers.py",
@@ -5099,6 +5127,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_qualification_process.py",
+      "domain": "environment",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Owned Linux process lifecycle and fail-closed identity verification without application services."
     },
     {
       "path": "tests/test_queue_governance.py",

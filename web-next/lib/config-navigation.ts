@@ -3,10 +3,11 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 
-export type ConfigTab = "services" | "parameters" | "integrations" | "audit" | "permissions";
+export type ConfigTab = "services" | "parameters" | "integrations" | "topology" | "audit" | "permissions";
 export type ConfigNavigation = {
   tab: ConfigTab;
   integration: string | null;
+  resource: string | null;
   scope: "all" | "internal" | "external";
   visibility: "environment" | "all";
   query: string;
@@ -18,23 +19,27 @@ export type ConfigNavigation = {
 };
 const CHANGE_EVENT = "venom:config-navigation";
 const TAB_ALIASES: Record<string, ConfigTab> = {
-  services: "services", parameters: "parameters", integrations: "integrations",
+  topology: "topology", services: "services", parameters: "parameters", integrations: "integrations",
   apiMap: "integrations", "api-map": "integrations", audit: "audit", permissions: "permissions",
 };
 
+/** Normalize unsupported filter values to the unfiltered view. */
 function allowedFilter(value: string | null, allowed: string[]) {
   return value && allowed.includes(value) ? value : "all";
 }
 
+/** Parse legacy and current configuration URLs, validating resource and parameter selectors. */
 export function parseConfigNavigation(search: string): ConfigNavigation {
   const params = new URLSearchParams(search);
   const requested = params.get("tab") ?? params.get("section") ?? "services";
   const scope = params.get("scope");
   const parameter = params.get("parameter");
+  const resource = params.get("resource");
   return {
     tab: Object.hasOwn(TAB_ALIASES, requested) ? TAB_ALIASES[requested] : "services",
     invalidTab: !Object.hasOwn(TAB_ALIASES, requested),
     integration: params.get("integration")?.slice(0, 200) || null,
+    resource: resource && /^[a-zA-Z0-9][a-zA-Z0-9_.:\/-]{0,199}$/.test(resource) ? resource : null,
     scope: scope === "internal" || scope === "external" ? scope : "all",
     visibility: params.get("visibility") === "all" ? "all" : "environment",
     source: allowedFilter(params.get("source"), ["local", "cloud", "hybrid"]),
@@ -45,6 +50,7 @@ export function parseConfigNavigation(search: string): ConfigNavigation {
   };
 }
 
+/** Patch configuration URL state while preserving unrelated query parameters. */
 export function configHref(patch: Partial<ConfigNavigation> = {}, search = "") {
   const params = new URLSearchParams(search);
   params.delete("section");
@@ -58,6 +64,7 @@ export function configHref(patch: Partial<ConfigNavigation> = {}, search = "") {
   return query ? "/config?" + query : "/config";
 }
 
+/** Subscribe to browser history and local navigation changes with symmetric cleanup. */
 function subscribe(listener: () => void) {
   window.addEventListener("popstate", listener);
   window.addEventListener(CHANGE_EVENT, listener);
@@ -66,9 +73,12 @@ function subscribe(listener: () => void) {
     window.removeEventListener(CHANGE_EVENT, listener);
   };
 }
+/** Read the current URL for the client navigation store. */
 const browserSearch = () => window.location.search;
+/** Provide an empty server snapshot until client URL state is available. */
 const serverSearch = () => "";
 
+/** Synchronize configuration selection with Next.js routing and browser history. */
 export function useConfigNavigation() {
   const frameworkSearch = useSearchParams();
   const localSearch = useSyncExternalStore(subscribe, browserSearch, serverSearch);

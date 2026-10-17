@@ -1,4 +1,23 @@
 export const configLocale = {
+    topology: {
+      controls: "Sterowanie widokiem",
+      zoomIn: "Powiększ",
+      zoomOut: "Pomniejsz",
+      fitView: "Dopasuj",
+      keyboard: "Naciśnij Enter lub spację, aby wybrać węzeł.",
+      handle: "Punkt połączenia",
+
+      ageMinutes: "min przed migawką",
+      title: "Topologia",
+      legend: "Krawędzie oznaczają przypisanie integracji i zasobów, nie bieżący ruch sieciowy. Venom jest kotwicą aplikacji, nie zbiorczym wskaźnikiem zdrowia.",
+      core: "Wewnętrzne API core",
+      notObserved: "Nie sprawdzono",
+      missing: "Wybrana integracja lub zasób nie są już dostępne.",
+      unavailable: "Topologia jest niedostępna. Otwórz listę integracji.",
+      tree: "Dostępny spis integracji i zasobów",
+      more: "Pokaż więcej zasobów",
+    },
+
     title: "Konfiguracja",
     description: "Zarządzanie usługami i parametrami systemu Venom",
     tabs: {

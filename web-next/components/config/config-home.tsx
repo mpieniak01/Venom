@@ -13,8 +13,10 @@ import { ParametersPanel } from "./parameters-panel";
 import { ApiMap } from "./api-map";
 import { AuditPanel } from "./audit-panel";
 import { PermissionsPanel } from "./permissions-panel";
+import { IntegrationTopologyBoundary } from "./integration-topology-boundary";
 import { IntegrationLinks } from "./integration-links";
 
+/** Render configuration tabs while retaining visited parameter drafts across tab changes. */
 export function ConfigHome() {
   const t = useTranslation();
   const navigation = useConfigNavigation();
@@ -23,7 +25,7 @@ export function ConfigHome() {
   if (activeTab === "parameters" && !parametersVisited) setParametersVisited(true);
   const tabs = [
     ["services", Server, "config.tabs.services"], ["parameters", FileCode, "config.tabs.parameters"],
-    ["integrations", Network, "config.apiMap.title"], ["audit", ShieldCheck, "config.tabs.audit"],
+    ["integrations", Network, "config.apiMap.title"], ["topology", Network, "config.topology.title"], ["audit", ShieldCheck, "config.tabs.audit"],
     ["permissions", KeyRound, "config.tabs.permissions"],
   ] as const;
   const selectTab = (tab: ConfigTab) => {
@@ -57,6 +59,7 @@ export function ConfigHome() {
       {activeTab === "services" && <div role="tabpanel" id="config-panel-services" aria-labelledby="config-tab-services" className="space-y-4"><IntegrationLinks /><ServicesPanel /></div>}
       {(parametersVisited || activeTab === "parameters") && <div role="tabpanel" id="config-panel-parameters" aria-labelledby="config-tab-parameters" hidden={activeTab !== "parameters"}><ParametersPanel active={activeTab === "parameters"} navigation={navigation} /></div>}
       {activeTab === "integrations" && <div role="tabpanel" id="config-panel-integrations" aria-labelledby="config-tab-integrations"><ApiMap navigation={navigation} /></div>}
+      {activeTab === "topology" && <div role="tabpanel" id="config-panel-topology" aria-labelledby="config-tab-topology"><IntegrationTopologyBoundary navigation={navigation} /></div>}
       {activeTab === "audit" && <div role="tabpanel" id="config-panel-audit" aria-labelledby="config-tab-audit"><AuditPanel /></div>}
       {activeTab === "permissions" && <div role="tabpanel" id="config-panel-permissions" aria-labelledby="config-tab-permissions"><PermissionsPanel /></div>}
     </div>

@@ -9,30 +9,36 @@ import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
 import type { components } from "@/lib/generated/api-types";
 
+import { IntegrationStatusDetails } from "./integration-status-details";
 import { ConnectionFilterControls, IntegrationCard, IntegrationConnectionDetails, integrationConnections, matchesConnectionFilters, shouldShowConnection, stateColor, type ConnectionFilters } from "./integration-connections";
 export { shouldShowConnection } from "./integration-connections";
 
 type Integration = components["schemas"]["IntegrationEntry"];
 export type ApiConnection = components["schemas"]["ApiConnection"];
 
+/** Apply scope and environment visibility without inferring health from configuration. */
 export function visibleIntegrations(entries: Integration[], scope: string, environmentOnly: boolean) {
   return entries.filter((entry) => (scope === "all" || entry.scope === scope)
     && (!environmentOnly || entry.scope === "internal" || entry.configuration === "configured" || (entry.configuration === "not_required" && entry.activation === "enabled")));
 }
 
+/** Keep a valid selection or choose a configured external integration before falling back. */
 export function nextIntegrationSelection(entries: Integration[], previous: string | null) {
   return entries.some((entry) => entry.id === previous) ? previous : entries.find((entry) => entry.scope === "external" && entry.configuration === "configured")?.id ?? entries[0]?.id ?? null;
 }
 
+/** Translate capability evidence while distinguishing an empty list from unknown evidence. */
 function capabilityLabels(capabilities: string[], t: ReturnType<typeof useTranslation>) {
   if (!capabilities.length) return t("config.navigation.noCapabilities");
   return capabilities.map((capability) => t(`config.integrations.capabilities.${capability}`)).join(" · ");
 }
 
+/** Allow only application-local panel paths with no query strings or external origins. */
 function publicLink(path: string | null | undefined) {
   return path && /^\/[a-zA-Z0-9][a-zA-Z0-9/_-]*$/.test(path) ? path : null;
 }
 
+/** Browse shared inventory and existing integration details with optional URL navigation. */
 export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof useConfigNavigation> }> = {}) {
   const t = useTranslation();
   const { data, loading, failed: inventoryFailed, refresh } = useIntegrationInventory();
@@ -50,7 +56,7 @@ export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof
   const scope = navigation?.scope ?? localScope;
   const environmentOnly = navigation ? navigation.visibility === "environment" : localEnvironmentOnly;
   const query = navigation?.query ?? localQuery;
-  const setSelectedId = (integration: string) => navigation ? navigation.navigate({ integration }) : setLocalSelectedId(integration);
+  const setSelectedId = (integration: string) => navigation ? navigation.navigate({ integration, resource: null }) : setLocalSelectedId(integration);
   const setScope = (value: string) => navigation ? navigation.navigate({ scope: value as "all" | "internal" | "external" }) : setLocalScope(value);
   const setEnvironmentOnly = (value: boolean) => navigation ? navigation.navigate({ visibility: value ? "environment" : "all" }) : setLocalEnvironmentOnly(value);
   const setQuery = (value: string) => navigation ? navigation.navigate({ query: value }, true) : setLocalQuery(value);
@@ -136,15 +142,7 @@ export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof
         </div>
         {selected && <div className="glass-panel min-w-0 self-start space-y-5 rounded-2xl border border-theme p-5 lg:p-6">
           <h3 className="heading-h2 text-xl font-semibold">{selected.label}</h3>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="text-theme-muted">{t("config.integrations.configuration")}</dt><dd>{t(`config.integrations.configurationStates.${selected.configuration}`)}</dd>
-            <dt className="text-theme-muted">{t("config.integrations.activation")}</dt><dd>{t(`config.integrations.activationStates.${selected.activation}`)}</dd>
-            <dt className="text-theme-muted">{t("config.integrations.connectivity")}</dt><dd>{t(`config.apiMap.filters.status.${selected.connectivity}`)}</dd>
-            <dt className="text-theme-muted">{t("config.integrations.location")}</dt><dd>{t(`config.integrations.locations.${selected.location}`)}</dd>
-            <dt className="text-theme-muted">{t("config.integrations.evidence")}</dt><dd>{t(`config.integrations.sources.${selected.source}`)}</dd>
-            <dt className="text-theme-muted">{t("config.integrations.observedAt")}</dt><dd>{selected.observed_at ? new Date(selected.observed_at).toLocaleString() : t("config.integrations.unknown")}</dd>
-          </dl>
-          <p className="rounded-lg bg-theme-overlay p-3 text-sm">{t(`config.integrations.reasons.${selected.reason_code}`)}</p>
+          <IntegrationStatusDetails entry={selected} generatedAt={data?.generated_at} />
           {(selected.capabilities ?? []).length > 0 && <div><h4 className="font-medium">{t("config.integrations.capabilitiesTitle")}</h4><ul className="list-disc pl-5 text-sm text-theme-muted">{(selected.capabilities ?? []).map((capability) => <li key={capability}>{t(`config.integrations.capabilities.${capability}`)}</li>)}</ul></div>}
           {(selected.configuration_keys ?? []).length > 0 && <div><h4 className="font-medium">{t("config.integrations.configurationKeys")}</h4><p className="break-words text-xs text-theme-muted">{(selected.configuration_keys ?? []).map((key) => <Link className="mr-3 inline-block underline underline-offset-4" key={key} href={configHref({ tab: "parameters", parameter: key, query: "" }, navigation?.search)}>{key}</Link>)}</p></div>}
           <div>

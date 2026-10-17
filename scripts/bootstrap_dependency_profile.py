@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,64 @@ def checked_lock(root: Path, policy: dict[str, Any], profile: str) -> Path:
     return path
 
 
+def refresh_bootstrap_tools(
+    python: Path,
+    build_lock: Path,
+    profile_lock: Path,
+    installed: dict[str, str],
+    *,
+    target: Path,
+    required_bytes: int,
+    storage_root: Path | None,
+) -> None:
+    """Refresh only existing bootstrap additions; preserve engine-owned pins."""
+    profile_packages = {
+        re.sub(r"[-_.]+", "-", match.group(1)).lower()
+        for line in profile_lock.read_text().splitlines()
+        if (match := re.match(r"^([A-Za-z0-9_.-]+)==", line))
+    }
+    entries = build_lock.read_text().splitlines()
+    selected = []
+    for index, line in enumerate(entries):
+        match = re.match(r"^([A-Za-z0-9_.-]+)==([^ \\]+)", line)
+        if match is None:
+            continue
+        name, version = match.groups()
+        name = re.sub(r"[-_.]+", "-", name).lower()
+        if (
+            name in profile_packages
+            or name not in installed
+            or installed[name] == version
+        ):
+            continue
+        digest = entries[index + 1].strip() if index + 1 < len(entries) else ""
+        if not re.fullmatch(r"--hash=sha256:[a-f0-9]{64}", digest):
+            raise ValueError("Bootstrap lock entry requires a valid artifact hash")
+        selected.append(line + "\n    " + digest + "\n")
+    if not selected:
+        return
+    check_storage_space(target, required_bytes, storage_root=storage_root)
+    with tempfile.TemporaryDirectory(prefix="venom-bootstrap-tools-") as scratch:
+        requirements = Path(scratch) / "requirements.txt"
+        requirements.write_text(
+            "--index-url https://pypi.org/simple\n" + "".join(selected)
+        )
+        run(
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--no-cache-dir",
+                "--require-hashes",
+                "--disable-pip-version-check",
+                "--only-binary=:all:",
+                "-r",
+                str(requirements),
+            ]
+        )
+
+
 def install_profile(
     root: Path,
     profile: str,
@@ -182,10 +241,11 @@ def install_profile(
             ],
             capture=True,
         )
-        installed = {
-            re.sub(r"[-_.]+", "-", item["name"]).lower()
+        installed_versions = {
+            re.sub(r"[-_.]+", "-", item["name"]).lower(): item["version"]
             for item in json.loads(inventory.stdout)
         }
+        installed = set(installed_versions)
         if spec["kind"] == "application":
             forbidden = installed.intersection(policy["forbidden_application_packages"])
             if forbidden:
@@ -209,6 +269,16 @@ def install_profile(
             raise ValueError(
                 f"Existing environment has packages outside the selected profile {sorted(unexpected)}; use a fresh venv rather than retaining another profile"
             )
+    if existed:
+        refresh_bootstrap_tools(
+            python,
+            build_lock,
+            lock,
+            installed_versions,
+            target=target,
+            required_bytes=required_bytes,
+            storage_root=storage_root,
+        )
     if not existed:
         # A mapped, hash-locked toolchain bootstraps packaging for the generator.
         # Do not downgrade build tools in an already-populated application.

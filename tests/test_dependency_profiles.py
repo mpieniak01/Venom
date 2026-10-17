@@ -560,7 +560,7 @@ def test_bootstrap_existing_legacy_application_is_rejected_before_pip_install(
     def run(command, *, capture=False):
         commands.append(command)
         return SimpleNamespace(
-            stdout='[{"name":"semantic-kernel"}]'
+            stdout='[{"name":"semantic-kernel","version":"1.44.0"}]'
             if "list" in command
             else "include-system-site-packages = false\n",
             returncode=0,
@@ -687,7 +687,7 @@ def test_bootstrap_rejects_invalid_targets_without_package_mutations(
             def run(command, *, capture=False):
                 commands.append(command)
                 return SimpleNamespace(
-                    stdout='[{"name":"onnxruntime"}]'
+                    stdout='[{"name":"onnxruntime","version":"1.24.0"}]'
                     if "list" in command
                     else "include-system-site-packages = false\n",
                     returncode=0,
@@ -803,7 +803,7 @@ def test_bootstrap_refuses_profile_downgrade_before_pip_changes(
     def run(command, *, capture=False):
         commands.append(command)
         return SimpleNamespace(
-            stdout='[{"name":"torch"}]'
+            stdout='[{"name":"torch","version":"2.13.0"}]'
             if "list" in command
             else "include-system-site-packages = false\n",
             returncode=0,
@@ -826,7 +826,7 @@ def test_bootstrap_canonicalizes_dotted_distribution_names(
     def run(command, *, capture=False):
         commands.append(command)
         return SimpleNamespace(
-            stdout='[{"name":"boolean.py"}]'
+            stdout='[{"name":"boolean.py","version":"5.0"}]'
             if "list" in command
             else "include-system-site-packages = false\n",
             returncode=0,
@@ -1036,3 +1036,121 @@ def test_bootstrap_target_volume_floor_is_inclusive_and_enforced_without_host_op
     else:
         bootstrap.install_profile(profiles.ROOT, "light", target)
         assert (target / ".venom-dependency-profile.json").exists()
+
+
+@pytest.mark.parametrize("version,expected", [("24.0", "FAIL"), ("26.2.1", "PASS")])
+def test_environment_cannot_qualify_with_an_unpinned_bootstrap_pip(
+    tmp_path, policy, monkeypatch, version, expected
+):
+    lock = tmp_path / policy["profiles"]["light"]["lock"]
+    lock.parent.mkdir(parents=True)
+    lock.write_text(
+        f"# Profile policy SHA256: {profiles.profile_policy_hash(policy, 'light')}\nexample==1.2.3\n"
+    )
+
+    def run(command, **kwargs):
+        if "list" in command:
+            return SimpleNamespace(
+                stdout=json.dumps(
+                    [
+                        {"name": "example", "version": "1.2.3"},
+                        {"name": "pip", "version": version},
+                    ]
+                ),
+                returncode=0,
+            )
+        if "check" in command:
+            return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+        return SimpleNamespace(
+            stdout="include-system-site-packages = false\n", returncode=0
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    result = profiles.verify_environment(
+        tmp_path, policy, "light", "/isolated/bin/python"
+    )
+    assert result["status"] == expected
+    assert bool(result["bootstrap_delta"]) == (expected == "FAIL")
+
+
+@pytest.mark.parametrize(
+    "version,profile_pip,expected_calls",
+    [
+        ("24.0", False, 1),
+        ("26.2.1", False, 0),
+        ("24.0", True, 0),
+    ],
+)
+def test_refresh_bootstrap_preserves_engine_pins_and_only_updates_old_tools(
+    tmp_path, monkeypatch, version, profile_pip, expected_calls
+):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    build = tmp_path / "build.txt"
+    build.write_text(
+        "pip==26.2.1 \\\n    --hash=sha256:"
+        + "a" * 64
+        + "\nsetuptools==83.0.0 \\\n    --hash=sha256:"
+        + "b" * 64
+        + "\n"
+    )
+    engine = tmp_path / "engine.txt"
+    engine.write_text("setuptools==80.10.2\n" + ("pip==24.0\n" if profile_pip else ""))
+    observed = []
+
+    def run(command, **kwargs):
+        manifest = Path(command[command.index("-r") + 1])
+        observed.append((command, manifest, manifest.read_text()))
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    monkeypatch.setattr(
+        bootstrap.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=100 * bootstrap.GIB),
+    )
+    bootstrap.refresh_bootstrap_tools(
+        tmp_path / "bin/python",
+        build,
+        engine,
+        {"pip": version, "setuptools": "80.10.2"},
+        target=tmp_path,
+        required_bytes=bootstrap.GIB,
+        storage_root=None,
+    )
+    assert len(observed) == expected_calls
+    if observed:
+        command, temporary_manifest, content = observed[0]
+        assert "pip==26.2.1" in content and "--hash=sha256:" + "a" * 64 in content
+        assert "setuptools" not in content
+        assert "--no-cache-dir" in command and "--require-hashes" in command
+        assert not temporary_manifest.exists()
+
+
+@pytest.mark.parametrize("bad_hash", [True, False])
+def test_bootstrap_refresh_cannot_mutate_pip_with_bad_hash_or_low_space(
+    tmp_path, monkeypatch, bad_hash
+):
+    from scripts import bootstrap_dependency_profile as bootstrap
+
+    build = tmp_path / "build.txt"
+    build.write_text(
+        "pip==26.2.1 \\\n    --hash=sha256:" + ("bad" if bad_hash else "a" * 64) + "\n"
+    )
+    engine = tmp_path / "engine.txt"
+    engine.write_text("setuptools==80.10.2\n")
+    calls = []
+    monkeypatch.setattr(bootstrap, "run", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(
+        bootstrap.shutil, "disk_usage", lambda path: SimpleNamespace(free=0)
+    )
+    with pytest.raises(ValueError if bad_hash else OSError):
+        bootstrap.refresh_bootstrap_tools(
+            tmp_path / "bin/python",
+            build,
+            engine,
+            {"pip": "24.0"},
+            target=tmp_path,
+            required_bytes=bootstrap.GIB,
+            storage_root=None,
+        )
+    assert calls == []

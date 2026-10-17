@@ -438,8 +438,17 @@ def verify_environment(
     delta = inventory_delta(expected, installed)
     # The separately pinned bootstrap toolchain is the only permitted addition.
     # A Full environment cannot masquerade as a clean Light installation.
-    bootstrap = set(requirements_for(policy, "build"))
-    unexpected = sorted(set(installed) - set(expected) - bootstrap)
+    bootstrap = requirements_for(policy, "build")
+    # Bootstrap-only additions must satisfy their pinned policy too. Merely
+    # allowlisting "pip" let vulnerable venv seed versions pass qualification.
+    bootstrap_delta = {
+        name: {"expected": line, "actual": installed[name]}
+        for name, line in bootstrap.items()
+        if name in installed
+        and name not in expected
+        and installed[name] not in Requirement(line).specifier
+    }
+    unexpected = sorted(set(installed) - set(expected) - set(bootstrap))
     check_packages(policy, profile, set(installed))
     clean = subprocess.run(
         [
@@ -455,12 +464,17 @@ def verify_environment(
     return {
         "profile": profile,
         "status": "PASS"
-        if not delta and not unexpected and check.returncode == 0 and isolated
+        if not delta
+        and not bootstrap_delta
+        and not unexpected
+        and check.returncode == 0
+        and isolated
         else "FAIL",
         "lock_sha256": hashlib.sha256(lock_path.read_bytes()).hexdigest(),
         "packages": installed,
         "delta": delta,
         "unexpected_packages": unexpected,
+        "bootstrap_delta": bootstrap_delta,
         "pip_check_exit": check.returncode,
         "pip_check": (check.stdout + check.stderr).strip(),
         "isolated_venv": isolated,

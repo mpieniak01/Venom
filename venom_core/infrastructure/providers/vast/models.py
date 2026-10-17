@@ -263,6 +263,7 @@ class OfferAssessment(Contract):
 class EnvironmentPlan(Contract):
     schema_version: Literal[1, 2] = 2
     plan_id: str
+    retest: bool = False
     profile: WorkloadProfile
     assessment: OfferAssessment
     expires_at: datetime
@@ -278,7 +279,8 @@ class EnvironmentPlan(Contract):
     @model_validator(mode="after")
     def legacy_defaults(self):
         if self.schema_version == 1 and (
-            self.profile.runtime != RuntimeRequirements()
+            self.retest
+            or self.profile.runtime != RuntimeRequirements()
             or self.assessment.runtime
             or self.assessment.history
         ):
@@ -288,6 +290,7 @@ class EnvironmentPlan(Contract):
     def calculate_checksum(self) -> str:
         data = self.model_dump(mode="json", exclude={"checksum"})
         if self.schema_version == 1:
+            data.pop("retest", None)
             data["profile"].pop("runtime", None)
             data["assessment"].pop("runtime", None)
             data["assessment"].pop("history", None)

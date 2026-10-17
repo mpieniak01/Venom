@@ -96,6 +96,7 @@ def test_legacy_plan_checksum_and_runtime_injection(service):
     _, plan, _ = service
     old = plan.model_dump(mode="json")
     old["schema_version"] = 1
+    old.pop("retest")
     old["profile"].pop("runtime")
     old["assessment"].pop("runtime")
     old["assessment"].pop("history")

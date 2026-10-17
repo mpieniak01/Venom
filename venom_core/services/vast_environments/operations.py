@@ -10,8 +10,11 @@ import httpx
 from venom_core.infrastructure.providers.vast.client import VastError
 from venom_core.infrastructure.providers.vast.models import now
 from venom_core.services.vast_environments.evaluation import OllamaProbe
+from venom_core.services.vast_environments.gpu_probe import probe_gpu
+from venom_core.services.vast_environments.history import remember
 from venom_core.services.vast_environments.lifecycle import Environments
 from venom_core.services.vast_environments.openai_probe import ready as openai_ready
+from venom_core.services.vast_environments.qualification import qualify
 from venom_core.services.vast_environments.recipes import validate_recipe
 from venom_core.services.vast_environments.runtime_scripts import vllm_wait_seconds
 from venom_core.services.vast_environments.ssh import inspect, ssh_args, tunnel
@@ -63,11 +66,55 @@ def _model_operation(plan, instance: dict, operation: str) -> dict:
     return result
 
 
+def _loaded_model(client: httpx.Client, profile) -> dict:
+    response = client.get("/api/ps")
+    response.raise_for_status()
+    rows = response.json().get("models", [])
+    matches = [
+        row
+        for row in rows
+        if isinstance(row, dict) and row.get("name") == profile.model
+    ]
+    if len(matches) != 1:
+        return {}
+    return {key: matches[0].get(key) for key in ["name", "digest", "size", "size_vram"]}
+
+
+def _qualify_operation(plan, instance: dict, accept_new: bool) -> dict:
+    inspection = inspect(plan, instance, accept_new)
+    engine = {}
+    if plan.profile.mode in {"ollama", "vllm"} and not inspection["reasons"]:
+        try:
+            with (
+                tunnel(plan, instance) as endpoint,
+                httpx.Client(
+                    base_url=endpoint,
+                    timeout=30,
+                    trust_env=False,
+                    follow_redirects=False,
+                ) as client,
+            ):
+                if plan.profile.mode == "ollama":
+                    engine = OllamaProbe(client, plan.profile).ready()
+                    engine["loaded_model"] = _loaded_model(client, plan.profile)
+                else:
+                    engine = openai_ready(client, plan.profile)
+        except (VastError, httpx.HTTPError, ValueError, TypeError):
+            engine["readiness"] = "inconclusive"
+    try:
+        probe = probe_gpu(plan, instance, accept_new)
+    except VastError as error:
+        probe = {"status": "error", "reason": error.code}
+    return qualify(plan, inspection, probe, engine)
+
+
 def _perform(plan, instance: dict, operation: str, accept_new: bool) -> dict:
     if operation == "inspect":
         return inspect(plan, instance, accept_new)
     if operation == "provision":
         return _provision(plan, instance, accept_new)
+    if operation == "qualify":
+        return _qualify_operation(plan, instance, accept_new)
     if operation in {"ready", "benchmark"}:
         return _model_operation(plan, instance, operation)
     raise VastError("vast.invalid_action")
@@ -95,6 +142,13 @@ def _save_result(
 ) -> None:
     with service.journal.lock(plan_id):
         fresh = service.journal.record(plan_id)
+        qualification = (
+            result if operation == "qualify" else result.get("qualification_report")
+        )
+        if isinstance(qualification, dict):
+            result["qualification_history"] = remember(
+                service.journal, service.journal.plan(plan_id), qualification
+            )
         fresh.reports[operation] = result
         fresh.ssh_state = "ready"
         if operation == "ready":

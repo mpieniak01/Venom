@@ -22,6 +22,7 @@ from venom_core.infrastructure.providers.vast.models import (
     now,
 )
 from venom_core.services.vast_environments.assessment import assess, search_filters
+from venom_core.services.vast_environments.history import lookup
 from venom_core.services.vast_environments.recipes import verify_template
 from venom_core.services.vast_environments.selection import preferred_queries, rank
 from venom_core.services.vast_environments.startup import startup
@@ -33,7 +34,19 @@ class Environments:
         self.client = client
         self.journal = journal
 
-    def search(self, profile: WorkloadProfile) -> list[OfferAssessment]:
+    def assess(
+        self, profile: WorkloadProfile, offer: dict, retest: bool = False
+    ) -> OfferAssessment:
+        result = assess(offer, profile)
+        result.history = lookup(self.journal, profile, result.offer)
+        if result.history["excluded"] and not retest:
+            result.status = "ineligible"
+            result.reasons.append("qualification.previous_unsuitable")
+        return result
+
+    def search(
+        self, profile: WorkloadProfile, retest: bool = False
+    ) -> list[OfferAssessment]:
         filters = search_filters(profile)
         offers = list(self.client.offers(profile.disk_gb, filters))
         for query in preferred_queries(profile, filters):
@@ -45,7 +58,9 @@ class Environments:
                 value if type(value) is int and value > 0 else f"unknown-{len(merged)}"
             )
             merged[key] = row
-        return rank([assess(row, profile) for row in merged.values()], profile)
+        return rank(
+            [self.assess(profile, row, retest) for row in merged.values()], profile
+        )
 
     def plan(
         self,
@@ -56,10 +71,11 @@ class Environments:
         identity: Path,
         known_hosts: Path,
         finish_policy: Literal["manual", "stop", "destroy"] = "manual",
+        retest: bool = False,
     ) -> EnvironmentPlan:
         verify_template(self.client, profile)
         offer = self._offer(profile, offer_id)
-        assessment = assess(offer, profile)
+        assessment = self.assess(profile, offer, retest)
         if assessment.status != "eligible":
             raise VastError("vast.offer_not_eligible")
         if profile.mode == "ollama" and (not profile.model or not profile.model_digest):
@@ -67,6 +83,7 @@ class Environments:
         plan_id = uuid4().hex
         plan = EnvironmentPlan(
             plan_id=plan_id,
+            retest=retest,
             profile=profile,
             assessment=assessment,
             expires_at=now() + timedelta(minutes=10),
@@ -122,8 +139,10 @@ class Environments:
             if plan.expires_at < now():
                 raise VastError("vast.plan_expired")
             verify_template(self.client, plan.profile)
-            fresh = assess(
-                self._offer(plan.profile, plan.assessment.offer["id"]), plan.profile
+            fresh = self.assess(
+                plan.profile,
+                self._offer(plan.profile, plan.assessment.offer["id"]),
+                plan.retest,
             )
             if fresh.status != "eligible":
                 raise VastError("vast.offer_not_eligible")

@@ -432,6 +432,7 @@ tests/test_vast_cli.py
 tests/test_vast_faults.py
 tests/test_vast_operations.py
 tests/test_vast_provider.py
+tests/test_vast_qualification.py
 tests/test_vast_recipes.py
 tests/test_vast_runtime_contracts.py
 tests/test_vast_selection.py

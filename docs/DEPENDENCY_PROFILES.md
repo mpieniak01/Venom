@@ -238,3 +238,12 @@ Compare built wheel hashes separately from source archive hashes and package
 inventories. Matching versions alone did not reveal the earlier differing
 evdev/webrtcvad native wheels. [GCC debugging options](https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html)
 describe the effect of `-g0`.
+
+Full owns the `webrtcvad` import through `webrtcvad-wheels==2.0.14.post1`, not
+the legacy `webrtcvad` distribution. A real silence-frame test of the legacy
+wrapper failed because it imports the removed `pkg_resources` module. The
+maintained wheel distribution keeps `Vad`, `set_mode` and `is_speech` and fixes
+that Python 3.12+ compatibility issue. Do not co-install the two distributions,
+which own the same module paths. Fresh locks omit the legacy distribution and
+verification rejects it as an undeclared extra in an updated environment.
+See the [maintainer's release history](https://pypi.org/project/webrtcvad-wheels/).

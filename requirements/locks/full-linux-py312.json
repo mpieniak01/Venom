@@ -1130,10 +1130,10 @@
       "url": "https://files.pythonhosted.org/packages/8a/cf/e3ad894ed5909a7c44b0707e89bc25d19a3d78b3a7aec846119443b6ae56/watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
       "version": "1.3.0"
     },
-    "webrtcvad": {
-      "sha256": "f1bed2fb25b63fb7b1a55d64090c993c9c9167b28485ae0bcdd81cf6ede96aea",
-      "url": "https://files.pythonhosted.org/packages/89/34/e2de2d97f3288512b9ea56f92e7452f8207eb5a0096500badf9dfd48f5e6/webrtcvad-2.0.10.tar.gz",
-      "version": "2.0.10"
+    "webrtcvad-wheels": {
+      "sha256": "0cdacbdba4551e55481b8bddd44f2faf5d5021eba3662c56a21b9342945f8c92",
+      "url": "https://files.pythonhosted.org/packages/4e/97/775a8459cd7470ee3d699b81ed4fdc7b3d90f5340737a6ae8e69edfa07ea/webrtcvad_wheels-2.0.14.post1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "version": "2.0.14.post1"
     },
     "websockets": {
       "sha256": "64dee438fed052b52e4f98f76c5790513235efaa1ef7f3f2192c392cd7c91b65",
@@ -1156,15 +1156,15 @@
       "version": "0.151.5"
     }
   },
-  "lock_sha256": "726b2d0a68ba985477f8995fa38508ed42784334208c80cdec5f257d89d8d401",
+  "lock_sha256": "0e2b7299c91ed18103cf6a86dacafb33e9bd24d6d64f72ee1da1f83f582ea724",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "a4adfe691a895bfd02c414314be203007e33ccb5572d9357ec3c319ae0d94d7f",
+  "policy_sha256": "4e06ec5291aa83cb115d51fd2147f95f88553f3c1dd366802a95ae0e72663fdf",
   "profile": "full",
-  "profile_policy_sha256": "044f1943d02ada2c0b73d16a928320931e0f6f06cad877e577ebf28cbba4c9aa",
+  "profile_policy_sha256": "cae72b11f7a465b8b104ac40d10c3ce86ddfcb56d116cccf04d7f2f07d4cdfbf",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

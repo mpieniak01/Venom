@@ -101,7 +101,7 @@
       "faster-whisper==1.2.1",
       "piper-tts==1.8.0",
       "sounddevice",
-      "webrtcvad",
+      "webrtcvad-wheels==2.0.14.post1",
       "ddgs",
       "tavily-python",
       "beautifulsoup4",

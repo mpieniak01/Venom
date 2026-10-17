@@ -65,6 +65,8 @@ def test_full_voice_and_gpu_worker_cannot_overlap_ort_distributions(policy):
     full = profiles.requirements_for(policy, "full")
     gpu = profiles.requirements_for(policy, "onnx-gpu")
     assert "onnxruntime" in full and "onnxruntime-gpu" not in full
+    assert full["webrtcvad-wheels"] == "webrtcvad-wheels==2.0.14.post1"
+    assert "webrtcvad" not in full
     assert "onnxruntime-gpu" in gpu and "onnxruntime" not in gpu
     assert policy["profiles"]["onnx-gpu"]["kind"] == "component"
     assert policy["profiles"]["academy"]["kind"] == "component"

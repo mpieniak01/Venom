@@ -398,6 +398,7 @@ export const configLocale = {
     "device": "Urządzenie"
   },
   "sources": {
+"module_manifest": "Manifest modułu",
 "provider_api": "API dostawcy",
     "configuration": "Konfiguracja",
     "route_registration": "Rejestr tras",
@@ -419,6 +420,7 @@ export const configLocale = {
     "image_generation": "Generowanie obrazów"
   },
   "reasons": {
+"module_not_registered": "Moduł jest znany z lokalnego manifestu, ale jego API nie zostało zarejestrowane.",
 "provider_unavailable": "API dostawcy jest niedostępne.",
 "resources_unavailable": "API konta odpowiada, ale lista instancji jest niedostępna.",
 "provider_unauthorized": "Dostawca odrzucił uwierzytelnienie lub zakres uprawnień.",

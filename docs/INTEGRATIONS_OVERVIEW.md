@@ -3,7 +3,8 @@
 Configuration > Integrations and nodes uses GET /api/v1/system/api-map, schema
 version 2. Existing internal_connections and external_connections remain for
 compatibility. The integrations array describes core APIs, optional modules,
-external providers and their resources. It does not grant robot motion consent.
+external providers and their resources. Local module manifests remain visible even
+when their API has not been registered. It does not grant robot motion consent.
 
 The default view shows this environment; All supported includes integrations known
 from core declarations and configured module manifests, including unconfigured

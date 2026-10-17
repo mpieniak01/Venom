@@ -11,7 +11,7 @@ from venom_core.api.schemas.connection_status import ConnectionStatus
 from venom_core.api.schemas.integrations import IntegrationEntry, IntegrationResource
 from venom_core.services.integration_catalog import core_catalog
 from venom_core.services.integration_hooks import apply_module_observations
-from venom_core.services.module_observations import module_candidates
+from venom_core.services.module_observations import module_inventory
 from venom_core.services.vast_observation import apply_vast_observation
 
 
@@ -133,8 +133,7 @@ def _local_vast_records(item: IntegrationEntry):
 
 def _module_entries(app: Any, settings) -> list[IntegrationEntry]:
     records = getattr(app.state, "optional_module_diagnostics", None)
-    if records is None:
-        records = [record for _, record in module_candidates(settings)]
+    records = module_inventory(settings, records)
     registry = getattr(app.state, "conversation_providers", None)
     failures = getattr(registry, "failures", {}) or {}
     entries = []
@@ -152,7 +151,9 @@ def _module_entries(app: Any, settings) -> list[IntegrationEntry]:
             scope="internal",
             location="local",
             kind="module",
-            configuration="configured",
+            configuration="configured"
+            if record.get("backend_configured", True)
+            else "unconfigured",
             activation="enabled"
             if state == "loaded"
             else "disabled"
@@ -161,7 +162,9 @@ def _module_entries(app: Any, settings) -> list[IntegrationEntry]:
             if state == "unavailable"
             else "unknown",
             state="available" if state == "loaded" else state,
-            source="module_activation",
+            source="module_activation"
+            if record.get("backend_configured", True)
+            else "module_manifest",
             observed_at=record["observed_at"],
             reason_code=record["reason_code"],
             access=["api"] if state == "loaded" else [],

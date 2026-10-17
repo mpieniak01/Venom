@@ -80,3 +80,33 @@ async def test_optional_async_initialization_failure_is_isolated():
     assert registry.providers == {}
     assert registry.failures["bad"] == "provider_initialization_failed"
     await registry.close()
+
+
+def test_unregistered_local_manifest_is_visible_without_loading_package(
+    tmp_path, monkeypatch
+):
+    from venom_core.services.module_observations import module_inventory
+
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "modules" / "sample" / "module.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps({"module_id": "sample", "display_name": "Local optional module"})
+    )
+    rows = module_inventory(settings(""), [])
+    assert len(rows) == 1
+    assert rows[0]["module_id"] == "sample"
+    assert rows[0]["state"] == "disabled"
+    assert rows[0]["reason_code"] == "module_not_registered"
+    assert rows[0]["backend_configured"] is False
+
+
+def test_activated_module_metadata_is_not_duplicated(tmp_path, monkeypatch):
+    from venom_core.services.module_observations import module_inventory
+
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "modules" / "sample" / "module.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"module_id": "sample"}))
+    original = {"module_id": "sample", "state": "loaded"}
+    assert module_inventory(settings(""), [original]) == [original]

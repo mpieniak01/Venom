@@ -398,6 +398,7 @@ export const configLocale = {
     "device": "Device"
   },
   "sources": {
+"module_manifest": "Module manifest",
 "provider_api": "Provider API",
     "configuration": "Configuration",
     "route_registration": "Route registry",
@@ -419,6 +420,7 @@ export const configLocale = {
     "image_generation": "Image generation"
   },
   "reasons": {
+"module_not_registered": "The module is known from a local manifest but its API is not registered.",
 "provider_unavailable": "The provider API is unavailable.",
 "resources_unavailable": "The account API responded but the instance list is unavailable.",
 "provider_unauthorized": "The provider rejected authentication or permission scope.",

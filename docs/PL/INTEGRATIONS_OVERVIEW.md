@@ -12,7 +12,8 @@ Pozostałe zakładki konfiguracji zachowują dotychczasowe funkcje.
 
 Konfiguracja, aktywacja modułu, łączność API i stan zasobów są oddzielne. Sama
 obecność trasy lub klucza nie oznacza poprawnej łączności. Nieznana liczba zasobów
-to null; potwierdzony brak to 0. Integracje bez węzłów pokazują nie dotyczy.
+to null; potwierdzony brak to 0. Lokalne manifesty modułów są widoczne także
+bez rejestracji ich API. Integracje bez węzłów pokazują nie dotyczy.
 Dane wskazują źródło i czas. Lokalne rekordy Vast są historyczne.
 
 Odczyt mapy korzysta tylko z lokalnych obserwacji i nie uruchamia kamer, modeli,

@@ -7,7 +7,9 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from itertools import islice
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 
@@ -39,7 +41,11 @@ def module_candidates(settings: object) -> list[tuple[str, dict[str, Any]]]:
         if item.startswith("manifest:") or item.endswith(".json"):
             path = Path(item.removeprefix("manifest:")).expanduser()
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = (
+                    json.loads(path.read_text(encoding="utf-8"))
+                    if path.stat().st_size <= 256 * 1024
+                    else None
+                )
             except (OSError, ValueError):
                 data = None
             if isinstance(data, dict):
@@ -71,3 +77,30 @@ def module_candidates(settings: object) -> list[tuple[str, dict[str, Any]]]:
                 record["reason_code"] = "activation_not_observed"
         result.append((item, record))
     return result
+
+
+def module_inventory(settings: object, activated=None):
+    """Join runtime activation with bounded local discovery; never import packages."""
+    records = (
+        list(activated)
+        if activated is not None
+        else [record for _, record in module_candidates(settings)]
+    )
+    known = {record["module_id"] for record in records}
+    paths = list(islice((Path.cwd() / "modules").glob("*/module.json"), 64))
+    metadata_settings = SimpleNamespace(
+        API_OPTIONAL_MODULES=",".join(
+            "manifest:" + str(path.resolve()) for path in paths
+        )
+    )
+    for _, record in module_candidates(metadata_settings):
+        if record["module_id"] in known:
+            continue
+        known.add(record["module_id"])
+        record.update(
+            state="disabled",
+            reason_code="module_not_registered",
+            backend_configured=False,
+        )
+        records.append(record)
+    return records

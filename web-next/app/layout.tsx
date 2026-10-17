@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBarWrapper, TopBarSkeleton } from "@/components/layout/top-bar-wrapper";
 import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/layout/system-status-bar-wrapper";
@@ -13,15 +13,19 @@ import {
   THEME_STORAGE_KEY,
 } from "@/lib/theme-registry";
 
-const inter = Inter({
+const inter = localFont({
+  src: "./fonts/InterVariable.woff",
   variable: "--font-inter",
-  subsets: ["latin"],
+  weight: "100 900",
+  style: "normal",
   display: "swap",
 });
 
-const jetBrains = JetBrains_Mono({
+const jetBrains = localFont({
+  src: "./fonts/JetBrainsMonoVariable.woff",
   variable: "--font-jetbrains",
-  subsets: ["latin"],
+  weight: "100 800",
+  style: "normal",
   display: "swap",
 });
 

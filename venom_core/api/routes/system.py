@@ -320,6 +320,8 @@ def _generate_external_map() -> List[ApiConnection]:
             ApiConnection(
                 source_component="Venom",
                 target_component=item.label,
+                description=None,
+                is_critical=False,
                 protocol=ConnectionProtocol.HTTP
                 if item.location == "local"
                 else ConnectionProtocol.HTTPS,

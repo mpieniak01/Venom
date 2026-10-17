@@ -52,12 +52,13 @@ it("preserves a parameter draft across tabs, saves only changed keys, and resets
 });
 
 it("restores integration filters from URL and handles removed IDs without fabricating state", async () => {
-  setup("?tab=apiMap&integration=core%3Aremoved&scope=external&visibility=all"); render(<ConfigHome />);
+  setup("?tab=apiMap&integration=core%3Aremoved&resource=old-device&scope=external&visibility=all"); render(<ConfigHome />);
   await screen.findByText(/Wybrana integracja nie jest już dostępna/);
   assert.equal((screen.getByLabelText("Widoczność") as HTMLSelectElement).value, "all");
   assert.equal((screen.getByLabelText("Typ") as HTMLSelectElement).value, "external");
   fireEvent.click(screen.getByRole("button", { name: /OpenAI/ }));
   assert.equal(new URLSearchParams(window.location.search).get("integration"), "core:openai");
+  assert.equal(new URLSearchParams(window.location.search).get("resource"), null);
   const link = screen.getByRole("link", { name: "OPENAI_API_KEY" });
   assert.ok(link.getAttribute("href")?.includes("parameter=OPENAI_API_KEY"));
   assert.equal(link.getAttribute("href")?.includes("********"), false);

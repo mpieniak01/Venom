@@ -1,3 +1,4 @@
+import type { Inventory } from "../lib/integration-inventory";
 import { test, expect, type Page } from "@playwright/test";
 
 async function readOnly(page: Page) {
@@ -20,19 +21,31 @@ for (const viewport of [{ width: 1600, height: 1050 }, { width: 390, height: 844
     const evidence = await readOnly(page);
     const response = page.waitForResponse((item) => item.url().includes("/system/api-map") && item.ok());
     await page.goto("/config?tab=topology&visibility=all");
-    const inventory = await (await response).json();
+    const inventory: Inventory = await (await response).json();
     await expect(page.getByTestId("integration-topology-canvas")).toBeVisible();
     await expect(page.locator('.react-flow__node[data-id="venom:root"]')).toBeVisible();
-    const rider = inventory.integrations.find((entry: { kind: string; resources?: { kind: string }[] }) => entry.kind === "module" && entry.resources?.some((resource) => resource.kind === "robot"));
+    const rider = (inventory.integrations ?? []).find((entry) => entry.kind === "module" && entry.resources?.some((resource) => resource.kind === "robot"));
     if (rider) {
-      for (const resource of rider.resources) {
+      const resources = (rider.resources ?? []).toSorted((a, b) => a.id.localeCompare(b.id));
+      const row = page.getByTestId(`topology-entry-${rider.id}`);
+      let visibleCount = Math.min(4, resources.length);
+      for (const resource of resources.slice(0, visibleCount)) {
         const id = `resource:${encodeURIComponent(rider.id)}:${encodeURIComponent(resource.id)}`;
-        await expect(page.locator(`.react-flow__node[data-id="${id}"]`)).toBeAttached();
+        await expect(page.getByTestId(`rf__node-${id}`)).toBeAttached();
       }
-      await page.locator("details").getByRole("button", { name: new RegExp(rider.resources[0].label) }).first().click();
-      await expect(page.locator("aside").last()).toContainText(rider.resources[0].label);
+      while (visibleCount < resources.length) {
+        await row.getByRole("button", { name: /Pokaż więcej zasobów|Show more resources/ }).click();
+        const nextCount = Math.min(visibleCount + 8, resources.length);
+        for (const resource of resources.slice(visibleCount, nextCount)) {
+          const id = `resource:${encodeURIComponent(rider.id)}:${encodeURIComponent(resource.id)}`;
+          await expect(page.getByTestId(`rf__node-${id}`)).toBeAttached();
+        }
+        visibleCount = nextCount;
+      }
+      await row.getByRole("button", { name: resources[0].label }).first().click();
+      await expect(page.locator("aside").last()).toContainText(resources[0].label);
       await page.reload();
-      await expect(page.locator("aside").last()).toContainText(rider.resources[0].label);
+      await expect(page.locator("aside").last()).toContainText(resources[0].label);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
     expect(evidence.errors).toEqual([]);
@@ -40,8 +53,8 @@ for (const viewport of [{ width: 1600, height: 1050 }, { width: 390, height: 844
   });
 }
 
-const resource = (id: string) => ({ id, label: "Same device", kind: "robot", state: "stale", configuration: "configured", selected: id === "0", source: "device_cache", reason_code: "not_observed" });
-const entry = (id: string, location = "local") => ({ id, label: "Same API", scope: "external", location, kind: "module", state: "unverified", configuration: "configured", activation: "enabled", connectivity: "unknown", source: "configuration", reason_code: "not_probed", resource_support: "supported", can_probe: false, resources_complete: false, resources: Array.from({ length: 64 }, (_, index) => resource(String(index))) });
+const resource = (id: string) => ({ id, label: `Robot [${id}] (demo)`, kind: "robot", state: "stale", configuration: "configured", selected: id === "0", source: "device_cache", reason_code: "not_observed" });
+const entry = (id: string, location = "local") => ({ id, label: "Same API", scope: "external", location, kind: "module", state: "unverified", configuration: "configured", activation: "enabled", connectivity: "unknown", source: "configuration", reason_code: "not_probed", resource_support: "supported", can_probe: false, resources_complete: true, resource_count: 64, observed_at: "2026-10-17T10:00:00Z", resources: Array.from({ length: 64 }, (_, index) => resource(String(index))) });
 
 test("real canvas retains viewport, focus and selection on polling and failed refresh", async ({ page }) => {
   const evidence = await readOnly(page);
@@ -53,6 +66,13 @@ test("real canvas retains viewport, focus and selection on polling and failed re
   });
   await page.goto("/config?tab=topology&integration=rider&resource=0");
   await expect(page.locator(".react-flow__node")).toHaveCount(11);
+  const riderRow = page.getByTestId("topology-entry-rider");
+  for (const id of ["0", "1", "10", "11"]) {
+    await riderRow.getByRole("button", { name: `Robot [${id}] (demo)` }).click();
+    await expect(page.getByTestId(`rf__node-resource:rider:${id}`)).toHaveClass(/selected/);
+  }
+  await riderRow.getByRole("button", { name: "Robot [0] (demo)" }).click();
+  await expect(page.locator("aside").last()).toContainText(/Zasoby: 64|Resources: 64/);
   await page.getByRole("button", { name: /Pokaż więcej zasobów|Show more resources/ }).first().click();
   await expect(page.locator(".react-flow__node")).toHaveCount(19);
   const zoom = page.locator(".react-flow__controls-zoomin");
@@ -72,6 +92,7 @@ test("real canvas retains viewport, focus and selection on polling and failed re
   await expect(page.locator(".react-flow__node")).toHaveCount(19);
   expect(await viewport.getAttribute("style")).toBe(transform);
   expect(requests).toBe(3);
+  await expect(page.locator("aside").last()).toContainText(/Zasoby: 64|Resources: 64/);
   await page.getByRole("tab", { name: /Uprawnienia|Permissions/ }).click();
   await expect(page.getByTestId("integration-topology-canvas")).toHaveCount(0);
   await page.clock.install();

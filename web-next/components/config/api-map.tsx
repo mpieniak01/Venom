@@ -34,6 +34,7 @@ function publicLink(path: string | null | undefined) {
   return path && /^\/[a-zA-Z0-9][a-zA-Z0-9/_-]*$/.test(path) ? path : null;
 }
 
+/** Browse shared inventory and existing integration details with optional URL navigation. */
 export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof useConfigNavigation> }> = {}) {
   const t = useTranslation();
   const { data, loading, failed: inventoryFailed, refresh } = useIntegrationInventory();
@@ -51,7 +52,7 @@ export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof
   const scope = navigation?.scope ?? localScope;
   const environmentOnly = navigation ? navigation.visibility === "environment" : localEnvironmentOnly;
   const query = navigation?.query ?? localQuery;
-  const setSelectedId = (integration: string) => navigation ? navigation.navigate({ integration }) : setLocalSelectedId(integration);
+  const setSelectedId = (integration: string) => navigation ? navigation.navigate({ integration, resource: null }) : setLocalSelectedId(integration);
   const setScope = (value: string) => navigation ? navigation.navigate({ scope: value as "all" | "internal" | "external" }) : setLocalScope(value);
   const setEnvironmentOnly = (value: boolean) => navigation ? navigation.navigate({ visibility: value ? "environment" : "all" }) : setLocalEnvironmentOnly(value);
   const setQuery = (value: string) => navigation ? navigation.navigate({ query: value }, true) : setLocalQuery(value);

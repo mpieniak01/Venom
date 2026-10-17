@@ -7,11 +7,12 @@ import { ReactFlow, Background, Controls, Handle, Position, type NodeProps, type
 import { useTranslation } from "@/lib/i18n";
 import { configHref, type useConfigNavigation } from "@/lib/config-navigation";
 import { useIntegrationInventory } from "@/lib/integration-inventory";
-import { buildIntegrationTopology, isCoreApi, topologyEntries, resourceCountKey, type TopologyNode } from "@/lib/integration-topology";
+import { buildIntegrationTopology, isCoreApi, topologyEntries, visibleTopologyResources, resourceCountKey, type TopologyNode } from "@/lib/integration-topology";
 import { Button } from "@/components/ui/button";
 import { IntegrationStatusDetails } from "./integration-status-details";
 import { stateColor } from "./integration-connections";
 
+/** Render a stable read-only inventory card with independent configuration and connectivity. */
 const TopologyCard = memo(function TopologyCard({ data }: NodeProps<Node<TopologyNode["data"]>>) {
   const t = useTranslation();
   const { entry, resource, coreCount } = data;
@@ -44,6 +45,7 @@ const TopologyCard = memo(function TopologyCard({ data }: NodeProps<Node<Topolog
 });
 const nodeTypes = { topology: TopologyCard };
 
+/** Display inventory ownership with shared resource pages, URL selection and a keyboard-accessible list. */
 export function IntegrationTopology({ navigation }: Readonly<{ navigation: ReturnType<typeof useConfigNavigation> }>) {
   const t = useTranslation();
   const { data, failed, loading } = useIntegrationInventory();
@@ -61,11 +63,7 @@ export function IntegrationTopology({ navigation }: Readonly<{ navigation: Retur
     navigation.navigate({ integration: node.data.entry?.id ?? null, resource: node.data.resource?.id ?? null });
   };
   const missing = data && ((navigation.integration && !selected) || (navigation.resource && !resource));
-  let countKey: string | null = null;
-  if (selected) {
-    countKey = resourceCountKey(selected);
-    if (failed) countKey = "config.topology.notObserved";
-  }
+  const countKey = selected ? resourceCountKey(selected) : null;
   return <section className="min-w-0 space-y-4" aria-label={t("config.topology.title")} aria-busy={loading}>
     <p className="text-sm text-theme-muted">{t("config.topology.legend")}</p>
     <div className="flex flex-wrap items-center gap-3">
@@ -101,9 +99,9 @@ export function IntegrationTopology({ navigation }: Readonly<{ navigation: Retur
     </div>
     <details className="rounded-xl border border-theme p-3" open>
       <summary>{t("config.topology.tree")}</summary>
-      <ul className="space-y-3 pt-3">{entries.filter((entry) => coreExpanded || !isCoreApi(entry)).map((entry) => <li key={entry.id} className="min-w-0 break-words">
+      <ul className="space-y-3 pt-3">{entries.filter((entry) => coreExpanded || !isCoreApi(entry)).map((entry) => <li key={entry.id} data-testid={`topology-entry-${entry.id}`} className="min-w-0 break-words">
         <button className="text-left underline" aria-pressed={selected?.id === entry.id && !resource} onClick={() => navigation.navigate({ integration: entry.id, resource: null })}>{entry.label} · {t(`config.apiMap.filters.status.${entry.connectivity}`)}</button>
-        <ul className="space-y-2 pl-4">{(entry.resources ?? []).slice(0, limits[entry.id] ?? 4).map((item) => <li key={item.id}><button className="text-left underline" aria-pressed={selected?.id === entry.id && resource?.id === item.id} onClick={() => navigation.navigate({ integration: entry.id, resource: item.id })}>{item.label} · {t(`config.integrations.states.${item.state}`)}{item.selected ? ` · ${t("config.navigation.selectedDevice")}` : ""}</button></li>)}</ul>
+        <ul className="space-y-2 pl-4">{visibleTopologyResources(entry, limits[entry.id] ?? 4).map((item) => <li key={item.id}><button className="text-left underline" aria-pressed={selected?.id === entry.id && resource?.id === item.id} onClick={() => navigation.navigate({ integration: entry.id, resource: item.id })}>{item.label} · {t(`config.integrations.states.${item.state}`)}{item.selected ? ` · ${t("config.navigation.selectedDevice")}` : ""}</button></li>)}</ul>
         {(entry.resources?.length ?? 0) > (limits[entry.id] ?? 4) && <Button variant="ghost" onClick={() => setLimits((previous) => ({ ...previous, [entry.id]: (previous[entry.id] ?? 4) + 8 }))}>{t("config.topology.more")} ({entry.resources!.length})</Button>}
       </li>)}</ul>
     </details>

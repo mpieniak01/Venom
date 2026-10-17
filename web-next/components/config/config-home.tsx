@@ -16,6 +16,7 @@ import { PermissionsPanel } from "./permissions-panel";
 import { IntegrationTopologyBoundary } from "./integration-topology-boundary";
 import { IntegrationLinks } from "./integration-links";
 
+/** Render configuration tabs while retaining visited parameter drafts across tab changes. */
 export function ConfigHome() {
   const t = useTranslation();
   const navigation = useConfigNavigation();

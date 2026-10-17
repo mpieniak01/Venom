@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { buildIntegrationTopology, resourceCountKey, resourceNodeId, topologyEntries } from "../lib/integration-topology";
+import { buildIntegrationTopology, resourceCountKey, resourceNodeId, visibleTopologyResources, topologyEntries } from "../lib/integration-topology";
 import type { Integration } from "../lib/integration-inventory";
 import { parseConfigNavigation, configHref } from "../lib/config-navigation";
 const entry = (id: string, overrides: Partial<Integration> = {}): Integration => ({ id, label: "Same label", scope: "external", location: "local", kind: "module", state: "unverified", configuration: "configured", activation: "enabled", connectivity: "unknown", source: "configuration", reason_code: "not_probed", resource_support: "supported", can_probe: false, resources_complete: false, ...overrides });
@@ -41,4 +41,14 @@ it("retains resource selection across topology and existing tabs and bounds URL 
   assert.ok(href.includes("trace=1"));
   assert.equal(parseConfigNavigation(`?resource=${"a".repeat(300)}`).resource, null);
   assert.equal(parseConfigNavigation("?resource=../private").resource, null);
+});
+
+it("keeps resource pages identical between graph and text list regardless of inventory order", () => {
+  const integration = entry("rider", { resources: ["3", "2", "11", "10", "1", "0"].map((id) => ({ ...resource, id })) });
+  const page = visibleTopologyResources(integration);
+  assert.deepEqual(page.map((item) => item.id), ["0", "1", "10", "11"]);
+  const graphResources = buildIntegrationTopology([integration]).nodes.flatMap((node) => node.data.resource ? [node.data.resource.id] : []);
+  assert.deepEqual(graphResources, page.map((item) => item.id));
+  assert.equal(visibleTopologyResources(integration, 12).length, 6);
+  assert.deepEqual(integration.resources?.map((item) => item.id), ["3", "2", "11", "10", "1", "0"]);
 });

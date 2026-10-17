@@ -4,6 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { Integration } from "@/lib/integration-inventory";
 import type { Resource } from "@/lib/integration-topology";
 
+/** Present independent status evidence and observation age relative to the inventory snapshot. */
 export function IntegrationStatusDetails({ entry, resource, generatedAt }: Readonly<{ entry: Integration; resource?: Resource; generatedAt?: string | null }>) {
   const t = useTranslation();
   const observedAt = resource ? resource.observed_at : entry.observed_at;

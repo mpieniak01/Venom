@@ -27,6 +27,7 @@ function allowedFilter(value: string | null, allowed: string[]) {
   return value && allowed.includes(value) ? value : "all";
 }
 
+/** Parse legacy and current configuration URLs, validating resource and parameter selectors. */
 export function parseConfigNavigation(search: string): ConfigNavigation {
   const params = new URLSearchParams(search);
   const requested = params.get("tab") ?? params.get("section") ?? "services";
@@ -48,6 +49,7 @@ export function parseConfigNavigation(search: string): ConfigNavigation {
   };
 }
 
+/** Patch configuration URL state while preserving unrelated query parameters. */
 export function configHref(patch: Partial<ConfigNavigation> = {}, search = "") {
   const params = new URLSearchParams(search);
   params.delete("section");
@@ -72,6 +74,7 @@ function subscribe(listener: () => void) {
 const browserSearch = () => window.location.search;
 const serverSearch = () => "";
 
+/** Synchronize configuration selection with Next.js routing and browser history. */
 export function useConfigNavigation() {
   const frameworkSearch = useSearchParams();
   const localSearch = useSyncExternalStore(subscribe, browserSearch, serverSearch);

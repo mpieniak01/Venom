@@ -336,3 +336,197 @@ def test_observation_context_defaults_and_public_reason_validation():
     assert legacy.resources[0].available_capabilities is None
     with pytest.raises(ValidationError):
         IntegrationObservation(reason_code="http://private-host?token=secret")
+
+
+@pytest.mark.parametrize("phase", ["startup", "shutdown"])
+def test_legacy_module_events_are_isolated_and_context_is_closed(phase):
+    from contextlib import asynccontextmanager
+
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    from venom_core.services.module_runtime import include_isolated_router
+
+    calls = []
+
+    @asynccontextmanager
+    async def context(_app):
+        calls.append("context-enter")
+        try:
+            yield
+        finally:
+            calls.append("context-exit")
+
+    router = APIRouter(lifespan=context)
+
+    async def startup():
+        calls.append("startup")
+        if phase == "startup":
+            raise RuntimeError("startup failed")
+
+    async def shutdown():
+        calls.append("shutdown")
+        if phase == "shutdown":
+            raise RuntimeError("shutdown failed")
+
+    router.add_event_handler("startup", startup)
+    router.add_event_handler("shutdown", shutdown)
+
+    @router.get("/optional/events")
+    async def optional():
+        return {"ok": True}
+
+    app = FastAPI()
+
+    @app.get("/core/alive")
+    async def alive():
+        return {"ok": True}
+
+    record = {"state": "loaded", "reason_code": "router_loaded"}
+    original = router.lifespan_context
+    include_isolated_router(app, router, record)
+    assert router.lifespan_context is original
+    assert router.on_startup == [startup]
+    assert router.on_shutdown == [shutdown]
+    with TestClient(app) as client:
+        assert client.get("/core/alive").status_code == 200
+        assert client.get("/optional/events").status_code == (
+            503 if phase == "startup" else 200
+        )
+    assert calls.count("startup") == 1
+    assert calls.count("context-exit") == 1
+    assert record["reason_code"] == (
+        "module_initialization_failed"
+        if phase == "startup"
+        else "module_cleanup_failed"
+    )
+
+
+def test_default_router_legacy_handlers_run_once_and_remain_available_to_other_host():
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    from venom_core.services.module_runtime import include_isolated_router
+
+    calls = []
+    router = APIRouter()
+    router.add_event_handler("startup", lambda: calls.append("start"))
+    router.add_event_handler("shutdown", lambda: calls.append("stop"))
+    app = FastAPI()
+    include_isolated_router(app, router, {"state": "loaded"})
+    with TestClient(app):
+        assert calls == ["start"]
+    assert calls == ["start", "stop"]
+    second = FastAPI()
+    include_isolated_router(second, router, {"state": "loaded"})
+    with TestClient(second):
+        assert calls == ["start", "stop", "start"]
+    assert calls == ["start", "stop", "start", "stop"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_observation_caller_still_propagates_cancellation(monkeypatch):
+    import asyncio
+
+    from venom_core.api.schemas.integrations import IntegrationEntry
+    from venom_core.services import integration_hooks
+
+    started = asyncio.Event()
+
+    async def read(*_args):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(integration_hooks, "_read", read)
+    cache = {}
+    entry = IntegrationEntry(id="module:rider", label="Rider", scope="internal")
+    call = asyncio.create_task(
+        integration_hooks._apply(
+            FastAPI(),
+            {"module_id": "rider", "integration_provider_import": "example:observe"},
+            entry,
+            cache,
+        )
+    )
+    await started.wait()
+    call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+    for _, task in cache.values():
+        task.cancel()
+    await asyncio.gather(*(task for _, task in cache.values()), return_exceptions=True)
+
+
+def test_service_observation_invalid_or_old_time_cannot_stay_healthy():
+    from datetime import datetime, timedelta, timezone
+
+    from venom_core.api.schemas.integrations import IntegrationEntry
+    from venom_core.services.integration_overview import _apply_service_freshness
+
+    for timestamp in [
+        "2024-01-01 12:00:00",
+        "invalid",
+        (datetime.now(timezone.utc) - timedelta(seconds=61)).isoformat(),
+    ]:
+        item = IntegrationEntry(
+            id="api:test",
+            label="Test",
+            scope="internal",
+            state="connected",
+            connectivity="ok",
+            source="service_monitor",
+            observed_at=timestamp,
+        )
+        _apply_service_freshness(item)
+        assert item.state == "stale"
+        assert item.connectivity == "unknown"
+    current = IntegrationEntry(
+        id="api:test",
+        label="Test",
+        scope="internal",
+        state="connected",
+        connectivity="ok",
+        source="service_monitor",
+        observed_at=datetime.now(timezone.utc).isoformat(),
+    )
+    _apply_service_freshness(current)
+    assert current.state == "connected"
+
+
+@pytest.mark.parametrize("phase", ["startup", "shutdown"])
+def test_hanging_legacy_handler_is_bounded_and_does_not_escape_to_host(phase):
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    from venom_core.services.module_runtime import include_isolated_router
+
+    calls = []
+
+    @asynccontextmanager
+    async def context(_app):
+        try:
+            yield
+        finally:
+            calls.append("closed")
+
+    router = APIRouter(lifespan=context)
+
+    async def hang():
+        calls.append("handler")
+        await asyncio.Event().wait()
+
+    router.add_event_handler(phase, hang)
+    app = FastAPI()
+    record = {"state": "loaded"}
+    include_isolated_router(app, router, record)
+    with TestClient(app):
+        pass
+    assert calls == ["handler", "closed"]
+    assert record["reason_code"] == (
+        "module_initialization_failed"
+        if phase == "startup"
+        else "module_cleanup_failed"
+    )

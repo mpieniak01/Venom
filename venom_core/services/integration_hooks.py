@@ -35,7 +35,7 @@ def _observe_done(task):
         task.exception()
 
 
-async def _apply(app, record, item, cache):
+def _cached_task(app, record, cache):
     key = (record["module_id"], record["integration_provider_import"])
     previous = cache.get(key)
     if previous is None or (previous[1].done() and previous[0] < time.monotonic()):
@@ -43,34 +43,46 @@ async def _apply(app, record, item, cache):
         task.add_done_callback(_observe_done)
         previous = (time.monotonic() + 10.0, task)
         cache[key] = previous
-    task = previous[1]
+    return previous[1]
+
+
+async def _read_result(task, item):
     try:
-        result = await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
+        # Child cancellation is returned as data; cancellation of the requesting
+        # host task propagates naturally through this await (never swallowed).
+        outcomes = await asyncio.wait_for(
+            asyncio.shield(asyncio.gather(task, return_exceptions=True)), timeout=0.5
+        )
     except TimeoutError:
         task.cancel()
         item.reason_code, item.state = "observation_timeout", "degraded"
-        return
-    except asyncio.CancelledError:
-        caller = asyncio.current_task()
-        if caller is not None and caller.cancelling():
-            raise
+        return None
+    result = outcomes[0]
+    if isinstance(result, asyncio.CancelledError):
         item.reason_code, item.state = "observation_timeout", "degraded"
-        return
-    except Exception:
+        return None
+    if isinstance(result, BaseException):
         item.reason_code, item.state = "observation_failed", "degraded"
-        return
-    observed = None
-    if result.observed_at:
-        try:
-            observed = datetime.fromisoformat(result.observed_at.replace("Z", "+00:00"))
-            age = (datetime.now(timezone.utc) - observed).total_seconds()
-            if age < -5 or age > 60:
-                item.reason_code, item.state = "observation_stale", "stale"
-                return
-        except (TypeError, ValueError):
-            item.reason_code, item.state = "observation_failed", "degraded"
-            return
-    # A module cannot spoof a core resource's identity or another module's rows.
+        return None
+    return result
+
+
+def _observation_time(result, item):
+    if not result.observed_at:
+        return None
+    try:
+        observed = datetime.fromisoformat(result.observed_at.replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - observed).total_seconds()
+    except (TypeError, ValueError):
+        item.reason_code, item.state = "observation_failed", "degraded"
+        return None
+    if age < -5 or age > 60:
+        item.reason_code, item.state = "observation_stale", "stale"
+        return None
+    return observed
+
+
+def _apply_result(result, item, observed):
     item.resources = [
         resource.model_copy(
             update={
@@ -89,14 +101,8 @@ async def _apply(app, record, item, cache):
     item.source = "module_observation"
     if result.configuration is not None:
         item.configuration = result.configuration
-    item.state = (
-        "connected"
-        if item.connectivity == "ok"
-        else "unavailable"
-        if item.connectivity == "down"
-        else "degraded"
-        if item.connectivity == "degraded"
-        else "available"
+    item.state = {"ok": "connected", "down": "unavailable", "degraded": "degraded"}.get(
+        item.connectivity, "available"
     )
     if item.configuration == "unconfigured":
         item.state = "unconfigured"
@@ -104,14 +110,23 @@ async def _apply(app, record, item, cache):
         item.state = "unavailable"
     if item.resources_complete:
         item.resource_count = len(item.resources)
-        item.active_resource_count = (
-            sum(resource.state == "connected" for resource in item.resources)
-            if all(
-                resource.state in {"connected", "offline"}
-                for resource in item.resources
+        item.active_resource_count = None
+        if all(
+            resource.state in {"connected", "offline"} for resource in item.resources
+        ):
+            item.active_resource_count = sum(
+                resource.state == "connected" for resource in item.resources
             )
-            else None
-        )
+
+
+async def _apply(app, record, item, cache):
+    result = await _read_result(_cached_task(app, record, cache), item)
+    if result is None:
+        return
+    observed = _observation_time(result, item)
+    if result.observed_at and observed is None:
+        return
+    _apply_result(result, item, observed)
 
 
 async def apply_module_observations(app: Any, entries):
@@ -133,10 +148,9 @@ async def apply_module_observations(app: Any, entries):
             continue
         active.add((record["module_id"], record["integration_provider_import"]))
         calls.append(_apply(app, record, item, cache))
-    for key in list(cache):
-        if key not in active:
-            _, task = cache.pop(key)
-            if not task.done():
-                task.cancel()
+    for key in cache.keys() - active:
+        _, task = cache.pop(key)
+        if not task.done():
+            task.cancel()
     if calls:
         await asyncio.gather(*calls)

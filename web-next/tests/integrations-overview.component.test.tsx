@@ -95,6 +95,7 @@ it("preserves connection descriptions, criticality, authentication, direction an
   assert.ok(screen.getByText("POST /v1/chat/completions"));
   assert.ok(screen.getByText("Klucz API"));
   assert.ok(screen.getByText("Wychodzące"));
+  assert.ok(screen.getByText("Kierunek"));
   assert.ok(screen.getByText("Krytyczne"));
   assert.ok(screen.getByLabelText("Krytyczne"));
   assert.ok(screen.getByText("Konfiguracja", { selector: "dt" }));

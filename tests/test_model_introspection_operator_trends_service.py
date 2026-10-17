@@ -385,3 +385,28 @@ def test_normalize_record_preserves_finite_numeric_metrics(value):
     assert record["ts_ms"] == 321000
     assert record["coverage_percent"] == float(value)
     assert record["mlp_l2"] == float(value)
+
+
+@pytest.mark.parametrize(
+    "invalid", [True, float("nan"), float("inf"), float("-inf"), 10**400]
+)
+def test_direct_trends_reject_invalid_metrics_without_normalization(invalid):
+    from venom_core.services.model_introspection_operator_trends_service import (
+        compute_run_trends,
+    )
+
+    keys = [
+        "first_content_ms",
+        "token_noise_ratio",
+        "mlp_l2",
+        "cosine_similarity",
+        "coverage_percent",
+    ]
+    valid = dict.fromkeys(keys, 1.0)
+    valid["coverage_percent"] = 80.0
+    result = compute_run_trends([valid, dict.fromkeys(keys, invalid)])
+    assert result["avg_first_content_ms"] == 1.0
+    assert result["avg_noise_ratio"] == 1.0
+    assert result["avg_mlp_l2"] == 1.0
+    assert result["avg_cosine_similarity"] == 1.0
+    assert result["high_coverage_rate"] == 50.0

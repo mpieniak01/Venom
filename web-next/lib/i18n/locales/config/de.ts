@@ -173,7 +173,6 @@ export const configLocale = {
           description: "Audio-Schnittstelle: Spracherkennung und Sprachsynthese",
         },
         integrations: {
-      direction: "Richtung",
 
           title: "Externe Integrationen",
           description: "Schlüssel und Token für Integrationen (HF, GitHub, Slack/Discord, Tavily)",
@@ -323,6 +322,7 @@ export const configLocale = {
     },
 
     integrations: {
+      direction: "Richtung",
 "notApplicable": "Diese Integration stellt keine Knoten bereit.",
 "probe": "API und Instanzen prüfen",
 "probing": "API wird geprüft…",

@@ -5,7 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { configHref } from "@/lib/config-navigation";
 import { useIntegrationInventory } from "@/lib/integration-inventory";
 
-export function IntegrationLinks({ parameter, active = true }: { parameter?: string; active?: boolean }) {
+export function IntegrationLinks({ parameter, active = true }: Readonly<{ parameter?: string; active?: boolean }>) {
   const t = useTranslation();
   const { data } = useIntegrationInventory(active);
   const entries = (data?.integrations ?? []).filter((entry) => parameter ? entry.configuration_keys?.includes(parameter) : entry.configuration === "configured" || entry.kind === "module");

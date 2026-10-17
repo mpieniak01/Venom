@@ -14,57 +14,58 @@ from venom_core.services.integration_hooks import apply_module_observations
 from venom_core.services.module_observations import module_inventory
 from venom_core.services.vast_observation import apply_vast_observation
 
+NODES_API = "Nodes API"
+
 
 def _api_id(label: str) -> str:
     return "api:" + hashlib.sha256(label.encode()).hexdigest()[:16]
 
 
+def _connection_state(status):
+    return {
+        ConnectionStatus.OK: "connected",
+        ConnectionStatus.DOWN: "unavailable",
+        ConnectionStatus.DEGRADED: "degraded",
+    }.get(status, "unverified")
+
+
+def _api_entry(conn, settings):
+    disabled = conn.target_component == NODES_API and not getattr(
+        settings, "ENABLE_NEXUS", False
+    )
+    measured = conn.status != ConnectionStatus.UNKNOWN and not disabled
+    state = _connection_state(conn.status)
+    reason = "service_observation" if measured else "route_only"
+    if disabled:
+        state, reason = "disabled", "feature_disabled"
+    return IntegrationEntry(
+        resource_support="supported"
+        if conn.target_component == NODES_API
+        else "not_applicable",
+        id=_api_id(conn.target_component),
+        label=conn.target_component,
+        scope="internal",
+        location="local",
+        kind="api",
+        configuration="not_required",
+        activation="disabled" if disabled else "enabled",
+        state=state,
+        connectivity=ConnectionStatus.UNKNOWN if disabled else conn.status,
+        source="service_monitor" if measured else "route_registration",
+        observed_at=conn.observed_at if measured else None,
+        reason_code=reason,
+        access=["api"],
+    )
+
+
 def _api_entries(connections, settings) -> list[IntegrationEntry]:
-    entries = []
-    for conn in connections:
-        disabled = conn.target_component == "Nodes API" and not getattr(
-            settings, "ENABLE_NEXUS", False
-        )
-        measured = conn.status != ConnectionStatus.UNKNOWN and not disabled
-        entries.append(
-            IntegrationEntry(
-                resource_support="supported"
-                if conn.target_component == "Nodes API"
-                else "not_applicable",
-                id=_api_id(conn.target_component),
-                label=conn.target_component,
-                scope="internal",
-                location="local",
-                kind="api",
-                configuration="not_required",
-                activation="disabled" if disabled else "enabled",
-                state="disabled"
-                if disabled
-                else "connected"
-                if conn.status == ConnectionStatus.OK
-                else "unavailable"
-                if conn.status == ConnectionStatus.DOWN
-                else "degraded"
-                if measured
-                else "unverified",
-                connectivity=conn.status if not disabled else ConnectionStatus.UNKNOWN,
-                source="service_monitor" if measured else "route_registration",
-                observed_at=conn.observed_at if measured else None,
-                reason_code="feature_disabled"
-                if disabled
-                else "service_observation"
-                if measured
-                else "route_only",
-                access=["api"],
-            )
-        )
-    return entries
+    return [_api_entry(conn, settings) for conn in connections]
 
 
 def _nexus_resources(entries, settings, manager):
     if not getattr(settings, "ENABLE_NEXUS", False):
         return
-    item = next((entry for entry in entries if entry.label == "Nodes API"), None)
+    item = next((entry for entry in entries if entry.label == NODES_API), None)
     if item is None:
         return
     if manager is None:
@@ -131,53 +132,106 @@ def _local_vast_records(item: IntegrationEntry):
         # Journal contents cannot establish the current provider-wide total.
 
 
+def _module_entry(record, failures):
+    state = record["state"]
+    suffix = (
+        ":" + record.get("entry_id", "")
+        if record["reason_code"] == "duplicate_module"
+        else ""
+    )
+    configured = record.get("backend_configured", True)
+    activation = {
+        "loaded": "enabled",
+        "disabled": "disabled",
+        "unavailable": "unavailable",
+    }.get(state, "unknown")
+    item = IntegrationEntry(
+        id="module:" + record["module_id"] + suffix,
+        label=record["display_name"],
+        scope="internal",
+        location="local",
+        kind="module",
+        configuration="configured" if configured else "unconfigured",
+        activation=activation,
+        state="available" if state == "loaded" else state,
+        source="module_activation" if configured else "module_manifest",
+        observed_at=record["observed_at"],
+        reason_code=record["reason_code"],
+        access=["api"] if state == "loaded" else [],
+        panel_path=record.get("nav_path") if state == "loaded" else None,
+    )
+    error = record.get("conversation_error") or failures.get(record["module_id"])
+    if error:
+        item.reason_code, item.state = error, "degraded"
+    elif state == "loaded":
+        item.reason_code = "observation_provider_absent"
+    return item
+
+
 def _module_entries(app: Any, settings) -> list[IntegrationEntry]:
-    records = getattr(app.state, "optional_module_diagnostics", None)
-    records = module_inventory(settings, records)
+    records = module_inventory(
+        settings, getattr(app.state, "optional_module_diagnostics", None)
+    )
     registry = getattr(app.state, "conversation_providers", None)
     failures = getattr(registry, "failures", {}) or {}
-    entries = []
-    for record in records:
-        state = record["state"]
-        item = IntegrationEntry(
-            id="module:"
-            + record["module_id"]
-            + (
-                ":" + record.get("entry_id", "")
-                if record["reason_code"] == "duplicate_module"
-                else ""
-            ),
-            label=record["display_name"],
-            scope="internal",
-            location="local",
-            kind="module",
-            configuration="configured"
-            if record.get("backend_configured", True)
-            else "unconfigured",
-            activation="enabled"
-            if state == "loaded"
-            else "disabled"
-            if state == "disabled"
-            else "unavailable"
-            if state == "unavailable"
-            else "unknown",
-            state="available" if state == "loaded" else state,
-            source="module_activation"
-            if record.get("backend_configured", True)
-            else "module_manifest",
-            observed_at=record["observed_at"],
-            reason_code=record["reason_code"],
-            access=["api"] if state == "loaded" else [],
-            # A registered backend does not establish frontend activation.
-            panel_path=record.get("nav_path") if state == "loaded" else None,
+    return [_module_entry(record, failures) for record in records]
+
+
+def _apply_external_observation(app, item, connection, settings):
+    if (
+        connection is not None
+        and connection.status != ConnectionStatus.UNKNOWN
+        and item.activation == "enabled"
+    ):
+        item.connectivity, item.source = connection.status, "service_monitor"
+        item.observed_at = connection.observed_at
+        item.state = _connection_state(connection.status)
+        item.reason_code = "service_observation"
+    if item.id == "core:vast":
+        try:
+            _local_vast_records(item)
+            apply_vast_observation(app, item, settings)
+        except (OSError, ValueError):
+            item.reason_code = "source_unavailable"
+
+
+def _local_runtime_entry(connection):
+    item = IntegrationEntry(
+        id="core:local-runtime",
+        label=connection.target_component,
+        scope="internal",
+        location="local",
+        kind="runtime",
+        state="configured",
+        configuration="configured",
+        activation="enabled",
+        connectivity=connection.status,
+        panel_path="/models",
+        access=["panel", "api"],
+        capabilities=["model_inference"],
+        reason_code="runtime_configuration",
+    )
+    if connection.status != ConnectionStatus.UNKNOWN:
+        item.source, item.observed_at = "service_monitor", connection.observed_at
+        item.state, item.reason_code = (
+            _connection_state(connection.status),
+            "service_observation",
         )
-        error = record.get("conversation_error") or failures.get(record["module_id"])
-        if error:
-            item.reason_code, item.state = error, "degraded"
-        elif state == "loaded":
-            item.reason_code = "observation_provider_absent"
-        entries.append(item)
-    return entries
+    return item
+
+
+def _apply_service_freshness(item):
+    if item.source != "service_monitor" or not item.observed_at:
+        return
+    try:
+        observed = datetime.fromisoformat(item.observed_at.replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - observed).total_seconds()
+    except (TypeError, ValueError):
+        item.observed_at = None
+        age = float("inf")
+    if age > 60 or age < -5:
+        item.state, item.reason_code = "stale", "observation_stale"
+        item.connectivity = ConnectionStatus.UNKNOWN
 
 
 async def integration_overview(
@@ -188,28 +242,7 @@ async def integration_overview(
     catalog = core_catalog(settings)
     by_label = {conn.target_component: conn for conn in response.external_connections}
     for item in catalog:
-        conn = by_label.get(item.label)
-        if (
-            conn is not None
-            and conn.status != ConnectionStatus.UNKNOWN
-            and item.activation == "enabled"
-        ):
-            item.connectivity, item.source = conn.status, "service_monitor"
-            item.observed_at = conn.observed_at
-            item.state = (
-                "connected"
-                if conn.status == ConnectionStatus.OK
-                else "unavailable"
-                if conn.status == ConnectionStatus.DOWN
-                else "degraded"
-            )
-            item.reason_code = "service_observation"
-        if item.id == "core:vast":
-            try:
-                _local_vast_records(item)
-                apply_vast_observation(app, item, settings)
-            except (OSError, ValueError):
-                item.reason_code = "source_unavailable"
+        _apply_external_observation(app, item, by_label.get(item.label), settings)
     local = next(
         (
             conn
@@ -219,35 +252,10 @@ async def integration_overview(
         None,
     )
     if local:
-        entries.append(
-            IntegrationEntry(
-                id="core:local-runtime",
-                label=local.target_component,
-                scope="internal",
-                location="local",
-                kind="runtime",
-                state="configured",
-                configuration="configured",
-                activation="enabled",
-                connectivity=local.status,
-                panel_path="/models",
-                access=["panel", "api"],
-                capabilities=["model_inference"],
-                reason_code="runtime_configuration",
-            )
-        )
+        entries.append(_local_runtime_entry(local))
     entries.extend(catalog)
     entries.extend(_module_entries(app, settings))
     await apply_module_observations(app, entries)
     for item in entries:
-        if item.source != "service_monitor" or not item.observed_at:
-            continue
-        try:
-            observed = datetime.fromisoformat(item.observed_at.replace("Z", "+00:00"))
-            age = (datetime.now(timezone.utc) - observed).total_seconds()
-            if age > 60 or age < -5:
-                item.state, item.reason_code = "stale", "observation_stale"
-                item.connectivity = ConnectionStatus.UNKNOWN
-        except (TypeError, ValueError):
-            item.observed_at = None
+        _apply_service_freshness(item)
     return entries

@@ -14,18 +14,24 @@ type IntegrationMatrixProps = Readonly<{
   events: Array<{ id: string; ts: number; payload: unknown }>;
 }>;
 
+function integrationTone(state: string) {
+  if (state === "connected") return "success";
+  if (["unavailable", "degraded"].includes(state)) return "warning";
+  return "neutral";
+}
+
 export function IntegrationMatrix({ events }: IntegrationMatrixProps) {
   const t = useTranslation();
   const { data, failed } = useIntegrationInventory();
   const entries = (data?.integrations ?? []).filter((entry) => entry.configuration === "configured" || entry.kind === "module");
   return <Panel title={t("config.apiMap.title")} description={t("config.navigation.overviewDescription")}>
     <Link className="text-sm underline" href={configHref({ tab: "integrations" })}>{t("config.navigation.overviewShortcut")}</Link>
-    {failed && <p role="status" className="mt-2 text-sm text-theme-muted">{t("config.integrations.refreshFailed")}</p>}
+    {failed && <output className="mt-2 block text-sm text-theme-muted">{t("config.integrations.refreshFailed")}</output>}
     {!data && <p className="mt-2 text-sm text-theme-muted">{t("config.integrations.loading")}</p>}
     <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {entries.map((entry) => <Link key={entry.id} href={configHref({ tab: "integrations", integration: entry.id, visibility: "all" })} className="rounded-xl border border-theme p-3">
         <p className="font-medium">{entry.label}</p>
-        <Badge tone={entry.state === "connected" ? "success" : ["unavailable", "degraded"].includes(entry.state ?? "") ? "warning" : "neutral"}>{t(`config.integrations.states.${entry.state}`)}</Badge>
+        <Badge tone={integrationTone(entry.state ?? "")}>{t(`config.integrations.states.${entry.state}`)}</Badge>
         <p className="mt-2 text-xs text-theme-muted">{t("config.integrations.resources")}: {entry.resource_count ?? t("config.integrations.unknown")}</p>
       </Link>)}
     </div>

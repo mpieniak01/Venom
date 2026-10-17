@@ -480,12 +480,14 @@ def test_missing_zeroconf_does_not_break_import_or_attempt_network(monkeypatch):
     spec = importlib.util.spec_from_file_location(
         "cloud_without_zeroconf", module.__file__
     )
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     isolated = importlib.util.module_from_spec(spec)
     with patch("builtins.__import__", side_effect=without_zeroconf):
         spec.loader.exec_module(isolated)
     assert isolated.ZEROCONF_AVAILABLE is False
-    assert isolated.ServiceInfo is None and isolated.Zeroconf is None
+    assert isolated.ServiceInfo is None
+    assert isolated.Zeroconf is None
     network = MagicMock(side_effect=AssertionError("network must not be touched"))
     monkeypatch.setattr(isolated.socket, "socket", network)
     provisioner = isolated.CloudProvisioner()

@@ -167,7 +167,7 @@ export function ParametersPanel({ active = true, navigation }: { active?: boolea
       </label>
       {focusedKey && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theme p-3 text-sm">
         <span>{focusedKey}</span>
-        {!Object.hasOwn(config, focusedKey) && <span role="status">{t("config.navigation.missingParameter")}</span>}
+        {!Object.hasOwn(config, focusedKey) && <output>{t("config.navigation.missingParameter")}</output>}
         <button className="underline" onClick={() => navigation?.navigate({ parameter: null })}>{t("config.navigation.allParameters")}</button>
         <IntegrationLinks parameter={focusedKey} active={false} />
       </div>}
@@ -211,7 +211,7 @@ export function ParametersPanel({ active = true, navigation }: { active?: boolea
         );
       })}
 
-      {!sections.some((section) => section.keys.some((key) => Object.hasOwn(config, key) && (!focusedKey || key === focusedKey) && `${key} ${section.title} ${section.description}`.toLowerCase().includes(query.toLowerCase().trim()))) && <p role="status">{t("config.navigation.noParameters")}</p>}
+      {!sections.some((section) => section.keys.some((key) => Object.hasOwn(config, key) && (!focusedKey || key === focusedKey) && `${key} ${section.title} ${section.description}`.toLowerCase().includes(query.toLowerCase().trim()))) && <output className="block">{t("config.navigation.noParameters")}</output>}
       <ParametersActionBar
         t={t}
         hasChanges={hasChanges}

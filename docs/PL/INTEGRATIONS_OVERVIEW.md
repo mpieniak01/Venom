@@ -83,3 +83,9 @@ obserwacji odróżniają brak urządzeń od błędnej konfiguracji. Starsze hook
 Kolejność wydania: core 263, nawigacja i kontekst 264, adapter modułu 263R. Starszy
 core ignoruje opcjonalny hook manifestu i zachowuje sterowanie Rider; nie importuje
 adaptera na tej ścieżce.
+
+Przegląd zachowuje opisy połączeń, protokoły, uwierzytelnianie, kierunek,
+krytyczność i widoczne listy metod dotychczasowej mapy API. Filtry źródła,
+łączności i protokołu uzupełniają widoczność/typ/wyszukiwanie i są zapisywane
+w URL. Rejestracja tras i konfiguracja kluczy pozostają odrębne od pomiaru
+zdrowia. Zmiana zakładki konfiguracji czyści wyszukiwanie poprzedniej zakładki.

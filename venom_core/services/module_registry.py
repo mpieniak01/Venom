@@ -10,7 +10,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, TypeGuard
 
 from fastapi import FastAPI
 from fastapi.routing import APIRouter
@@ -170,6 +170,12 @@ def _resolve_manifest_path(raw_item: str) -> Path:
     return manifest_path
 
 
+def _valid_factory_import(value: object) -> TypeGuard[str | None]:
+    return value is None or (
+        isinstance(value, str) and _FACTORY_IMPORT.fullmatch(value) is not None
+    )
+
+
 def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
     manifest_path = _resolve_manifest_path(raw_item)
 
@@ -200,16 +206,10 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
     module_api_version = str(backend.get("module_api_version", "")).strip() or None
     min_core_version = str(backend.get("min_core_version", "")).strip() or None
     integration_import = backend.get("integration_provider_import")
-    if integration_import is not None and (
-        not isinstance(integration_import, str)
-        or _FACTORY_IMPORT.fullmatch(integration_import) is None
-    ):
+    if not _valid_factory_import(integration_import):
         return None
     conversation_import = backend.get("conversation_provider_import")
-    if conversation_import is not None and (
-        not isinstance(conversation_import, str)
-        or _FACTORY_IMPORT.fullmatch(conversation_import) is None
-    ):
+    if not _valid_factory_import(conversation_import):
         logger.warning("Invalid conversation provider import for module %s", module_id)
         return None
     data_policy, data_policy_errors = parse_module_data_policy_payload(
@@ -292,18 +292,12 @@ def _validate_manifest_item(item: str, errors: list[str]) -> None:
         return
     router_import = str(backend.get("router_import", "")).strip()
     integration_import = backend.get("integration_provider_import")
-    if integration_import is not None and (
-        not isinstance(integration_import, str)
-        or _FACTORY_IMPORT.fullmatch(integration_import) is None
-    ):
+    if not _valid_factory_import(integration_import):
         errors.append(
             "invalid optional module integration_provider_import: " + module_id
         )
     conversation_import = backend.get("conversation_provider_import")
-    if conversation_import is not None and (
-        not isinstance(conversation_import, str)
-        or _FACTORY_IMPORT.fullmatch(conversation_import) is None
-    ):
+    if not _valid_factory_import(conversation_import):
         errors.append(
             "invalid optional module conversation_provider_import: " + module_id
         )

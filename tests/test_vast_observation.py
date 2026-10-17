@@ -116,5 +116,6 @@ async def test_expired_provider_observation_does_not_claim_current_totals(monkey
     result = await observation.probe_vast(
         FastAPI(), SimpleNamespace(VAST_API_KEY=SecretStr("key"))
     )
-    assert result.state == "stale" and result.connectivity == "unknown"
+    assert result.state == "stale"
+    assert result.connectivity == "unknown"
     assert result.resource_count is None

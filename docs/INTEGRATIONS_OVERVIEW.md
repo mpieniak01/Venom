@@ -97,3 +97,9 @@ Old hooks omitting these additive fields continue to work.
 Release core inventory 263 first, navigation/context 264 next, then the optional
 Rider observation adapter 263R. Older core ignores the opt-in manifest hook and
 keeps normal Rider controls working; the adapter is not imported on that path.
+
+The inventory retains the API-map connection descriptions, protocols,
+authentication, direction, critical markers and visible method lists. Source,
+connectivity and protocol filters supplement visibility/type/search and survive
+URL navigation. Registered routes and configured credentials remain distinct from
+measured health. Switching configuration tabs clears the previous tab's search.

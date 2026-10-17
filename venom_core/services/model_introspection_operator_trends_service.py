@@ -204,12 +204,12 @@ def compute_run_trends(
     first_content_values = [
         float(entry["first_content_ms"])
         for entry in sample
-        if isinstance(entry.get("first_content_ms"), (int, float))
+        if _is_finite_float(entry.get("first_content_ms"))
     ]
     noise_values = [
         float(entry["token_noise_ratio"])
         for entry in sample
-        if isinstance(entry.get("token_noise_ratio"), (int, float))
+        if _is_finite_float(entry.get("token_noise_ratio"))
     ]
     avg_first_content_ms = (
         round(sum(first_content_values) / len(first_content_values), 1)
@@ -222,12 +222,12 @@ def compute_run_trends(
     mlp_l2_values = [
         float(entry["mlp_l2"])
         for entry in sample
-        if isinstance(entry.get("mlp_l2"), (int, float))
+        if _is_finite_float(entry.get("mlp_l2"))
     ]
     cosine_similarity_values = [
         float(entry["cosine_similarity"])
         for entry in sample
-        if isinstance(entry.get("cosine_similarity"), (int, float))
+        if _is_finite_float(entry.get("cosine_similarity"))
     ]
     avg_mlp_l2 = (
         round(sum(mlp_l2_values) / len(mlp_l2_values), 4) if mlp_l2_values else None
@@ -256,7 +256,7 @@ def compute_run_trends(
         "high_coverage_rate": _compute_rate(
             sample,
             lambda entry: (
-                isinstance(entry.get("coverage_percent"), (int, float))
+                _is_finite_float(entry.get("coverage_percent"))
                 and float(entry["coverage_percent"]) >= 70.0
             ),
         ),

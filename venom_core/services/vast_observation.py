@@ -16,6 +16,8 @@ from venom_core.infrastructure.traffic_control.http_client import (
 )
 from venom_core.services.integration_catalog import core_catalog
 
+OBSERVATION_DEADLINE = "vast.observation_deadline"
+
 
 def _fingerprint(settings):
     value = getattr(settings, "VAST_API_KEY", SecretStr(""))
@@ -31,13 +33,13 @@ class _ReadBudget:
 
     def request(self, method, url, **kwargs):
         if method != "GET" or time.monotonic() >= self.deadline:
-            raise VastError("vast.observation_deadline")
+            raise VastError(OBSERVATION_DEADLINE)
         kwargs["timeout"] = min(1.0, self.deadline - time.monotonic())
         return self.client.request(method, url, **kwargs)
 
     def sleep(self, delay):
         if time.monotonic() + delay >= self.deadline:
-            raise VastError("vast.observation_deadline")
+            raise VastError(OBSERVATION_DEADLINE)
         time.sleep(delay)
 
     def close(self):
@@ -68,13 +70,11 @@ def _read(key):
             if type(instance_id) is not int:
                 raise VastError("vast.invalid_response")
             status = row.get("actual_status")
-            state = (
-                "connected"
-                if status == "running"
-                else "offline"
-                if status in {"stopped", "exited", "offline"}
-                else "unverified"
-            )
+            state = "unverified"
+            if status == "running":
+                state = "connected"
+            elif status in {"stopped", "exited", "offline"}:
+                state = "offline"
             resources.append(
                 IntegrationResource(
                     id="vast:" + str(instance_id),
@@ -93,7 +93,7 @@ def _read(key):
     except VastError as exc:
         if exc.status in {401, 403}:
             result.update(reason_code="provider_unauthorized")
-        elif exc.code == "vast.observation_deadline":
+        elif exc.code == OBSERVATION_DEADLINE:
             result.update(reason_code="probe_timeout")
         if result["connectivity"] == "unknown":
             result["connectivity"] = "down"

@@ -2034,3 +2034,42 @@ async def test_selected_module_conversation_checks_task_and_resets_stream(
     strategy.assert_not_called()
     reset.assert_called_once_with("module-stream-token")
     assert conversation.current_conversation_context() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("isolate", [True, False])
+async def test_invalid_provider_is_closed_before_retry_or_propagation(isolate):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from venom_core.services.conversation_providers import (
+        ConversationProviderError,
+        ConversationProviderRegistry,
+    )
+
+    providers = []
+
+    def factory(_app):
+        provider = SimpleNamespace(handle=lambda *_args: None, close=AsyncMock())
+        providers.append(provider)
+        return provider
+
+    registry = ConversationProviderRegistry(
+        SimpleNamespace(), lambda: {"invalid": factory}, isolate_failures=isolate
+    )
+    if isolate:
+        await registry.refresh()
+        assert registry.failures["invalid"] == "provider_initialization_failed"
+    else:
+        with pytest.raises(
+            ConversationProviderError, match="conversation_provider_invalid"
+        ):
+            await registry.refresh()
+    providers[0].close.assert_awaited_once()
+    assert registry.providers == {}
+    registry._retry_after.clear()
+    if isolate:
+        await registry.refresh()
+        assert len(providers) == 2
+        providers[1].close.assert_awaited_once()
+    await registry.close()

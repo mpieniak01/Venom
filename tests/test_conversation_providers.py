@@ -1968,3 +1968,69 @@ def test_provider_factories_skip_disabled_and_restore_import_paths(
     before = list(sys.path)
     assert module_registry._conversation_provider_factories(settings) == {}
     assert sys.path == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scenario", ["missing_task", "missing_registry", "selected_provider"]
+)
+async def test_selected_module_conversation_checks_task_and_resets_stream(
+    monkeypatch, scenario
+):
+    from venom_core.core.models import TaskRequest
+    from venom_core.core.orchestrator import orchestrator_dispatch as dispatch
+
+    callback = Mock()
+    reset = Mock()
+    strategy = Mock()
+    registry = SimpleNamespace(handle_selected=AsyncMock(return_value="module reply"))
+    task = SimpleNamespace(
+        context_history={"response_template": {"template_id": "example:conversation"}}
+    )
+    orch = SimpleNamespace(
+        state_manager=SimpleNamespace(
+            get_task=Mock(return_value=None if scenario == "missing_task" else task)
+        ),
+        streaming_handler=SimpleNamespace(create_stream_callback=lambda _: callback),
+        request_tracer=Mock(),
+    )
+    monkeypatch.setattr(
+        dispatch, "get_active_llm_runtime", lambda: SimpleNamespace(provider="ollama")
+    )
+    monkeypatch.setattr(
+        dispatch, "set_llm_stream_callback", lambda _: "module-stream-token"
+    )
+    monkeypatch.setattr(dispatch, "reset_llm_stream_callback", reset)
+    monkeypatch.setattr(
+        dispatch,
+        "get_conversation_registry",
+        lambda: None if scenario == "missing_registry" else registry,
+    )
+    monkeypatch.setattr(dispatch, "ExecutionStrategy", strategy)
+    request = TaskRequest(content="/extension", session_id="module-session")
+    task_id = uuid4()
+    if scenario == "selected_provider":
+        assert (
+            await dispatch._execute_with_stream_callback(
+                orch, task_id, "MODULE_CONVERSATION", "context", request
+            )
+            == "module reply"
+        )
+        registry.handle_selected.assert_awaited_once()
+        assert registry.handle_selected.call_args.args[0:2] == ("example", "/extension")
+        callback.assert_called_once_with("module reply")
+    else:
+        reason = (
+            "conversation_task_missing"
+            if scenario == "missing_task"
+            else "conversation_provider_disabled"
+        )
+        with pytest.raises(RuntimeError, match=reason):
+            await dispatch._execute_with_stream_callback(
+                orch, task_id, "MODULE_CONVERSATION", "context", request
+            )
+        registry.handle_selected.assert_not_awaited()
+        callback.assert_not_called()
+    strategy.assert_not_called()
+    reset.assert_called_once_with("module-stream-token")
+    assert conversation.current_conversation_context() is None

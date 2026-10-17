@@ -10,7 +10,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Iterator
+from typing import Any, Iterator, TypeGuard
 
 try:
     import fcntl
@@ -50,12 +50,15 @@ def _resolve_storage_path(settings: Any | None = None) -> Path:
     return root / namespace / _TRENDS_FILENAME
 
 
-def _is_finite_float(val: Any) -> bool:
+def _is_finite_float(val: object) -> TypeGuard[int | float]:
     if isinstance(val, bool):
         return False
     if not isinstance(val, (int, float)):
         return False
-    return math.isfinite(float(val))
+    try:
+        return math.isfinite(float(val))
+    except OverflowError:
+        return False
 
 
 def _normalize_record(raw: Any) -> dict[str, Any] | None:
@@ -252,8 +255,10 @@ def compute_run_trends(
         "fallback_rate": fallback_rate,
         "high_coverage_rate": _compute_rate(
             sample,
-            lambda entry: isinstance(entry.get("coverage_percent"), (int, float))
-            and float(entry["coverage_percent"]) >= 70.0,
+            lambda entry: (
+                isinstance(entry.get("coverage_percent"), (int, float))
+                and float(entry["coverage_percent"]) >= 70.0
+            ),
         ),
         "live_streaming_rate": _compute_rate(
             sample,

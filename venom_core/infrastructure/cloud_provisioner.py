@@ -6,24 +6,26 @@ import socket
 import uuid
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 import httpx
 
-from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
-
-try:
-    from zeroconf import ServiceInfo, Zeroconf
-
-    ZEROCONF_AVAILABLE = True
-except ImportError:  # pragma: no cover - zależność opcjonalna
-    ServiceInfo = Any
-    Zeroconf = Any
-    ZEROCONF_AVAILABLE = False
-
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
+
+if TYPE_CHECKING:
+    from zeroconf import ServiceInfo, Zeroconf
+else:
+    try:
+        from zeroconf import ServiceInfo, Zeroconf
+    except ImportError:
+        ServiceInfo = None
+        Zeroconf = None
+
+ZEROCONF_AVAILABLE = Zeroconf is not None
+
 
 logger = get_logger(__name__)
 ASYNCSSH_ERROR: type[Exception]

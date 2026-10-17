@@ -792,16 +792,16 @@ def _collect_layer_ids(
 ) -> tuple[list[int], list[int], int | None, list[int]]:
     checkpoint_layers = sorted(
         {
-            int(checkpoint.get("layer"))
+            int(layer_id)
             for checkpoint in checkpoints
-            if isinstance(checkpoint.get("layer"), int)
+            if isinstance(layer_id := checkpoint.get("layer"), int)
         }
     )
     attention_layer_ids = sorted(
         {
-            int(layer.get("layer"))
+            int(layer_id)
             for layer in attention_layers
-            if isinstance(layer.get("layer"), int)
+            if isinstance(layer_id := layer.get("layer"), int)
         }
     )
     saliency_anchor_layer = checkpoint_layers[-1] if checkpoint_layers else None
@@ -809,9 +809,9 @@ def _collect_layer_ids(
         saliency_anchor_layer = attention_layer_ids[-1]
     activation_layer_ids = sorted(
         {
-            int(layer.get("layer"))
+            int(layer_id)
             for layer in activation_layers
-            if isinstance(layer.get("layer"), int)
+            if isinstance(layer_id := layer.get("layer"), int)
         }
     )
     mlp_layer_ids: list[int] = []

@@ -119,3 +119,31 @@ async def test_expired_provider_observation_does_not_claim_current_totals(monkey
     assert result.state == "stale"
     assert result.connectivity == "unknown"
     assert result.resource_count is None
+
+
+@pytest.mark.parametrize("stage", ["account", "instances"])
+def test_vast_budget_timeout_survives_real_client_transport_wrapping(
+    monkeypatch, stage
+):
+    transport = Mock()
+    monkeypatch.setattr(
+        observation, "TrafficControlledHttpClient", Mock(return_value=transport)
+    )
+    budget = observation._ReadBudget()
+    if stage == "account":
+        budget.deadline = 0
+    else:
+
+        def account(*_args, **_kwargs):
+            budget.deadline = 0
+            return httpx.Response(200, json={"credit": 4})
+
+        transport.request.side_effect = account
+    monkeypatch.setattr(observation, "_ReadBudget", lambda: budget)
+    # Use the real VastClient._send path: it wraps transport VastError in RuntimeError handling.
+    result = observation._read(SecretStr("private-key"))
+    assert result["reason_code"] == "probe_timeout"
+    assert budget.expired is True
+    assert result["connectivity"] == ("down" if stage == "account" else "ok")
+    assert transport.request.call_count == (0 if stage == "account" else 1)
+    transport.close.assert_called_once()

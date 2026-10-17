@@ -39,16 +39,18 @@ function StatusIcon({ status }: Readonly<{ status: string }>) {
   return <Icon aria-hidden="true" className={cn("h-4 w-4 shrink-0", stateColor(status))} />;
 }
 
-export function IntegrationCard({ entry, connections, selected, onClick }: Readonly<{ entry: Integration; connections: ApiConnection[]; selected: boolean; onClick: () => void }>) {
+export function IntegrationCard({ entry, connections, filters = { source: "all", status: "all", protocol: "all" }, selected, onClick }: Readonly<{ entry: Integration; connections: ApiConnection[]; filters?: ConnectionFilters; selected: boolean; onClick: () => void }>) {
   const t = useTranslation();
-  const connection = integrationConnections(entry, connections)[0];
+  const linked = integrationConnections(entry, connections);
+  const connection = linked.find((row) => shouldShowConnection(row, filters)) ?? linked[0];
+  const critical = linked.some((row) => row.is_critical);
   const Icon = entry.location === "cloud" ? Cloud : Server;
   return <button onClick={onClick} aria-pressed={selected}
     className={cn("w-full rounded-xl border p-4 text-left transition-colors hover:bg-theme-overlay", selected ? "border-emerald-500/50 bg-emerald-500/10 ring-1 ring-emerald-500/20" : "border-theme bg-theme-overlay")}>
     <span className="flex items-start gap-3">
       <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border", selected ? "border-emerald-500/30 bg-emerald-500/20" : "border-theme bg-theme-overlay-strong")}><Icon aria-hidden="true" className="h-4 w-4" /></span>
       <span className="min-w-0 flex-1 space-y-1">
-        <span className="flex flex-wrap items-center gap-2 font-medium">{entry.label}{connection?.is_critical && <Shield aria-label={t("config.apiMap.legend.critical")} className="h-3.5 w-3.5 text-red-400" />}</span>
+        <span className="flex flex-wrap items-center gap-2 font-medium">{entry.label}{critical && <Shield aria-label={t("config.apiMap.legend.critical")} className="h-3.5 w-3.5 text-red-400" />}</span>
         <span className="block text-xs text-theme-muted">{connection?.description ?? t(`config.integrations.kinds.${entry.kind}`)}</span>
         <span className="flex flex-wrap gap-2 text-[11px] text-theme-muted"><span>{t(`config.integrations.locations.${entry.location}`)}</span>{connection && <span>{t(`config.apiMap.filters.protocol.${connection.protocol}`)}</span>}</span>
       </span>

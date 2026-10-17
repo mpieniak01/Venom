@@ -132,49 +132,58 @@ def configured_value(settings: object, key: str) -> bool:
     return bool(value and str(value).strip())
 
 
+def _definition_configured(item: Definition, settings: object) -> bool:
+    configured = all(configured_value(settings, key) for key in item.keys)
+    if configured and item.id == "google-calendar":
+        return all(Path(str(getattr(settings, key, ""))).is_file() for key in item.keys)
+    return configured
+
+
+def _definition_state(item: Definition, enabled: bool, configured: bool) -> str:
+    if not enabled:
+        return "disabled"
+    if not configured:
+        return "unconfigured"
+    return "configured" if item.keys else "unverified"
+
+
+def _configuration_state(
+    item: Definition, configured: bool
+) -> Literal["configured", "unconfigured", "not_required"]:
+    if not item.keys:
+        return "not_required"
+    return "configured" if configured else "unconfigured"
+
+
+def _definition_entry(item: Definition, settings: object) -> IntegrationEntry:
+    configured = _definition_configured(item, settings)
+    enabled = bool(getattr(settings, item.flag, False)) if item.flag else True
+    access: list[Literal["panel", "cli", "api"]] = ["api"]
+    if item.panel:
+        access.append("panel")
+    if item.cli:
+        access.append("cli")
+    return IntegrationEntry(
+        id="core:" + item.id,
+        label=item.label,
+        scope="external",
+        kind=item.kind,
+        location=item.location,
+        configuration=_configuration_state(item, configured),
+        activation="enabled" if enabled else "disabled",
+        state=_definition_state(item, enabled, configured),
+        resource_support="supported" if item.id == "vast" else "not_applicable",
+        can_probe=item.id == "vast" and configured,
+        capabilities=list(item.capabilities),
+        configuration_keys=list(item.keys),
+        access=access,
+        panel_path=item.panel,
+        documentation_url="https://github.com/mpieniak01/Venom/blob/main/docs/integrations/vast.md"
+        if item.id == "vast"
+        else None,
+        reason_code="feature_disabled" if not enabled else "not_probed",
+    )
+
+
 def core_catalog(settings: object) -> list[IntegrationEntry]:
-    entries = []
-    for item in DEFINITIONS:
-        configured = all(configured_value(settings, key) for key in item.keys)
-        if item.id == "google-calendar":
-            configured = configured and all(
-                Path(str(getattr(settings, key, ""))).is_file() for key in item.keys
-            )
-        enabled = bool(getattr(settings, item.flag, False)) if item.flag else True
-        state = "unverified"
-        if not enabled:
-            state = "disabled"
-        elif configured and item.keys:
-            state = "configured"
-        if enabled and not configured:
-            state = "unconfigured"
-        access: list[Literal["panel", "cli", "api"]] = ["api"]
-        if item.panel:
-            access.append("panel")
-        if item.cli:
-            access.append("cli")
-        entries.append(
-            IntegrationEntry(
-                id="core:" + item.id,
-                label=item.label,
-                scope="external",
-                kind=item.kind,
-                location=item.location,
-                configuration=("configured" if configured else "unconfigured")
-                if item.keys
-                else "not_required",
-                activation="enabled" if enabled else "disabled",
-                state=state,
-                resource_support="supported" if item.id == "vast" else "not_applicable",
-                can_probe=item.id == "vast" and configured,
-                capabilities=list(item.capabilities),
-                configuration_keys=list(item.keys),
-                access=access,
-                panel_path=item.panel,
-                documentation_url="https://github.com/mpieniak01/Venom/blob/main/docs/integrations/vast.md"
-                if item.id == "vast"
-                else None,
-                reason_code="feature_disabled" if not enabled else "not_probed",
-            )
-        )
-    return entries
+    return [_definition_entry(item, settings) for item in DEFINITIONS]

@@ -103,3 +103,9 @@ authentication, direction, critical markers and visible method lists. Source,
 connectivity and protocol filters supplement visibility/type/search and survive
 URL navigation. Registered routes and configured credentials remain distinct from
 measured health. Switching configuration tabs clears the previous tab's search.
+
+Optional router lifecycle handlers must be async and cooperate with cancellation.
+Synchronous on_startup/on_shutdown handlers are rejected before entering the module
+context, with module_lifecycle_async_required; they are never moved to host threads
+that could continue changing resources after a timeout. Convert these callbacks to
+async implementations with bounded nonblocking I/O. Core lifecycle is unchanged.

@@ -437,6 +437,7 @@ export const configLocale = {
 "device_not_configured": "Brak skonfigurowanych urządzeń.",
 "demo_observation": "Obserwacja dotyczy symulatora, nie fizycznego robota.",
 
+"module_lifecycle_async_required": "Moduł wymaga asynchronicznych handlerów cyklu życia; synchroniczne funkcje nie zostały uruchomione.",
 "module_initialization_failed": "Inicjalizacja modułu nie powiodła się; reszta systemu działa.",
 "module_cleanup_failed": "Zamknięcie modułu nie powiodło się.",
 "module_not_registered": "Moduł jest znany z lokalnego manifestu, ale jego API nie zostało zarejestrowane.",

@@ -410,8 +410,15 @@ def test_default_router_legacy_handlers_run_once_and_remain_available_to_other_h
 
     calls = []
     router = APIRouter()
-    router.add_event_handler("startup", lambda: calls.append("start"))
-    router.add_event_handler("shutdown", lambda: calls.append("stop"))
+
+    async def start():
+        calls.append("start")
+
+    async def stop():
+        calls.append("stop")
+
+    router.add_event_handler("startup", start)
+    router.add_event_handler("shutdown", stop)
     app = FastAPI()
     include_isolated_router(app, router, {"state": "loaded"})
     with TestClient(app):
@@ -530,3 +537,61 @@ def test_hanging_legacy_handler_is_bounded_and_does_not_escape_to_host(phase):
         if phase == "startup"
         else "module_cleanup_failed"
     )
+
+
+@pytest.mark.parametrize("phase", ["startup", "shutdown"])
+def test_sync_lifecycle_is_rejected_before_running_or_opening_resources(phase):
+    from contextlib import asynccontextmanager
+
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    from venom_core.services.module_runtime import include_isolated_router
+
+    calls = []
+
+    @asynccontextmanager
+    async def context(_app):
+        calls.append("resource-open")
+        yield
+        calls.append("resource-close")
+
+    def synchronous():
+        calls.append("unsafe-sync-handler")
+
+    router = APIRouter(lifespan=context)
+    router.add_event_handler(phase, synchronous)
+
+    @router.get("/optional/sync")
+    async def optional():
+        return {}
+
+    app = FastAPI()
+    record = {"state": "loaded"}
+    include_isolated_router(app, router, record)
+    with TestClient(app) as client:
+        assert client.get("/optional/sync").status_code == 503
+    assert calls == []
+    assert record["reason_code"] == "module_lifecycle_async_required"
+
+
+def test_async_callable_lifecycle_remains_supported():
+    from fastapi import APIRouter
+    from fastapi.testclient import TestClient
+
+    from venom_core.services.module_runtime import include_isolated_router
+
+    calls = []
+
+    class Start:
+        async def __call__(self):
+            calls.append("started")
+
+    router = APIRouter()
+    router.add_event_handler("startup", Start())
+    app = FastAPI()
+    record = {"state": "loaded"}
+    include_isolated_router(app, router, record)
+    with TestClient(app):
+        assert calls == ["started"]
+    assert record["state"] == "loaded"

@@ -10,7 +10,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, TypeGuard
+from typing import Any, Callable, Iterable, TypeGuard
 
 from fastapi import FastAPI
 from fastapi.routing import APIRouter
@@ -339,6 +339,57 @@ def iter_api_module_manifests(
     yield from _extra_manifests(settings)
 
 
+def _candidate_manifest(
+    item: str, record: dict[str, Any], seen_modules: set[str], settings: object
+) -> ApiModuleManifest | None:
+    entry_settings = type("ModuleSettings", (), {"API_OPTIONAL_MODULES": item})()
+    if validate_optional_modules_config(entry_settings):
+        record["state"], record["reason_code"] = "unavailable", "invalid_manifest"
+        return None
+    manifest = _parse_manifest_file(item)
+    if manifest is None:
+        record["state"], record["reason_code"] = "unavailable", "invalid_manifest"
+        return None
+    if manifest.module_id in seen_modules:
+        record["module_id"] += "-duplicate"
+        record["state"], record["reason_code"] = "unavailable", "duplicate_module"
+        return None
+    seen_modules.add(manifest.module_id)
+    if not _is_enabled(manifest, settings):
+        record["state"], record["reason_code"] = "disabled", "feature_disabled"
+        return None
+    if not _is_compatible(manifest, settings):
+        record["state"], record["reason_code"] = "unavailable", "incompatible_module"
+        return None
+    return manifest
+
+
+def _register_optional_router(
+    app: FastAPI, manifest: ApiModuleManifest, record: dict[str, Any]
+) -> bool:
+    router = _load_router(manifest.router_import, manifest.module_root)
+    if router is None:
+        record["state"], record["reason_code"] = "unavailable", "router_import_failed"
+        return False
+    previous_routes = list(app.router.routes)
+    try:
+        include_isolated_router(app, router, record)
+    except Exception:
+        app.router.routes[:] = previous_routes
+        record["state"], record["reason_code"] = (
+            "unavailable",
+            "router_registration_failed",
+        )
+        return False
+    record.update(
+        integration_provider_import=manifest.integration_provider_import,
+        module_root=manifest.module_root,
+        state="loaded",
+        reason_code="router_loaded",
+    )
+    return True
+
+
 def include_optional_api_routers(
     app: FastAPI, settings: object = SETTINGS
 ) -> list[str]:
@@ -347,48 +398,9 @@ def include_optional_api_routers(
     seen_modules: set[str] = set()
     for item, record in module_candidates(settings):
         diagnostics.append(record)
-        entry_settings = type("ModuleSettings", (), {"API_OPTIONAL_MODULES": item})()
-        errors = validate_optional_modules_config(entry_settings)
-        if errors:
-            record["state"] = "unavailable"
-            record["reason_code"] = "invalid_manifest"
-            continue
-        manifest = _parse_manifest_file(item)
-        if manifest is None:
-            record["state"] = "unavailable"
-            record["reason_code"] = "invalid_manifest"
-            continue
-        if manifest.module_id in seen_modules:
-            record["module_id"] += "-duplicate"
-            record["state"], record["reason_code"] = "unavailable", "duplicate_module"
-            continue
-        seen_modules.add(manifest.module_id)
-        if not _is_enabled(manifest, settings):
-            record["state"] = "disabled"
-            record["reason_code"] = "feature_disabled"
-            continue
-        if not _is_compatible(manifest, settings):
-            record["state"] = "unavailable"
-            record["reason_code"] = "incompatible_module"
-            continue
-        router = _load_router(manifest.router_import, manifest.module_root)
-        if router is None:
-            record["state"] = "unavailable"
-            record["reason_code"] = "router_import_failed"
-            continue
-        previous_routes = list(app.router.routes)
-        try:
-            include_isolated_router(app, router, record)
-        except Exception:
-            app.router.routes[:] = previous_routes
-            record["state"] = "unavailable"
-            record["reason_code"] = "router_registration_failed"
-            continue
-        record["integration_provider_import"] = manifest.integration_provider_import
-        record["module_root"] = manifest.module_root
-        record["state"] = "loaded"
-        record["reason_code"] = "router_loaded"
-        included.append(manifest.module_id)
+        manifest = _candidate_manifest(item, record, seen_modules, settings)
+        if manifest is not None and _register_optional_router(app, manifest, record):
+            included.append(manifest.module_id)
     app.state.optional_module_diagnostics = diagnostics
     if included:
         logger.info("Included optional API modules: %s", ", ".join(included))
@@ -396,28 +408,61 @@ def include_optional_api_routers(
     return included
 
 
-def _conversation_provider_factories(settings: object, diagnostics=None):
-    factories = {}
-    eligible = (
-        None
-        if diagnostics is None
-        else {
+def _eligible_conversation_manifests(
+    settings: object, diagnostics: list[dict[str, Any]] | None
+) -> Iterable[ApiModuleManifest]:
+    eligible = None
+    if diagnostics is not None:
+        eligible = {
             (entry["module_id"], entry.get("module_root"))
             for entry in diagnostics
             if entry["state"] == "loaded"
         }
-    )
     for manifest in iter_api_module_manifests(settings):
+        if not manifest.conversation_provider_import:
+            continue
         if (
-            not manifest.conversation_provider_import
-            or (
-                eligible is not None
-                and (manifest.module_id, manifest.module_root) not in eligible
-            )
-            or not _is_enabled(manifest, settings)
-            or not _is_compatible(manifest, settings)
+            eligible is not None
+            and (manifest.module_id, manifest.module_root) not in eligible
         ):
             continue
+        if _is_enabled(manifest, settings) and _is_compatible(manifest, settings):
+            yield manifest
+
+
+def _load_conversation_factory(manifest: ApiModuleManifest) -> Callable[[Any], Any]:
+    root = str(Path(manifest.module_root).resolve()) if manifest.module_root else None
+    inserted = bool(root and root not in sys.path)
+    if inserted:
+        assert root is not None
+        sys.path.insert(0, root)
+    try:
+        assert manifest.conversation_provider_import is not None
+        module_path, name = manifest.conversation_provider_import.split(":")
+        factory = getattr(importlib.import_module(module_path), name)
+        if not callable(factory):
+            raise ValueError("invalid_conversation_provider_factory")
+        return factory
+    finally:
+        if inserted and root in sys.path:
+            sys.path.remove(root)
+
+
+def _record_import_failure(
+    module_id: str, diagnostics: list[dict[str, Any]] | None
+) -> None:
+    logger.warning("Optional conversation provider import failed: %s", module_id)
+    for entry in diagnostics or []:
+        if entry["module_id"] == module_id:
+            entry["conversation_error"] = "provider_import_failed"
+            entry["conversation_retry_after"] = time.monotonic() + 30.0
+
+
+def _conversation_provider_factories(
+    settings: object, diagnostics: list[dict[str, Any]] | None = None
+) -> dict[str, Callable[[Any], Any]]:
+    factories = {}
+    for manifest in _eligible_conversation_manifests(settings, diagnostics):
         diagnostic = next(
             (
                 entry
@@ -432,34 +477,15 @@ def _conversation_provider_factories(settings: object, diagnostics=None):
             and diagnostic.get("conversation_retry_after", 0) > time.monotonic()
         ):
             continue
-        root = (
-            str(Path(manifest.module_root).resolve()) if manifest.module_root else None
-        )
-        inserted = bool(root and root not in sys.path)
-        if inserted:
-            assert root is not None
-            sys.path.insert(0, root)
         try:
-            module_path, name = manifest.conversation_provider_import.split(":")
-            factory = getattr(importlib.import_module(module_path), name)
-            if not callable(factory):
-                raise ValueError("invalid_conversation_provider_factory")
-            factories[manifest.module_id] = factory
-            if diagnostic:
-                diagnostic.pop("conversation_error", None)
-                diagnostic.pop("conversation_retry_after", None)
+            factory = _load_conversation_factory(manifest)
         except Exception:
-            logger.warning(
-                "Optional conversation provider import failed: %s", manifest.module_id
-            )
-            if diagnostics is not None:
-                for entry in diagnostics:
-                    if entry["module_id"] == manifest.module_id:
-                        entry["conversation_error"] = "provider_import_failed"
-                        entry["conversation_retry_after"] = time.monotonic() + 30.0
-        finally:
-            if inserted and root in sys.path:
-                sys.path.remove(root)
+            _record_import_failure(manifest.module_id, diagnostics)
+            continue
+        factories[manifest.module_id] = factory
+        if diagnostic:
+            diagnostic.pop("conversation_error", None)
+            diagnostic.pop("conversation_retry_after", None)
     return factories
 
 

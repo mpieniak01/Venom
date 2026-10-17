@@ -118,3 +118,28 @@ it("restores source, connectivity and protocol filters without treating configur
   fireEvent.change(screen.getByLabelText("Protokół"), { target: { value: "https" } });
   assert.ok(screen.getByRole("button", { name: /OpenAI API/ }));
 });
+
+
+it("searches descriptions and applies protocol filters to details while preserving any critical connection", async () => {
+  globalThis.fetch = async () => Response.json({ ...payload([entry("core:openai", "OpenAI API")]), external_connections: [
+    { ...mapConnection, protocol: "http", description: "Primary visible description", is_critical: false, methods: ["POST /http-only"] },
+    { ...mapConnection, protocol: "https", description: "Secondary visible description", is_critical: true, methods: ["POST /https-only"] },
+  ] });
+  render(<ApiMap />);
+  await screen.findByRole("heading", { name: "OpenAI API" });
+  assert.ok(screen.getByLabelText("Krytyczne"));
+  const search = screen.getByRole("searchbox", { name: "Szukaj integracji" });
+  fireEvent.change(search, { target: { value: "Primary visible description" } });
+  assert.ok(screen.getByRole("button", { name: /OpenAI API/ }));
+  fireEvent.change(search, { target: { value: "Secondary visible description" } });
+  assert.ok(screen.getByRole("button", { name: /OpenAI API/ }));
+  fireEvent.change(search, { target: { value: "" } });
+  fireEvent.change(screen.getByLabelText("Protokół"), { target: { value: "http" } });
+  assert.ok(screen.getByText("POST /http-only"));
+  assert.equal(screen.queryByText("POST /https-only"), null);
+  assert.ok(screen.getByLabelText("Krytyczne"));
+  fireEvent.change(screen.getByLabelText("Protokół"), { target: { value: "https" } });
+  assert.ok(screen.getByText("POST /https-only"));
+  assert.equal(screen.queryByText("POST /http-only"), null);
+  assert.ok(screen.getByRole("button", { name: /OpenAI API.*HTTPS/ }));
+});

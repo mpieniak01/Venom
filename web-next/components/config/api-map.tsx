@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
 import type { components } from "@/lib/generated/api-types";
 
-import { ConnectionFilterControls, IntegrationCard, IntegrationConnectionDetails, integrationConnections, matchesConnectionFilters, stateColor, type ConnectionFilters } from "./integration-connections";
+import { ConnectionFilterControls, IntegrationCard, IntegrationConnectionDetails, integrationConnections, matchesConnectionFilters, shouldShowConnection, stateColor, type ConnectionFilters } from "./integration-connections";
 export { shouldShowConnection } from "./integration-connections";
 
 type Integration = components["schemas"]["IntegrationEntry"];
@@ -80,14 +80,14 @@ export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof
   const connections = useMemo(() => [...(data?.internal_connections ?? []), ...(data?.external_connections ?? [])], [data]);
   const entries = useMemo(() => data?.integrations ?? [], [data]);
   const filtered = useMemo(() => visibleIntegrations(entries, scope, environmentOnly).filter((entry) =>
-    [entry.label, entry.id, ...(entry.configuration_keys ?? [])].join(" ").toLowerCase().includes(query.toLowerCase().trim()) && matchesConnectionFilters(entry, connections, filters)), [entries, scope, environmentOnly, query, connections, filters]);
+    [entry.label, entry.id, ...(entry.configuration_keys ?? []), ...integrationConnections(entry, connections).map((connection) => connection.description ?? "")].join(" ").toLowerCase().includes(query.toLowerCase().trim()) && matchesConnectionFilters(entry, connections, filters)), [entries, scope, environmentOnly, query, connections, filters]);
   const effectiveId = selectedId ?? nextIntegrationSelection(filtered, null);
   const selected = entries.find((entry) => entry.id === effectiveId);
   const selectionMissing = Boolean(data && selectedId && !selected);
   const selectionFiltered = Boolean(selected && !filtered.some((entry) => entry.id === selected.id));
   const declaredPanel = publicLink(selected?.panel_path);
   const panel = declaredPanel === "/config" ? configHref({ tab: "parameters", parameter: selected?.configuration_keys?.[0] ?? null, query: "" }, navigation?.search) : declaredPanel;
-  const selectedConnections = selected ? integrationConnections(selected, connections) : [];
+  const selectedConnections = selected ? integrationConnections(selected, connections).filter((connection) => shouldShowConnection(connection, filters)) : [];
 
   return (
     <section className="space-y-4" aria-busy={loading} aria-label={t("config.apiMap.title")}>
@@ -129,7 +129,7 @@ export function ApiMap({ navigation }: Readonly<{ navigation?: ReturnType<typeof
             const rows = filtered.filter((entry) => entry.scope === group);
             return rows.length > 0 && <div key={group} className="space-y-2">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-theme-secondary">{group === "internal" ? <Network aria-hidden="true" className="h-4 w-4 text-emerald-400" /> : <Globe aria-hidden="true" className="h-4 w-4 text-blue-400" />}{t(`config.integrations.${group}`)} · {rows.length}</h3>
-              {rows.map((entry) => <IntegrationCard key={entry.id} entry={entry} connections={connections} selected={selected?.id === entry.id} onClick={() => setSelectedId(entry.id)} />)}
+              {rows.map((entry) => <IntegrationCard key={entry.id} entry={entry} connections={connections} filters={filters} selected={selected?.id === entry.id} onClick={() => setSelectedId(entry.id)} />)}
             </div>;
           })}
           {data && filtered.length === 0 && <p>{t("config.apiMap.noResults")}</p>}

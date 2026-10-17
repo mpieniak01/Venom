@@ -89,3 +89,9 @@ krytyczność i widoczne listy metod dotychczasowej mapy API. Filtry źródła,
 łączności i protokołu uzupełniają widoczność/typ/wyszukiwanie i są zapisywane
 w URL. Rejestracja tras i konfiguracja kluczy pozostają odrębne od pomiaru
 zdrowia. Zmiana zakładki konfiguracji czyści wyszukiwanie poprzedniej zakładki.
+
+Handlery cyklu życia opcjonalnego routera muszą być async i współpracować z
+anulowaniem. Synchroniczne on_startup/on_shutdown są odrzucane przed otwarciem
+kontekstu modułu, z module_lifecycle_async_required. Nie są przenoszone do wątku,
+który mógłby zmieniać zasoby po timeout. Należy zastąpić je async z ograniczonym
+czasowo, nieblokującym I/O. Cykl życia samego core pozostaje bez zmian.

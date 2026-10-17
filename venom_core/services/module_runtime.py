@@ -8,14 +8,15 @@ from copy import copy
 from fastapi import APIRouter, Depends, HTTPException
 
 
+def _async_handler(handler):
+    return inspect.iscoroutinefunction(handler) or inspect.iscoroutinefunction(
+        getattr(handler, "__call__", None)
+    )
+
+
 async def _run_handlers(handlers):
     for handler in handlers:
-        if inspect.iscoroutinefunction(handler):
-            result = handler()
-        else:
-            result = await asyncio.to_thread(handler)
-        if inspect.isawaitable(result):
-            await result
+        await handler()
 
 
 async def _close_stack(stack, record, reason):
@@ -41,6 +42,18 @@ def include_isolated_router(app, router, record):
 
     @asynccontextmanager
     async def lifespan(application):
+        # Arbitrary sync functions cannot be terminated safely in a host thread
+        # or moved to a subprocess without losing application-owned state.
+        # Reject them before any resource or lifecycle context is started.
+        if not all(
+            _async_handler(handler) for handler in startup_handlers + shutdown_handlers
+        ):
+            record["state"], record["reason_code"] = (
+                "unavailable",
+                "module_lifecycle_async_required",
+            )
+            yield None
+            return
         stack = AsyncExitStack()
         try:
             state = await asyncio.wait_for(

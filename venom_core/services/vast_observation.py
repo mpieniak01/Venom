@@ -29,16 +29,22 @@ def _fingerprint(settings):
 class _ReadBudget:
     def __init__(self):
         self.deadline = time.monotonic() + 4.0
+        self.expired = False
         self.client = TrafficControlledHttpClient(provider="vast", timeout=1.0)
 
     def request(self, method, url, **kwargs):
-        if method != "GET" or time.monotonic() >= self.deadline:
+        if method != "GET":
+            raise VastError("vast.invalid_read_method")
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            self.expired = True
             raise VastError(OBSERVATION_DEADLINE)
-        kwargs["timeout"] = min(1.0, self.deadline - time.monotonic())
+        kwargs["timeout"] = min(1.0, remaining)
         return self.client.request(method, url, **kwargs)
 
     def sleep(self, delay):
         if time.monotonic() + delay >= self.deadline:
+            self.expired = True
             raise VastError(OBSERVATION_DEADLINE)
         time.sleep(delay)
 
@@ -93,7 +99,7 @@ def _read(key):
     except VastError as exc:
         if exc.status in {401, 403}:
             result.update(reason_code="provider_unauthorized")
-        elif exc.code == OBSERVATION_DEADLINE:
+        elif exc.code == OBSERVATION_DEADLINE or budget.expired:
             result.update(reason_code="probe_timeout")
         if result["connectivity"] == "unknown":
             result["connectivity"] = "down"

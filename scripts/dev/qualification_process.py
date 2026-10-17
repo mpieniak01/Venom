@@ -22,14 +22,13 @@ def identity(pid: int) -> dict[str, Any]:
     fields = (process / "stat").read_text().split(") ", 1)[1].split()
     if fields[0] == "Z":
         raise ProcessLookupError(pid)
+    command = (process / "cmdline").read_bytes()
     observed = {
         "pid": pid,
         "pgid": os.getpgid(pid),
         "start_ticks": fields[19],
         "cwd": os.readlink(process / "cwd"),
-        "command_sha256": hashlib.sha256(
-            (process / "cmdline").read_bytes()
-        ).hexdigest(),
+        "command_sha256": hashlib.sha256(command).hexdigest(),
     }
     # Exit can clear cmdline after the first stat read. Recheck state before
     # treating that harmless shutdown transition as an ownership change.
@@ -38,6 +37,8 @@ def identity(pid: int) -> dict[str, Any]:
         raise ProcessLookupError(pid)
     if final_fields[19] != fields[19]:
         raise OwnershipError("process_identity_changed_during_read")
+    if not command:
+        raise OwnershipError("process_command_not_ready")
     return observed
 
 
@@ -70,7 +71,21 @@ class QualificationProcess:
                 start_new_session=True,
             )
         try:
-            observed = identity(self.process.pid)
+            # /proc can briefly expose empty cmdline while exec initializes.
+            # Never stamp its empty hash as a stable ownership identity.
+            deadline = time.monotonic() + 2.0
+            while True:
+                try:
+                    observed = identity(self.process.pid)
+                    break
+                except OwnershipError as error:
+                    if (
+                        str(error) != "process_command_not_ready"
+                        or time.monotonic() >= deadline
+                        or self.process.poll() is not None
+                    ):
+                        raise
+                    time.sleep(0.01)
             if observed["pgid"] != self.process.pid:
                 raise OwnershipError("process_is_not_session_owner")
             observed["owner"] = self.owner
@@ -80,7 +95,8 @@ class QualificationProcess:
                 json.dump(observed, output)
             temporary.replace(self.record)
         except Exception:
-            self.process.terminate()
+            if self.process.poll() is None:
+                self.process.terminate()
             self.process.wait(timeout=5)
             raise
         return self.process.pid
@@ -114,6 +130,13 @@ class QualificationProcess:
                 current = identity(pid)
             except (OSError, ProcessLookupError):
                 break
+            except OwnershipError as error:
+                if str(error) != "process_command_not_ready":
+                    raise
+                # SIGTERM can clear cmdline before stat becomes zombie. Wait
+                # without sending another signal; SIGKILL still requires full ID.
+                time.sleep(0.01)
+                continue
             if any(
                 current.get(key) != expected.get(key)
                 for key in ("pid", "pgid", "start_ticks")

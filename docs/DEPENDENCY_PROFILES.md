@@ -64,7 +64,7 @@ python scripts/dev/dependency_profiles.py lock --profile full-ci
 python scripts/dev/dependency_profiles.py audit-locks
 ```
 
-The resolver uses `pip install --dry-run --ignore-installed`, a private cache,
+The resolver uses `pip install --dry-run --ignore-installed --no-cache-dir`
 and official PyPI artifact hashes. Every application extension freezes its
 parent lock; already-resolved application locks constrain overlapping packages.
 A genuine resolver conflict is an error, not an invitation to install with
@@ -85,15 +85,16 @@ Missing locks do not authorize installing an unfrozen candidate as a release.
 Install into a fresh environment without system-site-packages:
 
 ```bash
-python3.12 -m venv /absolute/path/to/new-light
-/absolute/path/to/new-light/bin/python -m pip install --require-hashes \
-  -r requirements/locks/light-linux-py312.txt
+python3.12 scripts/bootstrap_dependency_profile.py --profile light \
+  --venv /absolute/path/to/new-light
 python scripts/dev/dependency_profiles.py verify --profile light \
   --python /absolute/path/to/new-light/bin/python
 ```
 
 Verification requires every locked version, `pip check` success and an isolated
-venv. An executable/interpreter error is ERROR. Test two independent clean
+venv. Installed bootstrap-only additions must match the build policy too; a
+vulnerable venv seed `pip` cannot pass by appearing on a package-name allowlist.
+An executable/interpreter error is ERROR. Test two independent clean
 installations and compare their full inventories. Keep raw output and hashes
 outside tracked source; do not copy operator secrets or alter an old venv.
 
@@ -157,14 +158,25 @@ verification. Full and Full+CI additionally use the generated build constraints.
 It writes `.venom-dependency-profile.json` only after successful verification.
 There are no service starts or runtime configuration changes in this procedure.
 
+Installers and the resolver disable pip caches. Bootstrap checks free space
+before venv creation and every pip mutation. With WSL on a dynamically allocated
+VHDX, also pass `--storage-root /mnt/f` (use the actual hosting volume), since guest
+ext4 free space does not measure Windows capacity. `--min-free-gib` may increase
+profile floors, never lower them. Run disposable qualification installs one at a
+time, save their receipts, then remove the owned environments. Keep models and
+operator environments separate from disposable data.
+
 An existing target requires explicit `--update`. Additive transitions such as
 Light to CI or Full to Full+CI retain their common locked versions. A target
 with packages outside the selected profile and declared build toolchain is
 rejected before installation: choose a fresh target to reduce a profile. The
 bootstrap does not silently uninstall packages or repurpose an old SK/operator
-venv. Engine/training components cannot use the application's repository `.venv`.
-`verify` also rejects undeclared extra packages, so a populated Full environment
-cannot be reported as a clean Light installation.
+venv. During `--update`, existing bootstrap-only tools are refreshed from their
+hash-locked entries. Packages owned by the selected application/engine lock retain
+that lock's versions; for example, vLLM's setuptools is not replaced with the build
+component's setuptools. Engine/training components cannot use the application's
+repository `.venv`. `verify` also rejects undeclared extra packages, so a populated
+Full environment cannot be reported as a clean Light installation.
 
 The Make CI bootstrap and dependency-installing GitHub workflows call this same
 entry point. CI includes the pinned `pip-audit` and `flake8` tools; workflow steps
@@ -185,8 +197,10 @@ Initial local dependency qualification used two independent installations for
 Light, CI, Full, vLLM, ONNX GPU and Academy, then extended both Full environments
 to Full+CI. Every pair had identical complete inventories and successful
 `pip check`; no model or service was activated by those installation checks.
-The 296 locked Full package versions remain unchanged in Full+CI. The separate
-bootstrap `pip` changes from 25.3 to the CI graph's locked 26.2.1 through
-`pip-audit`; that is recorded separately from product package invariance.
+The 296 locked Full package versions remain unchanged in Full+CI. The build policy
+and the CI graph both pin `pip` 26.2.1. Earlier local receipts
+with bootstrap pip 24.0/25.3 are historical: those tool versions fail the current
+bootstrap check. Updating that tool is recorded separately from product package
+invariance and does not qualify model behavior or security of other packages.
 Raw local receipts belong under ignored `docs_dev/266/`, rather than pretending
 `RESOLVED_ONLY` checked-in lock metadata is full runtime qualification.

@@ -116,3 +116,58 @@ def test_exit_during_identity_read_is_not_a_new_process(monkeypatch):
     monkeypatch.setattr(module.os, "readlink", lambda path: "/tmp/probe")
     with pytest.raises(ProcessLookupError):
         module.identity(123)
+
+
+def test_live_empty_command_cannot_be_stamped_as_owned(monkeypatch):
+    from pathlib import Path
+
+    live = "123 (ollama) S " + " ".join(["0"] * 18 + ["123"])
+    monkeypatch.setattr(Path, "read_text", lambda self: live)
+    monkeypatch.setattr(Path, "read_bytes", lambda self: b"")
+    monkeypatch.setattr(module.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(module.os, "readlink", lambda path: "/tmp/probe")
+    with pytest.raises(OwnershipError, match="process_command_not_ready"):
+        module.identity(123)
+
+
+def test_start_waits_for_real_child_command_before_recording(monkeypatch, tmp_path):
+    real_identity = module.identity
+    calls = []
+
+    def during_exec(pid):
+        calls.append(pid)
+        if len(calls) == 1:
+            raise OwnershipError("process_command_not_ready")
+        return real_identity(pid)
+
+    monkeypatch.setattr(module, "identity", during_exec)
+    process = QualificationProcess(tmp_path, "exec-race")
+    try:
+        process.start(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            cwd=tmp_path,
+            environment={"PATH": os.defpath},
+        )
+        assert len(calls) >= 2
+        data = json.loads(process.record.read_text())
+        assert data["command_sha256"] != module.hashlib.sha256(b"").hexdigest()
+    finally:
+        process.stop()
+
+
+def test_persistently_empty_command_fails_closed_and_reaps_child(monkeypatch, tmp_path):
+    fake = Mock(pid=12345)
+    fake.poll.return_value = None
+    monkeypatch.setattr(module.subprocess, "Popen", Mock(return_value=fake))
+    monkeypatch.setattr(
+        module,
+        "identity",
+        Mock(side_effect=OwnershipError("process_command_not_ready")),
+    )
+    monkeypatch.setattr(module.time, "monotonic", Mock(side_effect=[0, 3]))
+    process = QualificationProcess(tmp_path, "empty-command")
+    with pytest.raises(OwnershipError, match="process_command_not_ready"):
+        process.start([sys.executable], cwd=tmp_path, environment={})
+    fake.terminate.assert_called_once()
+    fake.wait.assert_called_once_with(timeout=5)
+    assert not process.record.exists()

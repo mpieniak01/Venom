@@ -2567,3 +2567,29 @@ async def test_initialize_hardware_bridge_exception_returns_none(monkeypatch):
         MagicMock(side_effect=RuntimeError("bridge-fail")),
     )
     assert await main_module._initialize_hardware_bridge_if_enabled() is None
+
+
+def test_release_identity_matches_api_frontend_and_containers():
+    import json
+    import tomllib
+    from pathlib import Path
+
+    from venom_core.version import APP_VERSION
+
+    root = Path(__file__).resolve().parents[1]
+    release = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["poetry"][
+        "version"
+    ]
+    assert main_module.app.version == APP_VERSION == release
+    for name in ("package.json", "package-lock.json"):
+        package = json.loads((root / "web-next" / name).read_text())
+        assert package["version"] == release
+        if "packages" in package:
+            assert package["packages"][""]["version"] == release
+    for name in ("backend.Dockerfile", "frontend.Dockerfile"):
+        versions = [
+            line.removeprefix("ARG APP_VERSION=")
+            for line in (root / "docker" / name).read_text().splitlines()
+            if line.startswith("ARG APP_VERSION=")
+        ]
+        assert versions and all(version == release for version in versions)

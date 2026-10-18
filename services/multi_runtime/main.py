@@ -77,6 +77,8 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
+_RESTART_TASKS: set[asyncio.Task[None]] = set()
+
 
 _BOOTSTRAP_CONFIG_SNAPSHOT: dict[str, str] = {}
 
@@ -463,12 +465,19 @@ async def _startup_model_loader() -> None:
 async def lifespan(app: FastAPI):
     global _start_time
     _start_time = time.time()
-    asyncio.create_task(_startup_model_loader())
-    yield
-    if _daemon is not None:
-        _daemon.unload_all()
-        logger.info("Daemon unloaded")
-    _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+    startup_task = asyncio.create_task(_startup_model_loader())
+    try:
+        yield
+    finally:
+        # Loading runs in a worker thread: cancellation would not stop that thread.
+        # Join it before unloading so shutdown cannot race model initialization.
+        try:
+            await startup_task
+        finally:
+            if _daemon is not None:
+                await asyncio.to_thread(_daemon.unload_all)
+                logger.info("Daemon unloaded")
+            _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
 
 
 async def _parse_respond_request(
@@ -931,6 +940,12 @@ async def daemon_reload() -> SoftReloadResponse:
     )
 
 
+def _restart_finished(task: asyncio.Task[None]) -> None:
+    _RESTART_TASKS.discard(task)
+    if not task.cancelled() and (error := task.exception()) is not None:
+        logger.error("Daemon process restart failed", exc_info=error)
+
+
 @app.post("/v1/daemon/restart", response_model=RestartResponse)
 async def daemon_restart() -> RestartResponse:
     """Hard restart: unload everything and restart the process.
@@ -951,7 +966,9 @@ async def daemon_restart() -> RestartResponse:
         await asyncio.sleep(0.2)
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
-    asyncio.create_task(_do_restart())
+    restart_task = asyncio.create_task(_do_restart())
+    _RESTART_TASKS.add(restart_task)
+    restart_task.add_done_callback(_restart_finished)
     return RestartResponse(
         status="restarting",
         message="All models unloaded. Process will restart in ~200ms.",

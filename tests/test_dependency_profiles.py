@@ -1273,3 +1273,464 @@ def test_scm_manifest_retains_every_direct_requirement_without_recursive_flags(p
         }
         assert len(lines) == len(actual), filename
         assert actual == expected, filename
+
+
+def test_security_minimum_probe_distinguishes_floors_and_unbounded_declarations(policy):
+    locked = profiles.read_lock(profiles.ROOT / policy["profiles"]["full"]["lock"])
+    packages, unbounded = profiles.security_probe_packages(
+        policy, "full", locked, "minima"
+    )
+    assert packages["pyjwt"] == "2.15.1"
+    assert packages["transformers"] == "5.10.4"
+    assert "pyjwt" not in unbounded
+    assert "sentence-transformers" in unbounded
+    assert packages["sentence-transformers"] == locked["sentence-transformers"]
+    with pytest.raises(ValueError, match="Unknown security probe"):
+        profiles.security_probe_packages(policy, "full", locked, "invalid")
+
+
+def test_security_minimum_probe_rejects_excluded_boundary(policy):
+    policy["groups"]["light"] = ["pyjwt>=2.15.1,!=2.15.1,<3"]
+    # Use the actual group owning this requirement in the policy.
+    profile = {**policy["profiles"]["light"], "groups": ["light"]}
+    policy["profiles"]["light"] = profile
+    with pytest.raises(ValueError, match="Cannot represent declared minimum"):
+        profiles.security_probe_packages(policy, "light", {"pyjwt": "2.15.2"}, "minima")
+
+
+def test_security_probe_export_is_an_explicit_non_installation_inventory(tmp_path):
+    import tomllib
+
+    packages = {"pyjwt": "2.13.0", "urllib3": "2.7.0"}
+    lock = profiles.write_security_probe(tmp_path, packages)
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text())
+    parsed_lock = tomllib.loads(lock.read_text())
+    assert {row["name"]: row["version"] for row in parsed_lock["package"]} == packages
+    assert {
+        key: value
+        for key, value in manifest["tool"]["poetry"]["dependencies"].items()
+        if key != "python"
+    } == packages
+    assert "NOT an installation/release lock" in lock.read_text()
+    with pytest.raises(ValueError, match="empty component inventory"):
+        profiles.write_security_probe(tmp_path, {})
+
+
+@pytest.mark.parametrize(
+    "returncode,vulnerabilities,count,status,complete",
+    [
+        (0, [], 1, "PASS", True),
+        (
+            1,
+            [{"id": "SNYK-PYTHON-PYJWT-20245319", "severity": "high"}],
+            1,
+            "FINDINGS",
+            True,
+        ),
+        (2, [], 1, "ERROR", False),
+        (0, [{"id": "SNYK-PYTHON-PYJWT-20245319"}], 1, "ERROR", False),
+        (1, [], 1, "ERROR", False),
+        (0, [], 0, "ERROR", False),
+        (0, 7, 1, "ERROR", False),
+    ],
+)
+def test_security_probe_requires_complete_consistent_snyk_result(
+    tmp_path, monkeypatch, returncode, vulnerabilities, count, status, complete
+):
+    def run(command, **kwargs):
+        assert "--package-manager=poetry" in command
+        assert "--print-deps" in command
+        assert "--file=probe/poetry.lock" in command
+        assert "--org=mpieniak01" in command
+        assert f"--policy-path={tmp_path / '.snyk'}" in command
+        assert kwargs["cwd"] == tmp_path
+        (tmp_path / "probe/snyk.json").write_text(
+            json.dumps(
+                {
+                    "packageManager": "poetry",
+                    "org": "mpieniak01",
+                    "dependencyCount": count,
+                    "vulnerabilities": vulnerabilities,
+                }
+            )
+        )
+        return SimpleNamespace(
+            returncode=returncode, stdout="   └─ pyjwt @ 2.13.0\n", stderr=""
+        )
+
+    monkeypatch.setattr(profiles.subprocess, "run", run)
+    result = profiles.scan_security_probe(
+        tmp_path, tmp_path / "probe", {"pyjwt": "2.13.0"}, "snyk", "mpieniak01"
+    )
+    assert result["status"] == status
+    assert result["complete"] is complete
+
+
+def test_security_probe_failed_process_cannot_reuse_old_success(tmp_path, monkeypatch):
+    directory = tmp_path / "probe"
+    directory.mkdir()
+    output = directory / "snyk.json"
+    output.write_text(
+        json.dumps(
+            {"vulnerabilities": [], "dependencyCount": 1, "packageManager": "poetry"}
+        )
+    )
+    monkeypatch.setattr(
+        profiles.subprocess,
+        "run",
+        lambda *a, **kw: SimpleNamespace(returncode=2, stdout="", stderr="failed"),
+    )
+    result = profiles.scan_security_probe(
+        tmp_path, directory, {"pyjwt": "2.13.0"}, "snyk", "mpieniak01"
+    )
+    assert not output.exists()
+    assert result["complete"] is False
+    assert result["status"] == "ERROR"
+
+
+def test_security_audit_requires_real_qualified_environment(
+    tmp_path, monkeypatch, policy
+):
+    monkeypatch.setattr(profiles, "generate", lambda *a, **kw: [])
+    monkeypatch.setattr(profiles, "audit_locks", lambda *a: {})
+    monkeypatch.setattr(
+        profiles,
+        "verify_environment",
+        lambda *a: {"status": "FAIL", "delta": {"pyjwt": "drift"}},
+    )
+
+    def must_not_scan(*args):
+        pytest.fail("A drifted environment must not produce a security qualification")
+
+    monkeypatch.setattr(profiles, "scan_security_probe", must_not_scan)
+    result = profiles.audit_security_inputs(
+        tmp_path, policy, "light", "python", tmp_path / "out", "snyk", "mpieniak01"
+    )
+    assert result["status"] == "ERROR"
+    assert result["probes"] == {}
+
+
+def test_security_probe_never_accepts_different_snyk_organization(
+    tmp_path, monkeypatch
+):
+    def run(*args, **kwargs):
+        (tmp_path / "probe/snyk.json").write_text(
+            json.dumps(
+                {
+                    "packageManager": "poetry",
+                    "org": "different-org",
+                    "dependencyCount": 1,
+                    "vulnerabilities": [],
+                }
+            )
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(profiles.subprocess, "run", run)
+    result = profiles.scan_security_probe(
+        tmp_path, tmp_path / "probe", {"pyjwt": "2.15.1"}, "snyk", "mpieniak01"
+    )
+    assert result["status"] == "ERROR"
+    assert result["organization"] == "different-org"
+    with pytest.raises(ValueError, match="explicit Snyk organization"):
+        profiles.scan_security_probe(
+            tmp_path, tmp_path / "other", {"pyjwt": "2.15.1"}, "snyk", ""
+        )
+
+
+@pytest.mark.parametrize(
+    "tree,expected_delta,unexpected",
+    [
+        (
+            "   └─ pyjwt @ 2.13.0\n",
+            {"pyjwt": {"expected": "2.15.1", "actual": "2.13.0"}},
+            [],
+        ),
+        (
+            "   └─ urllib3 @ 2.8.0\n",
+            {"pyjwt": {"expected": "2.15.1", "actual": None}},
+            ["urllib3"],
+        ),
+        ("", {"pyjwt": {"expected": "2.15.1", "actual": None}}, []),
+    ],
+)
+def test_security_probe_rejects_wrong_component_even_when_count_matches(
+    tmp_path, monkeypatch, tree, expected_delta, unexpected
+):
+    def run(command, **kwargs):
+        (tmp_path / "probe/snyk.json").write_text(
+            json.dumps(
+                {
+                    "packageManager": "poetry",
+                    "org": "mpieniak01",
+                    "dependencyCount": 1,
+                    "vulnerabilities": [],
+                }
+            )
+        )
+        return SimpleNamespace(returncode=0, stdout=tree, stderr="")
+
+    monkeypatch.setattr(profiles.subprocess, "run", run)
+    result = profiles.scan_security_probe(
+        tmp_path, tmp_path / "probe", {"pyjwt": "2.15.1"}, "snyk", "mpieniak01"
+    )
+    assert result["status"] == "ERROR"
+    assert result["component_delta"] == expected_delta
+    assert result["unexpected_components"] == unexpected
+
+
+def test_installed_security_probe_includes_bootstrap_with_pip_parser(
+    tmp_path, monkeypatch
+):
+    packages = {"pip": "26.2.1", "setuptools": "83.0.0"}
+
+    def run(command, **kwargs):
+        assert "--package-manager=pip" in command
+        assert "--command=/qualified/bin/python" in command
+        assert "--file=probe/requirements.txt" in command
+        assert (
+            (tmp_path / "probe/requirements.txt")
+            .read_text()
+            .endswith("pip==26.2.1\nsetuptools==83.0.0\n")
+        )
+        (tmp_path / "probe/snyk.json").write_text(
+            json.dumps(
+                {
+                    "packageManager": "pip",
+                    "org": "mpieniak01",
+                    "dependencyCount": 2,
+                    "vulnerabilities": [],
+                }
+            )
+        )
+        return SimpleNamespace(
+            returncode=0,
+            stdout="   ├─ pip @ 26.2.1\n   └─ setuptools @ 83.0.0\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(profiles.subprocess, "run", run)
+    result = profiles.scan_security_probe(
+        tmp_path,
+        tmp_path / "probe",
+        packages,
+        "snyk",
+        "mpieniak01",
+        python="/qualified/bin/python",
+    )
+    assert result["status"] == "PASS"
+    assert result["observed_components"] == packages
+
+
+def test_security_audit_scans_verified_environment_bootstrap_not_only_lock(
+    tmp_path, policy, monkeypatch
+):
+    packages = {"pyjwt": "2.15.1", "pip": "26.2.1"}
+    monkeypatch.setattr(profiles, "generate", lambda *a, **kw: [])
+    monkeypatch.setattr(profiles, "audit_locks", lambda *a: {})
+    monkeypatch.setattr(
+        profiles,
+        "verify_environment",
+        lambda *a: {"status": "PASS", "packages": packages},
+    )
+    monkeypatch.setattr(profiles, "read_lock", lambda *a: {"pyjwt": "2.15.1"})
+    monkeypatch.setattr(
+        profiles, "requirements_for", lambda *a: {"pyjwt": "pyjwt>=2.15.1"}
+    )
+    for file in (
+        profiles.POLICY,
+        policy["profiles"]["light"]["input"],
+        policy["profiles"]["light"]["lock"],
+        ".snyk",
+    ):
+        p = tmp_path / file
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("fixture")
+    calls = []
+
+    def scan(root, directory, observed, snyk, org, **kwargs):
+        calls.append((dict(observed), kwargs.get("python")))
+        return {
+            "status": "PASS",
+            "complete": True,
+            "observed_components": observed,
+            "findings": {},
+        }
+
+    monkeypatch.setattr(profiles, "scan_security_probe", scan)
+    result = profiles.audit_security_inputs(
+        tmp_path,
+        policy,
+        "light",
+        "/qualified/bin/python",
+        tmp_path / "evidence",
+        "snyk",
+        "mpieniak01",
+    )
+    assert result["complete"] is True
+    assert calls == [
+        ({"pyjwt": "2.15.1"}, None),
+        ({"pip": "26.2.1"}, "/qualified/bin/python"),
+        ({"pyjwt": "2.15.1"}, None),
+    ]
+
+
+def test_installed_inventory_preserves_valid_distribution_spelling(tmp_path):
+    path = profiles.write_security_probe(
+        tmp_path,
+        {"boolean-py": "5.0"},
+        installed=True,
+        distribution_names={"boolean-py": "boolean.py"},
+    )
+    assert "boolean.py==5.0\n" in path.read_text()
+    with pytest.raises(ValueError, match="does not match inventory"):
+        profiles.write_security_probe(
+            tmp_path,
+            {"boolean-py": "5.0"},
+            installed=True,
+            distribution_names={"boolean-py": "other-package"},
+        )
+
+
+@pytest.mark.parametrize("nested_version", ["2.13.0", "?"])
+def test_security_probe_cannot_hide_nested_conflicting_versions(
+    tmp_path, monkeypatch, nested_version
+):
+    def run(command, **kwargs):
+        (tmp_path / "probe/snyk.json").write_text(
+            json.dumps(
+                {
+                    "packageManager": "poetry",
+                    "org": "mpieniak01",
+                    "dependencyCount": 1,
+                    "vulnerabilities": [],
+                }
+            )
+        )
+        return SimpleNamespace(
+            returncode=0,
+            stderr="",
+            stdout=(f"   ├─ pyjwt @ 2.15.1\n   │  └─ pyjwt @ {nested_version}\n"),
+        )
+
+    monkeypatch.setattr(profiles.subprocess, "run", run)
+    result = profiles.scan_security_probe(
+        tmp_path, tmp_path / "probe", {"pyjwt": "2.15.1"}, "snyk", "mpieniak01"
+    )
+    assert result["status"] == "ERROR"
+    assert result["conflicting_components"] == {
+        "pyjwt": sorted(["2.15.1", nested_version])
+    }
+
+
+@pytest.mark.parametrize("bad_part", ["application", "bootstrap"])
+def test_installed_security_inventory_never_waives_an_incomplete_subquery(
+    tmp_path, monkeypatch, bad_part
+):
+    def scan(root, directory, packages, snyk, org, **kwargs):
+        return {
+            "status": "ERROR" if directory.name == bad_part else "PASS",
+            "complete": directory.name != bad_part,
+            "observed_components": dict(packages),
+            "findings": {},
+        }
+
+    monkeypatch.setattr(profiles, "scan_security_probe", scan)
+    result = profiles.scan_installed_security_inventory(
+        tmp_path,
+        tmp_path / "out",
+        {"pyjwt": "2.15.1", "pip": "26.2.1"},
+        "snyk",
+        "mpieniak01",
+        "/qualified/bin/python",
+        {},
+    )
+    assert result["status"] == "ERROR"
+    assert result["complete"] is False
+    assert set(result["parts"]) == {"application", "bootstrap"}
+
+
+def test_bootstrap_security_query_declares_wheel_packaging_dependency(
+    tmp_path, monkeypatch
+):
+    packages = {"wheel": "0.48.0", "packaging": "26.0", "pyjwt": "2.15.1"}
+    calls = {}
+
+    def scan(root, directory, selected, snyk, org, **kwargs):
+        calls[directory.name] = dict(selected)
+        if directory.name == "bootstrap":
+            assert selected == {"wheel": "0.48.0", "packaging": "26.0"}
+        return {"complete": True, "observed_components": dict(selected), "findings": {}}
+
+    monkeypatch.setattr(profiles, "scan_security_probe", scan)
+    result = profiles.scan_installed_security_inventory(
+        tmp_path,
+        tmp_path / "out",
+        packages,
+        "snyk",
+        "mpieniak01",
+        "/qualified/bin/python",
+        {},
+    )
+    assert result["complete"] is True
+    assert result["scanned_packages"] == len(packages)
+    assert result["observed_components"] == packages
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["policy", "profile", "organization", "generated", "locks", "environment"],
+)
+def test_security_cli_replaces_old_pass_when_preflight_fails(
+    tmp_path, policy, monkeypatch, capsys, failure
+):
+    config = tmp_path / profiles.POLICY
+    config.parent.mkdir()
+    config.write_text("invalid json" if failure == "policy" else json.dumps(policy))
+    directory = tmp_path / "test-results/security"
+    directory.mkdir(parents=True)
+    report_path = directory / "report.json"
+    report_path.write_text(
+        json.dumps({"status": "PASS", "complete": True, "old": True})
+    )
+    if failure in {"locks", "environment"}:
+        monkeypatch.setattr(profiles, "generate", lambda *args, **kwargs: [])
+    if failure == "environment":
+        monkeypatch.setattr(profiles, "audit_locks", lambda *args: {})
+        lock = tmp_path / policy["profiles"]["light"]["lock"]
+        lock.parent.mkdir(parents=True)
+        lock.write_text(
+            "# Profile policy SHA256: "
+            + profiles.profile_policy_hash(policy, "light")
+            + "\nexample==1.2.3\n"
+        )
+
+    def must_not_scan(*args, **kwargs):
+        pytest.fail("Failed preflight must not query the security scanner")
+
+    monkeypatch.setattr(profiles, "scan_security_probe", must_not_scan)
+    monkeypatch.setattr(
+        profiles.sys,
+        "argv",
+        [
+            "dependency_profiles.py",
+            "audit-security",
+            "--root",
+            str(tmp_path),
+            "--profile",
+            "missing" if failure == "profile" else "light",
+            "--python",
+            str(tmp_path / "missing-python"),
+            "--snyk-org",
+            " " if failure == "organization" else "mpieniak01",
+            "--out-dir",
+            "test-results/security",
+        ],
+    )
+    assert profiles.main() == 2
+    report = json.loads(report_path.read_text())
+    assert report["status"] == "ERROR"
+    assert report["complete"] is False
+    assert report["error"]
+    assert "old" not in report
+    assert "Dependency profile ERROR" in capsys.readouterr().err

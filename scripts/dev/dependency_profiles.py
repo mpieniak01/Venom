@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = "config/dependency-profiles.json"
@@ -428,9 +429,12 @@ def verify_environment(
         text=True,
         check=True,
     )
+    inventory = json.loads(result.stdout)
     installed: dict[str, str] = {
-        canonicalize_name(item["name"]): item["version"]
-        for item in json.loads(result.stdout)
+        canonicalize_name(item["name"]): item["version"] for item in inventory
+    }
+    distribution_names = {
+        canonicalize_name(item["name"]): item["name"] for item in inventory
     }
     check = subprocess.run(
         [python, "-m", "pip", "check"], capture_output=True, text=True, check=False
@@ -472,6 +476,7 @@ def verify_environment(
         else "FAIL",
         "lock_sha256": hashlib.sha256(lock_path.read_bytes()).hexdigest(),
         "packages": installed,
+        "distribution_names": distribution_names,
         "delta": delta,
         "unexpected_packages": unexpected,
         "bootstrap_delta": bootstrap_delta,
@@ -481,15 +486,374 @@ def verify_environment(
     }
 
 
+def security_probe_packages(
+    policy: dict[str, Any], profile: str, locked: dict[str, str], mode: str
+) -> tuple[dict[str, str], list[str]]:
+    """Choose actual lock versions or literal inclusive direct-version minima.
+
+    A minimum probe is a component vulnerability query, not an installable graph.
+    Unbounded declarations use the qualified version and are reported explicitly.
+    """
+    if mode == "lock":
+        return dict(locked), []
+    if mode != "minima":
+        raise ValueError(f"Unknown security probe mode: {mode}")
+    packages = {}
+    unbounded = []
+    for name, line in requirements_for(policy, profile).items():
+        requirement = Requirement(line)
+        if requirement.marker and not requirement.marker.evaluate():
+            continue
+        candidates = [
+            Version(bound.version)
+            for bound in requirement.specifier
+            if bound.operator in {"==", ">="} and "*" not in bound.version
+        ]
+        if candidates:
+            version = str(max(candidates))
+        else:
+            version = locked[name]
+            unbounded.append(name)
+        if version not in requirement.specifier:
+            raise ValueError(f"Cannot represent declared minimum safely: {line}")
+        packages[name] = version
+    return packages, sorted(unbounded)
+
+
+def write_security_probe(
+    directory: Path,
+    packages: dict[str, str],
+    *,
+    installed: bool = False,
+    distribution_names: dict[str, str] | None = None,
+) -> Path:
+    """Export installed Pip components or a no-install Poetry minimum probe."""
+    if not packages:
+        raise ValueError("Cannot scan an empty component inventory")
+    directory.mkdir(parents=True, exist_ok=True)
+    header = "# Diagnostic component inventory; NOT an installation/release lock.\n"
+    if installed:
+        path = directory / "requirements.txt"
+        lines = []
+        for name, version in sorted(packages.items()):
+            # Preserve the distribution spelling needed by Snyk's Pip resolver.
+            spelling = (distribution_names or {}).get(name, name)
+            if canonicalize_name(spelling) != name:
+                raise ValueError(f"Distribution name does not match inventory: {name}")
+            lines.append(f"{spelling}=={version}\n")
+        path.write_text(header + "".join(lines))
+        return path
+    manifest = (
+        header
+        + '[tool.poetry]\nname = "venom-local-security-probe"\n'
+        + 'version = "0.0.0"\ndescription = "Local vulnerability query"\nauthors = []\n'
+        + '[tool.poetry.dependencies]\npython = ">=3.12,<3.13"\n'
+        + "".join(
+            f"{json.dumps(name)} = {json.dumps(version)}\n"
+            for name, version in sorted(packages.items())
+        )
+    )
+    (directory / "pyproject.toml").write_text(manifest)
+    lock = header + "".join(
+        "[[package]]\n"
+        + f"name = {json.dumps(name)}\nversion = {json.dumps(version)}\n"
+        + 'description = "Diagnostic component"\noptional = false\n'
+        + 'python-versions = "*"\n\n'
+        for name, version in sorted(packages.items())
+    )
+    lock += (
+        '[metadata]\nlock-version = "1.1"\npython-versions = ">=3.12,<3.13"\n'
+        + f'content-hash = "{hashlib.sha256(manifest.encode()).hexdigest()}"\n'
+    )
+    path = directory / "poetry.lock"
+    path.write_text(lock)
+    return path
+
+
+def scan_security_probe(
+    root: Path,
+    directory: Path,
+    packages: dict[str, str],
+    snyk: str,
+    org: str,
+    *,
+    python: str | None = None,
+    distribution_names: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    if not org.strip():
+        raise ValueError("An explicit Snyk organization is required")
+    root = root.resolve()
+    directory = directory.resolve()
+    if not directory.is_relative_to(root):
+        raise ValueError("Security probe must remain inside the repository")
+    manager = "pip" if python is not None else "poetry"
+    lock = write_security_probe(
+        directory,
+        packages,
+        installed=python is not None,
+        distribution_names=distribution_names,
+    )
+    output = directory / "snyk.json"
+    # Never let a previous successful report survive a failed invocation.
+    output.unlink(missing_ok=True)
+    command = [
+        snyk,
+        "test",
+        f"--package-manager={manager}",
+        "--print-deps",
+        f"--org={org}",
+        f"--file={lock.relative_to(root)}",
+        f"--policy-path={root / '.snyk'}",
+        f"--json-file-output={output}",
+    ]
+    if python is not None:
+        command.append(f"--command={python}")
+    try:
+        result = subprocess.run(
+            command, cwd=root, capture_output=True, text=True, timeout=300, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"status": "ERROR", "complete": False, "error": str(error)}
+    (directory / "stdout.log").write_text(result.stdout)
+    (directory / "stderr.log").write_text(result.stderr)
+    try:
+        payload = json.loads(output.read_text())
+    except (OSError, ValueError):
+        payload = {}
+    vulnerabilities = (
+        payload.get("vulnerabilities") if isinstance(payload, dict) else None
+    )
+    # Count equality alone cannot establish which component versions were sent.
+    # In particular, Snyk's Poetry parser omits bootstrap tools such as pip.
+    versions_by_name: dict[str, set[str]] = {}
+    for name, version in re.findall(
+        r"(?m)^[ \t│]*[├└]─ ([A-Za-z0-9_.-]+) @ ([^\s]+)[ \t]*$",
+        result.stdout,
+    ):
+        versions_by_name.setdefault(canonicalize_name(name), set()).add(version)
+    conflicting_components = {
+        name: sorted(versions)
+        for name, versions in versions_by_name.items()
+        if len(versions) != 1
+    }
+    observed: dict[str, str] = {
+        name: next(iter(versions))
+        for name, versions in versions_by_name.items()
+        if len(versions) == 1
+    }
+    component_delta = inventory_delta(packages, observed)
+    unexpected_components = sorted(set(observed) - set(packages))
+    complete = (
+        not component_delta
+        and not conflicting_components
+        and not unexpected_components
+        and isinstance(vulnerabilities, list)
+        and all(
+            isinstance(v, dict) and isinstance(v.get("id"), str)
+            for v in vulnerabilities
+        )
+        and payload.get("dependencyCount") == len(packages)
+        and payload.get("packageManager") == manager
+        and payload.get("org") == org
+        and not payload.get("error")
+        and (
+            (result.returncode == 0 and not vulnerabilities)
+            or (result.returncode == 1 and bool(vulnerabilities))
+        )
+    )
+    rows = vulnerabilities if isinstance(vulnerabilities, list) else []
+    findings = {
+        v["id"]: {
+            "package": v.get("packageName", v.get("moduleName")),
+            "version": v.get("version"),
+            "severity": v.get("severity"),
+            "fixed_in": v.get("fixedIn", []),
+        }
+        for v in rows
+        if isinstance(v, dict) and isinstance(v.get("id"), str)
+    }
+    return {
+        "status": ("FINDINGS" if findings else "PASS") if complete else "ERROR",
+        "complete": complete,
+        "exit_code": result.returncode,
+        "organization": payload.get("org") if isinstance(payload, dict) else None,
+        "component_delta": component_delta,
+        "conflicting_components": conflicting_components,
+        "unexpected_components": unexpected_components,
+        "observed_components": observed,
+        "expected_packages": len(packages),
+        "scanned_packages": payload.get("dependencyCount")
+        if isinstance(payload, dict)
+        else None,
+        "findings": findings,
+    }
+
+
+def scan_installed_security_inventory(
+    root: Path,
+    directory: Path,
+    packages: dict[str, str],
+    snyk: str,
+    org: str,
+    python: str,
+    distribution_names: dict[str, str],
+) -> dict[str, Any]:
+    """Cover the exact installed inventory without Poetry's bootstrap omissions.
+
+    A flat application query avoids Pip's unresolved transitive name aliases.
+    Bootstrap tools omitted by Poetry are queried through the qualified Python.
+    No incomplete subquery or unknown component is accepted as full coverage.
+    """
+    bootstrap_names = {"pip", "setuptools", "distribute", "wheel"}
+    parts = {}
+    for name, bootstrap in (("application", False), ("bootstrap", True)):
+        selected = {
+            k: v for k, v in packages.items() if (k in bootstrap_names) == bootstrap
+        }
+        if bootstrap and "packaging" in packages:
+            # wheel depends on packaging. Include this verified version too so
+            # the Pip query's transitive closure is fully declared. Application
+            # coverage can overlap here; both queries must agree on the version.
+            selected["packaging"] = packages["packaging"]
+        if selected:
+            parts[name] = scan_security_probe(
+                root,
+                directory / name,
+                selected,
+                snyk,
+                org,
+                python=python if bootstrap else None,
+                distribution_names=distribution_names if bootstrap else None,
+            )
+    observed = {
+        name: version
+        for part in parts.values()
+        for name, version in part.get("observed_components", {}).items()
+    }
+    findings = {
+        key: value
+        for part in parts.values()
+        for key, value in part.get("findings", {}).items()
+    }
+    delta = inventory_delta(packages, observed)
+    complete = (
+        bool(parts)
+        and not delta
+        and set(observed) == set(packages)
+        and all(part["complete"] for part in parts.values())
+    )
+    return {
+        "status": ("FINDINGS" if findings else "PASS") if complete else "ERROR",
+        "complete": complete,
+        "organization": org,
+        "expected_packages": len(packages),
+        "scanned_packages": len(observed),
+        "component_delta": delta,
+        "observed_components": observed,
+        "findings": findings,
+        "parts": parts,
+    }
+
+
+def audit_security_inputs(
+    root: Path,
+    policy: dict[str, Any],
+    profile: str,
+    python: str,
+    directory: Path,
+    snyk: str,
+    org: str,
+) -> dict[str, Any]:
+    """Audit the installed candidate and declared versions before publication."""
+    if generate(root, policy, check=True):
+        raise ValueError("Generated inputs are stale; run generate first")
+    audit_locks(root, policy)
+    environment = verify_environment(root, policy, profile, python)
+    report: dict[str, Any] = {
+        "profile": profile,
+        "scope": "LOCAL_INSTALLED_AND_MINIMUM_COMPONENT_QUERIES",
+        "not_an_scm_emulator": True,
+        "organization": org,
+        "environment": environment,
+        "status": "ERROR",
+        "complete": False,
+        "probes": {},
+    }
+    if environment["status"] != "PASS":
+        return report
+    locked = read_lock(root / policy["profiles"][profile]["lock"])
+    report["input_sha256"] = {
+        path: hashlib.sha256((root / path).read_bytes()).hexdigest()
+        for path in (
+            POLICY,
+            policy["profiles"][profile]["input"],
+            policy["profiles"][profile]["lock"],
+            ".snyk",
+        )
+    }
+    installed_packages = environment["packages"]
+    report["probes"]["lock"] = {
+        **scan_installed_security_inventory(
+            root,
+            directory / "lock",
+            installed_packages,
+            snyk,
+            org,
+            python,
+            environment.get("distribution_names", {}),
+        ),
+        "packages": installed_packages,
+        "qualified_fallback_without_inclusive_minimum": [],
+    }
+    packages, unbounded = security_probe_packages(policy, profile, locked, "minima")
+    report["probes"]["minima"] = {
+        **scan_security_probe(root, directory / "minima", packages, snyk, org),
+        "packages": packages,
+        "qualified_fallback_without_inclusive_minimum": unbounded,
+    }
+    report["complete"] = all(p["complete"] for p in report["probes"].values())
+    if report["complete"]:
+        report["status"] = (
+            "FINDINGS"
+            if any(p["status"] == "FINDINGS" for p in report["probes"].values())
+            else "PASS"
+        )
+    return report
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("generate", "lock", "verify", "audit-locks"))
+    parser.add_argument(
+        "action",
+        choices=("generate", "lock", "verify", "audit-locks", "audit-security"),
+    )
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--profile", default="light")
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--out-dir", type=Path)
+    parser.add_argument("--snyk", default="snyk")
+    parser.add_argument("--snyk-org")
     args = parser.parse_args()
+    security_directory: Path | None = None
     try:
+        if args.action == "audit-security":
+            if args.out_dir is None:
+                raise ValueError("audit-security requires --out-dir for local evidence")
+            candidate = safe_path(args.root, str(args.out_dir))
+            if not any(
+                candidate.is_relative_to((args.root / name).resolve())
+                for name in ("docs_dev", "test-results")
+            ):
+                raise ValueError(
+                    "Security evidence must remain in docs_dev or test-results"
+                )
+            security_directory = candidate
+            security_directory.mkdir(parents=True, exist_ok=True)
+            # Invalidate prior qualification before any policy/environment checks.
+            (security_directory / "report.json").unlink(missing_ok=True)
+            if not args.snyk_org or not args.snyk_org.strip():
+                raise ValueError("audit-security requires --snyk-org matching SCM")
         policy = load_policy(args.root)
         if args.profile not in policy["profiles"]:
             raise ValueError(f"Unknown profile: {args.profile}")
@@ -507,6 +871,31 @@ def main() -> int:
         if args.action == "audit-locks":
             print(json.dumps(audit_locks(args.root, policy), sort_keys=True))
             return 0
+        if args.action == "audit-security":
+            assert security_directory is not None
+            report = audit_security_inputs(
+                args.root,
+                policy,
+                args.profile,
+                args.python,
+                security_directory,
+                args.snyk,
+                args.snyk_org,
+            )
+            (security_directory / "report.json").write_text(
+                json.dumps(report, indent=2, sort_keys=True) + "\n"
+            )
+            print(
+                json.dumps(
+                    {
+                        "profile": args.profile,
+                        "status": report["status"],
+                        "complete": report["complete"],
+                        "report": str(security_directory / "report.json"),
+                    }
+                )
+            )
+            return 2 if not report["complete"] else int(report["status"] != "PASS")
         if args.action == "lock":
             print(lock_profile(args.root, policy, args.profile, args.python))
             return 0
@@ -515,6 +904,26 @@ def main() -> int:
         return int(report["status"] != "PASS")
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         print(f"Dependency profile ERROR: {error}", file=sys.stderr)
+        if args.action == "audit-security":
+            if security_directory is not None:
+                try:
+                    (security_directory / "report.json").write_text(
+                        json.dumps(
+                            {
+                                "profile": args.profile,
+                                "organization": args.snyk_org,
+                                "status": "ERROR",
+                                "complete": False,
+                                "error": str(error),
+                            },
+                            indent=2,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                except OSError as report_error:
+                    print(f"Security report ERROR: {report_error}", file=sys.stderr)
+            return 2
         return 1
 
 

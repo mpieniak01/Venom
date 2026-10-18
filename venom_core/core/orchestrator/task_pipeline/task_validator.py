@@ -6,7 +6,11 @@ from uuid import UUID
 from venom_core.config import SETTINGS
 from venom_core.core.models import TaskRequest
 from venom_core.core.slash_commands import normalize_forced_provider
-from venom_core.utils.llm_runtime import compute_llm_config_hash, get_active_llm_runtime
+from venom_core.utils.llm_runtime import (
+    compute_llm_config_hash,
+    get_active_llm_runtime,
+    resolve_local_worker_endpoint,
+)
 
 if TYPE_CHECKING:
     from venom_core.core.orchestrator.orchestrator_core import Orchestrator
@@ -83,15 +87,17 @@ class TaskValidator:
         runtime_info = get_active_llm_runtime()
         normalized_forced_provider = normalize_forced_provider(forced_provider)
 
-        # ONNX runtime is handled via dedicated in-process adapter paths.
-        # Standard orchestrator task path currently depends on SK OpenAI-compatible
-        # connectors and may not execute ONNX models correctly.
-        if runtime_info.provider == "onnx":
+        # ONNX now uses the same MAF HTTP contract as other isolated workers.
+        # Keep rejecting disabled or missing workers; do not load a model in core.
+        if runtime_info.provider == "onnx" and (
+            not SETTINGS.ONNX_LLM_ENABLED
+            or not resolve_local_worker_endpoint(runtime_info.endpoint)
+        ):
             envelope = self.orch._build_error_envelope(
                 error_code="runtime_not_supported",
                 error_message=(
-                    "Runtime ONNX nie jest jeszcze obsługiwany w trybie zadaniowym "
-                    "(Normal/Complex). Przełącz na vLLM/Ollama lub użyj trybu Direct."
+                    "Runtime ONNX wymaga włączonego izolowanego workera HTTP "
+                    "(ONNX_LLM_ENABLED i ONNX_LLM_ENDPOINT)."
                 ),
                 error_details={
                     "active_provider": runtime_info.provider,

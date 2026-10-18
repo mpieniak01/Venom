@@ -319,7 +319,19 @@ async def test_audio_stream_native_pipeline_missing_engine_and_incomplete_result
     assert update_calls[0]["audio_input_status"] == "failed"
 
 
-def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("temperature", "top_p", "expected_sampling"),
+    [
+        (0.2, 0.9, True),
+        (0, None, False),
+        (0, 0.9, False),
+        (None, 0.9, True),
+        (None, None, False),
+    ],
+)
+def test_chat_completions_uses_pydantic_payload_and_sampling(
+    monkeypatch, temperature, top_p, expected_sampling
+) -> None:
     captured: dict[str, object] = {}
 
     class EngineStub:
@@ -344,8 +356,8 @@ def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> Non
                 {"role": "user", "content": [{"type": "text", "text": "Ile to 5*5?"}]}
             ],
             "max_tokens": 77,
-            "temperature": 0.2,
-            "top_p": 0.9,
+            "temperature": temperature,
+            "top_p": top_p,
         },
     )
 
@@ -353,9 +365,9 @@ def test_chat_completions_uses_pydantic_payload_and_sampling(monkeypatch) -> Non
     body = response.json()
     assert body["choices"][0]["message"]["content"] == "to jest odpowiedz"
     assert captured["max_new_tokens"] == 77
-    assert captured["do_sample"] is True
-    assert captured["temperature"] == 0.2
-    assert captured["top_p"] == 0.9
+    assert captured["do_sample"] is expected_sampling
+    assert captured["temperature"] == temperature
+    assert captured["top_p"] == top_p
     assert body["usage"]["prompt_tokens"] >= 1
     assert body["usage"]["completion_tokens"] == max(1, len("to jest odpowiedz") // 4)
 

@@ -1880,7 +1880,7 @@ async def introspection_probe(payload: IntrospectionProbeRequest) -> dict[str, o
 
 @app.post("/v1/chat/completions")
 async def chat_completions(payload: ChatCompletionRequest) -> dict:
-    """OpenAI-compatible text chat endpoint for Semantic Kernel connectors."""
+    """OpenAI-compatible text chat endpoint for agent connectors."""
     try:
         daemon = get_daemon()
     except RuntimeError as e:
@@ -1927,7 +1927,11 @@ async def chat_completions(payload: ChatCompletionRequest) -> dict:
                 if temperature_raw is not None
                 else None,
                 top_p=float(top_p_raw) if top_p_raw is not None else None,
-                do_sample=bool(temperature_raw is not None or top_p_raw is not None),
+                # OpenAI temperature=0 selects greedy decoding, also with top_p.
+                do_sample=bool(
+                    temperature_raw != 0
+                    and (temperature_raw is not None or top_p_raw is not None)
+                ),
                 enable_thinking=bool(daemon_params["enable_thinking"]),
                 cache_implementation=daemon_params["cache_implementation"],
             )

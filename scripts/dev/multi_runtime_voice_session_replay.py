@@ -89,11 +89,11 @@ async def _run(args: argparse.Namespace) -> int:
     print(f"POST {respond_url}")
 
     timeout = httpx.Timeout(args.timeout, connect=min(5.0, args.timeout))
-    with resolved_audio_path.open("rb") as audio_handle:
-        files = {"audio": (resolved_audio_path.name, audio_handle, "audio/wav")}
-        data = {"request": json.dumps(payload, ensure_ascii=False)}
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(respond_url, data=data, files=files)
+    audio_bytes = await asyncio.to_thread(resolved_audio_path.read_bytes)
+    files = {"audio": (resolved_audio_path.name, audio_bytes, "audio/wav")}
+    data = {"request": json.dumps(payload, ensure_ascii=False)}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(respond_url, data=data, files=files)
 
     if response.status_code >= 400:
         print(f"HTTP {response.status_code}")

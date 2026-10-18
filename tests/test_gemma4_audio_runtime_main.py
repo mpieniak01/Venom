@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -608,3 +609,120 @@ async def test_respond_returns_503_before_inflight_when_model_not_loaded(
     assert exc_info.value.status_code == 503
     assert calls["inc"] == 0
     assert calls["dec"] == 0
+
+
+@pytest.mark.asyncio
+async def test_lifespan_waits_for_startup_before_unloading(monkeypatch):
+    started = asyncio.Event()
+    finish_loading = asyncio.Event()
+    events = []
+
+    async def load():
+        started.set()
+        await finish_loading.wait()
+        events.append("loaded")
+
+    daemon = SimpleNamespace(unload_all=lambda: events.append("unloaded"))
+    executor = MagicMock()
+    monkeypatch.setattr(runtime_main, "_startup_model_loader", load)
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+    monkeypatch.setattr(runtime_main, "_PROBE_EXECUTOR", executor)
+    context = runtime_main.lifespan(runtime_main.app)
+    await context.__aenter__()
+    await started.wait()
+    shutdown = asyncio.create_task(context.__aexit__(None, None, None))
+    await asyncio.sleep(0)
+    assert not shutdown.done()
+    assert events == []
+    finish_loading.set()
+    await asyncio.wait_for(shutdown, timeout=2)
+    assert events == ["loaded", "unloaded"]
+    executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+
+@pytest.mark.asyncio
+async def test_lifespan_cleans_up_after_request_context_error(monkeypatch):
+    daemon = SimpleNamespace(unload_all=MagicMock())
+    executor = MagicMock()
+    monkeypatch.setattr(runtime_main, "_startup_model_loader", AsyncMock())
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+    monkeypatch.setattr(runtime_main, "_PROBE_EXECUTOR", executor)
+    with pytest.raises(ValueError, match="context error"):
+        async with runtime_main.lifespan(runtime_main.app):
+            raise ValueError("context error")
+    daemon.unload_all.assert_called_once()
+    executor.shutdown.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_restart_task_retained_until_exec_and_failure_reported(
+    monkeypatch, caplog
+):
+    daemon = SimpleNamespace(unload_all=MagicMock())
+    monkeypatch.setattr(runtime_main, "get_daemon", lambda: daemon)
+    lock = MagicMock()
+    monkeypatch.setattr(
+        runtime_main,
+        "_acquire_lifecycle_lock_after_drain",
+        AsyncMock(return_value=lock),
+    )
+    monkeypatch.setattr(runtime_main, "_RESTART_TASKS", set())
+    executed = MagicMock(side_effect=OSError("exec failed"))
+    monkeypatch.setattr(runtime_main.os, "execv", executed)
+    response = await runtime_main.daemon_restart()
+    assert response.status == "restarting"
+    assert len(runtime_main._RESTART_TASKS) == 1
+    task = next(iter(runtime_main._RESTART_TASKS))
+    result = await asyncio.gather(task, return_exceptions=True)
+    await asyncio.sleep(0)
+    assert isinstance(result[0], OSError)
+    executed.assert_called_once_with(
+        runtime_main.sys.executable,
+        [runtime_main.sys.executable] + runtime_main.sys.argv,
+    )
+    assert not runtime_main._RESTART_TASKS
+    assert "Daemon process restart failed" in caplog.text
+    lock.release.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_voice_replay_reads_audio_off_event_loop(monkeypatch, tmp_path):
+    import threading
+
+    from scripts.dev import multi_runtime_voice_session_replay as replay
+
+    audio_path = tmp_path / "recording.wav"
+    audio_path.write_bytes(b"recorded wav")
+    event_loop_thread = threading.get_ident()
+    read_threads = []
+    original_read = Path.read_bytes
+
+    def read_bytes(path):
+        read_threads.append(threading.get_ident())
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"ok": True}
+    client = AsyncMock()
+    client.post.return_value = response
+    context = AsyncMock()
+    context.__aenter__.return_value = client
+    monkeypatch.setattr(replay.httpx, "AsyncClient", lambda **kwargs: context)
+    args = SimpleNamespace(
+        session_dir=None,
+        audio=str(audio_path),
+        base_url="http://localhost:8900",
+        task="question",
+        question="",
+        system_prompt="",
+        max_new_tokens=8,
+        timeout=5,
+    )
+    assert await replay._run(args) == 0
+    assert read_threads and all(thread != event_loop_thread for thread in read_threads)
+    assert client.post.call_args.kwargs["files"]["audio"] == (
+        "recording.wav",
+        b"recorded wav",
+        "audio/wav",
+    )

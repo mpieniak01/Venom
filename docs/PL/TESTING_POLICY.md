@@ -487,3 +487,17 @@ Przykłady aktualnie egzekwowane:
 - `tests/test_mcp_manager.py` używa `pytest.importorskip("mcp")`
 - `tests/test_model_discovery.py` używa `pytest.importorskip("bs4")` w ścieżce scrapingowej
 - job backend-lite instaluje `ripgrep` dla `scripts/resolve_sonar_new_code_tests.py`
+
+## Wspólna regresja przed publikacją poprawek
+
+Przy równoległych poprawkach runtime, testów i interfejsu przypisz workerom rozłączne pliki. Jeden koordynator odpowiada za wspólne metadane testów i integrację Git. Przed commitem zatrzymaj wszystkie zapisy plików śledzonych: pre-commit może tymczasowo odłożyć także niezapisane w commicie zmiany innego workera.
+
+Po celowanych testach każdej spójnej zmiany wykonaj regresję połączonego commitu przed publikacją gałęzi wydania:
+
+- `make pr-fast`, `mypy venom_core`, kontrolę katalogu/grup i backendowy zestaw odpowiadający main (`make sonar-reports-backend`). Pominięte testy zależne od środowiska raportuj osobno.
+- Lint, TypeScript, wszystkie testy jednostkowe i komponentowe frontendu, build i odpowiednie scenariusze Playwright. CSS sprawdzaj w prawdziwej przeglądarce: jasny/ciemny motyw, wąski/szeroki ekran i fokus klawiatury. Asercje nazw klas nie potwierdzają zgodności wyglądu.
+- Zgodność publicznych aliasów, obsługę Promise/błędów callbacków, kolejność SSE, budżety timeout i migawki stanu podczas `await`. Zachowaj sekwencyjny retry/backoff, jeśli następna operacja zależy od poprzedniej.
+
+Przy rozdzielaniu złożonych asercji zachowaj każdy pierwotny warunek. Dane niezwiązane z oczekiwanym wyjątkiem przygotuj przed `pytest.raises`, aby tylko właściwa operacja mogła spełnić test. Fixtures i `monkeypatch` mają przywracać stan globalny; celowo dodany atrybut musi zniknąć przy teardown.
+
+Zapisz testowaną rewizję, polecenia, rzeczywiste kody wyjścia i pominięcia środowiskowe. Potwierdź zgodność końcowego drzewa wydania z drzewem integracji. Bramki usługi wymagają obsługiwanego kontekstu PR; sam upload, niedostępna bramka i pominięty zestaw nie oznaczają PASS. Uwagi reguł chroniących rzeczywisty kontrakt wymagają indywidualnych dowodów zamiast globalnych wyłączeń lub obniżania progów.

@@ -245,6 +245,7 @@ tests/test_orchestrator_compat_exports.py
 tests/test_orchestrator_compat_module.py
 tests/test_orchestrator_components.py
 tests/test_orchestrator_core_scenarios.py
+tests/test_orchestrator_council.py
 tests/test_orchestrator_council_integration.py
 tests/test_orchestrator_decision_gates.py
 tests/test_orchestrator_flows_regression.py
@@ -311,6 +312,7 @@ tests/test_skills_init.py
 tests/test_slash_commands.py
 tests/test_sonar_agents_init.py
 tests/test_sonar_route_selection.py
+tests/test_sonar_runtime_regressions.py
 tests/test_source_distributions.py
 tests/test_stack_stability_audit.py
 tests/test_strategist_agent.py

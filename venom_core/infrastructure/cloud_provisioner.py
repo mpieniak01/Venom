@@ -166,27 +166,23 @@ class CloudProvisioner:
             )
 
         try:
-            async with asyncio.timeout(self.timeout):
-                async with asyncssh.connect(**connect_kwargs) as conn:
-                    result = await conn.run(command, check=False)
-                    raw_stdout = result.stdout if result.stdout else ""
-                    raw_stderr = result.stderr if result.stderr else ""
-                    stdout = (
-                        raw_stdout.decode()
-                        if isinstance(raw_stdout, bytes)
-                        else raw_stdout
-                    )
-                    stderr = (
-                        raw_stderr.decode()
-                        if isinstance(raw_stderr, bytes)
-                        else raw_stderr
-                    )
-                    exit_code = result.exit_status or 0
+            async with (
+                asyncio.timeout(self.timeout),
+                asyncssh.connect(**connect_kwargs) as conn,
+            ):
+                result = await conn.run(command, check=False)
+                raw_stdout = result.stdout if result.stdout else ""
+                raw_stderr = result.stderr if result.stderr else ""
+                stdout = (
+                    raw_stdout.decode() if isinstance(raw_stdout, bytes) else raw_stdout
+                )
+                stderr = (
+                    raw_stderr.decode() if isinstance(raw_stderr, bytes) else raw_stderr
+                )
+                exit_code = result.exit_status or 0
 
-                    logger.debug(
-                        f"SSH Command '{command[:50]}...' exit_code={exit_code}"
-                    )
-                    return stdout, stderr, exit_code
+                logger.debug(f"SSH Command '{command[:50]}...' exit_code={exit_code}")
+                return stdout, stderr, exit_code
 
         except asyncio.TimeoutError:
             raise CloudProvisionerError(
@@ -314,38 +310,40 @@ class CloudProvisioner:
             )
 
         try:
-            async with asyncio.timeout(self.timeout):
-                async with asyncssh.connect(**connect_kwargs) as conn:
-                    # Utworzenie katalogu
-                    await conn.run(f"mkdir -p {remote_dir}", check=True)
+            async with (
+                asyncio.timeout(self.timeout),
+                asyncssh.connect(**connect_kwargs) as conn,
+            ):
+                # Utworzenie katalogu
+                await conn.run(f"mkdir -p {remote_dir}", check=True)
 
-                    # Przesłanie pliku
-                    async with conn.start_sftp_client() as sftp:
-                        await sftp.put(str(compose_path), remote_compose)
-                        logger.info(f"✓ Plik przesłany do {remote_compose}")
+                # Przesłanie pliku
+                async with conn.start_sftp_client() as sftp:
+                    await sftp.put(str(compose_path), remote_compose)
+                    logger.info(f"✓ Plik przesłany do {remote_compose}")
 
-                    # Uruchomienie stacku
-                    result = await conn.run(
-                        f"cd {remote_dir} && docker-compose up -d", check=False
+                # Uruchomienie stacku
+                result = await conn.run(
+                    f"cd {remote_dir} && docker-compose up -d", check=False
+                )
+
+                if result.exit_status != 0:
+                    stderr_output = (
+                        result.stderr.decode()
+                        if isinstance(result.stderr, bytes)
+                        else result.stderr
+                    )
+                    raise CloudProvisionerError(
+                        f"docker-compose up failed: {stderr_output}"
                     )
 
-                    if result.exit_status != 0:
-                        stderr_output = (
-                            result.stderr.decode()
-                            if isinstance(result.stderr, bytes)
-                            else result.stderr
-                        )
-                        raise CloudProvisionerError(
-                            f"docker-compose up failed: {stderr_output}"
-                        )
-
-                    logger.info(f"✓ Stack '{stack_name}' uruchomiony pomyślnie")
-                    return {
-                        "status": "deployed",
-                        "stack_name": stack_name,
-                        "remote_dir": remote_dir,
-                        "host": host,
-                    }
+                logger.info(f"✓ Stack '{stack_name}' uruchomiony pomyślnie")
+                return {
+                    "status": "deployed",
+                    "stack_name": stack_name,
+                    "remote_dir": remote_dir,
+                    "host": host,
+                }
 
         except asyncio.TimeoutError:
             raise CloudProvisionerError(f"Timeout podczas deploymentu na {host}")

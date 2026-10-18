@@ -105,8 +105,7 @@ def test_lexicon_regex_and_phrase_scoring_helpers():
     assert scores[0][1] >= scores[1][1]
 
 
-@pytest.mark.asyncio
-async def test_classify_from_keywords_for_help_and_time_and_infra():
+def test_classify_from_keywords_for_help_and_time_and_infra():
     kernel = MagicMock()
     service = MagicMock()
     service.get_chat_message_content = AsyncMock(side_effect=Exception("no llm"))
@@ -116,19 +115,19 @@ async def test_classify_from_keywords_for_help_and_time_and_infra():
     manager._append_user_phrase = MagicMock()
 
     assert (
-        await manager._classify_from_keywords(
+        manager._classify_from_keywords(
             manager._normalize_text("co potrafisz"), "co potrafisz", "pl"
         )
         == "HELP_REQUEST"
     )
     assert (
-        await manager._classify_from_keywords(
+        manager._classify_from_keywords(
             manager._normalize_text("ktora godzina"), "ktora godzina", "pl"
         )
         == "TIME_REQUEST"
     )
     assert (
-        await manager._classify_from_keywords(
+        manager._classify_from_keywords(
             manager._normalize_text("status usług"), "status usług", "pl"
         )
         == "INFRA_STATUS"
@@ -287,7 +286,7 @@ def test_requires_tool_uses_tool_required_intents():
 async def test_classify_intent_with_llm_error_falls_back_to_help():
     manager = IntentManager(kernel=MagicMock())
     manager._classify_from_lexicon = MagicMock(return_value="")
-    manager._classify_from_keywords = AsyncMock(return_value="")
+    manager._classify_from_keywords = MagicMock(return_value="")
     manager._classify_from_llm = AsyncMock(side_effect=RuntimeError("llm fail"))
 
     result = await manager.classify_intent("co potrafisz")

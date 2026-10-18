@@ -1228,10 +1228,8 @@ def convert_dataset_file_handler(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (ValueError, OSError) as exc:
         detail = str(exc)
-        if (
-            detail.startswith("Invalid file_id:")
-            or detail == "Conversion requires source file"
-        ):
+        invalid_file_id = detail.startswith("Invalid file_id:")
+        if invalid_file_id or detail == "Conversion requires source file":
             raise HTTPException(status_code=400, detail=detail) from exc
         raise HTTPException(
             status_code=400, detail=f"Conversion failed: {detail}"

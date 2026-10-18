@@ -208,9 +208,13 @@ def build_hidden_prompts_context(
     for idx, item in enumerate(items, 1):
         prompt = (item.get("prompt") or "")[:300]
         response = (item.get("approved_response") or "")[:400]
-        lines.append(f"\n[Hidden {idx}]")
-        lines.append(f"Prompt: {prompt}")
-        lines.append(f"Odpowiedź: {response}")
+        lines.extend(
+            [
+                f"\n[Hidden {idx}]",
+                f"Prompt: {prompt}",
+                f"Odpowiedź: {response}",
+            ]
+        )
     return "\n".join(lines)
 
 

@@ -463,3 +463,17 @@ Examples currently enforced:
 - `tests/test_mcp_manager.py` uses `pytest.importorskip("mcp")`
 - `tests/test_model_discovery.py` uses `pytest.importorskip("bs4")` in scraping-specific path
 - backend-lite job installs `ripgrep` for `scripts/resolve_sonar_new_code_tests.py`
+
+## Integrated remediation before publication
+
+For a remediation spanning runtime code, existing tests and the UI, assign disjoint file ownership to parallel workers. One coordinator owns shared test metadata and Git integration. Pause all tracked writes before commits: pre-commit may temporarily stash every unstaged tracked change, including another worker's files.
+
+Validate each coherent change locally, then run the complete integrated regression on a recorded commit before publishing release branches:
+
+- `make pr-fast`, `mypy venom_core`, catalog/group checks and the main-equivalent backend suite (`make sonar-reports-backend`). Record skipped environment-dependent tests separately from passing tests.
+- Frontend lint, TypeScript, all unit and component tests, build and applicable Playwright scenarios. Test CSS changes in a real browser with dark/light themes, narrow/wide viewports and keyboard focus; class-string assertions alone do not establish visual compatibility.
+- Review public aliases, callback Promise/error behavior, SSE event order, timeout budgets and state snapshots across `await`. Keep retry/backoff sequential where the next operation depends on the previous result.
+
+Preserve every original assertion when splitting composite checks. In exception tests, prepare unrelated inputs before `pytest.raises` so only the intended operation can satisfy it. Use fixtures or `monkeypatch` to restore global state; an intentionally added attribute must also disappear during teardown.
+
+Record the tested revision, commands, actual exit codes and environmental omissions. Verify that the final release tree matches the integrated tree. Hosted quality gates still require their supported PR context; a local upload, unavailable gate or skipped suite is not a passing result. Rule findings that protect a real contract require individual evidence rather than broad suppressions or relaxed thresholds.

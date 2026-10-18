@@ -220,10 +220,8 @@ def runtime_service_action(service: str, action: str):
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Nieznana usługa: "
-                    f"{service}. Dostępne: backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks, academy, intent_embedding_router"
-                ),
+                detail="Nieznana usługa: "
+                f"{service}. Dostępne: backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks, academy, intent_embedding_router",
             )
 
         if action not in ["start", "stop", "restart"]:

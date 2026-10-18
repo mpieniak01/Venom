@@ -2233,22 +2233,9 @@ async def get_audio_route_profile():
     return _voice_route_config_snapshot()
 
 
-@app.post(
-    "/api/v1/audio/routes/profile",
-    responses={
-        400: {"description": "Invalid voice route profile or audio decoder contract."},
-        403: {"description": "Endpoint only available from localhost."},
-        500: {"description": "Failed to persist audio route configuration."},
-    },
-)
-async def update_audio_route_profile(
-    payload: AudioRouteProfileUpdateRequest,
-    request: Request,
-):
-    """Aktualizuje konfigurację toru voice i dekoderów audio."""
-    _require_localhost_request(request)
-    current = _voice_route_config_snapshot()
-
+def _normalize_audio_route_update(
+    payload: AudioRouteProfileUpdateRequest, current: _VoiceRouteConfigSnapshot
+) -> tuple[str, str, list[str]]:
     if payload.voice_route_profile is None:
         voice_route_profile = str(current["voice_route_profile"])
     else:
@@ -2298,6 +2285,29 @@ async def update_audio_route_profile(
         voice_route_profile=voice_route_profile,
         audio_decoder_profile=audio_decoder_profile,
         audio_decoder_chain=audio_decoder_chain,
+    )
+
+    return voice_route_profile, audio_decoder_profile, audio_decoder_chain
+
+
+@app.post(
+    "/api/v1/audio/routes/profile",
+    responses={
+        400: {"description": "Invalid voice route profile or audio decoder contract."},
+        403: {"description": "Endpoint only available from localhost."},
+        500: {"description": "Failed to persist audio route configuration."},
+    },
+)
+async def update_audio_route_profile(
+    payload: AudioRouteProfileUpdateRequest,
+    request: Request,
+):
+    """Aktualizuje konfigurację toru voice i dekoderów audio."""
+    _require_localhost_request(request)
+    current = _voice_route_config_snapshot()
+
+    voice_route_profile, audio_decoder_profile, audio_decoder_chain = (
+        _normalize_audio_route_update(payload, current)
     )
 
     updates = {

@@ -88,7 +88,8 @@ def test_knowledge_lessons_helpers_cover_success_and_failure_paths() -> None:
     start, end = ksvc.parse_iso_range(
         start="2026-01-01T00:00:00Z", end="2026-01-02T00:00:00Z"
     )
-    assert start.tzinfo is not None and end.tzinfo is not None
+    assert start.tzinfo is not None
+    assert end.tzinfo is not None
 
     payload = ksvc.prune_lessons_by_range(
         lessons_store=store,
@@ -112,14 +113,17 @@ def test_knowledge_lessons_helpers_cover_success_and_failure_paths() -> None:
         == "success"
     )
 
+    prepared_lessons_store = _FailingLessonsStore()
     with pytest.raises(RuntimeError):
-        ksvc.purge_all_lessons(lessons_store=_FailingLessonsStore(), logger=logger)
+        ksvc.purge_all_lessons(lessons_store=prepared_lessons_store, logger=logger)
 
 
 def test_stream_state_helper_decisions_and_packet_update() -> None:
     state = ssvc.SimpleStreamState(chunks=[])
     ssvc.reset_stream_attempt_state(state)
-    assert not state.retry_requested and not state.failed and not state.completed
+    assert not state.retry_requested
+    assert not state.failed
+    assert not state.completed
 
     assert ssvc.apply_post_attempt_action("retry") == (True, False)
     assert ssvc.apply_post_attempt_action("done") == (False, True)
@@ -156,7 +160,6 @@ def test_stream_state_helper_decisions_and_packet_update() -> None:
     first_chunks: list[str] = []
     events = ssvc.update_stream_state_from_packet(
         packet={"x": 1},
-        runtime=SimpleNamespace(provider="ollama"),
         state=state,
         ollama_telemetry={},
         extract_ollama_telemetry_fn=lambda _p: {"eval_count": 5},
@@ -267,7 +270,8 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
         )
     ]
     assert state3.failed
-    assert emitted_fail and emitted_fail[0].startswith("event: error")
+    assert emitted_fail
+    assert emitted_fail[0].startswith("event: error")
 
     state4 = ssvc.SimpleStreamState(chunks=[])
     emitted_non_retryable = [
@@ -295,7 +299,8 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
         )
     ]
     assert state4.failed
-    assert emitted_non_retryable and emitted_non_retryable[0].startswith("event: error")
+    assert emitted_non_retryable
+    assert emitted_non_retryable[0].startswith("event: error")
 
 
 def test_tasks_service_metrics_and_status_values(monkeypatch) -> None:
@@ -417,7 +422,6 @@ def test_update_stream_state_from_packet_non_ollama_and_no_events() -> None:
     state = ssvc.SimpleStreamState(chunks=[])
     events = ssvc.update_stream_state_from_packet(
         packet={},
-        runtime=SimpleNamespace(provider="openai"),
         state=state,
         ollama_telemetry={"eval_count": 1},
         extract_ollama_telemetry_fn=lambda _p: {"eval_count": 9},

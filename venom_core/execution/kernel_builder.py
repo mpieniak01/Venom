@@ -21,7 +21,7 @@ def _safe_find_spec(module_name: str) -> Any | None:
     """Probe an optional provider without constructing clients or loading models."""
     try:
         return importlib.util.find_spec(module_name)
-    except (ImportError, ModuleNotFoundError, ValueError):
+    except (ImportError, ValueError):
         return None
 
 
@@ -128,13 +128,10 @@ class KernelBuilder:
             self._register_service(kernel, "local", service_id="local_llm")
             logger.info("Zarejestrowano serwis: local_llm")
         except Exception as e:
-            if (
-                self.settings.LLM_SERVICE_TYPE.lower() == "onnx"
-                or str(getattr(self.settings, "ACTIVE_LLM_SERVER", "") or "")
-                .strip()
-                .lower()
-                == "onnx"
-            ):
+            if self.settings.LLM_SERVICE_TYPE.lower() == "onnx":
+                raise
+            active_server = str(getattr(self.settings, "ACTIVE_LLM_SERVER", "") or "")
+            if active_server.strip().lower() == "onnx":
                 raise
             logger.warning(f"Nie udało się zarejestrować serwisu local: {e}")
 

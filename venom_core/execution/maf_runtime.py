@@ -229,7 +229,7 @@ class MafChatService:
             if value is not None:
                 options.setdefault("max_tokens", value)
         extensions = {
-            key: options.pop(key) for key in list(options) if key not in standard
+            key: options.pop(key) for key in options.copy() if key not in standard
         }
         extensions.update(settings.extra_body or {})
         if set(extensions) & {

@@ -216,32 +216,34 @@ Odpowiedź (JSON):"""
                 "error": f"Invalid JSON: {str(e)}",
             }
 
-    def _extract_json_block(self, result_text: str) -> str:
-        # Scan complete fences, skipping other languages. Prefer an explicit
-        # JSON block to unlabelled code; json.loads still validates its contents.
+    @staticmethod
+    def _iter_fenced_blocks(result_text: str):
+        """Yield complete blocks and an unfinished final block without repairing it."""
         language: str | None = None
         payload: list[str] = []
-        plain_candidate: str | None = None
-        saw_json = False
         for line in result_text.splitlines():
             marker = line.strip()
             if language is None:
                 if marker.startswith("```"):
                     language = marker[3:].strip().lower()
                     payload = []
-                    saw_json = saw_json or language == "json"
             elif marker == "```":
-                content = "\n".join(payload).strip()
-                if language == "json":
-                    return content
-                if not language and plain_candidate is None:
-                    plain_candidate = content
+                yield language, "\n".join(payload).strip(), True
                 language = None
             elif language in {"", "json"}:
                 payload.append(line)
-        if saw_json or plain_candidate is None:
-            return result_text
-        return plain_candidate
+        if language is not None:
+            yield language, "\n".join(payload).strip(), False
+
+    def _extract_json_block(self, result_text: str) -> str:
+        # Explicit JSON wins over unlabelled code, including an unfinished JSON fence.
+        plain_candidate: str | None = None
+        for language, content, complete in self._iter_fenced_blocks(result_text):
+            if language == "json":
+                return content if complete else result_text
+            if not language and complete and plain_candidate is None:
+                plain_candidate = content
+        return result_text if plain_candidate is None else plain_candidate
 
     def _add_extracted_entities(self, data: Dict[str, Any], source_id: str) -> int:
         entities_count = 0

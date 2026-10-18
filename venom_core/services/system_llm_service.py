@@ -84,6 +84,24 @@ def is_onnx_worker_configured(endpoint: str | None) -> bool:
     return build_onnx_worker_health_url(endpoint) is not None
 
 
+def _parse_onnx_worker_models(payload: Any) -> list[str]:
+    entries = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("onnx_worker_models_invalid")
+    models: list[str] = []
+    for item in entries:
+        model_id = item.get("id") if isinstance(item, dict) else None
+        if (
+            not isinstance(model_id, str)
+            or not model_id.strip()
+            or model_id != model_id.strip()
+            or model_id in models
+        ):
+            raise ValueError("onnx_worker_models_invalid")
+        models.append(model_id)
+    return models
+
+
 async def inspect_onnx_worker(
     endpoint: str | None, *, api_key: str = "", timeout: float = 3.0
 ) -> dict[str, Any]:
@@ -110,20 +128,7 @@ async def inspect_onnx_worker(
             response = await client.get(base + "/models")
             response.raise_for_status()
             payload = response.json()
-        entries = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(entries, list) or not entries:
-            raise ValueError("onnx_worker_models_invalid")
-        models: list[str] = []
-        for item in entries:
-            model_id = item.get("id") if isinstance(item, dict) else None
-            if (
-                not isinstance(model_id, str)
-                or not model_id.strip()
-                or model_id != model_id.strip()
-                or model_id in models
-            ):
-                raise ValueError("onnx_worker_models_invalid")
-            models.append(model_id)
+        models = _parse_onnx_worker_models(payload)
         result.update(
             ready=True,
             status="online",

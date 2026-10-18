@@ -28,16 +28,16 @@ async def open_stream_response(
     completions_url: str,
     payload: dict[str, Any],
 ) -> AsyncIterator[Any]:
-    async with TrafficControlledHttpClient(
-        provider=provider_name, timeout=None
-    ) as client:
-        async with client.astream(
+    async with (
+        TrafficControlledHttpClient(provider=provider_name, timeout=None) as client,
+        client.astream(
             "POST",
             completions_url,
             json=payload,
             disable_retry=True,
-        ) as response:
-            yield response
+        ) as response,
+    ):
+        yield response
 
 
 def _packet_finishes_generation(packet: dict[str, Any]) -> bool:
@@ -58,6 +58,19 @@ def _packet_finishes_generation(packet: dict[str, Any]) -> bool:
     return completed
 
 
+def _decode_stream_packet(data: str) -> dict[str, Any] | None:
+    try:
+        packet = json.loads(data)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(packet, dict):
+        return None
+    if packet.get("error") is not None:
+        # Never expose private provider/conversation details from an error body.
+        raise UpstreamStreamError("upstream_stream_error")
+    return packet
+
+
 async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
     completed = False
     async for line in resp.aiter_lines():
@@ -68,19 +81,11 @@ async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
             return
         if not data:
             continue
-        try:
-            packet = json.loads(data)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(packet, dict):
-            if packet.get("error") is not None:
-                # Error bodies can contain private provider/conversation details.
-                # Fail the stream without echoing that untrusted payload.
-                raise UpstreamStreamError("upstream_stream_error")
+        packet = _decode_stream_packet(data)
+        if packet is not None:
             completed = _packet_finishes_generation(packet) or completed
             yield packet
-    # A clean TCP EOF is not evidence that generation finished. Preserve partial
-    # output, but do not let callers trace success or emit a successful DONE.
+    # Clean TCP EOF alone must never become a successful DONE.
     if not completed:
         raise UpstreamStreamError("upstream_stream_incomplete")
 

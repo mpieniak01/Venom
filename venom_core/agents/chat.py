@@ -229,10 +229,8 @@ Zasady:
         except Exception as api_error:
             error_text = self._build_error_text(api_error)
             kernel_required_error = "kernel is required for function calls"
-            if (
-                "does not support tools" in error_text
-                or kernel_required_error in error_text
-            ):
+            unsupported_tools = "does not support tools" in error_text
+            if unsupported_tools or kernel_required_error in error_text:
                 logger.warning(
                     "Model nie wspiera function calling - przełączam na tryb bez funkcji."
                 )

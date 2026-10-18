@@ -3508,7 +3508,8 @@ async def stream_model_introspection_analysis(
         request_id = _parse_request_id(_get_response_header(response, "X-Request-Id"))
         response_received_at_ms = (time.perf_counter() - flow_started_at) * 1000.0
     except Exception as exc:
-        elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        elapsed_seconds = time.perf_counter() - flow_started_at
+        elapsed_ms = elapsed_seconds * 1000.0
         error_message, done_payload = _build_stream_bootstrap_exception_result(
             exc=exc,
             prompt=prompt,
@@ -3541,7 +3542,8 @@ async def stream_model_introspection_analysis(
 
     body_iterator = getattr(response, "body_iterator", None)
     if body_iterator is None:
-        elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        elapsed_seconds = time.perf_counter() - flow_started_at
+        elapsed_ms = elapsed_seconds * 1000.0
         error_message = "analysis stream response does not expose a body iterator"
         yield _serialize_sse_event(
             "error",
@@ -3597,7 +3599,8 @@ async def stream_model_introspection_analysis(
                 telemetry_packets=telemetry_packets,
             )
     except Exception as exc:
-        elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+        elapsed_seconds = time.perf_counter() - flow_started_at
+        elapsed_ms = elapsed_seconds * 1000.0
         error_message, done_payload = _build_stream_consumption_exception_result(
             exc=exc,
             prompt=prompt,
@@ -3714,7 +3717,8 @@ async def analyze_model_with_optional_live_run(
         degraded_details = _resolve_degraded_error_details(exc)
         if degraded_details is not None:
             error_code, detail = degraded_details
-            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+            elapsed_seconds = time.perf_counter() - flow_started_at
+            elapsed_ms = elapsed_seconds * 1000.0
             skipped_result = _build_degraded_mode_skipped_result(
                 prompt=prompt,
                 runtime=runtime,
@@ -3734,7 +3738,8 @@ async def analyze_model_with_optional_live_run(
         degraded_details = _resolve_degraded_error_details(exc)
         if degraded_details is not None:
             error_code, detail = degraded_details
-            elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+            elapsed_seconds = time.perf_counter() - flow_started_at
+            elapsed_ms = elapsed_seconds * 1000.0
             skipped_result = _build_degraded_mode_skipped_result(
                 prompt=prompt,
                 runtime=runtime,
@@ -3746,7 +3751,8 @@ async def analyze_model_with_optional_live_run(
             skipped_result["snapshot"] = snapshot
             return skipped_result
         raise
-    elapsed_ms = (time.perf_counter() - flow_started_at) * 1000.0
+    elapsed_seconds = time.perf_counter() - flow_started_at
+    elapsed_ms = elapsed_seconds * 1000.0
     response_text = str(stream_payload.get("response_text") or "")
     hidden_state, logit_lens, attention, saliency = await _collect_probe_payloads(
         prompt=prompt,

@@ -76,11 +76,9 @@ class TestSkill:
             # Środowisko docelowe (np. CI) może nie mieć Dockera
             self.habitat = None
             self.docker_available = False
-            mode_msg = (
-                "w trybie LOKALNYM (niebezpiecznym)"
-                if self.allow_local_execution
-                else "w trybie tylko-raportującym"
-            )
+            mode_msg = "w trybie tylko-raportującym"
+            if self.allow_local_execution:
+                mode_msg = "w trybie LOKALNYM (niebezpiecznym)"
             logger.warning(
                 "DockerHabitat niedostępny (%s). TestSkill działa %s.", e, mode_msg
             )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, Callable, ClassVar, Iterator, Self
 
 from pydantic import BaseModel, ConfigDict
 
@@ -74,8 +74,11 @@ class ToolPolicy:
     filters: dict[str, list[str]] = field(default_factory=dict)
 
     @classmethod
-    def Auto(cls, filters: dict[str, list[str]] | None = None):
+    def auto(cls, filters: dict[str, list[str]] | None = None) -> Self:
         return cls(filters or {})
+
+    # Preserve the existing MAF-compatible constructor and classmethod binding.
+    Auto: ClassVar[Callable[..., ToolPolicy]] = auto
 
 
 class CompletionOptions(BaseModel):
@@ -91,10 +94,7 @@ class CompletionOptions(BaseModel):
     response_format: dict[str, Any] | type[BaseModel] | None = None
 
 
-F = TypeVar("F", bound=Callable[..., Any])
-
-
-def tool_function(
+def tool_function[F: Callable[..., Any]](
     *,
     name: str | None = None,
     description: str = "",

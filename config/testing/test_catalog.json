@@ -4714,10 +4714,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Isolate external integrations in the Council unit regression."
     },
     {
       "path": "tests/test_orchestrator_council_integration.py",
@@ -5969,6 +5970,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_sonar_runtime_regressions.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Preserve public tool-policy aliases, decorator binding, ASCII factory validation and provider teardown snapshots during Sonar remediation."
     },
     {
       "path": "tests/test_source_distributions.py",

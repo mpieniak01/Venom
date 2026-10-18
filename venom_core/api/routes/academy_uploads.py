@@ -104,10 +104,8 @@ async def persist_with_limits(
             size_bytes = int(str(exc).split(":", 1)[1])
             return None, {
                 "name": filename,
-                "error": (
-                    f"File too large ({size_bytes} bytes, "
-                    f"max {settings.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)"
-                ),
+                "error": f"File too large ({size_bytes} bytes, "
+                f"max {settings.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
             }
         return upload_error(filename, f"Failed to save file: {str(exc)}")
     except Exception as exc:

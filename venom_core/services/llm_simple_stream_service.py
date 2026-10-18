@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 
 @dataclass
@@ -15,10 +15,6 @@ class SimpleStreamState:
     retry_requested: bool = False
     failed: bool = False
     completed: bool = False
-
-
-class RuntimeLike(Protocol):
-    provider: str
 
 
 @dataclass(frozen=True)
@@ -72,7 +68,6 @@ def resolve_post_attempt_action(
 def update_stream_state_from_packet(
     *,
     packet: dict[str, Any],
-    runtime: RuntimeLike,
     state: SimpleStreamState,
     runtime_telemetry: dict[str, int] | None = None,
     extract_runtime_telemetry_fn: Callable[[dict[str, Any]], dict[str, int]]
@@ -138,12 +133,11 @@ async def stream_single_attempt(
                     yield event
     except retry.http_status_error_type as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
-        if (
-            state.chunk_count == 0
-            and attempt < retry.max_attempts
-            and retry.is_retryable_status_fn(status_code)
-            and retry.runtime_provider == "ollama"
-        ):
+        retry_budget_available = state.chunk_count == 0 and attempt < retry.max_attempts
+        retryable_status = retry_budget_available and retry.is_retryable_status_fn(
+            status_code
+        )
+        if retryable_status and retry.runtime_provider == "ollama":
             state.retry_requested = True
             await retry.sleep_fn(retry.retry_backoff * attempt)
             return

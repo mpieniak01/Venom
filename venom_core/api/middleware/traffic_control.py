@@ -68,6 +68,28 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.traffic_controller = get_traffic_controller()
 
+    @staticmethod
+    async def _is_emergency_rider_stop(request: Request) -> bool:
+        """Bypass saturation only; the router still authenticates STOP/disarm."""
+        if (
+            request.method == "POST"
+            and request.url.path == "/api/v1/rider/control"
+            and request.headers.get("content-length", "").isdigit()
+            and int(request.headers["content-length"]) <= 65536
+        ):
+            try:
+                payload = await request.json()
+            except ValueError:
+                payload = None
+            if (
+                isinstance(payload, dict)
+                and isinstance(payload.get("action"), str)
+                and payload["action"] in {"stop", "disarm"}
+            ):
+                return True
+
+        return False
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
         Przetwarzanie requestu z traffic control.
@@ -83,24 +105,8 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/health", "/api/v1/status", "/docs", "/openapi.json"]:
             return await call_next(request)
 
-        # Stop still passes router authentication and its hardware contract.
-        # Telemetry saturation must never prevent an operator from stopping.
-        if (
-            request.method == "POST"
-            and request.url.path == "/api/v1/rider/control"
-            and request.headers.get("content-length", "").isdigit()
-            and int(request.headers["content-length"]) <= 65536
-        ):
-            try:
-                payload = await request.json()
-            except (ValueError, UnicodeDecodeError):
-                payload = None
-            if (
-                isinstance(payload, dict)
-                and isinstance(payload.get("action"), str)
-                and payload["action"] in {"stop", "disarm"}
-            ):
-                return await call_next(request)
+        if await self._is_emergency_rider_stop(request):
+            return await call_next(request)
 
         # Określ grupę endpointów
         endpoint_group = _get_endpoint_group(request.url.path)

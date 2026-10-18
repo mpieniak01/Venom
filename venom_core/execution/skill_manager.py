@@ -203,6 +203,7 @@ class SkillManager:
         try:
             permission_guard.check_permission(policy_skill_name)
         except Exception:
+            duration_seconds = time.perf_counter() - started_at
             await self.broadcast_skill_event(
                 "SKILL_FAILED",
                 adapter_name,
@@ -210,7 +211,7 @@ class SkillManager:
                 is_external=is_external,
                 extra_data={
                     "error_class": "PermissionDenied",
-                    "duration_ms": int((time.perf_counter() - started_at) * 1000),
+                    "duration_ms": int(duration_seconds * 1000),
                 },
             )
             raise
@@ -225,6 +226,7 @@ class SkillManager:
         try:
             result = await adapter.invoke_tool(tool_name, arguments or {})
         except Exception as exc:
+            duration_seconds = time.perf_counter() - started_at
             await self.broadcast_skill_event(
                 "SKILL_FAILED",
                 adapter_name,
@@ -232,7 +234,7 @@ class SkillManager:
                 is_external=is_external,
                 extra_data={
                     "error_class": exc.__class__.__name__,
-                    "duration_ms": int((time.perf_counter() - started_at) * 1000),
+                    "duration_ms": int(duration_seconds * 1000),
                 },
             )
             raise

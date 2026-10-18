@@ -21,13 +21,13 @@
       "version": "0.48.0"
     }
   },
-  "lock_sha256": "350d34bb39781049158ad802cc6b1dd9756b408562ae937fdee3e64a9ca1d1b5",
+  "lock_sha256": "48a3d593e894b2fa72ffc7e8963b2060d0c5c29afb1f14696ebb6c1bcbc0ca64",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "49a5b1453c8635177bdbda31ca012ab627b5c5c55e6b3886a92c40b0ed971893",
+  "policy_sha256": "c4b8439c44b5f2f1bcc231d1fa8c3f18e83afc20cd1f3f6f848e0b343e83027e",
   "profile": "build",
   "profile_policy_sha256": "0eebc94e8472b53558c2a8215520ee5380a701cf3b14443dab051e043b49c2ba",
   "qualification": "RESOLVED_ONLY",

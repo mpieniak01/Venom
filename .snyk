@@ -1,4 +1,7 @@
 version: v1.25.0
+# Match the Python minor used by the qualified Linux profile locks.
+language-settings:
+  python: '3.12'
 ignore:
   SNYK-PYTHON-VLLM-15907607:
     - 'vllm@0.24.0':

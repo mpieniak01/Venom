@@ -1222,3 +1222,24 @@ def test_bootstrap_refresh_cannot_mutate_pip_with_bad_hash_or_low_space(
             storage_root=None,
         )
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "profile,package,vulnerable",
+    [
+        ("full", "pypdf", "6.13.3"),
+        ("full-ci", "pypdf", "6.13.3"),
+        ("academy", "pypdf", "6.13.3"),
+        ("full", "onnx", "1.21.0"),
+        ("onnx-gpu", "onnx", "1.21.0"),
+    ],
+)
+def test_profile_inputs_reject_versions_fixed_in_qualified_locks(
+    policy, profile, package, vulnerable
+):
+    root = Path(__file__).resolve().parents[1]
+    locked = profiles.read_lock(root / policy["profiles"][profile]["lock"])
+    profiles.check_direct_requirements(policy, profile, locked)
+    locked[package] = vulnerable
+    with pytest.raises(ValueError, match="Missing or incompatible direct requirement"):
+        profiles.check_direct_requirements(policy, profile, locked)

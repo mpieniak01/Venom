@@ -96,15 +96,15 @@
       "version": "4.16.0"
     }
   },
-  "lock_sha256": "9c4f575807555fd778bea9ecdf633ae3f03d4b3711be3f182994b3688eff21b8",
+  "lock_sha256": "60712ccb6db36d61046316743f8b2a000ef2d7137321caa2abb7890f3f556b41",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "61a1aa8db797d5c49c4285279021f89816fbc92532a0a6e1c01649837073833c",
+  "policy_sha256": "c4b8439c44b5f2f1bcc231d1fa8c3f18e83afc20cd1f3f6f848e0b343e83027e",
   "profile": "onnx-gpu",
-  "profile_policy_sha256": "503a536d852ce51149d5b7ce3c5b1db0b128b78cebf8cf6daa000a2ff19063a6",
+  "profile_policy_sha256": "5c60697455da074eb1f1df2f6f2ae3ca5d38c417d68bdc53d21c7784540873b1",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

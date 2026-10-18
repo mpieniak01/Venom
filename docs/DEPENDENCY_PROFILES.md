@@ -367,10 +367,34 @@ Release-payload review, including `scripts/dev`, belongs to the separate Sonar t
 this change does not alter packaging or scanner coverage.
 
 An exact pin means qualified compatibility, not necessarily the newest release.
-The current stable-version discovery still has newer unqualified candidates,
-including Torch and Transformers. Do not call the whole stack latest stable
-until their dependency constraints and minimal consumer probes are resolved.
+The version-discovery snapshot includes newer unqualified candidates such as
+Torch and Transformers. The user's bounded scope prioritizes available security
+fixes and actual compatibility problems; a blanket latest-version migration is
+separate follow-up work and does not block this local stabilization. This is not
+a claim that every package uses its newest stable release.
 Known compatibility exceptions remain explicit: PyArrow25/NumPy1 for actual RAG,
 Ruff matching the existing pre-commit policy, and Academy's fsspec upper bound
 from Datasets. Stable releases and package advisories must be checked at the
 qualification date; discovery metadata alone is not runtime or security acceptance.
+
+
+## Bounded local stabilization result
+
+The local implementation and reduced qualification for task266 are complete under
+the 18 October scope. The final code gate at `4250cdbb` passed: 3863 backend tests,
+9 skips/8 warnings, 172 UI tests, 97.09% changed-lines coverage and 14 file floors.
+The AcademyOFF change additionally passed 164 configuration/bootstrap tests and
+actual Settings parsing of both example files. Later documentation-only commits
+do not change the tested runtime or locks.
+
+Active core imports and all eight profile locks omit Semantic Kernel. The paired
+optional Rider module uses the first-party contract; deploy its recorded module
+commit together with this core. Existing actual Ollama0.40.6/Gemma4 smoke receipts
+remain applicable to unchanged runtime code; no new model-stress series is needed.
+
+Known vendor High findings remain open, with recorded empty fix-version lists and
+no risk exception. Local completion means the agreed implementation and evidence
+are ready for handoff. It does not mean a clean security report, GitHub review,
+merge, operator switch or production acceptance. Sonar and release-payload review
+remain separate tasks. Existing operator checkout/binary are preserved for rollback;
+this qualification does not silently replace them.

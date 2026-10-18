@@ -184,7 +184,7 @@ def test_failed_child_readiness_is_not_left_running(tmp_path, monkeypatch):
     assert manifest["status"] == "START_FAILED"
 
 
-@pytest.mark.parametrize("child_state", ["zombie", "reaped"])
+@pytest.mark.parametrize("child_state", ["zombie", "reaped", "empty-command"])
 def test_child_exit_before_identity_is_a_failed_start(
     tmp_path, monkeypatch, child_state
 ):
@@ -201,10 +201,12 @@ def test_child_exit_before_identity_is_a_failed_start(
 
     def identity_after_exit(pid):
         assert process.process is not None
-        if child_state == "zombie":
-            os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
-        else:
+        if child_state == "reaped":
             process.process.wait(timeout=5)
+        else:
+            os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+            if child_state == "empty-command":
+                raise qualification_process.OwnershipError("process_command_not_ready")
         return real_identity(pid)
 
     monkeypatch.setattr(qualification_process, "identity", identity_after_exit)

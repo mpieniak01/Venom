@@ -197,10 +197,10 @@ class WhisperSkill:
             else:
                 raise ValueError(f"Nieobsługiwana głębia bitowa WAV: {sampwidth}")
 
-            if channels > 1:
-                audio = audio.reshape(-1, channels).mean(axis=1)
-
-            return np.ascontiguousarray(audio, dtype=np.int16), sample_rate
+            mono_audio = (
+                audio.reshape(-1, channels).mean(axis=1) if channels > 1 else audio
+            )
+            return np.ascontiguousarray(mono_audio, dtype=np.int16), sample_rate
         except Exception:
             # Fallback do ffmpeg, który obsługuje także mp3/ogg/flac/m4a.
             result = subprocess.run(

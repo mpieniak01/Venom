@@ -240,3 +240,24 @@ class TestAudioEngine:
 
         # Test struktury
         assert audio_buffer is not None
+
+
+def test_stereo_wav_preserves_int16_output_with_new_numpy(tmp_path):
+    """Stereo averaging remains mono contiguous PCM16 across NumPy versions."""
+    import wave
+
+    import numpy as np
+
+    path = tmp_path / "stereo.wav"
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(2)
+        output.setsampwidth(2)
+        output.setframerate(16000)
+        output.writeframes(
+            np.array([1000, -1000, 2000, 0, -2000, 0], dtype=np.int16).tobytes()
+        )
+    samples, rate = WhisperSkill()._load_audio_file(str(path))
+    assert rate == 16000
+    assert samples.dtype == np.int16
+    assert samples.flags.c_contiguous
+    np.testing.assert_array_equal(samples, [0, 1000, -1000])

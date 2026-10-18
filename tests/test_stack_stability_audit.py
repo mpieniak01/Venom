@@ -99,8 +99,12 @@ def test_run_audit_accepts_descendant_pid_bound_to_port(tmp_path: Path, monkeypa
     (tmp_path / ".env.dev").write_text("API_OPTIONAL_MODULES=\n", encoding="utf-8")
 
     monkeypatch.setattr(module, "_process_name", lambda _pid: "python")
+    real_exists = module.os.path.exists
+    # Python 3.14 Path.exists also uses os.path.exists: preserve real PID files.
     monkeypatch.setattr(
-        module.os.path, "exists", lambda path: path == f"/proc/{parent_pid}"
+        module.os.path,
+        "exists",
+        lambda path: path == f"/proc/{parent_pid}" or real_exists(path),
     )
     monkeypatch.setattr(module, "_port_pids", lambda _root, _port: [child_pid])
     monkeypatch.setattr(
@@ -115,6 +119,10 @@ def test_run_audit_accepts_descendant_pid_bound_to_port(tmp_path: Path, monkeypa
         backend_port=8000,
         web_port=3000,
     )
+    assert report["api"]["pid"] == parent_pid
+    assert report["api"]["running"] is True
+    assert report["web"]["pid"] == parent_pid
+    assert report["web"]["running"] is True
     assert report["ok"] is True
     assert "api_pid_not_bound_to_expected_port" not in report["issues"]
     assert "web_pid_not_bound_to_expected_port" not in report["issues"]

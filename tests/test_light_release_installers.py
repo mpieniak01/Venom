@@ -13,15 +13,16 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ["install.sh", "venom.sh"]
-DEFERRED_PROFILES = [
-    "full",
-    "FULL",
-    "full-ci",
-    "onnx-cpu",
-    "onnx-extras",
-    "onnx-gpu",
-    "vllm",
-    "academy",
+UNAVAILABLE_PROFILES = [
+    ("full", "Host profile"),
+    ("FULL", "Host profile"),
+    ("full-ci", "Host profile"),
+    ("multi-runtime-cuda", "Host profile"),
+    ("onnx-cpu", "Deferred profile"),
+    ("onnx-extras", "Deferred profile"),
+    ("onnx-gpu", "Deferred profile"),
+    ("vllm", "Deferred profile"),
+    ("academy", "Deferred profile"),
 ]
 
 
@@ -134,10 +135,10 @@ def arguments_for(name):
 
 
 @pytest.mark.parametrize("name", SCRIPTS)
-@pytest.mark.parametrize("profile", DEFERRED_PROFILES)
+@pytest.mark.parametrize("profile,error", UNAVAILABLE_PROFILES)
 @pytest.mark.parametrize("source", ["argument", "environment"])
-def test_deferred_profile_fails_before_any_mutation(
-    installer_sandbox, name, profile, source
+def test_unavailable_docker_profile_fails_before_any_mutation(
+    installer_sandbox, name, profile, error, source
 ):
     sandbox = installer_sandbox
     before = sandbox.snapshot()
@@ -149,7 +150,7 @@ def test_deferred_profile_fails_before_any_mutation(
         settings["VENOM_RUNTIME_PROFILE"] = profile
     result = sandbox.run(name, *arguments, settings=settings)
     assert result.returncode != 0
-    assert "Deferred profile" in result.stderr
+    assert error in result.stderr
     assert not sandbox.commands.exists(), result.stdout + result.stderr
     assert sandbox.snapshot() == before
 

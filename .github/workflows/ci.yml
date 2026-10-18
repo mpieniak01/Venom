@@ -65,7 +65,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.8"
 
       - name: Run chat operator docs drift audit
         run: |
@@ -86,7 +86,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.8"
 
       - name: Run operator manual docs drift audit
         run: |
@@ -107,7 +107,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.8"
 
       - name: Run THE_CHAT docs drift audit
         run: |
@@ -128,7 +128,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.8"
 
       - name: Run agent state registry probe
         run: |
@@ -149,11 +149,11 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.8"
           cache: pip
           cache-dependency-path: |
-            requirements/locks/ci-linux-py312.txt
-            requirements/locks/build-linux-py312.txt
+            requirements/locks/ci-linux-py314.txt
+            requirements/locks/build-linux-py314.txt
 
       - name: Generate coding-agent context brief artifact
         run: |
@@ -205,11 +205,11 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.8"
           cache: pip
           cache-dependency-path: |
-            requirements/locks/ci-linux-py312.txt
-            requirements/locks/build-linux-py312.txt
+            requirements/locks/ci-linux-py314.txt
+            requirements/locks/build-linux-py314.txt
 
       - name: Install dependencies
         run: |
@@ -328,11 +328,11 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14.8"
           cache: pip
           cache-dependency-path: |
-            requirements/locks/ci-linux-py312.txt
-            requirements/locks/build-linux-py312.txt
+            requirements/locks/ci-linux-py314.txt
+            requirements/locks/build-linux-py314.txt
 
       - name: Install backend dependencies
         run: |

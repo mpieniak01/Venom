@@ -1,7 +1,9 @@
 """Isolated engine controller contracts using harmless real child processes."""
 
+import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -249,3 +251,228 @@ def test_vllm_launcher_systemd_is_explicit(tmp_path, opt_in):
     assert ("systemctl" in command) is opt_in
     assert ("scripts.llm.component_runtime" in command) is not opt_in
     assert "list-unit-files" not in command
+
+
+def isolated_python(tmp_path):
+    python = tmp_path / "component/bin/python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to(sys.executable)
+    (python.parent.parent / "pyvenv.cfg").write_text(
+        "include-system-site-packages = false\n"
+    )
+    return python
+
+
+def test_component_preflight_rejects_application_venv_alias(tmp_path, monkeypatch):
+    python = isolated_python(tmp_path)
+    monkeypatch.setattr(runtime, "ROOT", tmp_path)
+    (tmp_path / ".venv").symlink_to(python.parent.parent, target_is_directory=True)
+    with pytest.raises(ValueError, match="application_venv"):
+        runtime.component_python(python)
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        "include-system-site-packages = true\n",
+        "# include-system-site-packages = false\ninclude-system-site-packages = true\n",
+    ],
+)
+def test_component_preflight_rejects_system_site_packages(tmp_path, configuration):
+    python = isolated_python(tmp_path)
+    (python.parent.parent / "pyvenv.cfg").write_text(configuration)
+    with pytest.raises(ValueError, match="isolated_component"):
+        runtime.component_python(python)
+
+
+@pytest.mark.parametrize("changed", [None, "cwd", "command_sha256", "start_ticks"])
+def test_daemon_identity_requires_exact_command_and_receipt(
+    tmp_path, monkeypatch, changed
+):
+    python = isolated_python(tmp_path)
+    command = [str(python), "-m", "services.multi_runtime.main"]
+    observed = {
+        "pid": 23456,
+        "pgid": 23456,
+        "start_ticks": "123",
+        "cwd": str(runtime.ROOT),
+        "command_sha256": hashlib.sha256(
+            b"\0".join(os.fsencode(value) for value in command) + b"\0"
+        ).hexdigest(),
+    }
+    receipt = tmp_path / "identity.json"
+    receipt.write_text(json.dumps(observed))
+    current = dict(observed)
+    if changed:
+        current[changed] = "foreign"
+    monkeypatch.setattr(runtime, "identity", lambda _pid: current)
+    if changed:
+        with pytest.raises(runtime.OwnershipError, match="daemon_"):
+            runtime.daemon_identity(python, 23456, receipt)
+    else:
+        assert runtime.daemon_identity(python, 23456) == observed
+        assert runtime.daemon_identity(python, 23456, receipt) == observed
+
+
+def launcher_environment(tmp_path):
+    return {
+        "PATH": "/usr/bin:/bin",
+        "ENV_FILE": str(tmp_path / "absent.env"),
+        "VENOM_COMPONENTS_DIR": str(tmp_path / "components"),
+        "GEMMA4_AUDIO_PID_PATH": str(tmp_path / "daemon.pid"),
+        "GEMMA4_AUDIO_LOG_PATH": str(tmp_path / "daemon.log"),
+    }
+
+
+def run_daemon_launcher(action, environment, root=None):
+    return subprocess.run(
+        [
+            "bash",
+            str((root or runtime.ROOT) / "scripts/llm/multi_runtime_service.sh"),
+            action,
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+
+def test_daemon_preflight_has_no_application_python_fallback(tmp_path):
+    environment = launcher_environment(tmp_path)
+    result = run_daemon_launcher("preflight", environment)
+    assert result.returncode == 1
+    assert "MULTI_RUNTIME_COMPONENT_PYTHON" in result.stderr
+    assert str(tmp_path / "components/multi-runtime/bin/python") in result.stderr
+    assert "isolated" in result.stderr.lower()
+    assert not (tmp_path / "daemon.pid").exists()
+
+
+def test_daemon_preflight_env_file_and_explicit_override(tmp_path):
+    python = isolated_python(tmp_path)
+    environment = launcher_environment(tmp_path)
+    env_file = tmp_path / "daemon.env"
+    env_file.write_text(f"MULTI_RUNTIME_COMPONENT_PYTHON={python}\n")
+    environment["ENV_FILE"] = str(env_file)
+    result = run_daemon_launcher("preflight", environment)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["python"] == str(python)
+    environment["MULTI_RUNTIME_COMPONENT_PYTHON"] = str(tmp_path / "absent")
+    result = run_daemon_launcher("preflight", environment)
+    assert result.returncode == 1
+    assert str(tmp_path / "absent") in result.stderr
+
+
+@pytest.mark.parametrize("matching", [False, True])
+def test_daemon_systemd_requires_opt_in_and_matching_interpreter(tmp_path, matching):
+    python = isolated_python(tmp_path)
+    environment = launcher_environment(tmp_path)
+    environment["MULTI_RUNTIME_COMPONENT_PYTHON"] = str(python)
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    capture = tmp_path / "systemctl.txt"
+    systemctl = binary / "systemctl"
+    systemctl.write_text(
+        '#!/bin/sh\nprintf "%s\n" "$*" >> "$CAPTURE"\n'
+        'if [ "$1" = show ]; then printf "%s\n" "$EXEC_START"; fi\n'
+    )
+    systemctl.chmod(0o755)
+    environment.update(
+        PATH=f"{binary}:/usr/bin:/bin",
+        CAPTURE=str(capture),
+        EXEC_START=(
+            f"{{ path={python if matching else runtime.ROOT / '.venv/bin/python'} ; "
+            f"argv[]={python if matching else runtime.ROOT / '.venv/bin/python'} "
+            "-m services.multi_runtime.main ; ignore_errors=no ; }"
+        ),
+    )
+    result = run_daemon_launcher("preflight", environment)
+    assert result.returncode == 0, result.stderr
+    assert not capture.exists()
+    environment["MULTI_RUNTIME_USE_SYSTEMD"] = "true"
+    result = run_daemon_launcher("start", environment)
+    assert result.returncode == (0 if matching else 1), result.stderr
+    commands = capture.read_text().splitlines()
+    assert commands[0].startswith("show ")
+    assert any(line.startswith("start ") for line in commands) is matching
+    assert not any("list-unit-files" in line for line in commands)
+
+
+def test_daemon_stop_refuses_foreign_pid_without_signalling(tmp_path):
+    python = isolated_python(tmp_path)
+    environment = launcher_environment(tmp_path)
+    environment["MULTI_RUNTIME_COMPONENT_PYTHON"] = str(python)
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        pid_file = tmp_path / "daemon.pid"
+        pid_file.write_text(str(process.pid))
+        result = run_daemon_launcher("stop", environment)
+        assert result.returncode == 1
+        assert "daemon_" in result.stderr
+        assert process.poll() is None
+        assert pid_file.read_text() == str(process.pid)
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
+@pytest.mark.parametrize("device", ["cuda", "cpu"])
+def test_daemon_launcher_preserves_flags_in_own_interpreter(tmp_path, device):
+    # The fixture module only records its environment and sleeps; no model imports.
+    root = tmp_path / "repo"
+    for relative in [
+        "scripts/llm/multi_runtime_service.sh",
+        "scripts/llm/component_runtime.py",
+        "scripts/dev/qualification_process.py",
+        "scripts/lib/env_contract.sh",
+    ]:
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(runtime.ROOT / relative, target)
+    module = root / "services/multi_runtime/main.py"
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "import json, os, time\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['CAPTURE']).write_text(json.dumps(dict(os.environ)))\n"
+        "time.sleep(30)\n"
+    )
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    curl = binary / "curl"
+    curl.write_text(
+        "#!/bin/sh\ncat <<JSON\n" + json.dumps({"status": "ok"}) + "\nJSON\n"
+    )
+    curl.chmod(0o755)
+    python = isolated_python(tmp_path)
+    capture = tmp_path / "environment.json"
+    environment = launcher_environment(tmp_path)
+    environment.update(
+        PATH=f"{binary}:/usr/bin:/bin",
+        MULTI_RUNTIME_COMPONENT_PYTHON=str(python),
+        CAPTURE=str(capture),
+        GEMMA4_AUDIO_DEVICE=device,
+        GEMMA4_AUDIO_DEVICE_TARGET=device,
+        GEMMA4_AUDIO_PRECISION="bfloat16",
+        GEMMA4_AUDIO_PROBE_ENABLED="true",
+        GEMMA4_AUDIO_CACHE_DIR="cache",
+        VENOM_INTROSPECTION_PROBE_MAX_TOP_K="7",
+        PYTHONPATH="/application/contamination",
+        VIRTUAL_ENV="/application/venv",
+    )
+    try:
+        result = run_daemon_launcher("start", environment, root)
+        assert result.returncode == 0, result.stderr
+        actual = json.loads(capture.read_text())
+        assert actual["GEMMA4_AUDIO_DEVICE"] == device
+        assert actual["GEMMA4_AUDIO_DEVICE_TARGET"] == device
+        assert actual["GEMMA4_AUDIO_PRECISION"] == "bfloat16"
+        assert actual["GEMMA4_AUDIO_PROBE_ENABLED"] == "true"
+        assert actual["VENOM_INTROSPECTION_PROBE_MAX_TOP_K"] == "7"
+        assert "PYTHONPATH" not in actual
+        assert "VIRTUAL_ENV" not in actual
+        assert (tmp_path / "daemon.pid.identity.json").is_file()
+    finally:
+        result = run_daemon_launcher("stop", environment, root)
+        assert result.returncode == 0, result.stderr

@@ -97,7 +97,12 @@ RUNTIME_PROFILE=$(printf '%s' "$RUNTIME_PROFILE" | tr '[:upper:]' '[:lower:]')
 case "$RUNTIME_PROFILE" in
   light|api_ollama) RUNTIME_PROFILE="light" ;;
   api|api_only|llm_off) RUNTIME_PROFILE="llm_off" ;;
-  full|full-ci|onnx-cpu|onnx-extras|onnx-gpu|vllm|academy)
+  full|full-ci|multi-runtime-cuda)
+    echo "[ERROR] Host profile is managed by the Python bootstrap, not this Docker Light/API installer: $RUNTIME_PROFILE" >&2
+    echo "Use scripts/bootstrap_dependency_profile.py with --profile $RUNTIME_PROFILE and an isolated --venv." >&2
+    exit 1
+    ;;
+  onnx-cpu|onnx-extras|onnx-gpu|vllm|academy)
     echo "[ERROR] Deferred profile unavailable in this Light/API release: $RUNTIME_PROFILE" >&2
     exit 1
     ;;

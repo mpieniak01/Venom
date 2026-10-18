@@ -126,8 +126,8 @@ def owns_listener(pgid: int, port: int) -> bool:
     return False
 
 
-def engine_command(args: argparse.Namespace) -> list[str]:
-    python = Path(args.python)
+def component_python(python: Path) -> Path:
+    """Validate an explicit isolated interpreter without importing its runtime."""
     if (
         not python.is_absolute()
         or not python.is_file()
@@ -135,14 +135,59 @@ def engine_command(args: argparse.Namespace) -> list[str]:
     ):
         raise ValueError("absolute_component_python_required")
     configuration = python.parent.parent / "pyvenv.cfg"
-    if (
-        not configuration.is_file()
-        or "include-system-site-packages = false"
-        not in configuration.read_text().lower()
-    ):
+    if not configuration.is_file():
+        raise ValueError("isolated_component_interpreter_required")
+    settings = {}
+    for line in configuration.read_text().splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            settings[key.strip().lower()] = value.strip().lower()
+    if settings.get("include-system-site-packages") != "false":
         raise ValueError("isolated_component_interpreter_required")
     if python.parent.parent.resolve() == (ROOT / ".venv").resolve():
         raise ValueError("application_venv_is_not_an_engine_component")
+    return python
+
+
+def daemon_identity(
+    python: Path, pid: int, receipt: Path | None = None
+) -> dict[str, Any]:
+    """Match the legacy PID contract, with a start identity for new launches."""
+    if pid <= 1 or pid == os.getpid():
+        raise OwnershipError("daemon_invalid_pid")
+    command = [str(python), "-m", "services.multi_runtime.main"]
+    command_hash = hashlib.sha256(
+        b"\0".join(os.fsencode(value) for value in command) + b"\0"
+    ).hexdigest()
+    observed = identity(pid)
+    if (
+        observed["cwd"] != str(ROOT.resolve())
+        or observed["command_sha256"] != command_hash
+    ):
+        raise OwnershipError("daemon_command_or_checkout_mismatch")
+    if receipt is not None:
+        if receipt.is_symlink():
+            raise OwnershipError("daemon_receipt_is_symlink")
+        if receipt.exists() and json.loads(receipt.read_text()) != observed:
+            raise OwnershipError("daemon_identity_changed")
+    return observed
+
+
+def daemon_preflight(argv: list[str]) -> dict[str, Any]:
+    """Inspect interpreter metadata or an owned daemon; never load a model."""
+    result = argparse.ArgumentParser(description=daemon_preflight.__doc__)
+    result.add_argument("--python", required=True, type=Path)
+    result.add_argument("--pid", type=int)
+    result.add_argument("--identity-file", type=Path)
+    args = result.parse_args(argv)
+    python = component_python(args.python)
+    if args.pid is not None:
+        return daemon_identity(python, args.pid, args.identity_file)
+    return {"python": str(python), "venv": str(python.parent.parent)}
+
+
+def engine_command(args: argparse.Namespace) -> list[str]:
+    python = component_python(Path(args.python))
     model = Path(args.model).resolve(strict=True)
     if args.engine == "onnx-gpu":
         if not (model / "genai_config.json").is_file():
@@ -288,8 +333,11 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     try:
-        args = parser().parse_args()
-        print(json.dumps(control(args), indent=2))
+        if sys.argv[1:2] == ["preflight"]:
+            info = daemon_preflight(sys.argv[2:])
+        else:
+            info = control(parser().parse_args())
+        print(json.dumps(info, indent=2))
         return 0
     except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"Component ERROR: {error}", file=sys.stderr)

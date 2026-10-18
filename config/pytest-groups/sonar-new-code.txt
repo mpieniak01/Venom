@@ -264,6 +264,7 @@ tests/test_preprod_optional_modules_smoke.py
 tests/test_preprod_readiness_check.py
 tests/test_process_monitor.py
 tests/test_profile_config.py
+tests/test_profile_targets.py
 tests/test_prompt_manager.py
 tests/test_provider_admin.py
 tests/test_provider_governance.py
@@ -310,6 +311,7 @@ tests/test_skills_init.py
 tests/test_slash_commands.py
 tests/test_sonar_agents_init.py
 tests/test_sonar_route_selection.py
+tests/test_source_distributions.py
 tests/test_stack_stability_audit.py
 tests/test_strategist_agent.py
 tests/test_strategy_and_routes_regression.py

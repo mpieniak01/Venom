@@ -1,3 +1,5 @@
+language-settings:
+  python: "3.14"
 version: v1.25.0
 ignore:
   SNYK-PYTHON-VLLM-15907607:

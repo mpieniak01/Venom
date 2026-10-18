@@ -46,7 +46,7 @@ Venom also ships its own LLM daemon for Gemma4, so text and audio are handled in
 
 ## Preparing v1.10.0
 
-The split Light/API release uses Microsoft Agent Framework with active Light, CI and build dependency profiles. Release identity is synchronized across the core API, frontend, containers and CI analysis. Full and model/training profiles remain deferred; historical runtime checks do not qualify them for this release. Fresh cloud gates are required for the final candidate.
+Dependency profiles share a Microsoft Agent Framework Light/API base. Full adds the in-process vision, memory, voice and desktop consumers; Full CI adds development tools. The CUDA multi_runtime daemon uses a separate component environment, while Ollama remains an external service. Python 3.14.8 candidates require fresh installation and scanner qualification; vLLM, ONNX LLM and Academy profiles remain deferred. See [dependency profiles](docs/DEPENDENCY_PROFILES.md) for the exact boundaries and qualification status.
 
 ## What changed for v1.9.0
 - Added `@venom-agent`, the local VS Code participant with a bounded tool loop over repo-truth git, code search, file context, and opt-in safe exec. Business value: faster repo-truth answers and fewer manual back-and-forth turns.
@@ -284,7 +284,7 @@ API_PROXY_TARGET=http://localhost:8000
 ## Installation and dependencies
 ### Requirements
 ```text
-Python 3.12+ (recommended 3.12)
+Python 3.14.8 on Linux x86_64 for the managed profiles; other platforms require separate qualification.
 ```
 
 ### Key packages

@@ -97,7 +97,12 @@ normalize_profile() {
     light|api_ollama) echo "light" ;;
     api|llm_off) echo "llm_off" ;;
     api_only) echo "llm_off" ;;
-    full|full-ci|onnx-cpu|onnx-extras|onnx-gpu|vllm|academy)
+    full|full-ci|multi-runtime-cuda)
+      echo "[ERROR] Host profile is managed by the Python bootstrap, not this Docker Light/API launcher: $raw" >&2
+      echo "Use scripts/bootstrap_dependency_profile.py with --profile $raw and an isolated --venv." >&2
+      exit 1
+      ;;
+    onnx-cpu|onnx-extras|onnx-gpu|vllm|academy)
       echo "[ERROR] Deferred profile unavailable in this Light/API release: $raw" >&2
       exit 1
       ;;

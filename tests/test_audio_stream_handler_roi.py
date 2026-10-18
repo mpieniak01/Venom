@@ -1451,13 +1451,15 @@ async def test_invoke_multi_runtime_builds_request_and_validates_response(
     monkeypatch.setattr(
         handler, "_multi_runtime_respond_url", lambda: "http://runtime/v1/respond"
     )
-    monkeypatch.setattr(
-        audio_stream_mod.Path,
-        "open",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("sync Path.open() should not be used")
-        ),
-    )
+    original_open = Path.open
+
+    def _reject_sync_recording_open(path, *args, **kwargs):
+        if path == wav_path:
+            raise AssertionError("sync Path.open() should not read recording.wav")
+        return original_open(path, *args, **kwargs)
+
+    # AnyIO can lazily import modules here; only the recording read is forbidden.
+    monkeypatch.setattr(audio_stream_mod.Path, "open", _reject_sync_recording_open)
 
     calls = {}
 

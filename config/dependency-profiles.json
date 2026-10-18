@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "platform": {
-    "python": "3.12",
+    "python": "3.14",
     "system": "Linux",
     "machine": "x86_64"
   },
@@ -24,22 +24,17 @@
       "httpx==0.28.1",
       "aiohttp==3.14.3",
       "colorama==0.4.6",
-      "rich==13.9.4",
       "tqdm==4.67.1",
       "psutil==5.9.8",
       "gitpython==3.1.60",
       "networkx==3.6.1",
       "pillow==12.3.0",
       "watchdog==6.0.0",
-      "aiortc==1.14.0",
-      "av==16.1.0",
-      "numpy==1.26.4",
-      "packaging==26.0",
+      "numpy==2.5.4",
       "starlette==1.3.1",
       "cryptography>=50.0.2,<51",
       "pyjwt>=2.15.1,<3",
       "pyopenssl>=26.0.0,<27",
-      "werkzeug>=3.1.9,<4",
       "apscheduler>=3.10.4,<4",
       "redis==5.3.1",
       "arq==0.28.0",
@@ -48,8 +43,6 @@
       "urllib3>=2.8.0,<3",
       "requests>=2.33.0,<3",
       "google-genai==1.64.0",
-      "anthropic==0.84.0",
-      "tiktoken==0.13.0",
       "google-auth>=2.55.1,<3",
       "google-auth-oauthlib>=1.1.0,<2",
       "google-auth-httplib2>=0.1.1,<1",
@@ -77,13 +70,85 @@
       "huggingface_hub>=1.31.0,<2",
       "pip-audit==2.10.1",
       "flake8==7.4.1",
-      "types-bleach==6.4.0.20260728"
+      "types-bleach==6.4.0.20260728",
+      "rich==13.9.4",
+      "packaging==26.0"
     ],
     "build": [
       "pip==26.2.1",
       "setuptools==83.0.0",
       "wheel==0.48.0",
       "packaging==26.0"
+    ],
+    "model-runtime": [
+      "torch==2.13.0",
+      "torchvision==0.28.0",
+      "transformers==5.17.0",
+      "accelerate==1.15.0",
+      "tokenizers==0.23.3",
+      "safetensors==0.8.0",
+      "huggingface_hub>=1.31.0,<2"
+    ],
+    "audio-runtime": [
+      "scipy==1.17.1",
+      "soundfile==0.14.0"
+    ],
+    "ocr": [
+      "pytesseract"
+    ],
+    "full-memory": [
+      "sentence-transformers==6.1.0",
+      "lancedb==0.25.3"
+    ],
+    "full-web": [
+      "ddgs==9.16.0",
+      "tavily-python==0.8.5",
+      "beautifulsoup4==4.15.0",
+      "trafilatura==2.3.1"
+    ],
+    "full-documents": [
+      "markitdown==0.1.8",
+      "pypdf==6.21.1",
+      "python-docx==1.2.0"
+    ],
+    "full-vision": [
+      "opencv-python-headless==4.11.0.86"
+    ],
+    "full-voice-floor-cpu": [
+      "onnxruntime==1.26.0",
+      "faster-whisper==1.2.1",
+      "piper-tts==1.8.0",
+      "sounddevice==0.5.6"
+    ],
+    "full-desktop": [
+      "mss==10.2.0",
+      "pyautogui==0.9.54",
+      "pynput==1.8.2",
+      "pyperclip==1.11.0",
+      "win10toast; platform_system == \"Windows\""
+    ],
+    "full-infrastructure": [
+      "docker==7.2.0",
+      "paramiko==5.0.0",
+      "asyncssh==2.24.1",
+      "zeroconf==0.151.5"
+    ],
+    "full-code": [
+      "radon==6.0.1",
+      "bleach"
+    ],
+    "multi-runtime-base": [
+      "numpy==2.5.4",
+      "pillow==12.3.0",
+      "pydantic==2.13.4",
+      "pydantic-settings==2.16.0",
+      "fastapi==0.136.3",
+      "uvicorn[standard]==0.40.0",
+      "httpx==0.28.1",
+      "python-dotenv==1.2.2",
+      "loguru==0.7.3",
+      "starlette==1.3.1",
+      "python-multipart==0.0.31"
     ]
   },
   "profiles": {
@@ -93,7 +158,7 @@
         "light"
       ],
       "input": "requirements-light.txt",
-      "lock": "requirements/locks/light-linux-py312.txt"
+      "lock": "requirements/locks/light-linux-py314.txt"
     },
     "ci": {
       "kind": "application",
@@ -102,7 +167,7 @@
         "ci"
       ],
       "input": "requirements-ci-lite.txt",
-      "lock": "requirements/locks/ci-linux-py312.txt"
+      "lock": "requirements/locks/ci-linux-py314.txt"
     },
     "build": {
       "kind": "component",
@@ -110,8 +175,50 @@
         "build"
       ],
       "input": "requirements-build.txt",
-      "lock": "requirements/locks/build-linux-py312.txt",
+      "lock": "requirements/locks/build-linux-py314.txt",
       "boundary": "Pinned build frontend/backend for source distributions. Use build constraints; not an application or model environment."
+    },
+    "full": {
+      "kind": "application",
+      "extends": "light",
+      "groups": [
+        "model-runtime",
+        "audio-runtime",
+        "ocr",
+        "full-memory",
+        "full-web",
+        "full-documents",
+        "full-vision",
+        "full-voice-floor-cpu",
+        "full-desktop",
+        "full-infrastructure",
+        "full-code"
+      ],
+      "input": "requirements-full.txt",
+      "lock": "requirements/locks/full-linux-py314.txt",
+      "boundary": "Application features include in-process DA2/RAG Torch and CPU ONNX voice/floor consumers. CUDA multi_runtime daemon uses its own component interpreter; Ollama stays an external HTTP service. No GPU ONNX or vLLM in this environment."
+    },
+    "full-ci": {
+      "kind": "application",
+      "extends": "full",
+      "groups": [
+        "ci"
+      ],
+      "input": "requirements-full-ci.txt",
+      "lock": "requirements/locks/full-ci-linux-py314.txt",
+      "boundary": "Full application plus the same CI tools; no training, GPU ONNX or vLLM component installation."
+    },
+    "multi-runtime-cuda": {
+      "kind": "component",
+      "groups": [
+        "multi-runtime-base",
+        "model-runtime",
+        "audio-runtime",
+        "ocr"
+      ],
+      "input": "requirements-multi-runtime-cuda.txt",
+      "lock": "requirements/locks/multi-runtime-cuda-linux-py314.txt",
+      "boundary": "Dedicated isolated interpreter selected by MULTI_RUNTIME_COMPONENT_PYTHON for services.multi_runtime.main. Does not extend Light or install CPU voice/floor ONNX. Existing model/device/precision and HTTP contracts remain separate from installation qualification."
     }
   },
   "aliases": {
@@ -128,7 +235,12 @@
     "autogen-core",
     "vllm",
     "onnxruntime-gpu",
-    "onnxruntime-genai-cuda"
+    "onnxruntime-genai-cuda",
+    "flaml",
+    "graphrag",
+    "optimum",
+    "webrtcvad",
+    "locust"
   ],
   "exclusive_distributions": [
     [
@@ -152,24 +264,15 @@
     }
   },
   "deferred_profiles": {
-    "full": {
-      "status": "deferred",
-      "manifest": "requirements-full.txt",
-      "reason": "Legacy manifest retained without qualification by the Light/CI release."
-    },
-    "full-ci": {
-      "status": "deferred",
-      "reason": "Full CI profile is outside the Light/CI release; no generated manifest or lock is published."
-    },
     "onnx-cpu": {
       "status": "deferred",
       "manifest": "requirements-profile-onnx-cpu.txt",
-      "reason": "Legacy ONNX CPU manifest retained; not an alias of an active profile."
+      "reason": "Legacy ONNX LLM/GenAI profile remains deferred until an explicit model consumer needs it. Full CPU voice/floor uses its own canonical group without GenAI."
     },
     "onnx-extras": {
       "status": "deferred",
       "manifest": "requirements-extras-onnx.txt",
-      "reason": "Legacy ONNX extras manifest retained; not an alias of an active profile."
+      "reason": "Legacy standalone extras input is not a qualified install profile. Full declares its actual CPU voice/floor dependencies directly."
     },
     "onnx-gpu": {
       "status": "deferred",
@@ -186,5 +289,16 @@
       "manifest": "requirements-academy.txt",
       "reason": "Academy migration and its locks are outside this release."
     }
+  },
+  "python_target": "3.14.8",
+  "source_distributions": {
+    "pyautogui": "0.9.54",
+    "python3-xlib": "0.15",
+    "pytweening": "1.2.0",
+    "pyscreeze": "1.0.1",
+    "pygetwindow": "0.0.9",
+    "mouseinfo": "0.1.3",
+    "pyrect": "0.2.0",
+    "evdev": "2.0.0"
   }
 }

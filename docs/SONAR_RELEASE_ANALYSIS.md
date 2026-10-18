@@ -81,3 +81,50 @@ After authorized publication, obtain a fresh cloud report for the final SHA.
 Confirm dictionaries disappear only from CPD metrics, issue scope remains intact,
 version event is correct, and compare total security findings with the saved report.
 Local tests are not a substitute for that cloud acceptance.
+
+
+## Local acceptance recorded 18 October 2026
+
+Implementation under test: `6db26f40b3d0a0737b342efa1d861ac490274070`.
+The following checks completed with exit status 0:
+
+| Command | Result |
+| --- | --- |
+| `pytest -q tests/test_gemma4_audio_runtime_main.py tests/test_main_internal_helpers.py` | 143 passed; 2 existing dependency deprecation warnings |
+| `pytest -q tests/test_dead_code_audit.py tests/test_update_sonar_scope_group.py` | 12 passed |
+| `npm --prefix web-next ci --ignore-scripts --no-audit --no-fund` | 601 packages installed from lockfile; no audit request |
+| `make test-catalog-check test-groups-check` | Catalog 504/504; groups synchronized |
+| `make pr-fast VENV=/home/ubuntu/.venvs/venom266-sec-ci-a` | PASS; 97.1% changed-lines coverage; 14 file floors; frontend lint and 172 UI tests passed |
+| `make test-ci-lite VENV=/home/ubuntu/.venvs/venom266-sec-ci-a` | PASS |
+| `mypy venom_core` | PASS |
+| `make check-new-code-coverage-diagnostics VENV=/home/ubuntu/.venvs/venom266-sec-ci-a` | PASS |
+| `make test-web-unit` | PASS |
+
+No additional model qualification, Snyk/npm rescan, operator deployment or cloud
+Sonar scan was performed in this slice. Dependency versions are unchanged from
+266; the application version alone changes package metadata. Existing vendor
+findings and the CI boolean.py alias warning remain documented in the 266 audit.
+Final documentation-only changes do not alter the tested implementation.
+
+## Proposed release order
+
+There are three local release branches in two repositories. GitHub lists no open
+PR in either repository at the time of this check; local task 266 is not a GitHub
+PR number.
+
+1. Core Venom `codex/266-maf-runtime-profiles` (`24e5d3c1`): dependency profiles,
+   pins, security stabilization and MAF migration; qualified Ollama/own daemon.
+2. Rider module `codex/266-maf-tool-contract` (`4b27e59d`): use first-party Venom
+   tool contracts. Merge after the core contract exists; do not deploy this module
+   alone against the old core.
+3. Core Venom `codex/sonar-gate-1-10` (stacked on 266): release identity 1.10.0,
+   Sonar configuration and bounded reliability fixes. Keep this as a separate PR
+   so the Sonar scope and unresolved findings remain reviewable. Before core 266
+   merges its PR base can be that branch; then retarget to main and inspect the
+   effective diff. If core is squash-merged, rebase only the Sonar follow-up commits
+   onto main to avoid republishing the entire 266 diff.
+
+Complete remote CI/review and inspect a fresh Sonar result before declaring the
+release accepted. Deploy the compatible final core/module pair together, then run
+operator smoke tests. Preserve the old checkout until acceptance; this document
+is a sequence proposal, not authorization or evidence of a merge/deployment.

@@ -46,8 +46,9 @@ def pip_report():
 
 def test_one_policy_generates_current_installation_inputs(policy):
     assert profiles.generate(profiles.ROOT, policy, check=True) == []
-    assert profiles.generated_inputs(policy)["requirements.txt"].endswith(
-        "-r requirements-light.txt\n"
+    assert (
+        "agent-framework-core==1.22.0\n"
+        in profiles.generated_inputs(policy)["requirements.txt"]
     )
 
 
@@ -1243,3 +1244,26 @@ def test_profile_inputs_reject_versions_fixed_in_qualified_locks(
     locked[package] = vulnerable
     with pytest.raises(ValueError, match="Missing or incompatible direct requirement"):
         profiles.check_direct_requirements(policy, profile, locked)
+
+
+def test_scm_manifest_retains_every_direct_requirement_without_recursive_flags(policy):
+    # Snyk SCM removes -r/-c directives before resolving a Pip project.
+    # A scan must still receive the whole selected profile, including Light pins.
+    inputs = profiles.generated_inputs(policy)
+    targets = {
+        spec["input"]: name for name, spec in policy["profiles"].items()
+    } | policy["aliases"]
+    for filename, profile in targets.items():
+        lines = [
+            line
+            for line in inputs[filename].splitlines()
+            if line and not line.startswith("#")
+        ]
+        assert all(not line.startswith("-") for line in lines), filename
+        expected = profiles.requirements_for(policy, profile)
+        actual = {
+            profiles.canonicalize_name(profiles.Requirement(line).name): line
+            for line in lines
+        }
+        assert len(lines) == len(actual), filename
+        assert actual == expected, filename

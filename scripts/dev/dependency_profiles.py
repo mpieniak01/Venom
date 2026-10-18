@@ -128,19 +128,19 @@ def generated_inputs(policy: dict[str, Any]) -> dict[str, str]:
         lines = [header, f"# Profile: {name} ({spec['kind']})\n"]
         if spec.get("boundary"):
             lines.append(f"# {spec['boundary']}\n")
-        if spec.get("extends"):
-            parent = policy["profiles"][spec["extends"]]["input"]
-            lines.append(f"-r {parent}\n")
-        own = {}
-        for group in spec["groups"]:
-            for req in policy["groups"][group]:
-                own[canonicalize_name(Requirement(req).name)] = req
-        lines.extend(f"{req}\n" for _, req in sorted(own.items()))
+        # SCM scanners discard -r/-c includes. Emit the complete profile so
+        # remote scans and local pip receive identical direct requirements.
+        requirements = requirements_for(policy, name)
+        lines.extend(f"{req}\n" for _, req in sorted(requirements.items()))
         output[spec["input"]] = "".join(lines)
     for alias, profile in policy["aliases"].items():
         output[alias] = (
             header
-            + f"# Compatibility alias for {profile}.\n-r {policy['profiles'][profile]['input']}\n"
+            + f"# Compatibility alias for {profile}.\n"
+            + "".join(
+                f"{req}\n"
+                for _, req in sorted(requirements_for(policy, profile).items())
+            )
         )
     for filename, spec in policy.get("constraint_groups", {}).items():
         requirements = requirements_for(policy, spec["profile"])

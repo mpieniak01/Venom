@@ -398,3 +398,17 @@ are ready for handoff. It does not mean a clean security report, GitHub review,
 merge, operator switch or production acceptance. Sonar and release-payload review
 remain separate tasks. Existing operator checkout/binary are preserved for rollback;
 this qualification does not silently replace them.
+
+## Snyk SCM manifest completeness
+
+Generated profile inputs and compatibility names are self-contained: inherited
+requirements are expanded from the same policy, without recursive `-r` or `-c`
+installation directives. Snyk SCM removes those directives before its Pip scan,
+so an include-only alias can otherwise report success with an incomplete graph.
+See [Snyk SCM support for Python](https://docs.snyk.io/supported-languages/supported-languages-list/python/scm-integrations-and-python).
+
+This changes manifest serialization, not profile ownership, package constraints
+or qualified platform locks. The manifest completeness regression checks every
+profile and alias against its complete policy. A successful local CLI scan still
+does not replace a failed SCM installation check; keep the PR open until that
+remote check succeeds.

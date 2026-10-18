@@ -803,3 +803,50 @@ async def test_metadata_or_invalid_finish_marker_does_not_complete_sse(packet):
                 response
             )
         ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["onnx", "vllm", "ollama"])
+@pytest.mark.parametrize("finish_reason", ["abort", "error"])
+@pytest.mark.parametrize("terminal", [False, True])
+@pytest.mark.parametrize("prior_finish", [False, True])
+async def test_failed_generation_reason_is_not_a_successful_sse_completion(
+    monkeypatch, provider, finish_reason, terminal, prior_finish
+):
+    packets = ['data: {"choices":[{"delta":{"content":"Partial"}}]}']
+    if prior_finish:
+        packets.append('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}')
+    packets.append(
+        "data: "
+        + json.dumps({"choices": [{"delta": {}, "finish_reason": finish_reason}]})
+    )
+    if terminal:
+        packets.append("data: [DONE]")
+    calls = []
+
+    @asynccontextmanager
+    async def open_response(**kwargs):
+        calls.append(kwargs)
+        yield _LinesResponse(packets)
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport, "open_stream_response", open_response
+    )
+    tracer = _Tracer()
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: tracer)
+    events = await _collect_events(
+        llm_simple_service._stream_simple_chunks(
+            completions_url="http://fixture/v1/chat/completions",
+            payload={"messages": []},
+            runtime=_Runtime(provider),
+            request_id=uuid4(),
+            model_name="model-x",
+        )
+    )
+    assert [name for name, _ in events] == ["start", "content", "error"]
+    assert events[1][1]["text"] == "Partial"
+    assert len(calls) == 1
+    assert any(
+        name == "update_status" and args[1].name == "FAILED"
+        for name, args, _ in tracer.calls
+    )

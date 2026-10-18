@@ -44,12 +44,18 @@ def _packet_finishes_generation(packet: dict[str, Any]) -> bool:
     choices = packet.get("choices")
     if not isinstance(choices, list):
         return False
-    return any(
-        isinstance(choice, dict)
-        and isinstance(reason := choice.get("finish_reason"), str)
-        and bool(reason.strip())
-        for choice in choices
-    )
+    completed = False
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        reason = choice.get("finish_reason")
+        if not isinstance(reason, str):
+            continue
+        reason = reason.strip().lower()
+        if reason in {"abort", "error"}:
+            raise UpstreamStreamError("upstream_generation_failed")
+        completed = completed or bool(reason)
+    return completed
 
 
 async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
@@ -71,7 +77,7 @@ async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
                 # Error bodies can contain private provider/conversation details.
                 # Fail the stream without echoing that untrusted payload.
                 raise UpstreamStreamError("upstream_stream_error")
-            completed = completed or _packet_finishes_generation(packet)
+            completed = _packet_finishes_generation(packet) or completed
             yield packet
     # A clean TCP EOF is not evidence that generation finished. Preserve partial
     # output, but do not let callers trace success or emit a successful DONE.

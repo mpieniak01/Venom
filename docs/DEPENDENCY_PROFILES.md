@@ -68,7 +68,9 @@ For OpenAI-compatible streaming, Simple requires an explicit generation end
 (`data: [DONE]` or a nonempty `choices[].finish_reason`). A clean socket EOF
 without either is a failure, including after partial text. Partial output is
 retained, but no successful `done` is emitted and the request is not replayed.
-Native token usage remains optional and is never inferred from event counts.
+An `abort` or `error` finish reason fails the stream even if followed by `[DONE]`
+or preceded by another finish marker. Native token usage remains optional and
+is never inferred from event counts.
 
 Functional qualification records must distinguish native generation, retrieval,
 RAG synthesis, graph extraction and speech. Successful retrieval does not prove

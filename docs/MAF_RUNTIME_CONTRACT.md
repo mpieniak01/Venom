@@ -135,3 +135,34 @@ with word counts, chunk counts or zeros.
 Upstream references: [Ollama compatibility](https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx)
 and [Chat Completions streaming usage](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events).
 An interrupted stream may omit its final usage packet; that is not token evidence.
+
+
+## Resource measurement in the existing 202C benchmark
+
+`scripts/dev/202c_latency_memory_benchmark.py` accepts repeatable
+`--baseline-root-pid` and `--candidate-root-pid`, `--resource-interval-sec`
+(default 0.1 s, range 0.02–5 s), and `--gpu-index` (default 0). Supply known
+API/engine process roots from the isolated qualification controller. It does not
+infer roots from ports, names, or unrelated operator processes. Omitting roots
+records `UNAVAILABLE` and starts no monitor. There are no new dependencies.
+
+Each runtime has one resource window spanning measured repetitions, after its
+first post-activation request and warmup. CPU is the sum of observed user/system
+time deltas for those roots and their observed descendants; 100% means one logical
+core. Birth-time identity checks reject PID reuse, and overlapping roots are
+counted once. Sampled summed RSS may count shared pages more than once. Polling
+can miss short-lived children, their final CPU time, and short memory spikes.
+
+Node RAM (total minus available) and GPU device memory include unrelated
+allocations. A single owned `nvidia-smi` monitor serves each window; its reader and
+process have bounded cleanup, and target process trees are never terminated.
+Actual sample counts/intervals, identities, errors, units, per-metric availability,
+and scope are recorded in JSON. A missing read stays null; it never becomes zero.
+Legacy summary memory keys alias these sampled node/device maxima. They are not
+per-request memory estimates, isolated VRAM, or guaranteed inference peaks.
+
+The first post-activation timing is not a proven cold unload/reboot cycle.
+The script's existing percentage KPIs are exploratory and do not substitute for
+266's frozen baseline-derived acceptance budgets, repeatable model artifacts,
+all-route/lifecycle tests, or final release qualification. An unavailable latency
+comparison cannot pass a KPI by substituting zero.

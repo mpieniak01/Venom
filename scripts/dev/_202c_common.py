@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import importlib
 import json
+import math
 import os
 import re
 import statistics
+import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -205,8 +209,6 @@ def system_memory_used_mb() -> float:
 
 
 def gpu_memory_used_mb() -> float:
-    import subprocess
-
     try:
         completed = subprocess.run(
             [
@@ -217,8 +219,9 @@ def gpu_memory_used_mb() -> float:
             check=False,
             text=True,
             capture_output=True,
+            timeout=3.0,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return 0.0
     if completed.returncode != 0:
         return 0.0
@@ -232,6 +235,503 @@ def gpu_memory_used_mb() -> float:
         except ValueError:
             continue
     return max(values) if values else 0.0
+
+
+@dataclass
+class _ResourceSamples:
+    """Constant-space, successful observations only; zero is a valid reading."""
+
+    count: int = 0
+    total: float = 0.0
+    peak: float | None = None
+    first_s: float | None = None
+    last_s: float | None = None
+    interval_total_s: float = 0.0
+    interval_min_s: float | None = None
+    interval_max_s: float | None = None
+
+    def add(self, value: float, elapsed_s: float) -> None:
+        if self.last_s is not None:
+            interval = max(0.0, elapsed_s - self.last_s)
+            self.interval_total_s += interval
+            self.interval_min_s = (
+                interval
+                if self.interval_min_s is None
+                else min(self.interval_min_s, interval)
+            )
+            self.interval_max_s = max(self.interval_max_s or 0.0, interval)
+        if self.first_s is None:
+            self.first_s = elapsed_s
+        self.last_s = elapsed_s
+        self.count += 1
+        self.total += value
+        self.peak = value if self.peak is None else max(self.peak, value)
+
+    def mean(self) -> float | None:
+        return self.total / self.count if self.count else None
+
+    def timing(self) -> dict[str, Any]:
+        return {
+            "first_sample_elapsed_s": self.first_s,
+            "last_sample_elapsed_s": self.last_s,
+            "actual_interval_mean_s": (
+                self.interval_total_s / (self.count - 1) if self.count > 1 else None
+            ),
+            "actual_interval_min_s": self.interval_min_s,
+            "actual_interval_max_s": self.interval_max_s,
+        }
+
+
+class ProcessResourceSampler:
+    """Read-only sampled process tree and node/device resource observations.
+
+    RSS sums can count shared pages more than once. GPU memory is device-wide,
+    not attributable to roots. Polling can miss short-lived children and peaks.
+    Memory fields retain the legacy ``_mb`` names but contain MiB (2**20 bytes).
+    Only the one monitor subprocess created here may be terminated by finish().
+    """
+
+    _MAX_PROCESSES = 4096
+    _MAX_ERRORS = 32
+    _JOIN_TIMEOUT_SEC = 1.0
+
+    def __init__(
+        self,
+        root_pids: list[int] | None = None,
+        interval_sec: float = 0.1,
+        gpu_index: int = 0,
+    ) -> None:
+        if not math.isfinite(interval_sec) or not 0.02 <= interval_sec <= 5.0:
+            raise ValueError(
+                "interval_sec must be finite and between 0.02 and 5 seconds"
+            )
+        if (
+            isinstance(gpu_index, bool)
+            or not isinstance(gpu_index, int)
+            or gpu_index < 0
+        ):
+            raise ValueError("gpu_index must be a nonnegative integer")
+        roots = list(dict.fromkeys(root_pids or []))
+        if len(roots) > self._MAX_PROCESSES or any(
+            isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0
+            for pid in roots
+        ):
+            raise ValueError(
+                "root_pids must contain at most 4096 positive integer PIDs"
+            )
+        self._root_ids = roots
+        self._requested_interval = interval_sec
+        self._interval = interval_sec
+        self._gpu_index = gpu_index
+        self._roots: dict[int, dict[str, Any]] = {}
+        self._tracked: dict[int, tuple[float, float | None]] = {}
+        self._retired: set[int] = set()
+        self._errors: list[str] = []
+        self._dropped_errors = 0
+        self._psutil: Any = None
+        self._read_errors: tuple[type[Exception], ...] = (
+            OSError,
+            ValueError,
+            TypeError,
+        )
+        self._process_samples = _ResourceSamples()
+        self._rss = _ResourceSamples()
+        self._node = _ResourceSamples()
+        self._gpu = _ResourceSamples()
+        self._cpu_seconds = 0.0
+        self._cpu_delta_count = 0
+        self._stop = threading.Event()
+        self._gpu_sample_lock = threading.Lock()
+        self._worker: threading.Thread | None = None
+        self._gpu_reader: threading.Thread | None = None
+        self._gpu_monitor: subprocess.Popen[str] | None = None
+        self._started_perf: float | None = None
+        self._started_wall: float | None = None
+        self._ended_perf: float | None = None
+        self._result: dict[str, Any] | None = None
+
+    def _error(self, message: str) -> None:
+        if message in self._errors:
+            return
+        if len(self._errors) < self._MAX_ERRORS:
+            self._errors.append(message)
+        else:
+            self._dropped_errors += 1
+
+    @staticmethod
+    def _number(value: Any) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("invalid resource reading")
+        number = float(value)
+        if not math.isfinite(number) or number < 0:
+            raise ValueError("invalid resource reading")
+        return number
+
+    def _elapsed(self) -> float:
+        if self._started_perf is None:
+            return 0.0
+        return max(0.0, time.perf_counter() - self._started_perf)
+
+    def start(self) -> ProcessResourceSampler:
+        if self._started_perf is not None or self._result is not None:
+            return self
+        self._started_perf = time.perf_counter()
+        self._started_wall = time.time()
+        if not self._root_ids:
+            self._error("root_pids_not_provided")
+            return self
+        self._roots = {
+            pid: {"pid": pid, "create_time": None, "status": "UNAVAILABLE"}
+            for pid in self._root_ids
+        }
+        try:
+            self._psutil = importlib.import_module("psutil")
+        except ImportError:
+            self._error("psutil_unavailable")
+            return self
+        self._read_errors += (self._psutil.Error,)
+        for pid in self._root_ids:
+            identity: dict[str, Any] = {"pid": pid, "create_time": None, "status": "OK"}
+            self._roots[pid] = identity
+            try:
+                identity["create_time"] = self._number(
+                    self._psutil.Process(pid).create_time()
+                )
+            except self._read_errors as exc:
+                identity["status"] = "UNAVAILABLE"
+                self._retired.add(pid)
+                self._error(f"root_identity_unavailable:{pid}:{type(exc).__name__}")
+        if not any(item["status"] == "OK" for item in self._roots.values()):
+            return self
+        self._sample()
+        self._start_gpu_monitor()
+        self._worker = threading.Thread(
+            target=self._sample_loop, name="benchmark-resource-sampler", daemon=True
+        )
+        try:
+            self._worker.start()
+        except RuntimeError as exc:
+            self._worker = None
+            self._error(f"process_sampler_start_failed:{type(exc).__name__}")
+        return self
+
+    def _sample_loop(self) -> None:
+        while not self._stop.wait(self._interval):
+            self._sample()
+
+    def _lose_identity(self, pid: int, reason: str) -> None:
+        self._retired.add(pid)
+        if pid in self._roots:
+            self._roots[pid]["status"] = reason
+        self._error(f"process_identity_{reason.lower()}:{pid}")
+
+    def _checked_process(self, pid: int, birth: float) -> Any:
+        process = self._psutil.Process(pid)
+        if self._number(process.create_time()) != birth:
+            self._lose_identity(pid, "CHANGED")
+            return None
+        return process
+
+    def _candidates(self) -> dict[int, float]:
+        candidates = {
+            pid: state[0]
+            for pid, state in self._tracked.items()
+            if pid not in self._retired
+        }
+        for pid, identity in self._roots.items():
+            if identity["status"] != "OK":
+                continue
+            birth = identity["create_time"]
+            try:
+                process = self._checked_process(pid, birth)
+                if process is None:
+                    candidates.pop(pid, None)
+                    continue
+                candidates[pid] = birth
+                descendants = process.children(recursive=True)
+            except self._read_errors as exc:
+                # A failed root traversal cannot silently claim complete scope.
+                self._error(f"root_scope_read_failed:{pid}:{type(exc).__name__}")
+                try:
+                    process = self._checked_process(pid, birth)
+                except self._read_errors:
+                    self._lose_identity(pid, "UNAVAILABLE")
+                    candidates.pop(pid, None)
+                continue
+            for child in descendants:
+                child_pid = child.pid
+                if child_pid in self._retired or child_pid in candidates:
+                    continue
+                if len(candidates) >= self._MAX_PROCESSES:
+                    self._error("process_scope_limit_reached")
+                    break
+                try:
+                    child_birth = self._number(
+                        self._psutil.Process(child_pid).create_time()
+                    )
+                except self._read_errors as exc:
+                    self._error(
+                        f"child_identity_unavailable:{child_pid}:{type(exc).__name__}"
+                    )
+                    continue
+                candidates[child_pid] = child_birth
+        return candidates
+
+    def _process_values(
+        self, pid: int, birth: float
+    ) -> tuple[float | None, float | None] | None:
+        try:
+            process = self._checked_process(pid, birth)
+            if process is None:
+                return None
+            cpu = rss = None
+            try:
+                times = process.cpu_times()
+                cpu = self._number(
+                    self._number(times.user) + self._number(times.system)
+                )
+            except self._read_errors as exc:
+                self._error(f"process_cpu_unavailable:{pid}:{type(exc).__name__}")
+            try:
+                rss = self._number(process.memory_info().rss) / (1024**2)
+            except self._read_errors as exc:
+                self._error(f"process_rss_unavailable:{pid}:{type(exc).__name__}")
+            # A fresh Process avoids psutil's cached create_time on PID reuse.
+            if self._checked_process(pid, birth) is None:
+                return None
+            return cpu, rss
+        except self._read_errors as exc:
+            self._lose_identity(pid, "UNAVAILABLE")
+            self._error(f"process_read_failed:{pid}:{type(exc).__name__}")
+            return None
+
+    def _sample(self) -> None:
+        elapsed = self._elapsed()
+        rss_values: list[float] = []
+        observed = False
+        for pid, birth in self._candidates().items():
+            if pid in self._retired:
+                continue
+            if pid not in self._tracked and len(self._tracked) >= self._MAX_PROCESSES:
+                self._error("process_scope_limit_reached")
+                continue
+            previous = self._tracked.get(pid)
+            if previous is not None and previous[0] != birth:
+                self._lose_identity(pid, "CHANGED")
+                continue
+            values = self._process_values(pid, birth)
+            if values is None:
+                continue
+            cpu, rss = values
+            observed |= cpu is not None or rss is not None
+            if rss is not None:
+                rss_values.append(rss)
+            prior_cpu = previous[1] if previous else None
+            if previous is None and birth >= (self._started_wall or math.inf):
+                # New children can be counted from birth; pre-existing CPU is excluded.
+                prior_cpu = 0.0
+            if cpu is not None and prior_cpu is not None:
+                if cpu >= prior_cpu:
+                    self._cpu_seconds += cpu - prior_cpu
+                    self._cpu_delta_count += 1
+                else:
+                    self._error(f"process_cpu_counter_regressed:{pid}")
+            self._tracked[pid] = (birth, cpu if cpu is not None else prior_cpu)
+        if observed:
+            self._process_samples.add(0.0, elapsed)
+        if rss_values:
+            self._rss.add(sum(rss_values), elapsed)
+        try:
+            memory = self._psutil.virtual_memory()
+            used = self._number(memory.total) - self._number(memory.available)
+            self._node.add(self._number(used) / (1024**2), elapsed)
+        except self._read_errors as exc:
+            self._error(f"node_ram_unavailable:{type(exc).__name__}")
+
+    def _start_gpu_monitor(self) -> None:
+        try:
+            self._gpu_monitor = subprocess.Popen(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=memory.used",
+                    "--format=csv,noheader,nounits",
+                    f"--id={self._gpu_index}",
+                    f"--loop-ms={round(self._interval * 1000)}",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="ascii",
+                errors="replace",
+                bufsize=1,
+            )
+        except OSError as exc:
+            self._error(f"gpu_monitor_unavailable:{type(exc).__name__}")
+            return
+        self._gpu_reader = threading.Thread(
+            target=self._read_gpu, name="benchmark-gpu-reader", daemon=True
+        )
+        try:
+            self._gpu_reader.start()
+        except RuntimeError as exc:
+            self._gpu_reader = None
+            self._error(f"gpu_reader_start_failed:{type(exc).__name__}")
+            self._stop_gpu_monitor()
+
+    def _read_gpu(self) -> None:
+        monitor = self._gpu_monitor
+        if monitor is None or monitor.stdout is None:
+            return
+        oversized = False
+        try:
+            while not self._stop.is_set():
+                line = monitor.stdout.readline(128)
+                if self._stop.is_set():
+                    break
+                if not line:
+                    if not self._stop.is_set():
+                        self._error("gpu_monitor_ended_before_window")
+                    break
+                if not line.endswith("\n") or oversized:
+                    oversized = not line.endswith("\n")
+                    self._error("gpu_monitor_invalid_or_oversized_line")
+                    continue
+                text = line.strip()
+                if re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", text) is None:
+                    self._error("gpu_monitor_invalid_numeric_reading")
+                    continue
+                value = float(text)
+                if math.isfinite(value):
+                    with self._gpu_sample_lock:
+                        if self._stop.is_set():
+                            break
+                        self._gpu.add(value, self._elapsed())
+                else:
+                    self._error("gpu_monitor_invalid_numeric_reading")
+        except (OSError, ValueError) as exc:
+            self._error(f"gpu_monitor_read_failed:{type(exc).__name__}")
+
+    def _stop_gpu_monitor(self) -> None:
+        monitor = self._gpu_monitor
+        if monitor is None:
+            return
+        try:
+            if monitor.poll() is None:
+                monitor.terminate()
+                try:
+                    monitor.wait(timeout=self._JOIN_TIMEOUT_SEC)
+                except subprocess.TimeoutExpired:
+                    monitor.kill()
+                    monitor.wait(timeout=self._JOIN_TIMEOUT_SEC)
+            elif not self._stop.is_set():
+                self._error("gpu_monitor_ended_before_window")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self._error(f"gpu_monitor_cleanup_failed:{type(exc).__name__}")
+        if self._gpu_reader is not None:
+            self._gpu_reader.join(timeout=self._JOIN_TIMEOUT_SEC)
+            if self._gpu_reader.is_alive():
+                self._error("gpu_reader_shutdown_timeout")
+                return
+        if monitor.stdout is not None:
+            monitor.stdout.close()
+
+    def finish(self) -> dict[str, Any]:
+        if self._result is not None:
+            return dict(self._result)
+        with self._gpu_sample_lock:
+            self._stop.set()
+        if self._started_perf is None:
+            self._error("sampler_not_started")
+        if self._worker is not None:
+            self._worker.join(timeout=self._JOIN_TIMEOUT_SEC)
+            if self._worker.is_alive():
+                self._error("process_sampler_shutdown_timeout")
+            else:
+                self._sample()
+        self._ended_perf = time.perf_counter()
+        self._stop_gpu_monitor()
+        elapsed = (
+            max(0.0, self._ended_perf - self._started_perf)
+            if self._started_perf is not None
+            else 0.0
+        )
+        process_available = self._process_samples.count > 0
+        cpu_available = self._cpu_delta_count > 0
+        partial = (
+            bool(self._errors)
+            or not cpu_available
+            or not self._rss.count
+            or not self._gpu.count
+            or not self._node.count
+        )
+        self._result = {
+            "status": ("PARTIAL" if partial else "OK")
+            if process_available
+            else "UNAVAILABLE",
+            "cpu_status": ("PARTIAL" if self._errors else "OK")
+            if cpu_available
+            else "UNAVAILABLE",
+            "process_rss_status": ("PARTIAL" if self._errors else "OK")
+            if self._rss.count
+            else "UNAVAILABLE",
+            "node_ram_status": (
+                "PARTIAL"
+                if any(e.startswith("node_ram_") for e in self._errors)
+                else "OK"
+            )
+            if self._node.count
+            else "UNAVAILABLE",
+            "gpu_status": (
+                "PARTIAL" if any(e.startswith("gpu_") for e in self._errors) else "OK"
+            )
+            if self._gpu.count
+            else "UNAVAILABLE",
+            "cpu_mean_percent_one_core": (
+                self._cpu_seconds / elapsed * 100
+                if cpu_available and elapsed > 0
+                else None
+            ),
+            "cpu_seconds_observed": self._cpu_seconds if cpu_available else None,
+            "process_rss_mb_sampled_peak": self._rss.peak,
+            "process_rss_mb_mean": self._rss.mean(),
+            "node_ram_used_mb_sampled_peak": self._node.peak,
+            "node_ram_used_mb_mean": self._node.mean(),
+            "gpu_device_used_mb_sampled_peak": self._gpu.peak,
+            "gpu_device_used_mb_mean": self._gpu.mean(),
+            "gpu_sample_count": self._gpu.count,
+            "process_sample_count": self._process_samples.count,
+            "node_ram_sample_count": self._node.count,
+            "process_rss_sample_count": self._rss.count,
+            "cpu_delta_count": self._cpu_delta_count,
+            "window_elapsed_s": elapsed,
+            "window_started_at_unix_s": self._started_wall,
+            "requested_interval_sec": self._requested_interval,
+            "effective_interval_sec": self._interval,
+            "root_identities": [dict(identity) for identity in self._roots.values()],
+            "observed_process_identity_count": len(self._tracked),
+            "retired_process_count": len(self._retired),
+            "process_scope": "explicit_roots_and_observed_descendants",
+            "node_ram_scope": "whole_node_total_minus_available",
+            "gpu_scope": "whole_device_not_process_attributed",
+            "gpu_index": self._gpu_index,
+            "memory_unit": "MiB",
+            "sampling": {
+                "process": self._process_samples.timing(),
+                "node_ram": self._node.timing(),
+                "gpu_device": self._gpu.timing(),
+            },
+            "caveats": [
+                "Sampling may miss short-lived children, their final CPU time, and peaks.",
+                "Summed process RSS may count shared pages more than once; PSS is not measured.",
+                "CPU is user+system deltas; 100 percent means one logical core.",
+                "Node RAM and device VRAM include unrelated workloads.",
+                "Means are arithmetic means of successful samples, not time-weighted means.",
+                "Known descendant identities remain in scope after reparenting.",
+            ],
+            "errors": list(self._errors),
+            "dropped_error_count": self._dropped_errors,
+        }
+        return dict(self._result)
 
 
 def _runtime_from_options(

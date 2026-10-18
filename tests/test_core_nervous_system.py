@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 import venom_core.main as main_app
 from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
 from venom_core.api import dependencies as api_deps
+from venom_core.api.routes import system_deps
 from venom_core.api.routes import tasks as tasks_routes
 from venom_core.config import SETTINGS
 from venom_core.core.dispatcher import TaskDispatcher
@@ -48,7 +49,6 @@ def patch_runtime(mock_runtime_info, monkeypatch):
     """Automatycznie patchuje runtime dla wszystkich testów."""
     modules = (
         "venom_core.utils.llm_runtime",
-        "venom_core.api.routes.tasks",
         "venom_core.core.orchestrator.orchestrator_submit",
         "venom_core.core.orchestrator.orchestrator_dispatch",
         "venom_core.core.orchestrator.kernel_manager",
@@ -56,12 +56,15 @@ def patch_runtime(mock_runtime_info, monkeypatch):
         "venom_core.core.orchestrator.task_pipeline.context_builder",
         "venom_core.core.orchestrator.task_pipeline.task_validator",
     )
-    for module in modules:
-        monkeypatch.setattr(
-            f"{module}.get_active_llm_runtime", lambda: mock_runtime_info
-        )
-    monkeypatch.setattr(SETTINGS, "LLM_CONFIG_HASH", mock_runtime_info.config_hash)
+
+    def select_runtime(runtime):
+        for module in modules:
+            monkeypatch.setattr(f"{module}.get_active_llm_runtime", lambda: runtime)
+        monkeypatch.setattr(SETTINGS, "LLM_CONFIG_HASH", runtime.config_hash)
+
+    select_runtime(mock_runtime_info)
     monkeypatch.setattr(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", False)
+    return select_runtime
 
 
 @pytest.fixture
@@ -71,6 +74,9 @@ def client(tmp_path, monkeypatch, fake_vector_store):
         "venom_core.memory.memory_skill.VectorStore", lambda: fake_vector_store
     )
     monkeypatch.setattr(
+        "venom_core.perception.eyes.Eyes._check_local_vision", lambda _: False
+    )
+    monkeypatch.setattr(
         "venom_core.execution.kernel_builder.KernelBuilder.build_kernel",
         lambda _: Kernel(),
     )
@@ -78,8 +84,6 @@ def client(tmp_path, monkeypatch, fake_vector_store):
     monkeypatch.setattr(Kernel, "get_service", lambda *_args, **_kwargs: connector)
     state_manager = StateManager(str(tmp_path / "tasks.json"))
     tracer = RequestTracer(trace_file_path=str(tmp_path / "traces.json"))
-    # ONNX trace callbacks use this shared getter outside FastAPI Depends.
-    monkeypatch.setattr(tasks_routes.system_deps, "get_request_tracer", lambda: tracer)
     kernel = Kernel()
     dispatcher = TaskDispatcher(
         kernel, goal_store=GoalStore(str(tmp_path / "goals.json"))
@@ -124,6 +128,7 @@ def client(tmp_path, monkeypatch, fake_vector_store):
         api_deps.get_request_tracer: lambda: tracer,
     }
     app.state.orchestrator = orchestrator
+    app.state.model_process = dispatcher.chat_agent.process
     app.state.task_state = state_manager
     app.state.request_tracer = tracer
     module_registry._install_conversation_provider_lifespan(app, SimpleNamespace())
@@ -317,36 +322,29 @@ def test_fixture_ignores_polluted_application_globals(request, monkeypatch):
 
 @pytest.mark.parametrize("poisoned_tracer", [False, True])
 def test_create_task_onnx_runtime_completes_via_tasks_path(
-    request, monkeypatch, poisoned_tracer
+    request, monkeypatch, poisoned_tracer, patch_runtime
 ):
     stale_tracer = object()
     if poisoned_tracer:
-        monkeypatch.setattr(tasks_routes.system_deps, "_request_tracer", stale_tracer)
-        monkeypatch.setattr(
-            tasks_routes.system_deps, "get_request_tracer", lambda: stale_tracer
-        )
-    client = request.getfixturevalue("client")
-    request.getfixturevalue("clear_state")
+        monkeypatch.setattr(system_deps, "_request_tracer", stale_tracer)
+        monkeypatch.setattr(system_deps, "get_request_tracer", lambda: stale_tracer)
     runtime = LLMRuntimeInfo(
         provider="onnx",
         model_name="models/gemma-3-4b-it-onnx",
-        endpoint=None,
+        endpoint=MOCK_HTTP,
         service_type="onnx",
         mode="LOCAL",
         config_hash="onnxhash",
         runtime_id="onnx@local",
     )
-    monkeypatch.setattr(
-        "venom_core.api.routes.tasks.get_active_llm_runtime", lambda: runtime
-    )
-
-    class FakeOnnxClient:
-        def generate(self, **_kwargs):
-            return "ONNX OK"
-
-    monkeypatch.setattr(
-        "venom_core.api.routes.tasks.OnnxLlmClient", lambda: FakeOnnxClient()
-    )
+    patch_runtime(runtime)
+    monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENABLED", True)
+    monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENDPOINT", MOCK_HTTP)
+    # Construct the owned orchestrator with the selected runtime; changing it after
+    # construction correctly refreshes its dispatcher and replaces the model stub.
+    client = request.getfixturevalue("client")
+    request.getfixturevalue("clear_state")
+    client.app.state.model_process.return_value = "ONNX OK"
 
     response = client.post("/api/v1/tasks", json={"content": "test onnx normal"})
     assert response.status_code == 201, response.text
@@ -354,7 +352,6 @@ def test_create_task_onnx_runtime_completes_via_tasks_path(
     payload = completed_task(client, task_id)
     assert payload["result"] == "ONNX OK"
     tracer = client.app.state.request_tracer
-    assert tasks_routes.system_deps.get_request_tracer() is tracer
     trace = tracer.get_trace(UUID(task_id))
     # Task completion precedes the asynchronous session/trace success callback.
     deadline = time.monotonic() + 5
@@ -368,9 +365,9 @@ def test_create_task_onnx_runtime_completes_via_tasks_path(
     assert trace is not None
     assert trace.status is TraceStatus.COMPLETED, trace.model_dump()
     assert trace.llm_provider == "onnx"
-    assert any(
-        step.component == "OnnxTask" and step.action == "complete"
-        for step in trace.steps
-    )
+    client.app.state.model_process.assert_awaited_once()
+    assert payload["context_history"]["llm_runtime"]["provider"] == "onnx"
+    # Normal uses orchestration and the injected tracer, not a route-owned adapter.
+    assert all(step.component != "OnnxTask" for step in trace.steps)
     if poisoned_tracer:
-        assert tasks_routes.system_deps._request_tracer is stale_tracer
+        assert system_deps._request_tracer is stale_tracer

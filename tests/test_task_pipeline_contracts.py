@@ -231,7 +231,11 @@ class TestTaskValidatorRouting:
         )
 
     def test_validate_routing_raises_for_onnx_runtime(self, monkeypatch):
-        """validate_routing should raise for ONNX provider."""
+        """An ONNX worker must be explicitly enabled."""
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.task_validator.SETTINGS.ONNX_LLM_ENABLED",
+            False,
+        )
         runtime = self._make_runtime(provider="onnx")
         monkeypatch.setattr(
             "venom_core.core.orchestrator.task_pipeline.task_validator.get_active_llm_runtime",
@@ -245,6 +249,41 @@ class TestTaskValidatorRouting:
             validator.validate_routing(task_id, TaskRequest(content="x"), None)
 
         assert orch._errors_set[task_id]["error_code"] == "runtime_not_supported"
+
+    @pytest.mark.parametrize("endpoint", [None, "", "not-an-http-endpoint"])
+    def test_validate_routing_rejects_missing_onnx_worker(self, monkeypatch, endpoint):
+        runtime = self._make_runtime(provider="onnx")
+        runtime.endpoint = endpoint
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.task_validator.SETTINGS.ONNX_LLM_ENABLED",
+            True,
+        )
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.task_validator.get_active_llm_runtime",
+            lambda: runtime,
+        )
+        with pytest.raises(RuntimeError, match="runtime_not_supported"):
+            TaskValidator(_make_orch()).validate_routing(
+                uuid4(), TaskRequest(content="x"), None
+            )
+
+    def test_validate_routing_accepts_enabled_onnx_http_worker(self, monkeypatch):
+        runtime = self._make_runtime(provider="onnx")
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.task_validator.SETTINGS.ONNX_LLM_ENABLED",
+            True,
+        )
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.task_validator.get_active_llm_runtime",
+            lambda: runtime,
+        )
+        orch = _make_orch()
+        TaskValidator(orch).validate_routing(
+            uuid4(),
+            TaskRequest(content="x", expected_config_hash=runtime.config_hash),
+            None,
+        )
+        assert not orch._errors_set
 
     def test_validate_routing_raises_on_provider_mismatch(self, monkeypatch):
         """validate_routing should raise when forced provider doesn't match active."""

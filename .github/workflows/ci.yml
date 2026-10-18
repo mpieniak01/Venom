@@ -417,12 +417,28 @@ jobs:
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "SonarCloud Scan enabled."
 
+      - name: Read release version
+        id: release_version
+        if: ${{ steps.sonar_guard.outputs.enabled == 'true' }}
+        run: |
+          python3 - <<'PYVERSION' >> "$GITHUB_OUTPUT"
+          import json
+          import tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["poetry"]["version"]
+          frontend_version = json.loads(Path("web-next/package.json").read_text())["version"]
+          if version != frontend_version or not all(part.isdigit() for part in version.split(".")):
+              raise SystemExit("Release versions must agree and contain numeric components")
+          print(f"version={version}")
+          PYVERSION
+
       - name: SonarCloud Scan (configpath)
         if: ${{ steps.sonar_guard.outputs.enabled == 'true' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.sonar_architecture_mode == 'noconfig') }}
         uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         with:
           args: >
             -Dsonar.newCode.referenceBranch=main
+            -Dsonar.projectVersion=${{ steps.release_version.outputs.version }}
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -434,6 +450,7 @@ jobs:
         with:
           args: >
             -Dsonar.newCode.referenceBranch=main
+            -Dsonar.projectVersion=${{ steps.release_version.outputs.version }}
             -Dsonar.architecture.noconfig=true
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

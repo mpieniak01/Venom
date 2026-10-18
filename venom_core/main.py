@@ -141,6 +141,7 @@ from venom_core.utils.llm_runtime import (
 )
 from venom_core.utils.logger import get_logger, set_event_broadcaster
 from venom_core.utils.runtime_names import is_multi_runtime
+from venom_core.version import APP_VERSION
 
 logger = get_logger(__name__)
 TESTING_MODE = bool(os.getenv("PYTEST_CURRENT_TEST"))
@@ -1673,7 +1674,7 @@ async def lifespan(app: FastAPI):
     await _shutdown_runtime_components()
 
 
-app = FastAPI(title="Venom Core", version="1.5.0", lifespan=lifespan)
+app = FastAPI(title="Venom Core", version=APP_VERSION, lifespan=lifespan)
 
 # Traffic Control Middleware (must be added before CORS for proper ordering)
 app.add_middleware(TrafficControlMiddleware)

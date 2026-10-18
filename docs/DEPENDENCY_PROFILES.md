@@ -20,6 +20,11 @@ The bootstrap and qualification CLI reject a request for a deferred profile befo
 installation. The metadata does not claim these retained environments are safe,
 installable, migrated to MAF, or compatible with the new Light environment.
 
+Legacy overlays may still reference shared compatibility inputs that now map to
+Light. Retaining an overlay file byte-for-byte does not freeze its transitive
+graph or establish compatibility with the migrated core. Do not install these
+overlays until their separate profile migration and qualification are complete.
+
 SCM projects and required security checks remain enabled. A complete Light/CI
 audit is evidence for that selected inventory only. It cannot stand in for a Full
 SCM scan, and a hosted installation ERROR remains an ERROR. Prior Full/vLLM findings

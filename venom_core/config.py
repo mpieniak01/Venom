@@ -593,7 +593,8 @@ class Settings(BaseSettings):
     MODULE_EXAMPLE_ALLOWED_USERS: str = ""  # CSV, puste = brak ograniczeń
     MODULE_EXAMPLE_TARGET: str = ""  # Opcjonalny cel demonstracyjny modułu
     API_OPTIONAL_MODULES: str = ""  # CSV: manifest:/abs/path/module.json
-    CORE_RUNTIME_VERSION: str = "1.5.0"
+    # Module ABI 1.6 exposes the MAF-backed agent/tool contracts.
+    CORE_RUNTIME_VERSION: str = "1.6.0"
     CORE_MODULE_API_VERSION: str = "1.0.0"
 
     # Konfiguracja Tokenomics (Dashboard v2.3)

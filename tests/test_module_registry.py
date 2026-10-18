@@ -288,3 +288,23 @@ def test_validate_optional_modules_config_ignores_empty_items() -> None:
     settings = _Settings()
     settings.API_OPTIONAL_MODULES = " , , "
     assert module_registry.validate_optional_modules_config(settings) == []
+
+
+def test_default_runtime_supports_maf_module_contract(tmp_path: Path) -> None:
+    from venom_core.config import Settings
+    from venom_core.execution.agent_contracts import tool_function
+
+    manifest_path = tmp_path / "module.json"
+    _write_manifest(
+        manifest_path,
+        module_id="maf_module",
+        router_import="maf_module:router",
+        min_core_version="1.6.0",
+    )
+    manifest = module_registry._parse_manifest_file(str(manifest_path))
+    assert manifest is not None
+    settings = Settings.model_construct()
+    assert callable(tool_function)
+    assert module_registry._is_compatible(manifest, settings)
+    settings.CORE_RUNTIME_VERSION = "1.5.0"
+    assert not module_registry._is_compatible(manifest, settings)

@@ -43,6 +43,12 @@ required for offline contract tests.
 
 ## Tools and permissions
 
+The module runtime ABI is `1.6.0`, independently of `APP_VERSION`. Modules using
+`agent_contracts.tool_function` must declare `backend.min_core_version: 1.6.0`.
+The existing manifest loader rejects older hosts before importing the module;
+Rider must be upgraded after this core contract is present. The router API remains
+`1.0.0`. Do not override the runtime ABI to make an incompatible host pass.
+
 Use `tool_function` from `venom_core.execution.agent_contracts`. It preserves Python
 method binding/signatures; the registry constructs native MAF FunctionTools from
 bound callables. Generated MCP tools use this contract as well. The loader accepts

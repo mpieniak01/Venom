@@ -207,7 +207,9 @@ def _resolve_local_runtime(
             candidate = apply_http_policy_to_url("http://localhost:11434/v1")
         return "ollama", candidate
     if active_server == "onnx":
-        return "onnx", None
+        return "onnx", _apply_http_policy_if_present(
+            getattr(settings, "ONNX_LLM_ENDPOINT", None)
+        )
     normalized_endpoint = _apply_http_policy_if_present(endpoint)
     return infer_local_provider(normalized_endpoint), normalized_endpoint
 
@@ -216,7 +218,9 @@ def _resolve_non_local_runtime(
     *, service_type: str, endpoint: Optional[str], settings
 ) -> Tuple[str, Optional[str]]:
     if service_type == "onnx":
-        return "onnx", None
+        return "onnx", _apply_http_policy_if_present(
+            getattr(settings, "ONNX_LLM_ENDPOINT", None)
+        )
     if service_type == "openai":
         return "openai", endpoint or "https://api.openai.com/v1"
     if service_type == "google":
@@ -249,8 +253,9 @@ def format_runtime_label(runtime: LLMRuntimeInfo) -> str:
 
 def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
     """Tworzy URL do health-checka na podstawie providera."""
-    if runtime.provider == "onnx":
-        return None
+    if runtime.provider == "onnx" and runtime.endpoint:
+        parsed = urlparse(runtime.endpoint)
+        return urlunparse((parsed.scheme, parsed.netloc, "/health", "", "", ""))
     if not runtime.endpoint:
         return None
 
@@ -300,10 +305,7 @@ async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[s
     Sprawdza rzeczywisty stan runtime i zwraca status + ewentualny błąd.
     """
 
-    if runtime.service_type == "onnx":
-        return "ready", None
-
-    if runtime.service_type != "local":
+    if runtime.service_type != "local" and runtime.provider != "onnx":
         # Zakładamy poprawny stan dla zewnętrznych providerów
         return "ready", None
 
@@ -315,6 +317,14 @@ async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[s
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(health_url)
         if response.status_code < 400:
+            if runtime.provider == "onnx":
+                payload = response.json()
+                if (
+                    not isinstance(payload, dict)
+                    or payload.get("engine") != "onnx-gpu"
+                    or payload.get("device") != "cuda"
+                ):
+                    return "degraded", "ONNX worker must report onnx-gpu on CUDA"
             return "online", None
         return "degraded", f"HTTP {response.status_code}"
     except httpx.HTTPError as exc:

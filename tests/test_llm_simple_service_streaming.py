@@ -600,69 +600,68 @@ async def test_stream_simple_chat_multi_runtime_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stream_simple_chunks_onnx_success_and_error(monkeypatch):
-    async def _fake_aiter_sync(*_args, **_kwargs):
-        for token in ("", "A", "B"):
-            yield token
-
-    monkeypatch.setattr(llm_simple_service, "_aiter_sync_onnx_stream", _fake_aiter_sync)
-    monkeypatch.setattr(llm_simple_service, "_get_onnx_simple_client", lambda: object())
-
-    ok_events = await _collect_events(
-        llm_simple_service._stream_simple_chunks_onnx(
-            runtime=_Runtime("onnx"),
-            request_id=uuid4(),
-            model_name="m",
-            messages=[],
-            max_tokens=16,
-            temperature=0.1,
-        )
-    )
-    assert [name for name, _ in ok_events] == ["start", "content", "content", "done"]
-
-    async def _boom_aiter_sync(*_args, **_kwargs):
-        raise RuntimeError("onnx failed")
-        yield ""  # pragma: no cover
-
-    monkeypatch.setattr(llm_simple_service, "_aiter_sync_onnx_stream", _boom_aiter_sync)
-    err_events = await _collect_events(
-        llm_simple_service._stream_simple_chunks_onnx(
-            runtime=_Runtime("onnx"),
-            request_id=uuid4(),
-            model_name="m",
-            messages=[],
-            max_tokens=16,
-            temperature=0.1,
-        )
-    )
-    assert [name for name, _ in err_events] == ["start", "error"]
-
-
-@pytest.mark.asyncio
-async def test_stream_simple_chat_onnx_path(monkeypatch):
+@pytest.mark.parametrize("upstream_stream", [True, False])
+async def test_simple_onnx_worker_uses_shared_http_transport_and_native_usage(
+    monkeypatch, upstream_stream
+):
     runtime = _Runtime("onnx")
     runtime.service_type = "onnx"
-    runtime.endpoint = None
-
+    captured = []
     monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
-    monkeypatch.setattr(
-        llm_simple_service, "_build_chat_completions_url", lambda _rt: None
-    )
 
-    async def _fake_onnx_stream(**_kwargs):
-        yield "event: start\ndata: {}\n\n"
-        yield 'event: content\ndata: {"text":"ONNX"}\n\n'
-        yield "event: done\ndata: {}\n\n"
+    async def no_adapter():
+        return None
 
-    monkeypatch.setattr(
-        llm_simple_service,
-        "_stream_simple_chunks_onnx",
-        _fake_onnx_stream,
-    )
+    monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", no_adapter)
+    usage = {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+    if upstream_stream:
 
+        @asynccontextmanager
+        async def open_stream(**kwargs):
+            captured.append(kwargs)
+            yield _LinesResponse(
+                [
+                    "data: "
+                    + json.dumps({"choices": [{"delta": {"content": "ONNX"}}]}),
+                    "data: " + json.dumps({"choices": [], "usage": usage}),
+                    "data: [DONE]",
+                ]
+            )
+
+        monkeypatch.setattr(
+            llm_simple_service.llm_simple_transport, "open_stream_response", open_stream
+        )
+    else:
+
+        class Response:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"choices": [{"message": {"content": "ONNX"}}], "usage": usage}
+
+        @asynccontextmanager
+        async def open_response(**kwargs):
+            captured.append(kwargs)
+            yield Response()
+
+        monkeypatch.setattr(
+            llm_simple_service.llm_simple_transport,
+            "open_stream_response",
+            open_response,
+        )
     response = await llm_simple_service.stream_simple_chat(
-        SimpleChatRequest(content="hej")
+        SimpleChatRequest(
+            content="hej", model="model-x", seed=0, stream=upstream_stream
+        )
     )
-    assert isinstance(response, StreamingResponse)
     events = await _collect_response_events(response)
     assert [name for name, _ in events] == ["start", "content", "done"]
+    assert events[-1][1] == {"usage": usage, "usage_source": "upstream"}
+    assert len(captured) == 1
+    assert captured[0]["completions_url"] == runtime.endpoint + "/chat/completions"
+    assert captured[0]["payload"]["seed"] == 0
+    assert captured[0]["payload"]["model"] == "model-x"
+    assert captured[0]["payload"]["stream"] is upstream_stream
+    if upstream_stream:
+        assert captured[0]["payload"]["stream_options"] == {"include_usage": True}

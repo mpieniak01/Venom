@@ -23,6 +23,7 @@ class DummySettings:
         active_server="",
         gemma4_endpoint="http://localhost:8014/v1",
         vllm_endpoint=LOCALHOST_8001_V1,
+        onnx_endpoint="",
     ):
         self.LLM_SERVICE_TYPE = service_type
         self.AI_MODE = mode
@@ -32,6 +33,7 @@ class DummySettings:
         self.ACTIVE_LLM_SERVER = active_server
         self.GEMMA4_AUDIO_ENDPOINT = gemma4_endpoint
         self.VLLM_ENDPOINT = vllm_endpoint
+        self.ONNX_LLM_ENDPOINT = onnx_endpoint
 
 
 def test_infer_local_provider_variants():
@@ -282,7 +284,7 @@ def test_build_chat_completions_url_variants():
 
 
 @pytest.mark.asyncio
-async def test_probe_runtime_status_onnx_ready():
+async def test_probe_runtime_status_onnx_without_endpoint_is_offline():
     runtime = llm_runtime.LLMRuntimeInfo(
         provider="onnx",
         model_name="phi",
@@ -291,8 +293,8 @@ async def test_probe_runtime_status_onnx_ready():
         mode="LOCAL",
     )
     status, error = await llm_runtime.probe_runtime_status(runtime)
-    assert status == "ready"
-    assert error is None
+    assert status == "offline"
+    assert "endpointu" in error
 
 
 @pytest.mark.asyncio
@@ -701,3 +703,57 @@ def test_simple_url_reaches_the_configured_private_ollama_listener():
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+@pytest.mark.parametrize(
+    "service_type,active_server", [("local", "onnx"), ("onnx", "")]
+)
+def test_onnx_runtime_requires_explicit_component_endpoint(service_type, active_server):
+    settings = DummySettings(
+        service_type=service_type,
+        active_server=active_server,
+        onnx_endpoint="http://localhost:18083/v1",
+    )
+    runtime = llm_runtime.get_active_llm_runtime(settings)
+    assert runtime.provider == "onnx" and runtime.endpoint == settings.ONNX_LLM_ENDPOINT
+    assert llm_runtime._build_health_url(runtime) == "http://localhost:18083/health"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({"engine": "onnx-gpu", "device": "cuda"}, "online"),
+        ({"engine": "onnx-gpu", "device": "cpu"}, "degraded"),
+        ({"engine": "ollama", "device": "cuda"}, "degraded"),
+        ([], "degraded"),
+    ],
+)
+async def test_onnx_health_checks_actual_worker_device(monkeypatch, payload, expected):
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return payload
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url):
+            assert url == "http://localhost:18083/health"
+            return Response()
+
+    monkeypatch.setattr(llm_runtime.httpx, "AsyncClient", Client)
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(service_type="onnx", onnx_endpoint="http://localhost:18083/v1")
+    )
+    status, error = await llm_runtime.probe_runtime_status(runtime)
+    assert status == expected
+    assert (error is None) == (expected == "online")

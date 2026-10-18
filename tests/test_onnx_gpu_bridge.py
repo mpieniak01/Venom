@@ -133,6 +133,27 @@ def test_unsupported_or_invalid_contract_is_rejected(changes):
         validate_request(message(**changes), "fixture-model")
 
 
+@pytest.mark.parametrize("seed", [-(2**63), -(2**31), -1, 0, 1, 2**31 - 1, 2**63 - 1])
+def test_seed_validation_preserves_signed_64_bit_integers(seed):
+    validated = validate_request(message(seed=seed), "fixture-model")
+    assert validated["seed"] == seed
+    assert type(validated["seed"]) is int
+
+
+@pytest.mark.parametrize(
+    "seed", [True, False, 0.0, 1.5, "0", [], {}, -(2**63) - 1, 2**63]
+)
+def test_seed_validation_rejects_coercion_and_signed_64_bit_overflow(seed):
+    with pytest.raises(RequestError, match="seed_must_be_signed_64_bit_integer"):
+        validate_request(message(seed=seed), "fixture-model")
+
+
+@pytest.mark.parametrize("changes", [{}, {"seed": None}])
+def test_optional_seed_retains_the_unseeded_contract(changes):
+    validated = validate_request(message(**changes), "fixture-model")
+    assert validated.get("seed") is None
+
+
 def test_health_and_model_discovery(bridge):
     _, base = bridge
     with urllib.request.urlopen(base + "/health") as response:
@@ -159,12 +180,12 @@ def test_native_stream_usage_option_is_served_not_ignored(bridge):
 
 @pytest.fixture
 def fake_native_sdk(tmp_path, monkeypatch):
-    """Only budget/cancellation unit tests use a fake; GPU proof is separate."""
+    """Native option/loop contract fixture; real GPU proof is separate."""
     from types import SimpleNamespace
 
     from scripts.llm import onnx_gpu_bridge as module
 
-    seen = {"options": [], "destroyed": [], "providers": []}
+    seen = {"options": [], "destroyed": [], "providers": [], "calls": []}
 
     class Config:
         def __init__(self, path):
@@ -180,21 +201,24 @@ def fake_native_sdk(tmp_path, monkeypatch):
         device_type = "CUDA"
 
         def __init__(self, config):
-            pass
+            seen["calls"].append("model")
 
     class Tokenizer:
         def __init__(self, model):
-            pass
+            seen["calls"].append("tokenizer")
 
         def apply_chat_template(self, messages, **kwargs):
+            seen["calls"].append("template")
             assert json.loads(messages)[0]["role"] == "user"
             assert kwargs["add_generation_prompt"] is True
             return "prompt"
 
         def encode(self, prompt):
+            seen["calls"].append("encode")
             return [1, 2, 3]
 
         def create_stream(self):
+            seen["calls"].append("stream")
             return SimpleNamespace(decode=lambda token: str(token))
 
     class Params:
@@ -206,6 +230,7 @@ def fake_native_sdk(tmp_path, monkeypatch):
 
     class Generator:
         def __init__(self, model, params):
+            seen["calls"].append("generator")
             self.count = 0
 
         def append_tokens(self, tokens):
@@ -265,6 +290,92 @@ def test_generation_budget_and_cancellation_release_native_generator(fake_native
     assert next(iterator) == "1"
     iterator.close()
     assert seen["destroyed"][-1] == 1
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("seed", [-(2**31), -1, 0, 17, 2**31 - 1])
+def test_seed_reaches_native_search_unchanged_in_both_transports(
+    bridge, fake_native_sdk, stream, seed
+):
+    server, base = bridge
+    module, _, seen, path = fake_native_sdk
+    server.engine = module.OnnxEngine(str(path), "fixture-model")
+    with request(
+        base,
+        message(
+            max_tokens=2,
+            temperature=0.3,
+            stream=stream,
+            stream_options={"include_usage": True},
+            seed=seed,
+        ),
+    ) as response:
+        if stream:
+            frames = [
+                line[6:]
+                for line in response.read().decode().splitlines()
+                if line.startswith("data: ")
+            ]
+            assert frames[-1] == "[DONE]"
+            usage = json.loads(frames[-2])["usage"]
+            assert json.loads(frames[-3])["choices"][0]["finish_reason"] == "length"
+        else:
+            body = json.load(response)
+            assert body["choices"][0]["message"]["content"] == "12"
+            assert body["choices"][0]["finish_reason"] == "length"
+            usage = body["usage"]
+    assert usage == {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+    assert seen["options"][0]["random_seed"] == seed
+    assert type(seen["options"][0]["random_seed"]) is int
+    assert seen["calls"] == [
+        "model",
+        "tokenizer",
+        "template",
+        "encode",
+        "generator",
+        "stream",
+    ]
+    assert seen["providers"] == ["cuda"]
+    assert not server.generation_lock.locked()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("seed", [-(2**63), -(2**31) - 1, 2**31, 2**63 - 1])
+def test_native_seed_range_failure_precedes_tokenization_and_http_success(
+    bridge, fake_native_sdk, stream, seed
+):
+    server, base = bridge
+    module, _, seen, path = fake_native_sdk
+    server.engine = module.OnnxEngine(str(path), "fixture-model")
+    with pytest.raises(urllib.error.HTTPError) as error:
+        request(base, message(seed=seed, stream=stream))
+    assert error.value.code == 400
+    assert json.load(error.value)["error"] == {
+        "message": "seed_out_of_native_range",
+        "type": "invalid_request_error",
+    }
+    assert seen["calls"] == ["model", "tokenizer"]
+    assert seen["options"] == []
+    assert not server.generation_lock.locked()
+
+
+def test_seed_is_request_local_and_omission_or_null_does_not_set_native_default(
+    fake_native_sdk,
+):
+    module, _, seen, path = fake_native_sdk
+    engine = module.OnnxEngine(str(path), "fixture-model")
+    for changes in [{"seed": 0}, {}, {"seed": None}]:
+        list(
+            engine.generate(
+                validate_request(message(max_tokens=1, **changes), "fixture-model"), {}
+            )
+        )
+    assert seen["options"][0]["random_seed"] == 0
+    assert all("random_seed" not in options for options in seen["options"][1:])
+    assert (
+        seen["calls"]
+        == ["model", "tokenizer"] + ["template", "encode", "generator", "stream"] * 3
+    )
 
 
 def test_cpu_fallback_is_rejected_instead_of_qualified(fake_native_sdk):

@@ -180,8 +180,20 @@ and vLLM's [request schema](https://docs.vllm.ai/en/latest/api/vllm/entrypoints/
 defines the same integer range. Provider/artifact/cache/engine-specific determinism
 still requires qualification; a requested seed alone is not proof of identical output.
 
-The legacy in-process Simple ONNX client has no seed argument. A seeded request to
-that path now fails explicitly before client/trace initialization rather than
-silently ignoring the requested value. Unseeded calls retain existing behavior.
-This restriction does not qualify that legacy path as the separate GPU worker;
-aligning the whole Simple API with the qualified isolated ONNX route remains open.
+Simple ONNX now uses the existing HTTP transport and an explicit
+`ONNX_LLM_ENDPOINT` (`/v1` base) for the isolated CUDA worker. Missing endpoint
+returns 503 before model/adapter work; the API no longer initializes an ONNX LLM
+or falls back to CPU in this route. Both modes preserve native usage and seed.
+The worker checks its actual device in `/health`; runtime probing does not infer
+readiness from merely selecting ONNX.
+
+The pinned ORT GenAI 0.12.2 worker accepts strict signed64 seeds at its HTTP
+boundary but rejects values outside native signed32 before tokenization with
+`seed_out_of_native_range`. There is no truncation. Signed32 maps to the native
+`random_seed` search option; `-1` selects random-device seeding, and omitted/null
+leaves defaults unchanged. See the pinned [native field](https://github.com/microsoft/onnxruntime-genai/blob/v0.12.2/src/config.h#L344)
+and [Python binding](https://github.com/microsoft/onnxruntime-genai/blob/v0.12.2/src/python/python.cpp#L168-L176).
+
+This change qualifies neither the older ONNX activation/model-catalog code nor
+the separate legacy task executor. Those paths still require migration before
+Full ONNX, all-route lifecycle or task 266 can be considered complete.

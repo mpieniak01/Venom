@@ -115,6 +115,7 @@ class Settings(BaseSettings):
     # Modele ONNX
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"
     ONNX_LLM_ENABLED: bool = False
+    ONNX_LLM_ENDPOINT: str = ""  # Explicit isolated CUDA worker, OpenAI /v1 base.
     ONNX_LLM_MODEL_PATH: str = "models/phi3.5-mini-instruct-onnx"
     ONNX_LLM_EXECUTION_PROVIDER: str = "cuda"  # cuda|cpu|directml
     ONNX_LLM_PRECISION: str = "int4"  # int4|fp16

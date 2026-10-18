@@ -1,6 +1,8 @@
 """Small text-only OpenAI HTTP boundary for an isolated ONNX GenAI CUDA worker.
 
 No application imports, CPU fallback, model download or second ORT distribution.
+Explicit seeds must fit ORT GenAI's native signed32 range; -1 requests its random
+device behavior. Omitted/null seeds retain the model's configured default.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ def validate_request(data: Any, model_name: str) -> dict[str, Any]:
         "top_p",
         "top_k",
         "repetition_penalty",
+        "seed",
     }
     if set(data) - supported:
         raise RequestError(
@@ -72,6 +75,9 @@ def validate_request(data: Any, model_name: str) -> dict[str, Any]:
         or type(stream_options.get("include_usage", False)) is not bool
     ):
         raise RequestError("unsupported_stream_options")
+    seed = data.get("seed")
+    if seed is not None and (type(seed) is not int or not -(2**63) <= seed < 2**63):
+        raise RequestError("seed_must_be_signed_64_bit_integer")
     result = dict(data, model=model_name, max_tokens=tokens)
     for name, low, high, default in [
         ("temperature", 0, 2, 0),
@@ -107,6 +113,11 @@ class OnnxEngine:
         self.context_length = int(config_data["model"]["context_length"])
 
     def generate(self, request: dict[str, Any], stats: dict[str, Any]):
+        seed = request.get("seed")
+        # ORT GenAI 0.12.2: Search.random_seed and Python search-option casts use int32.
+        # https://github.com/microsoft/onnxruntime-genai/blob/v0.12.2/src/config.h#L344
+        if seed is not None and not -(2**31) <= seed < 2**31:
+            raise RequestError("seed_out_of_native_range")
         prompt = self.tokenizer.apply_chat_template(
             json.dumps(request["messages"]), add_generation_prompt=True
         )
@@ -124,6 +135,8 @@ class OnnxEngine:
             options["temperature"] = request["temperature"]
         if "top_k" in request:
             options["top_k"] = request["top_k"]
+        if seed is not None:
+            options["random_seed"] = seed
         params.set_search_options(**options)
         generator = self.og.Generator(self.model, params)
         stream = self.tokenizer.create_stream()

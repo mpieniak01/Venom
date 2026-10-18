@@ -9,6 +9,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from tests.helpers.url_fixtures import MOCK_HTTP, http_url
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
@@ -998,3 +999,58 @@ def test_usage_only_final_packet_is_preserved_for_non_ollama_runtime():
     assert events == [] and state.chunk_count == 0
     assert telemetry["completion_tokens"] == 7
     assert '"completion_tokens": 7' in llm_simple_service._build_done_event(telemetry)
+
+
+@pytest.mark.parametrize("provider", ["ollama", "vllm", "openai"])
+@pytest.mark.parametrize("stream", [True, False])
+@pytest.mark.parametrize("seed", [None, 0, 42])
+def test_simple_payload_preserves_explicit_seed_in_both_transport_modes(
+    provider, stream, seed
+):
+    request = SimpleChatRequest(content="seed test", seed=seed)
+    payload = llm_simple_service._build_payload(
+        request,
+        DummyRuntime(provider),
+        "model-x",
+        [{"role": "user", "content": "seed test"}],
+        stream=stream,
+    )
+    if seed is None:
+        assert "seed" not in payload
+    else:
+        assert payload["seed"] == seed and type(payload["seed"]) is int
+
+
+@pytest.mark.parametrize("seed", [True, 1.0, "42", 2**63, -(2**63) - 1])
+def test_simple_seed_does_not_coerce_or_overflow(seed):
+    with pytest.raises(ValidationError):
+        SimpleChatRequest(content="seed test", seed=seed)
+
+
+@pytest.mark.parametrize("seed", [0, 42, -(2**63), 2**63 - 1])
+def test_simple_seed_accepts_signed_64bit_integers(seed):
+    assert SimpleChatRequest(content="seed test", seed=seed).seed == seed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider,service_type", [("onnx", "local"), ("openai", "onnx")]
+)
+async def test_seeded_legacy_onnx_fails_explicitly_before_client_or_trace(
+    monkeypatch, provider, service_type
+):
+    runtime = DummyRuntime(provider)
+    runtime.service_type = service_type
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Seed validation must precede trace/model/adapter work")
+
+    monkeypatch.setattr(llm_simple_service, "_trace_simple_request", forbidden)
+    monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", forbidden)
+    with pytest.raises(HTTPException) as error:
+        await llm_simple_service.stream_simple_chat(
+            SimpleChatRequest(content="test", seed=42)
+        )
+    assert error.value.status_code == 400
+    assert "seed" in error.value.detail and "ONNX" in error.value.detail

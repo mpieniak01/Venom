@@ -898,3 +898,59 @@ def test_resource_worker_shutdown_timeout_is_finite_and_partial(resource_fixture
     assert "process_sampler_shutdown_timeout" in result["errors"]
     assert result["status"] == "PARTIAL"
     assert result["cpu_seconds_observed"] is None
+
+
+@pytest.mark.parametrize("seed", [None, 0, 42])
+def test_benchmark_receiver_preserves_seed_in_http_body(monkeypatch, seed):
+    clock = Clock()
+    response = Response(frame("content", {"text": "reply"}) + frame("done", {}), clock)
+    captured = []
+
+    def open_response(req, **kwargs):
+        captured.append(json.loads(req.data))
+        return response
+
+    monkeypatch.setattr(common.request, "urlopen", open_response)
+    monkeypatch.setattr(common.time, "perf_counter", clock)
+    result = common.stream_simple_chat(
+        "http://fixture.invalid",
+        prompt="test",
+        model="fixture",
+        max_tokens=32,
+        temperature=0,
+        seed=seed,
+    )
+    assert result.ok
+    if seed is None:
+        assert "seed" not in captured[0]
+    else:
+        assert captured[0]["seed"] == seed
+
+
+@pytest.mark.parametrize("seed", [None, 0, 42])
+def test_benchmark_forwards_same_seed_to_first_warmup_and_measured_requests(
+    benchmark_module, monkeypatch, seed
+):
+    module = benchmark_module
+    captured = []
+    monkeypatch.setattr(module, "activate_runtime", lambda *a: (True, "ok", {}))
+
+    def request(*args, **kwargs):
+        captured.append(kwargs.get("seed"))
+        return common.StreamResult(True, "fixture", 100, 1)
+
+    monkeypatch.setattr(module, "stream_simple_chat", request)
+    result = fixture_benchmark(module, seed=seed)
+    assert captured == [seed] * 5
+    assert result["requested_generation_settings"]["seed"] == seed
+
+
+def test_benchmark_cli_rejects_seed_outside_provider_range(benchmark_module):
+    assert benchmark_module._generation_seed("0") == 0
+    assert benchmark_module._generation_seed(str(-(2**63))) == -(2**63)
+    with pytest.raises(ValueError):
+        benchmark_module._generation_seed("not-an-int")
+    import argparse
+
+    with pytest.raises(argparse.ArgumentTypeError):
+        benchmark_module._generation_seed(str(2**63))

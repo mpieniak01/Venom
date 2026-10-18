@@ -434,6 +434,8 @@ def _build_payload(
         payload["temperature"] = request.temperature
     if request.top_p is not None:
         payload["top_p"] = request.top_p
+    if request.seed is not None:
+        payload["seed"] = request.seed
     if request.logprobs is not None:
         payload["logprobs"] = bool(request.logprobs)
     if request.top_logprobs is not None:
@@ -1234,6 +1236,15 @@ async def stream_simple_chat(request: SimpleChatRequest):
     assert_runtime_request_allowed(request_kind="simple_chat")
     await asyncio.sleep(0)
     runtime = get_active_llm_runtime()
+    runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
+    runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
+    if request.seed is not None and (
+        runtime_provider == "onnx" or runtime_service_type == "onnx"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Parametr seed nie jest obsługiwany w lokalnej ścieżce Simple ONNX.",
+        )
     model_name = _resolve_model_name_for_simple_request(
         request_model=request.model,
         runtime_model=runtime.model_name,
@@ -1252,8 +1263,6 @@ async def stream_simple_chat(request: SimpleChatRequest):
     payload = _build_payload(request, runtime, model_name, messages)
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
-    runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
-    runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
     completions_url = _build_chat_completions_url(runtime)
     if runtime_provider == "onnx" or runtime_service_type == "onnx":
         return StreamingResponse(

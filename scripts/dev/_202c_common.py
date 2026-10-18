@@ -883,6 +883,7 @@ def stream_simple_chat(
     max_tokens: int,
     temperature: float,
     timeout_sec: float = 180.0,
+    seed: int | None = None,
 ) -> StreamResult:
     payload: dict[str, Any] = {
         "content": prompt,
@@ -892,6 +893,8 @@ def stream_simple_chat(
     }
     if model:
         payload["model"] = model
+    if seed is not None:
+        payload["seed"] = seed
     req = request.Request(
         url=f"{base_url}/api/v1/llm/simple/stream",
         method="POST",

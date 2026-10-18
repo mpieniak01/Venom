@@ -166,3 +166,22 @@ The script's existing percentage KPIs are exploratory and do not substitute for
 266's frozen baseline-derived acceptance budgets, repeatable model artifacts,
 all-route/lifecycle tests, or final release qualification. An unavailable latency
 comparison cannot pass a KPI by substituting zero.
+
+
+## Seed forwarding for reproducible Simple-route probes
+
+The optional `SimpleChatRequest.seed` is a strict signed 64-bit integer: booleans,
+floats, strings and overflow are rejected. Omitting it preserves the prior request
+body; zero is forwarded. HTTP chat-completion paths pass it unchanged in streaming
+and non-streaming payloads. The existing benchmark accepts `--seed` and uses the
+same value for first, warmup and measured requests, recording the requested settings.
+Ollama documents [seed support](https://docs.ollama.com/api/openai-compatibility),
+and vLLM's [request schema](https://docs.vllm.ai/en/latest/api/vllm/entrypoints/openai/chat_completion/protocol/)
+defines the same integer range. Provider/artifact/cache/engine-specific determinism
+still requires qualification; a requested seed alone is not proof of identical output.
+
+The legacy in-process Simple ONNX client has no seed argument. A seeded request to
+that path now fails explicitly before client/trace initialization rather than
+silently ignoring the requested value. Unseeded calls retain existing behavior.
+This restriction does not qualify that legacy path as the separate GPU worker;
+aligning the whole Simple API with the qualified isolated ONNX route remains open.

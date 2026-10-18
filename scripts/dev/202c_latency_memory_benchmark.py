@@ -46,6 +46,13 @@ def _sample_interval(value: str) -> float:
     return parsed
 
 
+def _generation_seed(value: str) -> int:
+    parsed = int(value)
+    if not -(2**63) <= parsed < 2**63:
+        raise argparse.ArgumentTypeError("Seed must fit a signed 64-bit integer")
+    return parsed
+
+
 def _gpu_index(value: str) -> int:
     parsed = int(value)
     if parsed < 0:
@@ -63,6 +70,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--max-tokens", type=int, default=220)
     parser.add_argument("--temperature", type=float, default=0.2)
+    parser.add_argument("--seed", type=_generation_seed, default=None)
     for role in ("baseline", "candidate"):
         parser.add_argument(
             f"--{role}-root-pid",
@@ -106,6 +114,7 @@ def _run_benchmark_for_runtime(
     process_root_pids: list[int] | None = None,
     sample_interval_sec: float = 0.1,
     gpu_index: int = 0,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     activation_ok, activation_message, activation_payload = activate_runtime(
         base_url, runtime_id, model_name
@@ -136,6 +145,7 @@ def _run_benchmark_for_runtime(
         model=model_name,
         max_tokens=max_tokens,
         temperature=temperature,
+        seed=seed,
     )
     cold_start_latency_ms = cold_start_result.latency_ms
 
@@ -147,6 +157,7 @@ def _run_benchmark_for_runtime(
             model=model_name,
             max_tokens=max_tokens,
             temperature=temperature,
+            seed=seed,
         )
         warmup_samples.append(
             {
@@ -172,6 +183,7 @@ def _run_benchmark_for_runtime(
                 model=model_name,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                seed=seed,
             )
             if result.ok:
                 latencies_ms.append(result.latency_ms)
@@ -277,6 +289,11 @@ def _run_benchmark_for_runtime(
     return {
         "runtime_id": runtime_id,
         "selected_model": model_name,
+        "requested_generation_settings": {
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "seed": seed,
+        },
         "activation_ok": True,
         "activation_message": "ok",
         "activation_payload": activation_payload,
@@ -490,6 +507,7 @@ def main() -> int:
         process_root_pids=args.baseline_root_pid,
         sample_interval_sec=args.resource_interval_sec,
         gpu_index=args.gpu_index,
+        seed=args.seed,
     )
     candidate = _run_benchmark_for_runtime(
         base_url=base_url,
@@ -503,6 +521,7 @@ def main() -> int:
         process_root_pids=args.candidate_root_pid,
         sample_interval_sec=args.resource_interval_sec,
         gpu_index=args.gpu_index,
+        seed=args.seed,
     )
 
     report["baseline"] = baseline

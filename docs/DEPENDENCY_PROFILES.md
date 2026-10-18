@@ -72,6 +72,15 @@ An `abort` or `error` finish reason fails the stream even if followed by `[DONE]
 or preceded by another finish marker. Native token usage remains optional and
 is never inferred from event counts.
 
+The existing `202c_latency_memory_benchmark.py` can measure Simple or a prestarted
+native OpenAI-compatible `/v1` endpoint, using explicit per-role model IDs and
+transport/base-URL arguments. Native measurement does not activate Venom. JSONL
+cases may select text/SSE and an output-token limit; nonstream responses have no
+token-stream TTFT/TPOT. Missing native usage/model identity stays unknown.
+The command exits unsuccessfully for failed or incomplete request stages. Its
+legacy comparative KPIs remain diagnostic; completeness alone does not qualify
+profiles or replace a frozen corpus, same-pair reference and regression budgets.
+
 Functional qualification records must distinguish native generation, retrieval,
 RAG synthesis, graph extraction and speech. Successful retrieval does not prove
 that a model cites its source. Piper-to-Whisper file loopback does not establish

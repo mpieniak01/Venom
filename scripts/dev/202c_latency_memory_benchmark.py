@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""202C latency/memory benchmark for Gemma-3 (ONNX vs Ollama).
+"""202C receiver latency/memory benchmark for Simple and native endpoints.
 
 TTFT is the receiver's first nonempty text event, not latency/event count.
 Token throughput/TPOT use only native reported usage when present. Missing usage
@@ -19,11 +19,13 @@ from typing import Any
 
 from _202c_common import (
     ProcessResourceSampler,
+    StreamResult,
     activate_runtime,
     dump_json,
     dump_text,
     http_json,
     load_prompts_jsonl,
+    native_chat,
     pick_gemma3_model_with_reason,
     resolve_base_url,
     stream_simple_chat,
@@ -72,6 +74,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--seed", type=_generation_seed, default=None)
     for role in ("baseline", "candidate"):
+        parser.add_argument(f"--{role}-model", default="")
+        parser.add_argument(
+            f"--{role}-transport", choices=("simple", "native"), default="simple"
+        )
+        parser.add_argument(
+            f"--{role}-native-base-url",
+            default="",
+            help="Prestarted OpenAI-compatible /v1 base URL; no Venom activation.",
+        )
         parser.add_argument(
             f"--{role}-root-pid",
             type=_positive_pid,
@@ -115,15 +126,41 @@ def _run_benchmark_for_runtime(
     sample_interval_sec: float = 0.1,
     gpu_index: int = 0,
     seed: int | None = None,
+    transport: str = "simple",
+    native_base_url: str = "",
 ) -> dict[str, Any]:
-    activation_ok, activation_message, activation_payload = activate_runtime(
-        base_url, runtime_id, model_name
-    )
+    if not prompts or repetitions <= 0 or warmup < 0 or max_tokens <= 0:
+        raise ValueError("invalid_benchmark_counts_or_prompts")
+    if transport not in {"simple", "native"}:
+        raise ValueError("invalid_benchmark_transport")
+    if transport == "native" and (not native_base_url or not model_name):
+        raise ValueError("native_model_and_base_url_required")
+    if transport == "simple":
+        activation_ok, activation_message, activation_payload = activate_runtime(
+            base_url, runtime_id, model_name
+        )
+    else:
+        activation_ok, activation_message = True, "prestarted_native_endpoint"
+        activation_payload = {"activation_performed": False}
+
+    def request_case(prompt: dict[str, Any]) -> StreamResult:
+        receiver = stream_simple_chat if transport == "simple" else native_chat
+        return receiver(
+            base_url if transport == "simple" else native_base_url,
+            prompt=prompt["prompt"],
+            model=model_name,
+            max_tokens=prompt.get("max_tokens", max_tokens),
+            temperature=temperature,
+            seed=seed,
+            stream=prompt.get("stream", True),
+        )
+
     if not activation_ok:
         return {
             "runtime_id": runtime_id,
             "selected_model": model_name,
             "activation_ok": False,
+            "measurement_complete": False,
             "activation_message": activation_message,
             "activation_payload": activation_payload,
             "errors": [activation_message],
@@ -139,30 +176,18 @@ def _run_benchmark_for_runtime(
     tpot_values_ms: list[float] = []
 
     # First post-activation request, not a proven unload/reboot cold cycle.
-    cold_start_result = stream_simple_chat(
-        base_url,
-        prompt=prompts[0]["prompt"],
-        model=model_name,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        seed=seed,
-    )
+    cold_start_result = request_case(prompts[0])
     cold_start_latency_ms = cold_start_result.latency_ms
 
-    for idx in range(max(0, warmup)):
+    for idx in range(warmup):
         prompt = prompts[idx % len(prompts)]
-        result = stream_simple_chat(
-            base_url,
-            prompt=prompt["prompt"],
-            model=model_name,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            seed=seed,
-        )
+        result = request_case(prompt)
         warmup_samples.append(
             {
                 "iteration": idx + 1,
                 "prompt_id": prompt["id"],
+                "stream": prompt.get("stream", True),
+                "max_tokens": prompt.get("max_tokens", max_tokens),
                 "ok": result.ok,
                 "latency_ms": round(result.latency_ms, 2),
                 "error": result.error,
@@ -177,14 +202,7 @@ def _run_benchmark_for_runtime(
     try:
         for idx in range(repetitions):
             prompt = prompts[idx % len(prompts)]
-            result = stream_simple_chat(
-                base_url,
-                prompt=prompt["prompt"],
-                model=model_name,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                seed=seed,
-            )
+            result = request_case(prompt)
             if result.ok:
                 latencies_ms.append(result.latency_ms)
                 if result.first_token_latency_ms is not None:
@@ -198,11 +216,18 @@ def _run_benchmark_for_runtime(
                 {
                     "iteration": idx + 1,
                     "prompt_id": prompt["id"],
+                    "stream": prompt.get("stream", True),
+                    "max_tokens": prompt.get("max_tokens", max_tokens),
                     "ok": result.ok,
                     "latency_ms": round(result.latency_ms, 2),
                     "first_token_latency_ms": result.first_token_latency_ms,
                     "output_tokens": result.output_tokens,
                     "prompt_tokens": result.prompt_tokens,
+                    "total_tokens": result.total_tokens,
+                    "reported_model": result.reported_model,
+                    "model_identity": "reported_match"
+                    if result.reported_model
+                    else "unreported",
                     "usage_source": result.usage_source,
                     "tokens_per_second": result.tokens_per_second,
                     "time_per_output_token_ms": result.time_per_output_token_ms,
@@ -286,16 +311,18 @@ def _run_benchmark_for_runtime(
         }
     )
 
-    return {
+    result_report: dict[str, Any] = {
         "runtime_id": runtime_id,
         "selected_model": model_name,
+        "transport": transport,
+        "native_base_url": native_base_url if transport == "native" else None,
         "requested_generation_settings": {
             "max_tokens": max_tokens,
             "temperature": temperature,
             "seed": seed,
         },
         "activation_ok": True,
-        "activation_message": "ok",
+        "activation_message": activation_message,
         "activation_payload": activation_payload,
         "cold_start": {
             "ok": cold_start_result.ok,
@@ -308,6 +335,30 @@ def _run_benchmark_for_runtime(
         "summary": summary,
         "errors": [],
     }
+    result_report["errors"] = _measurement_errors(result_report, repetitions, warmup)
+    result_report["measurement_complete"] = not result_report["errors"]
+    return result_report
+
+
+def _measurement_errors(
+    result: dict[str, Any], repetitions: int, warmup: int
+) -> list[str]:
+    """Completeness is a data-quality verdict, never the formal task-266 budget."""
+    errors = list(result.get("errors", []))
+    if result.get("activation_ok") is not True:
+        errors.append("activation_failed")
+    if result.get("cold_start", {}).get("ok") is not True:
+        errors.append("first_request_failed")
+    for key, expected in (("warmup_samples", warmup), ("samples", repetitions)):
+        samples = result.get(key, [])
+        if len(samples) != expected:
+            errors.append(f"{key}_incomplete:{len(samples)}/{expected}")
+        for index, sample in enumerate(samples, 1):
+            if sample.get("ok") is not True:
+                errors.append(
+                    f"{key}_failed:{index}:{sample.get('error') or 'unknown'}"
+                )
+    return list(dict.fromkeys(errors))
 
 
 def _comparison_metrics(
@@ -368,10 +419,11 @@ def _build_markdown(report: dict[str, Any]) -> str:
     metrics = report.get("kpi", {})
 
     lines: list[str] = []
-    lines.append("# 202C Perf ONNX vs Ollama")
+    lines.append("# 202C Receiver Performance Comparison")
     lines.append("")
     lines.append(f"Generated at: {report.get('generated_at', '')}")
     lines.append(f"Base URL: {report.get('base_url', '')}")
+    lines.append("Measurement completeness is not formal task-266 qualification.")
     lines.append("")
     lines.append("## Runtime Summary")
     lines.append("")
@@ -429,7 +481,15 @@ def main() -> int:
     if not env_file.is_absolute():
         env_file = (root / env_file).resolve()
 
-    base_url = resolve_base_url(env_file=env_file, explicit=args.base_url)
+    needs_simple = any(
+        getattr(args, f"{role}_transport") == "simple"
+        for role in ("baseline", "candidate")
+    )
+    base_url = (
+        resolve_base_url(env_file=env_file, explicit=args.base_url)
+        if needs_simple
+        else str(args.base_url).rstrip("/")
+    )
     prompts_path = (root / args.prompts).resolve()
     prompts = load_prompts_jsonl(prompts_path)
 
@@ -453,6 +513,9 @@ def main() -> int:
         "categories_filter": categories,
         "prompt_count": len(prompts),
         "repetitions": args.repetitions,
+        "measurement_complete": False,
+        "qualification_status": "NOT_QUALIFIED",
+        "kpi_scope": "exploratory_diagnostics_only_not_frozen_acceptance_budgets",
         "errors": [],
     }
 
@@ -465,35 +528,53 @@ def main() -> int:
         )
         return 1
 
-    if not wait_backend_ready(base_url, timeout_sec=30):
-        report["errors"].append("backend_not_ready")
-        dump_json((root / args.json_output).resolve(), report)
-        dump_text(
-            (root / args.md_output).resolve(), "# 202C Perf\n\nBackend not ready."
-        )
-        return 1
-
-    code, options_payload = http_json(
-        f"{base_url}/api/v1/system/llm-runtime/options", timeout_sec=30.0
-    )
-    if code != 200 or not isinstance(options_payload, dict):
-        report["errors"].append("runtime_options_unavailable")
-        dump_json((root / args.json_output).resolve(), report)
-        return 1
-
-    baseline_model, baseline_model_selection = pick_gemma3_model_with_reason(
-        options_payload, args.baseline_runtime
-    )
-    candidate_model, candidate_model_selection = pick_gemma3_model_with_reason(
-        options_payload, args.candidate_runtime
-    )
-    if not baseline_model:
-        report["errors"].append("baseline_model_missing")
-    if not candidate_model:
-        report["errors"].append("candidate_model_missing")
+    if args.repetitions <= 0 or args.warmup < 0 or args.max_tokens <= 0:
+        report["errors"].append("invalid_benchmark_counts")
+    for role in ("baseline", "candidate"):
+        if getattr(args, f"{role}_transport") == "native" and (
+            not getattr(args, f"{role}_model").strip()
+            or not getattr(args, f"{role}_native_base_url").strip()
+        ):
+            report["errors"].append(f"{role}_native_model_and_base_url_required")
     if report["errors"]:
         dump_json((root / args.json_output).resolve(), report)
         return 1
+    if needs_simple and not wait_backend_ready(base_url, timeout_sec=30):
+        report["errors"].append("backend_not_ready")
+        dump_json((root / args.json_output).resolve(), report)
+        return 1
+
+    options_payload: dict[str, Any] = {}
+    if any(
+        not getattr(args, f"{role}_model").strip() for role in ("baseline", "candidate")
+    ):
+        code, discovered_options = http_json(
+            f"{base_url}/api/v1/system/llm-runtime/options", timeout_sec=30.0
+        )
+        if code != 200 or not isinstance(discovered_options, dict):
+            report["errors"].append("runtime_options_unavailable")
+            dump_json((root / args.json_output).resolve(), report)
+            return 1
+        options_payload = discovered_options
+    selections = {}
+    models = {}
+    for role in ("baseline", "candidate"):
+        explicit = getattr(args, f"{role}_model").strip()
+        if explicit:
+            models[role] = explicit
+            selections[role] = {"reason": "explicit_model_id", "selected": explicit}
+        else:
+            models[role], selections[role] = pick_gemma3_model_with_reason(
+                options_payload, getattr(args, f"{role}_runtime")
+            )
+        if not models[role]:
+            report["errors"].append(f"{role}_model_missing")
+    if report["errors"]:
+        dump_json((root / args.json_output).resolve(), report)
+        return 1
+    baseline_model, candidate_model = models["baseline"], models["candidate"]
+    baseline_model_selection = selections["baseline"]
+    candidate_model_selection = selections["candidate"]
 
     baseline = _run_benchmark_for_runtime(
         base_url=base_url,
@@ -504,6 +585,8 @@ def main() -> int:
         warmup=args.warmup,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
+        transport=args.baseline_transport,
+        native_base_url=args.baseline_native_base_url,
         process_root_pids=args.baseline_root_pid,
         sample_interval_sec=args.resource_interval_sec,
         gpu_index=args.gpu_index,
@@ -518,6 +601,8 @@ def main() -> int:
         warmup=args.warmup,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
+        transport=args.candidate_transport,
+        native_base_url=args.candidate_native_base_url,
         process_root_pids=args.candidate_root_pid,
         sample_interval_sec=args.resource_interval_sec,
         gpu_index=args.gpu_index,
@@ -533,11 +618,17 @@ def main() -> int:
     report["benchmark_mode"] = {
         "cold_start_included": True,
         "warmup_excluded_from_primary_percentiles": True,
-        "cold_start_definition": "First request after activation; no forced unload or reboot.",
+        "cold_start_definition": "First request after Simple activation or to a prestarted native endpoint; no proven unload/reboot cold cycle.",
         "resource_window": "Measured repetitions only; explicit root PIDs and descendants.",
         "requested_resource_interval_sec": args.resource_interval_sec,
         "gpu_device_index": args.gpu_index,
     }
+    for role, result in (("baseline", baseline), ("candidate", candidate)):
+        report["errors"].extend(
+            f"{role}:{message}"
+            for message in _measurement_errors(result, args.repetitions, args.warmup)
+        )
+    report["measurement_complete"] = not report["errors"]
     report["kpi"], report["derived"] = _comparison_metrics(baseline, candidate)
 
     json_path = (root / args.json_output).resolve()

@@ -39,6 +39,9 @@ class Response:
         self.clock.now += delay
         return raw
 
+    def read1(self, size):
+        return self.readline(size)
+
 
 def frame(name, data, delay=0):
     return [
@@ -954,3 +957,511 @@ def test_benchmark_cli_rejects_seed_outside_provider_range(benchmark_module):
 
     with pytest.raises(argparse.ArgumentTypeError):
         benchmark_module._generation_seed(str(2**63))
+
+
+def native_frame(packet, delay=0):
+    text = packet if isinstance(packet, str) else json.dumps(packet, ensure_ascii=False)
+    return [(0, ("data: " + text + "\n").encode()), (delay, b"\n")]
+
+
+def native_packet(text="", *, finish=None, model="fixture-model", usage=None):
+    packet = {
+        "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": finish}]
+    }
+    if model is not None:
+        packet["model"] = model
+    if usage is not None:
+        packet["usage"] = usage
+    return packet
+
+
+def run_native(monkeypatch, frames, timeout=1):
+    clock = Clock()
+    monkeypatch.setattr(common.time, "perf_counter", clock)
+    response = Response(frames, clock)
+    monkeypatch.setattr(common.request, "urlopen", lambda *a, **k: response)
+    return common.native_chat(
+        "http://fixture.invalid/v1",
+        prompt="test",
+        model="fixture-model",
+        max_tokens=32,
+        temperature=0,
+        timeout_sec=timeout,
+    )
+
+
+def test_native_receiver_times_text_and_reads_usage_after_finish(monkeypatch):
+    result = run_native(
+        monkeypatch,
+        native_frame(native_packet(), 0.01)
+        + native_frame(native_packet("kot "), 0.02)
+        + native_frame(native_packet("ma"), 0.07)
+        + native_frame(native_packet(finish="stop"))
+        + native_frame(
+            {
+                "choices": [],
+                "model": "fixture-model",
+                "usage": {
+                    "prompt_tokens": 3,
+                    "completion_tokens": 7,
+                    "total_tokens": 10,
+                },
+            },
+            0.01,
+        )
+        + native_frame("[DONE]"),
+    )
+    assert result.ok and result.text == "kot ma"
+    assert result.first_token_latency_ms == pytest.approx(30)
+    assert result.latency_ms == pytest.approx(110)
+    assert result.output_tokens == 7 and result.total_tokens == 10
+    assert result.reported_model == "fixture-model"
+    assert result.tokens_per_second == pytest.approx(7 / 0.11)
+    assert result.time_per_output_token_ms == pytest.approx((110 - 30) / 6)
+
+
+@pytest.mark.parametrize("terminal", ["stop", "length"])
+def test_native_eof_after_successful_finish_is_complete(monkeypatch, terminal):
+    result = run_native(
+        monkeypatch, native_frame(native_packet("answer", finish=terminal), 0.1)
+    )
+    assert result.ok and result.tokens_per_second is None
+    assert result.time_per_output_token_ms is None
+
+
+@pytest.mark.parametrize(
+    "frames,reason",
+    [
+        (native_frame(native_packet("partial")), "empty_or_incomplete"),
+        (native_frame("[DONE]"), "empty_or_incomplete"),
+        (
+            native_frame(native_packet("partial", finish="abort"))
+            + native_frame("[DONE]"),
+            "native_unsuccessful_finish",
+        ),
+        (
+            native_frame(native_packet("partial", finish="error"))
+            + native_frame("[DONE]"),
+            "native_unsuccessful_finish",
+        ),
+        (
+            native_frame({"error": {"message": "failed"}}) + native_frame("[DONE]"),
+            "native_error_packet",
+        ),
+        (
+            native_frame(native_packet("wrong", finish="stop", model="other")),
+            "native_reported_model_mismatch",
+        ),
+        (
+            native_frame(
+                native_packet(
+                    "bad",
+                    finish="stop",
+                    usage={
+                        "completion_tokens": True,
+                    },
+                )
+            ),
+            "invalid_native_usage_counter",
+        ),
+        (
+            native_frame(
+                native_packet(
+                    "bad",
+                    finish="stop",
+                    usage={
+                        "prompt_tokens": 1,
+                        "completion_tokens": 2,
+                        "total_tokens": 99,
+                    },
+                )
+            ),
+            "inconsistent_native_usage_total",
+        ),
+        ([(0, b"data: " + b"x" * 65537 + b"\n")], "stream_too_large"),
+        (native_frame("not-json"), "JSONDecodeError"),
+    ],
+)
+def test_native_rejects_partial_abort_error_and_invalid_evidence(
+    monkeypatch, frames, reason
+):
+    result = run_native(monkeypatch, frames)
+    assert not result.ok and reason in result.error
+
+
+def test_native_missing_model_is_unconfirmed_and_usage_is_not_estimated(monkeypatch):
+    result = run_native(
+        monkeypatch,
+        native_frame(native_packet("many words", finish="stop", model=None), 0.1),
+    )
+    assert result.ok and result.reported_model is None
+    assert result.output_tokens is None and result.tokens_per_second is None
+
+
+def test_native_late_done_cannot_bypass_absolute_deadline(monkeypatch):
+    result = run_native(
+        monkeypatch,
+        native_frame(native_packet("answer"), 0.01) + native_frame("[DONE]", 0.2),
+        timeout=0.1,
+    )
+    assert not result.ok and "deadline_exceeded" in result.error
+
+
+def test_native_text_response_has_native_usage_but_no_stream_ttft(monkeypatch):
+    clock, captured = Clock(), []
+
+    class JsonResponse(Response):
+        headers = {"Content-Type": "application/json"}
+
+        def read1(self, size):
+            if getattr(self, "_read", False):
+                return b""
+            self._read = True
+            clock.now += 0.1
+            return json.dumps(
+                {
+                    "model": "fixture-model",
+                    "choices": [
+                        {"message": {"content": "full reply"}, "finish_reason": "stop"}
+                    ],
+                    "usage": {"completion_tokens": 7},
+                }
+            ).encode()
+
+    def opener(req, **kwargs):
+        captured.append(json.loads(req.data))
+        return JsonResponse([], clock)
+
+    monkeypatch.setattr(common.request, "urlopen", opener)
+    monkeypatch.setattr(common.time, "perf_counter", clock)
+    result = common.native_chat(
+        "http://fixture.invalid/v1",
+        prompt="test",
+        model="fixture-model",
+        max_tokens=17,
+        temperature=0,
+        seed=42,
+        stream=False,
+    )
+    assert result.ok and result.output_tokens == 7
+    assert result.first_token_latency_ms is None
+    assert result.time_per_output_token_ms is None
+    assert result.tokens_per_second == pytest.approx(70)
+    assert captured[0]["stream"] is False and captured[0]["seed"] == 42
+    assert captured[0]["max_tokens"] == 17
+    assert "stream_options" not in captured[0]
+
+
+def test_simple_nonstream_payload_has_no_token_stream_ttft(monkeypatch):
+    clock, captured = Clock(), []
+    response = Response(
+        frame("content", {"text": "full reply"}, 0.1)
+        + frame(
+            "done", {"usage_source": "upstream", "usage": {"completion_tokens": 7}}
+        ),
+        clock,
+    )
+
+    def opener(req, **kwargs):
+        captured.append(json.loads(req.data))
+        return response
+
+    monkeypatch.setattr(common.request, "urlopen", opener)
+    monkeypatch.setattr(common.time, "perf_counter", clock)
+    result = common.stream_simple_chat(
+        "http://fixture.invalid",
+        prompt="test",
+        model="fixture-model",
+        max_tokens=17,
+        temperature=0,
+        stream=False,
+    )
+    assert result.ok and captured[0]["stream"] is False
+    assert result.first_token_latency_ms is None
+    assert result.time_per_output_token_ms is None
+
+
+def test_jsonl_preserves_stream_and_per_case_output_budget(tmp_path):
+    path = tmp_path / "cases.jsonl"
+    path.write_text(
+        json.dumps({"id": "text", "prompt": "test", "stream": False, "max_tokens": 17})
+        + "\n"
+    )
+    case = common.load_prompts_jsonl(path)[0]
+    assert case["stream"] is False and case["max_tokens"] == 17
+
+
+@pytest.mark.parametrize(
+    "metadata", [{"stream": "false"}, {"max_tokens": True}, {"max_tokens": 0}]
+)
+def test_jsonl_rejects_ambiguous_generation_metadata(tmp_path, metadata):
+    path = tmp_path / "cases.jsonl"
+    path.write_text(json.dumps({"prompt": "test", **metadata}) + "\n")
+    with pytest.raises(ValueError, match="invalid"):
+        common.load_prompts_jsonl(path)
+
+
+def test_native_benchmark_uses_case_metadata_without_venom_activation(
+    benchmark_module, monkeypatch
+):
+    module, captured = benchmark_module, []
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("native measurement must not activate Venom")
+
+    def receiver(url, **kwargs):
+        captured.append((url, kwargs))
+        return common.StreamResult(True, "fixture", 100, 1)
+
+    monkeypatch.setattr(module, "activate_runtime", forbidden)
+    monkeypatch.setattr(module, "native_chat", receiver)
+    result = fixture_benchmark(
+        module,
+        transport="native",
+        native_base_url="http://fixture.invalid/v1",
+        prompts=[
+            {"id": "text", "prompt": "fixture", "stream": False, "max_tokens": 17}
+        ],
+        seed=42,
+    )
+    assert len(captured) == 5 and result["measurement_complete"]
+    assert all(url.endswith("/v1") for url, _ in captured)
+    assert all(
+        args["stream"] is False and args["max_tokens"] == 17 and args["seed"] == 42
+        for _, args in captured
+    )
+    assert result["samples"][0]["model_identity"] == "unreported"
+    assert result["samples"][0]["stream"] is False
+
+
+@pytest.mark.parametrize("repetitions,warmup", [(0, 0), (-1, 0), (1, -1)])
+def test_invalid_counts_are_rejected_before_activation(
+    benchmark_module, monkeypatch, repetitions, warmup
+):
+    monkeypatch.setattr(
+        benchmark_module,
+        "activate_runtime",
+        lambda *args: pytest.fail("invalid counts must not mutate runtime"),
+    )
+    with pytest.raises(ValueError, match="invalid_benchmark_counts"):
+        fixture_benchmark(benchmark_module, repetitions=repetitions, warmup=warmup)
+
+
+def complete_benchmark_result(repetitions=2, warmup=1):
+    return {
+        "activation_ok": True,
+        "cold_start": {"ok": True},
+        "warmup_samples": [{"ok": True}] * warmup,
+        "samples": [{"ok": True}] * repetitions,
+        "summary": {"success_count": repetitions, "p95_ms": 100},
+        "errors": [],
+    }
+
+
+@pytest.mark.parametrize(
+    "failure", [None, "activation", "cold", "warmup", "sample", "incomplete"]
+)
+def test_cli_native_pair_strict_completeness_without_venom(
+    benchmark_module, monkeypatch, tmp_path, failure
+):
+    module = benchmark_module
+    corpus = tmp_path / "cases.jsonl"
+    corpus.write_text(json.dumps({"prompt": "fixture"}) + "\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "benchmark",
+            "--prompts",
+            str(corpus),
+            "--repetitions",
+            "2",
+            "--warmup",
+            "1",
+            "--baseline-transport",
+            "native",
+            "--candidate-transport",
+            "native",
+            "--baseline-model",
+            "exact-base",
+            "--candidate-model",
+            "exact-candidate",
+            "--baseline-native-base-url",
+            "http://base.invalid/v1",
+            "--candidate-native-base-url",
+            "http://candidate.invalid/v1",
+        ],
+    )
+    reports, calls = [], []
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("native pair must not read env or require Venom/options")
+
+    for name in (
+        "resolve_base_url",
+        "wait_backend_ready",
+        "http_json",
+        "activate_runtime",
+        "pick_gemma3_model_with_reason",
+    ):
+        monkeypatch.setattr(module, name, forbidden)
+
+    def measure(**kwargs):
+        calls.append(kwargs)
+        result = complete_benchmark_result()
+        if kwargs["model_name"] == "exact-candidate":
+            if failure == "activation":
+                result["activation_ok"] = False
+            elif failure == "cold":
+                result["cold_start"]["ok"] = False
+            elif failure == "warmup":
+                result["warmup_samples"][0]["ok"] = False
+            elif failure == "sample":
+                result["samples"][0]["ok"] = False
+            elif failure == "incomplete":
+                result["samples"].pop()
+        return result
+
+    monkeypatch.setattr(module, "_run_benchmark_for_runtime", measure)
+    monkeypatch.setattr(
+        module, "dump_json", lambda path, report: reports.append(report)
+    )
+    monkeypatch.setattr(module, "dump_text", lambda *args: None)
+    assert module.main() == (1 if failure else 0)
+    assert [call["model_name"] for call in calls] == ["exact-base", "exact-candidate"]
+    assert reports[-1]["measurement_complete"] is (failure is None)
+    assert reports[-1]["qualification_status"] == "NOT_QUALIFIED"
+    if failure:
+        assert any(error.startswith("candidate:") for error in reports[-1]["errors"])
+
+
+def test_native_fragmented_utf8_and_unterminated_error_are_not_silently_accepted(
+    monkeypatch,
+):
+    wire = b"".join(
+        raw
+        for _, raw in (
+            native_frame(native_packet("żółw", finish="stop")) + native_frame("[DONE]")
+        )
+    )
+    split = wire.index("ż".encode()) + 1
+    result = run_native(monkeypatch, [(0, wire[:split]), (0.1, wire[split:])])
+    assert result.ok and result.text == "żółw"
+    result = run_native(
+        monkeypatch,
+        native_frame(native_packet("text", finish="stop"))
+        + [(0, b'data: {"error": "failed"}')],
+    )
+    assert not result.ok and "incomplete_native_event" in result.error
+
+
+def test_native_read_socket_timeout_uses_remaining_wall_clock_budget(monkeypatch):
+    clock, timeouts = Clock(), []
+    response = Response(
+        native_frame(native_packet("text"), 0.2)
+        + native_frame(native_packet(finish="stop"), 0.3),
+        clock,
+    )
+    response.fp = SimpleNamespace(
+        raw=SimpleNamespace(_sock=SimpleNamespace(settimeout=timeouts.append))
+    )
+    monkeypatch.setattr(common.time, "perf_counter", clock)
+    monkeypatch.setattr(common.request, "urlopen", lambda *a, **k: response)
+    result = common.native_chat(
+        "http://fixture.invalid/v1",
+        prompt="test",
+        model="fixture-model",
+        max_tokens=32,
+        temperature=0,
+        timeout_sec=1,
+    )
+    assert result.ok and timeouts[0] == 1
+    assert timeouts[-1] == pytest.approx(0.5)
+    assert timeouts == sorted(timeouts, reverse=True)
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_native_missing_model_or_endpoint_never_uses_discovery(
+    benchmark_module, monkeypatch, tmp_path, stream
+):
+    module = benchmark_module
+    corpus = tmp_path / "cases.jsonl"
+    corpus.write_text(json.dumps({"prompt": "fixture", "stream": stream}) + "\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "benchmark",
+            "--prompts",
+            str(corpus),
+            "--baseline-transport",
+            "native",
+            "--candidate-transport",
+            "native",
+        ],
+    )
+    for name in (
+        "resolve_base_url",
+        "wait_backend_ready",
+        "http_json",
+        "_run_benchmark_for_runtime",
+    ):
+        monkeypatch.setattr(module, name, lambda *a, **k: pytest.fail("no discovery"))
+    reports = []
+    monkeypatch.setattr(
+        module, "dump_json", lambda path, report: reports.append(report)
+    )
+    assert module.main() == 1
+    assert "baseline_native_model_and_base_url_required" in reports[-1]["errors"]
+
+
+def test_mixed_pair_keeps_simple_readiness_without_forcing_model_heuristics(
+    benchmark_module, monkeypatch, tmp_path
+):
+    module = benchmark_module
+    corpus = tmp_path / "cases.jsonl"
+    corpus.write_text(json.dumps({"prompt": "fixture"}) + "\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "benchmark",
+            "--prompts",
+            str(corpus),
+            "--repetitions",
+            "2",
+            "--warmup",
+            "1",
+            "--baseline-model",
+            "explicit-simple",
+            "--candidate-model",
+            "explicit-native",
+            "--candidate-transport",
+            "native",
+            "--candidate-native-base-url",
+            "http://native.invalid/v1",
+        ],
+    )
+    readiness, calls = [], []
+    monkeypatch.setattr(
+        module, "resolve_base_url", lambda **kwargs: "http://simple.invalid"
+    )
+    monkeypatch.setattr(
+        module,
+        "wait_backend_ready",
+        lambda url, **kwargs: readiness.append(url) or True,
+    )
+    monkeypatch.setattr(
+        module, "http_json", lambda *a, **k: pytest.fail("explicit models")
+    )
+
+    def measure(**kwargs):
+        calls.append(kwargs)
+        return complete_benchmark_result()
+
+    monkeypatch.setattr(module, "_run_benchmark_for_runtime", measure)
+    monkeypatch.setattr(module, "dump_json", lambda *args: None)
+    monkeypatch.setattr(module, "dump_text", lambda *args: None)
+    assert module.main() == 0
+    assert readiness == ["http://simple.invalid"]
+    assert [call["transport"] for call in calls] == ["simple", "native"]

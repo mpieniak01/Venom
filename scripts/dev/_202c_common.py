@@ -12,10 +12,10 @@ import statistics
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
-from urllib import error, request
+from typing import Any, Iterator
+from urllib import error, parse, request
 
 GEMMA3_TOKENS = ("gemma-3", "gemma3")
 DEFAULT_TIMEOUT_SEC = 60.0
@@ -46,6 +46,7 @@ class StreamResult:
     usage_source: str | None = None
     tokens_per_second: float | None = None
     time_per_output_token_ms: float | None = None
+    reported_model: str | None = None
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -884,12 +885,13 @@ def stream_simple_chat(
     temperature: float,
     timeout_sec: float = 180.0,
     seed: int | None = None,
+    stream: bool = True,
 ) -> StreamResult:
     payload: dict[str, Any] = {
         "content": prompt,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        "stream": True,
+        "stream": stream,
     }
     if model:
         payload["model"] = model
@@ -908,7 +910,15 @@ def stream_simple_chat(
             content_type = resp.headers.get("Content-Type", "").split(";")[0]
             if resp.status != 200 or content_type != "text/event-stream":
                 raise ValueError("response_is_not_sse")
-            return _read_timed_sse(resp, started=started, timeout_sec=timeout_sec)
+            result = _read_timed_sse(resp, started=started, timeout_sec=timeout_sec)
+            # A single completed upstream answer is not token-stream TTFT/TPOT.
+            return (
+                result
+                if stream
+                else replace(
+                    result, first_token_latency_ms=None, time_per_output_token_ms=None
+                )
+            )
     except error.HTTPError as exc:
         details = exc.read(401).decode("utf-8", errors="replace")
         message = f"http_error:{exc.code}:{details[:400]}"
@@ -928,7 +938,10 @@ def _native_usage_from_done(packet_text: str) -> dict[str, int]:
     packet = json.loads(packet_text)
     if not isinstance(packet, dict) or packet.get("usage_source") != "upstream":
         return {}
-    raw_usage = packet.get("usage")
+    return _checked_native_usage(packet.get("usage"))
+
+
+def _checked_native_usage(raw_usage: Any) -> dict[str, int]:
     if not isinstance(raw_usage, dict):
         raise ValueError("invalid_native_usage")
     usage: dict[str, int] = {}
@@ -995,8 +1008,23 @@ def _read_timed_sse(response, *, started: float, timeout_sec: float) -> StreamRe
                     saw_done = True
                     break
             event_name, data = "message", []
+    return _timed_result(
+        chunks, event_count, first_token_ms, text_events, usage, saw_done, started
+    )
+
+
+def _timed_result(
+    chunks: list[str],
+    event_count: int,
+    first_token_ms: float | None,
+    text_events: int,
+    usage: dict[str, int],
+    completed: bool,
+    started: float,
+    reported_model: str | None = None,
+) -> StreamResult:
     full_text = "".join(chunks).strip()
-    ok = saw_done and bool(full_text)
+    ok = completed and bool(full_text)
     latency_ms = (time.perf_counter() - started) * 1000.0
     output_tokens = usage.get("completion_tokens")
     if output_tokens == 0 and full_text:
@@ -1020,6 +1048,225 @@ def _read_timed_sse(response, *, started: float, timeout_sec: float) -> StreamRe
         usage_source="upstream" if usage else None,
         tokens_per_second=tokens_per_second,
         time_per_output_token_ms=tpot_ms,
+        reported_model=reported_model,
+    )
+
+
+def native_chat(
+    base_url: str,
+    *,
+    prompt: str,
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    timeout_sec: float = 180.0,
+    seed: int | None = None,
+    stream: bool = True,
+) -> StreamResult:
+    """Measure a prestarted OpenAI-compatible /v1 endpoint, without SDK/activation."""
+    started = time.perf_counter()
+    try:
+        parsed = parse.urlsplit(base_url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or not parsed.path.rstrip("/").endswith("/v1")
+        ):
+            raise ValueError("native_base_url_must_be_explicit_v1")
+        if not model or type(stream) is not bool:
+            raise ValueError("invalid_native_request")
+        if not math.isfinite(timeout_sec) or timeout_sec <= 0:
+            raise ValueError("invalid_native_timeout")
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": stream,
+        }
+        if stream:
+            payload["stream_options"] = {"include_usage": True}
+        if seed is not None:
+            payload["seed"] = seed
+        req = request.Request(
+            url=base_url.rstrip("/") + "/chat/completions",
+            method="POST",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with request.urlopen(req, timeout=timeout_sec) as response:
+            content_type = response.headers.get("Content-Type", "").split(";")[0]
+            expected = "text/event-stream" if stream else "application/json"
+            if response.status != 200 or content_type != expected:
+                raise ValueError("unexpected_native_response_type")
+            return _read_native_chat(
+                response,
+                model=model,
+                stream=stream,
+                started=started,
+                timeout_sec=timeout_sec,
+            )
+    except error.HTTPError as exc:
+        message = f"http_error:{exc.code}"
+    except (OSError, error.URLError, ValueError, UnicodeError) as exc:
+        message = f"native_or_transport_error:{type(exc).__name__}:{exc}"
+    return StreamResult(
+        ok=False,
+        text="",
+        latency_ms=(time.perf_counter() - started) * 1000.0,
+        event_count=0,
+        error=message,
+    )
+
+
+def _native_packet(
+    packet: Any, *, model: str, stream: bool
+) -> tuple[str, bool, dict[str, int], str | None]:
+    if not isinstance(packet, dict):
+        raise ValueError("invalid_native_packet")
+    if packet.get("error") is not None:
+        raise ValueError("native_error_packet")
+    reported_model = packet.get("model")
+    if reported_model is not None and reported_model != model:
+        raise ValueError("native_reported_model_mismatch")
+    choices = packet.get("choices")
+    if not isinstance(choices, list) or len(choices) > 1:
+        raise ValueError("invalid_native_choices")
+    text, finished = "", False
+    if choices:
+        choice = choices[0]
+        if not isinstance(choice, dict) or choice.get("index", 0) != 0:
+            raise ValueError("invalid_native_choice")
+        reason = choice.get("finish_reason")
+        if reason is not None:
+            if not isinstance(reason, str) or reason not in {
+                "stop",
+                "length",
+                "tool_calls",
+                "function_call",
+            }:
+                raise ValueError("native_unsuccessful_finish")
+            finished = True
+        message = choice.get("delta" if stream else "message", {})
+        if not isinstance(message, dict):
+            raise ValueError("invalid_native_message")
+        content = message.get("content")
+        if content is None:
+            content = ""
+        if not isinstance(content, str):
+            raise ValueError("invalid_native_content")
+        text = content
+    usage = (
+        _checked_native_usage(packet["usage"])
+        if packet.get("usage") is not None
+        else {}
+    )
+    return text, finished, usage, reported_model
+
+
+def _native_chunks(
+    response: Any, *, started: float, timeout_sec: float
+) -> Iterator[bytes]:
+    """One underlying read per iteration; trickled bytes cannot reset the deadline."""
+    received = 0
+    while True:
+        remaining = timeout_sec - (time.perf_counter() - started)
+        if remaining <= 0:
+            raise TimeoutError("stream_deadline_exceeded")
+        # urllib's HTTPResponse exposes its socket through BufferedReader/SocketIO.
+        # read1 avoids read/readline internally looping on trickled bytes.
+        raw_stream = getattr(getattr(response, "fp", None), "raw", None)
+        sock = getattr(raw_stream, "_sock", None)
+        if sock is not None:
+            sock.settimeout(remaining)
+        raw = response.read1(65536)
+        if time.perf_counter() - started > timeout_sec:
+            raise TimeoutError("stream_deadline_exceeded")
+        if not raw:
+            return
+        received += len(raw)
+        if received > 1024 * 1024:
+            raise ValueError("stream_too_large")
+        yield raw
+
+
+def _native_sse_packets(
+    response: Any, *, started: float, timeout_sec: float
+) -> Iterator[str]:
+    buffered = b""
+    data: list[str] = []
+    for raw in _native_chunks(response, started=started, timeout_sec=timeout_sec):
+        buffered += raw
+        while b"\n" in buffered:
+            raw_line, _, buffered = buffered.partition(b"\n")
+            if len(raw_line) > 65536:
+                raise ValueError("stream_too_large")
+            line = raw_line.decode("utf-8").rstrip("\r")
+            if line.startswith("data:"):
+                data.append(line[5:].lstrip(" "))
+            elif line.startswith("event:") and line[6:].strip() in {"error", "abort"}:
+                raise ValueError("native_error_event")
+            elif not line and data:
+                packet_text, data = "\n".join(data), []
+                yield packet_text
+        if len(buffered) > 65536:
+            raise ValueError("stream_too_large")
+    if buffered or data:
+        raise ValueError("incomplete_native_event")
+
+
+def _read_native_chat(
+    response: Any, *, model: str, stream: bool, started: float, timeout_sec: float
+) -> StreamResult:
+    chunks: list[str] = []
+    usage: dict[str, int] = {}
+    first_token_ms: float | None = None
+    reported_model: str | None = None
+    text_events = event_count = 0
+    completed = False
+    if not stream:
+        raw = b"".join(
+            _native_chunks(response, started=started, timeout_sec=timeout_sec)
+        )
+        text, completed, usage, reported_model = _native_packet(
+            json.loads(raw), model=model, stream=False
+        )
+        chunks.append(text)
+        event_count = 1
+    else:
+        for packet_text in _native_sse_packets(
+            response, started=started, timeout_sec=timeout_sec
+        ):
+            event_count += 1
+            if packet_text == "[DONE]":
+                completed = True
+                break
+            text, finished, reported_usage, packet_model = _native_packet(
+                json.loads(packet_text), model=model, stream=True
+            )
+            if completed and text.strip():
+                raise ValueError("native_content_after_finish")
+            if text.strip():
+                text_events += 1
+                if first_token_ms is None:
+                    first_token_ms = (time.perf_counter() - started) * 1000.0
+            chunks.append(text)
+            completed = completed or finished
+            usage.update(reported_usage)
+            reported_model = packet_model or reported_model
+    return _timed_result(
+        chunks,
+        event_count,
+        first_token_ms,
+        text_events,
+        usage,
+        completed,
+        started,
+        reported_model,
     )
 
 
@@ -1039,13 +1286,20 @@ def load_prompts_jsonl(path: Path) -> list[dict[str, Any]]:
         if not prompt:
             raise ValueError(f"JSONL item at line {idx} has empty 'prompt'")
         prompt_id = str(item.get("id") or f"prompt_{idx:03d}").strip()
-        prompts.append(
-            {
-                "id": prompt_id,
-                "prompt": prompt,
-                "category": str(item.get("category") or "general"),
-            }
-        )
+        normalized: dict[str, Any] = {
+            "id": prompt_id,
+            "prompt": prompt,
+            "category": str(item.get("category") or "general"),
+        }
+        if "stream" in item:
+            if type(item["stream"]) is not bool:
+                raise ValueError(f"JSONL item at line {idx} has invalid 'stream'")
+            normalized["stream"] = item["stream"]
+        if "max_tokens" in item:
+            if type(item["max_tokens"]) is not int or item["max_tokens"] <= 0:
+                raise ValueError(f"JSONL item at line {idx} has invalid 'max_tokens'")
+            normalized["max_tokens"] = item["max_tokens"]
+        prompts.append(normalized)
     if not prompts:
         raise ValueError(f"Prompt set is empty: {path}")
     return prompts

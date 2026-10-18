@@ -3,6 +3,8 @@
 No application imports, CPU fallback, model download or second ORT distribution.
 Explicit seeds must fit ORT GenAI's native signed32 range; -1 requests its random
 device behavior. Omitted/null seeds retain the model's configured default.
+Shutdown is cooperative between native calls; an in-flight GPU call is never
+interrupted. The bounded cleanup wait is not a native execution deadline.
 """
 
 from __future__ import annotations
@@ -21,6 +23,19 @@ from typing import Any
 
 class RequestError(ValueError):
     """The requested operation is outside this worker's explicit contract."""
+
+
+class GenerationCancelled(RuntimeError):
+    """Shutdown was observed before or between native generation calls."""
+
+
+class ClientDisconnected(Exception):
+    """Socket I/O failed; do not attempt another response on this connection."""
+
+
+def check_stopping(stop_event: threading.Event | None) -> None:
+    if stop_event is not None and stop_event.is_set():
+        raise GenerationCancelled("worker_stopping")
 
 
 def validate_request(data: Any, model_name: str) -> dict[str, Any]:
@@ -125,7 +140,13 @@ class OnnxEngine:
         self.tokenizer = None
         self.model = None
 
-    def generate(self, request: dict[str, Any], stats: dict[str, Any]):
+    def generate(
+        self,
+        request: dict[str, Any],
+        stats: dict[str, Any],
+        stop_event: threading.Event | None = None,
+    ):
+        check_stopping(stop_event)
         if self.model is None or self.tokenizer is None:
             raise RuntimeError("engine_closed")
         seed = request.get("seed")
@@ -133,10 +154,13 @@ class OnnxEngine:
         # https://github.com/microsoft/onnxruntime-genai/blob/v0.12.2/src/config.h#L344
         if seed is not None and not -(2**31) <= seed < 2**31:
             raise RequestError("seed_out_of_native_range")
+        check_stopping(stop_event)
         prompt = self.tokenizer.apply_chat_template(
             json.dumps(request["messages"]), add_generation_prompt=True
         )
+        check_stopping(stop_event)
         tokens = self.tokenizer.encode(prompt)
+        check_stopping(stop_event)
         if len(tokens) + request["max_tokens"] > min(self.context_length, 2048):
             raise RequestError("context_limit_exceeded")
         params = self.og.GeneratorParams(self.model)
@@ -152,24 +176,38 @@ class OnnxEngine:
             options["top_k"] = request["top_k"]
         if seed is not None:
             options["random_seed"] = seed
+        check_stopping(stop_event)
         params.set_search_options(**options)
+        check_stopping(stop_event)
         generator = self.og.Generator(self.model, params)
-        stream = self.tokenizer.create_stream()
-        stats.update(
-            prompt_tokens=len(tokens), completion_tokens=0, finish_reason="stop"
-        )
-        deadline = time.monotonic() + 60
         try:
+            check_stopping(stop_event)
+            stream = self.tokenizer.create_stream()
+            stats.update(
+                prompt_tokens=len(tokens), completion_tokens=0, finish_reason="stop"
+            )
+            deadline = time.monotonic() + 60
+            check_stopping(stop_event)
             generator.append_tokens(tokens)
-            while (
-                not generator.is_done()
-                and stats["completion_tokens"] < request["max_tokens"]
-            ):
+            while True:
+                check_stopping(stop_event)
+                if (
+                    stats["completion_tokens"] >= request["max_tokens"]
+                    or generator.is_done()
+                ):
+                    break
                 if time.monotonic() > deadline:
                     raise TimeoutError("generation_deadline_exceeded")
+                check_stopping(stop_event)
                 generator.generate_next_token()
+                check_stopping(stop_event)
                 stats["completion_tokens"] += 1
-                yield stream.decode(generator.get_next_tokens()[0])
+                next_tokens = generator.get_next_tokens()
+                check_stopping(stop_event)
+                piece = stream.decode(next_tokens[0])
+                check_stopping(stop_event)
+                yield piece
+            check_stopping(stop_event)
             if stats["completion_tokens"] >= request["max_tokens"]:
                 stats["finish_reason"] = "length"
         finally:
@@ -178,18 +216,26 @@ class OnnxEngine:
 
 class BridgeServer(ThreadingHTTPServer):
     daemon_threads = True
+    io_timeout = 5.0
+    shutdown_timeout = (
+        6.0  # Socket timeout plus margin; cannot interrupt a native call.
+    )
 
     def __init__(self, address, engine):
         self.engine = engine
         self.generation_lock = threading.Lock()
+        self.stop_event = threading.Event()
         super().__init__(address, BridgeHandler)
 
+    def shutdown(self) -> None:
+        self.stop_event.set()
+        super().shutdown()
+
     def server_close(self) -> None:
+        self.stop_event.set()
         super().server_close()
-        # daemon request threads may still own native objects. Never release them
-        # concurrently, and do not report active-generation shutdown as supported.
-        if not self.generation_lock.acquire(blocking=False):
-            raise RuntimeError("active_generation_shutdown_cleanup_unsupported")
+        if not self.generation_lock.acquire(timeout=self.shutdown_timeout):
+            raise RuntimeError("active_generation_shutdown_timeout")
         try:
             self.engine.close()
         finally:
@@ -203,15 +249,41 @@ class BridgeHandler(BaseHTTPRequestHandler):
         # Never log conversation inputs, authentication headers or request bodies.
         return
 
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(self.server.io_timeout)
+
     def json_response(self, status: int, payload: dict[str, Any]):
         body = json.dumps(payload, ensure_ascii=False).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except OSError as error:
+            raise ClientDisconnected from error
+
+    def error_response(self, status, kind, error, streaming=False):
+        payload = {"error": {"message": str(error), "type": kind}}
+        try:
+            if streaming:
+                self.event(payload)
+            else:
+                self.json_response(status, payload)
+        except ClientDisconnected:
+            pass
 
     def do_GET(self):
+        try:
+            check_stopping(self.server.stop_event)
+            self.get_response()
+        except GenerationCancelled as error:
+            self.error_response(503, "generation_cancelled", error)
+        except ClientDisconnected:
+            pass
+
+    def get_response(self):
         if self.path == "/health":
             self.json_response(
                 200,
@@ -239,45 +311,61 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self.json_response(404, {"error": {"message": "unknown_endpoint"}})
 
     def event(self, payload):
-        self.wfile.write(
-            ("data: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
-        )
-        self.wfile.flush()
+        self.write_event(json.dumps(payload, ensure_ascii=False))
+
+    def write_event(self, data: str):
+        try:
+            self.wfile.write(("data: " + data + "\n\n").encode())
+            self.wfile.flush()
+        except OSError as error:
+            raise ClientDisconnected from error
 
     def do_POST(self):
-        if self.path != "/v1/chat/completions":
-            self.json_response(404, {"error": {"message": "unknown_endpoint"}})
-            return
         iterator = None
         acquired = False
         streaming = False
         try:
-            self.connection.settimeout(5)
+            check_stopping(self.server.stop_event)
+            if self.path != "/v1/chat/completions":
+                self.json_response(404, {"error": {"message": "unknown_endpoint"}})
+                return
             size = int(self.headers.get("Content-Length", "0"))
             if not 0 < size <= 1024 * 1024:
                 raise RequestError("request_size_out_of_range")
-            request = validate_request(
-                json.loads(self.rfile.read(size)), self.server.engine.model_name
-            )
+            try:
+                body = self.rfile.read(size)
+            except OSError as error:
+                raise ClientDisconnected from error
+            check_stopping(self.server.stop_event)
+            request = validate_request(json.loads(body), self.server.engine.model_name)
+            check_stopping(self.server.stop_event)
             acquired = self.server.generation_lock.acquire(blocking=False)
             if not acquired:
+                check_stopping(self.server.stop_event)
                 self.json_response(429, {"error": {"message": "worker_busy"}})
                 return
+            check_stopping(self.server.stop_event)
             stats: dict[str, Any] = {}
-            iterator = self.server.engine.generate(request, stats)
+            iterator = self.server.engine.generate(
+                request, stats, stop_event=self.server.stop_event
+            )
             first = next(
                 iterator, ""
             )  # Fail before 200 headers if tokenization/model execution fails.
+            check_stopping(self.server.stop_event)
             stamp = {
                 "id": "chatcmpl-" + uuid.uuid4().hex,
                 "created": int(time.time()),
                 "model": self.server.engine.model_name,
             }
             if request.get("stream", False):
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-cache")
-                self.end_headers()
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                except OSError as error:
+                    raise ClientDisconnected from error
                 streaming = True
 
                 def chunk(delta, finish=None):
@@ -287,14 +375,21 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         choices=[{"index": 0, "delta": delta, "finish_reason": finish}],
                     )
 
+                check_stopping(self.server.stop_event)
                 self.event(chunk({"role": "assistant"}))
                 if first:
+                    check_stopping(self.server.stop_event)
                     self.event(chunk({"content": first}))
                 for piece in iterator:
+                    check_stopping(self.server.stop_event)
                     if piece:
                         self.event(chunk({"content": piece}))
+                closing_iterator, iterator = iterator, None
+                closing_iterator.close()
+                check_stopping(self.server.stop_event)
                 self.event(chunk({}, stats["finish_reason"]))
                 if request.get("stream_options", {}).get("include_usage", False):
+                    check_stopping(self.server.stop_event)
                     self.event(
                         dict(
                             stamp,
@@ -308,10 +403,17 @@ class BridgeHandler(BaseHTTPRequestHandler):
                             },
                         )
                     )
-                self.wfile.write(b"data: [DONE]\n\n")
-                self.wfile.flush()
+                check_stopping(self.server.stop_event)
+                self.write_event("[DONE]")
             else:
-                content = first + "".join(iterator)
+                pieces = [first]
+                for piece in iterator:
+                    check_stopping(self.server.stop_event)
+                    pieces.append(piece)
+                closing_iterator, iterator = iterator, None
+                closing_iterator.close()
+                check_stopping(self.server.stop_event)
+                content = "".join(pieces)
                 self.json_response(
                     200,
                     dict(
@@ -332,30 +434,21 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         },
                     ),
                 )
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # Closing the iterator below cancels further token generation.
+        except (ClientDisconnected, BrokenPipeError, ConnectionResetError):
+            pass  # Iterator cleanup below cancels further token generation.
+        except GenerationCancelled as error:
+            self.error_response(503, "generation_cancelled", error, streaming)
         except (ValueError, UnicodeError) as error:
-            if streaming:
-                self.event(
-                    {"error": {"message": str(error), "type": "invalid_request_error"}}
-                )
-            else:
-                self.json_response(
-                    400,
-                    {"error": {"message": str(error), "type": "invalid_request_error"}},
-                )
+            self.error_response(400, "invalid_request_error", error, streaming)
         except Exception as error:  # noqa: BLE001 - Native engine exceptions must become explicit HTTP failures.
-            if streaming:
-                self.event({"error": {"message": str(error), "type": "engine_error"}})
-            else:
-                self.json_response(
-                    503, {"error": {"message": str(error), "type": "engine_error"}}
-                )
+            self.error_response(503, "engine_error", error, streaming)
         finally:
-            if iterator is not None:
-                iterator.close()
-            if acquired:
-                self.server.generation_lock.release()
+            try:
+                if iterator is not None:
+                    iterator.close()
+            finally:
+                if acquired:
+                    self.server.generation_lock.release()
 
 
 def main() -> None:
@@ -369,6 +462,7 @@ def main() -> None:
     server = BridgeServer((args.host, args.port), engine)
 
     def stop(signum, frame):
+        server.stop_event.set()
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     try:

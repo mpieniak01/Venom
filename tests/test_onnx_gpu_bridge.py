@@ -1,6 +1,8 @@
 """Real loopback HTTP/SSE tests, with an explicit nonmodel token fixture."""
 
 import json
+import socket
+import struct
 import threading
 import urllib.error
 import urllib.request
@@ -17,7 +19,7 @@ class TokenFixture:
     def close(self):
         pass
 
-    def generate(self, request, stats):
+    def generate(self, request, stats, stop_event=None):
         stats.update(prompt_tokens=3, completion_tokens=0, finish_reason="stop")
         for token in ["Dzień ", "dobry"]:
             stats["completion_tokens"] += 1
@@ -66,6 +68,49 @@ def assert_generation_idle(server):
     server.generation_lock.release()
 
 
+def run_background(action):
+    results = []
+
+    def run():
+        try:
+            results.append(action())
+        except BaseException as error:
+            results.append(error)
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    return worker, results
+
+
+def completion_result(base, payload):
+    try:
+        with request(base, payload) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as error:
+        with error:
+            return error.code, error.read()
+
+
+def gate_native_call(monkeypatch, owner, method, count=None, fail=False):
+    entered, release = threading.Event(), threading.Event()
+    original = getattr(owner, method)
+    used = False
+
+    def call(instance, *args, **kwargs):
+        nonlocal used
+        if not used and (count is None or instance.count == count):
+            used = True
+            entered.set()
+            if not release.wait(3):
+                raise RuntimeError("fixture_native_gate_timeout")
+            if fail:
+                raise RuntimeError("fixture_native_failed")
+        return original(instance, *args, **kwargs)
+
+    monkeypatch.setattr(owner, method, call)
+    return entered, release
+
+
 def test_http_completion_has_actual_chunks_usage_and_model(bridge):
     server, base = bridge
     with request(base, message(max_tokens=8)) as response:
@@ -102,7 +147,7 @@ def test_sse_sends_token_deltas_and_explicit_termination(bridge):
 def test_engine_failure_is_503_not_empty_success(bridge):
     server, base = bridge
 
-    def broken(request, stats):
+    def broken(request, stats, stop_event=None):
         raise RuntimeError("native engine failed")
 
     server.engine.generate = broken
@@ -373,14 +418,14 @@ def test_busy_server_teardown_fails_explicitly_without_calling_engine_close(
 
     monkeypatch.setattr(engine, "close", close)
     server = module.BridgeServer(("127.0.0.1", 0), engine)
+    server.shutdown_timeout = 0.01
     server.generation_lock.acquire()
     try:
-        with pytest.raises(
-            RuntimeError, match="active_generation_shutdown_cleanup_unsupported"
-        ):
+        with pytest.raises(RuntimeError, match="active_generation_shutdown_timeout"):
             server.server_close()
         assert closes == []
         assert seen["released"] == []
+        assert server.stop_event.is_set()
     finally:
         server.generation_lock.release()
         server.server_close()
@@ -420,6 +465,320 @@ def test_main_idle_exit_or_signal_setup_failure_releases_native_objects(
     else:
         module.main()
     assert seen["released"] == ["tokenizer", "model"]
+
+
+def test_shutdown_sets_stop_before_stopping_the_accept_loop(
+    fake_native_sdk, monkeypatch
+):
+    module, _, _, path = fake_native_sdk
+    observed = []
+    server = module.BridgeServer(
+        ("127.0.0.1", 0), module.OnnxEngine(str(path), "fixture-model")
+    )
+    monkeypatch.setattr(
+        module.ThreadingHTTPServer,
+        "shutdown",
+        lambda instance: observed.append(instance.stop_event.is_set()),
+    )
+    try:
+        server.shutdown()
+        server.shutdown()
+        assert observed == [True, True]
+    finally:
+        server.server_close()
+
+
+def test_stop_before_native_execution_creates_no_request_native_objects(
+    fake_native_sdk,
+):
+    module, _, seen, path = fake_native_sdk
+    engine = module.OnnxEngine(str(path), "fixture-model")
+    stop_event = threading.Event()
+    stop_event.set()
+    with pytest.raises(module.GenerationCancelled, match="worker_stopping"):
+        list(
+            engine.generate(
+                validate_request(message(), "fixture-model"), {}, stop_event
+            )
+        )
+    assert seen["calls"] == ["model", "tokenizer"]
+    assert seen["options"] == []
+    engine.close()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("phase", ["tokenization", "prefill"])
+def test_stop_during_native_setup_is_503_before_the_first_token(
+    bridge, fake_native_sdk, monkeypatch, stream, phase
+):
+    server, base = bridge
+    module, sdk, seen, path = fake_native_sdk
+    server.engine = module.OnnxEngine(str(path), "fixture-model")
+    owner, method = (
+        (sdk.Tokenizer, "encode")
+        if phase == "tokenization"
+        else (sdk.Generator, "append_tokens")
+    )
+    entered, release = gate_native_call(monkeypatch, owner, method)
+    client, results = run_background(
+        lambda: completion_result(base, message(stream=stream, max_tokens=2))
+    )
+    try:
+        assert entered.wait(1)
+        server.shutdown()
+        assert server.stop_event.is_set()
+        assert seen["released"] == []
+        release.set()
+        server.server_close()
+        client.join(timeout=2)
+        assert not client.is_alive()
+        status, body = results[0]
+        assert status == 503
+        assert json.loads(body)["error"] == {
+            "message": "worker_stopping",
+            "type": "generation_cancelled",
+        }
+        assert "usage" not in json.loads(body)
+        assert seen["destroyed"] == ([0] if phase == "prefill" else [])
+        assert seen["released"] == ["tokenizer", "model"]
+        assert_generation_idle(server)
+    finally:
+        release.set()
+        client.join(timeout=3)
+
+
+def test_active_loopback_sse_stop_waits_for_native_return_and_emits_only_error(
+    bridge, fake_native_sdk, monkeypatch
+):
+    server, base = bridge
+    module, sdk, seen, path = fake_native_sdk
+    server.engine = module.OnnxEngine(str(path), "fixture-model")
+    entered, release = gate_native_call(
+        monkeypatch, sdk.Generator, "generate_next_token", count=1
+    )
+    response = request(
+        base, message(stream=True, max_tokens=4, stream_options={"include_usage": True})
+    )
+    closer = None
+    try:
+        assert entered.wait(1)
+
+        def close_worker():
+            server.shutdown()
+            server.server_close()
+
+        closer, outcomes = run_background(close_worker)
+        assert server.stop_event.wait(1)
+        assert seen["released"] == []
+        release.set()
+        frames = [
+            line[6:]
+            for line in response.read().decode().splitlines()
+            if line.startswith("data: ")
+        ]
+        closer.join(timeout=2)
+        assert not closer.is_alive()
+        assert outcomes == [None]
+        assert "[DONE]" not in frames
+        payloads = [json.loads(frame) for frame in frames]
+        assert payloads[-1]["error"] == {
+            "message": "worker_stopping",
+            "type": "generation_cancelled",
+        }
+        assert not any("usage" in payload for payload in payloads)
+        assert not any(
+            choice.get("finish_reason") is not None
+            for payload in payloads
+            for choice in payload.get("choices", [])
+        )
+        assert seen["destroyed"] == [2]
+        assert seen["released"] == ["tokenizer", "model"]
+        assert_generation_idle(server)
+    finally:
+        release.set()
+        response.close()
+        if closer is not None:
+            closer.join(timeout=3)
+
+
+@pytest.mark.parametrize("endpoint", ["/health", "/v1/models", "/v1/chat/completions"])
+def test_requests_after_stop_are_rejected_without_generation(
+    bridge, monkeypatch, endpoint
+):
+    server, base = bridge
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("generation must not run after stop")
+
+    monkeypatch.setattr(server.engine, "generate", forbidden)
+    server.stop_event.set()
+    with pytest.raises(urllib.error.HTTPError) as error:
+        if endpoint.endswith("completions"):
+            request(base, message(stream=True))
+        else:
+            urllib.request.urlopen(base + endpoint, timeout=2)
+    assert error.value.code == 503
+    assert json.load(error.value)["error"] == {
+        "message": "worker_stopping",
+        "type": "generation_cancelled",
+    }
+    assert_generation_idle(server)
+
+
+def test_already_accepted_request_is_rejected_after_validation_stop(
+    bridge, monkeypatch
+):
+    from scripts.llm import onnx_gpu_bridge as module
+
+    server, base = bridge
+    entered, release = threading.Event(), threading.Event()
+    original = module.validate_request
+
+    def validate(*args):
+        validated = original(*args)
+        entered.set()
+        assert release.wait(3)
+        return validated
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("accepted request must not generate after stop")
+
+    monkeypatch.setattr(module, "validate_request", validate)
+    monkeypatch.setattr(server.engine, "generate", forbidden)
+    client, results = run_background(lambda: completion_result(base, message()))
+    try:
+        assert entered.wait(1)
+        server.stop_event.set()
+        release.set()
+        client.join(timeout=2)
+        assert not client.is_alive()
+        status, body = results[0]
+        assert status == 503
+        assert json.loads(body)["error"]["message"] == "worker_stopping"
+        assert_generation_idle(server)
+    finally:
+        release.set()
+        client.join(timeout=3)
+
+
+@pytest.mark.parametrize("native_failure", [False, True])
+def test_loopback_sse_disconnect_cleans_iterator_and_allows_recovery_without_io_noise(
+    bridge, fake_native_sdk, monkeypatch, native_failure
+):
+    server, base = bridge
+    module, sdk, seen, path = fake_native_sdk
+    server.engine = module.OnnxEngine(str(path), "fixture-model")
+    entered, release = gate_native_call(
+        monkeypatch, sdk.Generator, "generate_next_token", count=1, fail=native_failure
+    )
+    errors = []
+    monkeypatch.setattr(server, "handle_error", lambda *args: errors.append(True))
+    body = json.dumps(message(stream=True, max_tokens=4)).encode()
+    client = socket.create_connection(("127.0.0.1", server.server_port), timeout=2)
+    try:
+        client.sendall(
+            b"POST /v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n"
+            b"Content-Type: application/json\r\nContent-Length: "
+            + str(len(body)).encode()
+            + b"\r\n\r\n"
+            + body
+        )
+        assert entered.wait(1)
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        client.close()
+        release.set()
+        assert_generation_idle(server)
+        assert seen["destroyed"] == ([1] if native_failure else [2])
+        assert errors == []
+        assert not server.stop_event.is_set()
+        with request(base, message(max_tokens=2)) as response:
+            assert json.load(response)["choices"][0]["message"]["content"] == "12"
+        assert_generation_idle(server)
+        assert errors == []
+    finally:
+        release.set()
+        client.close()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_iterator_close_failure_prevents_success_and_releases_generation_lock(
+    bridge, monkeypatch, stream
+):
+    server, base = bridge
+    original = server.engine.generate
+
+    class BadCloseIterator:
+        def __init__(self):
+            self.tokens = iter(["one"])
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return next(self.tokens)
+
+        def close(self):
+            raise RuntimeError("fixture_close_failed")
+
+    def generate(request, stats, stop_event=None):
+        stats.update(prompt_tokens=3, completion_tokens=1, finish_reason="stop")
+        return BadCloseIterator()
+
+    monkeypatch.setattr(server.engine, "generate", generate)
+    status, body = completion_result(
+        base, message(stream=stream, stream_options={"include_usage": True})
+    )
+    if stream:
+        assert status == 200
+        frames = [
+            line[6:] for line in body.decode().splitlines() if line.startswith("data: ")
+        ]
+        assert "[DONE]" not in frames
+        assert json.loads(frames[-1])["error"]["message"] == "fixture_close_failed"
+        assert not any("usage" in json.loads(frame) for frame in frames)
+    else:
+        assert status == 503
+        assert json.loads(body)["error"]["message"] == "fixture_close_failed"
+    assert_generation_idle(server)
+    monkeypatch.setattr(server.engine, "generate", original)
+    with request(base, message()) as response:
+        assert json.load(response)["choices"][0]["message"]["content"] == "Dzień dobry"
+    assert_generation_idle(server)
+
+
+def test_finally_releases_lock_even_when_failed_iterator_cleanup_raises(
+    bridge, monkeypatch
+):
+    server, base = bridge
+    failed_cleanup, reported_error = threading.Event(), threading.Event()
+    errors = []
+
+    class BrokenIterator:
+        def __next__(self):
+            raise RuntimeError("fixture_generation_failed")
+
+        def close(self):
+            failed_cleanup.set()
+            raise RuntimeError("fixture_cleanup_failed")
+
+    monkeypatch.setattr(
+        server.engine, "generate", lambda *args, **kwargs: BrokenIterator()
+    )
+
+    def handle_error(*args):
+        errors.append(True)
+        reported_error.set()
+
+    monkeypatch.setattr(server, "handle_error", handle_error)
+    status, body = completion_result(base, message())
+    assert status == 503
+    assert json.loads(body)["error"]["message"] == "fixture_generation_failed"
+    assert failed_cleanup.wait(1)
+    assert_generation_idle(server)
+    assert reported_error.wait(1)
+    # The cleanup failure remains visible through the server error path; the
+    # failed request must not leave the single-worker lock permanently occupied.
+    assert errors == [True]
 
 
 def test_generation_budget_and_cancellation_release_native_generator(fake_native_sdk):

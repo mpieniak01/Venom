@@ -214,3 +214,15 @@ worker errors, rather than silently downgrading the requested workflow.
 The compatibility task cleanup hook owns no model or process and does not prove
 worker GPU release. Activation/catalog/controller migration and real API routing
 qualification remain separate unfinished requirements of task266.
+
+
+ONNX worker shutdown is cooperative. SIGTERM sets a stop event before stopping
+acceptance; handlers reject new work and generation checks the event around native
+calls and between tokens. Cancellation returns an explicit HTTP/SSE error without
+a successful DONE. Socket failures close the iterator and release the generation
+lock; iterator cleanup errors also release it. The server waits at most six seconds
+for that lock before reporting shutdown failure and leaves an in-use model intact.
+This bound is not a deadline or interruption of an already executing GPU kernel.
+Native model/tokenizer cleanup occurs only after the generation lock is acquired.
+Real active-shutdown and disconnect/recovery qualification is reported separately
+from fixture tests; it is not implied by the implementation alone.

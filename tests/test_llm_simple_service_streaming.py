@@ -606,6 +606,7 @@ async def test_simple_onnx_worker_uses_shared_http_transport_and_native_usage(
 ):
     runtime = _Runtime("onnx")
     runtime.service_type = "onnx"
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ONNX_LLM_ENABLED", True)
     captured = []
     monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
 

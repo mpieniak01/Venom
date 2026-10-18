@@ -924,12 +924,20 @@ def test_simple_seed_accepts_signed_64bit_integers(seed):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("seed", [None, 0, 42])
-async def test_simple_onnx_without_worker_endpoint_fails_before_model_work(
-    monkeypatch, seed
+@pytest.mark.parametrize(
+    "enabled,endpoint,detail",
+    [
+        (True, None, "ONNX_LLM_ENDPOINT"),
+        (False, "http://localhost:8068/v1", "ONNX_LLM_ENABLED"),
+    ],
+)
+async def test_simple_onnx_disabled_or_unconfigured_fails_before_model_work(
+    monkeypatch, seed, enabled, endpoint, detail
 ):
     runtime = DummyRuntime("onnx")
-    runtime.endpoint = None
+    runtime.endpoint = endpoint
     runtime.service_type = "onnx"
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ONNX_LLM_ENABLED", enabled)
     monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
 
     def forbidden(*args, **kwargs):
@@ -941,4 +949,4 @@ async def test_simple_onnx_without_worker_endpoint_fails_before_model_work(
         await llm_simple_service.stream_simple_chat(
             SimpleChatRequest(content="test", seed=seed)
         )
-    assert error.value.status_code == 503 and "ONNX_LLM_ENDPOINT" in error.value.detail
+    assert error.value.status_code == 503 and detail in error.value.detail

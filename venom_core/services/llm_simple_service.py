@@ -1083,13 +1083,17 @@ async def stream_simple_chat(request: SimpleChatRequest):
     runtime = get_active_llm_runtime()
     runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
     runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
-    if (
-        runtime_provider == "onnx" or runtime_service_type == "onnx"
-    ) and not runtime.endpoint:
-        raise HTTPException(
-            status_code=503,
-            detail="Brak endpointu workera ONNX. Skonfiguruj ONNX_LLM_ENDPOINT.",
-        )
+    if runtime_provider == "onnx" or runtime_service_type == "onnx":
+        if not SETTINGS.ONNX_LLM_ENABLED:
+            raise HTTPException(
+                status_code=503,
+                detail="ONNX_LLM_ENABLED=false: runtime ONNX jest wyłączony.",
+            )
+        if not runtime.endpoint:
+            raise HTTPException(
+                status_code=503,
+                detail="Brak endpointu workera ONNX. Skonfiguruj ONNX_LLM_ENDPOINT.",
+            )
     model_name = _resolve_model_name_for_simple_request(
         request_model=request.model,
         runtime_model=runtime.model_name,

@@ -181,7 +181,7 @@ defines the same integer range. Provider/artifact/cache/engine-specific determin
 still requires qualification; a requested seed alone is not proof of identical output.
 
 Simple ONNX now uses the existing HTTP transport and an explicit
-`ONNX_LLM_ENDPOINT` (`/v1` base) for the isolated CUDA worker. Missing endpoint
+`ONNX_LLM_ENDPOINT` (`/v1` base) for the isolated CUDA worker. Disabled `ONNX_LLM_ENABLED` or a missing endpoint
 returns 503 before model/adapter work; the API no longer initializes an ONNX LLM
 or falls back to CPU in this route. Both modes preserve native usage and seed.
 The worker checks its actual device in `/health`; runtime probing does not infer

@@ -136,7 +136,7 @@
     ],
     "academy": [
       "accelerate==1.15.0",
-      "datasets>=4.7,<5",
+      "datasets==5.1.0",
       "trl==1.16.0",
       "peft==0.21.2",
       "transformers>=5.10.4,<5.18",
@@ -146,8 +146,9 @@
       "pypdf>=6.13.3,<7",
       "python-docx>=1.1,<2",
       "docker>=7.1,<8",
-      "wandb>=0.25,<0.26",
-      "tensorboard>=2.20,<3"
+      "wandb==0.29.0",
+      "tensorboard>=2.20,<3",
+      "fsspec[http]>=2026.6.0,<=2026.7.0"
     ],
     "build": [
       "pip==26.2.1",

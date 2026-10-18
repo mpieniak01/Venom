@@ -280,3 +280,20 @@ Docker runtime, Academy training and native Gemma4/Ollama audio have not been
 accepted by these short probes. The interrupted formal100 candidate is partial
 data, not a completed comparison. Known dependency security findings remain open;
 see [dependency qualification limits](DEPENDENCY_PROFILES.md#local-qualification-limits-266).
+
+
+## Model artifact hardening and extension guidance
+
+The own daemon now requires local safetensors weights and explicitly sets
+`trust_remote_code=False` for processor and model. Model-class fallback keeps
+those settings. A regression covers missing safe weights without retrying a
+less restricted loader. The qualified Gemma4 snapshot loaded and produced a
+real response with this policy; the probe then stopped its own process.
+This restricts this consumer's inputs and does not clear vendor advisories or
+qualify other Academy/model-manager loaders. See [loading boundary](DEPENDENCY_PROFILES.md#own-daemon-model-loading-boundary).
+
+The custom-skill directory example uses the first-party `tool_function` contract.
+The historical service-monitor method name `_check_semantic_kernel_service` is
+retained for compatibility; it inspects the Venom registry's plugins/functions
+and does not import or execute SK. An import inventory must distinguish such
+legacy names from an active framework dependency.

@@ -5,4 +5,5 @@
 -r requirements-docker-minimal.txt
 
 # Cloud/API providers (optional at runtime, lightweight compared to local engines)
-openai<2,>=1.98.0
+# Semantic Kernel 1.44 requires OpenAI 2.x; keep the qualified SDK pin.
+openai==2.54.0

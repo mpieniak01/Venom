@@ -3,13 +3,16 @@
 from pathlib import Path
 from typing import Any, Optional
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.agents.base import BaseAgent
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skills.browser_skill import BrowserSkill
 from venom_core.perception.eyes import Eyes
 from venom_core.utils.logger import get_logger
@@ -188,6 +191,15 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
             except Exception as e:
                 logger.warning(f"Nie można zamknąć przeglądarki: {e}")
 
+    @staticmethod
+    def _scenario_text(
+        step: dict[str, Any], name: str, *, allow_empty: bool = False
+    ) -> str:
+        value = step.get(name)
+        if not isinstance(value, str) or (not allow_empty and not value.strip()):
+            raise ValueError(f"invalid_scenario_field:{name}")
+        return value
+
     async def run_e2e_scenario(self, url: str, scenario_steps: list[dict]) -> str:
         """
         Wykonuje zdefiniowany scenariusz E2E.
@@ -218,19 +230,19 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
                     report_lines.append(f"   {result}")
 
                 elif action == "click":
-                    selector = step.get("selector")
+                    selector = self._scenario_text(step, "selector")
                     result = await self.browser_skill.click_element(selector)
                     report_lines.append(f"   {result}")
 
                 elif action == "fill":
-                    selector = step.get("selector")
-                    value = step.get("value")
+                    selector = self._scenario_text(step, "selector")
+                    value = self._scenario_text(step, "value", allow_empty=True)
                     result = await self.browser_skill.fill_form(selector, value)
                     report_lines.append(f"   {result}")
 
                 elif action == "verify_text":
-                    selector = step.get("selector")
-                    expected = step.get("expected")
+                    selector = self._scenario_text(step, "selector")
+                    expected = self._scenario_text(step, "expected")
                     actual = await self.browser_skill.get_text_content(selector)
 
                     if expected in actual:
@@ -246,7 +258,7 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
                     report_lines.append(f"   {result}")
 
                 elif action == "wait":
-                    selector = step.get("selector")
+                    selector = self._scenario_text(step, "selector")
                     result = await self.browser_skill.wait_for_element(selector)
                     report_lines.append(f"   {result}")
 

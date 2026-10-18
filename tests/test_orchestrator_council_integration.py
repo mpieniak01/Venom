@@ -1,5 +1,6 @@
 """Testy integracyjne dla metody run_council() w Orchestratorze."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -57,7 +58,12 @@ class TestOrchestratorRunCouncilIntegration:
         task_id = uuid4()
         context = "Test task"
 
-        with patch("venom_core.core.council.CouncilConfig"):
+        with patch("venom_core.core.council.CouncilConfig") as config_class:
+            config_class.return_value.create_council.return_value = (
+                MagicMock(),
+                SimpleNamespace(agents=[SimpleNamespace(name="Coder")]),
+                MagicMock(),
+            )
             with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Result")
@@ -79,7 +85,12 @@ class TestOrchestratorRunCouncilIntegration:
         task_id = uuid4()
         context = "Test task"
 
-        with patch("venom_core.core.council.CouncilConfig"):
+        with patch("venom_core.core.council.CouncilConfig") as config_class:
+            config_class.return_value.create_council.return_value = (
+                MagicMock(),
+                SimpleNamespace(agents=[SimpleNamespace(name="Coder")]),
+                MagicMock(),
+            )
             with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_group_chat = MagicMock()
                 mock_agents = [MagicMock(name="User"), MagicMock(name="Coder")]
@@ -92,12 +103,12 @@ class TestOrchestratorRunCouncilIntegration:
                 mock_session.get_speakers.return_value = ["User", "Coder"]
                 mock_session_class.return_value = mock_session
 
-                with patch.object(
-                    self.orchestrator._council_config or MagicMock(),
-                    "create_council",
-                    return_value=(MagicMock(), mock_group_chat, MagicMock()),
-                ):
-                    await self.orchestrator.run_council(task_id, context)
+                config_class.return_value.create_council.return_value = (
+                    MagicMock(),
+                    mock_group_chat,
+                    MagicMock(),
+                )
+                await self.orchestrator.run_council(task_id, context)
 
                 # Sprawdź że broadcast zawiera informacje o członkach
                 calls = self.event_broadcaster.broadcast_event.call_args_list
@@ -111,7 +122,12 @@ class TestOrchestratorRunCouncilIntegration:
         task_id = uuid4()
         context = "Test task"
 
-        with patch("venom_core.core.council.CouncilConfig"):
+        with patch("venom_core.core.council.CouncilConfig") as config_class:
+            config_class.return_value.create_council.return_value = (
+                MagicMock(),
+                SimpleNamespace(agents=[SimpleNamespace(name="Coder")]),
+                MagicMock(),
+            )
             with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Success result")
@@ -137,10 +153,8 @@ class TestOrchestratorRunCouncilIntegration:
             # Symuluj błąd podczas inicjalizacji
             mock_config_class.side_effect = Exception("Test error")
 
-            result = await self.orchestrator.run_council(task_id, context)
-
-            # Sprawdź że błąd został obsłużony
-            assert "Błąd" in result or "error" in result.lower()
+            with pytest.raises(Exception, match="Test error"):
+                await self.orchestrator.run_council(task_id, context)
 
             # Sprawdź że broadcast error został wywołany
             calls = self.event_broadcaster.broadcast_event.call_args_list
@@ -152,7 +166,12 @@ class TestOrchestratorRunCouncilIntegration:
         task_id = uuid4()
         context = "Test task"
 
-        with patch("venom_core.core.council.CouncilConfig"):
+        with patch("venom_core.core.council.CouncilConfig") as config_class:
+            config_class.return_value.create_council.return_value = (
+                MagicMock(),
+                SimpleNamespace(agents=[SimpleNamespace(name="Coder")]),
+                MagicMock(),
+            )
             with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Result")
@@ -175,7 +194,12 @@ class TestOrchestratorRunCouncilIntegration:
         task_id = uuid4()
         context = "Specific test context"
 
-        with patch("venom_core.core.council.CouncilConfig"):
+        with patch("venom_core.core.council.CouncilConfig") as config_class:
+            config_class.return_value.create_council.return_value = (
+                MagicMock(),
+                SimpleNamespace(agents=[SimpleNamespace(name="Coder")]),
+                MagicMock(),
+            )
             with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Result")
@@ -185,5 +209,30 @@ class TestOrchestratorRunCouncilIntegration:
 
                 await self.orchestrator.run_council(task_id, context)
 
-                # Sprawdź że session.run został wywołany z kontekstem
-                mock_session.run.assert_called_once_with(context)
+                # Missing generation overrides retain native defaults.
+                mock_session.run.assert_awaited_once_with(
+                    context, generation_params=None
+                )
+
+
+@pytest.mark.asyncio
+async def test_active_orchestrator_passes_generation_budget_and_failure():
+    from venom_core.core.council import CouncilExecutionError
+
+    state = MagicMock()
+    state.get_task.return_value = SimpleNamespace(
+        context_history={"generation_params": {"max_tokens": 37, "temperature": 0}}
+    )
+    orch = Orchestrator(state_manager=state, event_broadcaster=AsyncMock())
+    orch._council_config = SimpleNamespace(
+        create_council=lambda: ("u", SimpleNamespace(agents=[]), "m")
+    )
+    session = SimpleNamespace(
+        run=AsyncMock(side_effect=CouncilExecutionError("provider-unavailable"))
+    )
+    with patch("venom_core.core.council.CouncilSession", return_value=session):
+        with pytest.raises(CouncilExecutionError, match="provider-unavailable"):
+            await orch.run_council(uuid4(), "task")
+    session.run.assert_awaited_once_with(
+        "task", generation_params={"max_tokens": 37, "temperature": 0}
+    )

@@ -143,7 +143,7 @@ class MultiRuntimeEngine:
     )
 
     def load(self) -> None:
-        """Load model and processor, trying multimodal then causal-LM classes."""
+        """Load local safetensors without repository Python, trying native classes."""
         import transformers
 
         try:
@@ -151,6 +151,7 @@ class MultiRuntimeEngine:
                 self.model_id,
                 cache_dir=self.cache_dir,
                 local_files_only=True,
+                trust_remote_code=False,
             )
         except Exception as e:
             raise ModelLoadError(
@@ -169,6 +170,8 @@ class MultiRuntimeEngine:
                     self.model_id,
                     cache_dir=self.cache_dir,
                     local_files_only=True,
+                    trust_remote_code=False,
+                    use_safetensors=True,
                     **load_kwargs,
                 )
                 self.model_class_name = cls_name

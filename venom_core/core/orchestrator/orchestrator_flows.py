@@ -64,122 +64,17 @@ def should_use_council(
 
 
 async def run_council(orch: "Orchestrator", task_id: "UUID", context: str) -> str:
-    orch.state_manager.add_log(
-        task_id, "🏛️ THE COUNCIL: Rozpoczynam tryb Group Chat (Swarm Intelligence)"
+    """Use the same Council execution contract as routing and FlowCoordinator."""
+    flow = CouncilFlow(
+        state_manager=orch.state_manager,
+        task_dispatcher=orch.task_dispatcher,
+        event_broadcaster=orch.event_broadcaster,
     )
-
-    await orch._broadcast_event(
-        event_type="COUNCIL_STARTED",
-        message="The Council rozpoczyna dyskusję nad zadaniem",
-        data={"task_id": str(task_id)},
-    )
-
+    flow._council_config = orch._council_config
     try:
-        if orch._council_config is None:
-            from venom_core.agents.guardian import GuardianAgent
-            from venom_core.core.council import CouncilConfig, create_local_llm_config
-
-            coder = getattr(orch.task_dispatcher, "coder_agent", None)
-            critic = getattr(orch.task_dispatcher, "critic_agent", None)
-            architect = getattr(orch.task_dispatcher, "architect_agent", None)
-
-            guardian = GuardianAgent(kernel=orch.task_dispatcher.kernel)
-            try:
-                llm_config = create_local_llm_config()
-            except Exception as exc:
-                # Nie blokuj całego Council przy brakującej konfiguracji endpointu
-                # (szczególnie w środowiskach testowych, gdzie sesja jest mockowana).
-                logger.warning(
-                    "Nie udało się zbudować lokalnej konfiguracji LLM dla Council (%s). "
-                    "Używam konfiguracji awaryjnej.",
-                    exc,
-                )
-                llm_config = {
-                    "config_list": [
-                        {
-                            "model": "council-fallback",
-                            "base_url": "http://localhost:11434",
-                            "api_key": "EMPTY",
-                        }
-                    ],
-                    "temperature": 0.7,
-                    "timeout": 120,
-                }
-
-            if coder is None or critic is None or architect is None:
-                raise RuntimeError(
-                    "Brak wymaganych agentów Council (coder/critic/architect)"
-                )
-
-            orch._council_config = CouncilConfig(
-                coder_agent=coder,
-                critic_agent=critic,
-                architect_agent=architect,
-                guardian_agent=guardian,
-                llm_config=llm_config,
-            )
-
-        from venom_core.core.council import CouncilSession
-
-        council_tuple = orch._council_config.create_council()
-        user_proxy, group_chat, manager = orch._normalize_council_tuple(council_tuple)
-
-        session = CouncilSession(user_proxy, group_chat, manager)
-
-        members = []
-        if group_chat is not None and getattr(group_chat, "agents", None):
-            members = [
-                getattr(agent, "name", str(agent)) for agent in group_chat.agents
-            ]
-
-        await orch._broadcast_event(
-            event_type="COUNCIL_MEMBERS",
-            message=f"Council składa się z {len(members)} członków",
-            data={"task_id": str(task_id), "members": members},
-        )
-
-        result = await session.run(context)
-
-        get_message_count = getattr(session, "get_message_count", lambda: 0)
-        get_speakers = getattr(session, "get_speakers", lambda: members)
-        message_count = get_message_count()
-        speakers = get_speakers() or members
-
-        orch.state_manager.add_log(
-            task_id,
-            (
-                "🏛️ THE COUNCIL: Dyskusja zakończona - "
-                f"{message_count} wiadomości, uczestnicy: {', '.join(speakers)}"
-            ),
-        )
-
-        await orch._broadcast_event(
-            event_type="COUNCIL_COMPLETED",
-            message=f"Council zakończył dyskusję po {message_count} wiadomościach",
-            data={
-                "task_id": str(task_id),
-                "message_count": message_count,
-                "speakers": speakers,
-            },
-        )
-
-        logger.info("Council zakończył zadanie %s", task_id)
-        return result
-
-    except Exception as exc:
-        error_msg = f"❌ Błąd podczas działania Council: {exc}"
-        logger.error(error_msg)
-
-        orch.state_manager.add_log(task_id, error_msg)
-
-        await orch._broadcast_event(
-            event_type="COUNCIL_ERROR",
-            message=error_msg,
-            data={"task_id": str(task_id), "error": str(exc)},
-        )
-
-        logger.warning("Council zawiódł - powrót do standardowego flow")
-        return f"Council mode nie powiódł się: {exc}"
+        return await flow.run(task_id, context)
+    finally:
+        orch._council_config = flow._council_config
 
 
 async def execute_healing_cycle(

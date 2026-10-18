@@ -115,6 +115,12 @@ class Settings(BaseSettings):
     # Modele ONNX
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"
     ONNX_LLM_ENABLED: bool = False
+    ONNX_LLM_ENDPOINT: str = ""  # Explicit isolated CUDA worker, OpenAI /v1 base.
+    ONNX_START_COMMAND: str = (
+        ""  # Explicit owned component; no implicit global service.
+    )
+    ONNX_STOP_COMMAND: str = ""
+    ONNX_RESTART_COMMAND: str = ""
     ONNX_LLM_MODEL_PATH: str = "models/phi3.5-mini-instruct-onnx"
     ONNX_LLM_EXECUTION_PROVIDER: str = "cuda"  # cuda|cpu|directml
     ONNX_LLM_PRECISION: str = "int4"  # int4|fp16
@@ -166,6 +172,8 @@ class Settings(BaseSettings):
     VLLM_ENDPOINT: str = _default_url("localhost", 8001, "/v1")
     VLLM_CHAT_TEMPLATE: str = ""
     VLLM_ENFORCE_EAGER: bool = True  # Disable CUDA Graphs to save VRAM
+    VLLM_COMPONENT_PYTHON: str = ""
+    VENOM_COMPONENTS_DIR: str = ""
     VLLM_START_COMMAND: str = ""
     VLLM_STOP_COMMAND: str = ""
     VLLM_RESTART_COMMAND: str = ""
@@ -385,7 +393,7 @@ class Settings(BaseSettings):
     )
 
     # Konfiguracja THE_ACADEMY (Knowledge Distillation & Fine-tuning)
-    ENABLE_ACADEMY: bool = True  # Włącz system uczenia maszynowego
+    ENABLE_ACADEMY: bool = False  # Training is an explicit opt-in extension.
     ACADEMY_TRAINING_DIR: str = _storage_path("./data/training")  # Katalog z datasetami
     ACADEMY_MODELS_DIR: str = _storage_path("./data/models")  # Katalog z modelami
     ACADEMY_MIN_LESSONS: int = 100  # Minimum lekcji do rozpoczęcia treningu

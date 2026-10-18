@@ -1,80 +1,36 @@
-"""Moduł: kernel_builder - dynamiczne budowanie Semantic Kernel."""
+"""Moduł: kernel_builder - budowanie usług Microsoft Agent Framework."""
 
 import importlib.util
 from typing import Any, Optional
 
 from openai import AsyncOpenAI
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 
 from venom_core.config import SETTINGS
 from venom_core.core.model_router import ModelRouter, ServiceId
 from venom_core.core.prompt_manager import PromptManager
 from venom_core.core.token_economist import TokenEconomist
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
+from venom_core.execution.maf_runtime import MafChatService
+from venom_core.utils.llm_runtime import resolve_local_worker_endpoint
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-GoogleAIChatCompletion: Any | None = None
-
 
 def _safe_find_spec(module_name: str) -> Any | None:
-    """Bezpieczny wrapper na find_spec dla optional zależności."""
+    """Probe an optional provider without constructing clients or loading models."""
     try:
         return importlib.util.find_spec(module_name)
-    except Exception:  # pragma: no cover - zależne od stanu optional deps
+    except (ImportError, ModuleNotFoundError, ValueError):
         return None
 
 
-if (
-    _safe_find_spec(
-        "semantic_kernel.connectors.ai.google.google_ai.services.google_ai_chat_completion"
-    )
-    is not None
-):
-    try:
-        from semantic_kernel.connectors.ai.google.google_ai.services.google_ai_chat_completion import (  # noqa: E501
-            GoogleAIChatCompletion as _GoogleAIChatCompletion,
-        )
-
-        GoogleAIChatCompletion = _GoogleAIChatCompletion
-    except Exception:  # pragma: no cover - zależne od optional deps
-        GoogleAIChatCompletion = None
-
-
-def _is_google_gemini_sdk_available() -> bool:
-    """Sprawdza dostępność SDK Gemini (nowy i legacy)."""
-    return (
-        _safe_find_spec("google.genai") is not None
-        or _safe_find_spec("google.generativeai") is not None
-    )
-
-
-def _is_google_semantic_kernel_connector_available() -> bool:
-    """Sprawdza dostępność connectora Google AI dla Semantic Kernel."""
-    return GoogleAIChatCompletion is not None
-
-
-# Import dla Google Gemini (bezpośredni import tylko, jeśli biblioteka istnieje)
-if _is_google_gemini_sdk_available():
-    GOOGLE_AVAILABLE = True
-else:
-    GOOGLE_AVAILABLE = False
-    logger.warning(
-        "Brak SDK Gemini (google-genai / google-generativeai) - obsługa Gemini niedostępna"
-    )
-
-if _is_google_semantic_kernel_connector_available():
-    SK_GOOGLE_CONNECTOR_AVAILABLE = True
-else:
-    SK_GOOGLE_CONNECTOR_AVAILABLE = False
-    logger.warning(
-        "Brak connectora GoogleAIChatCompletion w Semantic Kernel - obsługa Gemini niedostępna"
-    )
+GOOGLE_AVAILABLE = _safe_find_spec("agent_framework_openai") is not None
+GEMINI_OPENAI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 class KernelBuilder:
-    """Builder do tworzenia Semantic Kernel z konfiguracją local-first i inteligentnym routingiem."""
+    """Builder do tworzenia runtime MAF z konfiguracją local-first i inteligentnym routingiem."""
 
     def __init__(
         self,
@@ -105,13 +61,13 @@ class KernelBuilder:
 
     def build_kernel(self, task: Optional[str] = None) -> Kernel:
         """
-        Buduje i konfiguruje Semantic Kernel.
+        Buduje i konfiguruje runtime MAF.
 
         Args:
             task: Opcjonalny opis zadania dla inteligentnego routingu
 
         Returns:
-            Skonfigurowane jądro Semantic Kernel
+            Skonfigurowane jądro runtime MAF
 
         Raises:
             ValueError: Jeśli konfiguracja jest niepoprawna
@@ -165,13 +121,21 @@ class KernelBuilder:
         Rejestruje wszystkie dostępne serwisy LLM.
 
         Args:
-            kernel: Jądro Semantic Kernel
+            kernel: Jądro runtime MAF
         """
         # Lokalny model
         try:
             self._register_service(kernel, "local", service_id="local_llm")
             logger.info("Zarejestrowano serwis: local_llm")
         except Exception as e:
+            if (
+                self.settings.LLM_SERVICE_TYPE.lower() == "onnx"
+                or str(getattr(self.settings, "ACTIVE_LLM_SERVER", "") or "")
+                .strip()
+                .lower()
+                == "onnx"
+            ):
+                raise
             logger.warning(f"Nie udało się zarejestrować serwisu local: {e}")
 
         # OpenAI (jeśli klucz API dostępny)
@@ -206,7 +170,7 @@ class KernelBuilder:
         Rejestruje pojedynczy serwis LLM w kernelu.
 
         Args:
-            kernel: Jądro Semantic Kernel
+            kernel: Jądro runtime MAF
             service_type: Typ serwisu ('local', 'openai', 'azure', 'google')
             service_id: Opcjonalny ID serwisu (domyślnie typ)
             model_name: Opcjonalna nazwa modelu (domyślnie z ustawień)
@@ -217,6 +181,7 @@ class KernelBuilder:
 
         handlers = {
             "local": self._register_local_service,
+            "onnx": self._register_onnx_service,
             "openai": self._register_openai_service,
             "google": self._register_google_service,
             "azure": self._register_azure_service,
@@ -224,21 +189,46 @@ class KernelBuilder:
         handler = handlers.get(service_type)
         if handler is None:
             raise ValueError(
-                f"Nieznany typ serwisu LLM: {service_type}. Dostępne: local, openai, google, azure"
+                f"Nieznany typ serwisu LLM: {service_type}. Dostępne: local, onnx, openai, google, azure"
             )
         handler(kernel, service_id, model_name, enable_grounding)
 
     def _register_local_service(
         self, kernel: Kernel, service_id: str, model_name: str, _enable_grounding: bool
     ) -> None:
-        logger.debug(
-            f"Konfiguracja lokalnego LLM: endpoint={self.settings.LLM_LOCAL_ENDPOINT}, model={model_name}"
+        active_server = str(
+            getattr(self.settings, "ACTIVE_LLM_SERVER", "") or ""
+        ).lower()
+        service_type = self.settings.LLM_SERVICE_TYPE.lower()
+        if active_server == "onnx" or service_type == "onnx":
+            self._register_onnx_service(
+                kernel, service_id, model_name, _enable_grounding
+            )
+            return
+        self._register_local_http_service(
+            kernel, service_id, model_name, self.settings.LLM_LOCAL_ENDPOINT
         )
+
+    def _register_onnx_service(
+        self, kernel: Kernel, service_id: str, model_name: str, _enable_grounding: bool
+    ) -> None:
+        if not getattr(self.settings, "ONNX_LLM_ENABLED", False):
+            raise ValueError("ONNX_LLM_ENABLED is disabled")
+        endpoint = resolve_local_worker_endpoint(
+            getattr(self.settings, "ONNX_LLM_ENDPOINT", None)
+        )
+        if not endpoint:
+            raise ValueError("ONNX_LLM_ENDPOINT is required for the isolated worker")
+        self._register_local_http_service(kernel, service_id, model_name, endpoint)
+
+    def _register_local_http_service(
+        self, kernel: Kernel, service_id: str, model_name: str, endpoint: str
+    ) -> None:
         async_client = AsyncOpenAI(
             api_key=self.settings.LLM_LOCAL_API_KEY,
-            base_url=self.settings.LLM_LOCAL_ENDPOINT,
+            base_url=endpoint,
         )
-        chat_service = OpenAIChatCompletion(
+        chat_service = MafChatService(
             service_id=service_id,
             ai_model_id=model_name,
             async_client=async_client,
@@ -253,7 +243,7 @@ class KernelBuilder:
                 "OPENAI_API_KEY jest wymagany dla LLM_SERVICE_TYPE='openai'"
             )
         logger.debug(f"Konfiguracja OpenAI Cloud: model={model_name}")
-        chat_service = OpenAIChatCompletion(
+        chat_service = MafChatService(
             service_id=service_id,
             ai_model_id=model_name,
             api_key=self.settings.OPENAI_API_KEY,
@@ -264,30 +254,20 @@ class KernelBuilder:
         self, kernel: Kernel, service_id: str, model_name: str, enable_grounding: bool
     ) -> None:
         if not GOOGLE_AVAILABLE:
-            raise ValueError(
-                "SDK Gemini nie jest zainstalowany. Zainstaluj: pip install google-genai "
-                "(lub legacy: pip install google-generativeai)"
-            )
+            raise ValueError("Provider MAF OpenAI nie jest zainstalowany")
         if not self.settings.GOOGLE_API_KEY:
             raise ValueError(
                 "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
             )
-        if not SK_GOOGLE_CONNECTOR_AVAILABLE:
-            raise ValueError(
-                "Connector GoogleAIChatCompletion w Semantic Kernel nie jest dostępny. "
-                "Zaktualizuj semantic-kernel do wersji z connectorami Google AI."
-            )
-        if GoogleAIChatCompletion is None:
-            raise ValueError(
-                "GoogleAIChatCompletion jest niedostępny w bieżącym środowisku."
-            )
-        logger.debug(
-            f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}"
-        )
-        chat_service = GoogleAIChatCompletion(
+        # Gemini officially exposes Chat Completions, streaming and function calls
+        # on this endpoint. No legacy Google/SK connector is initialized.
+        if enable_grounding:
+            logger.debug("Grounding remains owned by the GoogleGrounding skill")
+        chat_service = MafChatService(
             service_id=service_id,
-            gemini_model_id=model_name,
+            ai_model_id=model_name,
             api_key=self.settings.GOOGLE_API_KEY,
+            base_url=GEMINI_OPENAI_ENDPOINT,
         )
         kernel.add_service(chat_service)
 

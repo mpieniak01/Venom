@@ -628,9 +628,8 @@ ci-lite-preflight:
 	@$(PYTHON_BIN) scripts/ci_lite_preflight.py
 
 ci-lite-bootstrap:
-	@if [ ! -d "$(VENV)" ]; then python3 -m venv "$(VENV)"; fi
-	@"$(VENV)/bin/pip" install --upgrade pip
-	@"$(VENV)/bin/pip" install -r requirements-ci-lite.txt
+	@update_flag=""; if [ -d "$(VENV)" ]; then update_flag="--update"; fi; \
+		python3 scripts/bootstrap_dependency_profile.py --profile ci --venv "$(abspath $(VENV))" $$update_flag
 
 install-hooks:
 	pre-commit install

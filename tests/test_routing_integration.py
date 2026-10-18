@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from venom_core.contracts.routing import ReasonCode, RuntimeTarget
 from venom_core.core.routing_integration import (
     _build_fallback_chain,
@@ -363,3 +365,52 @@ def test_build_routing_decision_disables_router_cache_via_env(monkeypatch):
     )
 
     assert init_calls["count"] == 2
+
+
+@pytest.mark.parametrize("provider", ["onnx", "multi_runtime"])
+@pytest.mark.parametrize("routed_provider", ["local", "selected_worker"])
+def test_actual_governance_keeps_selected_local_worker(
+    monkeypatch, provider, routed_provider
+):
+    """Regression for the real onnx->ollama auth-error metadata mismatch."""
+    from venom_core.core.provider_governance import ProviderGovernance
+
+    class Router:
+        def __init__(self, **kwargs):
+            pass
+
+        def route_task(self, task_type, prompt):
+            return {
+                "target": "local",
+                "provider": provider
+                if routed_provider == "selected_worker"
+                else "local",
+                "model_name": "served-model",
+                "reason": "local runtime",
+            }
+
+        def calculate_complexity(self, prompt, task_type):
+            return 1
+
+    governance = ProviderGovernance()
+    monkeypatch.setattr("venom_core.core.routing_integration.HybridModelRouter", Router)
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.get_provider_governance",
+        lambda: governance,
+    )
+    decision = build_routing_decision(
+        request=SimpleNamespace(
+            content="hello",
+            forced_intent="GENERAL_CHAT",
+            forced_tool=None,
+            forced_provider=None,
+        ),
+        runtime_info=SimpleNamespace(provider=provider, model_name="served-model"),
+    )
+    assert decision.policy_gate_passed
+    assert decision.provider == provider and decision.target_runtime.value == provider
+    assert decision.target_runtime.is_local() and not decision.target_runtime.is_cloud()
+    assert decision.fallback_chain == [provider] and not decision.fallback_applied
+    assert decision.reason_code != ReasonCode.FALLBACK_AUTH_ERROR
+    assert decision.to_dict()["target_runtime"] == provider
+    assert governance.fallback_history == []

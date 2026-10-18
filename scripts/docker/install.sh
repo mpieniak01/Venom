@@ -6,10 +6,11 @@ COMPOSE_FILE="$ROOT_DIR/compose/compose.minimal.yml"
 COMPOSE_GPU_FILE="$ROOT_DIR/compose/compose.internal.gpu-override.yml"
 MODEL_DEFAULT="gemma3:4b"
 MODEL="$MODEL_DEFAULT"
-OLLAMA_IMAGE_DEFAULT="ollama/ollama:latest"
-OLLAMA_IMAGE="$OLLAMA_IMAGE_DEFAULT"
+OLLAMA_IMAGE_DEFAULT="ollama/ollama:0.40.6@sha256:265409e1d931028a8f7d5a32bcbafddd7bffbc6cc629d77efe9560adf692a5e7"
+OLLAMA_IMAGE="${OLLAMA_IMAGE:-$OLLAMA_IMAGE_DEFAULT}"
 GPU_MODE="${VENOM_ENABLE_GPU:-auto}"
 RUNTIME_PROFILE="${VENOM_RUNTIME_PROFILE:-light}"
+ADDONS_RAW="${VENOM_RUNTIME_ADDONS:-none}"
 QUICK=0
 SKIP_MODEL_PULL=0
 INSTALL_MODE="auto"
@@ -20,7 +21,8 @@ Usage: $(basename "$0") [options]
 
 Options:
   --quick             Run with defaults (no prompts)
-  --profile <name>    Runtime profile: light|llm_off|full (default: light)
+  --profile <name>    Runtime profile: light|api_ollama|api|api_only|llm_off (default: light)
+  --addons <name>     Runtime addons: none (default: none)
   --mode <name>       Install mode: auto|update|reinstall (default: auto)
   --model <name>      Ollama model to pull (default: ${MODEL_DEFAULT})
   --ollama-image <i>  Ollama image tag (default: ${OLLAMA_IMAGE_DEFAULT})
@@ -48,6 +50,14 @@ while [[ "$#" -gt 0 ]]; do
       RUNTIME_PROFILE=${1:-}
       if [[ -z "$RUNTIME_PROFILE" ]]; then
         echo "[ERROR] --profile requires a value." >&2
+        exit 1
+      fi
+      ;;
+    --addons)
+      shift
+      ADDONS_RAW=${1:-}
+      if [[ -z "$ADDONS_RAW" ]]; then
+        echo "[ERROR] --addons requires a value." >&2
         exit 1
       fi
       ;;
@@ -83,13 +93,25 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
+RUNTIME_PROFILE=$(printf '%s' "$RUNTIME_PROFILE" | tr '[:upper:]' '[:lower:]')
 case "$RUNTIME_PROFILE" in
-  light|llm_off|full) ;;
+  light|api_ollama) RUNTIME_PROFILE="light" ;;
+  api|api_only|llm_off) RUNTIME_PROFILE="llm_off" ;;
+  full|full-ci|onnx-cpu|onnx-extras|onnx-gpu|vllm|academy)
+    echo "[ERROR] Deferred profile unavailable in this Light/API release: $RUNTIME_PROFILE" >&2
+    exit 1
+    ;;
   *)
-    echo "[ERROR] Unsupported profile: $RUNTIME_PROFILE (expected: light|llm_off|full)." >&2
+    echo "[ERROR] Unsupported profile: $RUNTIME_PROFILE (expected: light|api_ollama|api|api_only|llm_off)." >&2
     exit 1
     ;;
 esac
+
+ADDONS_RAW=$(printf '%s' "$ADDONS_RAW" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+if [[ "$ADDONS_RAW" != "none" ]]; then
+  echo "[ERROR] Runtime addons are deferred in this Light/API release: $ADDONS_RAW" >&2
+  exit 1
+fi
 
 case "$INSTALL_MODE" in
   auto|update|reinstall) ;;
@@ -98,6 +120,8 @@ case "$INSTALL_MODE" in
     exit 1
     ;;
 esac
+
+export VENOM_RUNTIME_ADDONS="$ADDONS_RAW"
 
 if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
   SKIP_MODEL_PULL=1
@@ -136,8 +160,6 @@ compose_cmd() {
   if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
     active_llm_server="none"
     warmup_on_startup="false"
-  elif [[ "$RUNTIME_PROFILE" == "full" ]]; then
-    active_llm_server="${ACTIVE_LLM_SERVER:-ollama}"
   fi
 
   OLLAMA_IMAGE="$OLLAMA_IMAGE" \

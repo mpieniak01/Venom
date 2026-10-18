@@ -1,270 +1,197 @@
-"""Moduł: swarm - AutoGen Bridge dla Venom Agents.
+"""Native MAF workflow participants backed by existing Venom agents."""
 
-Ten moduł stanowi most między światem Semantic Kernel (nasze Skille)
-a światem AutoGen (Swarm Intelligence / Group Chat).
-"""
+from __future__ import annotations
 
-import inspect
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Literal
+
+from agent_framework import Executor, Message, WorkflowContext, handler
+from agent_framework_orchestrations import (
+    GroupChatParticipantMessage,
+    GroupChatRequestMessage,
+    GroupChatResponseMessage,
+)
+from pydantic import BaseModel, ConfigDict
 
 from venom_core.agents.base import BaseAgent
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-try:
-    from autogen import ConversableAgent  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover
-    logger.warning(
-        "Pakiet 'autogen' nie jest dostępny - używam stubu ConversableAgent."
-    )
 
-    class ConversableAgent:  # type: ignore
-        def __init__(
-            self, name: str, system_message: str, llm_config: Optional[Dict] = None, **_
-        ):
-            self.name = name
-            self.system_message = system_message
-            self.llm_config = llm_config or {}
-
-        def register_function(self, function_map: Dict[str, Callable]):
-            # Minimalna implementacja - brak obsługi function calling
-            logger.debug(
-                "Stub ConversableAgent.register_function wywołany z %s",
-                list(function_map.keys()),
-            )
+class _CriticReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["APPROVED", "REVISE", "REPLAN"]
+    feedback: str
 
 
-class VenomAgent(ConversableAgent):
-    """
-    Wrapper AutoGen na istniejące agenty Venom.
+class _GuardianReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["APPROVED", "REVISE"]
+    feedback: str
 
-    Łączy funkcjonalność BaseAgent (Semantic Kernel) z ConversableAgent (AutoGen),
-    pozwalając naszym agentom uczestniczyć w Group Chat.
-    """
+
+class VenomAgent(Executor):
+    """Reuse Venom process/policies inside MAF; never construct a second model."""
 
     def __init__(
         self,
         name: str,
         venom_agent: BaseAgent,
         system_message: str,
-        llm_config: Optional[Dict] = None,
+        llm_config: dict | None = None,
+        deliberation: bool = False,
         **kwargs,
     ):
-        """
-        Inicjalizacja VenomAgent.
-
-        Args:
-            name: Nazwa agenta w Group Chat
-            venom_agent: Instancja oryginalnego agenta Venom (CoderAgent, CriticAgent, etc.)
-            system_message: System prompt dla agenta (pobierany z SYSTEM_PROMPT agenta)
-            llm_config: Konfiguracja LLM dla AutoGen
-            **kwargs: Dodatkowe parametry dla ConversableAgent
-        """
-        # Inicjalizuj ConversableAgent z AutoGen
-        super().__init__(
-            name=name,
-            system_message=system_message,
-            llm_config=llm_config,
-            **kwargs,
-        )
-
-        # Przechowuj referencję do oryginalnego agenta Venom
+        super().__init__(id=name)
+        self.name = name
         self.venom_agent = venom_agent
+        self.system_message = system_message
+        self.llm_config = llm_config or {}
+        self.deliberation = deliberation
+        self.generation_params: dict[str, Any] = {}
+        self.conversation: list[Message] = []
+        self.output_messages: list[Message] = []
 
-        # Zarejestruj funkcje z Semantic Kernel jako AutoGen tools
-        self._register_venom_functions()
+    def _turn_messages(self) -> list[Message]:
+        """Keep an auditable full transcript, but give each role its actual inputs."""
+        role_inputs = {
+            "Architect": {"User", "Critic"},
+            "Coder": {"User", "Architect", "Coder", "Critic", "Guardian"},
+            "Critic": {"User", "Coder"},
+            "Guardian": {"User", "Coder", "Critic"},
+        }
+        if not self.deliberation or self.name not in role_inputs:
+            return self.conversation
+        latest = {
+            message.author_name: index
+            for index, message in enumerate(self.conversation)
+            if message.author_name in role_inputs[self.name]
+        }
+        return [self.conversation[index] for index in sorted(latest.values())]
 
-        logger.info(
-            f"VenomAgent '{name}' zainicjalizowany jako wrapper dla {type(venom_agent).__name__}"
+    @handler
+    async def receive_messages(
+        self,
+        message: GroupChatParticipantMessage,
+        ctx: WorkflowContext[GroupChatResponseMessage],
+    ) -> None:
+        self.conversation.extend(message.messages)
+
+    @handler
+    async def respond(
+        self,
+        request: GroupChatRequestMessage,
+        ctx: WorkflowContext[GroupChatResponseMessage],
+    ) -> None:
+        transcript = "\n\n".join(
+            f"[{message.author_name or message.role}]: {message.text}"
+            for message in self._turn_messages()
         )
-
-    def _register_venom_functions(self):
-        """
-        Rejestruje funkcje z Semantic Kernel jako AutoGen function calling tools.
-
-        Mapuje skille dostępne w venom_agent.kernel jako funkcje callable przez AutoGen.
-        """
-        kernel = self._get_kernel_if_available()
-        if kernel is None:
-            return
-        try:
-            plugins = kernel.plugins
-            if not plugins:
-                logger.debug(f"Brak pluginów w kernelu dla agenta {self.name}")
-                return
-            for plugin_name, plugin in plugins.items():
-                logger.debug(f"Przetwarzam plugin: {plugin_name}")
-                self._register_plugin_functions(plugin_name, plugin)
-        except Exception as e:
-            logger.error(
-                f"Błąd podczas rejestracji funkcji z kernela agenta {self.name}: {e}"
+        if request.additional_instruction:
+            transcript += "\n\n" + request.additional_instruction
+        if self.deliberation:
+            transcript += f"\n\nTeraz wyłącznie tura {self.name}. Wykonaj swoją rolę względem zadania [User]."
+        # Errors and cancellation propagate to CouncilSession. No fake successful
+        # participant output is generated when an underlying model/tool fails.
+        if self.deliberation:
+            candidate = transcript
+            if self.name == "Critic":
+                candidates = [
+                    message
+                    for message in self.conversation
+                    if message.author_name == "Coder"
+                ]
+                if not candidates:
+                    raise ValueError("council_critic_missing_coder_candidate")
+                candidate = candidates[-1].text
+            blocked, policy_report = self.venom_agent.validate_deliberation_input(
+                candidate
             )
-
-    def _get_kernel_if_available(self):
-        if not hasattr(self.venom_agent, "kernel"):
-            logger.warning(
-                f"Agent {self.name} nie ma kernela - brak funkcji do zarejestrowania"
-            )
-            return None
-        kernel = self.venom_agent.kernel
-        if not hasattr(kernel, "plugins"):
-            logger.warning(
-                f"Kernel agenta {self.name} nie ma atrybutu 'plugins' - pomijam rejestrację"
-            )
-            return None
-        return kernel
-
-    def _register_plugin_functions(self, plugin_name: str, plugin: Any) -> None:
-        for func_name, func in self._iter_plugin_functions(plugin):
-            if callable(func):
-                self._register_function(plugin_name, func_name, func)
-
-    def _iter_plugin_functions(self, plugin: Any):
-        if hasattr(plugin, "functions") and isinstance(plugin.functions, dict):
-            return plugin.functions.items()
-        methods = inspect.getmembers(plugin, predicate=inspect.ismethod)
-        return [
-            (func_name, func)
-            for func_name, func in methods
-            if self._is_kernel_method(plugin, func_name, func)
-        ]
-
-    def _is_kernel_method(self, plugin: Any, func_name: str, func: Callable) -> bool:
-        if func_name.startswith("_"):
-            return False
-        if func_name not in plugin.__class__.__dict__:
-            return False
-        return hasattr(func, "__kernel_function__") or hasattr(func, "__wrapped__")
-
-    def _register_function(self, plugin_name: str, func_name: str, func: Callable):
-        """
-        Rejestruje pojedynczą funkcję jako AutoGen tool.
-
-        Args:
-            plugin_name: Nazwa pluginu (np. "FileSkill")
-            func_name: Nazwa funkcji (np. "write_file")
-            func: Funkcja do zarejestrowania
-        """
-        try:
-            # Stwórz nazwę funkcji dla AutoGen
-            autogen_func_name = f"{plugin_name}_{func_name}"
-
-            # Zarejestruj funkcję używając AutoGen API
-            self.register_function(function_map={autogen_func_name: func})
-
-            logger.debug(f"Zarejestrowano funkcję: {autogen_func_name}")
-
-        except Exception as e:
-            logger.warning(
-                f"Nie udało się zarejestrować funkcji {plugin_name}.{func_name}: {e}"
-            )
+            logger.info(f"Council turn started: {self.name}; policy_blocked={blocked}")
+            if blocked:
+                result = policy_report
+            else:
+                review_types: dict[str, type[_CriticReview] | type[_GuardianReview]] = {
+                    "Critic": _CriticReview,
+                    "Guardian": _GuardianReview,
+                }
+                review_type = review_types.get(self.name)
+                response_format = None
+                if review_type is not None:
+                    response_format = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": f"council_{self.name.lower()}_review",
+                            "strict": True,
+                            "schema": review_type.model_json_schema(),
+                        },
+                    }
+                result = await self.venom_agent.deliberate(
+                    transcript,
+                    system_message=self.system_message,
+                    generation_params=self.generation_params,
+                    enable_functions=self.name in {"Coder", "Guardian"},
+                    response_format=response_format,
+                )
+                if review_type is not None:
+                    review = review_type.model_validate_json(result)
+                    if self.name == "Guardian":
+                        final_line = (
+                            "TERMINATE" if review.decision == "APPROVED" else "REVISE"
+                        )
+                        result = f"{review.feedback}\n{final_line}"
+                    else:
+                        result = f"{review.decision}\n{review.feedback}"
+                if policy_report:
+                    result = f"{policy_report}\n\nDODATKOWE UWAGI LLM:\n{result}"
+            logger.info(f"Council turn finished: {self.name}")
+        else:
+            result = await self.venom_agent.process(transcript)
+        response = Message("assistant", [result], author_name=self.name)
+        # GroupChat broadcasts a response to other participants, excluding its
+        # author. Keep the author's own turn once and record Venom's transcript.
+        self.conversation.append(response)
+        self.output_messages.append(response)
+        await ctx.send_message(GroupChatResponseMessage(response))
 
     async def a_process_venom(self, message: str) -> str:
-        """
-        Przetwarza wiadomość przez oryginalny agent Venom.
-
-        Ta metoda pozwala na bezpośrednie wywołanie procesu agenta Venom
-        bez przechodzenia przez AutoGen chat.
-
-        Args:
-            message: Wiadomość do przetworzenia
-
-        Returns:
-            Odpowiedź od agenta Venom
-        """
+        """Existing direct wrapper entry point, outside a group workflow."""
         try:
-            result = await self.venom_agent.process(message)
-            return result
-        except Exception as e:
-            error_msg = f"Błąd podczas przetwarzania przez {self.name}: {e}"
-            logger.error(error_msg)
-            return error_msg
+            return await self.venom_agent.process(message)
+        except Exception as exc:
+            return f"Błąd podczas przetwarzania przez {self.name}: {exc}"
 
 
 def create_venom_agent_wrapper(
     agent: BaseAgent,
     name: str,
-    system_message: Optional[str] = None,
-    llm_config: Optional[Dict] = None,
+    system_message: str | None = None,
+    llm_config: dict | None = None,
+    deliberation: bool = False,
 ) -> VenomAgent:
-    """
-    Factory function do tworzenia VenomAgent wrapperów.
-
-    Args:
-        agent: Instancja BaseAgent (CoderAgent, CriticAgent, etc.)
-        name: Nazwa agenta w Group Chat
-        system_message: Opcjonalny system prompt (jeśli None, próbuje pobrać z agent.SYSTEM_PROMPT)
-        llm_config: Konfiguracja LLM dla AutoGen
-
-    Returns:
-        VenomAgent wrapper gotowy do użycia w Group Chat
-    """
-    # Pobierz system prompt z agenta jeśli nie podano
-    if system_message is None:
-        system_message = getattr(agent, "SYSTEM_PROMPT", f"Jesteś agentem {name}")
-
-    # Stwórz wrapper
-    venom_agent = VenomAgent(
-        name=name,
-        venom_agent=agent,
-        system_message=system_message,
-        llm_config=llm_config,
+    return VenomAgent(
+        name,
+        agent,
+        system_message
+        or str(getattr(agent, "SYSTEM_PROMPT", None) or f"Jesteś agentem {name}"),
+        llm_config,
+        deliberation=deliberation,
     )
 
-    logger.info(f"Utworzono VenomAgent wrapper: {name}")
-    return venom_agent
 
-
-def extract_venom_tools(agent: BaseAgent) -> List[Dict[str, Any]]:
-    """
-    Ekstrahuje definicje narzędzi z agenta Venom w formacie AutoGen.
-
-    Args:
-        agent: Agent Venom z załadowanymi skills
-
-    Returns:
-        Lista definicji narzędzi w formacie JSON Schema dla AutoGen function calling
-    """
-    tools: List[Dict[str, Any]] = []
-
-    if not hasattr(agent, "kernel"):
-        return tools
-
-    kernel = agent.kernel
-
-    try:
-        plugins = kernel.plugins
-        if not plugins:
-            return tools
-
-        for plugin_name, plugin in plugins.items():
-            for func_name in dir(plugin):
-                if func_name.startswith("_"):
-                    continue
-
-                func = getattr(plugin, func_name)
-                if not callable(func):
-                    continue
-
-                # Stwórz definicję narzędzia
-                tool_def = {
-                    "type": "function",
-                    "function": {
-                        "name": f"{plugin_name}_{func_name}",
-                        "description": func.__doc__
-                        or f"Funkcja {func_name} z {plugin_name}",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {},
-                            "required": [],
-                        },
-                    },
-                }
-
-                tools.append(tool_def)
-
-    except Exception as e:
-        logger.error(f"Błąd podczas ekstrakcji narzędzi: {e}")
-
-    return tools
+def extract_venom_tools(agent: BaseAgent) -> list[dict[str, Any]]:
+    """Export actual native schemas; permission enforcement remains in runtime."""
+    runtime = getattr(agent, "kernel", None)
+    if runtime is None:
+        return []
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters(),
+            },
+        }
+        for tool in runtime.native_tools()
+    ]

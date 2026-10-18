@@ -1111,7 +1111,9 @@ class TestCoderBranches:
     # -- _append_repair_feedback_to_history --
     def test_append_repair_feedback_to_history(self, agent):
         """_append_repair_feedback_to_history adds repair request to history."""
-        from semantic_kernel.contents import ChatHistory
+        from venom_core.execution.agent_contracts import (
+            ConversationHistory as ChatHistory,
+        )
 
         history = ChatHistory()
         agent._append_repair_feedback_to_history(

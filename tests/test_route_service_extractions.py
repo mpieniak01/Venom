@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -9,7 +8,6 @@ import pytest
 from venom_core.services import knowledge_lessons_service as ksvc
 from venom_core.services import llm_simple_stream_service as ssvc
 from venom_core.services import llm_simple_transport as transport
-from venom_core.services import tasks_onnx_service as tsvc
 from venom_core.services import tasks_service
 
 
@@ -53,79 +51,6 @@ class _LessonsStore:
 class _FailingLessonsStore(_LessonsStore):
     def clear_all(self) -> bool:
         return False
-
-
-@dataclass
-class _Request:
-    content: str
-    session_id: str
-    forced_intent: str | None = None
-    store_knowledge: bool = True
-    generation_params: dict[str, object] | None = None
-
-
-@dataclass
-class _Runtime:
-    provider: str = "onnx"
-    model_name: str = "m1"
-    endpoint: str = "http://localhost"
-    config_hash: str = "h"
-    runtime_id: str = "rid"
-
-    def to_payload(self) -> dict[str, object]:
-        return {
-            "provider": self.provider,
-            "model": self.model_name,
-            "endpoint": self.endpoint,
-        }
-
-
-class _Task:
-    def __init__(self) -> None:
-        self.id = "task-1"
-
-
-class _StateManager:
-    def __init__(self) -> None:
-        self.context_updates: list[tuple[str, dict[str, object]]] = []
-        self.logs: list[tuple[str, str]] = []
-        self.statuses: list[tuple[str, object, str | None]] = []
-
-    def create_task(self, _content: str) -> _Task:
-        return _Task()
-
-    def update_context(self, task_id: str, payload: dict[str, object]) -> None:
-        self.context_updates.append((task_id, payload))
-
-    def add_log(self, task_id: str, message: str) -> None:
-        self.logs.append((task_id, message))
-
-    async def update_status(
-        self, task_id: str, status: object, result: str | None = None
-    ) -> None:
-        self.statuses.append((task_id, status, result))
-
-
-class _Tracer:
-    def __init__(self) -> None:
-        self.steps: list[str] = []
-        self.statuses: list[object] = []
-        self.error_payloads: list[dict[str, object]] = []
-
-    def create_trace(self, *_args, **_kwargs) -> None:
-        self.steps.append("create")
-
-    def set_llm_metadata(self, *_args, **_kwargs) -> None:
-        self.steps.append("llm_meta")
-
-    def update_status(self, _task_id: str, status: object) -> None:
-        self.statuses.append(status)
-
-    def add_step(self, *_args, **_kwargs) -> None:
-        self.steps.append("step")
-
-    def set_error_metadata(self, _task_id: str, payload: dict[str, object]) -> None:
-        self.error_payloads.append(payload)
 
 
 class _HttpStatusError(Exception):
@@ -189,229 +114,6 @@ def test_knowledge_lessons_helpers_cover_success_and_failure_paths() -> None:
 
     with pytest.raises(RuntimeError):
         ksvc.purge_all_lessons(lessons_store=_FailingLessonsStore(), logger=logger)
-
-
-@pytest.mark.asyncio
-async def test_tasks_onnx_helpers_cover_trace_and_run_branches() -> None:
-    request = _Request(content="hello", session_id="sess", forced_intent="X")
-    runtime = _Runtime()
-    tracer = _Tracer()
-
-    tsvc.trace_onnx_task_start(
-        tracer=tracer, task_id="t1", request=request, runtime=runtime
-    )
-    tsvc.trace_onnx_task_success(tracer=tracer, task_id="t1", result="ok")
-    tsvc.trace_onnx_task_failure(tracer=tracer, task_id="t1", exc=ValueError("boom"))
-    assert tracer.steps
-    assert tracer.statuses
-    assert (
-        tracer.error_payloads
-        and tracer.error_payloads[0]["error_code"] == "onnx_task_error"
-    )
-
-    state = _StateManager()
-    starts: list[str] = []
-    scheduled: list[str] = []
-    task = tsvc.create_and_submit_onnx_task(
-        state_manager=state,
-        request=request,
-        runtime=runtime,
-        trace_start_fn=lambda task_id: starts.append(task_id),
-        schedule_runner_fn=lambda task_id: scheduled.append(task_id),
-    )
-    assert task.id == "task-1"
-    assert starts == ["task-1"]
-    assert scheduled == ["task-1"]
-
-    successes: list[str] = []
-    failures: list[str] = []
-
-    async def _run_generation(_messages, _max_tokens, _temperature):
-        return " result "
-
-    await tsvc.run_onnx_task(
-        state_manager=state,
-        task_id="task-1",
-        request=_Request(
-            content="x",
-            session_id="sess",
-            generation_params={"max_tokens": 50, "temperature": 0.2},
-        ),
-        runtime=runtime,
-        build_messages_fn=lambda content, _intent: [
-            {"role": "user", "content": content}
-        ],
-        run_generation_fn=_run_generation,
-        trace_success_fn=lambda _task_id, result: successes.append(result),
-        trace_failure_fn=lambda _task_id, exc: failures.append(str(exc)),
-        logger=_Logger(),
-    )
-    assert successes == ["result"]
-    assert not failures
-
-    async def _run_fail(_messages, _max_tokens, _temperature):
-        raise RuntimeError("gen_fail")
-
-    await tsvc.run_onnx_task(
-        state_manager=state,
-        task_id="task-2",
-        request=_Request(content="x", session_id="sess"),
-        runtime=runtime,
-        build_messages_fn=lambda content, _intent: [
-            {"role": "user", "content": content}
-        ],
-        run_generation_fn=_run_fail,
-        trace_success_fn=lambda _task_id, result: successes.append(result),
-        trace_failure_fn=lambda _task_id, exc: failures.append(str(exc)),
-        logger=_Logger(),
-    )
-    assert "gen_fail" in failures[-1]
-
-
-@pytest.mark.asyncio
-async def test_tasks_onnx_fast_help_and_session_history_contract() -> None:
-    state = _StateManager()
-    runtime = _Runtime()
-    history: list[tuple[str, str, str, str | None]] = []
-    generation_calls: list[tuple[int | None, float | None]] = []
-
-    async def _run_generation(_messages, max_tokens, temperature):
-        generation_calls.append((max_tokens, temperature))
-        return "model-output"
-
-    await tsvc.run_onnx_task(
-        state_manager=state,
-        task_id="task-fast-help",
-        request=_Request(
-            content="pomoc", session_id="sess-fast", forced_intent="HELP_REQUEST"
-        ),
-        runtime=runtime,
-        build_messages_fn=lambda content, _intent: [
-            {"role": "user", "content": content}
-        ],
-        run_generation_fn=_run_generation,
-        trace_success_fn=lambda *_args: None,
-        trace_failure_fn=lambda *_args: None,
-        append_session_history_fn=lambda task_id,
-        role,
-        content,
-        session_id: history.append((task_id, role, content, session_id)),
-        logger=_Logger(),
-    )
-
-    assert generation_calls == []
-    assert len(history) == 2
-    assert history[0] == ("task-fast-help", "user", "pomoc", "sess-fast")
-    assert history[1][0] == "task-fast-help"
-    assert history[1][1] == "assistant"
-    assert history[1][3] == "sess-fast"
-    assert history[1][2].startswith("Jasne, pomogę.")
-
-    history.clear()
-    await tsvc.run_onnx_task(
-        state_manager=state,
-        task_id="task-normal",
-        request=_Request(
-            content="zwykłe zapytanie",
-            session_id="sess-normal",
-            generation_params={"max_tokens": 32, "temperature": 0.4},
-        ),
-        runtime=runtime,
-        build_messages_fn=lambda content, _intent: [
-            {"role": "user", "content": content}
-        ],
-        run_generation_fn=_run_generation,
-        trace_success_fn=lambda *_args: None,
-        trace_failure_fn=lambda *_args: None,
-        append_session_history_fn=lambda task_id,
-        role,
-        content,
-        session_id: history.append((task_id, role, content, session_id)),
-        logger=_Logger(),
-    )
-
-    assert generation_calls == [(32, 0.4)]
-    assert history == [
-        ("task-normal", "user", "zwykłe zapytanie", "sess-normal"),
-        ("task-normal", "assistant", "model-output", "sess-normal"),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_tasks_onnx_appends_learning_log_for_store_knowledge() -> None:
-    state = _StateManager()
-    runtime = _Runtime()
-    learning_log_calls: list[tuple[str, str, str, str, bool, str]] = []
-
-    async def _run_generation(_messages, _max_tokens, _temperature):
-        return "onnx-result"
-
-    await tsvc.run_onnx_task(
-        state_manager=state,
-        task_id="task-learning",
-        request=_Request(
-            content="krótkie pytanie",
-            session_id="sess-learning",
-            forced_intent="GENERAL_CHAT",
-            store_knowledge=True,
-        ),
-        runtime=runtime,
-        build_messages_fn=lambda content, _intent: [
-            {"role": "user", "content": content}
-        ],
-        run_generation_fn=_run_generation,
-        trace_success_fn=lambda *_args: None,
-        trace_failure_fn=lambda *_args: None,
-        append_learning_log_fn=lambda task_id, intent, prompt, result, success, error: (
-            learning_log_calls.append((task_id, intent, prompt, result, success, error))
-        ),
-        logger=_Logger(),
-    )
-
-    assert learning_log_calls == [
-        (
-            "task-learning",
-            "GENERAL_CHAT",
-            "krótkie pytanie",
-            "onnx-result",
-            True,
-            "",
-        )
-    ]
-
-
-@pytest.mark.asyncio
-async def test_tasks_onnx_skips_learning_log_for_non_learning_intent() -> None:
-    state = _StateManager()
-    runtime = _Runtime()
-    learning_log_calls: list[tuple[str, str, str, str, bool, str]] = []
-
-    async def _run_generation(_messages, _max_tokens, _temperature):
-        return "onnx-result"
-
-    await tsvc.run_onnx_task(
-        state_manager=state,
-        task_id="task-no-learning",
-        request=_Request(
-            content="jaka godzina",
-            session_id="sess-no-learning",
-            forced_intent="TIME_REQUEST",
-            store_knowledge=True,
-        ),
-        runtime=runtime,
-        build_messages_fn=lambda content, _intent: [
-            {"role": "user", "content": content}
-        ],
-        run_generation_fn=_run_generation,
-        trace_success_fn=lambda *_args: None,
-        trace_failure_fn=lambda *_args: None,
-        append_learning_log_fn=lambda task_id, intent, prompt, result, success, error: (
-            learning_log_calls.append((task_id, intent, prompt, result, success, error))
-        ),
-        logger=_Logger(),
-    )
-
-    assert learning_log_calls == []
 
 
 def test_stream_state_helper_decisions_and_packet_update() -> None:
@@ -606,39 +308,6 @@ def test_tasks_service_metrics_and_status_values(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tasks_onnx_empty_generation_and_non_numeric_params() -> None:
-    state = _StateManager()
-    failures: list[str] = []
-    successes: list[str] = []
-
-    async def _run_generation(_messages, max_tokens, temperature):
-        assert max_tokens is None
-        assert temperature is None
-        return "   "
-
-    await tsvc.run_onnx_task(
-        state_manager=state,
-        task_id="task-empty",
-        request=_Request(
-            content="x",
-            session_id="sess",
-            generation_params={"max_tokens": "bad", "temperature": "bad"},
-        ),
-        runtime=_Runtime(),
-        build_messages_fn=lambda content, _intent: [
-            {"role": "user", "content": content}
-        ],
-        run_generation_fn=_run_generation,
-        trace_success_fn=lambda _task_id, result: successes.append(result),
-        trace_failure_fn=lambda _task_id, exc: failures.append(str(exc)),
-        logger=_Logger(),
-    )
-
-    assert not failures
-    assert successes == ["Brak odpowiedzi z runtime ONNX."]
-
-
-@pytest.mark.asyncio
 async def test_llm_simple_transport_iter_and_error_reader_paths(monkeypatch) -> None:
     class _Resp:
         def __init__(self, lines):
@@ -759,19 +428,6 @@ def test_update_stream_state_from_packet_non_ollama_and_no_events() -> None:
     assert events == []
     assert state.chunk_count == 0
     assert state.chunks == []
-
-
-def test_tasks_onnx_trace_helpers_accept_none_tracer() -> None:
-    request = _Request(content="hello", session_id="sess")
-    runtime = _Runtime()
-    tsvc.trace_onnx_task_start(
-        tracer=None,
-        task_id="t1",
-        request=request,
-        runtime=runtime,
-    )
-    tsvc.trace_onnx_task_success(tracer=None, task_id="t1", result="ok")
-    tsvc.trace_onnx_task_failure(tracer=None, task_id="t1", exc=RuntimeError("x"))
 
 
 async def _noop_sleep() -> None:

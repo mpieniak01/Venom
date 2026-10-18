@@ -1,32 +1,22 @@
 """Moduł: chat - agent do rozmów ogólnych."""
 
-import os
 from typing import Any, Optional
-
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.function_choice_behavior import (
-    FunctionChoiceBehavior,
-)
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.core.model_registry import ModelRegistry
 from venom_core.core.model_router import ServiceId
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.agent_contracts import ToolPolicy as FunctionChoiceBehavior
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skills.google_calendar_skill import GoogleCalendarSkill
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
-
-try:  # pragma: no cover - unittest.mock zawsze dostępny, ale zabezpieczenie
-    from unittest.mock import MagicMock as MagicMockType
-except Exception:  # pragma: no cover
-
-    class MagicMockType:  # type: ignore[no-redef]
-        pass
-
 
 logger = get_logger(__name__)
 
@@ -85,7 +75,6 @@ Zasady:
             model_registry: Opcjonalny ModelRegistry do odczytu capabilities modeli
         """
         super().__init__(kernel)
-        self._test_mode = bool(os.environ.get("PYTEST_CURRENT_TEST"))
         self.model_registry = model_registry
 
         # Dodaj MemorySkill do kernela
@@ -159,17 +148,6 @@ Zasady:
         Returns:
             Odpowiedź na pytanie lub wiadomość
         """
-
-        if self._test_mode:
-            kernel_is_mock = isinstance(self.kernel, MagicMockType)
-            kernel_module = getattr(
-                self.kernel, "__class__", type(self.kernel)
-            ).__module__
-            if not kernel_is_mock and kernel_module.startswith("semantic_kernel"):
-                logger.debug(
-                    "ChatAgent (tryb testowy) zwraca natychmiastową odpowiedź (bez LLM)"
-                )
-                return f"Przetworzono: {input_text}"
 
         chat_service: Any = self.kernel.get_service()
         chat_history = self._build_chat_history_for_runtime(input_text, chat_service)

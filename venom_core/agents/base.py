@@ -5,14 +5,18 @@ from abc import ABC, abstractmethod
 from contextvars import ContextVar, Token
 from typing import Any, Callable, Dict, Optional
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.config import SETTINGS
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.agent_contracts import ToolPolicy
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.runtime_names import is_multi_runtime
@@ -40,7 +44,7 @@ class BaseAgent(ABC):
         Inicjalizacja agenta.
 
         Args:
-            kernel: Skonfigurowane jądro Semantic Kernel
+            kernel: Rejestr serwisów i narzędzi Venoma dla Microsoft Agent Framework
             role: Opcjonalna nazwa roli agenta (wykorzystywana m.in. w promptach)
         """
         self.kernel = kernel
@@ -80,6 +84,37 @@ class BaseAgent(ABC):
             "parametry generacji zostaną zignorowane. Nadpisz tę metodę aby ich użyć."
         )
         return await self.process(input_text)
+
+    def validate_deliberation_input(self, content: str) -> tuple[bool, str]:
+        """Return a blocking decision/report before a Council model turn."""
+        return False, ""
+
+    async def deliberate(
+        self,
+        input_text: str,
+        *,
+        system_message: str,
+        generation_params: Optional[Dict[str, Any]] = None,
+        enable_functions: bool = False,
+        response_format: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """One Council turn on the existing model, without a nested agent workflow."""
+        history = ChatHistory()
+        history.add_system_message(system_message)
+        history.add_user_message(input_text)
+        settings = self._create_execution_settings(
+            generation_params=generation_params,
+            default_settings={"max_tokens": 512, "temperature": 0.3},
+            function_choice_behavior=ToolPolicy.Auto() if enable_functions else None,
+        )
+        settings.response_format = response_format
+        result = await self._invoke_chat_with_fallbacks(
+            chat_service=self.kernel.get_service(),
+            chat_history=history,
+            settings=settings,
+            enable_functions=enable_functions,
+        )
+        return str(result)
 
     def _get_safe_params_for_logging(
         self, generation_params: Optional[Dict[str, Any]]

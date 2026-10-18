@@ -7,7 +7,14 @@ import importlib.util
 import os
 import sys
 
-REQUIRED_PACKAGES = ["pytest", "pydantic", "fastapi", "semantic_kernel", "numpy"]
+REQUIRED_PACKAGES = [
+    "pytest",
+    "pydantic",
+    "fastapi",
+    "agent_framework",
+    "agent_framework_openai",
+    "numpy",
+]
 
 
 def main() -> int:

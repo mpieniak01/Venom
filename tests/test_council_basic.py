@@ -2,16 +2,18 @@
 
 import pytest
 
+from venom_core.config import SETTINGS
 from venom_core.core.council import create_local_llm_config
 
 
-def test_create_local_llm_config():
+def test_create_local_llm_config(monkeypatch):
     """Test tworzenia konfiguracji lokalnego LLM."""
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "configured-model")
     config = create_local_llm_config()
 
     assert "config_list" in config
     assert len(config["config_list"]) > 0
-    assert config["config_list"][0]["model"] == "llama3"
+    assert config["config_list"][0]["model"] == "configured-model"
     assert config["config_list"][0]["api_key"] == "EMPTY"
     assert config["temperature"] == pytest.approx(0.7)
 

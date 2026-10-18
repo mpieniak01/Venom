@@ -7,9 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
 
-from semantic_kernel.functions import kernel_function
-
 from venom_core.core.autonomy_enforcement import require_core_patch_permission
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

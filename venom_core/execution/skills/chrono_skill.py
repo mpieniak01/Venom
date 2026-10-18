@@ -3,9 +3,8 @@
 import asyncio
 from typing import Annotated, Optional
 
-from semantic_kernel.functions import kernel_function
-
 from venom_core.core.chronos import ChronosEngine
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action
 
 

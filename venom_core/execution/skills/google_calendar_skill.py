@@ -5,9 +5,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
-from semantic_kernel.functions import kernel_function
-
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.utils.logger import get_logger
 
 Request: Any

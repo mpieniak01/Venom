@@ -3,9 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.devops import DevOpsAgent
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
 
 @pytest.fixture
@@ -46,8 +46,8 @@ async def test_devops_agent_process_success(mock_kernel):
 
     # Mock response
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: """
+    mock_response.__str__ = lambda self: (
+        """
     Plan deploymentu:
     1. Provision serwera
     2. Instalacja Docker

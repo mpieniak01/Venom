@@ -5,8 +5,8 @@ from typing import Annotated, Optional
 
 from huggingface_hub import HfApi, hf_hub_download
 from huggingface_hub.utils import RepositoryNotFoundError
-from semantic_kernel.functions import kernel_function
 
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

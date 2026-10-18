@@ -4,10 +4,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.historian import HistorianAgent
 from venom_core.core.chronos import ChronosEngine
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.memory.lessons_store import LessonsStore
 
 

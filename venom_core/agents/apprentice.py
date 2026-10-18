@@ -9,13 +9,14 @@ import re
 from pathlib import Path
 from typing import Any, List, Optional
 
-from semantic_kernel import Kernel
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 from venom_core.learning.demonstration_analyzer import (
     ActionIntent,

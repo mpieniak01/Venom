@@ -93,10 +93,9 @@ def update_stream_state_from_packet(
             if extract_ollama_telemetry_fn is not None
             else (lambda _packet: {})
         )
-    if runtime.provider == "ollama":
-        telemetry = extract_runtime_telemetry_fn(packet)
-        if telemetry:
-            runtime_telemetry.update(telemetry)
+    telemetry = extract_runtime_telemetry_fn(packet)
+    if telemetry:
+        runtime_telemetry.update(telemetry)
 
     tool_calls = extract_sse_tool_calls_fn(packet)
     if tool_calls:

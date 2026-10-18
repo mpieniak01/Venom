@@ -110,9 +110,28 @@ def extract_runtime_telemetry(packet: dict[str, Any]) -> dict[str, int]:
         "eval_duration",
     ):
         value = packet.get(key)
-        if isinstance(value, int):
+        if type(value) is int and value >= 0:
             out[key] = value
+    usage = packet.get("usage")
+    if isinstance(usage, dict):
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            value = usage.get(key)
+            if type(value) is int and value >= 0:
+                out[key] = value
     return out
+
+
+def token_usage_from_telemetry(telemetry: dict[str, int]) -> dict[str, int]:
+    """Normalize only reported counters; never estimate tokens from text/chunks."""
+    aliases = {"prompt_tokens": "prompt_eval_count", "completion_tokens": "eval_count"}
+    usage: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = telemetry.get(key)
+        if value is None and key in aliases:
+            value = telemetry.get(aliases[key])
+        if type(value) is int and value >= 0:
+            usage[key] = value
+    return usage
 
 
 def normalize_ns_to_ms(value: Optional[int]) -> Optional[float]:

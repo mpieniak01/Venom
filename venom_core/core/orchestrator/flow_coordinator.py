@@ -1,14 +1,9 @@
 """Koordynacja i routing przepływów pracy (flows/workflows)."""
 
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, Protocol
 from uuid import UUID
 
-from venom_core.agents.guardian import GuardianAgent
-from venom_core.core.council import (
-    CouncilConfig,
-    CouncilSession,
-    create_local_llm_config,
-)
+from venom_core.core.council import CouncilConfig
 from venom_core.core.flow_router import FlowRouter
 from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.flows.campaign import CampaignFlow
@@ -80,6 +75,7 @@ class FlowCoordinator:
         """Resetuje flowy zależne od dispatcherów (używane po odświeżeniu kernela)."""
         self._code_review_loop = None
         self._council_flow = None
+        self._council_config = None
         self._forge_flow = None
         self._campaign_flow = None
         self._healing_flow = None
@@ -112,122 +108,17 @@ class FlowCoordinator:
     async def run_council(
         self, task_id: UUID, context: str, middleware: MiddlewareLike
     ) -> str:
-        """
-        Uruchamia tryb Council (AutoGen Group Chat) dla złożonych zadań.
-
-        Args:
-            task_id: ID zadania
-            context: Kontekst zadania
-            middleware: Middleware do broadcast_event
-
-        Returns:
-            Wynik dyskusji Council
-        """
-        self.state_manager.add_log(
-            task_id, "🏛️ THE COUNCIL: Rozpoczynam tryb Group Chat (Swarm Intelligence)"
+        """Delegate execution to the canonical flow with this call's broadcaster."""
+        flow = CouncilFlow(
+            state_manager=self.state_manager,
+            task_dispatcher=self.task_dispatcher,
+            event_broadcaster=middleware,
         )
-
-        await middleware.broadcast_event(
-            event_type="COUNCIL_STARTED",
-            message="The Council rozpoczyna dyskusję nad zadaniem",
-            data={"task_id": str(task_id)},
-        )
-
+        flow._council_config = self._council_config
         try:
-            if self._council_config is None:
-                coder = getattr(self.task_dispatcher, "coder_agent", None)
-                critic = getattr(self.task_dispatcher, "critic_agent", None)
-                architect = getattr(self.task_dispatcher, "architect_agent", None)
-
-                guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
-                llm_config = create_local_llm_config()
-
-                if coder is None or critic is None or architect is None:
-                    raise RuntimeError(
-                        "Brak wymaganych agentów Council (coder/critic/architect)"
-                    )
-
-                self._council_config = CouncilConfig(
-                    coder_agent=coder,
-                    critic_agent=critic,
-                    architect_agent=architect,
-                    guardian_agent=guardian,
-                    llm_config=llm_config,
-                )
-
-            council_tuple = self._council_config.create_council()
-            user_proxy, group_chat, manager = self._normalize_council_tuple(
-                council_tuple
-            )
-
-            session = CouncilSession(user_proxy, group_chat, manager)
-
-            members = []
-            if group_chat is not None and getattr(group_chat, "agents", None):
-                members = [
-                    getattr(agent, "name", str(agent)) for agent in group_chat.agents
-                ]
-
-            await middleware.broadcast_event(
-                event_type="COUNCIL_MEMBERS",
-                message=f"Council składa się z {len(members)} członków",
-                data={"task_id": str(task_id), "members": members},
-            )
-
-            result = await session.run(context)
-
-            get_message_count = getattr(session, "get_message_count", lambda: 0)
-            get_speakers = getattr(session, "get_speakers", lambda: members)
-            message_count = get_message_count()
-            speakers = get_speakers() or members
-
-            self.state_manager.add_log(
-                task_id,
-                f"🏛️ THE COUNCIL: Dyskusja zakończona - {message_count} wiadomości, "
-                f"uczestnicy: {', '.join(speakers)}",
-            )
-
-            await middleware.broadcast_event(
-                event_type="COUNCIL_COMPLETED",
-                message=f"Council zakończył dyskusję po {message_count} wiadomościach",
-                data={
-                    "task_id": str(task_id),
-                    "message_count": message_count,
-                    "speakers": speakers,
-                },
-            )
-
-            logger.info(f"Council zakończył zadanie {task_id}")
-            return result
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas działania Council: {e}"
-            logger.error(error_msg)
-
-            self.state_manager.add_log(task_id, error_msg)
-
-            await middleware.broadcast_event(
-                event_type="COUNCIL_ERROR",
-                message=error_msg,
-                data={"task_id": str(task_id), "error": str(e)},
-            )
-
-            logger.warning("Council zawiódł - powrót do standardowego flow")
-            return f"Council mode nie powiódł się: {e}"
-
-    def _normalize_council_tuple(
-        self, council_result: Any
-    ) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
-        """Zapewnia że create_council zwraca krotkę (user_proxy, group_chat, manager)."""
-
-        if isinstance(council_result, tuple):
-            padded = list(council_result) + [None] * (3 - len(council_result))
-            return tuple(padded[:3])
-
-        user_proxy = getattr(council_result, "user_proxy", None)
-        group_chat = getattr(council_result, "group_chat", None)
-        manager = getattr(council_result, "manager", None)
-        return user_proxy, group_chat, manager
+            return await flow.run(task_id, context)
+        finally:
+            self._council_config = flow._council_config
 
     async def code_generation_with_review(
         self, task_id: UUID, user_request: str

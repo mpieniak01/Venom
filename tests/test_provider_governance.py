@@ -402,3 +402,15 @@ class TestReasonCodeStability:
         assert FallbackReasonCode.PROVIDER_DEGRADED.value == "PROVIDER_DEGRADED"
         assert FallbackReasonCode.PROVIDER_OFFLINE.value == "PROVIDER_OFFLINE"
         assert FallbackReasonCode.RATE_LIMIT_EXCEEDED.value == "RATE_LIMIT_EXCEEDED"
+
+
+def test_isolated_local_workers_need_no_cloud_credentials():
+    """Credential classification must not invent an ONNX/multi_runtime fallback."""
+    governance = ProviderGovernance()
+    for provider in ("onnx", "multi_runtime"):
+        assert governance.validate_credentials(provider) == CredentialStatus.CONFIGURED
+        decision = governance.select_provider_with_fallback(preferred_provider=provider)
+        assert decision.allowed and decision.provider == provider
+        assert decision.reason_code == "PRIMARY_PROVIDER_SELECTED"
+        assert decision.fallback_applied is False
+    assert governance.fallback_history == []

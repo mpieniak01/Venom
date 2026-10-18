@@ -4,9 +4,8 @@ import json
 import re
 from typing import Dict, Optional
 
-from semantic_kernel import Kernel
-
 from venom_core.agents.base import BaseAgent
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skills.complexity_skill import ComplexitySkill
 from venom_core.ops.work_ledger import TaskComplexity, TaskStatus, WorkLedger
 from venom_core.utils.logger import get_logger

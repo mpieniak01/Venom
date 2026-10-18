@@ -3,9 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.creative_director import CreativeDirectorAgent
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
 
 @pytest.fixture
@@ -45,8 +45,8 @@ async def test_creative_director_process_success(mock_kernel):
 
     # Mock response
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: """
+    mock_response.__str__ = lambda self: (
+        """
     **Identyfikacja Wizualna:**
     Styl: Minimalistyczny
     Logo prompt: 'Modern app logo, blue gradient'

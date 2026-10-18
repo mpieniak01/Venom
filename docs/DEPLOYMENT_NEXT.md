@@ -1,5 +1,10 @@
 # Deployment – FastAPI + Next.js
 
+> Current candidate scope: Light/API and CI, with Ollama over HTTP. Full,
+> local GPU add-ons and Academy are deferred; retained legacy instructions do not
+> qualify them for the new MAF core. Do not update an operator Full environment
+> with this package. See [dependency policy](DEPENDENCY_PROFILES.md).
+
 This document describes Venom's new runtime architecture: **FastAPI** runs as standalone API/SSE/WS, and **Next.js (`web-next`)** serves the user interface. Both parts are run and monitored independently.
 
 For security operating assumptions and localhost admin policy, see `docs/SECURITY_POLICY.md`.

@@ -3,10 +3,9 @@
 import asyncio
 from typing import Optional
 
-from semantic_kernel import Kernel
-
 from venom_core.agents.base import BaseAgent
 from venom_core.core.chronos import ChronosEngine
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.memory.lessons_store import Lesson, LessonsStore
 from venom_core.utils.logger import get_logger
 

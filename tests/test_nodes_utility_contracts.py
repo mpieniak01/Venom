@@ -9,7 +9,7 @@ Covers:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -191,6 +191,7 @@ def _make_council_session(messages=None):
     mock_group_chat = MagicMock()
     mock_group_chat.messages = messages if messages is not None else []
     mock_manager = MagicMock()
+    mock_manager.run = AsyncMock()
     mock_user_proxy = MagicMock()
 
     return CouncilSession(mock_user_proxy, mock_group_chat, mock_manager)
@@ -198,55 +199,46 @@ def _make_council_session(messages=None):
 
 @pytest.mark.asyncio
 async def test_council_session_run_success():
-    """run() returns transcript from _extract_result on success."""
+    """The session awaits the native manager and forwards generation settings."""
     session = _make_council_session(
-        messages=[{"name": "Coder", "content": "done TERMINATE"}]
+        messages=[
+            {"name": "Coder", "content": "Implementation done"},
+            {"name": "Guardian", "content": "Approved\nTERMINATE"},
+        ]
     )
-    session.user_proxy.initiate_chat = MagicMock(return_value=None)
-
-    result = await session.run("write hello world")
-
-    assert "THE COUNCIL" in result
-    assert "Coder" in result
+    result = await session.run(
+        "write hello world", generation_params={"max_tokens": 32}
+    )
+    session.manager.run.assert_awaited_once_with(
+        "write hello world", generation_params={"max_tokens": 32}
+    )
+    assert "THE COUNCIL" in result and "Coder" in result and "✅" in result
 
 
 @pytest.mark.asyncio
 async def test_council_session_run_timeout():
-    """run() catches asyncio.TimeoutError and returns a non-empty error string."""
+    """A timeout propagates failure rather than a completed error transcript."""
+    from venom_core.core.council import CouncilExecutionError
+
     session = _make_council_session()
-
-    # Await the scheduled coroutine before raising to avoid un-awaited AsyncMock warnings.
-    async def _wait_for_timeout(awaitable, timeout):
-        _ = timeout
-        await awaitable
-        raise asyncio.TimeoutError()
-
-    with (
-        patch("asyncio.wait_for", _wait_for_timeout),
-        patch("asyncio.to_thread", AsyncMock(return_value=object())),
-    ):
-        result = await session.run("something")
-
-    assert isinstance(result, str) and len(result) > 0
+    session.manager.run.side_effect = asyncio.TimeoutError()
+    with pytest.raises(CouncilExecutionError, match="timeout"):
+        await session.run("something")
+    session.manager.run.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_council_session_run_generic_exception():
-    """run() catches unexpected exceptions and returns a non-empty error string."""
+    """Provider/manager errors stay failed at the public Council boundary."""
+    from venom_core.core.council import CouncilExecutionError
+
     session = _make_council_session()
-
-    async def _wait_for_error(awaitable, timeout):
-        _ = timeout
-        await awaitable
-        raise ValueError("unexpected")
-
-    with (
-        patch("asyncio.wait_for", _wait_for_error),
-        patch("asyncio.to_thread", AsyncMock(return_value=object())),
-    ):
-        result = await session.run("task")
-
-    assert isinstance(result, str) and len(result) > 0
+    failure = ValueError("unexpected")
+    session.manager.run.side_effect = failure
+    with pytest.raises(CouncilExecutionError, match="unexpected") as error:
+        await session.run("task")
+    assert error.value.__cause__ is failure
+    session.manager.run.assert_awaited_once()
 
 
 def test_extract_result_empty_messages():
@@ -261,7 +253,7 @@ def test_extract_result_with_terminate():
     session = _make_council_session(
         messages=[
             {"name": "Coder", "content": "Implementation done"},
-            {"name": "Guardian", "content": "TERMINATE – approved"},
+            {"name": "Guardian", "content": "Approved\nTERMINATE"},
         ]
     )
     result = session._extract_result()
@@ -394,3 +386,18 @@ def test_get_boost_policy_unknown_eligible_intent():
     assert policy.vector_limit == mock_settings.RAG_BOOST_TOP_K_DEFAULT
     assert policy.max_hops == mock_settings.RAG_BOOST_MAX_HOPS_DEFAULT
     assert policy.lessons_limit == mock_settings.RAG_BOOST_LESSONS_LIMIT_DEFAULT
+
+
+@pytest.mark.parametrize(
+    "speaker,content",
+    [
+        ("Guardian", "TERMINATE – approved"),
+        ("Coder", "TERMINATE"),
+        ("Guardian", "TERMINATE\nKeep working"),
+    ],
+)
+def test_council_substring_or_wrong_author_cannot_mark_success(speaker, content):
+    session = _make_council_session(messages=[{"name": speaker, "content": content}])
+    result = session._extract_result()
+    assert "✅" not in result
+    assert "⚠️" in result

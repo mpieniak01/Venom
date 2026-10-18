@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Annotated, Any, Optional
 
 import aiofiles
-from semantic_kernel.functions import kernel_function
 
 from venom_core.core.autonomy_enforcement import require_file_write_permission
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.execution.skills.base_skill import (
     BaseSkill,
     async_safe_action,

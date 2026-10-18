@@ -114,6 +114,27 @@ def _apply_http_policy_if_present(raw_url: object) -> Optional[str]:
     return apply_http_policy_to_url(text)
 
 
+def resolve_local_worker_endpoint(raw_endpoint: object) -> str | None:
+    """Resolve one explicit HTTP worker address for metadata and inference alike."""
+    try:
+        endpoint = _apply_http_policy_if_present(raw_endpoint)
+        parsed = urlparse(endpoint or "")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            return None
+        # Accessing port also validates malformed/out-of-range values.
+        parsed.port
+    except ValueError:
+        return None
+    return endpoint.rstrip("/") if endpoint else None
+
+
 def infer_local_provider(endpoint: Optional[str]) -> str:
     """Próbuje określić typ lokalnego serwera na podstawie endpointu."""
     endpoint_lower = (endpoint or "").lower()
@@ -197,15 +218,19 @@ def _resolve_local_runtime(
     if active_server == "vllm":
         return (
             "vllm",
-            _apply_http_policy_if_present(getattr(settings, "VLLM_ENDPOINT", endpoint)),
+            resolve_local_worker_endpoint(getattr(settings, "VLLM_ENDPOINT", endpoint)),
         )
     if active_server == "ollama":
         candidate = _apply_http_policy_if_present(endpoint)
-        if infer_local_provider(candidate) != "ollama":
+        # Explicit selection disambiguates custom ports. Only a known other
+        # provider (or an absent endpoint) uses the legacy default fallback.
+        if not candidate or infer_local_provider(candidate) not in {"ollama", "local"}:
             candidate = apply_http_policy_to_url("http://localhost:11434/v1")
         return "ollama", candidate
     if active_server == "onnx":
-        return "onnx", None
+        return "onnx", resolve_local_worker_endpoint(
+            getattr(settings, "ONNX_LLM_ENDPOINT", None)
+        )
     normalized_endpoint = _apply_http_policy_if_present(endpoint)
     return infer_local_provider(normalized_endpoint), normalized_endpoint
 
@@ -214,7 +239,9 @@ def _resolve_non_local_runtime(
     *, service_type: str, endpoint: Optional[str], settings
 ) -> Tuple[str, Optional[str]]:
     if service_type == "onnx":
-        return "onnx", None
+        return "onnx", resolve_local_worker_endpoint(
+            getattr(settings, "ONNX_LLM_ENDPOINT", None)
+        )
     if service_type == "openai":
         return "openai", endpoint or "https://api.openai.com/v1"
     if service_type == "google":
@@ -245,10 +272,35 @@ def format_runtime_label(runtime: LLMRuntimeInfo) -> str:
     return f"{model_display} · {provider_display} @ {endpoint_display}"
 
 
+def build_onnx_worker_health_url(endpoint: object) -> str | None:
+    """Use the same validated worker origin and scheme as chat requests."""
+    resolved = resolve_local_worker_endpoint(endpoint)
+    if resolved is None:
+        return None
+    parsed = urlparse(resolved)
+    return urlunparse((parsed.scheme, parsed.netloc, "/health", "", "", ""))
+
+
+def is_onnx_worker_health_ready(response: httpx.Response) -> bool:
+    """A successful HTTP response must identify the running CUDA worker."""
+    if not 200 <= response.status_code < 300:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    return (
+        isinstance(payload, dict)
+        and payload.get("status") == "ok"
+        and payload.get("engine") == "onnx-gpu"
+        and payload.get("device") == "cuda"
+    )
+
+
 def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
     """Tworzy URL do health-checka na podstawie providera."""
-    if runtime.provider == "onnx":
-        return None
+    if runtime.provider == "onnx" and runtime.endpoint:
+        return build_onnx_worker_health_url(runtime.endpoint)
     if not runtime.endpoint:
         return None
 
@@ -298,10 +350,7 @@ async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[s
     Sprawdza rzeczywisty stan runtime i zwraca status + ewentualny błąd.
     """
 
-    if runtime.service_type == "onnx":
-        return "ready", None
-
-    if runtime.service_type != "local":
+    if runtime.service_type != "local" and runtime.provider != "onnx":
         # Zakładamy poprawny stan dla zewnętrznych providerów
         return "ready", None
 
@@ -313,6 +362,9 @@ async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[s
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(health_url)
         if response.status_code < 400:
+            if runtime.provider == "onnx":
+                if not is_onnx_worker_health_ready(response):
+                    return "degraded", "ONNX worker must report onnx-gpu on CUDA"
             return "online", None
         return "degraded", f"HTTP {response.status_code}"
     except httpx.HTTPError as exc:

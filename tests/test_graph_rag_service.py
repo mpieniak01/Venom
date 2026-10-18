@@ -396,3 +396,105 @@ async def test_local_search_with_max_hops_and_limit(graph_rag_service):
     # With max_hops=3, should reach at least Node 1, Node 2, Node 3
     node_count = sum(1 for i in range(5) if f"Node {i}" in result)
     assert node_count >= 2  # At least the starting node and one hop
+
+
+def test_extraction_prompt_demonstrates_valid_json(graph_rag_service):
+    prompt = graph_rag_service._build_extraction_prompt(
+        "Station Boreal sends telemetry to Aurora."
+    )
+    example = prompt.split("Odpowiedź:\n", 1)[1].split("\n\nWAŻNE:", 1)[0]
+    parsed = json.loads(example)
+    assert len(parsed["entities"]) == 3
+    assert parsed["relationships"][0]["type"] == "CREATED_BY"
+    assert "{{" not in example and "}}" not in example
+
+
+@pytest.mark.parametrize("language", ["json", "JSON", ""])
+def test_nested_graph_json_in_markdown_fence_is_preserved(graph_rag_service, language):
+    payload = {
+        "entities": [
+            {"id": "station_boreal", "name": "Station Boreal", "type": "Station"},
+            {"id": "aurora", "name": "Aurora", "type": "Location"},
+        ],
+        "relationships": [
+            {"source": "station_boreal", "target": "aurora", "type": "SENDS_TO"}
+        ],
+    }
+    encoded = json.dumps(payload, indent=2)
+    fenced = f"Odpowiedź:\n```{language}\n{encoded}\n```\n"
+    assert graph_rag_service._extract_json_block(fenced) == encoded
+    assert graph_rag_service._parse_extraction_response(fenced) == payload
+
+
+def test_graph_json_fence_parser_does_not_repair_invalid_model_output(
+    graph_rag_service,
+):
+    assert "error" in graph_rag_service._parse_extraction_response(
+        '```json\n{{"entities": []}}\n```'
+    )
+    assert "error" in graph_rag_service._parse_extraction_response(
+        '```json\n{"entities": []}'
+    )
+    raw = '{"note": "literal ``` markers", "entities": []}'
+    assert graph_rag_service._extract_json_block(raw) == raw
+
+
+def test_document_provenance_survives_node_link_roundtrip(graph_rag_service, tmp_path):
+    service = graph_rag_service
+    service.add_entity("station_boreal", "Station")
+    service.add_entity("aurora", "Location")
+    properties = {"source": "qual266-extract"}
+    service.add_relationship(
+        "station_boreal", "aurora", "SENDS_TELEMETRY_TO", properties=properties
+    )
+    before = dict(service.graph.edges["station_boreal", "aurora"])
+    assert properties == {"source": "qual266-extract"}
+    service.save_graph()
+    persisted = json.loads(service.graph_file.read_text())
+    edge = persisted["edges"][0]
+    assert edge["source"] == "station_boreal"
+    assert edge["target"] == "aurora"
+    assert edge["document_source"] == "qual266-extract"
+    loaded = GraphRAGService(graph_file=str(service.graph_file))
+    assert loaded.load_graph()
+    assert dict(loaded.graph.edges["station_boreal", "aurora"]) == before
+    assert loaded.graph.edges["station_boreal", "aurora"]["source"] == "qual266-extract"
+
+
+def test_legacy_graph_without_document_provenance_loads_without_invention(
+    graph_rag_service,
+):
+    graph = nx.DiGraph()
+    graph.add_node("station_boreal", source="some-document")
+    graph.add_edge("station_boreal", "aurora", relationship_type="SENDS_TO")
+    graph_rag_service.graph_file.write_text(json.dumps(nx.node_link_data(graph)))
+    assert graph_rag_service.load_graph()
+    edge = graph_rag_service.graph.edges["station_boreal", "aurora"]
+    assert edge["relationship_type"] == "SENDS_TO"
+    assert "document_source" not in edge and "source" not in edge
+
+
+@pytest.mark.parametrize("language", ["text", "python"])
+def test_graph_json_parser_skips_other_fences_before_json(graph_rag_service, language):
+    encoded = json.dumps({"entities": [{"id": "boreal"}], "relationships": []})
+    response = (
+        f"```{language}\nAn explanation, not a graph.\n```\n```json\n{encoded}\n```"
+    )
+    assert graph_rag_service._extract_json_block(response) == encoded
+    assert graph_rag_service._parse_extraction_response(response) == json.loads(encoded)
+
+
+def test_graph_json_parser_prefers_explicit_json_over_plain_code(graph_rag_service):
+    encoded = json.dumps({"entities": [{"id": "boreal"}], "relationships": []})
+    response = f"```\nExplanation only.\n```\n```json\n{encoded}\n```"
+    assert graph_rag_service._extract_json_block(response) == encoded
+
+
+def test_graph_json_string_can_contain_backtick_markers(graph_rag_service):
+    encoded = json.dumps(
+        {
+            "entities": [{"id": "boreal", "name": "literal ``` text"}],
+            "relationships": [],
+        }
+    )
+    assert graph_rag_service._extract_json_block(f"```json\n{encoded}\n```") == encoded

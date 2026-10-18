@@ -157,3 +157,80 @@ def test_late_terminal_event_cannot_bypass_wall_clock_deadline(monkeypatch):
         timeout=0.1,
     )
     assert not result.ok and "deadline_exceeded" in result.error
+
+
+def test_native_usage_drives_rate_and_receiver_tpot_not_word_or_event_counts(
+    monkeypatch,
+):
+    frames = (
+        frame("meta", {}, 0.01)
+        + frame("content", {"text": "kot "}, 0.02)
+        + frame("content", {"text": "ma"}, 0.07)
+        + frame(
+            "done",
+            {
+                "usage_source": "upstream",
+                "usage": {
+                    "prompt_tokens": 3,
+                    "completion_tokens": 7,
+                    "total_tokens": 10,
+                },
+            },
+            0.01,
+        )
+    )
+    result = run(monkeypatch, frames)
+    assert result.ok and result.output_tokens == 7 and result.prompt_tokens == 3
+    assert result.usage_source == "upstream" and result.total_tokens == 10
+    assert result.tokens_per_second == pytest.approx(7 / 0.11)
+    assert result.time_per_output_token_ms == pytest.approx((110 - 30) / 6)
+    assert len(result.text.split()) == 2 and result.event_count == 4
+
+
+def test_aggregated_single_text_event_has_no_observable_tpot(monkeypatch):
+    result = run(
+        monkeypatch,
+        frame("content", {"text": "many words at once"}, 0.1)
+        + frame(
+            "done",
+            {"usage_source": "upstream", "usage": {"completion_tokens": 7}},
+            0.01,
+        ),
+    )
+    assert result.ok and result.tokens_per_second == pytest.approx(7 / 0.11)
+    assert result.time_per_output_token_ms is None
+
+
+def test_heuristic_usage_without_upstream_provenance_is_not_token_evidence(monkeypatch):
+    result = run(
+        monkeypatch,
+        frame("content", {"text": "one two"}, 0.1)
+        + frame(
+            "done",
+            {"usage_source": "word_estimate", "usage": {"completion_tokens": 2}},
+            0.01,
+        ),
+    )
+    assert result.ok and result.output_tokens is None
+    assert result.tokens_per_second is None and result.time_per_output_token_ms is None
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {"completion_tokens": True},
+        {"completion_tokens": -1},
+        {"completion_tokens": "7"},
+        {"completion_tokens": 2.5},
+        {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 99},
+        {"completion_tokens": 0},
+    ],
+)
+def test_invalid_native_usage_is_not_a_qualified_measurement(monkeypatch, usage):
+    result = run(
+        monkeypatch,
+        frame("content", {"text": "text"}, 0.1)
+        + frame("done", {"usage_source": "upstream", "usage": usage}, 0.01),
+    )
+    assert not result.ok
+    assert "native_" in result.error

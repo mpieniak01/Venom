@@ -112,3 +112,26 @@ Only explicit Guardian approval becomes the existing terminal `TERMINATE` line;
 a rejection's feedback cannot inject that terminal line. Reviewers receive the
 original task and current candidate/review rather than replaying old drafts and
 critiques. The complete typed conversation remains available for auditing.
+
+
+## Simple-route usage and receiver metrics
+
+Simple chat keeps its direct route. Supported Ollama/vLLM/OpenAI-compatible
+streams request `stream_options.include_usage`; this does not add inference.
+The existing named `done` event optionally contains standard `usage` counters and
+`usage_source: upstream`. Without reported counters it retains its empty payload.
+The non-stream upstream response can carry the same metadata. Legacy native
+Ollama counters normalize to their standard names without estimating a total.
+
+The existing 202C collector uses those reported counts for end-to-end output
+tokens/second. Receiver TPOT is `(E2E - first text latency)/(output tokens - 1)`;
+it requires multiple nonempty text events and more than one reported output
+token. It includes transport/batching effects and is not pure inference timing.
+Single aggregated output has no observable inter-token interval. Missing usage
+stays unavailable; inconsistent or malformed native usage fails a measurement.
+Reports expose available/missing sample counts rather than filling missing data
+with word counts, chunk counts or zeros.
+
+Upstream references: [Ollama compatibility](https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx)
+and [Chat Completions streaming usage](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events).
+An interrupted stream may omit its final usage packet; that is not token evidence.

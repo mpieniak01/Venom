@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from venom_core.services import llm_simple_payload_service as svc
 
 
@@ -98,3 +100,38 @@ def test_stream_headers_and_retry_heuristics():
     assert not svc.is_retryable_ollama_http_error(
         provider="openai", status_code=503, attempt_no=1, max_retries=2
     )
+
+
+@pytest.mark.parametrize(
+    "provider_packet, expected",
+    [
+        (
+            {"usage": {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10}},
+            {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10},
+        ),
+        (
+            {"prompt_eval_count": 0, "eval_count": 7},
+            {"prompt_tokens": 0, "completion_tokens": 7},
+        ),
+        (
+            {
+                "usage": {
+                    "prompt_tokens": False,
+                    "completion_tokens": -1,
+                    "total_tokens": "8",
+                }
+            },
+            {},
+        ),
+        ({"usage": None}, {}),
+    ],
+)
+def test_native_usage_normalization_never_invents_counts(provider_packet, expected):
+    telemetry = svc.extract_runtime_telemetry(provider_packet)
+    assert svc.token_usage_from_telemetry(telemetry) == expected
+
+
+def test_standard_usage_takes_precedence_over_legacy_counter_alias():
+    assert svc.token_usage_from_telemetry(
+        {"prompt_tokens": 3, "prompt_eval_count": 4}
+    ) == {"prompt_tokens": 3}

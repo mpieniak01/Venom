@@ -36,6 +36,12 @@ class StreamResult:
     event_count: int
     error: str | None = None
     first_token_latency_ms: float | None = None
+    prompt_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    usage_source: str | None = None
+    tokens_per_second: float | None = None
+    time_per_output_token_ms: float | None = None
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -414,6 +420,30 @@ def stream_simple_chat(
     )
 
 
+def _native_usage_from_done(packet_text: str) -> dict[str, int]:
+    """Only accept explicit upstream counts, including legitimate zero counters."""
+    packet = json.loads(packet_text)
+    if not isinstance(packet, dict) or packet.get("usage_source") != "upstream":
+        return {}
+    raw_usage = packet.get("usage")
+    if not isinstance(raw_usage, dict):
+        raise ValueError("invalid_native_usage")
+    usage: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        if key not in raw_usage:
+            continue
+        value = raw_usage[key]
+        if type(value) is not int or value < 0:
+            raise ValueError("invalid_native_usage_counter")
+        usage[key] = value
+    if all(
+        key in usage for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+    ):
+        if usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]:
+            raise ValueError("inconsistent_native_usage_total")
+    return usage
+
+
 def _read_timed_sse(response, *, started: float, timeout_sec: float) -> StreamResult:
     """Measure arrival of the first nonempty text event, without buffering to EOF."""
     event_name = "message"
@@ -422,6 +452,8 @@ def _read_timed_sse(response, *, started: float, timeout_sec: float) -> StreamRe
     event_count = 0
     received = 0
     first_token_ms = None
+    text_events = 0
+    usage: dict[str, int] = {}
     saw_done = False
     while True:
         if time.perf_counter() - started > timeout_sec:
@@ -448,24 +480,43 @@ def _read_timed_sse(response, *, started: float, timeout_sec: float) -> StreamRe
                     text = packet.get("text") if isinstance(packet, dict) else None
                     if not isinstance(text, str):
                         raise ValueError("invalid_content_event")
-                    if text.strip() and first_token_ms is None:
-                        first_token_ms = (time.perf_counter() - started) * 1000.0
+                    if text.strip():
+                        text_events += 1
+                        if first_token_ms is None:
+                            first_token_ms = (time.perf_counter() - started) * 1000.0
                     chunks.append(text)
                 elif event_name == "error":
                     raise ValueError("server_error_event:" + packet_text[:400])
                 elif event_name == "done":
+                    usage = _native_usage_from_done(packet_text)
                     saw_done = True
                     break
             event_name, data = "message", []
     full_text = "".join(chunks).strip()
     ok = saw_done and bool(full_text)
+    latency_ms = (time.perf_counter() - started) * 1000.0
+    output_tokens = usage.get("completion_tokens")
+    if output_tokens == 0 and full_text:
+        raise ValueError("native_output_usage_zero_for_text")
+    tokens_per_second = None
+    tpot_ms = None
+    if ok and output_tokens is not None and latency_ms > 0:
+        tokens_per_second = output_tokens / (latency_ms / 1000.0)
+        if output_tokens > 1 and text_events > 1 and first_token_ms is not None:
+            tpot_ms = (latency_ms - first_token_ms) / (output_tokens - 1)
     return StreamResult(
         ok=ok,
         text=full_text,
-        latency_ms=(time.perf_counter() - started) * 1000.0,
+        latency_ms=latency_ms,
         event_count=event_count,
         error=None if ok else "empty_or_incomplete_stream",
         first_token_latency_ms=first_token_ms,
+        prompt_tokens=usage.get("prompt_tokens"),
+        output_tokens=output_tokens,
+        total_tokens=usage.get("total_tokens"),
+        usage_source="upstream" if usage else None,
+        tokens_per_second=tokens_per_second,
+        time_per_output_token_ms=tpot_ms,
     )
 
 

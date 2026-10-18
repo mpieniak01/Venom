@@ -2,8 +2,8 @@
 """202C latency/memory benchmark for Gemma-3 (ONNX vs Ollama).
 
 TTFT is the receiver's first nonempty text event, not latency/event count.
-Token throughput/TPOT remain unavailable until native usage is exposed. Memory
-uses boundary snapshots, not sampled inference peaks. This benchmark alone does
+Token throughput/TPOT use only native reported usage when present. Missing usage
+stays unavailable, not estimated. Memory uses boundary snapshots, not sampled inference peaks. This benchmark alone does
 not satisfy the full lifecycle/resource qualification required by task 266.
 """
 
@@ -90,6 +90,8 @@ def _run_benchmark_for_runtime(
     warmup_samples: list[dict[str, Any]] = []
     latencies_ms: list[float] = []
     first_token_latencies_ms: list[float] = []
+    throughput_tps: list[float] = []
+    tpot_values_ms: list[float] = []
     host_mem_peaks: list[float] = []
     gpu_mem_peaks: list[float] = []
 
@@ -145,6 +147,10 @@ def _run_benchmark_for_runtime(
             latencies_ms.append(result.latency_ms)
             if result.first_token_latency_ms is not None:
                 first_token_latencies_ms.append(result.first_token_latency_ms)
+            if result.tokens_per_second is not None:
+                throughput_tps.append(result.tokens_per_second)
+            if result.time_per_output_token_ms is not None:
+                tpot_values_ms.append(result.time_per_output_token_ms)
 
         samples.append(
             {
@@ -153,6 +159,11 @@ def _run_benchmark_for_runtime(
                 "ok": result.ok,
                 "latency_ms": round(result.latency_ms, 2),
                 "first_token_latency_ms": result.first_token_latency_ms,
+                "output_tokens": result.output_tokens,
+                "prompt_tokens": result.prompt_tokens,
+                "usage_source": result.usage_source,
+                "tokens_per_second": result.tokens_per_second,
+                "time_per_output_token_ms": result.time_per_output_token_ms,
                 "host_mem_used_mb_peak": round(host_peak, 2),
                 "gpu_mem_used_mb_peak": round(gpu_peak, 2),
                 "error": result.error,
@@ -164,6 +175,9 @@ def _run_benchmark_for_runtime(
         [float(sample["latency_ms"]) for sample in warmup_samples if sample.get("ok")]
     )
     first_token_summary = summarize_latency(first_token_latencies_ms)
+    throughput_summary = summarize_latency(throughput_tps)
+    tpot_summary = summarize_latency(tpot_values_ms)
+    successes = sum(1 for sample in samples if sample["ok"])
     summary.update(
         {
             "success_count": sum(1 for sample in samples if sample["ok"]),
@@ -186,11 +200,25 @@ def _run_benchmark_for_runtime(
                 "sample_count": len(first_token_latencies_ms),
             },
             "tokens_per_sec": {
-                "p50": None,
-                "p95": None,
-                "mean": None,
-                "status": "UNAVAILABLE",
-                "reason": "Native output-token usage is not exposed by this SSE contract; words/chunks are not tokens.",
+                "p50": throughput_summary["p50_ms"] if throughput_tps else None,
+                "p95": throughput_summary["p95_ms"] if throughput_tps else None,
+                "mean": throughput_summary["mean_ms"] if throughput_tps else None,
+                "sample_count": len(throughput_tps),
+                "missing_count": successes - len(throughput_tps),
+                "status": (
+                    "AVAILABLE"
+                    if throughput_tps and len(throughput_tps) == successes
+                    else "PARTIAL"
+                    if throughput_tps
+                    else "UNAVAILABLE"
+                ),
+                "source": "Upstream output-token count / receiver end-to-end seconds; never words/chunks.",
+            },
+            "time_per_output_token_ms": {
+                "p50_ms": tpot_summary["p50_ms"] if tpot_values_ms else None,
+                "p95_ms": tpot_summary["p95_ms"] if tpot_values_ms else None,
+                "sample_count": len(tpot_values_ms),
+                "definition": "(receiver E2E - first text latency)/(native output tokens - 1); needs >1 output token and >1 nonempty text event. Includes transport/aggregation effects, not pure inference time.",
             },
             "warmup_summary": warm_summary,
             "memory_note": "Host/GPU memory uses boundary node-level snapshots, not sampled inference peaks.",
@@ -239,7 +267,7 @@ def _build_markdown(report: dict[str, Any]) -> str:
         )
     lines.append("")
     lines.append(
-        "TTFT: measured arrival of the first nonempty text event. Token throughput/TPOT: unavailable without native token counts; no word/chunk estimates."
+        "TTFT: arrival of the first nonempty text event. Token rates use native output counts only; unavailable counts stay null. Receiver TPOT needs multiple text events and includes transport/aggregation effects."
     )
     lines.append("")
     lines.append("## KPI Verdict")

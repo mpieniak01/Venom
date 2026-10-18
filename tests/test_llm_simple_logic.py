@@ -953,3 +953,48 @@ async def test_stream_simple_chat_rejects_when_runtime_switch_is_active():
         assert exc_info.value.detail["code"] == "runtime_switch_in_progress"
     finally:
         gate.finish_runtime_switch(switch_id=snapshot.switch_id)
+
+
+@pytest.mark.parametrize("provider", ["ollama", "vllm", "openai"])
+def test_supported_stream_requests_native_usage_but_non_stream_does_not(provider):
+    request = SimpleChatRequest(content="hello")
+    runtime = DummyRuntime(provider)
+    args = (request, runtime, "model-x", [{"role": "user", "content": "hello"}])
+    assert llm_simple_service._build_payload(*args, stream=True)["stream_options"] == {
+        "include_usage": True
+    }
+    assert "stream_options" not in llm_simple_service._build_payload(
+        *args, stream=False
+    )
+
+
+def test_done_event_preserves_legacy_empty_payload_when_usage_unavailable():
+    assert llm_simple_service._build_done_event({}) == "event: done\ndata: {}\n\n"
+    event = llm_simple_service._build_done_event(
+        {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10}
+    )
+    data = json.loads(event.split("data: ", 1)[1])
+    assert event.startswith("event: done\n")
+    assert data == {
+        "usage": {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10},
+        "usage_source": "upstream",
+    }
+
+
+def test_usage_only_final_packet_is_preserved_for_non_ollama_runtime():
+    telemetry = {}
+    state = SimpleStreamState(chunks=[])
+    events = llm_simple_service._update_stream_state_from_packet(
+        packet={
+            "choices": [],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10},
+        },
+        runtime=DummyRuntime("vllm"),
+        state=state,
+        request_id=uuid4(),
+        stream_start=0,
+        runtime_telemetry=telemetry,
+    )
+    assert events == [] and state.chunk_count == 0
+    assert telemetry["completion_tokens"] == 7
+    assert '"completion_tokens": 7' in llm_simple_service._build_done_event(telemetry)

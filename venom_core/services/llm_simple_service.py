@@ -56,6 +56,9 @@ from venom_core.services.llm_simple_payload_service import (
 from venom_core.services.llm_simple_payload_service import (
     resolve_output_format as _resolve_output_format,
 )
+from venom_core.services.llm_simple_payload_service import (
+    token_usage_from_telemetry as _token_usage_from_telemetry,
+)
 from venom_core.services.llm_simple_stream_service import (
     SimpleStreamState as _SimpleStreamState,
 )
@@ -397,6 +400,8 @@ def _build_payload(
         "messages": messages,
         "stream": stream,
     }
+    if stream and runtime.provider in {"ollama", "vllm", "openai"}:
+        payload["stream_options"] = {"include_usage": True}
     if runtime.provider == "ollama":
         payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
         payload["options"] = build_ollama_runtime_options(SETTINGS)
@@ -823,6 +828,18 @@ def _reset_stream_attempt_state(state: _SimpleStreamState) -> None:
     _reset_stream_attempt_state_impl(state)
 
 
+def _build_done_event(runtime_telemetry: dict[str, int]) -> str:
+    """Optional native usage extends the existing done event, without inference."""
+    usage = _token_usage_from_telemetry(runtime_telemetry)
+    if not usage:
+        return _SSE_EVENT_DONE
+    return (
+        "event: done\ndata: "
+        + json.dumps({"usage": usage, "usage_source": "upstream"})
+        + "\n\n"
+    )
+
+
 def _finalize_successful_stream_attempt(
     *,
     runtime,
@@ -835,15 +852,13 @@ def _finalize_successful_stream_attempt(
         request_id, "".join(state.chunks), state.chunk_count, stream_start
     )
     total_ms = (time.perf_counter() - stream_start) * 1000.0
+    usage = _token_usage_from_telemetry(runtime_telemetry)
     collector = get_metrics_collector()
     collector.record_provider_request(
         provider=runtime.provider,
         success=True,
         latency_ms=total_ms,
-        tokens=(
-            int(runtime_telemetry.get("prompt_eval_count", 0))
-            + int(runtime_telemetry.get("eval_count", 0))
-        ),
+        tokens=usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
     )
     if runtime.provider == "ollama":
         collector.record_runtime_sample(
@@ -986,7 +1001,7 @@ async def _stream_simple_chunks(
                 if should_retry:
                     continue
                 if should_emit_done:
-                    yield _SSE_EVENT_DONE
+                    yield _build_done_event(runtime_telemetry)
                 return
 
             except httpx.HTTPError as exc:
@@ -1162,6 +1177,8 @@ async def _stream_simple_chunks_non_stream(
                 )
                 return
 
+            runtime_telemetry = _extract_runtime_telemetry(data)
+            usage = _token_usage_from_telemetry(runtime_telemetry)
             content = _extract_message_content(data, fallback_text="")
             logprobs_telemetry = _extract_logprobs_telemetry(data)
             if logprobs_telemetry is not None:
@@ -1183,8 +1200,10 @@ async def _stream_simple_chunks_non_stream(
                 provider=runtime.provider,
                 success=True,
                 latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                tokens=usage.get("prompt_tokens", 0)
+                + usage.get("completion_tokens", 0),
             )
-            yield _SSE_EVENT_DONE
+            yield _build_done_event(runtime_telemetry)
         except httpx.HTTPStatusError as exc:
             result = await _emit_http_status_error_and_mark_failed(
                 exc=exc,

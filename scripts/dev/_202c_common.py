@@ -35,6 +35,7 @@ class StreamResult:
     latency_ms: float
     event_count: int
     error: str | None = None
+    first_token_latency_ms: float | None = None
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -381,6 +382,7 @@ def stream_simple_chat(
         "content": prompt,
         "max_tokens": max_tokens,
         "temperature": temperature,
+        "stream": True,
     }
     if model:
         payload["model"] = model
@@ -392,59 +394,78 @@ def stream_simple_chat(
     )
 
     started = time.perf_counter()
-    raw = ""
     try:
         with request.urlopen(req, timeout=timeout_sec) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
+            content_type = resp.headers.get("Content-Type", "").split(";")[0]
+            if resp.status != 200 or content_type != "text/event-stream":
+                raise ValueError("response_is_not_sse")
+            return _read_timed_sse(resp, started=started, timeout_sec=timeout_sec)
     except error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        return StreamResult(
-            ok=False,
-            text="",
-            latency_ms=(time.perf_counter() - started) * 1000.0,
-            event_count=0,
-            error=f"http_error:{exc.code}:{details[:400]}",
-        )
-    except (error.URLError, TimeoutError) as exc:
-        return StreamResult(
-            ok=False,
-            text="",
-            latency_ms=(time.perf_counter() - started) * 1000.0,
-            event_count=0,
-            error=f"transport_error:{exc}",
-        )
+        details = exc.read(401).decode("utf-8", errors="replace")
+        message = f"http_error:{exc.code}:{details[:400]}"
+    except (OSError, error.URLError, ValueError, UnicodeError) as exc:
+        message = f"stream_or_transport_error:{type(exc).__name__}:{exc}"
+    return StreamResult(
+        ok=False,
+        text="",
+        latency_ms=(time.perf_counter() - started) * 1000.0,
+        event_count=0,
+        error=message,
+    )
 
-    events = parse_sse_events(raw)
+
+def _read_timed_sse(response, *, started: float, timeout_sec: float) -> StreamResult:
+    """Measure arrival of the first nonempty text event, without buffering to EOF."""
+    event_name = "message"
+    data: list[str] = []
     chunks: list[str] = []
+    event_count = 0
+    received = 0
+    first_token_ms = None
     saw_done = False
-    for event_name, event_data in events:
-        if event_name == "content":
-            try:
-                packet = json.loads(event_data)
-            except json.JSONDecodeError:
-                continue
-            text = str(packet.get("text") or "")
-            if text:
-                chunks.append(text)
-        elif event_name == "error":
-            return StreamResult(
-                ok=False,
-                text="",
-                latency_ms=(time.perf_counter() - started) * 1000.0,
-                event_count=len(events),
-                error=f"stream_error:{event_data[:400]}",
-            )
-        elif event_name == "done":
-            saw_done = True
-
+    while True:
+        if time.perf_counter() - started > timeout_sec:
+            raise TimeoutError("stream_deadline_exceeded")
+        raw = response.readline(65537)
+        if time.perf_counter() - started > timeout_sec:
+            raise TimeoutError("stream_deadline_exceeded")
+        if not raw:
+            break
+        received += len(raw)
+        if len(raw) > 65536 or received > 1024 * 1024:
+            raise ValueError("stream_too_large")
+        line = raw.decode("utf-8").rstrip("\r\n")
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+        elif line.startswith("data:"):
+            data.append(line[5:].lstrip(" "))
+        elif not line:
+            if data:
+                event_count += 1
+                packet_text = "\n".join(data)
+                if event_name == "content":
+                    packet = json.loads(packet_text)
+                    text = packet.get("text") if isinstance(packet, dict) else None
+                    if not isinstance(text, str):
+                        raise ValueError("invalid_content_event")
+                    if text.strip() and first_token_ms is None:
+                        first_token_ms = (time.perf_counter() - started) * 1000.0
+                    chunks.append(text)
+                elif event_name == "error":
+                    raise ValueError("server_error_event:" + packet_text[:400])
+                elif event_name == "done":
+                    saw_done = True
+                    break
+            event_name, data = "message", []
     full_text = "".join(chunks).strip()
     ok = saw_done and bool(full_text)
     return StreamResult(
         ok=ok,
         text=full_text,
         latency_ms=(time.perf_counter() - started) * 1000.0,
-        event_count=len(events),
+        event_count=event_count,
         error=None if ok else "empty_or_incomplete_stream",
+        first_token_latency_ms=first_token_ms,
     )
 
 

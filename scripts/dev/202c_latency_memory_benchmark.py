@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""202C latency/memory benchmark for Gemma-3 (ONNX vs Ollama)."""
+"""202C latency/memory benchmark for Gemma-3 (ONNX vs Ollama).
+
+TTFT is the receiver's first nonempty text event, not latency/event count.
+Token throughput/TPOT remain unavailable until native usage is exposed. Memory
+uses boundary snapshots, not sampled inference peaks. This benchmark alone does
+not satisfy the full lifecycle/resource qualification required by task 266.
+"""
 
 from __future__ import annotations
 
@@ -84,7 +90,6 @@ def _run_benchmark_for_runtime(
     warmup_samples: list[dict[str, Any]] = []
     latencies_ms: list[float] = []
     first_token_latencies_ms: list[float] = []
-    throughput_tps: list[float] = []
     host_mem_peaks: list[float] = []
     gpu_mem_peaks: list[float] = []
 
@@ -138,13 +143,8 @@ def _run_benchmark_for_runtime(
         gpu_mem_peaks.append(gpu_peak)
         if result.ok:
             latencies_ms.append(result.latency_ms)
-            first_token_latencies_ms.append(
-                result.latency_ms / max(1, result.event_count)
-            )
-            token_estimate = max(1, len(result.text.split()))
-            throughput_tps.append(
-                token_estimate / max(0.001, result.latency_ms / 1000.0)
-            )
+            if result.first_token_latency_ms is not None:
+                first_token_latencies_ms.append(result.first_token_latency_ms)
 
         samples.append(
             {
@@ -152,18 +152,18 @@ def _run_benchmark_for_runtime(
                 "prompt_id": prompt["id"],
                 "ok": result.ok,
                 "latency_ms": round(result.latency_ms, 2),
+                "first_token_latency_ms": result.first_token_latency_ms,
                 "host_mem_used_mb_peak": round(host_peak, 2),
                 "gpu_mem_used_mb_peak": round(gpu_peak, 2),
                 "error": result.error,
             }
         )
 
-    summary = summarize_latency(latencies_ms)
+    summary: dict[str, Any] = dict(summarize_latency(latencies_ms))
     warm_summary = summarize_latency(
         [float(sample["latency_ms"]) for sample in warmup_samples if sample.get("ok")]
     )
     first_token_summary = summarize_latency(first_token_latencies_ms)
-    throughput_summary = summarize_latency(throughput_tps)
     summary.update(
         {
             "success_count": sum(1 for sample in samples if sample["ok"]),
@@ -177,16 +177,23 @@ def _run_benchmark_for_runtime(
                 max(gpu_mem_peaks) if gpu_mem_peaks else 0.0, 2
             ),
             "first_token_latency_ms": {
-                "p50_ms": round(first_token_summary.get("p50_ms", 0.0), 2),
-                "p95_ms": round(first_token_summary.get("p95_ms", 0.0), 2),
+                "p50_ms": round(first_token_summary["p50_ms"], 2)
+                if first_token_latencies_ms
+                else None,
+                "p95_ms": round(first_token_summary["p95_ms"], 2)
+                if first_token_latencies_ms
+                else None,
+                "sample_count": len(first_token_latencies_ms),
             },
             "tokens_per_sec": {
-                "p50": round(throughput_summary.get("p50_ms", 0.0), 2),
-                "p95": round(throughput_summary.get("p95_ms", 0.0), 2),
-                "mean": round(throughput_summary.get("mean_ms", 0.0), 2),
+                "p50": None,
+                "p95": None,
+                "mean": None,
+                "status": "UNAVAILABLE",
+                "reason": "Native output-token usage is not exposed by this SSE contract; words/chunks are not tokens.",
             },
             "warmup_summary": warm_summary,
-            "memory_note": "Host/GPU memory measured from node-level snapshots (best-effort).",
+            "memory_note": "Host/GPU memory uses boundary node-level snapshots, not sampled inference peaks.",
         }
     )
 
@@ -230,6 +237,10 @@ def _build_markdown(report: dict[str, Any]) -> str:
         lines.append(
             f"| {key} | {baseline.get('summary', {}).get(key, 0)} | {candidate.get('summary', {}).get(key, 0)} |"
         )
+    lines.append("")
+    lines.append(
+        "TTFT: measured arrival of the first nonempty text event. Token throughput/TPOT: unavailable without native token counts; no word/chunk estimates."
+    )
     lines.append("")
     lines.append("## KPI Verdict")
     lines.append("")

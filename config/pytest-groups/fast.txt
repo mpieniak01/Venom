@@ -11,6 +11,7 @@ tests/api/test_memory_openapi_contract.py
 tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/security/test_autonomy_enforcement.py
+tests/test_202c_benchmark_metrics.py
 tests/test_204a_canonical_control_state.py
 tests/test_214a_daemon_management.py
 tests/test_214a_gemma4_daemon.py

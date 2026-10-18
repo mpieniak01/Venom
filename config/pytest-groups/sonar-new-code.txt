@@ -6,6 +6,7 @@ tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/ollama_bench/test_common_and_scoreboard.py
 tests/ollama_bench/test_scheduler.py
+tests/test_202c_benchmark_metrics.py
 tests/test_204a_canonical_control_state.py
 tests/test_214a_daemon_management.py
 tests/test_214a_gemma4_daemon.py

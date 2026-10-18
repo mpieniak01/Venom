@@ -106,25 +106,35 @@ Sonar scan was performed in this slice. Dependency versions are unchanged from
 findings and the CI boolean.py alias warning remain documented in the 266 audit.
 Final documentation-only changes do not alter the tested implementation.
 
-## Proposed release order
+## Current PR stack and release order
 
-There are three local release branches in two repositories. GitHub lists no open
-PR in either repository at the time of this check; local task 266 is not a GitHub
-PR number.
+The release is reviewed through three open PRs in two repositories. Local task
+266 is represented by core PR #540; it is not a GitHub PR number.
 
-1. Core Venom `codex/266-maf-runtime-profiles` (`24e5d3c1`): dependency profiles,
-   pins, security stabilization and MAF migration; qualified Ollama/own daemon.
-2. Rider module `codex/266-maf-tool-contract` (`4b27e59d`): use first-party Venom
-   tool contracts. Merge after the core contract exists; do not deploy this module
+| PR | Head branch | Review base | Scope |
+| --- | --- | --- | --- |
+| [Core #540](https://github.com/mpieniak01/Venom/pull/540) | `codex/266-maf-runtime-profiles` | `main` | Dependency profiles, pins, security qualification and MAF migration |
+| [Rider module #24](https://github.com/mpieniak01/venom-module-rider/pull/24) | `codex/266-maf-tool-contract` | `main` in the module repository | First-party Venom tool contracts |
+| [Core #541](https://github.com/mpieniak01/Venom/pull/541) | `codex/sonar-gate-1-10` | `codex/266-maf-runtime-profiles` | Release identity 1.10.0, Sonar configuration and bounded reliability fixes |
+
+Before accepting #541, synchronize its branch with the final accepted HEAD of
+#540 and run fresh checks for that combined candidate. A green child PR result
+from an earlier parent revision does not qualify later changes or resolve a red
+security gate on #540. Keep the two core PRs separate so their effective scopes
+and unresolved findings remain reviewable.
+
+After all release blockers are resolved and merging is authorized:
+
+1. Merge core #540 into `main`. A merge commit preserves the ancestry of the
+   stacked branch and makes the following review transition straightforward.
+2. Merge Rider module #24 after its core contract exists. Do not deploy the module
    alone against the old core.
-3. Core Venom `codex/sonar-gate-1-10` (stacked on 266): release identity 1.10.0,
-   Sonar configuration and bounded reliability fixes. Keep this as a separate PR
-   so the Sonar scope and unresolved findings remain reviewable. Before core 266
-   merges its PR base can be that branch; then retarget to main and inspect the
-   effective diff. If core is squash-merged, rebase only the Sonar follow-up commits
-   onto main to avoid republishing the entire 266 diff.
+3. Retarget core #541 to `main`, inspect the effective diff and obtain fresh checks
+   before merging it. If #540 is squash-merged, transplant only the Sonar follow-up
+   commits onto the new `main` so the full 266 diff is not republished.
 
-Complete remote CI/review and inspect a fresh Sonar result before declaring the
-release accepted. Deploy the compatible final core/module pair together, then run
-operator smoke tests. Preserve the old checkout until acceptance; this document
-is a sequence proposal, not authorization or evidence of a merge/deployment.
+Complete remote CI/review and inspect a fresh Sonar result for the final candidate
+before declaring the release accepted. Deploy the compatible final core/module
+pair together, then run operator smoke tests. Preserve the old checkout until
+acceptance; this document records the review sequence, not authorization or
+evidence of a merge/deployment.

@@ -69,18 +69,25 @@ for (const theme of ["venom-dark", "venom-light"]) {
       await page.setViewportSize(viewport);
       await page.goto("/");
       const fontClasses = await page.locator("html").getAttribute("class");
+      const bodyClasses = await page.locator("body").getAttribute("class");
       const links = await page.locator('link[rel="stylesheet"]').evaluateAll((elements) =>
         elements.map((element) => (element as HTMLLinkElement).href));
       expect(links.length).toBeGreaterThan(0);
-      const sheets = await Promise.all(links.map(async (url) => {
-        const response = await page.request.get(url);
-        expect(response.ok()).toBe(true);
-        return response.text();
+      // Preserve stylesheet URL bases so relative font URLs resolve as in the app.
+      const stylesheetLinks = links.map((url) => `<link rel="stylesheet" href="${url}">`).join("\n");
+      // A full navigation discards the app's hydration/effects before the CSS fixture.
+      const fixtureUrl = new URL(`/__theme-cascade-${randomUUID()}`, page.url()).href;
+      await page.route(fixtureUrl, (route) => route.fulfill({
+        contentType: "text/html",
+        body: `<!doctype html><html class="${fontClasses ?? ""}" data-theme="${theme}"><head>${stylesheetLinks}</head><body class="${bodyClasses ?? ""}">${fixtureHtml}</body></html>`,
       }));
-      await page.setContent(`<!doctype html><html class="${fontClasses ?? ""}" data-theme="${theme}"><head></head><body>${fixtureHtml}</body></html>`);
-      await page.addStyleTag({ content: sheets.join("\n") });
+      await page.goto(fixtureUrl);
+      await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(links.length);
+      expect(await page.locator('link[rel="stylesheet"]').evaluateAll((elements) =>
+        elements.every((element) => (element as HTMLLinkElement).sheet !== null))).toBe(true);
       await page.addStyleTag({ content: fixtureCss });
       await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       const current = await captureStyles(page);
       const currentImage = await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" });
       await page.addStyleTag({ content: legacyOverrides });
@@ -89,6 +96,7 @@ for (const theme of ["venom-dark", "venom-light"]) {
       await testInfo.attach("current.png", { body: currentImage, contentType: "image/png" });
       await testInfo.attach("legacy-baseline.png", { body: legacyImage, contentType: "image/png" });
       await testInfo.attach("computed-styles.json", { body: Buffer.from(JSON.stringify({ current, legacy }, null, 2)), contentType: "application/json" });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       expect(current).toEqual(legacy);
       const snapshotName = `legacy-cascade-${randomUUID()}.png`;
       const expectedPath = testInfo.snapshotPath(snapshotName, { kind: "snapshot" });

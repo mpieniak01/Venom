@@ -99,7 +99,8 @@ describe("detached initialization preserves its error boundary", () => {
     mock.method(console, "error", () => {});
     globalThis.fetch = async () => { throw new Error("academy offline"); };
     render(<AcademyDashboard />);
-    await screen.findByText(/academy offline/, {}, { timeout: 2000 });
+    const error = await screen.findByText(/academy offline/, {}, { timeout: 2000 });
+    assert.match(error.textContent ?? "", /academy offline/);
   });
 });
 

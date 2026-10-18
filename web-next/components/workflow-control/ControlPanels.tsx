@@ -98,16 +98,15 @@ export function ControlPanels({
       });
     }
 
-    if (changes.length > 0) {
-      setApplying(true);
-      setApplyError(null);
-      try {
-        await onApply({ changes, dry_run: false, force: false });
-      } catch (error) {
-        setApplyError(error instanceof Error ? error.message : t("workflowControl.status.failed"));
-      } finally {
-        setApplying(false);
-      }
+    if (changes.length === 0) return;
+    setApplying(true);
+    setApplyError(null);
+    try {
+      await onApply({ changes, dry_run: false, force: false });
+    } catch (error) {
+      setApplyError(error instanceof Error ? error.message : t("workflowControl.status.failed"));
+    } finally {
+      setApplying(false);
     }
   };
 

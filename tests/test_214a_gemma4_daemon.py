@@ -1001,6 +1001,14 @@ class TestAudioEngineUnit:
         assert engine.processor is fake_processor
         assert engine.model is fake_model
         assert engine.model_class_name == "AutoModelForMultimodalLM"
+        processor_options = (
+            fake_transformers.AutoProcessor.from_pretrained.call_args.kwargs
+        )
+        assert processor_options["local_files_only"] is True
+        assert processor_options["trust_remote_code"] is False
+        model_options = fake_cls.from_pretrained.call_args.kwargs
+        assert model_options["use_safetensors"] is True
+        assert model_options["trust_remote_code"] is False
 
     def test_load_falls_back_to_causallm(self, monkeypatch):
         fake_transformers = MagicMock()
@@ -1022,6 +1030,32 @@ class TestAudioEngineUnit:
 
         assert engine.model is fake_model
         assert engine.model_class_name == "AutoModelForCausalLM"
+        assert fake_causallm.from_pretrained.call_args.kwargs["use_safetensors"] is True
+        assert (
+            fake_causallm.from_pretrained.call_args.kwargs["trust_remote_code"] is False
+        )
+
+    def test_load_rejects_unsafe_checkpoint_without_relaxing_loader(self, monkeypatch):
+        candidates = [MagicMock() for _ in MultiRuntimeEngine._MODEL_CLASS_CANDIDATES]
+        for candidate in candidates:
+            candidate.from_pretrained.side_effect = OSError("No safetensors weights")
+        fake_transformers = SimpleNamespace(
+            AutoProcessor=MagicMock(),
+            **dict(zip(MultiRuntimeEngine._MODEL_CLASS_CANDIDATES, candidates)),
+        )
+        monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+        engine = MultiRuntimeEngine(model_id="local/unsafe", cache_dir="/tmp")
+
+        with pytest.raises(ModelLoadError, match="No safetensors weights"):
+            engine.load()
+
+        assert not engine.is_loaded()
+        for candidate in candidates:
+            candidate.from_pretrained.assert_called_once()
+            options = candidate.from_pretrained.call_args.kwargs
+            assert options["use_safetensors"] is True
+            assert options["trust_remote_code"] is False
+            assert options["local_files_only"] is True
 
     def test_load_raises_model_load_error_when_processor_fails(self, monkeypatch):
         fake_transformers = MagicMock()

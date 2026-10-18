@@ -315,3 +315,19 @@ were observed in Full versus the recorded operator inventory; that comparison
 does not make those findings acceptable. Risk acceptance is not granted, and
 this local snapshot does not authorize publication, merge or operator rollout.
 The exact scanned inventories/locks and raw results remain in local task records.
+
+
+### Own daemon model-loading boundary
+
+The own `multi_runtime` daemon loads only local weights in `safetensors` format
+and explicitly disables model-repository Python for both processor and model.
+Trying another native model class preserves these restrictions; an artifact
+without safe weights fails to load. Existing qualified Gemma4 safetensors remain
+supported. Legacy pickle-only artifacts and repositories requiring custom Python
+are not accepted by this loader. This is an intentional input-contract restriction,
+not a patch to Torch, Transformers or Accelerate and not a scanner exclusion.
+
+This follows the [Transformers model-loading security guidance](https://github.com/huggingface/transformers/security/policy).
+The recorded High findings remain open. Their advisory-specific exposure and
+remaining release decisions must be assessed separately; local-only loading does
+not make an untrusted cached file safe.

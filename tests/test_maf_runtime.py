@@ -495,3 +495,14 @@ async def test_structured_review_schema_reaches_native_transport(stream):
     assert bodies[0]["response_format"] == format_spec
     assert bodies[0]["max_tokens"] == 96
     await model.aclose()
+
+
+def test_completion_options_revalidate_mutated_instances():
+    from pydantic import ValidationError
+
+    options = CompletionOptions(max_tokens=8, temperature=0.2)
+    options.max_tokens = 16
+    assert CompletionOptions.model_validate(options).max_tokens == 16
+    options.max_tokens = "invalid token count"
+    with pytest.raises(ValidationError):
+        CompletionOptions.model_validate(options)

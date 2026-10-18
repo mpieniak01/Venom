@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import platform
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -297,7 +299,14 @@ _EXAMPLE_POLICY = json.loads(r"""{
 
 @pytest.fixture
 def policy():
-    return copy.deepcopy(_EXAMPLE_POLICY)
+    # Keep the historical example inputs; lock orchestration runs on the real host.
+    candidate = copy.deepcopy(_EXAMPLE_POLICY)
+    candidate["platform"] = {
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "system": platform.system(),
+        "machine": platform.machine(),
+    }
+    return candidate
 
 
 @pytest.fixture
@@ -307,9 +316,10 @@ def pip_report():
             "version": "1",
             "pip_version": "25.3",
             "environment": {
-                "python_version": "3.12",
-                "platform_system": "Linux",
-                "platform_machine": "x86_64",
+                "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+                "python_full_version": platform.python_version(),
+                "platform_system": platform.system(),
+                "platform_machine": platform.machine(),
             },
             "install": [
                 {
@@ -872,6 +882,19 @@ def test_lock_cannot_omit_requested_direct_package(policy):
         profiles.check_direct_requirements(policy, "light", {"openai": "2.54.0"})
 
 
+def bootstrap_stdout(command, fallback):
+    """Distinguish interpreter identity JSON from the separate isolation probe."""
+    if "-c" in command and "platform.python_version()" in command[-1]:
+        return json.dumps(
+            {
+                "python": platform.python_version(),
+                "system": platform.system(),
+                "machine": platform.machine(),
+            }
+        )
+    return fallback
+
+
 # Bootstrap regressions execute the orchestration with a fake package runner;
 # these tests never install packages or start any application.
 @pytest.fixture
@@ -890,7 +913,7 @@ def bootstrap_runner(monkeypatch):
         stdout = "include-system-site-packages = false\n"
         if "list" in command:
             stdout = "[]"
-        return SimpleNamespace(returncode=0, stdout=stdout)
+        return SimpleNamespace(returncode=0, stdout=bootstrap_stdout(command, stdout))
 
     monkeypatch.setattr(bootstrap, "run", run)
     monkeypatch.setattr(
@@ -964,9 +987,12 @@ def test_bootstrap_existing_legacy_application_is_rejected_before_pip_install(
     def run(command, *, capture=False):
         commands.append(command)
         return SimpleNamespace(
-            stdout='[{"name":"semantic-kernel","version":"1.44.0"}]'
-            if "list" in command
-            else "include-system-site-packages = false\n",
+            stdout=bootstrap_stdout(
+                command,
+                '[{"name":"semantic-kernel","version":"1.44.0"}]'
+                if "list" in command
+                else "include-system-site-packages = false\n",
+            ),
             returncode=0,
         )
 
@@ -986,8 +1012,8 @@ def test_bootstrap_refuses_system_site_packages(
     monkeypatch.setattr(
         bootstrap,
         "run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            stdout="include-system-site-packages = true\n"
+        lambda command, **_kwargs: SimpleNamespace(
+            stdout=bootstrap_stdout(command, "include-system-site-packages = true\n")
         ),
     )
     with pytest.raises(ValueError, match="System-site-packages"):
@@ -1237,9 +1263,12 @@ def test_bootstrap_refuses_profile_downgrade_before_pip_changes(
     def run(command, *, capture=False):
         commands.append(command)
         return SimpleNamespace(
-            stdout='[{"name":"torch","version":"2.13.0"}]'
-            if "list" in command
-            else "include-system-site-packages = false\n",
+            stdout=bootstrap_stdout(
+                command,
+                '[{"name":"torch","version":"2.13.0"}]'
+                if "list" in command
+                else "include-system-site-packages = false\n",
+            ),
             returncode=0,
         )
 
@@ -1260,9 +1289,12 @@ def test_bootstrap_canonicalizes_dotted_distribution_names(
     def run(command, *, capture=False):
         commands.append(command)
         return SimpleNamespace(
-            stdout='[{"name":"boolean.py","version":"5.0"}]'
-            if "list" in command
-            else "include-system-site-packages = false\n",
+            stdout=bootstrap_stdout(
+                command,
+                '[{"name":"boolean.py","version":"5.0"}]'
+                if "list" in command
+                else "include-system-site-packages = false\n",
+            ),
             returncode=0,
         )
 
@@ -1717,20 +1749,27 @@ def test_bootstrap_refresh_cannot_mutate_pip_with_bad_hash_or_low_space(
 
 
 @pytest.mark.parametrize(
-    "profile,package,vulnerable",
+    "profile,package,fixed,vulnerable",
     [
-        ("light", "pyjwt", "2.13.0"),
-        ("light", "pyasn1", "0.6.3"),
-        ("light", "urllib3", "2.7.0"),
-        ("light", "cryptography", "48.0.1"),
-        ("light", "werkzeug", "3.1.6"),
+        ("light", "pyjwt", "2.15.1", "2.13.0"),
+        ("light", "pyasn1", "0.6.4", "0.6.3"),
+        ("light", "urllib3", "2.8.0", "2.7.0"),
+        ("light", "cryptography", "50.0.2", "48.0.1"),
+        ("light", "werkzeug", "3.1.9", "3.1.6"),
     ],
 )
-def test_profile_inputs_reject_versions_fixed_in_qualified_locks(
-    policy, profile, package, vulnerable
+def test_example_profile_inputs_reject_versions_below_security_floors(
+    policy, profile, package, fixed, vulnerable
 ):
-    root = Path(__file__).resolve().parents[1]
-    locked = profiles.read_lock(root / policy["profiles"][profile]["lock"])
+    # These historical floors are example-policy contracts, not current receipts.
+    # The active lock inventory and artifacts are audited separately above.
+    policy["groups"][profile] = [
+        line
+        for line in policy["groups"][profile]
+        if profiles.Requirement(line).name == package
+    ]
+    assert len(policy["groups"][profile]) == 1
+    locked = {package: fixed}
     profiles.check_direct_requirements(policy, profile, locked)
     locked[package] = vulnerable
     with pytest.raises(ValueError, match="Missing or incompatible direct requirement"):

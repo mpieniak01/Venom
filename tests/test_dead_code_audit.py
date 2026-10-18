@@ -145,13 +145,6 @@ def test_cli_with_vulture_missing_binary_reports_unavailable(tmp_path: Path):
 
 def test_cli_metacharacters_remain_literal_arguments(tmp_path):
     """Exercise the real subprocess boundary, not only a mocked command list."""
-    repo = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location(
-        "coverage_gate_security", repo / "scripts/run_new_code_coverage_gate.py"
-    )
-    assert spec and spec.loader
-    coverage_gate = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(coverage_gate)
     argv_file = tmp_path / "argv.json"
     marker = tmp_path / "injected"
     payload = f"scene; touch {marker}; # $(touch {marker})"
@@ -161,9 +154,6 @@ def test_cli_metacharacters_remain_literal_arguments(tmp_path):
         f"Path({str(argv_file)!r}).write_text(json.dumps(sys.argv[1:]))\n"
     )
     executable.chmod(0o700)
-    coverage_gate._run([str(executable), payload])
-    assert json.loads(argv_file.read_text()) == [payload]
-    assert not marker.exists()
     module = _load_module()
     module._run_vulture(
         root=tmp_path,

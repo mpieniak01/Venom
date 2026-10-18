@@ -641,6 +641,92 @@ async def test_lifespan_waits_for_startup_before_unloading(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cancellations", [1, 2])
+async def test_lifespan_joins_loading_thread_after_shutdown_cancellation(
+    monkeypatch, cancellations
+):
+    import threading
+
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    worker_finished = asyncio.Event()
+    finish_loading = threading.Event()
+    events = []
+    loader_task = None
+
+    def load_in_worker():
+        loop.call_soon_threadsafe(started.set)
+        try:
+            if not finish_loading.wait(timeout=5):
+                raise TimeoutError("Test did not release the loading worker")
+            events.append("loaded")
+        finally:
+            loop.call_soon_threadsafe(worker_finished.set)
+
+    async def load():
+        nonlocal loader_task
+        loader_task = asyncio.current_task()
+        await asyncio.to_thread(load_in_worker)
+
+    daemon = SimpleNamespace(unload_all=lambda: events.append("unloaded"))
+    executor = MagicMock()
+    monkeypatch.setattr(runtime_main, "_startup_model_loader", load)
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+    monkeypatch.setattr(runtime_main, "_PROBE_EXECUTOR", executor)
+    context = runtime_main.lifespan(runtime_main.app)
+    await context.__aenter__()
+    await asyncio.wait_for(started.wait(), timeout=5)
+    shutdown = asyncio.create_task(context.__aexit__(None, None, None))
+    try:
+        await asyncio.sleep(0)
+        assert loader_task is not None
+        for _ in range(cancellations):
+            assert shutdown.cancel()
+            await asyncio.sleep(0)
+            assert loader_task.cancelling() == 0
+            assert not shutdown.done()
+            assert events == []
+            executor.shutdown.assert_not_called()
+    finally:
+        finish_loading.set()
+        await asyncio.wait_for(worker_finished.wait(), timeout=5)
+        result = await asyncio.wait_for(
+            asyncio.gather(shutdown, return_exceptions=True), timeout=5
+        )
+
+    assert isinstance(result[0], asyncio.CancelledError)
+    assert events == ["loaded", "unloaded"]
+    executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["startup", "unload"])
+async def test_lifespan_shuts_down_probe_executor_after_cleanup_errors(
+    monkeypatch, failure
+):
+    daemon = SimpleNamespace(
+        unload_all=MagicMock(
+            side_effect=RuntimeError("unload failed") if failure == "unload" else None
+        )
+    )
+    executor = MagicMock()
+    monkeypatch.setattr(
+        runtime_main,
+        "_startup_model_loader",
+        AsyncMock(
+            side_effect=RuntimeError("startup failed") if failure == "startup" else None
+        ),
+    )
+    monkeypatch.setattr(runtime_main, "_daemon", daemon)
+    monkeypatch.setattr(runtime_main, "_PROBE_EXECUTOR", executor)
+    with pytest.raises(RuntimeError, match=f"{failure} failed"):
+        async with runtime_main.lifespan(runtime_main.app):
+            pass
+    daemon.unload_all.assert_called_once()
+    executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+
+@pytest.mark.asyncio
 async def test_lifespan_cleans_up_after_request_context_error(monkeypatch):
     daemon = SimpleNamespace(unload_all=MagicMock())
     executor = MagicMock()

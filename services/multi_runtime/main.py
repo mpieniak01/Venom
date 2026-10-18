@@ -469,15 +469,27 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        # Loading runs in a worker thread: cancellation would not stop that thread.
-        # Join it before unloading so shutdown cannot race model initialization.
+        # Cancelling the startup wrapper cannot stop its loading worker thread.
+        # Shield it and keep joining after cancellation before starting unload.
+        cancellation: asyncio.CancelledError | None = None
         try:
-            await startup_task
+            while True:
+                try:
+                    await asyncio.shield(startup_task)
+                    break
+                except asyncio.CancelledError as error:
+                    if startup_task.cancelled():
+                        raise
+                    cancellation = error
         finally:
-            if _daemon is not None:
-                await asyncio.to_thread(_daemon.unload_all)
-                logger.info("Daemon unloaded")
-            _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+            try:
+                if _daemon is not None:
+                    await asyncio.to_thread(_daemon.unload_all)
+                    logger.info("Daemon unloaded")
+            finally:
+                _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        if cancellation is not None:
+            raise cancellation
 
 
 async def _parse_respond_request(

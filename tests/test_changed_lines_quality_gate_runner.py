@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import sys
 from pathlib import Path
 
 
@@ -52,3 +54,20 @@ def test_fallback_candidates_skips_already_selected_and_respects_cost_order():
         max_count=5,
     )
     assert out == ["tests/test_service_monitor.py"]
+
+
+def test_run_metacharacters_remain_literal_arguments(tmp_path):
+    """Exercise this runner's real subprocess boundary without a shell."""
+    module = _load_module()
+    argv_file = tmp_path / "argv.json"
+    marker = tmp_path / "injected"
+    payload = f"scene; touch {marker}; # $(touch {marker})"
+    executable = tmp_path / "coverage-gate-probe"
+    executable.write_text(
+        f"#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n"
+        f"Path({str(argv_file)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+    )
+    executable.chmod(0o700)
+    module._run([str(executable), payload])
+    assert json.loads(argv_file.read_text()) == [payload]
+    assert not marker.exists()

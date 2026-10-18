@@ -1323,12 +1323,14 @@
       "domain": "misc",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Fast runner regression coverage for literal subprocess arguments."
     },
     {
       "path": "tests/test_check_github_actions_node_runtime.py",

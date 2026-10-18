@@ -57,7 +57,7 @@ def run_check(workflow_dir: Path) -> list[str]:
     return issues
 
 
-def validate_project_runtime(root: Path) -> list[str]:
+def validate_project_runtime(root: Path, workflow_dir: Path | None = None) -> list[str]:
     """One Node pin for native bootstrap, npm, Docker and workflow consumers."""
     try:
         version = (root / "web-next/.nvmrc").read_text().strip()
@@ -82,7 +82,9 @@ def validate_project_runtime(root: Path) -> list[str]:
     image = rf"node:{re.escape(version)}-alpine@sha256:[a-f0-9]{{64}}"
     if not re.search(rf"^ARG NODE_IMAGE={image}$", docker, re.MULTILINE):
         issues.append("frontend Docker image must pin the same Node patch and digest")
-    for path in collect_workflows(root / ".github/workflows"):
+    for path in collect_workflows(
+        workflow_dir if workflow_dir is not None else root / ".github/workflows"
+    ):
         content = path.read_text()
         if "uses: actions/setup-node@" not in content:
             continue
@@ -107,7 +109,7 @@ def main() -> int:
     args = parser.parse_args()
 
     issues = run_check(args.workflow_dir)
-    issues.extend(validate_project_runtime(Path(".")))
+    issues.extend(validate_project_runtime(Path("."), args.workflow_dir))
     if issues:
         print("❌ GitHub Actions Node runtime guard failed:")
         for issue in issues:

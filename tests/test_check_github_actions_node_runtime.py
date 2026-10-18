@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+import pytest
 
 from scripts import check_github_actions_node_runtime as mod
 
@@ -133,3 +136,31 @@ def test_project_node_runtime_rejects_unsupported_major_and_unpinned_npm(tmp_pat
 
 def test_project_node_runtime_fails_closed_without_files(tmp_path):
     assert mod.validate_project_runtime(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "selected_valid", [False, True], ids=["selected-invalid", "selected-valid"]
+)
+def test_cli_honors_selected_workflow_directory(
+    tmp_path, monkeypatch, capsys, selected_valid
+):
+    """The selected directory alone controls project workflow pin validation."""
+    root = _runtime_contract(tmp_path)
+    selected = root / "custom-workflows"
+    selected.mkdir()
+    valid = 'uses: actions/setup-node@v6\nnode-version-file: "web-next/.nvmrc"'
+    invalid = 'uses: actions/setup-node@v6\nnode-version: "24.22.0"'
+    (root / ".github/workflows/ci.yml").write_text(invalid if selected_valid else valid)
+    (selected / "selected.yml").write_text(valid if selected_valid else invalid)
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(
+        sys, "argv", ["node-runtime-guard", "--workflow-dir", str(selected)]
+    )
+
+    assert mod.main() == (0 if selected_valid else 1)
+    output = capsys.readouterr().out
+    if selected_valid:
+        assert "passed" in output
+    else:
+        assert "selected.yml: setup-node must consume web-next/.nvmrc" in output
+        assert "ci.yml:" not in output

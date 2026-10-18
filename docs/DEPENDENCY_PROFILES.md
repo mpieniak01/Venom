@@ -460,7 +460,9 @@ The one explicit repository `.snyk` policy is used for both queries.
 Exit 0 means complete probes without findings, 1 means complete probes with
 findings, and 2 means incomplete/error or an unqualified environment. Coverage
 must equal the expected package count. A failed process cannot reuse a previous
-successful JSON report. Raw results, selected versions, unbounded fallbacks and
+successful JSON report. Preflight failures also replace any prior `report.json`
+with an incomplete `ERROR` report and exit 2. Raw results, selected versions,
+unbounded fallbacks and
 input/lock/policy fingerprints remain in the chosen ignored evidence directory.
 
 A local control using PyJWT 2.13.0 reproduced the same 14 advisory IDs seen in

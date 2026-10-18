@@ -1675,3 +1675,62 @@ def test_bootstrap_security_query_declares_wheel_packaging_dependency(
     assert result["complete"] is True
     assert result["scanned_packages"] == len(packages)
     assert result["observed_components"] == packages
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["policy", "profile", "organization", "generated", "locks", "environment"],
+)
+def test_security_cli_replaces_old_pass_when_preflight_fails(
+    tmp_path, policy, monkeypatch, capsys, failure
+):
+    config = tmp_path / profiles.POLICY
+    config.parent.mkdir()
+    config.write_text("invalid json" if failure == "policy" else json.dumps(policy))
+    directory = tmp_path / "test-results/security"
+    directory.mkdir(parents=True)
+    report_path = directory / "report.json"
+    report_path.write_text(
+        json.dumps({"status": "PASS", "complete": True, "old": True})
+    )
+    if failure in {"locks", "environment"}:
+        monkeypatch.setattr(profiles, "generate", lambda *args, **kwargs: [])
+    if failure == "environment":
+        monkeypatch.setattr(profiles, "audit_locks", lambda *args: {})
+        lock = tmp_path / policy["profiles"]["light"]["lock"]
+        lock.parent.mkdir(parents=True)
+        lock.write_text(
+            "# Profile policy SHA256: "
+            + profiles.profile_policy_hash(policy, "light")
+            + "\nexample==1.2.3\n"
+        )
+
+    def must_not_scan(*args, **kwargs):
+        pytest.fail("Failed preflight must not query the security scanner")
+
+    monkeypatch.setattr(profiles, "scan_security_probe", must_not_scan)
+    monkeypatch.setattr(
+        profiles.sys,
+        "argv",
+        [
+            "dependency_profiles.py",
+            "audit-security",
+            "--root",
+            str(tmp_path),
+            "--profile",
+            "missing" if failure == "profile" else "light",
+            "--python",
+            str(tmp_path / "missing-python"),
+            "--snyk-org",
+            " " if failure == "organization" else "mpieniak01",
+            "--out-dir",
+            "test-results/security",
+        ],
+    )
+    assert profiles.main() == 2
+    report = json.loads(report_path.read_text())
+    assert report["status"] == "ERROR"
+    assert report["complete"] is False
+    assert report["error"]
+    assert "old" not in report
+    assert "Dependency profile ERROR" in capsys.readouterr().err

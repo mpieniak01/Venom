@@ -835,7 +835,25 @@ def main() -> int:
     parser.add_argument("--snyk", default="snyk")
     parser.add_argument("--snyk-org")
     args = parser.parse_args()
+    security_directory: Path | None = None
     try:
+        if args.action == "audit-security":
+            if args.out_dir is None:
+                raise ValueError("audit-security requires --out-dir for local evidence")
+            candidate = safe_path(args.root, str(args.out_dir))
+            if not any(
+                candidate.is_relative_to((args.root / name).resolve())
+                for name in ("docs_dev", "test-results")
+            ):
+                raise ValueError(
+                    "Security evidence must remain in docs_dev or test-results"
+                )
+            security_directory = candidate
+            security_directory.mkdir(parents=True, exist_ok=True)
+            # Invalidate prior qualification before any policy/environment checks.
+            (security_directory / "report.json").unlink(missing_ok=True)
+            if not args.snyk_org or not args.snyk_org.strip():
+                raise ValueError("audit-security requires --snyk-org matching SCM")
         policy = load_policy(args.root)
         if args.profile not in policy["profiles"]:
             raise ValueError(f"Unknown profile: {args.profile}")
@@ -854,29 +872,17 @@ def main() -> int:
             print(json.dumps(audit_locks(args.root, policy), sort_keys=True))
             return 0
         if args.action == "audit-security":
-            if not args.snyk_org:
-                raise ValueError("audit-security requires --snyk-org matching SCM")
-            if args.out_dir is None:
-                raise ValueError("audit-security requires --out-dir for local evidence")
-            directory = safe_path(args.root, str(args.out_dir))
-            if not any(
-                directory.is_relative_to((args.root / name).resolve())
-                for name in ("docs_dev", "test-results")
-            ):
-                raise ValueError(
-                    "Security evidence must remain in docs_dev or test-results"
-                )
+            assert security_directory is not None
             report = audit_security_inputs(
                 args.root,
                 policy,
                 args.profile,
                 args.python,
-                directory,
+                security_directory,
                 args.snyk,
                 args.snyk_org,
             )
-            directory.mkdir(parents=True, exist_ok=True)
-            (directory / "report.json").write_text(
+            (security_directory / "report.json").write_text(
                 json.dumps(report, indent=2, sort_keys=True) + "\n"
             )
             print(
@@ -885,7 +891,7 @@ def main() -> int:
                         "profile": args.profile,
                         "status": report["status"],
                         "complete": report["complete"],
-                        "report": str(directory / "report.json"),
+                        "report": str(security_directory / "report.json"),
                     }
                 )
             )
@@ -898,6 +904,26 @@ def main() -> int:
         return int(report["status"] != "PASS")
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         print(f"Dependency profile ERROR: {error}", file=sys.stderr)
+        if args.action == "audit-security":
+            if security_directory is not None:
+                try:
+                    (security_directory / "report.json").write_text(
+                        json.dumps(
+                            {
+                                "profile": args.profile,
+                                "organization": args.snyk_org,
+                                "status": "ERROR",
+                                "complete": False,
+                                "error": str(error),
+                            },
+                            indent=2,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                except OSError as report_error:
+                    print(f"Security report ERROR: {report_error}", file=sys.stderr)
+            return 2
         return 1
 
 

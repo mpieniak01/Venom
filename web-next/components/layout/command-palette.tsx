@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
 import { Command, Loader2, Search } from "lucide-react";
@@ -28,6 +28,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
   const [running, setRunning] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const t = useTranslation();
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const { language } = useLanguage();
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
         label: t("commandPalette.openQuickActions"),
         description: t("commandPalette.openQuickActionsDesc"),
         category: t("commandPalette.queueCategory"),
-        run: async () => {
+        run: () => {
           onOpenQuickActions();
         },
       },
@@ -101,7 +102,17 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-theme-overlay-strong backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in data-[state=closed]:fade-out" />
-        <Dialog.Content className="card-shell fixed left-1/2 top-24 z-50 w-full max-w-3xl -translate-x-1/2 bg-theme-overlay-strong p-6 shadow-2xl focus:outline-none">
+        <Dialog.Content
+          onOpenAutoFocus={() => {
+            returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            if (returnFocusRef.current?.isConnected) {
+              event.preventDefault();
+              returnFocusRef.current.focus();
+            }
+          }}
+          className="card-shell fixed left-1/2 top-24 z-50 w-full max-w-3xl -translate-x-1/2 bg-theme-overlay-strong p-6 shadow-2xl focus:outline-none">
           <div className="mb-4 flex items-center gap-3">
             <div className="rounded-2xl bg-theme-overlay p-2 text-violet-200">
               <Command className="h-5 w-5" />
@@ -116,7 +127,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
           <div className="flex items-center gap-2 rounded-2xl box-base px-4 py-2 text-sm text-theme-primary">
             <Search className="h-4 w-4 text-theme-muted" />
             <input
-              autoFocus
+              aria-label={t("commandPalette.searchPlaceholder")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="w-full bg-transparent text-sm outline-none placeholder:text-theme-muted"

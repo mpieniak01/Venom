@@ -155,8 +155,15 @@ test.describe("Models Page Tabs", () => {
     // Verify operational sections are accessible
     await expect(page.getByText(/Runtime Control/i).or(page.getByText(/Sterowanie Runtime/i))).toBeVisible();
 
-    // Verify activate button exists (operational action preserved)
-    await expect(page.getByRole("button", { name: /Aktywuj/i })).toBeVisible();
+    // Scope activation to the installed model, separate from runtime selection.
+    const installedModel = page.locator(".box-base").filter({
+      has: page.getByText("test-model", { exact: true }),
+    });
+    await expect(installedModel).toHaveCount(1);
+    await expect(installedModel.getByRole("button", {
+      name: "Aktywuj",
+      exact: true,
+    })).toBeVisible();
 
     // Verify search functionality exists
     await expect(page.getByPlaceholder(/Model name/i).or(page.getByPlaceholder(/Nazwa modelu/i))).toBeVisible();

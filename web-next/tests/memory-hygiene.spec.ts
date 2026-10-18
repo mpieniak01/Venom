@@ -2,17 +2,19 @@ import { expect, test } from "@playwright/test";
 
 test.describe("Brain Hygiene Tab", () => {
     test.beforeEach(async ({ page }) => {
-        // Force English for deterministic testing
-        await page.addInitScript(() => {
-            window.localStorage.setItem("venom-language", "en");
-        });
+        await page.goto("/brain");
+        await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true");
+
+        // Choose the UI language after hydration instead of relying on bootstrap storage.
+        await page.getByRole("button", {
+            name: /Przełącz język|Switch language|Sprache wechseln/i,
+        }).click();
+        await page.getByRole("button", { name: "EN English", exact: true }).click();
+        await expect(page.locator("html")).toHaveAttribute("lang", "en");
     });
 
     test("should be accessible from Brain view", async ({ page }) => {
-        // 1. Go to Brain
-        await page.goto("/brain");
-
-        // 2. Find hygiene tab using data-testid for more reliable selection
+        // Find the hygiene tab after the shared navigation and language setup.
         const hygieneTab = page.getByTestId("hygiene-tab");
 
         // Ensure tab button exists
@@ -22,12 +24,11 @@ test.describe("Brain Hygiene Tab", () => {
         await hygieneTab.click();
 
         // 4. Verify panel content loads
-        await expect(page.getByText("Lesson Statistics")).toBeVisible();
-        await expect(page.getByText("Auto Hygiene")).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Lesson Statistics", exact: true })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Auto Hygiene", exact: true })).toBeVisible();
     });
 
     test("should display pruning controls", async ({ page }) => {
-        await page.goto("/brain");
         await page.getByTestId("hygiene-tab").click();
 
         // Check for specific buttons/inputs
@@ -35,7 +36,7 @@ test.describe("Brain Hygiene Tab", () => {
         await expect(page.getByPlaceholder("Tag name")).toBeVisible();
 
         // Verify actions buttons exist (using button text, not label)
-        await expect(page.getByRole("button", { name: "Run" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Run", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Clear", exact: true })).toBeVisible();
     });
 });

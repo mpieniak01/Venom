@@ -216,9 +216,7 @@ function usePolling<T>(
   const fallbackEntry = useMemo<PollingEntry<T>>(
     () => ({
       state: { data: null, loading: true, refreshing: false, error: null },
-      fetcher: async () => {
-        throw new Error("Polling entry not initialized.");
-      },
+      fetcher: () => Promise.reject(new Error("Polling entry not initialized.")),
       interval: 0,
       listeners: new Set(),
       fetching: false,

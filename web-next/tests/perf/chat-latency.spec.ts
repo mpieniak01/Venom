@@ -119,7 +119,21 @@ async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise
         }
       }
     }
-    await page.waitForTimeout(250);
+    try {
+      await page.waitForFunction(
+        ({ previousLabel, previousDisabled }) => {
+          const candidate = document.querySelector<HTMLButtonElement>('[data-testid="llm-model-select"]');
+          if (!candidate) return true;
+          const disabled = candidate.disabled || candidate.getAttribute("aria-disabled") === "true";
+          return (candidate.textContent ?? "").trim() !== previousLabel || disabled !== previousDisabled;
+        },
+        { previousLabel: label, previousDisabled: isDisabled },
+        { timeout: Math.max(1, waitDeadline - Date.now()) },
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+      break;
+    }
   }
 
   if (isDisabled || isUnavailable) {
@@ -138,29 +152,28 @@ async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise
 }
 
 async function waitForResponseLatency(
-  page: Page,
   responseLocator: Locator,
   initialResponses: number,
   timeoutMs: number,
   targetName: string,
 ): Promise<number> {
-  const deadline = Date.now() + timeoutMs;
   const startedAt = performance.now();
   let baseline = initialResponses;
-  while (Date.now() < deadline) {
-    const count = await responseLocator.count();
-    if (count > baseline) {
-      return performance.now() - startedAt;
-    }
-    if (count < baseline) {
-      baseline = count;
-    }
-    await page.waitForTimeout(200);
+  try {
+    await expect.poll(async () => {
+      const count = await responseLocator.count();
+      if (count > baseline) return true;
+      if (count < baseline) baseline = count;
+      return false;
+    }, { timeout: timeoutMs, intervals: [50] }).toBe(true);
+    return performance.now() - startedAt;
+  } catch (error) {
+    const latestText = ((await responseLocator.last().textContent().catch(() => "")) ?? "").trim();
+    throw new Error(
+      `${targetName}: brak nowej odpowiedzi w strumieniu (assistant_count=${baseline}, latest_assistant="${latestText.slice(0, 120)}")`,
+      { cause: error },
+    );
   }
-  const latestText = ((await responseLocator.last().textContent().catch(() => "")) ?? "").trim();
-  throw new Error(
-    `${targetName}: brak nowej odpowiedzi w strumieniu (assistant_count=${baseline}, latest_assistant="${latestText.slice(0, 120)}")`,
-  );
 }
 
 async function measureLatency(page: Page, target: TargetConfig) {
@@ -201,7 +214,7 @@ async function measureLatency(page: Page, target: TargetConfig) {
   const timeoutMs = target.responseTimeoutMs ?? 30_000;
   let latency: number;
   try {
-    latency = await waitForResponseLatency(page, responseLocator, initialResponses, timeoutMs, target.name);
+    latency = await waitForResponseLatency(responseLocator, initialResponses, timeoutMs, target.name);
   } catch (error) {
     if (target.optional) {
       test.skip(

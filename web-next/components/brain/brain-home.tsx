@@ -242,7 +242,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       setMemoryActionPending(entryId);
       await pinMemoryEntry(entryId, pinned);
       pushToast(pinned ? t("brain.toasts.pinSuccess") : t("brain.toasts.unpinSuccess"), "success");
-      refreshMemoryGraph();
+      void refreshMemoryGraph();
     } catch {
       pushToast(t("brain.toasts.pinError"), "error");
     } finally {
@@ -256,7 +256,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       setMemoryActionPending(entryId);
       await deleteMemoryEntry(entryId);
       handleClearSelection();
-      refreshMemoryGraph();
+      void refreshMemoryGraph();
       pushToast(t("brain.toasts.deleteSuccess"), "success");
     } catch {
       pushToast(t("brain.toasts.deleteError"), "error");

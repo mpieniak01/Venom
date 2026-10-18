@@ -71,6 +71,32 @@ describe("shared API polling", () => {
   });
 });
 
+describe("explicit background refresh", () => {
+  it("contains a deferred manual refresh rejection in hook error state", async () => {
+    globalThis.fetch = async () => Response.json([]);
+    const hook = renderHook(() => useHistory(81003, 60_000));
+    await waitFor(() => assert.deepEqual(hook.result.current.data, []));
+    let rejectRefresh!: (error: Error) => void;
+    let requests = 0;
+    globalThis.fetch = () => {
+      requests += 1;
+      return new Promise<Response>((_resolve, reject) => { rejectRefresh = reject; });
+    };
+    let refresh!: Promise<void>;
+    act(() => { refresh = hook.result.current.refresh(); });
+    assert.equal(requests, 1);
+    await act(async () => {
+      rejectRefresh(new Error("manual refresh offline"));
+      await refresh;
+    });
+    assert.equal(hook.result.current.error, "manual refresh offline");
+    assert.equal(hook.result.current.loading, false);
+    assert.deepEqual(hook.result.current.data, []);
+    assert.equal(requests, 1);
+    hook.unmount();
+  });
+});
+
 describe("task stream polling fallback", () => {
   for (const completion of ["terminal", "unmount"] as const) {
     it(`handles SSE/fetch errors and releases the retry on ${completion}`, async () => {

@@ -54,8 +54,8 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
     try {
       await fn();
       setMessage(t("quickActions.successMessage", { action: name }));
-      refreshQueue();
-      refreshTasks();
+      void refreshQueue();
+      void refreshTasks();
     } catch (err) {
       setMessage(
         err instanceof Error ? err.message : t("quickActions.errorMessage", { action: name }),

@@ -328,7 +328,8 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await page.goto("/");
     const quickActions = page.getByTestId("topbar-quick-actions");
     await expect(quickActions).toBeVisible();
-    await quickActions.click({ force: true });
+    await expect(quickActions).toBeEnabled();
+    await quickActions.click();
     await expect(page.getByTestId("quick-actions-sheet")).toBeVisible();
     const offline = page.getByTestId("queue-offline-state");
     await expect

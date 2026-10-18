@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("VoiceOrb smoke", () => {
+test.describe("Voice controls with disabled audio", () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem("venom-language", "pl");
+    });
     await page.route("**/api/v1/audio/status", (route) =>
       route.fulfill({
         status: 200,
@@ -22,60 +25,59 @@ test.describe("VoiceOrb smoke", () => {
     );
   });
 
-  test("voice orb is visible on /voice page in voice mode", async ({ page }) => {
+  test("voice page keeps text controls visible and hides the orb when audio is disabled", async ({ page }) => {
     await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
-    // Verify the page loaded and the core voice control chrome is rendered —
-    // confirms no JS crash during mount regardless of audio env-var config.
-    const toggleButton = page.getByRole("button", { name: /Voice|Text/i }).first();
+    // The disabled-audio fixture keeps the page in text mode.
+    const toggleButton = page.getByTestId("voice-mode-toggle").getByRole("button", { name: "Text", exact: true });
     await toggleButton.waitFor({ state: "visible", timeout: 10000 });
     await expect(toggleButton).toBeVisible();
 
-    // When audio is enabled the orb renders in voice mode; when disabled it does
-    // not. Either way, if the page loaded the data-orb-state attribute must have
-    // a valid value from VoiceOrbState when the orb is present.
-    const orbContainer = page.locator("[data-orb-state]");
-    const count = await orbContainer.count();
-    if (count > 0) {
-      const orbStateAttr = await orbContainer.first().getAttribute("data-orb-state");
-      expect(["offline","ready","recording","stt","thinking","tts","complete","error"]).toContain(orbStateAttr);
-    }
+    await expect(toggleButton).toBeDisabled();
+    await expect(page.getByText("Kanał audio wyłączony w konfiguracji.", { exact: true })).toBeVisible();
+    await expect(page.locator("[data-orb-state]")).toHaveCount(0);
   });
 
-  test("voice page renders controls without layout shift from orb", async ({ page }) => {
+  test("voice page keeps disabled-audio controls visible without an orb", async ({ page }) => {
     await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
-    // Push-to-talk button must always be accessible
-    const pttButton = page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i });
+    // The recording control stays visible, but disabled, in text mode.
+    const pttButton = page.getByRole("button", { name: "🎙 Czat tekstowy", exact: true });
     await pttButton.waitFor({ state: "visible", timeout: 10000 });
 
-    // Voice/Text toggle must be visible
-    const toggleButton = page.getByRole("button", { name: /Voice|Text/i }).first();
+    await expect(pttButton).toBeDisabled();
+
+    // The text-mode toggle remains visible even though audio is disabled.
+    const toggleButton = page.getByTestId("voice-mode-toggle").getByRole("button", { name: "Text", exact: true });
     await expect(toggleButton).toBeVisible();
 
     // TTS mute button must be visible
-    await expect(page.getByRole("button", { name: /TTS/i }).first()).toBeVisible();
+    const ttsButton = page.getByRole("button", { name: "TTS: on", exact: true });
+    await expect(ttsButton).toBeVisible();
+    await expect(ttsButton).toBeDisabled();
   });
 
-  test("voice page desktop layout - no overlap between orb and controls", async ({
+  test("voice page desktop layout - disabled-audio controls stay visible", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
-    const pttButton = page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i });
+    const pttButton = page.getByRole("button", { name: "🎙 Czat tekstowy", exact: true });
     await pttButton.waitFor({ state: "visible", timeout: 10000 });
     await expect(pttButton).toBeVisible();
+    await expect(pttButton).toBeDisabled();
     await page.screenshot({ path: "test-results/voice-orb-desktop.png", fullPage: false });
   });
 
-  test("voice page mobile layout - controls remain accessible", async ({ page }) => {
+  test("voice page mobile layout - disabled-audio controls stay visible", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/voice", { waitUntil: "domcontentloaded" });
 
-    const pttButton = page.getByRole("button", { name: /Hold to talk|Przytrzymaj|Gedrückt/i });
+    const pttButton = page.getByRole("button", { name: "🎙 Czat tekstowy", exact: true });
     await pttButton.waitFor({ state: "visible", timeout: 10000 });
     await expect(pttButton).toBeVisible();
+    await expect(pttButton).toBeDisabled();
     await page.screenshot({ path: "test-results/voice-orb-mobile.png", fullPage: false });
   });
 });

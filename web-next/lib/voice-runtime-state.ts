@@ -40,8 +40,8 @@ type ActiveServerControlPayload = {
   active_server?: string | null;
   runtime_id?: string | null;
   active_model?: string | null;
-  runtime_switch_gate?: RuntimeSwitchGatePayload;
-  last_runtime_switch?: LastRuntimeSwitchPayload;
+  runtime_switch_gate?: Exclude<RuntimeSwitchGatePayload, undefined>;
+  last_runtime_switch?: Exclude<LastRuntimeSwitchPayload, undefined>;
 } | null;
 
 type VoiceRuntimeStatePayload = {

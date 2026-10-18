@@ -942,7 +942,7 @@ export const ChatComposer = memo(
             </div>
           </div>
           <div className={secondaryRowClassName}>
-            {adapterAuditError ? <p role="status" className="text-[11px] text-amber-300">{adapterAuditError}</p> : null}
+            {adapterAuditError ? <output className="block text-[11px] text-amber-300">{adapterAuditError}</output> : null}
             {showActiveRuntimeModelContext ? (
               <p className="text-[11px] text-hint">
                 <span className="font-medium">{t("cockpit.models.activeRuntimeModelLabel")}:</span>{" "}

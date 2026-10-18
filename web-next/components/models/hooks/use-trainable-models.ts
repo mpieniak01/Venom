@@ -86,7 +86,7 @@ export function useTrainableModels() {
       }
     }
 
-    fetchTrainableModels();
+    void fetchTrainableModels();
   }, []);
 
   const refresh = async () => {

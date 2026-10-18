@@ -250,13 +250,13 @@ export function useCockpitLogic({
         hadActiveStreamsRef.current = hasActive;
 
         if (shouldRefreshOnFinish) {
-            data.refresh.history();
-            data.refresh.tasks();
-            refreshSessionHistory();
-            data.refresh.metrics();
-            data.refresh.tokenMetrics();
-            data.refresh.modelsUsage();
-            data.refresh.services();
+            void data.refresh.history();
+            void data.refresh.tasks();
+            void refreshSessionHistory();
+            void data.refresh.metrics();
+            void data.refresh.tokenMetrics();
+            void data.refresh.modelsUsage();
+            void data.refresh.services();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [taskStreams, interactive.optimistic.optimisticRequests]);
@@ -518,7 +518,7 @@ export function useCockpitLogic({
     const handleSetActiveHiddenPrompt = useCallback(async (payload: Parameters<typeof setActiveHiddenPrompt>[0]) => {
         try {
             await setActiveHiddenPrompt(payload);
-            refreshActiveHiddenPrompts();
+            void refreshActiveHiddenPrompts();
         } catch (e) {
             console.error("Failed to set active hidden prompt:", e);
         }

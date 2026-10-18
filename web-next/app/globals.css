@@ -393,9 +393,9 @@ a {
    ========================================= */
 
 .glass-panel {
-  background: var(--bg-panel) !important;
-  border: var(--border-glass) !important;
-  backdrop-filter: blur(16px) !important;
+  background: var(--bg-panel);
+  border: var(--border-glass);
+  backdrop-filter: blur(16px);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-card);
   position: relative;
@@ -459,18 +459,18 @@ a {
 }
 
 .kpi-panel {
-  padding: 1.5rem !important;
-  border: 1px solid var(--primary-dim) !important;
-  background: linear-gradient(135deg, var(--bg-panel), var(--surface-muted)) !important;
+  padding: 1.5rem;
+  border: 1px solid var(--primary-dim);
+  background: linear-gradient(135deg, var(--bg-panel), var(--surface-muted));
 }
 
 .queue-panel {
-  border: 1px solid var(--primary-dim) !important;
+  border: 1px solid var(--primary-dim);
   box-shadow: 0 0 30px var(--primary-dim);
 }
 
 .command-console-panel {
-  padding: 1.25rem 1.5rem !important;
+  padding: 1.25rem 1.5rem;
 }
 
 /* =========================================
@@ -803,16 +803,21 @@ a {
    ========================================= */
 .sidebar,
 aside {
-  background-color: var(--bg-sidebar) !important;
-  backdrop-filter: none !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
-  border-left: none !important;
-  border-radius: 0 !important;
+  background-color: var(--bg-sidebar);
+  backdrop-filter: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: none;
+  border-radius: 0;
+}
+
+/* Keep aside corners square while preserving the existing panel color and blur cascade. */
+aside.glass-panel {
+  border-radius: 0;
 }
 
 aside.glass-panel::after,
 nav.glass-panel::after {
-  display: none !important;
+  display: none;
 }
 
 
@@ -841,18 +846,18 @@ pre,
 
 input,
 textarea {
-  background-color: var(--ui-surface) !important;
-  border: 1px solid var(--ui-border) !important;
-  color: var(--text-primary) !important;
-  font-family: var(--font-tech) !important;
-  border-radius: 4px !important;
+  background-color: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  color: var(--text-primary);
+  font-family: var(--font-tech);
+  border-radius: 4px;
 }
 
 input:focus,
 textarea:focus {
-  border-color: var(--primary) !important;
-  outline: none !important;
-  box-shadow: 0 0 10px var(--primary-dim) !important;
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 10px var(--primary-dim);
 }
 
 .terminal {

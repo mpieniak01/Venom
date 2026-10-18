@@ -41,8 +41,11 @@ export function ControlPanels({
   const [kernel, setKernel] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("");
   const [provider, setProvider] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
-  const handleApply = () => {
+  const handleApply = async () => {
+    if (isLoading || applying) return;
     const changes: ConfigurationChange[] = [];
 
     if (decisionStrategy && decisionStrategy !== systemState?.decision_strategy) {
@@ -96,7 +99,15 @@ export function ControlPanels({
     }
 
     if (changes.length > 0) {
-      onApply({ changes, dry_run: false, force: false });
+      setApplying(true);
+      setApplyError(null);
+      try {
+        await onApply({ changes, dry_run: false, force: false });
+      } catch (error) {
+        setApplyError(error instanceof Error ? error.message : t("workflowControl.status.failed"));
+      } finally {
+        setApplying(false);
+      }
     }
   };
 
@@ -259,13 +270,14 @@ export function ControlPanels({
         </CardContent>
       </Card>
 
+      {applyError ? <p role="alert">{t("workflowControl.common.errorTitle")}: {applyError}</p> : null}
       {/* Apply Button */}
       <Button
         onClick={handleApply}
-        disabled={isLoading}
+        disabled={isLoading || applying}
         className="w-full"
       >
-        {isLoading ? t("workflowControl.buttons.applying") : t("workflowControl.buttons.planApply")}
+        {isLoading || applying ? t("workflowControl.buttons.applying") : t("workflowControl.buttons.planApply")}
       </Button>
     </div>
   );

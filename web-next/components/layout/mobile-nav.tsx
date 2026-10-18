@@ -74,7 +74,7 @@ export function MobileNav() {
     setCostLoading(true);
     try {
       await setCostMode(!(costMode?.enabled ?? false));
-      refreshCost();
+      void refreshCost();
     } catch (err) {
       console.error("Cost toggle failed:", err);
     } finally {
@@ -87,7 +87,7 @@ export function MobileNav() {
     setAutonomyLoading(true);
     try {
       await setAutonomy(value);
-      refreshAutonomy();
+      void refreshAutonomy();
     } catch (err) {
       console.error("Autonomy change failed:", err);
     } finally {

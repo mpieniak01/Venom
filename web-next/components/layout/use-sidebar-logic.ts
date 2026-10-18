@@ -76,7 +76,7 @@ export function useSidebarLogic(t: (key: string, options?: Record<string, string
         setStatusMessage(null);
         try {
             await apiSetCostMode(targetState);
-            refreshCost();
+            void refreshCost();
             setStatusMessage(
                 t("sidebar.messages.costSuccess", {
                     mode: targetState ? t("sidebar.cost.pro") : t("sidebar.cost.eco"),
@@ -97,7 +97,7 @@ export function useSidebarLogic(t: (key: string, options?: Record<string, string
         setStatusMessage(null);
         try {
             await apiSetAutonomy(level);
-            refreshAutonomy();
+            void refreshAutonomy();
             setStatusMessage(t("sidebar.messages.autonomySuccess", { level }));
         } catch (error) {
             setSelectedAutonomy(prevLevel);

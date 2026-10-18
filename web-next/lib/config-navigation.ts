@@ -39,7 +39,7 @@ export function parseConfigNavigation(search: string): ConfigNavigation {
     tab: Object.hasOwn(TAB_ALIASES, requested) ? TAB_ALIASES[requested] : "services",
     invalidTab: !Object.hasOwn(TAB_ALIASES, requested),
     integration: params.get("integration")?.slice(0, 200) || null,
-    resource: resource && /^[a-zA-Z0-9][a-zA-Z0-9_.:\/-]{0,199}$/.test(resource) ? resource : null,
+    resource: resource && /^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,199}$/.test(resource) ? resource : null,
     scope: scope === "internal" || scope === "external" ? scope : "all",
     visibility: params.get("visibility") === "all" ? "all" : "environment",
     source: allowedFilter(params.get("source"), ["local", "cloud", "hybrid"]),

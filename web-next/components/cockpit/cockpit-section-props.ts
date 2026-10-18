@@ -144,7 +144,7 @@ export function useCockpitSectionProps() {
     [logic.chatUi],
   );
   const onActivateModel = useCallback(
-    async (model: string) => {
+    (model: string) => {
       if (isCockpitRuntimeDisabled(selectedRuntimeTarget)) {
         interactive.setters.setMessage(t("cockpit.models.runtimeUnavailable"));
         return false;

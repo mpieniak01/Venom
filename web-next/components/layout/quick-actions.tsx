@@ -39,6 +39,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
     data: queue,
     refresh: refreshQueue,
     loading: queueLoading,
+    refreshing: queueRefreshing,
   } = useQueueStatus();
   const { refresh: refreshTasks } = useTasks();
   const [message, setMessage] = useState<string | null>(null);
@@ -47,18 +48,17 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   const t = useTranslation();
   const queueOfflineMessage = t("quickActions.offlineMessage");
 
-  const runAction = async (name: string, fn: () => Promise<unknown>) => {
+  const runAction = async (action: QuickActionItem) => {
     if (running) return;
-    setRunning(name);
+    setRunning(action.id);
     setMessage(null);
     try {
-      await fn();
-      setMessage(t("quickActions.successMessage", { action: name }));
-      void refreshQueue();
-      void refreshTasks();
+      await action.handler();
+      setMessage(t("quickActions.successMessage", { action: action.label }));
+      await Promise.all([refreshQueue(), refreshTasks()]);
     } catch (err) {
       setMessage(
-        err instanceof Error ? err.message : t("quickActions.errorMessage", { action: name }),
+        err instanceof Error ? err.message : t("quickActions.errorMessage", { action: action.label }),
       );
     } finally {
       setRunning(null);
@@ -107,12 +107,13 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   );
 
   const handleQuickAction = async (action: QuickActionItem) => {
+    if (running || queueRefreshing) return;
     if (!queueAvailable) {
       setMessage(queueOfflineMessage);
       return;
     }
     if (action.confirm && !confirm(action.confirm)) return;
-    await runAction(action.label, action.handler);
+    await runAction(action);
   };
 
   const badgeLabel = (action: QuickActionItem) => {

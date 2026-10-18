@@ -168,7 +168,8 @@ async function waitForResponseLatency(
     }, { timeout: timeoutMs, intervals: [50] }).toBe(true);
     return performance.now() - startedAt;
   } catch (error) {
-    const latestText = ((await responseLocator.last().textContent().catch(() => "")) ?? "").trim();
+    const responseTexts = await responseLocator.allTextContents().catch(() => []);
+    const latestText = (responseTexts.at(-1) ?? "").trim();
     throw new Error(
       `${targetName}: brak nowej odpowiedzi w strumieniu (assistant_count=${baseline}, latest_assistant="${latestText.slice(0, 120)}")`,
       { cause: error },
@@ -255,4 +256,31 @@ test.describe("latencja chatu", () => {
       await measureLatency(page, target);
     });
   }
+});
+
+test.describe("diagnostyka timeoutu odpowiedzi", () => {
+  test.setTimeout(10_000);
+
+  test("brak elementu odpowiedzi nie uruchamia kolejnego oczekiwania", async ({ page }) => {
+    await page.setContent("<main>Brak odpowiedzi</main>");
+    const responseLocator = page.getByTestId("conversation-bubble-assistant");
+
+    await expect(waitForResponseLatency(responseLocator, 0, 25, "Diagnostyka")).rejects.toMatchObject({
+      message: 'Diagnostyka: brak nowej odpowiedzi w strumieniu (assistant_count=0, latest_assistant="")',
+      cause: expect.any(Error),
+    });
+  });
+
+  test("zapisuje ostatnią istniejącą treść po wygaśnięciu limitu", async ({ page }) => {
+    await page.setContent(`
+      <div data-testid="conversation-bubble-assistant">Poprzednia odpowiedź</div>
+      <div data-testid="conversation-bubble-assistant">  Ostatnia odpowiedź  </div>
+    `);
+    const responseLocator = page.getByTestId("conversation-bubble-assistant");
+
+    await expect(waitForResponseLatency(responseLocator, 2, 25, "Diagnostyka")).rejects.toMatchObject({
+      message: 'Diagnostyka: brak nowej odpowiedzi w strumieniu (assistant_count=2, latest_assistant="Ostatnia odpowiedź")',
+      cause: expect.any(Error),
+    });
+  });
 });

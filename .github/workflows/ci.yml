@@ -8,7 +8,8 @@ on:
       - "docs/**"
       - "modules/**"
   pull_request:
-    branches: [main]
+    # The Sonar follow-up is reviewed as a stack before task 266 reaches main.
+    branches: [main, codex/266-maf-runtime-profiles]
     paths-ignore:
       - "**/*.md"
       - "docs/**"

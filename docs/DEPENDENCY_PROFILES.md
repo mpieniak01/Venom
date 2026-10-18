@@ -308,13 +308,22 @@ Other heavy profiles reuse the recorded clean-install, inventory, `pip check`
 and minimal native probes. This does not establish a performance budget, Docker
 runtime acceptance, Academy training acceptance or native Gemma4/Ollama audio.
 
-Security scan completion is separate from disposition. The recorded scans found
-0 npm production issues, 5 High npm development dependencies, 10 High/6 Medium
-findings in Full and 20 High/19 Medium/2 Low in vLLM. No new High/Critical IDs
-were observed in Full versus the recorded operator inventory; that comparison
-does not make those findings acceptable. Risk acceptance is not granted, and
-this local snapshot does not authorize publication, merge or operator rollout.
-The exact scanned inventories/locks and raw results remain in local task records.
+Security scan completion is separate from disposition. Complete local installed-
+inventory scans recorded CI: 0 findings (166 installed versions, with one disclosed
+extra unresolved `boolean.py` alias), Academy: 0 Critical/10 High/6 Medium/1 Low
+(99 installed versions), Full: 10 High/6 Medium, and vLLM: 20 High/19 Medium/2 Low.
+The npm production scan found 0 issues; the development graph has 5 High packages.
+Do not add overlapping profile counts together or treat missing coverage as zero.
+No new High/Critical IDs were observed in these candidate scans compared with the
+recorded operator inventory. That comparison is not risk acceptance. This local
+snapshot does not authorize publication, merge or operator rollout. Exact scanned
+inventories/locks and raw results remain in local task records.
+
+Academy's Datasets 5.1.0 permits patched fsspec 2026.7.0; W&B 0.29.0 also removes
+a recorded High. Two independent canonical installs have identical inventories
+and installed RECORD/METADATA, successful `pip check`, and a small local dataset/
+CPU-configuration smoke. No model or training was run. W&B 0.29.0 is the tested
+security fix; it is not the newest available stable W&B release.
 
 
 ### Own daemon model-loading boundary
@@ -331,3 +340,22 @@ This follows the [Transformers model-loading security guidance](https://github.c
 The recorded High findings remain open. Their advisory-specific exposure and
 remaining release decisions must be assessed separately; local-only loading does
 not make an untrusted cached file safe.
+
+
+## Task 266 scope after the 18 October decision
+
+Further work is limited to dependency vulnerabilities, Snyk completeness and
+stability, and compatible stable releases. SonarQube/SonarCloud analysis, quality
+refactoring and remediation belong to a separate task/PR. Existing repository CI
+checks remain enabled; this scope split does not bypass branch protection.
+Completed MAF/runtime fixes remain part of the branch, with no additional feature
+or model-stress work planned for this phase.
+
+An exact pin means qualified compatibility, not necessarily the newest release.
+The current stable-version discovery still has newer unqualified candidates,
+including W&B, Torch and Transformers. Do not call the whole stack latest stable
+until their dependency constraints and minimal consumer probes are resolved.
+Known compatibility exceptions remain explicit: PyArrow25/NumPy1 for actual RAG,
+Ruff matching the existing pre-commit policy, and Academy's fsspec upper bound
+from Datasets. Stable releases and package advisories must be checked at the
+qualification date; discovery metadata alone is not runtime or security acceptance.

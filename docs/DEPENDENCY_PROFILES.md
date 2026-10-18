@@ -82,7 +82,8 @@ python scripts/dev/dependency_profiles.py audit-locks
 Generation and resolution must produce matching Python 3.14 inputs, lock files and
 receipts before installation. A lock-integrity result such as `RESOLVED_ONLY` is
 not an installation, model-runtime or security result. No such qualification is
-claimed for this candidate while root verification is pending. A successful Full
+inferred from resolution alone. The local results below state what was actually
+installed and tested. A successful Full
 CI installation does not prove an exact Full installation or unchanged Full
 closure; reports must name the profile, interpreter, inventory and actual checks.
 
@@ -101,7 +102,9 @@ active. Desktop source distributions are restricted to exact versions in
 the selected lock receipt. Builds use the four pinned build tools with build
 isolation disabled, so unpinned build backends are not fetched. Evdev additionally
 requires a C compiler and Linux input headers. The default remains wheels-only.
-Actual build results must be reported rather than presumed compatible.
+Actual build results must be reported rather than presumed compatible. Parse
+`.env` files as data (for example with python-dotenv); never execute an example
+configuration with shell `source`.
 
 Docker launchers continue to provide Light/API. They direct Full, Full CI and the
 CUDA component to host bootstrap instead of advertising an unavailable Full image.
@@ -122,7 +125,7 @@ scope; local CLI results do not override failed hosted checks.
 location and SCM organization. Generated inputs, active locks, inventory and
 bootstrap tools are checked before querying dependencies. Failed preflight
 invalidates an old PASS report. Partial, unavailable or inconsistent output remains
-incomplete ERROR. No new scan or model acceptance is implied by this documentation.
+incomplete ERROR. Local receipts do not substitute for hosted security checks.
 
 Sources: [Python 3.14.8](https://www.python.org/downloads/release/python-3148/), [Snyk SCM Python selection](https://docs.snyk.io/supported-languages/supported-languages-list/python/scm-integrations-and-python).
 
@@ -142,5 +145,21 @@ Installed CUDA component and Full CI audits were complete but returned 16 and 17
 advisory IDs respectively. The shared 16 affect Torch, Transformers and
 Accelerate; Full CI also reports Bleach. Snyk supplied no `fixedIn` versions.
 These are findings, not a green security gate; no additional ignore was added.
-The retained reports name their commit, inventory and scan scope. Final Sonar
-and PR-fast results must be recorded independently for the final candidate.
+The retained reports name their commit, inventory and scan scope.
+
+The final local PR-fast gate at `f31da758` passed: **5134 tests, 6 skipped**,
+14 coverage floors, and mypy across **438 source files**. A separate helper run
+passed 246 tests with 91.97% statement and 88.10% branch coverage; it does not
+replace the production Sonar scope, which excludes scripts.
+
+SonarScanner 8.1.0.6389 authenticated with the newly supplied local credential,
+analyzed Python/TypeScript and uploaded coverage plus the report for `f31da758`.
+The organization plan denied quality-gate access for a non-main branch. The gate
+is therefore **unavailable, not PASS**. No main analysis or hosted settings were
+overwritten. A PR analysis is a separate next step; another token rotation is not
+required by this result.
+
+Temporary Light smoke and Python-provisioning tool environments were removed
+only after their receipts were retained. The two remaining candidate environments
+occupy about 11.2 GiB together; the operator environment and existing model cache
+were preserved. The test model was unloaded and its owned process stopped.

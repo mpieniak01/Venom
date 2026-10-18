@@ -54,6 +54,7 @@ class _RuntimeSwitchGateState:
     started_at_utc: str | None = None
     drain_completed_at_utc: str | None = None
     reason: str | None = None
+    owner_task: asyncio.Task[Any] | None = None
 
 
 _STATE_LOCK = threading.Lock()
@@ -98,12 +99,17 @@ def _clear_gate_unlocked() -> None:
     _STATE.started_at_utc = None
     _STATE.drain_completed_at_utc = None
     _STATE.reason = None
+    _STATE.owner_task = None
 
 
 def _recover_stale_gate_unlocked() -> bool:
     if not _STATE.in_progress:
         return False
     if _STATE.active_requests > 0:
+        return False
+    # Loading a model can exceed the stale interval. Never admit a second
+    # switch while the first request still owns and executes the operation.
+    if _STATE.owner_task is not None and not _STATE.owner_task.done():
         return False
     drain_completed_at = _parse_iso_utc(_STATE.drain_completed_at_utc)
     if drain_completed_at is None:
@@ -185,6 +191,10 @@ def begin_runtime_switch(
     to_runtime: str,
     reason: str | None = None,
 ) -> RuntimeSwitchGateSnapshot:
+    try:
+        owner_task = asyncio.current_task()
+    except RuntimeError:
+        owner_task = None
     with _STATE_LOCK:
         _recover_stale_gate_unlocked()
         if _STATE.in_progress:
@@ -214,6 +224,7 @@ def begin_runtime_switch(
         _STATE.started_at_utc = _utc_now()
         _STATE.drain_completed_at_utc = None
         _STATE.reason = str(reason or "").strip() or None
+        _STATE.owner_task = owner_task
         snapshot = _snapshot_unlocked()
 
     logger.info(

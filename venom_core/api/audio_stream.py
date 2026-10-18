@@ -1434,6 +1434,30 @@ class AudioStreamHandler:
             )
 
     @staticmethod
+    def _native_runtime_result_metadata(
+        runtime_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Project shared runtime-result metadata for successful and incomplete turns."""
+        return {
+            "execution_trace": runtime_result.get("execution_trace") or [],
+            "selected_policy": runtime_result.get("selected_policy"),
+            "selected_image_strategy": runtime_result.get("selected_image_strategy"),
+            "retrieval_used": runtime_result.get("retrieval_used"),
+            "retrieval_context_items": runtime_result.get("retrieval_context_items"),
+            "retrieval_route": runtime_result.get("retrieval_route"),
+            "assistant_used": runtime_result.get("assistant_used"),
+            "economy_mode_activated": runtime_result.get("economy_mode_activated"),
+            "degradation_reasons": runtime_result.get("degradation_reasons") or [],
+            "component_snapshot": runtime_result.get("component_snapshot") or [],
+            "component_snapshot_timestamp_ms": runtime_result.get(
+                "component_snapshot_timestamp_ms"
+            ),
+            "component_snapshot_version": runtime_result.get(
+                "component_snapshot_version"
+            ),
+        }
+
+    @staticmethod
     def _native_runtime_success_metadata(
         runtime_result: dict[str, Any],
         *,
@@ -1477,22 +1501,7 @@ class AudioStreamHandler:
             "response_text": response_text,
             "response_length": len(response_text or ""),
             "conversation_provider_handled": False,
-            "execution_trace": runtime_result.get("execution_trace") or [],
-            "selected_policy": runtime_result.get("selected_policy"),
-            "selected_image_strategy": runtime_result.get("selected_image_strategy"),
-            "retrieval_used": runtime_result.get("retrieval_used"),
-            "retrieval_context_items": runtime_result.get("retrieval_context_items"),
-            "retrieval_route": runtime_result.get("retrieval_route"),
-            "assistant_used": runtime_result.get("assistant_used"),
-            "economy_mode_activated": runtime_result.get("economy_mode_activated"),
-            "degradation_reasons": runtime_result.get("degradation_reasons") or [],
-            "component_snapshot": runtime_result.get("component_snapshot") or [],
-            "component_snapshot_timestamp_ms": runtime_result.get(
-                "component_snapshot_timestamp_ms"
-            ),
-            "component_snapshot_version": runtime_result.get(
-                "component_snapshot_version"
-            ),
+            **AudioStreamHandler._native_runtime_result_metadata(runtime_result),
             **insights,
         }
 
@@ -1729,22 +1738,7 @@ class AudioStreamHandler:
             "transcription_length": len(transcription),
             "response_text": response_text,
             "response_length": len(response_text),
-            "execution_trace": runtime_result.get("execution_trace") or [],
-            "selected_policy": runtime_result.get("selected_policy"),
-            "selected_image_strategy": runtime_result.get("selected_image_strategy"),
-            "retrieval_used": runtime_result.get("retrieval_used"),
-            "retrieval_context_items": runtime_result.get("retrieval_context_items"),
-            "retrieval_route": runtime_result.get("retrieval_route"),
-            "assistant_used": runtime_result.get("assistant_used"),
-            "economy_mode_activated": runtime_result.get("economy_mode_activated"),
-            "degradation_reasons": runtime_result.get("degradation_reasons") or [],
-            "component_snapshot": runtime_result.get("component_snapshot") or [],
-            "component_snapshot_timestamp_ms": runtime_result.get(
-                "component_snapshot_timestamp_ms"
-            ),
-            "component_snapshot_version": runtime_result.get(
-                "component_snapshot_version"
-            ),
+            **AudioStreamHandler._native_runtime_result_metadata(runtime_result),
             **_build_voice_session_insights_payload(
                 transcript=transcription,
                 response=response_text,

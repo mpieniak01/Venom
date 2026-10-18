@@ -126,6 +126,31 @@ class CloudProvisioner:
         if self.hive_url:
             logger.info(f"HIVE_URL skonfigurowany: {self.hive_url}")
 
+    def _ssh_connect_kwargs(
+        self,
+        host: str,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> dict[str, object]:
+        """Build SSH credentials with the existing key-before-password priority."""
+        user = user or self.default_user
+        connect_kwargs: dict[str, object] = {
+            "host": host,
+            "username": user,
+            "known_hosts": None,
+        }
+
+        # Preferuj klucz SSH
+        if self.ssh_key_path and Path(self.ssh_key_path).exists():
+            connect_kwargs["client_keys"] = [self.ssh_key_path]
+        elif password:
+            connect_kwargs["password"] = password
+        else:
+            raise CloudProvisionerError(
+                "Brak klucza SSH ani hasła. Nie można nawiązać połączenia."
+            )
+        return connect_kwargs
+
     async def _execute_ssh_command(
         self,
         host: str,
@@ -148,22 +173,7 @@ class CloudProvisioner:
         Raises:
             CloudProvisionerError: Jeśli połączenie nie powiedzie się
         """
-        user = user or self.default_user
-        connect_kwargs: dict[str, object] = {
-            "host": host,
-            "username": user,
-            "known_hosts": None,
-        }
-
-        # Preferuj klucz SSH
-        if self.ssh_key_path and Path(self.ssh_key_path).exists():
-            connect_kwargs["client_keys"] = [self.ssh_key_path]
-        elif password:
-            connect_kwargs["password"] = password
-        else:
-            raise CloudProvisionerError(
-                "Brak klucza SSH ani hasła. Nie można nawiązać połączenia."
-            )
+        connect_kwargs = self._ssh_connect_kwargs(host, user, password)
 
         try:
             async with (
@@ -293,21 +303,7 @@ class CloudProvisioner:
         remote_dir = f"/opt/{stack_name}"
         remote_compose = f"{remote_dir}/docker-compose.yml"
 
-        user = user or self.default_user
-        connect_kwargs: dict[str, object] = {
-            "host": host,
-            "username": user,
-            "known_hosts": None,
-        }
-
-        if self.ssh_key_path and Path(self.ssh_key_path).exists():
-            connect_kwargs["client_keys"] = [self.ssh_key_path]
-        elif password:
-            connect_kwargs["password"] = password
-        else:
-            raise CloudProvisionerError(
-                "Brak klucza SSH ani hasła. Nie można nawiązać połączenia."
-            )
+        connect_kwargs = self._ssh_connect_kwargs(host, user, password)
 
         try:
             async with (

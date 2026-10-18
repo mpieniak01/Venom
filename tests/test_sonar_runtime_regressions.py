@@ -7,16 +7,17 @@ from venom_core.services import conversation_providers as conversation
 from venom_core.services.module_registry import _FACTORY_IMPORT
 
 
-def test_tool_policy_legacy_alias_keeps_subclass_binding_and_filters():
+def test_tool_policy_constructor_keeps_subclass_binding_and_filters():
     class CustomPolicy(ToolPolicy):
         pass
 
     filters = {"included_plugins": ["files"]}
-    legacy = CustomPolicy.Auto(filters=filters)
-    canonical = CustomPolicy.auto(filters=filters)
-    assert type(legacy) is CustomPolicy
-    assert legacy == canonical
-    assert legacy.filters is filters
+    policy = CustomPolicy.Auto(filters=filters)
+    default = CustomPolicy.Auto()
+    assert type(policy) is CustomPolicy
+    assert policy.filters is filters
+    assert type(default) is CustomPolicy
+    assert default.filters == {}
 
 
 def test_tool_decorator_preserves_bound_method_and_declared_metadata():

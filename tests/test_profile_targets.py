@@ -66,8 +66,9 @@ def test_lock_labels_and_binds_exact_qualified_interpreter():
     assert profiles.profile_policy_hash(
         changed, "light"
     ) != profiles.profile_policy_hash(policy, "light")
+    report = resolver_report()
     with pytest.raises(ValueError, match="requires Python 3.14.9"):
-        profiles.render_lock(changed, "light", resolver_report())
+        profiles.render_lock(changed, "light", report)
 
 
 @pytest.mark.parametrize("target", ["3.15.0", "3.14", "3.14.8rc1", None, 3148])

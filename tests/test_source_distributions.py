@@ -210,17 +210,15 @@ def source_report(name="pyautogui", version="0.9.54"):
 
 
 def test_generator_rejects_unknown_source_distribution():
+    report = source_report("unknown-source")
     with pytest.raises(ValueError, match="Unapproved source distribution"):
-        profiles.report_packages(
-            source_report("unknown-source"), {"pyautogui": "0.9.54"}
-        )
+        profiles.report_packages(report, {"pyautogui": "0.9.54"})
 
 
 def test_generator_rejects_changed_source_distribution_version():
+    report = source_report(version="0.9.53")
     with pytest.raises(ValueError, match="Unapproved source distribution"):
-        profiles.report_packages(
-            source_report(version="0.9.53"), {"pyautogui": "0.9.54"}
-        )
+        profiles.report_packages(report, {"pyautogui": "0.9.54"})
 
 
 def test_generator_accepts_exact_approved_source_distribution():

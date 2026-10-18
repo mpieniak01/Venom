@@ -238,13 +238,15 @@ class RuntimeSwitchOrchestrator:
             to_server=target_server_name,
         )
 
+        # Reject invalid target configuration before touching the current runtime.
+        target = self._find_target(target_server_name, servers)
+        self._require_health_url(target_server_name, target, state)
         stop_results = await self._stop_other_servers(
             servers, target_server_name, state, active_model=active_model
         )
         shutdown_results = await self._await_release(servers, target_server_name, state)
         self._flush_caches_if_leaving_onnx(target_server_name, state, onnx_flush_fn)
 
-        target = self._find_target(target_server_name, servers)
         start_result = await self._start_and_verify_health(
             target_server_name, target, state
         )
@@ -283,6 +285,15 @@ class RuntimeSwitchOrchestrator:
             logger.warning(
                 "Nie udało się zatrzymać poprzednich serwerów LLM: {}",
                 ", ".join(sorted(failures)),
+            )
+            state.mark_failed(LifecycleStep.PROCESS_STOPPED, "runtime_stop_failed")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "runtime_stop_failed",
+                    "servers": sorted(failures),
+                    "lifecycle_state": state.to_payload(),
+                },
             )
 
         state.mark_done(LifecycleStep.PROCESS_STOPPED)
@@ -366,6 +377,28 @@ class RuntimeSwitchOrchestrator:
             detail=f"Serwer LLM '{target_name}' nie znaleziony w konfiguracji.",
         )
 
+    @staticmethod
+    def _require_health_url(
+        target_name: str,
+        target: dict[str, Any],
+        state: LifecycleSwitchState,
+    ) -> str:
+        health_url = str(target.get("health_url") or "").strip()
+        if (
+            target.get("capabilities", {}).get("supports_health_wait")
+            and not health_url
+        ):
+            state.mark_failed(LifecycleStep.HEALTH_READY, "runtime_health_url_missing")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "runtime_health_url_missing",
+                    "server": target_name,
+                    "lifecycle_state": state.to_payload(),
+                },
+            )
+        return health_url
+
     async def _start_and_verify_health(
         self,
         target_name: str,
@@ -373,6 +406,7 @@ class RuntimeSwitchOrchestrator:
         state: LifecycleSwitchState,
     ) -> Optional[dict[str, Any]]:
         start_result: Optional[dict[str, Any]] = None
+        health_url = self._require_health_url(target_name, target, state)
 
         if target.get("supports", {}).get("start"):
             try:
@@ -381,11 +415,20 @@ class RuntimeSwitchOrchestrator:
             except Exception as exc:
                 start_result = {"ok": False, "error": str(exc)}
 
+        if start_result is not None and not start_result.get("ok"):
+            state.mark_failed(LifecycleStep.START_DONE, "runtime_start_failed")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "runtime_start_failed",
+                    "server": target_name,
+                    "lifecycle_state": state.to_payload(),
+                },
+            )
         state.mark_done(LifecycleStep.START_DONE)
 
         caps_dict = target.get("capabilities", {})
         if caps_dict.get("supports_health_wait"):
-            health_url = str(target.get("health_url") or "").strip()
             if health_url:
                 is_ready = await probe_health_ready(target_name, health_url)
                 if not is_ready:

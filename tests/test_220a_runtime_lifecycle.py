@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -207,13 +207,17 @@ def test_runtime_capabilities_fields_for_all_servers():
             assert field in caps, f"{server['name']} missing capability field '{field}'"
 
 
-def test_onnx_capabilities_are_in_process():
+def test_onnx_capabilities_describe_external_http_worker(monkeypatch):
+    monkeypatch.setattr(SETTINGS, "ONNX_START_COMMAND", "")
+    monkeypatch.setattr(SETTINGS, "ONNX_STOP_COMMAND", "")
     ctrl = LlmServerController(SETTINGS)
     caps = ctrl.get_capabilities("onnx")
-    assert caps.is_in_process is True
+    assert caps.is_in_process is False
+    assert caps.supports_start is False
     assert caps.supports_stop is False
-    assert caps.supports_cache_flush is True
-    assert caps.supports_model_unload is True
+    assert caps.supports_cache_flush is False
+    assert caps.supports_model_unload is False
+    assert caps.supports_health_wait is True
 
 
 def test_ollama_capabilities_support_unload():
@@ -672,3 +676,76 @@ async def test_orchestrator_calls_ollama_pre_stop_unload():
     assert ("multi_runtime", "start") in controller.actions
     assert state.is_complete is False  # CONFIG_SAVED not marked (caller's job)
     assert LifecycleStep.HEALTH_READY in state.completed_steps
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raises", [False, True])
+async def test_failed_start_cannot_be_hidden_by_old_healthy_process(
+    monkeypatch, raises
+):
+    target = _make_server(
+        "onnx", health_url="http://127.0.0.1:8068/health", supports_health_wait=True
+    )
+    controller = _DummyController([target])
+    controller.run_action = AsyncMock(
+        side_effect=RuntimeError("command failed") if raises else None,
+        return_value=SimpleNamespace(ok=False, exit_code=1),
+    )
+    health = AsyncMock(return_value=True)
+    monkeypatch.setattr(runtime_switch_service, "probe_health_ready", health)
+    orchestrator = RuntimeSwitchOrchestrator(controller)
+    with pytest.raises(HTTPException) as exc_info:
+        await orchestrator.execute_lifecycle_switch(
+            servers=[target], target_server_name="onnx"
+        )
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail["error"] == "runtime_start_failed"
+    state = exc_info.value.detail["lifecycle_state"]
+    assert state["failed_step"] == "start_done"
+    assert "start_done" not in state["completed_steps"]
+    assert "health_ready" not in state["completed_steps"]
+    health.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raises", [False, True])
+async def test_failed_stop_never_starts_target(monkeypatch, raises):
+    source = _make_server("onnx")
+    target = _make_server("vllm")
+    controller = _DummyController([source, target])
+    controller.run_action = AsyncMock(
+        side_effect=RuntimeError("stop failed") if raises else None,
+        return_value=SimpleNamespace(ok=False, exit_code=1),
+    )
+    health = AsyncMock(return_value=True)
+    monkeypatch.setattr(runtime_switch_service, "probe_health_ready", health)
+    with pytest.raises(HTTPException) as exc_info:
+        await RuntimeSwitchOrchestrator(controller).execute_lifecycle_switch(
+            servers=[source, target], target_server_name="vllm"
+        )
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail["error"] == "runtime_stop_failed"
+    state = exc_info.value.detail["lifecycle_state"]
+    assert state["failed_step"] == "process_stopped"
+    assert state["completed_steps"] == []
+    controller.run_action.assert_awaited_once_with("onnx", "stop")
+    health.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_target", [False, True])
+async def test_invalid_target_is_rejected_before_stopping_previous_runtime(
+    missing_target,
+):
+    source = _make_server("ollama")
+    target = _make_server("onnx", supports_health_wait=True)
+    servers = [source] if missing_target else [source, target]
+    controller = _DummyController(servers)
+    with pytest.raises(HTTPException) as exc_info:
+        await RuntimeSwitchOrchestrator(controller).execute_lifecycle_switch(
+            servers=servers, target_server_name="onnx"
+        )
+    assert exc_info.value.status_code == (404 if missing_target else 503)
+    if not missing_target:
+        assert exc_info.value.detail["error"] == "runtime_health_url_missing"
+    assert controller.actions == []

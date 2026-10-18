@@ -703,7 +703,7 @@ async def test_set_active_llm_server_uses_available_ollama_model_when_requested_
 
 
 @pytest.mark.asyncio
-async def test_set_active_llm_server_continues_when_stopping_other_server_fails(
+async def test_set_active_llm_server_aborts_when_stopping_other_server_fails(
     monkeypatch,
 ):
     config = {
@@ -744,10 +744,14 @@ async def test_set_active_llm_server_continues_when_stopping_other_server_fails(
     SETTINGS.ACTIVE_LLM_SERVER = "ollama"
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="ollama")
-        response = await system_routes.set_active_llm_server(request)
-        assert response["status"] == "success"
-        assert response["active_model"] == "phi3:mini"
-        assert response["stop_results"]["vllm"]["ok"] is False
+        before = _snapshot_settings()
+        with pytest.raises(HTTPException) as exc_info:
+            await system_routes.set_active_llm_server(request)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["error"] == "runtime_stop_failed"
+        assert updates == {}
+        assert _snapshot_settings() == before
+        assert ("ollama", "start") not in controller.actions
     finally:
         _restore_settings(original)
 
@@ -1061,10 +1065,14 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
         )
 
         request = system_routes.ActiveLlmServerRequest(server_name="onnx")
-        response = await system_routes.set_active_llm_server(request)
-        assert response["status"] == "success"
-        assert response["active_server"] == "onnx"
-        assert response["stop_results"]["ollama"]["ok"] is False
+        before = _snapshot_settings()
+        with pytest.raises(HTTPException) as exc_info:
+            await system_routes.set_active_llm_server(request)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["error"] == "runtime_stop_failed"
+        assert updates == {}
+        assert _snapshot_settings() == before
+        system_routes.system_llm_service.inspect_onnx_worker.assert_not_awaited()
     finally:
         _restore_settings(original)
 

@@ -271,6 +271,20 @@ def test_component_preflight_rejects_application_venv_alias(tmp_path, monkeypatc
         runtime.component_python(python)
 
 
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        "include-system-site-packages = true\n",
+        "# include-system-site-packages = false\ninclude-system-site-packages = true\n",
+    ],
+)
+def test_component_preflight_rejects_system_site_packages(tmp_path, configuration):
+    python = isolated_python(tmp_path)
+    (python.parent.parent / "pyvenv.cfg").write_text(configuration)
+    with pytest.raises(ValueError, match="isolated_component"):
+        runtime.component_python(python)
+
+
 @pytest.mark.parametrize("changed", [None, "cwd", "command_sha256", "start_ticks"])
 def test_daemon_identity_requires_exact_command_and_receipt(
     tmp_path, monkeypatch, changed
@@ -403,7 +417,8 @@ def test_daemon_stop_refuses_foreign_pid_without_signalling(tmp_path):
         process.wait(timeout=5)
 
 
-def test_daemon_launcher_preserves_flags_in_own_interpreter(tmp_path):
+@pytest.mark.parametrize("device", ["cuda", "cpu"])
+def test_daemon_launcher_preserves_flags_in_own_interpreter(tmp_path, device):
     # The fixture module only records its environment and sleeps; no model imports.
     root = tmp_path / "repo"
     for relative in [
@@ -437,8 +452,8 @@ def test_daemon_launcher_preserves_flags_in_own_interpreter(tmp_path):
         PATH=f"{binary}:/usr/bin:/bin",
         MULTI_RUNTIME_COMPONENT_PYTHON=str(python),
         CAPTURE=str(capture),
-        GEMMA4_AUDIO_DEVICE="cuda",
-        GEMMA4_AUDIO_DEVICE_TARGET="cuda",
+        GEMMA4_AUDIO_DEVICE=device,
+        GEMMA4_AUDIO_DEVICE_TARGET=device,
         GEMMA4_AUDIO_PRECISION="bfloat16",
         GEMMA4_AUDIO_PROBE_ENABLED="true",
         GEMMA4_AUDIO_CACHE_DIR="cache",
@@ -450,8 +465,8 @@ def test_daemon_launcher_preserves_flags_in_own_interpreter(tmp_path):
         result = run_daemon_launcher("start", environment, root)
         assert result.returncode == 0, result.stderr
         actual = json.loads(capture.read_text())
-        assert actual["GEMMA4_AUDIO_DEVICE"] == "cuda"
-        assert actual["GEMMA4_AUDIO_DEVICE_TARGET"] == "cuda"
+        assert actual["GEMMA4_AUDIO_DEVICE"] == device
+        assert actual["GEMMA4_AUDIO_DEVICE_TARGET"] == device
         assert actual["GEMMA4_AUDIO_PRECISION"] == "bfloat16"
         assert actual["GEMMA4_AUDIO_PROBE_ENABLED"] == "true"
         assert actual["VENOM_INTROSPECTION_PROBE_MAX_TOP_K"] == "7"

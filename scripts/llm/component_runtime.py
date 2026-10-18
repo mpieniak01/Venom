@@ -135,11 +135,14 @@ def component_python(python: Path) -> Path:
     ):
         raise ValueError("absolute_component_python_required")
     configuration = python.parent.parent / "pyvenv.cfg"
-    if (
-        not configuration.is_file()
-        or "include-system-site-packages = false"
-        not in configuration.read_text().lower()
-    ):
+    if not configuration.is_file():
+        raise ValueError("isolated_component_interpreter_required")
+    settings = {}
+    for line in configuration.read_text().splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            settings[key.strip().lower()] = value.strip().lower()
+    if settings.get("include-system-site-packages") != "false":
         raise ValueError("isolated_component_interpreter_required")
     if python.parent.parent.resolve() == (ROOT / ".venv").resolve():
         raise ValueError("application_venv_is_not_an_engine_component")

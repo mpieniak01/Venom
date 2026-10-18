@@ -412,3 +412,11 @@ or qualified platform locks. The manifest completeness regression checks every
 profile and alias against its complete policy. A successful local CLI scan still
 does not replace a failed SCM installation check; keep the PR open until that
 remote check succeeds.
+
+The complete SCM scan also checks declared lower bounds. Inputs therefore reject
+known vulnerable PyJWT 2.13, pyasn1 0.6.3, urllib3 2.7, cryptography 48,
+Werkzeug 3.1.6 and Transformers 5.5 releases. The new minima are PyJWT 2.15.1,
+pyasn1 0.6.4, urllib3 2.8.0, cryptography 50.0.2, Werkzeug 3.1.9 and
+Transformers 5.10.4. Existing qualified artifact versions already satisfy these
+bounds; only policy/lock fingerprints change. This does not suppress the known
+Full-profile upstream findings without a fixed release.

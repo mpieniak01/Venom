@@ -420,3 +420,78 @@ pyasn1 0.6.4, urllib3 2.8.0, cryptography 50.0.2, Werkzeug 3.1.9 and
 Transformers 5.10.4. Existing qualified artifact versions already satisfy these
 bounds; only policy/lock fingerprints change. This does not suppress the known
 Full-profile upstream findings without a fixed release.
+
+## Local security candidate before publishing
+
+Run the existing profile tool locally before pushing dependency fixes:
+
+```bash
+source .venv/bin/activate
+python scripts/dev/dependency_profiles.py audit-security --profile ci --snyk-org mpieniak01 \
+  --python /path/to/qualified-ci/bin/python \
+  --out-dir docs_dev/_reports/local-security/ci
+python scripts/dev/dependency_profiles.py audit-security --profile full --snyk-org mpieniak01 \
+  --python /path/to/qualified-full/bin/python \
+  --out-dir docs_dev/_reports/local-security/full
+```
+
+The command checks generated inputs, every platform lock, the selected actual
+installed environment and `pip check` before querying Snyk. It then scans both
+the entire locked inventory and inclusive direct-version minima. Requirements
+without an inclusive minimum use the qualified version and are explicitly listed
+as fallbacks; this is not a claim that all versions in an unbounded range are safe.
+
+The `lock` query covers the qualified environment's complete inventory, including
+permitted pinned bootstrap additions. Application distributions use a flat Poetry
+component query; `pip`, `setuptools`, `distribute` and `wheel` use a separate Pip
+manifest with the qualified Python because Poetry can omit these tools. No scan
+installs anything. Both subqueries must be complete, and their names/versions
+must jointly match the entire verified environment. An incomplete subquery is
+never waived. Individual raw reports remain under `lock/application` and
+`lock/bootstrap`.
+
+The `minima` query uses temporary Poetry component inventories for Snyk's no-install
+parser. These are not runtime dependency files or installable release locks.
+They query declared minimum versions without installing old versions, downloading
+models or duplicating CUDA environments. They do not reproduce dependency edges
+or qualify runtime compatibility; the real environment check does that.
+The one explicit repository `.snyk` policy is used for both queries.
+
+Exit 0 means complete probes without findings, 1 means complete probes with
+findings, and 2 means incomplete/error or an unqualified environment. Coverage
+must equal the expected package count. A failed process cannot reuse a previous
+successful JSON report. Raw results, selected versions, unbounded fallbacks and
+input/lock/policy fingerprints remain in the chosen ignored evidence directory.
+
+A local control using PyJWT 2.13.0 reproduced the same 14 advisory IDs seen in
+SCM. Keep normal runtime/profile and `pr-fast` checks as well. Publish the stable
+candidate only after examining the local evidence; GitHub/Snyk SCM then confirms
+that candidate. SCM-side baseline/build failures still require their own logs,
+and known upstream findings are not converted into a clean security result.
+
+The Snyk organization is mandatory and must match SCM. The returned organization
+is checked as well; using another CLI identity/default organization is an error,
+not a valid release qualification. Do not change global credentials of other projects.
+
+The audit also compares the scanner's `--print-deps` component names and versions
+with the requested inventory; equal counts alone are insufficient. Reports retain
+`component_delta`, `unexpected_components` and `observed_components`. Snyk's Poetry
+parser can omit bootstrap tools such as `pip`; an omitted package keeps the audit
+incomplete, with its name/version reported explicitly. This is not a vulnerability
+waiver or a reason to lower the required count. See the [upstream parser filter](https://github.com/snyk/snyk-poetry-lockfile-parser/blob/master/lib/poetry-dep-graph-builder.ts).
+
+The optional vLLM 0.31.0 distribution requires `setuptools>=77.0.3,<81` on Python
+3.12. Its locked 80.10.2 has `SNYK-PYTHON-SETUPTOOLS-17895075`, fixed in 83.0.0,
+which cannot satisfy that engine's contract. Do not force the build profile's
+83.0.0 into this engine or silently expand the approved vLLM advisory exception.
+
+Installed manifests preserve the actual distribution spelling from `pip list`
+(e.g. `boolean.py`), while comparisons use canonical package names. Otherwise
+Snyk can add an unresolved `boolean.py @ ?` beside a canonical `boolean-py` root.
+Nested scanner edges are checked too; conflicting versions or `?` nodes cannot
+be hidden by a matching direct dependency later in the tree.
+
+The bootstrap query explicitly includes the installed `packaging` version used
+by `wheel`. This can overlap the application component query; coverage counts
+are the union of verified component identities, not a sum of duplicate nodes.
+Each subquery must still independently match its complete requested set.

@@ -92,7 +92,7 @@ cd Venom
 # optional overrides:
 # export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:v1.9.0
 # export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:v1.9.0
-# export OLLAMA_IMAGE=ollama/ollama:0.24.0
+# export OLLAMA_IMAGE=ollama/ollama:0.40.6@sha256:265409e1d931028a8f7d5a32bcbafddd7bffbc6cc629d77efe9560adf692a5e7
 # export OLLAMA_MODEL=gemma3:1b
 # export OLLAMA_NO_CLOUD=1
 # export VENOM_ENABLE_GPU=auto
@@ -101,6 +101,8 @@ scripts/docker/run-release.sh start
 ```
 
 This flow uses prebuilt backend/frontend images from GHCR and pulls local Ollama model on first start.
+
+Compose and the installer default to [Ollama v0.40.6](https://github.com/ollama/ollama/releases/tag/v0.40.6), pinned by its multi-platform OCI index digest (Linux amd64/arm64). Set `OLLAMA_IMAGE` or use the installer’s `--ollama-image` to override it explicitly. Ollama voice support on Linux/CUDA still requires separate verification; tests of the native Gemma4 runtime do not establish it.
 
 ### Protocol policy (no manual tuning in default path)
 

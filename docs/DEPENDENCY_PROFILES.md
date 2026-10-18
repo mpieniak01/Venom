@@ -29,6 +29,14 @@ The `agent-framework` metapackage and `[all]` are deliberately absent. Applicati
 OpenAI 2.x serves the current compatible provider/RAG contract; selecting the
 latest major OpenAI or MCP independently is not qualification of that contract.
 
+Ollama is an external service, not a Python requirements pin. The service/image
+version target is **0.40.6**; Compose and the installer pin
+`ollama/ollama:0.40.6@sha256:265409e1d931028a8f7d5a32bcbafddd7bffbc6cc629d77efe9560adf692a5e7`
+(the multi-platform OCI index). A native service remains owned by its PATH/systemd
+configuration: changing Compose does not upgrade the existing system binary
+0.34.3. The `/api/version` response from the endpoint actually used is the source
+of truth for its running version.
+
 ## Why the boundaries are necessary
 
 MAF's all-extra currently requests MCP 1.x while vLLM 0.31 requires MCP 2.x.

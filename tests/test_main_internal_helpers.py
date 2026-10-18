@@ -2570,6 +2570,7 @@ async def test_initialize_hardware_bridge_exception_returns_none(monkeypatch):
 
 
 def test_release_identity_matches_api_frontend_and_containers():
+    """Keep API, package and container release identifiers in sync."""
     import json
     import tomllib
     from pathlib import Path
@@ -2592,4 +2593,5 @@ def test_release_identity_matches_api_frontend_and_containers():
             for line in (root / "docker" / name).read_text().splitlines()
             if line.startswith("ARG APP_VERSION=")
         ]
-        assert versions and all(version == release for version in versions)
+        assert versions
+        assert all(version == release for version in versions)

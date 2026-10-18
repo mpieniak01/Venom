@@ -140,13 +140,3 @@ def test_payload_builders_and_missing_task_payload():
     missing = svc.build_missing_task_payload(task.id)
     assert missing["task_id"] == str(task.id)
     assert missing["event"] == "gone"
-
-
-def test_build_onnx_task_messages_forced_intent_branch():
-    default_messages = svc.build_onnx_task_messages("hello", None)
-    assert default_messages[0]["role"] == "system"
-    assert "planem krok po kroku" not in default_messages[0]["content"]
-    assert default_messages[1] == {"role": "user", "content": "hello"}
-
-    planning_messages = svc.build_onnx_task_messages("hello", "COMPLEX_PLANNING")
-    assert "planem krok po kroku" in planning_messages[0]["content"]

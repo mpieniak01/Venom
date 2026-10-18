@@ -6204,14 +6204,15 @@
     {
       "path": "tests/test_tasks_stream.py",
       "domain": "api",
-      "test_type": "unit",
+      "test_type": "route_contract",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Provider-independent Normal/Complex submission and task SSE; mandatory changed-scope gate coverage."
     },
     {
       "path": "tests/test_tasks_stream_service.py",

@@ -1,6 +1,7 @@
 import sys
 import types
 
+import pytest
 from PIL import Image
 
 from services.multi_runtime.components import build_component_snapshot
@@ -115,8 +116,16 @@ def test_pipeline_trace_includes_retrieval_stage(monkeypatch) -> None:
     assert result.diagnostics.retrieval_context_items == 1
 
 
-def test_component_snapshot_reflects_policy_modes(monkeypatch) -> None:
-    monkeypatch.setenv("TTS_MODEL_PATH", "/tmp/missing-voice.onnx")
+@pytest.mark.parametrize("ocr_available", [False, True])
+def test_component_snapshot_reflects_policy_modes(
+    monkeypatch, tmp_path, ocr_available
+) -> None:
+    monkeypatch.setenv("TTS_MODEL_PATH", str(tmp_path / "missing-voice.onnx"))
+    monkeypatch.setattr(
+        "services.multi_runtime.components._module_available",
+        lambda name: name in {"sentence_transformers", "lancedb"}
+        or (name == "pytesseract" and ocr_available),
+    )
     snapshot = build_component_snapshot(
         _daemon_status(
             assistant_model="assistant/model",
@@ -133,8 +142,15 @@ def test_component_snapshot_reflects_policy_modes(monkeypatch) -> None:
     assert by_id["embedding_component"]["enabled"] is True
     assert by_id["tts_component"]["enabled"] is True
     assert by_id["assistant_model"]["enabled"] is True
-    assert "ocr_component" in by_id
-    assert by_id["image_input"]["last_error"] is not None
+    assert by_id["ocr_component"]["enabled"] is True
+    assert by_id["ocr_component"]["available"] is ocr_available
+    if ocr_available:
+        assert by_id["image_input"]["last_error"] is None
+    else:
+        assert (
+            by_id["image_input"]["last_error"]
+            == "OCR-first strategy requested but OCR backend unavailable"
+        )
 
 
 def test_retrieval_stage_uses_vector_store_results(monkeypatch) -> None:

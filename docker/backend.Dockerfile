@@ -1,6 +1,6 @@
 FROM python:3.12-slim-bookworm@sha256:2ed6491b93cd49272ee6de2b5a38440c3448360322c089fc23e370722d74179d
 
-ARG APP_VERSION=1.9.0
+ARG APP_VERSION=1.10.0
 LABEL org.opencontainers.image.title="venom-backend" \
       org.opencontainers.image.version="${APP_VERSION}"
 

@@ -6,11 +6,17 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 
 const { window } = dom;
 
+// Node 24 exposes navigator through a getter; replace the test-only descriptor.
+Object.defineProperty(globalThis, "navigator", {
+  value: window.navigator,
+  configurable: true,
+  writable: true,
+});
+
 Object.assign(globalThis, {
   window,
   self: window,
   document: window.document,
-  navigator: window.navigator,
   HTMLElement: window.HTMLElement,
   SVGElement: window.SVGElement,
   Node: window.Node,
@@ -22,6 +28,7 @@ Object.assign(globalThis, {
   MouseEvent: window.MouseEvent,
   FocusEvent: window.FocusEvent,
   NodeFilter: window.NodeFilter,
+  HTMLFormElement: window.HTMLFormElement,
   HTMLInputElement: window.HTMLInputElement,
   HTMLButtonElement: window.HTMLButtonElement,
   HTMLTextAreaElement: window.HTMLTextAreaElement,

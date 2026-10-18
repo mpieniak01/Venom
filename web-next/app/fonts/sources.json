@@ -1,0 +1,22 @@
+[
+  {
+    "revision": "0b58fb370093f9a9f4ff785d94405710b79de67c",
+    "source": "https://raw.githubusercontent.com/google/fonts/0b58fb370093f9a9f4ff785d94405710b79de67c/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf",
+    "license": "inter-OFL.txt",
+    "bytes": 457780,
+    "sha256": "002ad21c6eeeb320e9f4430a7b51d30f8a6557930d956832f716904fc3084cd6",
+    "file": "InterVariable.woff",
+    "source_file_sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+    "encoding": "Lossless WOFF1 container (fontTools; original glyphs/axes retained)"
+  },
+  {
+    "revision": "6e4b84c976cadb3c49a40fd9a1c203e4f7fcf2da",
+    "source": "https://raw.githubusercontent.com/google/fonts/6e4b84c976cadb3c49a40fd9a1c203e4f7fcf2da/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+    "license": "jetbrainsmono-OFL.txt",
+    "bytes": 90680,
+    "sha256": "45e0736c0a7035df423d00ec73a50009c9dc3c2d2f6cd0e7a01cddb254601dc9",
+    "file": "JetBrainsMonoVariable.woff",
+    "source_file_sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+    "encoding": "Lossless WOFF1 container (fontTools; original glyphs/axes retained)"
+  }
+]

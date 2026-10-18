@@ -1228,6 +1228,12 @@ def test_bootstrap_refresh_cannot_mutate_pip_with_bad_hash_or_low_space(
 @pytest.mark.parametrize(
     "profile,package,vulnerable",
     [
+        ("light", "pyjwt", "2.13.0"),
+        ("light", "pyasn1", "0.6.3"),
+        ("light", "urllib3", "2.7.0"),
+        ("light", "cryptography", "48.0.1"),
+        ("light", "werkzeug", "3.1.6"),
+        ("full", "transformers", "5.5.0"),
         ("full", "pypdf", "6.13.3"),
         ("full-ci", "pypdf", "6.13.3"),
         ("academy", "pypdf", "6.13.3"),

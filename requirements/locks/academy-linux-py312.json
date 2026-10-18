@@ -536,13 +536,13 @@
       "version": "1.25.1"
     }
   },
-  "lock_sha256": "9001ffbbec18aff12cb4e9c77ff0533007c0fd36495846206a445d1ea9b3e9fc",
+  "lock_sha256": "7c305075d362656ff84c9dbc7e1cac00e7b44d823f2ca92de2226fb044944b90",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "c4b8439c44b5f2f1bcc231d1fa8c3f18e83afc20cd1f3f6f848e0b343e83027e",
+  "policy_sha256": "aa51cd7ea453c721d25f464d0617d308d3e6a5cf684b875e09d307cffbadfe1f",
   "profile": "academy",
   "profile_policy_sha256": "0e033d02e5f3beb471f8e524252c8550eff323e44aef30ebcd473a48017d0799",
   "qualification": "RESOLVED_ONLY",

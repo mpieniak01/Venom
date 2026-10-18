@@ -28,6 +28,7 @@ tests/test_orchestrator_council_integration.py
 tests/test_overmind_integration.py
 tests/test_planning_integration.py
 tests/test_policy_gate_integration.py
+tests/test_profile_targets.py
 tests/test_qualification_process.py
 tests/test_rag_boost_integration.py
 tests/test_rag_integration.py

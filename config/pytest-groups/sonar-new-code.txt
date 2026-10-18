@@ -264,6 +264,7 @@ tests/test_preprod_optional_modules_smoke.py
 tests/test_preprod_readiness_check.py
 tests/test_process_monitor.py
 tests/test_profile_config.py
+tests/test_profile_targets.py
 tests/test_prompt_manager.py
 tests/test_provider_admin.py
 tests/test_provider_governance.py

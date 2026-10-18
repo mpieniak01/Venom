@@ -29,6 +29,9 @@ MINIMUM_FREE_GIB = {
     "light": 2,
     "ci": 3,
     "build": 1,
+    "full": 16,
+    "full-ci": 20,
+    "multi-runtime-cuda": 12,
 }
 
 
@@ -203,6 +206,14 @@ def install_profile(
     if actual != policy["platform"]:
         raise ValueError(
             f"Profile requires {policy['platform']}; bootstrap uses {actual}"
+        )
+    if (
+        policy.get("python_target")
+        and platform.python_version() != policy["python_target"]
+    ):
+        raise ValueError(
+            f"Profile requires Python {policy['python_target']}; "
+            f"bootstrap uses {platform.python_version()}"
         )
     lock = checked_lock(root, policy, profile)
     build_lock = checked_lock(root, policy, "build")

@@ -5107,6 +5107,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_profile_targets.py",
+      "domain": "environment",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Exact Python target, scanner metadata and installation storage regression contracts."
+    },
+    {
       "path": "tests/test_prompt_manager.py",
       "domain": "misc",
       "test_type": "unit",

@@ -297,8 +297,17 @@ def test_register_all_services_logs_openai_registration_failure(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("selection", ["onnx", "active_local", "forced_local", "multi"])
-async def test_onnx_factory_uses_explicit_worker_in_every_registration_mode(selection):
+@pytest.mark.parametrize(
+    "policy,scheme", [("force_http", "http"), ("force_https", "https")]
+)
+async def test_onnx_factory_uses_explicit_worker_in_every_registration_mode(
+    monkeypatch, selection, policy, scheme
+):
     """A stale Ollama URL must never receive an ONNX request after local forcing."""
+
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "URL_SCHEME_POLICY", policy)
 
     class OnnxSettings(MockSettings):
         ONNX_LLM_ENABLED: bool = True
@@ -319,7 +328,7 @@ async def test_onnx_factory_uses_explicit_worker_in_every_registration_mode(sele
         assert len(runtime.services) == 1
         service = next(iter(runtime.services.values()))
         assert service.ai_model_id == "served-onnx-fixture"
-        assert str(service._owned_client.base_url) == "http://127.0.0.1:8068/v1/"
+        assert str(service._owned_client.base_url) == f"{scheme}://127.0.0.1:8068/v1/"
     finally:
         await runtime.aclose()
 
@@ -329,6 +338,8 @@ async def test_onnx_factory_uses_explicit_worker_in_every_registration_mode(sele
     [
         (False, "http://127.0.0.1:8068/v1", "ONNX_LLM_ENABLED"),
         (True, "", "ONNX_LLM_ENDPOINT"),
+        (True, "file:///model.onnx", "ONNX_LLM_ENDPOINT"),
+        (True, "http://localhost:bad/v1", "ONNX_LLM_ENDPOINT"),
     ],
 )
 @pytest.mark.parametrize("service_type", ["local", "onnx"])

@@ -757,3 +757,37 @@ async def test_onnx_health_checks_actual_worker_device(monkeypatch, payload, exp
     status, error = await llm_runtime.probe_runtime_status(runtime)
     assert status == expected
     assert (error is None) == (expected == "online")
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "",
+        "file:///model.onnx",
+        "http://localhost:bad/v1",
+        "http://localhost:99999/v1",
+        "http://[bad/v1",
+        "http://user:secret@localhost/v1",
+        "http://localhost/v1?token=x",
+        "http://localhost/v1#other",
+    ],
+)
+def test_invalid_onnx_endpoint_has_no_health_or_inference_target(endpoint):
+    assert llm_runtime.resolve_onnx_worker_endpoint(endpoint) is None
+    assert llm_runtime.build_onnx_worker_health_url(endpoint) is None
+
+
+@pytest.mark.parametrize(
+    "policy,scheme", [("force_http", "http"), ("force_https", "https")]
+)
+def test_onnx_active_runtime_and_health_use_same_url_policy(
+    monkeypatch, policy, scheme
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "URL_SCHEME_POLICY", policy)
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(service_type="onnx", onnx_endpoint="http://127.0.0.1:8068/v1/")
+    )
+    assert runtime.endpoint == f"{scheme}://127.0.0.1:8068/v1"
+    assert llm_runtime._build_health_url(runtime) == f"{scheme}://127.0.0.1:8068/health"

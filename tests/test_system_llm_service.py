@@ -88,16 +88,23 @@ def test_installed_binaries_detection(monkeypatch):
         [],
     ],
 )
+@pytest.mark.parametrize(
+    "policy,scheme", [("force_http", "http"), ("force_https", "https")]
+)
 async def test_worker_probe_requires_real_cuda_health_before_catalog(
-    monkeypatch, health
+    monkeypatch, health, policy, scheme
 ):
     import httpx
 
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "URL_SCHEME_POLICY", policy)
     calls = []
     original = httpx.AsyncClient
 
     def handler(request):
         calls.append(request.url.path)
+        assert request.url.scheme == scheme
         assert request.headers["authorization"] == "Bearer fixture-key"
         return httpx.Response(
             200,

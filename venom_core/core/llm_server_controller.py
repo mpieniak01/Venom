@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from venom_core.config import Settings
-from venom_core.utils.llm_runtime import build_onnx_worker_health_url
+from venom_core.utils.llm_runtime import (
+    build_onnx_worker_health_url,
+    resolve_onnx_worker_endpoint,
+)
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
@@ -234,7 +237,9 @@ class LlmServerController:
             ),
         )
 
-        onnx_endpoint = str(getattr(cfg, "ONNX_LLM_ENDPOINT", "") or "").strip() or None
+        onnx_endpoint = resolve_onnx_worker_endpoint(
+            getattr(cfg, "ONNX_LLM_ENDPOINT", None)
+        )
         onnx_commands = {
             action: str(
                 getattr(cfg, f"ONNX_{action.upper()}_COMMAND", "") or ""

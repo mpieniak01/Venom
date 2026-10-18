@@ -114,6 +114,27 @@ def _apply_http_policy_if_present(raw_url: object) -> Optional[str]:
     return apply_http_policy_to_url(text)
 
 
+def resolve_onnx_worker_endpoint(raw_endpoint: object) -> str | None:
+    """Resolve one explicit HTTP worker address for metadata and inference alike."""
+    try:
+        endpoint = _apply_http_policy_if_present(raw_endpoint)
+        parsed = urlparse(endpoint or "")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            return None
+        # Accessing port also validates malformed/out-of-range values.
+        parsed.port
+    except ValueError:
+        return None
+    return endpoint.rstrip("/") if endpoint else None
+
+
 def infer_local_provider(endpoint: Optional[str]) -> str:
     """Próbuje określić typ lokalnego serwera na podstawie endpointu."""
     endpoint_lower = (endpoint or "").lower()
@@ -207,7 +228,7 @@ def _resolve_local_runtime(
             candidate = apply_http_policy_to_url("http://localhost:11434/v1")
         return "ollama", candidate
     if active_server == "onnx":
-        return "onnx", _apply_http_policy_if_present(
+        return "onnx", resolve_onnx_worker_endpoint(
             getattr(settings, "ONNX_LLM_ENDPOINT", None)
         )
     normalized_endpoint = _apply_http_policy_if_present(endpoint)
@@ -218,7 +239,7 @@ def _resolve_non_local_runtime(
     *, service_type: str, endpoint: Optional[str], settings
 ) -> Tuple[str, Optional[str]]:
     if service_type == "onnx":
-        return "onnx", _apply_http_policy_if_present(
+        return "onnx", resolve_onnx_worker_endpoint(
             getattr(settings, "ONNX_LLM_ENDPOINT", None)
         )
     if service_type == "openai":
@@ -251,11 +272,12 @@ def format_runtime_label(runtime: LLMRuntimeInfo) -> str:
     return f"{model_display} · {provider_display} @ {endpoint_display}"
 
 
-def build_onnx_worker_health_url(endpoint: str | None) -> str | None:
-    """Return the explicit worker's origin health URL, never an Ollama default."""
-    parsed = urlparse(str(endpoint or "").strip())
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+def build_onnx_worker_health_url(endpoint: object) -> str | None:
+    """Use the same validated worker origin and scheme as chat requests."""
+    resolved = resolve_onnx_worker_endpoint(endpoint)
+    if resolved is None:
         return None
+    parsed = urlparse(resolved)
     return urlunparse((parsed.scheme, parsed.netloc, "/health", "", "", ""))
 
 

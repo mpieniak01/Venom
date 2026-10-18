@@ -11,6 +11,7 @@ from venom_core.core.prompt_manager import PromptManager
 from venom_core.core.token_economist import TokenEconomist
 from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.maf_runtime import MafChatService
+from venom_core.utils.llm_runtime import resolve_onnx_worker_endpoint
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -213,7 +214,9 @@ class KernelBuilder:
     ) -> None:
         if not getattr(self.settings, "ONNX_LLM_ENABLED", False):
             raise ValueError("ONNX_LLM_ENABLED is disabled")
-        endpoint = str(getattr(self.settings, "ONNX_LLM_ENDPOINT", "") or "").strip()
+        endpoint = resolve_onnx_worker_endpoint(
+            getattr(self.settings, "ONNX_LLM_ENDPOINT", None)
+        )
         if not endpoint:
             raise ValueError("ONNX_LLM_ENDPOINT is required for the isolated worker")
         self._register_local_http_service(kernel, service_id, model_name, endpoint)

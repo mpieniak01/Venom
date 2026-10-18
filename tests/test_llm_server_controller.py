@@ -69,7 +69,15 @@ async def test_run_action_unknown_action():
 
 
 @pytest.mark.parametrize("managed", [False, True])
-def test_onnx_controller_describes_external_worker_truthfully(managed):
+@pytest.mark.parametrize(
+    "policy,scheme", [("force_http", "http"), ("force_https", "https")]
+)
+def test_onnx_controller_describes_external_worker_truthfully(
+    monkeypatch, managed, policy, scheme
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "URL_SCHEME_POLICY", policy)
     controller = LlmServerController(
         _dummy_settings(
             ONNX_LLM_ENDPOINT="http://127.0.0.1:8068/v1",
@@ -79,8 +87,8 @@ def test_onnx_controller_describes_external_worker_truthfully(managed):
         )
     )
     server = next(s for s in controller.list_servers() if s["name"] == "onnx")
-    assert server["endpoint"] == "http://127.0.0.1:8068/v1"
-    assert server["health_url"] == "http://127.0.0.1:8068/health"
+    assert server["endpoint"] == f"{scheme}://127.0.0.1:8068/v1"
+    assert server["health_url"] == f"{scheme}://127.0.0.1:8068/health"
     assert all(value == managed for value in server["supports"].values())
     caps = controller.get_capabilities("onnx")
     assert (

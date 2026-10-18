@@ -11,6 +11,7 @@ import httpx
 from venom_core.utils.llm_runtime import (
     build_onnx_worker_health_url,
     is_onnx_worker_health_ready,
+    resolve_onnx_worker_endpoint,
 )
 
 _RUNTIME_PROVIDER_ALIASES = {
@@ -56,7 +57,7 @@ async def inspect_onnx_worker(
     endpoint: str | None, *, api_key: str = "", timeout: float = 3.0
 ) -> dict[str, Any]:
     """Read actual CUDA health and served IDs without loading/downloading a model."""
-    base = str(endpoint or "").strip().rstrip("/")
+    base = resolve_onnx_worker_endpoint(endpoint) or ""
     health_url = build_onnx_worker_health_url(base)
     result: dict[str, Any] = {
         "ready": False,

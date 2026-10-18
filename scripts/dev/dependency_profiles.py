@@ -200,6 +200,22 @@ def read_lock(path: Path) -> dict[str, str]:
     return packages
 
 
+def check_artifact(name: str, url: object, digest: object) -> None:
+    """Apply the same source and hash policy to resolver and receipt artifacts."""
+    if not isinstance(url, str):
+        raise ValueError(f"Unapproved artifact source for {name}")
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "files.pythonhosted.org"
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(f"Unapproved artifact source for {name}")
+    if not isinstance(digest, str) or not SHA256.fullmatch(digest):
+        raise ValueError(f"Missing or invalid artifact hash for {name}")
+
+
 def report_packages(report: dict[str, Any]) -> dict[str, dict[str, str]]:
     if report.get("version") != "1" or not report.get("install"):
         raise ValueError("Incomplete pip resolver report")
@@ -211,17 +227,8 @@ def report_packages(report: dict[str, Any]) -> dict[str, dict[str, str]]:
             raise ValueError(f"Duplicate report package: {name}")
         download = item["download_info"]
         url = download["url"]
-        parsed = urlsplit(url)
         digest = download.get("archive_info", {}).get("hashes", {}).get("sha256", "")
-        if (
-            parsed.scheme != "https"
-            or parsed.hostname != "files.pythonhosted.org"
-            or parsed.username
-            or parsed.password
-        ):
-            raise ValueError(f"Unapproved artifact source for {name}")
-        if not SHA256.fullmatch(digest):
-            raise ValueError(f"Missing or invalid artifact hash for {name}")
+        check_artifact(name, url, digest)
         packages[name] = {"version": info["version"], "sha256": digest, "url": url}
     return packages
 
@@ -394,6 +401,24 @@ def lock_profile(root: Path, policy: dict[str, Any], profile: str, python: str) 
         return path
 
 
+def check_lock_artifacts(path: Path, artifacts: dict[str, dict[str, str]]) -> None:
+    """Match each generated lock entry to its approved receipt artifact."""
+    lines = path.read_text().splitlines()
+    for index, line in enumerate(lines):
+        match = LOCK_LINE.match(line)
+        if match is None:
+            continue
+        name = canonicalize_name(match[1])
+        artifact = artifacts[name]
+        check_artifact(name, artifact.get("url"), artifact.get("sha256"))
+        expected = [
+            f"{name}=={artifact['version']} \\",
+            f"    --hash=sha256:{artifact['sha256']}",
+        ]
+        if lines[index : index + 2] != expected:
+            raise ValueError(f"Lock artifact hash mismatch: {name}")
+
+
 def audit_locks(root: Path, policy: dict[str, Any]) -> dict[str, Any]:
     """Verify receipts, ownership and shared versions without importing a runtime."""
     applications: dict[str, dict[str, str]] = {}
@@ -409,11 +434,14 @@ def audit_locks(root: Path, policy: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"Lock receipt mismatch: {name}")
         if receipt.get("profile_policy_sha256") != profile_policy_hash(policy, name):
             raise ValueError(f"Stale lock policy: {name}")
+        if receipt.get("platform") != policy["platform"]:
+            raise ValueError(f"Lock receipt platform mismatch: {name}")
         locked = read_lock(path)
         artifacts = receipt.get("artifacts", {})
         expected = {package: item["version"] for package, item in artifacts.items()}
         if not expected or locked != expected:
             raise ValueError(f"Incomplete lock artifact inventory: {name}")
+        check_lock_artifacts(path, artifacts)
         check_packages(policy, name, set(locked))
         check_direct_requirements(policy, name, locked)
         counts[name] = len(locked)

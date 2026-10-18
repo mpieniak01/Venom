@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -769,6 +770,88 @@ def test_lock_audit_rejects_tampered_or_incomplete_receipts(
     receipt_path.write_text(json.dumps(receipt))
     with pytest.raises(ValueError):
         profiles.audit_locks(tmp_path, locked_policy)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("sha256", "b" * 64),
+        ("sha256", "not-a-hash"),
+        ("sha256", None),
+        ("url", "http://files.pythonhosted.org/example.whl"),
+        ("url", "https://unapproved.invalid/example.whl"),
+        ("url", "https://user@files.pythonhosted.org/example.whl"),
+        ("url", None),
+    ],
+)
+def test_lock_audit_validates_receipt_artifact_source_and_hash(
+    tmp_path, locked_policy, field, value
+):
+    path = tmp_path / locked_policy["profiles"]["light"]["lock"]
+    receipt_path = path.with_suffix(".json")
+    receipt = json.loads(receipt_path.read_text())
+    receipt["artifacts"]["example"][field] = value
+    receipt_path.write_text(json.dumps(receipt))
+    with pytest.raises(ValueError):
+        profiles.audit_locks(tmp_path, locked_policy)
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [("python", "3.11"), ("system", "Windows"), ("machine", "aarch64")],
+)
+def test_lock_audit_rejects_receipt_platform_mismatch(
+    tmp_path, locked_policy, key, value
+):
+    path = tmp_path / locked_policy["profiles"]["light"]["lock"]
+    receipt_path = path.with_suffix(".json")
+    receipt = json.loads(receipt_path.read_text())
+    receipt["platform"][key] = value
+    receipt_path.write_text(json.dumps(receipt))
+    with pytest.raises(ValueError, match="platform"):
+        profiles.audit_locks(tmp_path, locked_policy)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "    --hash=sha256:" + "b" * 64,
+        "",
+        "    --hash=sha256:" + "a" * 64 + " --hash=sha256:" + "b" * 64,
+    ],
+)
+def test_lock_audit_checks_each_locked_artifact_hash(
+    tmp_path, locked_policy, replacement
+):
+    path = tmp_path / locked_policy["profiles"]["light"]["lock"]
+    receipt_path = path.with_suffix(".json")
+    receipt = json.loads(receipt_path.read_text())
+    path.write_text(
+        path.read_text().replace("    --hash=sha256:" + "a" * 64, replacement)
+    )
+    # Keep the outer receipt valid: the artifact itself must still be checked.
+    receipt["lock_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    receipt_path.write_text(json.dumps(receipt))
+    with pytest.raises(ValueError, match="artifact hash"):
+        profiles.audit_locks(tmp_path, locked_policy)
+
+
+def test_current_active_lock_receipts_remain_valid_and_unmodified():
+    policy = profiles.load_policy()
+    paths = [
+        path
+        for spec in policy["profiles"].values()
+        for path in (
+            profiles.ROOT / spec["lock"],
+            (profiles.ROOT / spec["lock"]).with_suffix(".json"),
+        )
+    ]
+    before = {path: path.read_bytes() for path in paths}
+    result = profiles.audit_locks(profiles.ROOT, policy)
+    assert result["status"] == "PASS"
+    assert result["qualification"] == "LOCK_INTEGRITY_ONLY"
+    assert set(result["packages"]) == {"light", "ci", "build"}
+    assert {path: path.read_bytes() for path in paths} == before
 
 
 def test_lock_audit_rejects_application_transitive_version_drift(

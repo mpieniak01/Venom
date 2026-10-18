@@ -1,7 +1,8 @@
 # Venom runtime contract and MAF migration (266)
 
-Status: implementation in progress. This document describes the migrated boundary;
-it is not a release qualification or a declaration that all consumers are migrated.
+Status: the Venom runtime boundary is implemented with Microsoft Agent Framework.
+Local functional probes and code gates passed within the reduced test scope below.
+This is not a security release approval or acceptance of every external extension.
 
 ## Ownership
 
@@ -60,9 +61,9 @@ exception details are not exposed to the model.
 The cockpit still offers `direct`, `normal`, `complex` (see cockpit-chat-send and
 execution_mode_planner). Direct uses the simple chat path, normal keeps orchestration,
 and complex requests COMPLEX_PLANNING. Migration must not insert a planner/model
-into direct or duplicate the shared template-response routing. End-to-end route and
-performance qualification is a separate required gate; unit fixture transports do
-not qualify a model or physical Rider-Pi.
+into direct or duplicate the shared template-response routing. Actual route probes are recorded separately from unit fixtures. Performance
+qualification is separate; neither unit fixtures nor a short generation smoke
+qualify a physical Rider-Pi.
 
 ## Validation boundary
 
@@ -243,3 +244,39 @@ invent an auth fallback to Ollama. A local routing hint retains the selected wor
 and its model identity in the serialized decision. This is credential classification,
 not a readiness check: actual endpoint health/model validation remains required.
 Cloud credential validation and the existing fallback policy remain in force.
+
+
+## Local acceptance snapshot — 18 October 2026
+
+The user limited this update to actual model loading and a few responses, with
+broader acceptance by the operator. Additional stress runs and full performance
+matrices are not required for this local phase. Direct, Normal and Complex remain
+separate product routes; earlier actual Complex evidence is retained.
+
+| Engine and actual model | Completed check | Boundary |
+|---|---|---|
+| Own `multi_runtime`, `google/gemma-4-E2B-it`, revision `b324173c7d5721c2baba7f3b17b3b9b3d34ab1e9` | CUDA load and four real responses: native JSON, public Direct with two stream settings, Normal | Native endpoint does not stream tokens; public SSE wraps the complete response. Its estimated token counts do not establish throughput. |
+| Ollama `0.40.6`, `gemma3:4b` Q4_K_M, digest `a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a` | Native response, public Direct SSE with terminal `done`, Normal task `COMPLETED`; GPU residency verified | Short functional smoke, not a performance/quality benchmark or native audio qualification. |
+
+A real Gemma4 failure exposed `temperature=0` incorrectly enabling sampling.
+The adapter now selects greedy decoding, including when `top_p` is also supplied.
+Two failing regressions preceded the fix; 135 targeted tests passed afterwards.
+
+Local evidence is retained under ignored `docs_dev/266/`: `priority-gemma4-2.json`,
+`priority-ollama-0406.json` and `priority-runtime-acceptance.json`. The runtime SHA
+is recorded in each report. The latter smoke used `e64fc71f`; the Gemma4 smoke
+used `bb4c5be8`, before the image-pin-only change. On `e64fc71f`, `make pr-fast`
+passed with 3862 backend tests, 9 skips, 172 frontend tests, 97.09% changed-lines
+coverage and all 14 file floors. Full mypy passed for 437 files and CI-lite for
+867 tests before that image-pin-only change.
+
+Each probe used its own process identities and private loopback network namespace;
+its API and engine were stopped afterwards. No operator service, physical Pi,
+camera or motor was activated. The separately installed Ollama 0.40.6 component
+does not replace the operator's existing executable.
+
+Other engines retain their existing lock/install and native canary evidence.
+Docker runtime, Academy training and native Gemma4/Ollama audio have not been
+accepted by these short probes. The interrupted formal100 candidate is partial
+data, not a completed comparison. Known dependency security findings remain open;
+see [dependency qualification limits](DEPENDENCY_PROFILES.md#local-qualification-limits-266).

@@ -298,3 +298,20 @@ that Python 3.12+ compatibility issue. Do not co-install the two distributions,
 which own the same module paths. Fresh locks omit the legacy distribution and
 verification rejects it as an undeclared extra in an updated environment.
 See the [maintainer's release history](https://pypi.org/project/webrtcvad-wheels/).
+
+
+## Local qualification limits (266)
+
+The final local priority smoke passed for the own Gemma4 daemon and Ollama
+0.40.6. See [actual runtime scope](MAF_RUNTIME_CONTRACT.md#local-acceptance-snapshot--18-october-2026).
+Other heavy profiles reuse the recorded clean-install, inventory, `pip check`
+and minimal native probes. This does not establish a performance budget, Docker
+runtime acceptance, Academy training acceptance or native Gemma4/Ollama audio.
+
+Security scan completion is separate from disposition. The recorded scans found
+0 npm production issues, 5 High npm development dependencies, 10 High/6 Medium
+findings in Full and 20 High/19 Medium/2 Low in vLLM. No new High/Critical IDs
+were observed in Full versus the recorded operator inventory; that comparison
+does not make those findings acceptable. Risk acceptance is not granted, and
+this local snapshot does not authorize publication, merge or operator rollout.
+The exact scanned inventories/locks and raw results remain in local task records.

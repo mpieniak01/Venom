@@ -2,6 +2,7 @@
 # Do not edit manually. Run: make test-groups-sync
 
 tests/security/test_autonomy_enforcement.py
+tests/test_202c_benchmark_metrics.py
 tests/test_academy_api_contracts.py
 tests/test_academy_api_edges_contract.py
 tests/test_academy_conversion_contracts.py

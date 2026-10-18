@@ -307,14 +307,14 @@
       "domain": "performance",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "new-code",
+      "primary_lane": "ci-lite",
       "allowed_lanes": [
         "new-code",
         "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Validate receiver-side SSE TTFT and reject fabricated token-rate measurements in the existing benchmark."
+      "rationale": "Fast stdlib-only metric/protocol regressions must run in mandatory CI-lite, including changes confined to diagnostic scripts."
     },
     {
       "path": "tests/test_204a_canonical_control_state.py",

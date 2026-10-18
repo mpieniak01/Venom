@@ -1,5 +1,10 @@
 # Deployment – FastAPI + Next.js
 
+> Zakres bieżącego kandydata: Light/API oraz CI, z Ollama przez HTTP. Full,
+> lokalne dodatki GPU i Academy są odłożone; zachowane instrukcje legacy nie
+> oznaczają ich kwalifikacji dla nowego core MAF. Nie aktualizuj pełnego środowiska
+> operatorskiego tą paczką. Zobacz [politykę profili](../DEPENDENCY_PROFILES.md).
+
 Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** działa jako samodzielne API/SSE/WS, a **Next.js (`web-next`)** serwuje interfejs użytkownika. Obie części są uruchamiane i monitorowane niezależnie.
 
 Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje `docs/PL/SECURITY_POLICY.md`.

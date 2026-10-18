@@ -547,18 +547,6 @@ class Orchestrator:
         """Uruchamia tryb Council (delegacja)."""
         return await run_council_operation(self, task_id, context)
 
-    def _normalize_council_tuple(self, council_result):
-        """Zapewnia że create_council zwraca krotkę (user_proxy, group_chat, manager)."""
-
-        if isinstance(council_result, tuple):
-            padded = list(council_result) + [None] * (3 - len(council_result))
-            return tuple(padded[:3])
-
-        user_proxy = getattr(council_result, "user_proxy", None)
-        group_chat = getattr(council_result, "group_chat", None)
-        manager = getattr(council_result, "manager", None)
-        return user_proxy, group_chat, manager
-
     async def execute_healing_cycle(self, task_id: UUID, test_path: str = ".") -> dict:
         """
         Pętla samonaprawy (Test-Diagnose-Fix-Apply).

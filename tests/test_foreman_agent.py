@@ -4,9 +4,9 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.foreman import ForemanAgent, NodeMetrics
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.infrastructure.message_broker import MessageBroker
 
 

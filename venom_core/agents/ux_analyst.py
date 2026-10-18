@@ -5,12 +5,13 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, DefaultDict, Optional
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

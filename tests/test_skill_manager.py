@@ -58,7 +58,7 @@ def test_validate_skill_valid(skill_manager, temp_skills_dir):
     # Stwórz poprawny skill
     skill_code = '''"""Test skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class TestSkill:
     @kernel_function(name="test_func", description="Test")
@@ -111,7 +111,7 @@ def test_validate_skill_dangerous_code(skill_manager, temp_skills_dir):
     """Test walidacji skill z niebezpiecznym kodem."""
     skill_code = '''"""Dangerous skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class DangerousSkill:
     @kernel_function(name="eval_func", description="Dangerous")
@@ -139,7 +139,7 @@ def test_load_valid_skill(skill_manager, temp_skills_dir):
     # Stwórz poprawny skill
     skill_code = '''"""Calculator skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class CalculatorSkill:
     @kernel_function(name="add", description="Dodaje dwie liczby")
@@ -164,7 +164,7 @@ def test_get_loaded_skills(skill_manager, temp_skills_dir):
     for i in range(3):
         skill_code = f'''"""Skill {i}."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class Skill{i}:
     @kernel_function(name="func{i}", description="Test")
@@ -189,7 +189,7 @@ def test_unload_skill(skill_manager, temp_skills_dir):
     # Stwórz i załaduj skill
     skill_code = '''"""Test skill."""
 from typing import Annotated
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class TestSkill:
     @kernel_function(name="test", description="Test")
@@ -223,7 +223,7 @@ def test_load_skill_ignores_init_and_underscore(skill_manager, temp_skills_dir):
 
     # Stwórz poprawny skill
     skill_code = '''"""Valid skill."""
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class ValidSkill:
     @kernel_function(name="test", description="Test")
@@ -249,7 +249,7 @@ def test_reload_skill_returns_false_when_reload_raises(
     skill_manager, temp_skills_dir, monkeypatch
 ):
     skill_code = '''"""Reloadable skill."""
-from semantic_kernel.functions import kernel_function
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 
 class ReloadableSkill:
     @kernel_function(name="test", description="Test")
@@ -260,11 +260,17 @@ class ReloadableSkill:
     skill_file.write_text(skill_code)
     assert "reloadable" in skill_manager.load_skills_from_dir()
 
-    def _raise_reload(_module):
+    original = skill_manager.loaded_skills["reloadable"]
+    original_call = skill_manager.kernel.plugins["ReloadableSkill"]["test"]
+
+    def _raise_reload(*_args):
         raise RuntimeError("reload failed")
 
-    monkeypatch.setattr(skill_manager_module.importlib, "reload", _raise_reload)
+    monkeypatch.setattr(skill_manager, "_load_module", _raise_reload)
     assert skill_manager.reload_skill("reloadable") is False
+    assert skill_manager.loaded_skills["reloadable"] is original
+    assert skill_manager.kernel.plugins["ReloadableSkill"]["test"] is original_call
+    assert original_call() == "ok"
 
 
 @pytest.mark.asyncio
@@ -294,7 +300,13 @@ def test_decorator_name_variants(skill_manager):
 
 def test_register_skill_in_kernel_skips_foreign_classes(temp_skills_dir):
     manager = SkillManager(MagicMock(), custom_skills_dir=temp_skills_dir)
-    plugin_cls = type("Plugin", (), {"__module__": "venom_custom_demo"})
+    from venom_core.execution.agent_contracts import tool_function
+
+    @tool_function(name="ping", description="Probe")
+    def ping(self):
+        return "pong"
+
+    plugin_cls = type("Plugin", (), {"__module__": "venom_custom_demo", "ping": ping})
     foreign_cls = type("Foreign", (), {"__module__": "external.mod"})
     module = SimpleNamespace(Plugin=plugin_cls, Foreign=foreign_cls)
 
@@ -472,3 +484,75 @@ async def test_invoke_mcp_tool_uses_tool_level_policy_override(
 
     assert result == "get_short_status:ok"
     assert checked == ["GitReadSkill"]
+
+
+def test_reload_replaces_equal_size_source_and_rolls_back_broken_constructor(tmp_path):
+    from venom_core.execution.maf_runtime import AgentRuntime
+
+    runtime = AgentRuntime()
+    manager = SkillManager(runtime, str(tmp_path))
+    path = tmp_path / "probe.py"
+    source = """from venom_core.execution.agent_contracts import tool_function
+class Probe:
+    @tool_function(name="read", description="Probe")
+    def read(self) -> str:
+        return "one"
+"""
+    path.write_text(source)
+    assert manager.load_skills_from_dir() == ["probe"]
+    assert runtime.plugins["Probe"]["read"]() == "one"
+    path.write_text(source.replace('"one"', '"two"'))
+    assert manager.reload_skill("probe")
+    assert runtime.plugins["Probe"]["read"]() == "two"
+    previous = manager.loaded_skills["probe"]
+    path.write_text(
+        source.replace(
+            "class Probe:",
+            'class Probe:\n    def __init__(self):\n        raise ValueError("broken")',
+        )
+    )
+    assert not manager.reload_skill("probe")
+    assert manager.loaded_skills["probe"] is previous
+    assert runtime.plugins["Probe"]["read"]() == "two"
+    import sys
+
+    assert sys.modules["venom_custom_probe"] is previous
+
+
+def test_reload_rejects_invalid_tool_schema_before_replacing_plugins(tmp_path):
+    import sys
+
+    from venom_core.execution.maf_runtime import AgentRuntime
+
+    runtime = AgentRuntime(permission_checker=lambda name: True)
+    manager = SkillManager(runtime, str(tmp_path))
+    path = tmp_path / "schema_probe.py"
+    source = """from venom_core.execution.agent_contracts import tool_function
+class Unsupported:
+    pass
+class Probe:
+    @tool_function(name="echo", description="Echo")
+    def echo(self, text: str) -> str:
+        return text
+"""
+    path.write_text(source)
+    assert manager.load_skills_from_dir() == ["schema_probe"]
+    previous_module = manager.loaded_skills["schema_probe"]
+    previous_callable = runtime.plugins["Probe"]["echo"]
+    assert runtime.native_tools()[0].func(text="old") == "old"
+
+    path.write_text(
+        source.replace("text: str", "text: Unsupported")
+        + """
+class AReplacement:
+    @tool_function(name="extra", description="Extra")
+    def extra(self) -> str:
+        return "new"
+"""
+    )
+    assert not manager.reload_skill("schema_probe")
+    assert manager.loaded_skills["schema_probe"] is previous_module
+    assert sys.modules["venom_custom_schema_probe"] is previous_module
+    assert set(runtime.plugins) == {"Probe"}
+    assert runtime.plugins["Probe"]["echo"] is previous_callable
+    assert runtime.native_tools()[0].func(text="still works") == "still works"

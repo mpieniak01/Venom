@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.core.models import TaskRequest
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.services import conversation_providers as conversation
 from venom_core.services.execution_template_planner import resolve_response_template
 

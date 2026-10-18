@@ -28,6 +28,7 @@ from venom_core.core.service_monitor import (
     ServiceRegistry,
     ServiceStatus,
 )
+from venom_core.execution.agent_contracts import tool_function
 from venom_core.main import (
     _audio_disabled_status_payload,
     _build_gemma4_runtime_capabilities,
@@ -599,48 +600,27 @@ async def test_runtime_stack_guard_and_exception_paths(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_skill_adapter_additional_branches(tmp_path: Path):
-    assert skill_adapter_module._map_json_type("list[str]") == "array"
-    assert skill_adapter_module._map_json_type("int") == "number"
-    assert skill_adapter_module._map_json_type("bool") == "boolean"
-    assert skill_adapter_module._map_json_type("custom") == "string"
-
     class DummySkill:
+        @tool_function(name="sync_tool", description="sync desc")
         def sync_tool(self, value: str = "x"):
             return f"sync:{value}"
 
-    DummySkill.sync_tool.__kernel_function_name__ = "sync_tool"
-    DummySkill.sync_tool.__kernel_function_description__ = "sync desc"
-    DummySkill.sync_tool.__kernel_function_parameters__ = [
-        {
-            "name": "value",
-            "type_": "str",
-            "description": "value",
-            "default_value": "x",
-            "is_required": False,
-        }
-    ]
     skill = DummySkill()
 
     adapter = skill_adapter_module.SkillMcpLikeAdapter(skill)
     tools = adapter.list_tools()
     assert tools[0].name == "sync_tool"
+    assert tools[0].input_schema["properties"]["value"]["type"] == "string"
+    assert tools[0].input_schema["properties"]["value"]["default"] == "x"
+    assert not tools[0].input_schema.get("required")
     result = await adapter.invoke_tool("sync_tool", {"value": "ok", "extra": 1})
     assert result == "sync:ok"
 
     class MissingArgSkill:
+        @tool_function(name="async_tool", description="async desc")
         async def async_tool(self, required: str):
             return required
 
-    MissingArgSkill.async_tool.__kernel_function_name__ = "async_tool"
-    MissingArgSkill.async_tool.__kernel_function_description__ = "async desc"
-    MissingArgSkill.async_tool.__kernel_function_parameters__ = [
-        {
-            "name": "required",
-            "type_": "str",
-            "description": "required",
-            "is_required": True,
-        }
-    ]
     skill2 = MissingArgSkill()
     adapter2 = skill_adapter_module.SkillMcpLikeAdapter(skill2)
     with pytest.raises(ValueError, match="Missing required arguments"):
@@ -863,14 +843,9 @@ async def test_translation_helpers_and_cache_paths(monkeypatch):
 @pytest.mark.asyncio
 async def test_skill_adapter_unknown_and_async_paths():
     class AsyncSkill:
+        @tool_function(name="async_tool", description="async desc")
         async def async_tool(self, required: str):
             return f"ok:{required}"
-
-    AsyncSkill.async_tool.__kernel_function_name__ = "async_tool"
-    AsyncSkill.async_tool.__kernel_function_description__ = "async desc"
-    AsyncSkill.async_tool.__kernel_function_parameters__ = [
-        {"name": "required", "type_": "str", "description": "r", "is_required": True}
-    ]
 
     adapter = skill_adapter_module.SkillMcpLikeAdapter(AsyncSkill())
     result = await adapter.invoke_tool("async_tool", {"required": "x"})
@@ -1286,3 +1261,24 @@ async def test_coder_and_toolmaker_skill_manager_paths():
     toolmaker.file_skill = SimpleNamespace(write_file=AsyncMock(return_value=None))
     await toolmaker._write_file("x.py", "print(1)")
     toolmaker.skill_manager.invoke_mcp_tool.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_file_skill_adapter_uses_native_schema_and_reads_real_workspace(tmp_path):
+    (tmp_path / "probe.txt").write_text("adapter read proof")
+    adapter = skill_adapter_module.FileSkillMcpAdapter(workspace_root=str(tmp_path))
+    tools = {tool.name: tool for tool in adapter.list_tools()}
+    read_schema = tools["read_file"].input_schema
+    assert read_schema["required"] == ["file_path"]
+    assert read_schema["properties"]["file_path"]["type"] == "string"
+    assert "Ścieżka" in read_schema["properties"]["file_path"]["description"]
+    listing = tools["list_files"].input_schema
+    assert listing["properties"]["directory"]["default"] == "."
+    assert listing["properties"]["recursive"]["default"] is False
+    assert listing["properties"]["max_depth"]["type"] == "integer"
+    assert listing["properties"]["max_depth"]["default"] == 3
+    assert (
+        await adapter.invoke_tool("read_file", {"file_path": "probe.txt"})
+        == "adapter read proof"
+    )
+    assert "probe.txt" in await adapter.invoke_tool("list_files", {})

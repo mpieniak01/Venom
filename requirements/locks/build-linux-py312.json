@@ -1,0 +1,52 @@
+{
+  "artifacts": {
+    "packaging": {
+      "sha256": "b36f1fef9334a5588b4166f8bcd26a14e521f2b55e6b9de3aaa80d3ff7a37529",
+      "url": "https://files.pythonhosted.org/packages/b7/b9/c538f279a4e237a006a2c98387d081e9eb060d203d8ed34467cc0f0b9b53/packaging-26.0-py3-none-any.whl",
+      "version": "26.0"
+    },
+    "pip": {
+      "sha256": "71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e",
+      "url": "https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl",
+      "version": "26.2.1"
+    },
+    "setuptools": {
+      "sha256": "29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3",
+      "url": "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl",
+      "version": "83.0.0"
+    },
+    "wheel": {
+      "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab",
+      "url": "https://files.pythonhosted.org/packages/2e/29/69cfbb602cd91690c55d38ba9fe53e6a7e76a6fa647bf38f19c138d25449/wheel-0.48.0-py3-none-any.whl",
+      "version": "0.48.0"
+    }
+  },
+  "lock_sha256": "b538b19a2da6f92c05e01c929de6ed432bd906b7e65054439211f26a35b46e11",
+  "platform": {
+    "machine": "x86_64",
+    "python": "3.12",
+    "system": "Linux"
+  },
+  "policy_sha256": "aa51cd7ea453c721d25f464d0617d308d3e6a5cf684b875e09d307cffbadfe1f",
+  "profile": "build",
+  "profile_policy_sha256": "0eebc94e8472b53558c2a8215520ee5380a701cf3b14443dab051e043b49c2ba",
+  "qualification": "RESOLVED_ONLY",
+  "resolver": {
+    "name": "pip",
+    "version": "26.2.1"
+  },
+  "resolver_environment": {
+    "implementation_name": "cpython",
+    "implementation_version": "3.12.3",
+    "os_name": "posix",
+    "platform_machine": "x86_64",
+    "platform_python_implementation": "CPython",
+    "platform_release": "6.6.87.2-microsoft-standard-WSL2",
+    "platform_system": "Linux",
+    "platform_version": "#1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025",
+    "python_full_version": "3.12.3",
+    "python_version": "3.12",
+    "sys_platform": "linux"
+  },
+  "schema_version": 1
+}

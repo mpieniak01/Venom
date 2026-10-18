@@ -151,6 +151,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: |
+            requirements/locks/ci-linux-py312.txt
+            requirements/locks/build-linux-py312.txt
 
       - name: Generate coding-agent context brief artifact
         run: |
@@ -166,8 +169,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-ci-lite.txt
+          python scripts/bootstrap_dependency_profile.py --profile ci --venv "$PWD/.venv" --update
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Architecture contracts guard
         run: |
@@ -204,11 +207,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: |
+            requirements/locks/ci-linux-py312.txt
+            requirements/locks/build-linux-py312.txt
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-ci-lite.txt
+          python scripts/bootstrap_dependency_profile.py --profile ci --venv "$PWD/.venv" --update
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Install lightweight system tools
         run: |
@@ -324,11 +330,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: |
+            requirements/locks/ci-linux-py312.txt
+            requirements/locks/build-linux-py312.txt
 
       - name: Install backend dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-ci-lite.txt
+          python scripts/bootstrap_dependency_profile.py --profile ci --venv "$PWD/.venv" --update
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Setup Node
         uses: actions/setup-node@v5

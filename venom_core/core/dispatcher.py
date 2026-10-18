@@ -5,11 +5,6 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Sequence
 
-from semantic_kernel import Kernel
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.agents.architect import ArchitectAgent
 from venom_core.agents.base import BaseAgent
 from venom_core.agents.chat import ChatAgent
@@ -30,6 +25,12 @@ from venom_core.config import SETTINGS
 from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.goal_store import GoalStore
 from venom_core.core.models import Intent
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.assistant_skill import AssistantSkill
 from venom_core.services.execution_template_planner import wants_status_analysis

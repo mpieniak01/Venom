@@ -5,16 +5,17 @@ import os
 import re
 from typing import Any, List, Tuple
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.function_choice_behavior import (
-    FunctionChoiceBehavior,
-)
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.agents.base import BaseAgent
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.agent_contracts import ToolPolicy as FunctionChoiceBehavior
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger

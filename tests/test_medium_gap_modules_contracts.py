@@ -468,9 +468,8 @@ class TestKernelBuilderGaps:
 
     def test_register_service_unknown_type_raises(self):
         """_register_service raises ValueError for unknown service type."""
-        from semantic_kernel import Kernel
-
         from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         kb = KernelBuilder(settings=self._make_mock_settings())
         with pytest.raises(ValueError, match="Nieznany typ serwisu"):
@@ -478,26 +477,24 @@ class TestKernelBuilderGaps:
 
     def test_register_google_service_unavailable_raises(self):
         """_register_google_service raises ValueError when Google SDK is missing."""
-        from semantic_kernel import Kernel
-
         import venom_core.execution.kernel_builder as kbmod
         from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         kb = KernelBuilder(settings=self._make_mock_settings())
         original = kbmod.GOOGLE_AVAILABLE
         kbmod.GOOGLE_AVAILABLE = False
         try:
-            with pytest.raises(ValueError, match="SDK Gemini"):
+            with pytest.raises(ValueError, match="Provider MAF"):
                 kb._register_google_service(Kernel(), "google", "gemini-pro", False)
         finally:
             kbmod.GOOGLE_AVAILABLE = original
 
     def test_register_google_service_no_api_key_raises(self):
         """_register_google_service raises ValueError when GOOGLE_API_KEY missing."""
-        from semantic_kernel import Kernel
-
         import venom_core.execution.kernel_builder as kbmod
         from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         kb = KernelBuilder(settings=self._make_mock_settings(GOOGLE_API_KEY=None))
         original = kbmod.GOOGLE_AVAILABLE
@@ -510,9 +507,8 @@ class TestKernelBuilderGaps:
 
     def test_register_openai_service_no_key_raises(self):
         """_register_openai_service raises ValueError when OPENAI_API_KEY missing."""
-        from semantic_kernel import Kernel
-
         from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         kb = KernelBuilder(settings=self._make_mock_settings(OPENAI_API_KEY=None))
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
@@ -520,9 +516,8 @@ class TestKernelBuilderGaps:
 
     def test_register_azure_service_missing_config_raises(self):
         """_register_azure_service raises NotImplementedError when credentials missing."""
-        from semantic_kernel import Kernel
-
         from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         settings = self._make_mock_settings()
         settings.AZURE_OPENAI_ENDPOINT = None
@@ -544,9 +539,8 @@ class TestKernelBuilderGaps:
 
     def test_register_all_services_local_exception(self):
         """_register_all_services catches local service registration error."""
-        from semantic_kernel import Kernel
-
         from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         settings = self._make_mock_settings(OPENAI_API_KEY=None)
         kb = KernelBuilder(settings=settings)
@@ -557,9 +551,8 @@ class TestKernelBuilderGaps:
 
     def test_register_all_services_with_openai_key(self):
         """_register_all_services registers OpenAI services when key available."""
-        from semantic_kernel import Kernel
-
         from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         settings = self._make_mock_settings(OPENAI_API_KEY="sk-test-key")
         kb = KernelBuilder(settings=settings)

@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from semantic_kernel.contents.chat_history import ChatHistory
 
 import venom_core.agents.operator as op_module
 from venom_core.agents.operator import (
@@ -20,6 +19,7 @@ from venom_core.agents.operator import (
     _ollama_native_call,
     _sanitize_voice_response,
 )
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 
 

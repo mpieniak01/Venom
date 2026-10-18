@@ -12,6 +12,7 @@ class SimpleChatRequest(BaseModel):
     model: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
+    seed: Optional[int] = Field(default=None, strict=True, ge=-(2**63), le=2**63 - 1)
     top_p: Optional[float] = Field(default=None, gt=0.0, le=1.0)
     logprobs: Optional[bool] = None
     top_logprobs: Optional[int] = Field(default=None, ge=0, le=20)

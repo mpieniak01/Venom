@@ -600,69 +600,253 @@ async def test_stream_simple_chat_multi_runtime_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stream_simple_chunks_onnx_success_and_error(monkeypatch):
-    async def _fake_aiter_sync(*_args, **_kwargs):
-        for token in ("", "A", "B"):
-            yield token
+@pytest.mark.parametrize("upstream_stream", [True, False])
+async def test_simple_onnx_worker_uses_shared_http_transport_and_native_usage(
+    monkeypatch, upstream_stream
+):
+    runtime = _Runtime("onnx")
+    runtime.service_type = "onnx"
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ONNX_LLM_ENABLED", True)
+    captured = []
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
 
-    monkeypatch.setattr(llm_simple_service, "_aiter_sync_onnx_stream", _fake_aiter_sync)
-    monkeypatch.setattr(llm_simple_service, "_get_onnx_simple_client", lambda: object())
+    async def no_adapter():
+        return None
 
-    ok_events = await _collect_events(
-        llm_simple_service._stream_simple_chunks_onnx(
-            runtime=_Runtime("onnx"),
-            request_id=uuid4(),
-            model_name="m",
-            messages=[],
-            max_tokens=16,
-            temperature=0.1,
+    monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", no_adapter)
+    usage = {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+    if upstream_stream:
+
+        @asynccontextmanager
+        async def open_stream(**kwargs):
+            captured.append(kwargs)
+            yield _LinesResponse(
+                [
+                    "data: "
+                    + json.dumps({"choices": [{"delta": {"content": "ONNX"}}]}),
+                    "data: " + json.dumps({"choices": [], "usage": usage}),
+                    "data: [DONE]",
+                ]
+            )
+
+        monkeypatch.setattr(
+            llm_simple_service.llm_simple_transport, "open_stream_response", open_stream
+        )
+    else:
+
+        class Response:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"choices": [{"message": {"content": "ONNX"}}], "usage": usage}
+
+        @asynccontextmanager
+        async def open_response(**kwargs):
+            captured.append(kwargs)
+            yield Response()
+
+        monkeypatch.setattr(
+            llm_simple_service.llm_simple_transport,
+            "open_stream_response",
+            open_response,
+        )
+    response = await llm_simple_service.stream_simple_chat(
+        SimpleChatRequest(
+            content="hej", model="model-x", seed=0, stream=upstream_stream
         )
     )
-    assert [name for name, _ in ok_events] == ["start", "content", "content", "done"]
-
-    async def _boom_aiter_sync(*_args, **_kwargs):
-        raise RuntimeError("onnx failed")
-        yield ""  # pragma: no cover
-
-    monkeypatch.setattr(llm_simple_service, "_aiter_sync_onnx_stream", _boom_aiter_sync)
-    err_events = await _collect_events(
-        llm_simple_service._stream_simple_chunks_onnx(
-            runtime=_Runtime("onnx"),
-            request_id=uuid4(),
-            model_name="m",
-            messages=[],
-            max_tokens=16,
-            temperature=0.1,
-        )
-    )
-    assert [name for name, _ in err_events] == ["start", "error"]
+    events = await _collect_response_events(response)
+    assert [name for name, _ in events] == ["start", "content", "done"]
+    assert events[-1][1] == {"usage": usage, "usage_source": "upstream"}
+    assert len(captured) == 1
+    assert captured[0]["completions_url"] == runtime.endpoint + "/chat/completions"
+    assert captured[0]["payload"]["seed"] == 0
+    assert captured[0]["payload"]["model"] == "model-x"
+    assert captured[0]["payload"]["stream"] is upstream_stream
+    if upstream_stream:
+        assert captured[0]["payload"]["stream_options"] == {"include_usage": True}
 
 
 @pytest.mark.asyncio
-async def test_stream_simple_chat_onnx_path(monkeypatch):
-    runtime = _Runtime("onnx")
-    runtime.service_type = "onnx"
-    runtime.endpoint = None
+@pytest.mark.parametrize("provider", ["onnx", "vllm", "ollama"])
+@pytest.mark.parametrize("partial", [False, True])
+async def test_upstream_sse_error_never_becomes_successful_done(
+    monkeypatch, provider, partial
+):
+    """HTTP200/SSE error after text must stay failed at the public Simple boundary."""
+    packets = []
+    if partial:
+        packets.append('data: {"choices":[{"delta":{"content":"Partial"}}]}')
+    packets.extend(
+        [
+            'data: {"error":{"message":"private upstream details","type":"generation_cancelled"}}',
+            "data: [DONE]",
+        ]
+    )
+    calls = []
 
-    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+    @asynccontextmanager
+    async def open_response(**kwargs):
+        calls.append(kwargs)
+        yield _LinesResponse(packets)
+
     monkeypatch.setattr(
-        llm_simple_service, "_build_chat_completions_url", lambda _rt: None
+        llm_simple_service.llm_simple_transport, "open_stream_response", open_response
+    )
+    tracer = _Tracer()
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: tracer)
+    events = await _collect_events(
+        llm_simple_service._stream_simple_chunks(
+            completions_url="http://fixture/v1/chat/completions",
+            payload={"messages": []},
+            runtime=_Runtime(provider),
+            request_id=uuid4(),
+            model_name="model-x",
+        )
+    )
+    assert [name for name, _ in events] == (
+        ["start", "content", "error"] if partial else ["start", "error"]
+    )
+    assert events[-1][1]["code"] == "internal_error"
+    assert "private upstream details" not in json.dumps(events)
+    assert len(calls) == 1
+    assert any(
+        name == "update_status" and args[1].name == "FAILED"
+        for name, args, _ in tracer.calls
     )
 
-    async def _fake_onnx_stream(**_kwargs):
-        yield "event: start\ndata: {}\n\n"
-        yield 'event: content\ndata: {"text":"ONNX"}\n\n'
-        yield "event: done\ndata: {}\n\n"
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["onnx", "vllm", "ollama"])
+@pytest.mark.parametrize("partial", [False, True])
+async def test_incomplete_upstream_sse_never_finishes_the_public_request(
+    monkeypatch, provider, partial
+):
+    packets = (
+        ['data: {"choices":[{"delta":{"content":"Część odpowiedzi"}}]}']
+        if partial
+        else []
+    )
+    packets.append("data: malformed-json")
+    calls = []
+
+    @asynccontextmanager
+    async def open_response(**kwargs):
+        calls.append(kwargs)
+        yield _LinesResponse(packets)
 
     monkeypatch.setattr(
-        llm_simple_service,
-        "_stream_simple_chunks_onnx",
-        _fake_onnx_stream,
+        llm_simple_service.llm_simple_transport, "open_stream_response", open_response
+    )
+    tracer = _Tracer()
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: tracer)
+    events = await _collect_events(
+        llm_simple_service._stream_simple_chunks(
+            completions_url="http://fixture/v1/chat/completions",
+            payload={"messages": []},
+            runtime=_Runtime(provider),
+            request_id=uuid4(),
+            model_name="model-x",
+        )
+    )
+    assert [name for name, _ in events] == (
+        ["start", "content", "error"] if partial else ["start", "error"]
+    )
+    assert len(calls) == 1  # A partial generation cannot safely be replayed.
+    assert any(
+        name == "update_status" and args[1].name == "FAILED"
+        for name, args, _ in tracer.calls
     )
 
-    response = await llm_simple_service.stream_simple_chat(
-        SimpleChatRequest(content="hej")
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("finish_reason", ["stop", "length", "tool_calls"])
+async def test_explicit_finish_reason_is_a_completed_generation(finish_reason):
+    response = _LinesResponse(
+        [
+            'data: {"choices":[{"delta":{"content":"Gotowe"}}]}',
+            "data: "
+            + json.dumps({"choices": [{"delta": {}, "finish_reason": finish_reason}]}),
+        ]
     )
-    assert isinstance(response, StreamingResponse)
-    events = await _collect_response_events(response)
-    assert [name for name, _ in events] == ["start", "content", "done"]
+    packets = [
+        packet
+        async for packet in llm_simple_service.llm_simple_transport.iter_stream_packets(
+            response
+        )
+    ]
+    assert packets[-1]["choices"][0]["finish_reason"] == finish_reason
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "packet",
+    [
+        {},
+        {"choices": "stop"},
+        {"choices": ["stop"]},
+        {"choices": [{"finish_reason": None}]},
+        {"choices": [{"finish_reason": True}]},
+        {"choices": [{"finish_reason": " "}]},
+    ],
+)
+async def test_metadata_or_invalid_finish_marker_does_not_complete_sse(packet):
+    response = _LinesResponse(["data: " + json.dumps(packet)])
+    with pytest.raises(
+        llm_simple_service.llm_simple_transport.UpstreamStreamError,
+        match="upstream_stream_incomplete",
+    ):
+        _ = [
+            item
+            async for item in llm_simple_service.llm_simple_transport.iter_stream_packets(
+                response
+            )
+        ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["onnx", "vllm", "ollama"])
+@pytest.mark.parametrize("finish_reason", ["abort", "error"])
+@pytest.mark.parametrize("terminal", [False, True])
+@pytest.mark.parametrize("prior_finish", [False, True])
+async def test_failed_generation_reason_is_not_a_successful_sse_completion(
+    monkeypatch, provider, finish_reason, terminal, prior_finish
+):
+    packets = ['data: {"choices":[{"delta":{"content":"Partial"}}]}']
+    if prior_finish:
+        packets.append('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}')
+    packets.append(
+        "data: "
+        + json.dumps({"choices": [{"delta": {}, "finish_reason": finish_reason}]})
+    )
+    if terminal:
+        packets.append("data: [DONE]")
+    calls = []
+
+    @asynccontextmanager
+    async def open_response(**kwargs):
+        calls.append(kwargs)
+        yield _LinesResponse(packets)
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport, "open_stream_response", open_response
+    )
+    tracer = _Tracer()
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: tracer)
+    events = await _collect_events(
+        llm_simple_service._stream_simple_chunks(
+            completions_url="http://fixture/v1/chat/completions",
+            payload={"messages": []},
+            runtime=_Runtime(provider),
+            request_id=uuid4(),
+            model_name="model-x",
+        )
+    )
+    assert [name for name, _ in events] == ["start", "content", "error"]
+    assert events[1][1]["text"] == "Partial"
+    assert len(calls) == 1
+    assert any(
+        name == "update_status" and args[1].name == "FAILED"
+        for name, args, _ in tracer.calls
+    )

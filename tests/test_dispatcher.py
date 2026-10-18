@@ -3,12 +3,12 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.chat import ChatAgent
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.librarian import LibrarianAgent
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
 
 @pytest.fixture

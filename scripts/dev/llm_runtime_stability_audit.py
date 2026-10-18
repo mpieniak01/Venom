@@ -4,6 +4,7 @@
 Scope:
 - Runtime switching (ollama/vllm/onnx) via /api/v1/system/llm-servers/active
 - Model activation and switching (when runtime exposes >=2 models)
+- Real text/SSE generation before unloading each verified model
 - Runtime unload via /api/v1/models/unload-all
 - Optional stack lifecycle cycle: make start|start2 -> audit -> make stop
 """
@@ -217,14 +218,9 @@ def _verify_active_server(
     if active_server != runtime:
         return False, f"active_server={active_server} expected={runtime}"
     if model and strict_model:
-        active_model = str(body.get("active_model") or "").strip().lower()
-        if active_model and model.strip().lower() != active_model:
-            # Alias/canonical mappings may differ. Accept substring relation.
-            if (
-                model.strip().lower() not in active_model
-                and active_model not in model.strip().lower()
-            ):
-                return False, f"active_model={active_model} expected~={model}"
+        active_model = str(body.get("active_model") or "").strip()
+        if active_model != model.strip():
+            return False, f"active_model={active_model!r} expected={model!r}"
     return True, "ok"
 
 
@@ -233,7 +229,7 @@ def _wait_active_server(
 ) -> tuple[bool, str]:
     deadline = time.time() + max(1, timeout_sec)
     while time.time() < deadline:
-        ok, message = _verify_active_server(
+        ok, _message = _verify_active_server(
             base_url, runtime=runtime, model=None, strict_model=False
         )
         if ok:
@@ -254,6 +250,101 @@ def _unload_all(base_url: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+def _read_generation_stream(response, *, deadline: float) -> int:
+    """Validate the named SSE protocol actually exposed by /llm/simple/stream."""
+    event = ""
+    data: list[str] = []
+    characters = 0
+    received = 0
+    while True:
+        if time.monotonic() > deadline:
+            raise TimeoutError("generation_deadline_exceeded")
+        raw = response.readline(65537)
+        if not raw:
+            raise ValueError("generation_missing_done")
+        received += len(raw)
+        if len(raw) > 65536 or received > 1024 * 1024:
+            raise ValueError("generation_stream_too_large")
+        line = raw.decode("utf-8").rstrip("\r\n")
+        if line.startswith("event:"):
+            event = line[6:].strip()
+        elif line.startswith("data:"):
+            data.append(line[5:].lstrip(" "))
+        elif not line:
+            if event == "error":
+                raise ValueError("generation_error_event")
+            if event == "done":
+                if not characters:
+                    raise ValueError("generation_empty_output")
+                return characters
+            if event == "content":
+                payload = json.loads("\n".join(data))
+                text = payload.get("text") if isinstance(payload, dict) else None
+                if not isinstance(text, str):
+                    raise ValueError("generation_invalid_content")
+                characters += len(text.strip())
+            event, data = "", []
+
+
+def _verify_generation(
+    base_url: str, *, model: str, timeout_sec: float = 60.0
+) -> tuple[bool, str]:
+    """A health/selection ACK is insufficient: require text and terminal SSE."""
+    payload = {
+        "content": "Reply with one short greeting.",
+        "model": model,
+        "max_tokens": 32,
+        "temperature": 0,
+        "stream": True,
+    }
+    req = request.Request(
+        f"{base_url.rstrip('/')}/api/v1/llm/simple/stream",
+        method="POST",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    started = time.monotonic()
+    try:
+        with request.urlopen(req, timeout=timeout_sec) as response:
+            content_type = response.headers.get("Content-Type", "").split(";")[0]
+            if response.status != 200 or content_type != "text/event-stream":
+                raise ValueError("generation_response_is_not_sse")
+            count = _read_generation_stream(response, deadline=started + timeout_sec)
+        return (
+            True,
+            f"generation_chars={count} elapsed_s={time.monotonic() - started:.3f}",
+        )
+    except (OSError, error.URLError, ValueError, UnicodeError) as exc:
+        return False, f"generation_failed:{type(exc).__name__}:{exc}"
+
+
+def _audit_active_generation(
+    base_url: str,
+    *,
+    runtime: str,
+    model: str,
+    label: str,
+    steps: list[str],
+    errors: list[str],
+) -> bool:
+    ok, message = _verify_active_server(base_url, runtime=runtime, model=model)
+    steps.append(f"verify_{label}")
+    if not ok:
+        errors.append(message)
+        return False
+    ok, message = _verify_generation(base_url, model=model)
+    steps.append(f"generate_{label}")
+    if not ok:
+        errors.append(message)
+    # If selection raced, do not unload a model belonging to another caller.
+    active_ok, active_message = _verify_active_server(
+        base_url, runtime=runtime, model=model
+    )
+    if not active_ok:
+        errors.append(active_message)
+    return active_ok
+
+
 def _audit_runtime(
     *,
     base_url: str,
@@ -268,7 +359,7 @@ def _audit_runtime(
     primary = _pick_model(
         available_models=available_models, preferred_patterns=preferred_patterns
     )
-    if runtime != "onnx" and primary is None:
+    if primary is None:
         return RuntimeAuditResult(
             runtime=runtime,
             ok=False,
@@ -302,15 +393,15 @@ def _audit_runtime(
                 errors=errors,
             )
 
-    ok, message = _verify_active_server(
+    if not _audit_active_generation(
         base_url,
         runtime=runtime,
         model=primary,
-        strict_model=(runtime != "onnx"),
-    )
-    steps.append("verify_active")
-    if not ok:
-        errors.append(message)
+        label="primary",
+        steps=steps,
+        errors=errors,
+    ):
+        return RuntimeAuditResult(runtime, False, primary, None, steps, errors)
 
     ok, message = _unload_all(base_url)
     steps.append("unload_all")
@@ -330,19 +421,22 @@ def _audit_runtime(
             timeout_sec=activation_timeout,
         )
         steps.append(f"switch_model:{secondary}")
+        ready = ok
         if not ok:
-            wait_ok, wait_message = _wait_active_server(
+            ready, wait_message = _wait_active_server(
                 base_url, runtime=runtime, timeout_sec=int(activation_timeout)
             )
-            if not wait_ok:
+            if not ready:
                 errors.append(message)
                 errors.append(wait_message)
-        else:
-            ok, message = _verify_active_server(
-                base_url, runtime=runtime, model=secondary
-            )
-            if not ok:
-                errors.append(message)
+        if ready and _audit_active_generation(
+            base_url,
+            runtime=runtime,
+            model=secondary,
+            label="secondary",
+            steps=steps,
+            errors=errors,
+        ):
             ok, message = _unload_all(base_url)
             steps.append("unload_all_after_switch")
             if not ok:
@@ -371,7 +465,7 @@ def _fetch_runtime_options(base_url: str) -> tuple[bool, dict[str, Any] | None, 
 
 
 def _print_text_report(report: dict[str, Any]) -> None:
-    print("LLM runtime stability audit")
+    print("LLM runtime lifecycle and real-generation smoke audit")
     print(f"- base_url: {report['base_url']}")
     print(f"- stack_cycle: {report['stack_cycle']}")
     print(f"- preferred_models: {', '.join(report['preferred_models'])}")
@@ -515,6 +609,7 @@ def main() -> int:
             global_errors.extend(errors)
 
     report = {
+        "scope": "lifecycle_and_generation_smoke_not_release_qualification",
         "base_url": base_url,
         "env_file": str(env_file),
         "stack_cycle": args.stack_cycle,

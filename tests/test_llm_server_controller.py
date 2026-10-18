@@ -66,3 +66,72 @@ async def test_run_action_unknown_action():
     controller = LlmServerController(_dummy_settings(VLLM_START_COMMAND=""))
     with pytest.raises(ValueError):
         await controller.run_action("vllm", "unknown")
+
+
+@pytest.mark.parametrize("managed", [False, True])
+@pytest.mark.parametrize(
+    "policy,scheme", [("force_http", "http"), ("force_https", "https")]
+)
+def test_onnx_controller_describes_external_worker_truthfully(
+    monkeypatch, managed, policy, scheme
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "URL_SCHEME_POLICY", policy)
+    controller = LlmServerController(
+        _dummy_settings(
+            ONNX_LLM_ENDPOINT="http://127.0.0.1:8068/v1",
+            ONNX_START_COMMAND="owned start" if managed else "",
+            ONNX_STOP_COMMAND="owned stop" if managed else "",
+            ONNX_RESTART_COMMAND="owned restart" if managed else "",
+        )
+    )
+    server = next(s for s in controller.list_servers() if s["name"] == "onnx")
+    assert server["endpoint"] == f"{scheme}://127.0.0.1:8068/v1"
+    assert server["health_url"] == f"{scheme}://127.0.0.1:8068/health"
+    assert all(value == managed for value in server["supports"].values())
+    caps = controller.get_capabilities("onnx")
+    assert (
+        not caps.is_in_process
+        and not caps.supports_cache_flush
+        and not caps.supports_model_unload
+    )
+    assert caps.supports_health_wait
+
+
+@pytest.mark.parametrize(
+    "policy,scheme", [("force_http", "http"), ("force_https", "https")]
+)
+def test_vllm_controller_health_and_inference_share_endpoint_policy(
+    monkeypatch, policy, scheme
+):
+    from venom_core.config import SETTINGS
+    from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+    monkeypatch.setattr(SETTINGS, "URL_SCHEME_POLICY", policy)
+    settings = _dummy_settings(
+        ACTIVE_LLM_SERVER="vllm",
+        AI_MODE="LOCAL",
+        VLLM_ENDPOINT="http://127.0.0.1:8067/v1/",
+    )
+    server = next(
+        s for s in LlmServerController(settings).list_servers() if s["name"] == "vllm"
+    )
+    assert (
+        server["endpoint"]
+        == get_active_llm_runtime(settings).endpoint
+        == f"{scheme}://127.0.0.1:8067/v1"
+    )
+    assert server["health_url"] == f"{scheme}://127.0.0.1:8067/v1/models"
+
+
+@pytest.mark.parametrize("endpoint", ["", "file:///model", "http://host:bad/v1"])
+def test_vllm_invalid_endpoint_has_no_health_target(endpoint):
+    server = next(
+        s
+        for s in LlmServerController(
+            _dummy_settings(VLLM_ENDPOINT=endpoint)
+        ).list_servers()
+        if s["name"] == "vllm"
+    )
+    assert server["endpoint"] is None and server["health_url"] is None

@@ -11,6 +11,7 @@ tests/api/test_memory_openapi_contract.py
 tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/security/test_autonomy_enforcement.py
+tests/test_202c_benchmark_metrics.py
 tests/test_204a_canonical_control_state.py
 tests/test_214a_daemon_management.py
 tests/test_214a_gemma4_daemon.py
@@ -112,6 +113,7 @@ tests/test_core_skill.py
 tests/test_cost_guard.py
 tests/test_council.py
 tests/test_council_basic.py
+tests/test_council_maf_runtime.py
 tests/test_creative_director_agent.py
 tests/test_critic_agent.py
 tests/test_css_unused_audit.py
@@ -233,6 +235,7 @@ tests/test_llm_simple_service_streaming.py
 tests/test_llm_simple_stream.py
 tests/test_local_agent_cli.py
 tests/test_logger_utils.py
+tests/test_maf_runtime.py
 tests/test_main_internal_helpers.py
 tests/test_main_setup_router_dependencies.py
 tests/test_make_targets_audit.py
@@ -286,7 +289,6 @@ tests/test_models_translation_api.py
 tests/test_models_utils_security.py
 tests/test_module_data_policy.py
 tests/test_module_example_data_policy_routes.py
-tests/test_module_observations.py
 tests/test_module_registry.py
 tests/test_multi_runtime_probe_logits_tokens.py
 tests/test_multi_runtime_profile_service.py
@@ -402,7 +404,6 @@ tests/test_strategy_and_routes_regression.py
 tests/test_streaming_handler.py
 tests/test_swarm_wrapper.py
 tests/test_sync_pytest_groups_from_catalog.py
-tests/test_system_connections.py
 tests/test_system_engineer_agent_mcp.py
 tests/test_system_governance_audit.py
 tests/test_system_governance_runtime_contracts.py
@@ -432,7 +433,6 @@ tests/test_ux_analyst.py
 tests/test_validate_sonar_architecture.py
 tests/test_vast_cli.py
 tests/test_vast_faults.py
-tests/test_vast_observation.py
 tests/test_vast_operations.py
 tests/test_vast_provider.py
 tests/test_vast_qualification.py

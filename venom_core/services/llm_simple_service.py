@@ -7,9 +7,7 @@ streaming logic without importing ``venom_core.api.routes``.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
-import threading
 import time
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
@@ -21,7 +19,6 @@ from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
-from venom_core.execution.onnx_llm_client import OnnxLlmClient
 from venom_core.services import llm_simple_transport
 from venom_core.services.llm_simple_payload_service import (
     apply_optional_features_to_payload as _apply_optional_features_to_payload,
@@ -55,6 +52,9 @@ from venom_core.services.llm_simple_payload_service import (
 )
 from venom_core.services.llm_simple_payload_service import (
     resolve_output_format as _resolve_output_format,
+)
+from venom_core.services.llm_simple_payload_service import (
+    token_usage_from_telemetry as _token_usage_from_telemetry,
 )
 from venom_core.services.llm_simple_stream_service import (
     SimpleStreamState as _SimpleStreamState,
@@ -108,21 +108,13 @@ _SSE_EVENT_DONE = "event: done\ndata: {}\n\n"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _NON_STREAM_INVALID_RESPONSE_CODE = "llm_invalid_response"
 httpx = llm_simple_transport.httpx_module()
-_ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
-
-
-def _get_onnx_simple_client() -> OnnxLlmClient:
-    # Per-request client lifecycle avoids cross-request close/use races.
-    return OnnxLlmClient()
 
 
 def release_onnx_simple_client() -> None:
-    """Compatibility shim for legacy tests/callers; runtime uses per-request clients."""
-    global _ONNX_SIMPLE_CLIENT
-    if _ONNX_SIMPLE_CLIENT is None:
-        return
-    _close_onnx_client_safely(_ONNX_SIMPLE_CLIENT)
-    _ONNX_SIMPLE_CLIENT = None
+    """Compatibility shutdown hook; Simple owns no in-process ONNX resources.
+
+    Worker lifecycle belongs to its component controller, not this API hook.
+    """
 
 
 def _get_simple_context_char_limit(runtime) -> Optional[int]:
@@ -157,78 +149,6 @@ async def _get_active_adapter_id() -> str | None:
         return None
     adapter_id = str(active.get("adapter_id") or "").strip()
     return adapter_id or None
-
-
-async def _aiter_sync_onnx_stream(
-    client: OnnxLlmClient,
-    *,
-    messages: list[dict[str, str]],
-    max_new_tokens: int | None,
-    temperature: float | None,
-) -> AsyncIterator[str]:
-    """Bridge sync ONNX generator to async iteration without blocking event loop."""
-    queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
-    stop_event = threading.Event()
-    loop = asyncio.get_running_loop()
-
-    def _producer() -> None:
-        try:
-            for token in client.stream_generate(
-                messages=messages,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-            ):
-                if stop_event.is_set():
-                    break
-                asyncio.run_coroutine_threadsafe(queue.put(token), loop)
-        except (
-            RuntimeError,
-            TypeError,
-            ValueError,
-        ) as exc:  # pragma: no cover - safety bridge
-            asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
-        finally:
-            asyncio.run_coroutine_threadsafe(queue.put(None), loop)
-
-    producer_task = asyncio.create_task(asyncio.to_thread(_producer))
-    try:
-        async for token in _consume_onnx_stream_queue(queue):
-            yield token
-    finally:
-        stop_event.set()
-        _close_onnx_client_safely(client)
-        await _wait_producer_or_cancel(producer_task)
-
-
-async def _consume_onnx_stream_queue(
-    queue: asyncio.Queue[str | BaseException | None],
-) -> AsyncIterator[str]:
-    while True:
-        item = await queue.get()
-        if item is None:
-            break
-        if isinstance(item, BaseException):
-            raise item
-        yield item
-
-
-def _close_onnx_client_safely(client: OnnxLlmClient) -> None:
-    client_close = getattr(client, "close", None)
-    if not callable(client_close):
-        return
-    try:
-        client_close()
-    except RuntimeError:
-        pass
-
-
-async def _wait_producer_or_cancel(task: asyncio.Task[None]) -> None:
-    try:
-        await asyncio.wait_for(task, timeout=0.5)
-    except TimeoutError:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
 
 
 def _resolve_model_name_for_simple_request(
@@ -397,6 +317,8 @@ def _build_payload(
         "messages": messages,
         "stream": stream,
     }
+    if stream and runtime.provider in {"ollama", "vllm", "openai", "onnx"}:
+        payload["stream_options"] = {"include_usage": True}
     if runtime.provider == "ollama":
         payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
         payload["options"] = build_ollama_runtime_options(SETTINGS)
@@ -429,6 +351,8 @@ def _build_payload(
         payload["temperature"] = request.temperature
     if request.top_p is not None:
         payload["top_p"] = request.top_p
+    if request.seed is not None:
+        payload["seed"] = request.seed
     if request.logprobs is not None:
         payload["logprobs"] = bool(request.logprobs)
     if request.top_logprobs is not None:
@@ -823,6 +747,18 @@ def _reset_stream_attempt_state(state: _SimpleStreamState) -> None:
     _reset_stream_attempt_state_impl(state)
 
 
+def _build_done_event(runtime_telemetry: dict[str, int]) -> str:
+    """Optional native usage extends the existing done event, without inference."""
+    usage = _token_usage_from_telemetry(runtime_telemetry)
+    if not usage:
+        return _SSE_EVENT_DONE
+    return (
+        "event: done\ndata: "
+        + json.dumps({"usage": usage, "usage_source": "upstream"})
+        + "\n\n"
+    )
+
+
 def _finalize_successful_stream_attempt(
     *,
     runtime,
@@ -835,15 +771,13 @@ def _finalize_successful_stream_attempt(
         request_id, "".join(state.chunks), state.chunk_count, stream_start
     )
     total_ms = (time.perf_counter() - stream_start) * 1000.0
+    usage = _token_usage_from_telemetry(runtime_telemetry)
     collector = get_metrics_collector()
     collector.record_provider_request(
         provider=runtime.provider,
         success=True,
         latency_ms=total_ms,
-        tokens=(
-            int(runtime_telemetry.get("prompt_eval_count", 0))
-            + int(runtime_telemetry.get("eval_count", 0))
-        ),
+        tokens=usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
     )
     if runtime.provider == "ollama":
         collector.record_runtime_sample(
@@ -986,7 +920,7 @@ async def _stream_simple_chunks(
                 if should_retry:
                     continue
                 if should_emit_done:
-                    yield _SSE_EVENT_DONE
+                    yield _build_done_event(runtime_telemetry)
                 return
 
             except httpx.HTTPError as exc:
@@ -1015,78 +949,6 @@ async def _stream_simple_chunks(
                     stream_start=stream_start,
                 )
                 return
-
-
-async def _stream_simple_chunks_onnx(
-    *,
-    runtime,
-    request_id: UUID,
-    model_name: str,
-    messages: list[dict[str, str]],
-    max_tokens: int | None,
-    temperature: float | None,
-) -> AsyncIterator[str]:
-    async with runtime_request_guard(
-        request_kind="simple_chat_onnx",
-        provider=runtime.provider,
-        model=model_name,
-    ):
-        stream_start = time.perf_counter()
-        chunks: list[str] = []
-        chunk_count = 0
-        first_chunk_seen = False
-
-        yield _SSE_EVENT_START
-        try:
-            client = _get_onnx_simple_client()
-            async for content in _aiter_sync_onnx_stream(
-                client,
-                messages=messages,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-            ):
-                if not content:
-                    continue
-                chunk_count += 1
-                chunks.append(content)
-                if not first_chunk_seen:
-                    _trace_first_chunk(request_id, stream_start, content)
-                    first_chunk_seen = True
-                yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
-
-            _trace_stream_completion(
-                request_id, "".join(chunks), chunk_count, stream_start
-            )
-            collector = get_metrics_collector()
-            collector.record_provider_request(
-                provider=runtime.provider,
-                success=True,
-                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-            )
-            yield _SSE_EVENT_DONE
-        except Exception as exc:
-            _record_simple_error(
-                request_id,
-                error_code="onnx_generation_error",
-                error_message=f"Błąd generacji ONNX: {exc}",
-                error_details={"provider": "onnx", "model": model_name},
-                error_class=exc.__class__.__name__,
-                retryable=False,
-            )
-            collector = get_metrics_collector()
-            collector.record_provider_request(
-                provider=runtime.provider,
-                success=False,
-                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-                error_code="onnx_generation_error",
-            )
-            yield (
-                "event: error\ndata: "
-                + json.dumps(
-                    {"code": "onnx_generation_error", "message": f"Błąd ONNX: {exc}"}
-                )
-                + "\n\n"
-            )
 
 
 async def _stream_simple_chunks_non_stream(
@@ -1162,6 +1024,8 @@ async def _stream_simple_chunks_non_stream(
                 )
                 return
 
+            runtime_telemetry = _extract_runtime_telemetry(data)
+            usage = _token_usage_from_telemetry(runtime_telemetry)
             content = _extract_message_content(data, fallback_text="")
             logprobs_telemetry = _extract_logprobs_telemetry(data)
             if logprobs_telemetry is not None:
@@ -1183,8 +1047,10 @@ async def _stream_simple_chunks_non_stream(
                 provider=runtime.provider,
                 success=True,
                 latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                tokens=usage.get("prompt_tokens", 0)
+                + usage.get("completion_tokens", 0),
             )
-            yield _SSE_EVENT_DONE
+            yield _build_done_event(runtime_telemetry)
         except httpx.HTTPStatusError as exc:
             result = await _emit_http_status_error_and_mark_failed(
                 exc=exc,
@@ -1215,6 +1081,19 @@ async def stream_simple_chat(request: SimpleChatRequest):
     assert_runtime_request_allowed(request_kind="simple_chat")
     await asyncio.sleep(0)
     runtime = get_active_llm_runtime()
+    runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
+    runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
+    if runtime_provider == "onnx" or runtime_service_type == "onnx":
+        if not SETTINGS.ONNX_LLM_ENABLED:
+            raise HTTPException(
+                status_code=503,
+                detail="ONNX_LLM_ENABLED=false: runtime ONNX jest wyłączony.",
+            )
+        if not runtime.endpoint:
+            raise HTTPException(
+                status_code=503,
+                detail="Brak endpointu workera ONNX. Skonfiguruj ONNX_LLM_ENDPOINT.",
+            )
     model_name = _resolve_model_name_for_simple_request(
         request_model=request.model,
         runtime_model=runtime.model_name,
@@ -1233,23 +1112,7 @@ async def stream_simple_chat(request: SimpleChatRequest):
     payload = _build_payload(request, runtime, model_name, messages)
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(str(request_id), request.session_id or "")
-    runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
-    runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
     completions_url = _build_chat_completions_url(runtime)
-    if runtime_provider == "onnx" or runtime_service_type == "onnx":
-        return StreamingResponse(
-            _stream_simple_chunks_onnx(
-                runtime=runtime,
-                request_id=request_id,
-                model_name=model_name,
-                messages=messages,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-            ),
-            media_type=_SSE_MEDIA_TYPE,
-            headers=headers,
-        )
-
     force_non_stream = request.stream is False
     if is_multi_runtime(runtime_provider) or force_non_stream:
         if not completions_url:

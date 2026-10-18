@@ -5,13 +5,16 @@ import string
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.utils.logger import get_logger
 from venom_core.utils.markdown_blocks import extract_fenced_block, strip_fenced_blocks
 

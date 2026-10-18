@@ -2,9 +2,6 @@
 
 import asyncio
 import json
-import multiprocessing as mp
-import os
-from concurrent.futures import ProcessPoolExecutor
 from typing import Annotated, Any, AsyncGenerator, Optional
 from uuid import UUID
 
@@ -16,21 +13,15 @@ from venom_core.api.dependencies import (
     get_request_tracer,
     get_state_manager,
 )
-from venom_core.api.routes import system_deps
 from venom_core.api.schemas.tasks import (
     HistoryRequestDetail,
     HistoryRequestSummary,
     TaskRequest,
     TaskResponse,
 )
-from venom_core.execution.onnx_llm_client import OnnxLlmClient
-from venom_core.services import tasks_onnx_service, tasks_service
-from venom_core.services.execution_mode_planner import decide_execution_mode
+from venom_core.services import tasks_service
 from venom_core.services.tasks_stream_service import (
     build_missing_task_payload as _build_missing_task_payload,
-)
-from venom_core.services.tasks_stream_service import (
-    build_onnx_task_messages as _build_onnx_task_messages,
 )
 from venom_core.services.tasks_stream_service import (
     build_stream_payload as _build_stream_payload,
@@ -56,7 +47,6 @@ from venom_core.services.tasks_stream_service import (
 from venom_core.services.tasks_stream_service import (
     should_emit_stream_event as _should_emit_stream_event,
 )
-from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 TaskStatus = tasks_service.TaskStatus
@@ -69,10 +59,6 @@ TraceStatus = tasks_service.TraceStatus
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
-_ONNX_EXECUTOR: ProcessPoolExecutor | None = None
-_ONNX_WORKER_CLIENT: OnnxLlmClient | None = None
-_ONNX_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
-
 ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
 STATE_MANAGER_UNAVAILABLE = "StateManager nie jest dostępny"
 REQUEST_TRACER_UNAVAILABLE = "RequestTracer nie jest dostępny"
@@ -102,72 +88,12 @@ HISTORY_DETAIL_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _get_onnx_executor() -> ProcessPoolExecutor:
-    global _ONNX_EXECUTOR
-    if _ONNX_EXECUTOR is None:
-        # Dedicated process avoids GIL/event-loop starvation during heavy ONNX generation.
-        _ONNX_EXECUTOR = ProcessPoolExecutor(
-            max_workers=1,
-            mp_context=mp.get_context("spawn"),
-        )
-    return _ONNX_EXECUTOR
-
-
-def shutdown_onnx_task_executor(*, wait: bool = False) -> None:
-    """Shutdown ONNX process pool so worker process releases runtime memory."""
-    global _ONNX_EXECUTOR
-    executor = _ONNX_EXECUTOR
-    _ONNX_EXECUTOR = None
-    if executor is None:
-        return
-    try:
-        executor.shutdown(wait=wait, cancel_futures=True)
-    except TypeError:
-        # Python compatibility fallback for older executor API variants.
-        executor.shutdown(wait=wait)
-    except Exception:
-        logger.warning("Failed to shutdown ONNX executor cleanly.", exc_info=True)
-
-
 def release_onnx_task_runtime(*, wait: bool = False) -> None:
-    """Best-effort cleanup for ONNX task runtime (pool + in-process fallback client)."""
-    global _ONNX_WORKER_CLIENT
-    for task in _ONNX_BACKGROUND_TASKS:
-        task.cancel()
-    _ONNX_BACKGROUND_TASKS.clear()
-    client = _ONNX_WORKER_CLIENT
-    _ONNX_WORKER_CLIENT = None
-    if client is not None:
-        try:
-            client.close()
-        except Exception:
-            logger.warning("Failed to close ONNX worker client cleanly.", exc_info=True)
-    shutdown_onnx_task_executor(wait=wait)
+    """Compatibility hook: tasks no longer own an in-process ONNX model/pool.
 
-
-def _track_background_task(task: asyncio.Task[Any]) -> asyncio.Task[Any]:
-    """Retain a strong reference to background task until it finishes."""
-    _ONNX_BACKGROUND_TASKS.add(task)
-    task.add_done_callback(_ONNX_BACKGROUND_TASKS.discard)
-    return task
-
-
-def _generate_onnx_response_sync(
-    messages: list[dict[str, str]],
-    max_new_tokens: int | None,
-    temperature: float | None,
-) -> str:
-    global _ONNX_WORKER_CLIENT
-    # Keep a warm ONNX client in the dedicated worker process so model weights
-    # stay resident between consecutive requests.
-    if _ONNX_WORKER_CLIENT is None:
-        _ONNX_WORKER_CLIENT = OnnxLlmClient()
-    client = _ONNX_WORKER_CLIENT
-    return client.generate(
-        messages=messages,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-    ).strip()
+    The isolated component controller owns worker shutdown. Calling this hook
+    does not confirm that a separate worker's GPU memory has been released.
+    """
 
 
 def _extract_context_preview(steps: list) -> Optional[dict]:
@@ -247,132 +173,6 @@ def _assert_task_available_for_stream(
 ) -> None:
     if state_manager.get_task(task_id) is None:
         raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
-
-
-def _trace_onnx_task_start(task_id: UUID, request: TaskRequest, runtime) -> None:
-    tracer = system_deps.get_request_tracer()
-    tasks_onnx_service.trace_onnx_task_start(
-        tracer=tracer,
-        task_id=task_id,
-        request=request,
-        runtime=runtime,
-    )
-
-
-def _trace_onnx_task_success(task_id: UUID, result: str) -> None:
-    tracer = system_deps.get_request_tracer()
-    tasks_onnx_service.trace_onnx_task_success(
-        tracer=tracer,
-        task_id=task_id,
-        result=result,
-    )
-
-
-def _trace_onnx_task_failure(task_id: UUID, exc: Exception) -> None:
-    tracer = system_deps.get_request_tracer()
-    tasks_onnx_service.trace_onnx_task_failure(
-        tracer=tracer,
-        task_id=task_id,
-        exc=exc,
-    )
-
-
-async def _run_onnx_task(
-    *,
-    orchestrator: Orchestrator,
-    task_id: UUID,
-    request: TaskRequest,
-    runtime,
-) -> None:
-    state_manager = orchestrator.state_manager
-
-    async def _run_generation(
-        messages: list[dict[str, str]],
-        max_tokens: int | None,
-        temperature: float | None,
-    ) -> str:
-        # In tests keep thread path (monkeypatch-friendly). In runtime use process
-        # executor to avoid potential GIL/event-loop starvation on heavy ONNX calls.
-        if os.getenv("PYTEST_CURRENT_TEST"):
-            return await asyncio.to_thread(
-                _generate_onnx_response_sync,
-                messages,
-                max_tokens,
-                temperature,
-            )
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            _get_onnx_executor(),
-            _generate_onnx_response_sync,
-            messages,
-            max_tokens,
-            temperature,
-        )
-
-    await tasks_onnx_service.run_onnx_task(
-        state_manager=state_manager,
-        task_id=task_id,
-        request=request,
-        runtime=runtime,
-        build_messages_fn=_build_onnx_task_messages,
-        run_generation_fn=_run_generation,
-        trace_success_fn=_trace_onnx_task_success,
-        trace_failure_fn=_trace_onnx_task_failure,
-        append_session_history_fn=lambda tid, role, content, session_id: (
-            orchestrator._append_session_history(
-                tid,
-                role=role,
-                content=content,
-                session_id=session_id,
-            )
-        ),
-        append_learning_log_fn=lambda tid, intent, prompt, result, success, error: (
-            orchestrator._append_learning_log(
-                tid,
-                intent=intent,
-                prompt=prompt,
-                result=result,
-                success=success,
-                error=error,
-            )
-        ),
-        logger=logger,
-    )
-
-
-def _submit_onnx_task(
-    request: TaskRequest, orchestrator: Orchestrator, runtime
-) -> TaskResponse:
-    state_manager = orchestrator.state_manager
-    task = tasks_onnx_service.create_and_submit_onnx_task(
-        state_manager=state_manager,
-        request=request,
-        runtime=runtime,
-        trace_start_fn=lambda task_id: _trace_onnx_task_start(
-            task_id, request, runtime
-        ),
-        schedule_runner_fn=lambda task_id: _track_background_task(
-            asyncio.create_task(
-                _run_onnx_task(
-                    orchestrator=orchestrator,
-                    task_id=task_id,
-                    request=request,
-                    runtime=runtime,
-                )
-            )
-        ),
-    )
-    execution_mode_decision = decide_execution_mode(request=request, intent=None)
-    return TaskResponse(
-        task_id=task.id,
-        status=TaskStatus.PENDING.value,
-        decision="allow",
-        llm_provider=runtime.provider,
-        llm_model=runtime.model_name,
-        llm_endpoint=runtime.endpoint,
-        execution_mode=execution_mode_decision.execution_mode,
-        fallback_reason=execution_mode_decision.fallback_reason,
-    )
 
 
 async def _task_stream_generator(
@@ -471,10 +271,7 @@ async def create_task(
         if collector:
             collector.increment_task_created()
 
-        runtime = get_active_llm_runtime()
-        if runtime.provider == "onnx":
-            return _submit_onnx_task(request, orchestrator, runtime)
-
+        # Normal/Complex keep orchestration, policy and history for every provider.
         response = await orchestrator.submit_task(request)
         return response
     except Exception as e:

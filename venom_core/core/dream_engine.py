@@ -9,13 +9,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from semantic_kernel import Kernel
-
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.guardian import GuardianAgent
 from venom_core.config import SETTINGS
 from venom_core.core.chronos import ChronosEngine
 from venom_core.core.energy_manager import EnergyManager
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.simulation.scenario_weaver import ScenarioSpec, ScenarioWeaver

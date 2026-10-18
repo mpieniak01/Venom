@@ -703,7 +703,7 @@ async def test_set_active_llm_server_uses_available_ollama_model_when_requested_
 
 
 @pytest.mark.asyncio
-async def test_set_active_llm_server_continues_when_stopping_other_server_fails(
+async def test_set_active_llm_server_aborts_when_stopping_other_server_fails(
     monkeypatch,
 ):
     config = {
@@ -744,10 +744,14 @@ async def test_set_active_llm_server_continues_when_stopping_other_server_fails(
     SETTINGS.ACTIVE_LLM_SERVER = "ollama"
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="ollama")
-        response = await system_routes.set_active_llm_server(request)
-        assert response["status"] == "success"
-        assert response["active_model"] == "phi3:mini"
-        assert response["stop_results"]["vllm"]["ok"] is False
+        before = _snapshot_settings()
+        with pytest.raises(HTTPException) as exc_info:
+            await system_routes.set_active_llm_server(request)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["error"] == "runtime_stop_failed"
+        assert updates == {}
+        assert _snapshot_settings() == before
+        assert ("ollama", "start") not in controller.actions
     finally:
         _restore_settings(original)
 
@@ -821,14 +825,16 @@ async def test_get_llm_servers_includes_onnx_when_enabled(monkeypatch):
     monkeypatch.setattr(
         system_routes,
         "_build_onnx_server_payload",
-        lambda: {
-            "name": "onnx",
-            "display_name": "ONNX Runtime",
-            "supports": {"start": False, "stop": False, "restart": False},
-            "endpoint": None,
-            "provider": "onnx",
-            "status": "online",
-        },
+        AsyncMock(
+            return_value={
+                "name": "onnx",
+                "display_name": "ONNX Runtime",
+                "supports": {"start": False, "stop": False, "restart": False},
+                "endpoint": "http://127.0.0.1:8068/v1",
+                "provider": "onnx",
+                "status": "online",
+            }
+        ),
     )
 
     async def _noop_probe(_servers, _active_server_name=None):
@@ -894,14 +900,16 @@ async def test_get_llm_servers_deduplicates_onnx(monkeypatch):
     monkeypatch.setattr(
         system_routes,
         "_build_onnx_server_payload",
-        lambda: {
-            "name": "onnx",
-            "display_name": "ONNX Runtime",
-            "supports": {"start": False, "stop": False, "restart": False},
-            "endpoint": None,
-            "provider": "onnx",
-            "status": "online",
-        },
+        AsyncMock(
+            return_value={
+                "name": "onnx",
+                "display_name": "ONNX Runtime",
+                "supports": {"start": False, "stop": False, "restart": False},
+                "endpoint": "http://127.0.0.1:8068/v1",
+                "provider": "onnx",
+                "status": "online",
+            }
+        ),
     )
 
     async def _noop_probe(_servers, _active_server_name=None):
@@ -921,7 +929,7 @@ async def test_get_llm_servers_deduplicates_onnx(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_active_llm_server_onnx_in_process(monkeypatch):
+async def test_set_active_llm_server_onnx_external_http(monkeypatch):
     original = _snapshot_settings()
     SETTINGS.VENOM_RUNTIME_PROFILE = "full"
     SETTINGS.ONNX_LLM_ENABLED = True
@@ -949,7 +957,7 @@ async def test_set_active_llm_server_onnx_in_process(monkeypatch):
         monkeypatch.setattr(
             system_routes.config_manager,
             "get_config",
-            lambda **_: {"LAST_MODEL_ONNX": "models/phi35-local-onnx"},
+            lambda **_: {"LAST_MODEL_ONNX": "served-onnx"},
         )
         monkeypatch.setattr(
             system_routes,
@@ -962,17 +970,34 @@ async def test_set_active_llm_server_onnx_in_process(monkeypatch):
             "update_config",
             _capture_update_config(updates),
         )
-        dummy_client = SimpleNamespace(
-            ensure_ready=lambda: None,
-            config=SimpleNamespace(model_path="models/phi35-local-onnx"),
+        endpoint = "http://127.0.0.1:8068/v1"
+        monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENDPOINT", endpoint)
+        monkeypatch.setattr(
+            system_routes.system_llm_service,
+            "inspect_onnx_worker",
+            AsyncMock(
+                return_value={
+                    "ready": True,
+                    "status": "online",
+                    "endpoint": endpoint,
+                    "health_url": "http://127.0.0.1:8068/health",
+                    "models": ["served-onnx"],
+                    "error": None,
+                    "engine": "onnx-gpu",
+                    "device": "cuda",
+                }
+            ),
         )
-        monkeypatch.setattr(system_routes, "OnnxLlmClient", lambda: dummy_client)
 
         request = system_routes.ActiveLlmServerRequest(server_name="onnx")
         response = await system_routes.set_active_llm_server(request)
         assert response["status"] == "success"
         assert response["active_server"] == "onnx"
         assert updates["LLM_SERVICE_TYPE"] == "onnx"
+        assert response["start_result"]["mode"] == "external_http"
+        assert response["active_endpoint"] == endpoint
+        assert response["active_model"] == "served-onnx"
+        assert response["lifecycle_state"]["is_complete"] is True
         assert ("ollama", "stop") in controller.actions
         assert ("vllm", "stop") in controller.actions
         assert response["stop_results"]["ollama"]["ok"] is True
@@ -1008,7 +1033,7 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
         monkeypatch.setattr(
             system_routes.config_manager,
             "get_config",
-            lambda **_: {"LAST_MODEL_ONNX": "models/phi35-local-onnx"},
+            lambda **_: {"LAST_MODEL_ONNX": "served-onnx"},
         )
         monkeypatch.setattr(
             system_routes,
@@ -1021,17 +1046,34 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
             "update_config",
             _capture_update_config(updates),
         )
-        dummy_client = SimpleNamespace(
-            ensure_ready=lambda: None,
-            config=SimpleNamespace(model_path="models/phi35-local-onnx"),
+        endpoint = "http://127.0.0.1:8068/v1"
+        monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENDPOINT", endpoint)
+        monkeypatch.setattr(
+            system_routes.system_llm_service,
+            "inspect_onnx_worker",
+            AsyncMock(
+                return_value={
+                    "ready": True,
+                    "status": "online",
+                    "endpoint": endpoint,
+                    "health_url": "http://127.0.0.1:8068/health",
+                    "models": ["served-onnx"],
+                    "error": None,
+                    "engine": "onnx-gpu",
+                    "device": "cuda",
+                }
+            ),
         )
-        monkeypatch.setattr(system_routes, "OnnxLlmClient", lambda: dummy_client)
 
         request = system_routes.ActiveLlmServerRequest(server_name="onnx")
-        response = await system_routes.set_active_llm_server(request)
-        assert response["status"] == "success"
-        assert response["active_server"] == "onnx"
-        assert response["stop_results"]["ollama"]["ok"] is False
+        before = _snapshot_settings()
+        with pytest.raises(HTTPException) as exc_info:
+            await system_routes.set_active_llm_server(request)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail["error"] == "runtime_stop_failed"
+        assert updates == {}
+        assert _snapshot_settings() == before
+        system_routes.system_llm_service.inspect_onnx_worker.assert_not_awaited()
     finally:
         _restore_settings(original)
 
@@ -1487,3 +1529,57 @@ def test_vllm_autofix_context_uses_runtime_provider_not_config(monkeypatch):
         local_models=[{"name": "live:model", "path": "/valid/path"}]
     )
     assert context is not None
+
+
+@pytest.mark.asyncio
+async def test_external_vllm_selection_needs_no_application_sdk_and_keeps_provider(
+    monkeypatch,
+):
+    original = _snapshot_settings()
+    for key, value in {
+        "VENOM_RUNTIME_PROFILE": "full",
+        "VLLM_START_COMMAND": "/owned/component start",
+        "VLLM_ENDPOINT": "http://127.0.0.1:8067/v1",
+    }.items():
+        monkeypatch.setattr(SETTINGS, key, value)
+    monkeypatch.setattr(
+        system_routes.system_llm_service.shutil, "which", lambda name: None
+    )
+    monkeypatch.setattr(
+        system_routes.system_llm_service.importlib.util, "find_spec", lambda name: None
+    )
+    controller = DummyController(
+        [
+            {
+                "name": "vllm",
+                "supports": {"start": True, "stop": True},
+                "endpoint": SETTINGS.VLLM_ENDPOINT,
+            }
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager([{"name": "served-exact", "provider": "vllm"}]),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(system_routes.config_manager, "get_config", lambda **kwargs: {})
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
+    try:
+        response = await system_routes.set_active_llm_server(
+            system_routes.ActiveLlmServerRequest(
+                server_name="vllm", model="served-exact"
+            )
+        )
+        assert response["active_server"] == "vllm"
+        assert response["active_model"] == "served-exact"
+        assert response["runtime_id"] == "vllm@http://127.0.0.1:8067/v1"
+        assert SETTINGS.LLM_LOCAL_ENDPOINT == "http://127.0.0.1:8067/v1"
+        assert updates["ACTIVE_LLM_SERVER"] == "vllm"
+        assert ("vllm", "start") in controller.actions
+    finally:
+        _restore_settings(original)

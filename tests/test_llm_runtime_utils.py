@@ -23,6 +23,7 @@ class DummySettings:
         active_server="",
         gemma4_endpoint="http://localhost:8014/v1",
         vllm_endpoint=LOCALHOST_8001_V1,
+        onnx_endpoint="",
     ):
         self.LLM_SERVICE_TYPE = service_type
         self.AI_MODE = mode
@@ -32,6 +33,7 @@ class DummySettings:
         self.ACTIVE_LLM_SERVER = active_server
         self.GEMMA4_AUDIO_ENDPOINT = gemma4_endpoint
         self.VLLM_ENDPOINT = vllm_endpoint
+        self.ONNX_LLM_ENDPOINT = onnx_endpoint
 
 
 def test_infer_local_provider_variants():
@@ -282,7 +284,7 @@ def test_build_chat_completions_url_variants():
 
 
 @pytest.mark.asyncio
-async def test_probe_runtime_status_onnx_ready():
+async def test_probe_runtime_status_onnx_without_endpoint_is_offline():
     runtime = llm_runtime.LLMRuntimeInfo(
         provider="onnx",
         model_name="phi",
@@ -291,8 +293,8 @@ async def test_probe_runtime_status_onnx_ready():
         mode="LOCAL",
     )
     status, error = await llm_runtime.probe_runtime_status(runtime)
-    assert status == "ready"
-    assert error is None
+    assert status == "offline"
+    assert "endpointu" in error
 
 
 @pytest.mark.asyncio
@@ -646,3 +648,146 @@ def test_resolve_multi_runtime_target_model_edges(monkeypatch):
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["http://127.0.0.1:11666/v1", "http://custom.local:12666/v1"]
+)
+def test_explicit_ollama_preserves_a_valid_custom_endpoint(endpoint):
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(endpoint=endpoint, active_server="ollama")
+    )
+    assert runtime.provider == "ollama"
+    assert runtime.endpoint == endpoint
+    assert runtime.runtime_id == "ollama@" + endpoint
+
+
+def test_explicit_ollama_without_an_endpoint_retains_default():
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(endpoint=None, active_server="ollama")
+    )
+    assert runtime.endpoint == "http://localhost:11434/v1"
+
+
+def test_simple_url_reaches_the_configured_private_ollama_listener():
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.request import urlopen
+
+    paths = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            paths.append(self.path)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"model":"private-listener"}')
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/v1"
+        runtime = llm_runtime.get_active_llm_runtime(
+            DummySettings(endpoint=endpoint, active_server="ollama")
+        )
+        url = llm_runtime._build_chat_completions_url(runtime)
+        with urlopen(url, timeout=2) as response:
+            assert json.load(response) == {"model": "private-listener"}
+        assert paths == ["/v1/chat/completions"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.parametrize(
+    "service_type,active_server", [("local", "onnx"), ("onnx", "")]
+)
+def test_onnx_runtime_requires_explicit_component_endpoint(service_type, active_server):
+    settings = DummySettings(
+        service_type=service_type,
+        active_server=active_server,
+        onnx_endpoint="http://localhost:18083/v1",
+    )
+    runtime = llm_runtime.get_active_llm_runtime(settings)
+    assert runtime.provider == "onnx" and runtime.endpoint == settings.ONNX_LLM_ENDPOINT
+    assert llm_runtime._build_health_url(runtime) == "http://localhost:18083/health"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({"status": "ok", "engine": "onnx-gpu", "device": "cuda"}, "online"),
+        ({"engine": "onnx-gpu", "device": "cpu"}, "degraded"),
+        ({"engine": "ollama", "device": "cuda"}, "degraded"),
+        ([], "degraded"),
+    ],
+)
+async def test_onnx_health_checks_actual_worker_device(monkeypatch, payload, expected):
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return payload
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url):
+            assert url == "http://localhost:18083/health"
+            return Response()
+
+    monkeypatch.setattr(llm_runtime.httpx, "AsyncClient", Client)
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(service_type="onnx", onnx_endpoint="http://localhost:18083/v1")
+    )
+    status, error = await llm_runtime.probe_runtime_status(runtime)
+    assert status == expected
+    assert (error is None) == (expected == "online")
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "",
+        "file:///model.onnx",
+        "http://localhost:bad/v1",
+        "http://localhost:99999/v1",
+        "http://[bad/v1",
+        "http://user:secret@localhost/v1",
+        "http://localhost/v1?token=x",
+        "http://localhost/v1#other",
+    ],
+)
+def test_invalid_onnx_endpoint_has_no_health_or_inference_target(endpoint):
+    assert llm_runtime.resolve_local_worker_endpoint(endpoint) is None
+    assert llm_runtime.build_onnx_worker_health_url(endpoint) is None
+
+
+@pytest.mark.parametrize(
+    "policy,scheme", [("force_http", "http"), ("force_https", "https")]
+)
+def test_onnx_active_runtime_and_health_use_same_url_policy(
+    monkeypatch, policy, scheme
+):
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "URL_SCHEME_POLICY", policy)
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(service_type="onnx", onnx_endpoint="http://127.0.0.1:8068/v1/")
+    )
+    assert runtime.endpoint == f"{scheme}://127.0.0.1:8068/v1"
+    assert llm_runtime._build_health_url(runtime) == f"{scheme}://127.0.0.1:8068/health"

@@ -6,10 +6,9 @@ import subprocess
 from pathlib import Path
 from typing import Annotated, Optional
 
-from semantic_kernel.functions import kernel_function
-
 from venom_core.config import SETTINGS
 from venom_core.core.autonomy_enforcement import require_shell_permission
+from venom_core.execution.agent_contracts import tool_function as kernel_function
 from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url

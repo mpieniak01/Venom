@@ -94,26 +94,28 @@
       "domain": "api",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
-        "release",
-        "new-code"
+        "new-code",
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/api/test_system_api_dynamic.py",
       "domain": "api",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
-        "release",
-        "new-code"
+        "new-code",
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage with changed-code allowance."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/integration/test_verify_backend.py",
@@ -299,6 +301,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Performance scenario kept outside fast lanes."
+    },
+    {
+      "path": "tests/test_202c_benchmark_metrics.py",
+      "domain": "performance",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Fast stdlib-only metric/protocol regressions must run in mandatory CI-lite, including changes confined to diagnostic scripts."
     },
     {
       "path": "tests/test_204a_canonical_control_state.py",
@@ -585,13 +601,14 @@
       "domain": "academy",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Workspace conversion contract with isolated filesystem and API fixtures; safe for changed-code regression."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_academy_file_resolution_service.py",
@@ -764,12 +781,14 @@
       "domain": "agents",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_agents_ghost_runtime_store.py",
@@ -804,12 +823,14 @@
       "domain": "agents",
       "test_type": "integration",
       "intent": "integration",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_agents_skill_manager_paths.py",
@@ -1015,8 +1036,8 @@
     {
       "path": "tests/test_audio_compute_contracts.py",
       "domain": "runtime",
-      "test_type": "service_contract",
-      "intent": "contract",
+      "test_type": "unit",
+      "intent": "regression",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -1024,7 +1045,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "R2 shared checked speech contract and singleton reuse; offline unit fixtures only."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_audio_engine.py",
@@ -1080,7 +1101,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "CI-lite dependency audit guard and changed-scope coverage reinforcement."
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_audit_stream_api.py",
@@ -1549,6 +1570,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_component_runtime.py",
+      "domain": "runtime",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_compose_integration.py",
       "domain": "environment",
       "test_type": "integration",
@@ -1565,12 +1600,14 @@
       "domain": "environment",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_compose_skill_validation.py",
@@ -1721,8 +1758,8 @@
     {
       "path": "tests/test_conversation_providers.py",
       "domain": "orchestrator",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "service_contract",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -1730,7 +1767,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Host-owned conversation context and shared optional providers for chat and voice."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_core_nervous_system.py",
@@ -1777,12 +1814,14 @@
       "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_council_basic.py",
@@ -1791,10 +1830,25 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Council model-selection regression must run for changed code as well as release."
+    },
+    {
+      "path": "tests/test_council_maf_runtime.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_creative_director_agent.py",
@@ -1877,6 +1931,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_dependency_profiles.py",
+      "domain": "environment",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_designer_agent.py",
       "domain": "agents",
       "test_type": "unit",
@@ -1936,6 +2004,7 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
@@ -2238,12 +2307,14 @@
       "domain": "skills",
       "test_type": "integration",
       "intent": "integration",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_eyes.py",
@@ -2392,12 +2463,14 @@
       "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_forge_flow.py",
@@ -2418,12 +2491,14 @@
       "domain": "agents",
       "test_type": "integration",
       "intent": "integration",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_gemma4_audio_models.py",
@@ -2472,12 +2547,14 @@
       "domain": "environment",
       "test_type": "integration",
       "intent": "integration",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_generation_schema.py",
@@ -2709,7 +2786,7 @@
     },
     {
       "path": "tests/test_graph_rag_service.py",
-      "domain": "knowledge",
+      "domain": "memory",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -2831,12 +2908,14 @@
       "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_history_api.py",
@@ -2983,15 +3062,17 @@
     },
     {
       "path": "tests/test_intent_manager.py",
-      "domain": "misc",
+      "domain": "runtime",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_intent_manager_contracts.py",
@@ -3061,15 +3142,17 @@
     },
     {
       "path": "tests/test_kernel_builder.py",
-      "domain": "misc",
+      "domain": "runtime",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_knowledge_adapters.py",
@@ -3219,12 +3302,14 @@
       "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_learning.py",
@@ -3303,6 +3388,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_light_release_installers.py",
+      "domain": "environment",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Prove deferred release choices are rejected before Docker, Python or environment mutation; preserve supported Light/API CLI aliases and localized menus."
     },
     {
       "path": "tests/test_llm_runtime_activation_api.py",
@@ -3487,9 +3586,23 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_maf_runtime.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_main_internal_helpers.py",
-      "domain": "environment",
-      "test_type": "service_contract",
+      "domain": "system",
+      "test_type": "route_contract",
       "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
@@ -4213,8 +4326,8 @@
     {
       "path": "tests/test_module_observations.py",
       "domain": "runtime",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "integration",
+      "intent": "integration",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -4222,13 +4335,13 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Optional module quarantine and isolated provider lifecycle regression."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_module_registry.py",
-      "domain": "misc",
-      "test_type": "unit",
-      "intent": "regression",
+      "domain": "system",
+      "test_type": "route_contract",
+      "intent": "contract",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
@@ -4427,6 +4540,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_onnx_gpu_bridge.py",
+      "domain": "runtime",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_onnx_llm_client.py",
       "domain": "runtime",
       "test_type": "unit",
@@ -4599,10 +4726,11 @@
       "intent": "integration",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Active Council API facade must propagate generation options and failures through the shared flow."
     },
     {
       "path": "tests/test_orchestrator_decision_gates.py",
@@ -4696,7 +4824,7 @@
     },
     {
       "path": "tests/test_parse_intent.py",
-      "domain": "misc",
+      "domain": "runtime",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "ci-lite",
@@ -5103,6 +5231,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_qualification_process.py",
+      "domain": "misc",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_queue_governance.py",
       "domain": "tasks",
       "test_type": "unit",
@@ -5211,16 +5353,18 @@
       "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_response_template_routing.py",
-      "domain": "orchestrator",
+      "domain": "runtime",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "ci-lite",
@@ -5230,7 +5374,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Deterministic template routing, policy ordering and runtime synchronization regressions."
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_retention_optimization.py",
@@ -5528,6 +5672,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_security_scan.py",
+      "domain": "security",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_service_monitor.py",
       "domain": "core",
       "test_type": "service_contract",
@@ -5745,7 +5903,7 @@
     },
     {
       "path": "tests/test_slash_commands.py",
-      "domain": "tasks",
+      "domain": "misc",
       "test_type": "unit",
       "intent": "regression",
       "primary_lane": "new-code",
@@ -5755,7 +5913,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Optional conversation prefixes retained across task preprocessing."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_sonar_agents_init.py",
@@ -5930,8 +6088,8 @@
     {
       "path": "tests/test_system_connections.py",
       "domain": "system",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "integration",
+      "intent": "integration",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -5939,7 +6097,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Truthful inventory, failure isolation, optional hooks and legacy API compatibility."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_system_engineer_agent_mcp.py",
@@ -5998,12 +6156,14 @@
       "domain": "system",
       "test_type": "integration",
       "intent": "integration",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_system_routes_roi.py",
@@ -6060,14 +6220,15 @@
     {
       "path": "tests/test_tasks_stream.py",
       "domain": "api",
-      "test_type": "unit",
+      "test_type": "route_contract",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Provider-independent Normal/Complex submission and task SSE; mandatory changed-scope gate coverage."
     },
     {
       "path": "tests/test_tasks_stream_service.py",
@@ -6168,15 +6329,17 @@
     },
     {
       "path": "tests/test_token_economist.py",
-      "domain": "misc",
+      "domain": "agents",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_tool_reliability.py",
@@ -6362,7 +6525,7 @@
     },
     {
       "path": "tests/test_vast_cli.py",
-      "domain": "providers",
+      "domain": "misc",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -6372,13 +6535,13 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Vast terminal delegates and existing environment credential loading."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_faults.py",
-      "domain": "providers",
+      "domain": "misc",
       "test_type": "service_contract",
-      "intent": "regression",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -6386,13 +6549,13 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Vast SSH cleanup, cgroup limits and error/readiness recovery."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_observation.py",
-      "domain": "providers",
-      "test_type": "unit",
-      "intent": "regression",
+      "domain": "misc",
+      "test_type": "integration",
+      "intent": "integration",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -6400,13 +6563,13 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Read-only Vast observation through existing client; no rentals, explicit probes and truthful totals."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_operations.py",
-      "domain": "providers",
+      "domain": "misc",
       "test_type": "service_contract",
-      "intent": "regression",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -6414,7 +6577,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Vast rental recovery, SSH, synthetic evaluation and costs without live resources."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_provider.py",
@@ -6428,11 +6591,11 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Vast provider HTTP, pricing and offer contracts without paid resources."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_qualification.py",
-      "domain": "providers",
+      "domain": "runtime",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -6442,11 +6605,11 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Bounded GPU diagnostic, persistent scoped stack decisions and safe retest without hardware or rentals."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_recipes.py",
-      "domain": "providers",
+      "domain": "runtime",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -6456,11 +6619,11 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Vast runtime recipes, template provenance and image resolution without renting resources."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_runtime_contracts.py",
-      "domain": "providers",
+      "domain": "runtime",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -6470,7 +6633,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Runtime GPU declarations, safe template constraints and legacy plan checksums without rented resources."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_selection.py",
@@ -6484,11 +6647,11 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Vast country preferences, price/network/reliability ranking and server-side search filters."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_vast_serving.py",
-      "domain": "providers",
+      "domain": "misc",
       "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
@@ -6498,7 +6661,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Shared Ollama/vLLM serving cases, registry metadata and environment discovery with synthetic transports only."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_venom_core_init_compat.py",
@@ -6569,13 +6732,14 @@
       "domain": "skills",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Mocked search providers and scraping dependencies; safe for changed-code fallback regression."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_web_skill_tavily.py",

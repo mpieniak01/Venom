@@ -2,14 +2,17 @@
 
 from typing import Any
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.agents.base import BaseAgent
 from venom_core.core.policy_engine import PolicyEngine
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -81,6 +84,14 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
         super().__init__(kernel)
         self.policy_engine = PolicyEngine()
         logger.info("CriticAgent zainicjalizowany z PolicyEngine")
+
+    def validate_deliberation_input(self, content: str) -> tuple[bool, str]:
+        """Keep deterministic policy checks on the actual Coder candidate."""
+        violations = self.policy_engine.check_safety(content)
+        return (
+            any(violation.severity == "critical" for violation in violations),
+            self._format_policy_violations(violations) if violations else "",
+        )
 
     async def process(self, input_text: str) -> str:
         """

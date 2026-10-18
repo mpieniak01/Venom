@@ -101,7 +101,7 @@ class OnnxLlmClient:
     @staticmethod
     def _available_execution_providers() -> list[str]:
         try:
-            import onnxruntime as ort  # type: ignore[import-untyped]
+            import onnxruntime as ort
 
             return [str(item) for item in ort.get_available_providers()]
         except Exception:
@@ -257,7 +257,7 @@ class OnnxLlmClient:
         with self._lock:
             if self._model is not None and self._tokenizer is not None:
                 return
-            import onnxruntime_genai as og  # type: ignore[import-untyped]  # pragma: no cover - runtime import
+            import onnxruntime_genai as og  # pragma: no cover - runtime import
 
             model_path = self._resolved_model_path or self._config.model_path
             model = self._create_model_with_provider(og, model_path)

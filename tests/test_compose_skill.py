@@ -220,14 +220,11 @@ services:
 
 
 def test_compose_skill_has_kernel_functions(compose_skill):
-    """Test czy ComposeSkill ma wymagane @kernel_function dekoratory."""
-    # Sprawdź czy metody mają odpowiednie atrybuty
-    assert hasattr(compose_skill.create_environment, "__kernel_function__") or hasattr(
-        compose_skill.create_environment, "__kernel_function_name__"
-    )
-    assert hasattr(compose_skill.destroy_environment, "__kernel_function__") or hasattr(
-        compose_skill.destroy_environment, "__kernel_function_name__"
-    )
+    """Compose tools retain their public declarations after SDK migration."""
+    for name in ("create_environment", "destroy_environment"):
+        declaration = getattr(compose_skill, name).__venom_tool__
+        assert declaration["name"] == name
+        assert declaration["description"]
 
 
 def test_process_template_placeholders_secret_key(compose_skill):

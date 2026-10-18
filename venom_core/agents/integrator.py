@@ -1,20 +1,23 @@
 """Moduł: integrator - agent zarządzający wersjonowaniem i DevOps."""
 
+import asyncio
+import inspect
 import re
 from pathlib import Path
 from typing import Any, Optional
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.function_choice_behavior import (
-    FunctionChoiceBehavior,
-)
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.agent_contracts import (
+    CompletionOptions as OpenAIChatPromptExecutionSettings,
+)
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import (
+    ConversationMessage as ChatMessageContent,
+)
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
+from venom_core.execution.agent_contracts import ToolPolicy as FunctionChoiceBehavior
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.execution.skills.platform_skill import PlatformSkill
 from venom_core.utils.logger import get_logger
@@ -251,6 +254,15 @@ Akcja: get_current_branch()"""
         result = await method(**payload)
         return str(result)
 
+    async def _invoke_platform_tool(self, name: str, **arguments: Any) -> str:
+        """Run synchronous platform SDKs off the event loop; retain async adapters."""
+        method = getattr(self.platform_skill, name)
+        if inspect.iscoroutinefunction(method):
+            result = await method(**arguments)
+        else:
+            result = await asyncio.to_thread(method, **arguments)
+        return str(result)
+
     async def process(self, input_text: str) -> str:
         """
         Przetwarza żądanie związane z operacjami Git i DevOps.
@@ -382,7 +394,9 @@ Przykład: "feat(git): add GitSkill implementation"
             logger.info("Sprawdzanie nowych Issues na GitHub...")
 
             # Pobierz otwarte Issues
-            result = await self.platform_skill.get_assigned_issues(state="open")
+            result = await self._invoke_platform_tool(
+                "get_assigned_issues", state="open"
+            )
 
             if result.startswith("❌"):
                 logger.warning(f"Nie można pobrać Issues: {result}")
@@ -434,7 +448,9 @@ Przykład: "feat(git): add GitSkill implementation"
             logger.info(f"Rozpoczynam obsługę Issue #{issue_number}")
 
             # 1. Pobierz szczegóły Issue
-            issue_details = await self.platform_skill.get_issue_details(issue_number)
+            issue_details = await self._invoke_platform_tool(
+                "get_issue_details", issue_number=issue_number
+            )
 
             if issue_details.startswith("❌"):
                 return f"❌ Nie można pobrać Issue #{issue_number}: {issue_details}"
@@ -481,7 +497,8 @@ Przykład: "feat(git): add GitSkill implementation"
 
             # 2. Utwórz Pull Request
             pr_body_with_link = f"{pr_body}\n\nCloses #{issue_number}"
-            pr_result = await self.platform_skill.create_pull_request(
+            pr_result = await self._invoke_platform_tool(
+                "create_pull_request",
                 branch=branch_name,
                 title=pr_title,
                 body=pr_body_with_link,
@@ -495,7 +512,8 @@ Przykład: "feat(git): add GitSkill implementation"
 
             # 3. Dodaj komentarz do Issue
             comment_text = f"🤖 Automatyczna naprawa utworzona.\n\n{pr_result}"
-            comment_result = await self.platform_skill.comment_on_issue(
+            comment_result = await self._invoke_platform_tool(
+                "comment_on_issue",
                 issue_number=issue_number,
                 text=comment_text,
             )

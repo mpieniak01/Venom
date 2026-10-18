@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import pytest
 
+from venom_core.agents import guardian as guardian_mod
+from venom_core.core import council as council_mod
 from venom_core.core.orchestrator import flow_coordinator as fc_mod
 from venom_core.core.orchestrator.flow_coordinator import FlowCoordinator
 
@@ -20,6 +22,7 @@ class _Middleware:
 class _StateManager:
     def __init__(self) -> None:
         self.add_log = MagicMock()
+        self.get_task = lambda task_id: SimpleNamespace(context_history={})
 
 
 def _task_dispatcher(**overrides):
@@ -58,9 +61,9 @@ async def test_run_council_success_with_lazy_config(monkeypatch):
     middleware = _Middleware()
 
     monkeypatch.setattr(
-        fc_mod, "GuardianAgent", lambda kernel: f"guardian:{bool(kernel)}"
+        guardian_mod, "GuardianAgent", lambda kernel: f"guardian:{bool(kernel)}"
     )
-    monkeypatch.setattr(fc_mod, "create_local_llm_config", lambda: {"cfg": "ok"})
+    monkeypatch.setattr(council_mod, "create_local_llm_config", lambda: {"cfg": "ok"})
 
     class _FakeCouncilConfig:
         def __init__(self, **kwargs):
@@ -78,7 +81,8 @@ async def test_run_council_success_with_lazy_config(monkeypatch):
             self.group_chat = group_chat
             self.manager = manager
 
-        async def run(self, context):
+        async def run(self, context, *, generation_params=None):
+            assert generation_params is None
             assert context == "problem-context"
             return "council-result"
 
@@ -88,8 +92,8 @@ async def test_run_council_success_with_lazy_config(monkeypatch):
         def get_speakers(self):
             return ["Coder", "Critic"]
 
-    monkeypatch.setattr(fc_mod, "CouncilConfig", _FakeCouncilConfig)
-    monkeypatch.setattr(fc_mod, "CouncilSession", _FakeCouncilSession)
+    monkeypatch.setattr(council_mod, "CouncilConfig", _FakeCouncilConfig)
+    monkeypatch.setattr(council_mod, "CouncilSession", _FakeCouncilSession)
 
     result = await coordinator.run_council(uuid4(), "problem-context", middleware)
 
@@ -100,41 +104,28 @@ async def test_run_council_success_with_lazy_config(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_council_returns_fallback_on_error():
+async def test_run_council_propagates_missing_coder():
     state = _StateManager()
     task_dispatcher = _task_dispatcher(coder_agent=None)
     coordinator = FlowCoordinator(state, task_dispatcher, event_broadcaster=None)
     middleware = _Middleware()
 
-    result = await coordinator.run_council(uuid4(), "ctx", middleware)
-
-    assert "Council mode nie powiódł się" in result
+    with pytest.raises(RuntimeError, match="Brak wymaganych agentów Council"):
+        await coordinator.run_council(uuid4(), "ctx", middleware)
     middleware.broadcast_event.assert_awaited()
     assert state.add_log.call_count >= 2
 
 
 @pytest.mark.asyncio
-async def test_run_council_returns_fallback_when_architect_missing():
+async def test_run_council_propagates_missing_architect():
     state = _StateManager()
     task_dispatcher = _task_dispatcher(architect_agent=None)
     coordinator = FlowCoordinator(state, task_dispatcher, event_broadcaster=None)
     middleware = _Middleware()
 
-    result = await coordinator.run_council(uuid4(), "ctx", middleware)
-
-    assert "Council mode nie powiódł się" in result
+    with pytest.raises(RuntimeError, match="Brak wymaganych agentów Council"):
+        await coordinator.run_council(uuid4(), "ctx", middleware)
     middleware.broadcast_event.assert_awaited()
-
-
-def test_normalize_council_tuple_variants():
-    state = _StateManager()
-    task_dispatcher = _task_dispatcher()
-    coordinator = FlowCoordinator(state, task_dispatcher, event_broadcaster=None)
-
-    assert coordinator._normalize_council_tuple(("u",)) == ("u", None, None)
-
-    obj = SimpleNamespace(user_proxy="u", group_chat="g", manager="m")
-    assert coordinator._normalize_council_tuple(obj) == ("u", "g", "m")
 
 
 @pytest.mark.asyncio

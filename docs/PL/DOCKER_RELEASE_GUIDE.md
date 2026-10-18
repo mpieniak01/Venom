@@ -1,5 +1,10 @@
 # Przewodnik Wydawania Paczek Docker (Minimal MVP)
 
+> Zakres bieżącego kandydata: Light/API oraz CI, z Ollama przez HTTP. Full,
+> lokalne dodatki GPU i Academy są odłożone; zachowane instrukcje legacy nie
+> oznaczają ich kwalifikacji dla nowego core MAF. Nie aktualizuj pełnego środowiska
+> operatorskiego tą paczką. Zobacz [politykę profili](../DEPENDENCY_PROFILES.md).
+
 Ten dokument opisuje oficjalny proces publikacji obrazów Docker dla Venom Minimal MVP.
 
 ## Szybka odpowiedź

@@ -9,6 +9,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from tests.helpers.url_fixtures import MOCK_HTTP, http_url
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
@@ -441,41 +442,6 @@ def test_stream_simple_chat_internal_error_emits_error_event(monkeypatch):
     assert events[1]["data"]["code"] == "internal_error"
 
 
-def test_stream_simple_chat_onnx_streams_without_http_endpoint(monkeypatch):
-    runtime = DummyRuntime(provider="onnx")
-    runtime.service_type = "onnx"
-    runtime.endpoint = None
-    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
-    monkeypatch.setattr(
-        llm_simple_service, "_build_chat_completions_url", lambda _rt: None
-    )
-
-    class FakeOnnxClient:
-        def stream_generate(self, **_kwargs):
-            yield "A"
-            yield "B"
-
-    monkeypatch.setattr(llm_simple_service, "OnnxLlmClient", lambda: FakeOnnxClient())
-    client = TestClient(app)
-
-    with client.stream(
-        "POST",
-        "/api/v1/llm/simple/stream",
-        json={"content": "hello"},
-    ) as response:
-        assert response.status_code == 200
-        events = _collect_sse_events(response)
-
-    assert [event["event"] for event in events] == [
-        "start",
-        "content",
-        "content",
-        "done",
-    ]
-    assert events[1]["data"]["text"] == "A"
-    assert events[2]["data"]["text"] == "B"
-
-
 def test_stream_simple_chat_multi_runtime_uses_non_stream_upstream(monkeypatch):
     runtime = DummyRuntime(provider="multi_runtime")
     monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
@@ -616,59 +582,6 @@ def test_service_resolve_post_attempt_action_retry_and_done(monkeypatch):
     assert collector_calls and collector_calls[-1]["success"] is True
 
 
-@pytest.mark.asyncio
-async def test_service_onnx_stream_success_and_error(monkeypatch):
-    collector_calls = []
-    monkeypatch.setattr(
-        llm_simple_service,
-        "get_metrics_collector",
-        lambda: SimpleNamespace(
-            record_provider_request=lambda **kwargs: collector_calls.append(kwargs),
-            record_runtime_sample=lambda **_kwargs: None,
-        ),
-    )
-    monkeypatch.setattr(
-        llm_simple_service,
-        "_get_onnx_simple_client",
-        lambda: SimpleNamespace(stream_generate=lambda **_kwargs: iter(())),
-    )
-
-    async def _fake_stream_ok(*_args, **_kwargs):
-        yield "A"
-
-    monkeypatch.setattr(llm_simple_service, "_aiter_sync_onnx_stream", _fake_stream_ok)
-    ok_events = []
-    async for event in llm_simple_service._stream_simple_chunks_onnx(
-        runtime=DummyRuntime(provider="onnx"),
-        request_id=llm_simple_service.uuid4(),
-        model_name="onnx-model",
-        messages=[{"role": "user", "content": "x"}],
-        max_tokens=8,
-        temperature=0.2,
-    ):
-        ok_events.append(event)
-    assert ok_events[-1].startswith("event: done")
-
-    async def _fake_stream_boom(*_args, **_kwargs):
-        raise RuntimeError("boom")
-        yield  # pragma: no cover
-
-    monkeypatch.setattr(
-        llm_simple_service, "_aiter_sync_onnx_stream", _fake_stream_boom
-    )
-    err_events = []
-    async for event in llm_simple_service._stream_simple_chunks_onnx(
-        runtime=DummyRuntime(provider="onnx"),
-        request_id=llm_simple_service.uuid4(),
-        model_name="onnx-model",
-        messages=[{"role": "user", "content": "x"}],
-        max_tokens=8,
-        temperature=0.2,
-    ):
-        err_events.append(event)
-    assert err_events[-1].startswith("event: error")
-
-
 def test_service_helper_branches_and_emitters(monkeypatch):
     class _Tracer:
         def __init__(self):
@@ -797,28 +710,6 @@ async def test_service_stream_single_attempt_wrapper_covers_retry_config(monkeyp
     assert events and events[0].startswith("event: content")
     assert captured["retry"].max_attempts == 2
     assert runtime_telemetry == {}
-
-
-def test_service_release_onnx_client_handles_close_error(monkeypatch):
-    class _Client:
-        def __init__(self, boom: bool):
-            self.boom = boom
-            self.closed = False
-
-        def close(self):
-            self.closed = True
-            if self.boom:
-                raise RuntimeError("close failed")
-
-    client_ok = _Client(False)
-    monkeypatch.setattr(llm_simple_service, "_ONNX_SIMPLE_CLIENT", client_ok)
-    llm_simple_service.release_onnx_simple_client()
-    assert client_ok.closed is True
-
-    client_boom = _Client(True)
-    monkeypatch.setattr(llm_simple_service, "_ONNX_SIMPLE_CLIENT", client_boom)
-    llm_simple_service.release_onnx_simple_client()
-    assert client_boom.closed is True
 
 
 @pytest.mark.asyncio
@@ -953,3 +844,109 @@ async def test_stream_simple_chat_rejects_when_runtime_switch_is_active():
         assert exc_info.value.detail["code"] == "runtime_switch_in_progress"
     finally:
         gate.finish_runtime_switch(switch_id=snapshot.switch_id)
+
+
+@pytest.mark.parametrize("provider", ["ollama", "vllm", "openai", "onnx"])
+def test_supported_stream_requests_native_usage_but_non_stream_does_not(provider):
+    request = SimpleChatRequest(content="hello")
+    runtime = DummyRuntime(provider)
+    args = (request, runtime, "model-x", [{"role": "user", "content": "hello"}])
+    assert llm_simple_service._build_payload(*args, stream=True)["stream_options"] == {
+        "include_usage": True
+    }
+    assert "stream_options" not in llm_simple_service._build_payload(
+        *args, stream=False
+    )
+
+
+def test_done_event_preserves_legacy_empty_payload_when_usage_unavailable():
+    assert llm_simple_service._build_done_event({}) == "event: done\ndata: {}\n\n"
+    event = llm_simple_service._build_done_event(
+        {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10}
+    )
+    data = json.loads(event.split("data: ", 1)[1])
+    assert event.startswith("event: done\n")
+    assert data == {
+        "usage": {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10},
+        "usage_source": "upstream",
+    }
+
+
+def test_usage_only_final_packet_is_preserved_for_non_ollama_runtime():
+    telemetry = {}
+    state = SimpleStreamState(chunks=[])
+    events = llm_simple_service._update_stream_state_from_packet(
+        packet={
+            "choices": [],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10},
+        },
+        runtime=DummyRuntime("vllm"),
+        state=state,
+        request_id=uuid4(),
+        stream_start=0,
+        runtime_telemetry=telemetry,
+    )
+    assert events == [] and state.chunk_count == 0
+    assert telemetry["completion_tokens"] == 7
+    assert '"completion_tokens": 7' in llm_simple_service._build_done_event(telemetry)
+
+
+@pytest.mark.parametrize("provider", ["ollama", "vllm", "openai", "onnx"])
+@pytest.mark.parametrize("stream", [True, False])
+@pytest.mark.parametrize("seed", [None, 0, 42])
+def test_simple_payload_preserves_explicit_seed_in_both_transport_modes(
+    provider, stream, seed
+):
+    request = SimpleChatRequest(content="seed test", seed=seed)
+    payload = llm_simple_service._build_payload(
+        request,
+        DummyRuntime(provider),
+        "model-x",
+        [{"role": "user", "content": "seed test"}],
+        stream=stream,
+    )
+    if seed is None:
+        assert "seed" not in payload
+    else:
+        assert payload["seed"] == seed and type(payload["seed"]) is int
+
+
+@pytest.mark.parametrize("seed", [True, 1.0, "42", 2**63, -(2**63) - 1])
+def test_simple_seed_does_not_coerce_or_overflow(seed):
+    with pytest.raises(ValidationError):
+        SimpleChatRequest(content="seed test", seed=seed)
+
+
+@pytest.mark.parametrize("seed", [0, 42, -(2**63), 2**63 - 1])
+def test_simple_seed_accepts_signed_64bit_integers(seed):
+    assert SimpleChatRequest(content="seed test", seed=seed).seed == seed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seed", [None, 0, 42])
+@pytest.mark.parametrize(
+    "enabled,endpoint,detail",
+    [
+        (True, None, "ONNX_LLM_ENDPOINT"),
+        (False, "http://localhost:8068/v1", "ONNX_LLM_ENABLED"),
+    ],
+)
+async def test_simple_onnx_disabled_or_unconfigured_fails_before_model_work(
+    monkeypatch, seed, enabled, endpoint, detail
+):
+    runtime = DummyRuntime("onnx")
+    runtime.endpoint = endpoint
+    runtime.service_type = "onnx"
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "ONNX_LLM_ENABLED", enabled)
+    monkeypatch.setattr(llm_simple_service, "get_active_llm_runtime", lambda: runtime)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Missing worker endpoint must not initialize a model or trace")
+
+    monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", forbidden)
+    monkeypatch.setattr(llm_simple_service, "_trace_simple_request", forbidden)
+    with pytest.raises(HTTPException) as error:
+        await llm_simple_service.stream_simple_chat(
+            SimpleChatRequest(content="test", seed=seed)
+        )
+    assert error.value.status_code == 503 and detail in error.value.detail

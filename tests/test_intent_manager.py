@@ -3,9 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.core.intent_manager import IntentManager
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
 
 @pytest.fixture

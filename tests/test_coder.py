@@ -4,10 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.coder import CoderAgent
+from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
+from venom_core.execution.agent_contracts import MessageRole as AuthorRole
 
 
 @pytest.mark.asyncio

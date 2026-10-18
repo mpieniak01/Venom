@@ -3,10 +3,10 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.agents.researcher import ResearcherAgent, format_grounding_sources
 from venom_core.config import SETTINGS
+from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 

@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
+from pathlib import Path
 from typing import Any
+
+import httpx
+
+from venom_core.utils.llm_runtime import (
+    build_onnx_worker_health_url,
+    is_onnx_worker_health_ready,
+    resolve_local_worker_endpoint,
+)
 
 _RUNTIME_PROVIDER_ALIASES = {
     "google-gemini": "google",
@@ -40,8 +50,93 @@ def is_vllm_installed() -> bool:
     return importlib.util.find_spec("vllm") is not None
 
 
-def is_onnx_runtime_installed() -> bool:
-    return importlib.util.find_spec("onnxruntime_genai") is not None
+def is_vllm_worker_configured(
+    endpoint: str | None,
+    *,
+    start_command: str = "",
+    component_python: str = "",
+    components_dir: str = "",
+) -> bool:
+    """Find the isolated launch configuration, without importing its SDK.
+
+    Configuration permits an activation attempt; only lifecycle health confirms
+    readiness. The default interpreter matches scripts/llm/vllm_service.sh.
+    """
+    if resolve_local_worker_endpoint(endpoint) is None:
+        return False
+    if start_command.strip():
+        return True
+    component_root = (
+        Path(components_dir.strip())
+        if components_dir.strip()
+        else Path(__file__).resolve().parents[2] / ".venv-components"
+    )
+    interpreter = (
+        Path(component_python.strip())
+        if component_python.strip()
+        else component_root / "vllm/bin/python"
+    )
+    return interpreter.is_file() and os.access(interpreter, os.X_OK)
+
+
+def is_onnx_worker_configured(endpoint: str | None) -> bool:
+    """Configured is distinct from installed/online; no native SDK in the app."""
+    return build_onnx_worker_health_url(endpoint) is not None
+
+
+async def inspect_onnx_worker(
+    endpoint: str | None, *, api_key: str = "", timeout: float = 3.0
+) -> dict[str, Any]:
+    """Read actual CUDA health and served IDs without loading/downloading a model."""
+    base = resolve_local_worker_endpoint(endpoint) or ""
+    health_url = build_onnx_worker_health_url(base)
+    result: dict[str, Any] = {
+        "ready": False,
+        "status": "offline",
+        "endpoint": base or None,
+        "health_url": health_url,
+        "models": [],
+        "error": "onnx_worker_endpoint_missing",
+    }
+    if health_url is None:
+        return result
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+            health = await client.get(health_url)
+            if not is_onnx_worker_health_ready(health):
+                result.update(status="degraded", error="onnx_worker_health_invalid")
+                return result
+            response = await client.get(base + "/models")
+            response.raise_for_status()
+            payload = response.json()
+        entries = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(entries, list) or not entries:
+            raise ValueError("onnx_worker_models_invalid")
+        models: list[str] = []
+        for item in entries:
+            model_id = item.get("id") if isinstance(item, dict) else None
+            if (
+                not isinstance(model_id, str)
+                or not model_id.strip()
+                or model_id != model_id.strip()
+                or model_id in models
+            ):
+                raise ValueError("onnx_worker_models_invalid")
+            models.append(model_id)
+        result.update(
+            ready=True,
+            status="online",
+            models=models,
+            error=None,
+            engine="onnx-gpu",
+            device="cuda",
+        )
+    except httpx.HTTPError:
+        result.update(status="offline", error="onnx_worker_request_failed")
+    except ValueError:
+        result.update(status="degraded", error="onnx_worker_models_invalid")
+    return result
 
 
 def installed_local_servers(

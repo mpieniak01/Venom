@@ -37,7 +37,8 @@ IMPORT_TO_PACKAGE = {
     "google_auth_oauthlib": "google-auth-oauthlib",
     "googleapiclient": "google-api-python-client",
     "pydantic_settings": "pydantic-settings",
-    "semantic_kernel": "semantic-kernel",
+    "agent_framework": "agent-framework-core",
+    "agent_framework_openai": "agent-framework-openai",
 }
 
 PROJECT_INTERNAL_ROOTS = {

@@ -1,5 +1,10 @@
 # Docker Package Release Guide (Minimal MVP)
 
+> Current candidate scope: Light/API and CI, with Ollama over HTTP. Full,
+> local GPU add-ons and Academy are deferred; retained legacy instructions do not
+> qualify them for the new MAF core. Do not update an operator Full environment
+> with this package. See [dependency policy](DEPENDENCY_PROFILES.md).
+
 This document defines the official way to publish Docker images for Venom Minimal MVP.
 
 ## Quick Answer

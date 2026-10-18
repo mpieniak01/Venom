@@ -141,3 +141,41 @@ def test_parse_iso_utc_handles_invalid_and_naive_values():
     parsed = gate._parse_iso_utc("2026-05-24T10:00:00")  # noqa: SLF001
     assert parsed is not None
     assert parsed.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_live_async_switch_is_not_recovered_as_stale():
+    owner = gate.begin_runtime_switch(
+        source="ui", from_runtime="ollama", to_runtime="onnx"
+    )
+    try:
+        with gate._STATE_LOCK:
+            gate._STATE.started_at_utc = "2000-01-01T00:00:00+00:00"
+            gate._STATE.drain_completed_at_utc = "2000-01-01T00:00:00+00:00"
+        snapshot = gate.get_runtime_switch_gate_snapshot()
+        assert snapshot.in_progress and snapshot.switch_id == owner.switch_id
+        with pytest.raises(HTTPException) as exc_info:
+            gate.begin_runtime_switch(
+                source="ui", from_runtime="onnx", to_runtime="vllm"
+            )
+        assert exc_info.value.status_code == 409
+    finally:
+        gate.finish_runtime_switch(switch_id=owner.switch_id)
+
+
+@pytest.mark.asyncio
+async def test_abandoned_finished_async_owner_can_still_be_recovered():
+    async def abandoned_switch():
+        return gate.begin_runtime_switch(
+            source="ui", from_runtime="ollama", to_runtime="onnx"
+        )
+
+    task = asyncio.create_task(abandoned_switch())
+    owner = await task
+    try:
+        with gate._STATE_LOCK:
+            gate._STATE.started_at_utc = "2000-01-01T00:00:00+00:00"
+            gate._STATE.drain_completed_at_utc = "2000-01-01T00:00:00+00:00"
+        assert not gate.get_runtime_switch_gate_snapshot().in_progress
+    finally:
+        gate.finish_runtime_switch(switch_id=owner.switch_id)

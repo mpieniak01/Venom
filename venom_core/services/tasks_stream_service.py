@@ -114,17 +114,3 @@ def build_missing_task_payload(task_id: UUID) -> dict[str, Any]:
 
 def is_terminal_status(status: TaskStatus) -> bool:
     return status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
-
-
-def build_onnx_task_messages(
-    content: str, forced_intent: str | None
-) -> list[dict[str, str]]:
-    system_prompt = "Jesteś operacyjnym asystentem Venom."
-    if forced_intent == "COMPLEX_PLANNING":
-        system_prompt += (
-            " Odpowiadaj planem krok po kroku: analiza, plan, ryzyka, wykonanie."
-        )
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": content},
-    ]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import pytest
 
 from venom_core.services import system_llm_service as svc
 
@@ -72,9 +72,96 @@ def test_installed_binaries_detection(monkeypatch):
     monkeypatch.setattr(svc.importlib.util, "find_spec", lambda _name: None)
     assert svc.is_vllm_installed() is False
 
+    assert svc.is_onnx_worker_configured("http://127.0.0.1:8068/v1")
+    assert not svc.is_onnx_worker_configured("")
+    assert not svc.is_onnx_worker_configured("models/local.onnx")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "health",
+    [
+        {"status": "ok", "engine": "onnx-gpu", "device": "cuda"},
+        {"status": "error", "engine": "onnx-gpu", "device": "cuda"},
+        {"status": "ok", "engine": "onnx-gpu", "device": "cpu"},
+        {"status": "ok", "engine": "other", "device": "cuda"},
+        [],
+    ],
+)
+async def test_worker_probe_requires_real_cuda_health_before_catalog(
+    monkeypatch, health
+):
+    import httpx
+
+    calls = []
+    original = httpx.AsyncClient
+
+    def handler(request):
+        calls.append(request.url.path)
+        assert request.headers["authorization"] == "Bearer fixture-key"
+        return httpx.Response(
+            200,
+            json=health
+            if request.url.path == "/health"
+            else {"data": [{"id": "served-exact"}]},
+        )
+
     monkeypatch.setattr(
-        svc.importlib.util,
-        "find_spec",
-        lambda name: SimpleNamespace() if name == "onnxruntime_genai" else None,
+        svc.httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
     )
-    assert svc.is_onnx_runtime_installed() is True
+    result = await svc.inspect_onnx_worker(
+        "http://fixture:8068/v1", api_key="fixture-key"
+    )
+    if health == {"status": "ok", "engine": "onnx-gpu", "device": "cuda"}:
+        assert result["ready"] and result["models"] == ["served-exact"]
+        assert calls == ["/health", "/v1/models"]
+    else:
+        assert not result["ready"] and result["models"] == []
+        assert calls == ["/health"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "data", [[], [{}], [{"id": ""}], [{"id": "x"}, {"id": "x"}], [{"id": " x"}], "bad"]
+)
+async def test_worker_probe_rejects_invalid_catalog(monkeypatch, data):
+    import httpx
+
+    original = httpx.AsyncClient
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={"status": "ok", "engine": "onnx-gpu", "device": "cuda"}
+            if request.url.path == "/health"
+            else {"data": data},
+        )
+
+    monkeypatch.setattr(
+        svc.httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    result = await svc.inspect_onnx_worker("http://fixture:8068/v1")
+    assert not result["ready"] and result["error"] == "onnx_worker_models_invalid"
+
+
+@pytest.mark.asyncio
+async def test_worker_probe_timeout_is_offline_not_empty_success(monkeypatch):
+    import httpx
+
+    original = httpx.AsyncClient
+
+    def handler(request):
+        raise httpx.ReadTimeout("private upstream detail", request=request)
+
+    monkeypatch.setattr(
+        svc.httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    result = await svc.inspect_onnx_worker("http://fixture:8068/v1")
+    assert not result["ready"] and result["status"] == "offline"
+    assert "private" not in str(result)

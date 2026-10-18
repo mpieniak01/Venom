@@ -723,7 +723,7 @@ def test_onnx_runtime_requires_explicit_component_endpoint(service_type, active_
 @pytest.mark.parametrize(
     "payload,expected",
     [
-        ({"engine": "onnx-gpu", "device": "cuda"}, "online"),
+        ({"status": "ok", "engine": "onnx-gpu", "device": "cuda"}, "online"),
         ({"engine": "onnx-gpu", "device": "cpu"}, "degraded"),
         ({"engine": "ollama", "device": "cuda"}, "degraded"),
         ([], "degraded"),

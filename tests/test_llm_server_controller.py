@@ -66,3 +66,26 @@ async def test_run_action_unknown_action():
     controller = LlmServerController(_dummy_settings(VLLM_START_COMMAND=""))
     with pytest.raises(ValueError):
         await controller.run_action("vllm", "unknown")
+
+
+@pytest.mark.parametrize("managed", [False, True])
+def test_onnx_controller_describes_external_worker_truthfully(managed):
+    controller = LlmServerController(
+        _dummy_settings(
+            ONNX_LLM_ENDPOINT="http://127.0.0.1:8068/v1",
+            ONNX_START_COMMAND="owned start" if managed else "",
+            ONNX_STOP_COMMAND="owned stop" if managed else "",
+            ONNX_RESTART_COMMAND="owned restart" if managed else "",
+        )
+    )
+    server = next(s for s in controller.list_servers() if s["name"] == "onnx")
+    assert server["endpoint"] == "http://127.0.0.1:8068/v1"
+    assert server["health_url"] == "http://127.0.0.1:8068/health"
+    assert all(value == managed for value in server["supports"].values())
+    caps = controller.get_capabilities("onnx")
+    assert (
+        not caps.is_in_process
+        and not caps.supports_cache_flush
+        and not caps.supports_model_unload
+    )
+    assert caps.supports_health_wait

@@ -90,58 +90,6 @@ class TestLlmRuntimeActivationAPI:
         )
         assert response.status_code == 400
 
-    def test_activate_onnx_runtime(self, client):
-        with (
-            patch.object(system_llm, "SETTINGS") as settings,
-            patch.object(system_llm, "config_manager") as mock_manager,
-            patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
-            patch.object(system_llm, "OnnxLlmClient") as mock_onnx_client,
-        ):
-            settings.LLM_SERVICE_TYPE = "local"
-            settings.LLM_MODEL_NAME = "phi3:latest"
-            settings.LLM_CONFIG_HASH = ""
-            settings.ACTIVE_LLM_SERVER = ""
-            settings.OPENAI_API_KEY = ""
-            settings.GOOGLE_API_KEY = ""
-
-            client_instance = mock_onnx_client.return_value
-            client_instance.ensure_ready.return_value = None
-            client_instance.config.model_path = "models/phi35-onnx"
-
-            mock_runtime.return_value = type(
-                "Runtime",
-                (),
-                {
-                    "provider": "onnx",
-                    "endpoint": None,
-                    "model_name": "models/phi35-onnx",
-                    "config_hash": "hash-onnx",
-                    "runtime_id": "onnx@local",
-                },
-            )()
-
-            response = client.post(
-                "/api/v1/system/llm-runtime/active",
-                json={"provider": "onnx"},
-            )
-            assert response.status_code == 200
-            payload = response.json()
-            assert payload["active_server"] == "onnx"
-            assert payload["source_type"] == "local-runtime"
-            mock_manager.update_config.assert_called_once()
-
-    def test_activate_onnx_runtime_not_ready(self, client):
-        with patch.object(system_llm, "OnnxLlmClient") as mock_onnx_client:
-            mock_onnx_client.return_value.ensure_ready.side_effect = RuntimeError(
-                "boom"
-            )
-            response = client.post(
-                "/api/v1/system/llm-runtime/active",
-                json={"provider": "onnx"},
-            )
-            assert response.status_code == 400
-            assert "boom" in response.json()["detail"]
-
     def test_get_active_server_includes_switch_policy_and_last_event(self, client):
         with (
             patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
@@ -351,3 +299,73 @@ def test_runtime_queue_snapshot_reports_missing_orchestrator(client):
     payload = response.json()
     assert payload["queue"]["status"] is None
     assert payload["queue"]["error"] == "Orchestrator not available"
+
+
+@pytest.mark.parametrize(
+    "requested,served,http_status,expected",
+    [
+        (None, ["served-exact"], 200, 200),
+        ("served-exact", ["served-exact"], 200, 200),
+        ("models/served-exact", ["served-exact"], 200, 400),
+        (None, ["a", "b"], 200, 400),
+        (None, ["served-exact"], 503, 503),
+    ],
+)
+def test_onnx_activation_validates_actual_http_identity_and_preserves_state(
+    client, monkeypatch, requested, served, http_status, expected
+):
+    from unittest.mock import Mock
+
+    import httpx
+
+    settings = system_llm.SETTINGS
+    for key, value in {
+        "VENOM_RUNTIME_PROFILE": "full",
+        "ONNX_LLM_ENABLED": True,
+        "ONNX_LLM_ENDPOINT": "http://worker:8068/v1",
+        "LLM_LOCAL_ENDPOINT": "http://stale:9/v1",
+        "LLM_SERVICE_TYPE": "local",
+        "LLM_MODEL_NAME": "old-model",
+        "ACTIVE_LLM_SERVER": "ollama",
+        "LLM_CONFIG_HASH": "old-hash",
+    }.items():
+        monkeypatch.setattr(settings, key, value)
+    before = system_llm._capture_runtime_settings_snapshot()
+    persist = Mock(return_value={"success": True})
+    monkeypatch.setattr(system_llm.config_manager, "update_config", persist)
+    monkeypatch.setattr(system_llm.config_manager, "get_config", lambda **kwargs: {})
+    original = httpx.AsyncClient
+    requests = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        return httpx.Response(
+            http_status,
+            json={"status": "ok", "engine": "onnx-gpu", "device": "cuda"}
+            if request.url.path == "/health"
+            else {"data": [{"id": model} for model in served]},
+        )
+
+    monkeypatch.setattr(
+        system_llm.system_llm_service.httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    response = client.post(
+        "/api/v1/system/llm-runtime/active",
+        json={"provider": "onnx", "model": requested},
+    )
+    assert response.status_code == expected, response.text
+    assert requests and all(url.startswith("http://worker:8068/") for url in requests)
+    if expected == 200:
+        body = response.json()
+        assert (
+            body["active_model"] == "served-exact"
+            and body["active_endpoint"] == "http://worker:8068/v1"
+        )
+        assert body["runtime_id"] == "onnx@http://worker:8068/v1"
+        assert persist.call_args.args[0]["LAST_MODEL_ONNX"] == "served-exact"
+        assert settings.LLM_LOCAL_ENDPOINT == "http://stale:9/v1"
+    else:
+        persist.assert_not_called()
+        assert system_llm._capture_runtime_settings_snapshot() == before

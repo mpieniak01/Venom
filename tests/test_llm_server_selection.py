@@ -821,14 +821,16 @@ async def test_get_llm_servers_includes_onnx_when_enabled(monkeypatch):
     monkeypatch.setattr(
         system_routes,
         "_build_onnx_server_payload",
-        lambda: {
-            "name": "onnx",
-            "display_name": "ONNX Runtime",
-            "supports": {"start": False, "stop": False, "restart": False},
-            "endpoint": None,
-            "provider": "onnx",
-            "status": "online",
-        },
+        AsyncMock(
+            return_value={
+                "name": "onnx",
+                "display_name": "ONNX Runtime",
+                "supports": {"start": False, "stop": False, "restart": False},
+                "endpoint": "http://127.0.0.1:8068/v1",
+                "provider": "onnx",
+                "status": "online",
+            }
+        ),
     )
 
     async def _noop_probe(_servers, _active_server_name=None):
@@ -894,14 +896,16 @@ async def test_get_llm_servers_deduplicates_onnx(monkeypatch):
     monkeypatch.setattr(
         system_routes,
         "_build_onnx_server_payload",
-        lambda: {
-            "name": "onnx",
-            "display_name": "ONNX Runtime",
-            "supports": {"start": False, "stop": False, "restart": False},
-            "endpoint": None,
-            "provider": "onnx",
-            "status": "online",
-        },
+        AsyncMock(
+            return_value={
+                "name": "onnx",
+                "display_name": "ONNX Runtime",
+                "supports": {"start": False, "stop": False, "restart": False},
+                "endpoint": "http://127.0.0.1:8068/v1",
+                "provider": "onnx",
+                "status": "online",
+            }
+        ),
     )
 
     async def _noop_probe(_servers, _active_server_name=None):
@@ -921,7 +925,7 @@ async def test_get_llm_servers_deduplicates_onnx(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_active_llm_server_onnx_in_process(monkeypatch):
+async def test_set_active_llm_server_onnx_external_http(monkeypatch):
     original = _snapshot_settings()
     SETTINGS.VENOM_RUNTIME_PROFILE = "full"
     SETTINGS.ONNX_LLM_ENABLED = True
@@ -949,7 +953,7 @@ async def test_set_active_llm_server_onnx_in_process(monkeypatch):
         monkeypatch.setattr(
             system_routes.config_manager,
             "get_config",
-            lambda **_: {"LAST_MODEL_ONNX": "models/phi35-local-onnx"},
+            lambda **_: {"LAST_MODEL_ONNX": "served-onnx"},
         )
         monkeypatch.setattr(
             system_routes,
@@ -962,17 +966,33 @@ async def test_set_active_llm_server_onnx_in_process(monkeypatch):
             "update_config",
             _capture_update_config(updates),
         )
-        dummy_client = SimpleNamespace(
-            ensure_ready=lambda: None,
-            config=SimpleNamespace(model_path="models/phi35-local-onnx"),
+        endpoint = "http://127.0.0.1:8068/v1"
+        monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENDPOINT", endpoint)
+        monkeypatch.setattr(
+            system_routes.system_llm_service,
+            "inspect_onnx_worker",
+            AsyncMock(
+                return_value={
+                    "ready": True,
+                    "status": "online",
+                    "endpoint": endpoint,
+                    "health_url": "http://127.0.0.1:8068/health",
+                    "models": ["served-onnx"],
+                    "error": None,
+                    "engine": "onnx-gpu",
+                    "device": "cuda",
+                }
+            ),
         )
-        monkeypatch.setattr(system_routes, "OnnxLlmClient", lambda: dummy_client)
 
         request = system_routes.ActiveLlmServerRequest(server_name="onnx")
         response = await system_routes.set_active_llm_server(request)
         assert response["status"] == "success"
         assert response["active_server"] == "onnx"
         assert updates["LLM_SERVICE_TYPE"] == "onnx"
+        assert response["start_result"]["mode"] == "external_http"
+        assert response["active_endpoint"] == endpoint
+        assert response["active_model"] == "served-onnx"
         assert ("ollama", "stop") in controller.actions
         assert ("vllm", "stop") in controller.actions
         assert response["stop_results"]["ollama"]["ok"] is True
@@ -1008,7 +1028,7 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
         monkeypatch.setattr(
             system_routes.config_manager,
             "get_config",
-            lambda **_: {"LAST_MODEL_ONNX": "models/phi35-local-onnx"},
+            lambda **_: {"LAST_MODEL_ONNX": "served-onnx"},
         )
         monkeypatch.setattr(
             system_routes,
@@ -1021,11 +1041,24 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
             "update_config",
             _capture_update_config(updates),
         )
-        dummy_client = SimpleNamespace(
-            ensure_ready=lambda: None,
-            config=SimpleNamespace(model_path="models/phi35-local-onnx"),
+        endpoint = "http://127.0.0.1:8068/v1"
+        monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENDPOINT", endpoint)
+        monkeypatch.setattr(
+            system_routes.system_llm_service,
+            "inspect_onnx_worker",
+            AsyncMock(
+                return_value={
+                    "ready": True,
+                    "status": "online",
+                    "endpoint": endpoint,
+                    "health_url": "http://127.0.0.1:8068/health",
+                    "models": ["served-onnx"],
+                    "error": None,
+                    "engine": "onnx-gpu",
+                    "device": "cuda",
+                }
+            ),
         )
-        monkeypatch.setattr(system_routes, "OnnxLlmClient", lambda: dummy_client)
 
         request = system_routes.ActiveLlmServerRequest(server_name="onnx")
         response = await system_routes.set_active_llm_server(request)

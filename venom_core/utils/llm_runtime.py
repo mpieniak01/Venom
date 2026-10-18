@@ -251,11 +251,34 @@ def format_runtime_label(runtime: LLMRuntimeInfo) -> str:
     return f"{model_display} · {provider_display} @ {endpoint_display}"
 
 
+def build_onnx_worker_health_url(endpoint: str | None) -> str | None:
+    """Return the explicit worker's origin health URL, never an Ollama default."""
+    parsed = urlparse(str(endpoint or "").strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return urlunparse((parsed.scheme, parsed.netloc, "/health", "", "", ""))
+
+
+def is_onnx_worker_health_ready(response: httpx.Response) -> bool:
+    """A successful HTTP response must identify the running CUDA worker."""
+    if not 200 <= response.status_code < 300:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    return (
+        isinstance(payload, dict)
+        and payload.get("status") == "ok"
+        and payload.get("engine") == "onnx-gpu"
+        and payload.get("device") == "cuda"
+    )
+
+
 def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
     """Tworzy URL do health-checka na podstawie providera."""
     if runtime.provider == "onnx" and runtime.endpoint:
-        parsed = urlparse(runtime.endpoint)
-        return urlunparse((parsed.scheme, parsed.netloc, "/health", "", "", ""))
+        return build_onnx_worker_health_url(runtime.endpoint)
     if not runtime.endpoint:
         return None
 
@@ -318,12 +341,7 @@ async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[s
             response = await client.get(health_url)
         if response.status_code < 400:
             if runtime.provider == "onnx":
-                payload = response.json()
-                if (
-                    not isinstance(payload, dict)
-                    or payload.get("engine") != "onnx-gpu"
-                    or payload.get("device") != "cuda"
-                ):
+                if not is_onnx_worker_health_ready(response):
                     return "degraded", "ONNX worker must report onnx-gpu on CUDA"
             return "online", None
         return "degraded", f"HTTP {response.status_code}"

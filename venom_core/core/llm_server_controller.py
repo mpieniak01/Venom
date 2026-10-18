@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from venom_core.config import Settings
+from venom_core.utils.llm_runtime import build_onnx_worker_health_url
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
@@ -233,28 +234,29 @@ class LlmServerController:
             ),
         )
 
-        # ONNX Runtime działa in-process, ale utrzymujemy spójny wpis serwera
-        # żeby testy i UI mogły traktować ONNX jako trzeci lokalny stack.
+        onnx_endpoint = str(getattr(cfg, "ONNX_LLM_ENDPOINT", "") or "").strip() or None
+        onnx_commands = {
+            action: str(
+                getattr(cfg, f"ONNX_{action.upper()}_COMMAND", "") or ""
+            ).strip()
+            for action in ("start", "stop", "restart")
+        }
         servers["onnx"] = LlmServerConfig(
             name="onnx",
             display_name="ONNX Runtime",
             provider="onnx",
-            description="In-process ONNX Runtime GenAI (bez osobnego daemonu).",
-            endpoint=None,
-            health_url=None,
-            commands={
-                "start": "",
-                "stop": "",
-                "restart": "",
-            },
+            description="Isolated ONNX GenAI CUDA worker over HTTP.",
+            endpoint=onnx_endpoint,
+            health_url=build_onnx_worker_health_url(onnx_endpoint),
+            commands=onnx_commands,
             capabilities=RuntimeCapabilities(
-                supports_stop=False,
-                supports_start=False,
-                supports_restart=False,
-                supports_health_wait=False,
-                supports_cache_flush=True,
-                supports_model_unload=True,
-                is_in_process=True,
+                supports_stop=bool(onnx_commands["stop"]),
+                supports_start=bool(onnx_commands["start"]),
+                supports_restart=bool(onnx_commands["restart"]),
+                supports_health_wait=True,
+                supports_cache_flush=False,
+                supports_model_unload=False,
+                is_in_process=False,
                 release_wait_seconds=0,
             ),
         )

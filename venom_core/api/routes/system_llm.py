@@ -25,7 +25,6 @@ from venom_core.api.schemas.system_llm import (
     LlmRuntimeActivateRequest,
 )
 from venom_core.config import SETTINGS
-from venom_core.execution.onnx_llm_client import OnnxLlmClient
 from venom_core.services import (
     remote_models_service,
     system_llm_service,
@@ -68,6 +67,7 @@ from venom_core.utils.llm_runtime import (
     detect_runtime_drift,
     get_active_llm_runtime,
     infer_local_provider,
+    is_onnx_worker_health_ready,
 )
 from venom_core.utils.logger import get_logger
 from venom_core.utils.mode_contracts import mode_contracts_payload
@@ -222,7 +222,7 @@ def _is_vllm_installed() -> bool:
 
 
 def _is_onnx_runtime_installed() -> bool:
-    return system_llm_service.is_onnx_runtime_installed()
+    return system_llm_service.is_onnx_worker_configured(SETTINGS.ONNX_LLM_ENDPOINT)
 
 
 def _installed_local_servers() -> set[str]:
@@ -340,6 +340,8 @@ def _extract_health_status(response: httpx.Response) -> str | None:
 def _is_health_response_ready(*, server_name: str, response: httpx.Response) -> bool:
     if not (200 <= response.status_code < 300):
         return False
+    if server_name == "onnx":
+        return is_onnx_worker_health_ready(response)
     if not is_multi_runtime(server_name):
         return True
     status = _extract_health_status(response)
@@ -355,7 +357,7 @@ def _resolve_local_endpoint(server_name: str, target: dict) -> str | None:
     if is_multi_runtime(server_name):
         return SETTINGS.GEMMA4_AUDIO_ENDPOINT
     if server_name == "onnx":
-        return None
+        return SETTINGS.ONNX_LLM_ENDPOINT or None
     return endpoint
 
 
@@ -523,6 +525,8 @@ def _merge_monitor_status_into_servers(servers: list[dict], service_monitor) -> 
         service.name.lower(): service for service in service_monitor.get_all_services()
     }
     for server in servers:
+        if server.get("name") == "onnx" and isinstance(server.get("onnx"), dict):
+            continue  # This request already observed the worker; a monitor may be stale.
         status = None
         name_key = str(server.get("name") or "").lower()
         display_key = str(server.get("display_name") or "").lower()
@@ -711,21 +715,32 @@ def _persist_selected_model_settings(
     return config_hash
 
 
-def _build_onnx_server_payload() -> dict[str, Any]:
-    client = OnnxLlmClient()
-    status = client.status_payload()
+async def _build_onnx_server_payload() -> dict[str, Any]:
+    status = await system_llm_service.inspect_onnx_worker(
+        SETTINGS.ONNX_LLM_ENDPOINT, api_key=SETTINGS.LLM_LOCAL_API_KEY
+    )
+    controller = system_deps.get_llm_controller()
+    entry: dict[str, Any] = (
+        next(
+            (item for item in controller.list_servers() if item.get("name") == "onnx"),
+            {},
+        )
+        if controller is not None
+        else {}
+    )
     return {
+        **entry,
         "name": "onnx",
         "display_name": "ONNX Runtime",
-        "description": "In-process ONNX Runtime GenAI backend.",
-        "endpoint": None,
+        "description": "Isolated ONNX GenAI CUDA worker over HTTP.",
+        "endpoint": status["endpoint"],
         "provider": "onnx",
-        "health_url": None,
-        "supports": {"start": False, "stop": False, "restart": False},
-        "status": "online" if status.get("ready") else "degraded",
-        "error_message": None
-        if status.get("ready")
-        else "ONNX runtime not ready (check model path and dependencies).",
+        "health_url": status["health_url"],
+        "supports": entry.get(
+            "supports", {"start": False, "stop": False, "restart": False}
+        ),
+        "status": status["status"],
+        "error_message": status["error"],
         "onnx": status,
     }
 
@@ -744,7 +759,7 @@ def _capture_runtime_settings_snapshot() -> tuple[str, str, str, str]:
     return (
         SETTINGS.LLM_SERVICE_TYPE,
         str(getattr(runtime, "model_name", "") or ""),
-        str(getattr(runtime, "provider", "") or ""),
+        str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or ""),
         SETTINGS.LLM_CONFIG_HASH,
     )
 
@@ -791,14 +806,28 @@ def _assert_cloud_provider_requirements(provider_raw: str) -> None:
         )
 
 
-def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
-    onnx_client = OnnxLlmClient()
-    try:
-        onnx_client.ensure_ready()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    model_name = model or onnx_client.config.model_path
+async def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
+    _ensure_server_allowed("onnx")
+    status = await system_llm_service.inspect_onnx_worker(
+        SETTINGS.ONNX_LLM_ENDPOINT, api_key=SETTINGS.LLM_LOCAL_API_KEY
+    )
+    if not status["ready"]:
+        raise HTTPException(status_code=503, detail=status["error"])
+    models = status["models"]
+    requested_model = str(model or "").strip()
+    if requested_model:
+        if requested_model not in models:
+            raise HTTPException(status_code=400, detail="onnx_model_not_served")
+        model_name = requested_model
+    elif len(models) == 1:
+        model_name = models[0]
+    else:
+        last_model = config_manager.get_config(mask_secrets=False).get(
+            "LAST_MODEL_ONNX"
+        )
+        if not isinstance(last_model, str) or last_model not in models:
+            raise HTTPException(status_code=400, detail="onnx_model_selection_required")
+        model_name = last_model
     snapshot = _capture_runtime_settings_snapshot()
     try:
         SETTINGS.LLM_SERVICE_TYPE = "onnx"
@@ -2008,7 +2037,7 @@ async def _runtime_server_status_snapshot() -> dict[str, dict[str, Any]]:
     ]
     if "onnx" in visible_servers:
         servers = [server for server in servers if server.get("name") != "onnx"]
-        servers.append(_build_onnx_server_payload())
+        servers.append(await _build_onnx_server_payload())
     servers = _dedupe_servers_by_name(servers)
     _merge_monitor_status_into_servers(servers, service_monitor)
     active_runtime = get_active_llm_runtime()
@@ -2048,10 +2077,10 @@ async def get_llm_servers():
         if server.get("name") in visible_servers
     ]
     if "onnx" in visible_servers:
-        # ONNX is in-process; prefer canonical ONNX payload to avoid duplicates
+        # Prefer the observed worker status to avoid duplicate ONNX entries
         # when controller list already includes an "onnx" entry.
         servers = [server for server in servers if server.get("name") != "onnx"]
-        servers.append(_build_onnx_server_payload())
+        servers.append(await _build_onnx_server_payload())
     servers = _dedupe_servers_by_name(servers)
     _merge_monitor_status_into_servers(servers, service_monitor)
     active_runtime = get_active_llm_runtime()
@@ -2228,7 +2257,7 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     provider_raw = _normalize_runtime_provider(request.provider)
     _assert_runtime_provider_supported(provider_raw)
     if provider_raw == "onnx":
-        response = _activate_onnx_runtime(request.model)
+        response = await _activate_onnx_runtime(request.model)
         emit_runtime_model_event(
             "runtime_model_selected",
             source=switch_source,
@@ -2271,43 +2300,16 @@ def _validate_feedback_alias_request(*, server_name: str, requested_alias: str) 
         )
 
 
-def _activate_onnx_server_switch(*, stop_results: dict[str, Any]) -> dict[str, Any]:
-    onnx_client = OnnxLlmClient()
-    try:
-        onnx_client.ensure_ready()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    config = config_manager.get_config(mask_secrets=False)
-    selected_model = config.get("LAST_MODEL_ONNX") or onnx_client.config.model_path
-    result = config_manager.update_config(
-        {
-            "LLM_SERVICE_TYPE": "onnx",
-            "ACTIVE_LLM_SERVER": "onnx",
-            "LLM_MODEL_NAME": selected_model,
-            "LAST_MODEL_ONNX": selected_model,
-        }
-    )
-    _ensure_config_update_success(result, "Nie udało się aktywować runtime ONNX")
-    try:
-        SETTINGS.LLM_SERVICE_TYPE = "onnx"
-        SETTINGS.ACTIVE_LLM_SERVER = "onnx"
-        SETTINGS.LLM_MODEL_NAME = selected_model
-    except Exception:
-        logger.warning("Nie udało się zaktualizować SETTINGS dla ONNX runtime.")
-    runtime = get_active_llm_runtime()
-    feedback_resolution = _feedback_loop_resolution_defaults(runtime.model_name)
-    return {
-        "status": "success",
-        "active_server": runtime.provider,
-        "active_model": runtime.model_name,
-        "config_hash": runtime.config_hash,
-        "runtime_id": runtime.runtime_id,
-        "requested_model_alias": feedback_resolution["requested_model_alias"],
-        "resolved_model_id": feedback_resolution["resolved_model_id"],
-        "resolution_reason": feedback_resolution["resolution_reason"],
-        "start_result": {"ok": True, "mode": "in_process"},
-        "stop_results": stop_results,
-    }
+async def _activate_onnx_server_switch(
+    *,
+    model: str | None,
+    stop_results: dict[str, Any],
+    start_result: dict[str, Any] | None,
+) -> dict[str, Any]:
+    response = await _activate_onnx_runtime(model)
+    response["start_result"] = start_result or {"ok": True, "mode": "external_http"}
+    response["stop_results"] = stop_results
+    return response
 
 
 def _resolve_selected_model_for_switch(
@@ -2740,9 +2742,13 @@ async def _set_active_llm_server_impl(
         )
 
         if server_name == "onnx":
+            response = await _activate_onnx_server_switch(
+                model=request.model,
+                stop_results=stop_results,
+                start_result=start_result,
+            )
             switch_state.mark_done(LifecycleStep.ENDPOINT_SWITCHED)
             switch_state.mark_done(LifecycleStep.CONFIG_SAVED)
-            response = _activate_onnx_server_switch(stop_results=stop_results)
             emit_runtime_model_event(
                 "runtime_model_selected",
                 source=switch_source,

@@ -14,7 +14,11 @@ import httpx
 from fastapi import HTTPException
 
 from venom_core.services.onnx_runtime_cleanup import release_onnx_runtime_best_effort
-from venom_core.utils.llm_runtime import LifecycleStep, LifecycleSwitchState
+from venom_core.utils.llm_runtime import (
+    LifecycleStep,
+    LifecycleSwitchState,
+    is_onnx_worker_health_ready,
+)
 from venom_core.utils.logger import get_logger
 from venom_core.utils.runtime_names import is_multi_runtime
 
@@ -118,6 +122,8 @@ def _extract_health_status(response: httpx.Response) -> str | None:
 def _is_health_response_ready(*, server_name: str, response: httpx.Response) -> bool:
     if not (200 <= response.status_code < 300):
         return False
+    if server_name == "onnx":
+        return is_onnx_worker_health_ready(response)
     if not is_multi_runtime(server_name):
         return True
     status = _extract_health_status(response)

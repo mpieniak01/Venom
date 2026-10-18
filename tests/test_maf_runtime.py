@@ -506,3 +506,162 @@ def test_completion_options_revalidate_mutated_instances():
     options.max_tokens = "invalid token count"
     with pytest.raises(ValidationError):
         CompletionOptions.model_validate(options)
+
+
+@pytest.mark.asyncio
+async def test_completed_tool_is_not_repeated_after_context_fallback():
+    from venom_core.agents.base import BaseAgent
+
+    effects = []
+    requests = []
+    continuation_failed = False
+
+    class Tools:
+        @tool_function(name="record", description="Record one fixture effect")
+        async def record(self, text: str) -> str:
+            effects.append(text)
+            return "recorded"
+
+    def respond(request):
+        nonlocal continuation_failed
+        body = json.loads(request.content)
+        requests.append(body)
+        if not any(message["role"] == "tool" for message in body["messages"]):
+            call = {
+                "id": f"call-{len(requests)}",
+                "type": "function",
+                "function": {
+                    "name": "Safe-record",
+                    "arguments": '{"text":"once"}',
+                },
+            }
+            return httpx.Response(200, json=completion(None, [call]))
+        if not continuation_failed:
+            continuation_failed = True
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": (
+                            "maximum context length is 64 tokens; "
+                            "request has 32 input tokens"
+                        ),
+                        "type": "invalid_request_error",
+                        "code": "context_length_exceeded",
+                    }
+                },
+            )
+        return httpx.Response(200, json=completion("done"))
+
+    class Agent(BaseAgent):
+        async def process(self, input_text):
+            return input_text
+
+    model = service(respond)
+    runtime = AgentRuntime(permission_checker=lambda name: True)
+    runtime.add_service(model)
+    runtime.add_plugin(Tools(), "Safe")
+    history = ConversationHistory()
+    history.add_user_message("record once")
+    settings = CompletionOptions(
+        max_tokens=64, function_choice_behavior=ToolPolicy.Auto()
+    )
+    try:
+        result = await Agent(runtime)._invoke_chat_with_fallbacks(
+            model, history, settings, enable_functions=True
+        )
+        assert result.content == "done"
+        assert effects == ["once"]
+        assert len(requests) == 3
+        assert [message["role"] for message in requests[2]["messages"]] == [
+            "user",
+            "assistant",
+            "tool",
+        ]
+        assert requests[2]["messages"][1]["tool_calls"][0]["id"] == "call-1"
+        assert requests[2]["messages"][2]["tool_call_id"] == "call-1"
+        assert [str(message.role) for message in history] == [
+            "user",
+            "assistant",
+            "tool",
+        ]
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["provider_error", "cancellation"])
+async def test_completed_tool_history_survives_failed_continuation(failure):
+    import asyncio
+
+    effects = []
+    continuation_started = asyncio.Event()
+    fail_continuation = True
+
+    class Tools:
+        @tool_function(name="record", description="Record one fixture effect")
+        async def record(self, text: str) -> str:
+            effects.append(text)
+            return "recorded"
+
+    async def respond(request):
+        body = json.loads(request.content)
+        if not any(message["role"] == "tool" for message in body["messages"]):
+            call = {
+                "id": "completed-call",
+                "type": "function",
+                "function": {
+                    "name": "Safe-record",
+                    "arguments": '{"text":"once"}',
+                },
+            }
+            return httpx.Response(200, json=completion(None, [call]))
+        if fail_continuation:
+            continuation_started.set()
+            if failure == "cancellation":
+                await asyncio.Event().wait()
+            return httpx.Response(503, json={"error": {"message": "offline"}})
+        return httpx.Response(200, json=completion("done"))
+
+    model = service(respond)
+    runtime = AgentRuntime(permission_checker=lambda name: True)
+    runtime.add_service(model)
+    runtime.add_plugin(Tools(), "Safe")
+    history = ConversationHistory()
+    history.add_user_message("record once")
+    settings = CompletionOptions(function_choice_behavior=ToolPolicy.Auto())
+    task = asyncio.create_task(
+        model.get_chat_message_content(
+            chat_history=history, settings=settings, kernel=runtime
+        )
+    )
+    try:
+        await asyncio.wait_for(continuation_started.wait(), timeout=2)
+        if failure == "cancellation":
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            with pytest.raises(Exception, match="offline"):
+                await task
+        assert effects == ["once"]
+        assert [str(message.role) for message in history] == [
+            "user",
+            "assistant",
+            "tool",
+        ]
+        assert history[1].native_message.contents[0].call_id == "completed-call"
+        assert history[2].native_message.contents[0].call_id == "completed-call"
+
+        fail_continuation = False
+        result = await model.get_chat_message_content(
+            chat_history=history, settings=settings, kernel=runtime
+        )
+        assert result.content == "done"
+        assert effects == ["once"] and len(history) == 3
+    finally:
+        if not task.done():
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        await runtime.aclose()

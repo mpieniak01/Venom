@@ -7,7 +7,7 @@ SDK imports are lazy so direct-to-LLM requests need not construct an agent.
 from __future__ import annotations
 
 import inspect
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from functools import wraps
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,7 +18,7 @@ from venom_core.execution.agent_contracts import (
 )
 
 if TYPE_CHECKING:
-    from agent_framework import AgentResponse, ChatResponse
+    from agent_framework import AgentResponse, ChatContext, ChatResponse, Message
     from agent_framework_openai import OpenAIChatCompletionOptions
 
 
@@ -52,8 +52,20 @@ class AgentRuntime:
                 functions[metadata["name"]] = method
         if not functions:
             raise ValueError("tool_group_has_no_functions")
+        # Build every schema before publishing any replacement callable.
+        for name, method in functions.items():
+            self._native_tool(plugin_name, name, method).parameters()
         self.plugins[plugin_name] = functions
         return functions
+
+    def _native_tool(self, group: str, name: str, method: Any):
+        from agent_framework import FunctionTool
+
+        return FunctionTool(
+            name=f"{group}-{name}",
+            description=method.__venom_tool__["description"],
+            func=self._guarded_tool(method),
+        )
 
     def _guarded_tool(self, method):
         owner = (
@@ -112,8 +124,6 @@ class AgentRuntime:
         return invoke
 
     def native_tools(self, filters: dict[str, list[str]] | None = None):
-        from agent_framework import FunctionTool
-
         filters = filters or {}
         tools = []
         for group, functions in self.plugins.items():
@@ -132,14 +142,7 @@ class AgentRuntime:
                     continue
                 if full_name in filters.get("excluded_functions", []):
                     continue
-                metadata = method.__venom_tool__
-                tools.append(
-                    FunctionTool(
-                        name=full_name,
-                        description=metadata["description"],
-                        func=self._guarded_tool(method),
-                    )
-                )
+                tools.append(self._native_tool(group, name, method))
         return tools
 
     async def aclose(self) -> None:
@@ -262,17 +265,36 @@ class MafChatService:
             and settings.function_choice_behavior is not None
             and kernel is not None
         ):
+            from agent_framework import chat_middleware
+
             tools = kernel.native_tools(settings.function_choice_behavior.filters)
-            response = await self.client.as_agent(tools=tools).run(
-                messages, options=options
-            )
-            # Preserve tool-call/result identities; callers own final assistant persistence.
-            for message in response.messages[:-1]:
-                chat_history.add_message(
-                    ConversationMessage(
-                        message.role, message.text, native_message=message
+            input_count = len(messages)
+            recorded_count = 0
+
+            def record_intermediate(native_messages: Sequence[Message]) -> None:
+                nonlocal recorded_count
+                for message in native_messages[recorded_count:]:
+                    chat_history.add_message(
+                        ConversationMessage(
+                            message.role, message.text, native_message=message
+                        )
                     )
-                )
+                recorded_count = len(native_messages)
+
+            @chat_middleware
+            async def preserve_tool_history(
+                context: ChatContext, call_next: Callable[[], Awaitable[None]]
+            ) -> None:
+                # Each call contains the generated prefix after the original inputs.
+                # Save completed tool results before another provider await can fail.
+                record_intermediate(context.messages[input_count:])
+                await call_next()
+
+            response = await self.client.as_agent(
+                tools=tools, middleware=[preserve_tool_history]
+            ).run(messages, options=options)
+            # The caller still owns persistence of the final assistant response.
+            record_intermediate(response.messages[:-1])
         else:
             response = await self.client.get_response(messages, options=options)
         return ConversationMessage(

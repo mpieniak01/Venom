@@ -517,3 +517,42 @@ class Probe:
     import sys
 
     assert sys.modules["venom_custom_probe"] is previous
+
+
+def test_reload_rejects_invalid_tool_schema_before_replacing_plugins(tmp_path):
+    import sys
+
+    from venom_core.execution.maf_runtime import AgentRuntime
+
+    runtime = AgentRuntime(permission_checker=lambda name: True)
+    manager = SkillManager(runtime, str(tmp_path))
+    path = tmp_path / "schema_probe.py"
+    source = """from venom_core.execution.agent_contracts import tool_function
+class Unsupported:
+    pass
+class Probe:
+    @tool_function(name="echo", description="Echo")
+    def echo(self, text: str) -> str:
+        return text
+"""
+    path.write_text(source)
+    assert manager.load_skills_from_dir() == ["schema_probe"]
+    previous_module = manager.loaded_skills["schema_probe"]
+    previous_callable = runtime.plugins["Probe"]["echo"]
+    assert runtime.native_tools()[0].func(text="old") == "old"
+
+    path.write_text(
+        source.replace("text: str", "text: Unsupported")
+        + """
+class AReplacement:
+    @tool_function(name="extra", description="Extra")
+    def extra(self) -> str:
+        return "new"
+"""
+    )
+    assert not manager.reload_skill("schema_probe")
+    assert manager.loaded_skills["schema_probe"] is previous_module
+    assert sys.modules["venom_custom_schema_probe"] is previous_module
+    assert set(runtime.plugins) == {"Probe"}
+    assert runtime.plugins["Probe"]["echo"] is previous_callable
+    assert runtime.native_tools()[0].func(text="still works") == "still works"

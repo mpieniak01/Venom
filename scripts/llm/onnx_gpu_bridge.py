@@ -101,18 +101,33 @@ class OnnxEngine:
 
         self.og = og
         self.model_name = model_name
-        config = og.Config(model_path)
-        config.clear_providers()
-        config.append_provider("cuda")
-        self.model = og.Model(config)
-        self.device = str(self.model.device_type)
-        if self.device.lower() != "cuda":
-            raise RuntimeError("cuda_model_required_no_cpu_fallback")
-        self.tokenizer = og.Tokenizer(self.model)
-        config_data = json.loads((Path(model_path) / "genai_config.json").read_text())
-        self.context_length = int(config_data["model"]["context_length"])
+        self.model: Any = None
+        self.tokenizer: Any = None
+        try:
+            config = og.Config(model_path)
+            config.clear_providers()
+            config.append_provider("cuda")
+            self.model = og.Model(config)
+            self.device = str(self.model.device_type).lower()
+            if self.device != "cuda":
+                raise RuntimeError("cuda_model_required_no_cpu_fallback")
+            self.tokenizer = og.Tokenizer(self.model)
+            config_data = json.loads(
+                (Path(model_path) / "genai_config.json").read_text()
+            )
+            self.context_length = int(config_data["model"]["context_length"])
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        """Release owned native references in order; callers must exclude generation."""
+        self.tokenizer = None
+        self.model = None
 
     def generate(self, request: dict[str, Any], stats: dict[str, Any]):
+        if self.model is None or self.tokenizer is None:
+            raise RuntimeError("engine_closed")
         seed = request.get("seed")
         # ORT GenAI 0.12.2: Search.random_seed and Python search-option casts use int32.
         # https://github.com/microsoft/onnxruntime-genai/blob/v0.12.2/src/config.h#L344
@@ -168,6 +183,17 @@ class BridgeServer(ThreadingHTTPServer):
         self.engine = engine
         self.generation_lock = threading.Lock()
         super().__init__(address, BridgeHandler)
+
+    def server_close(self) -> None:
+        super().server_close()
+        # daemon request threads may still own native objects. Never release them
+        # concurrently, and do not report active-generation shutdown as supported.
+        if not self.generation_lock.acquire(blocking=False):
+            raise RuntimeError("active_generation_shutdown_cleanup_unsupported")
+        try:
+            self.engine.close()
+        finally:
+            self.generation_lock.release()
 
 
 class BridgeHandler(BaseHTTPRequestHandler):
@@ -345,9 +371,9 @@ def main() -> None:
     def stop(signum, frame):
         threading.Thread(target=server.shutdown, daemon=True).start()
 
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
     try:
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
         server.serve_forever(poll_interval=0.1)
     finally:
         server.server_close()

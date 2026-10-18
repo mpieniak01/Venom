@@ -14,6 +14,9 @@ class TokenFixture:
     model_name = "fixture-model"
     device = "test-fixture"
 
+    def close(self):
+        pass
+
     def generate(self, request, stats):
         stats.update(prompt_tokens=3, completion_tokens=0, finish_reason="stop")
         for token in ["Dzień ", "dobry"]:
@@ -57,6 +60,12 @@ def message(**kwargs):
     }
 
 
+def assert_generation_idle(server):
+    # HTTP body completion can precede the handler's finally block on its thread.
+    assert server.generation_lock.acquire(timeout=1)
+    server.generation_lock.release()
+
+
 def test_http_completion_has_actual_chunks_usage_and_model(bridge):
     server, base = bridge
     with request(base, message(max_tokens=8)) as response:
@@ -68,7 +77,7 @@ def test_http_completion_has_actual_chunks_usage_and_model(bridge):
         "total_tokens": 5,
     }
     assert body["model"] == "fixture-model"
-    assert not server.generation_lock.locked()
+    assert_generation_idle(server)
 
 
 def test_sse_sends_token_deltas_and_explicit_termination(bridge):
@@ -87,7 +96,7 @@ def test_sse_sends_token_deltas_and_explicit_termination(bridge):
         == "Dzień dobry"
     )
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
-    assert not server.generation_lock.locked()
+    assert_generation_idle(server)
 
 
 def test_engine_failure_is_503_not_empty_success(bridge):
@@ -101,7 +110,7 @@ def test_engine_failure_is_503_not_empty_success(bridge):
         request(base, message())
     assert error.value.code == 503
     assert "native engine failed" in json.load(error.value)["error"]["message"]
-    assert not server.generation_lock.locked()
+    assert_generation_idle(server)
 
 
 def test_serial_worker_rejects_parallel_generation(bridge):
@@ -185,7 +194,13 @@ def fake_native_sdk(tmp_path, monkeypatch):
 
     from scripts.llm import onnx_gpu_bridge as module
 
-    seen = {"options": [], "destroyed": [], "providers": [], "calls": []}
+    seen = {
+        "options": [],
+        "destroyed": [],
+        "providers": [],
+        "calls": [],
+        "released": [],
+    }
 
     class Config:
         def __init__(self, path):
@@ -203,9 +218,15 @@ def fake_native_sdk(tmp_path, monkeypatch):
         def __init__(self, config):
             seen["calls"].append("model")
 
+        def __del__(self):
+            seen["released"].append("model")
+
     class Tokenizer:
         def __init__(self, model):
             seen["calls"].append("tokenizer")
+
+        def __del__(self):
+            seen["released"].append("tokenizer")
 
         def apply_chat_template(self, messages, **kwargs):
             seen["calls"].append("template")
@@ -265,6 +286,140 @@ def fake_native_sdk(tmp_path, monkeypatch):
         json.dumps({"model": {"context_length": 2048}})
     )
     return module, sdk, seen, tmp_path
+
+
+def test_sdk_uppercase_cuda_is_canonicalized_for_the_actual_health_contract(
+    bridge, fake_native_sdk
+):
+    server, base = bridge
+    module, sdk, _, path = fake_native_sdk
+    assert sdk.Model.device_type == "CUDA"
+    server.engine = module.OnnxEngine(str(path), "fixture-model")
+    assert server.engine.device == "cuda"
+    with urllib.request.urlopen(base + "/health") as response:
+        assert json.load(response) == {
+            "status": "ok",
+            "engine": "onnx-gpu",
+            "device": "cuda",
+        }
+
+
+def test_engine_close_is_idempotent_and_releases_tokenizer_before_model(
+    fake_native_sdk,
+):
+    module, _, seen, path = fake_native_sdk
+    engine = module.OnnxEngine(str(path), "fixture-model")
+    engine.close()
+    engine.close()
+    assert seen["released"] == ["tokenizer", "model"]
+    with pytest.raises(RuntimeError, match="engine_closed"):
+        list(engine.generate(validate_request(message(), "fixture-model"), {}))
+    assert seen["options"] == []
+
+
+@pytest.mark.parametrize("failure", ["tokenizer", "config"])
+def test_partial_engine_construction_releases_owned_native_objects(
+    fake_native_sdk, monkeypatch, failure
+):
+    module, sdk, seen, path = fake_native_sdk
+    if failure == "tokenizer":
+
+        def broken_tokenizer(model):
+            raise RuntimeError("tokenizer_failed")
+
+        monkeypatch.setattr(sdk, "Tokenizer", broken_tokenizer)
+        error, match, released = RuntimeError, "tokenizer_failed", ["model"]
+    else:
+        (path / "genai_config.json").write_text("{}")
+        error, match, released = KeyError, "model", ["tokenizer", "model"]
+    with pytest.raises(error, match=match):
+        module.OnnxEngine(str(path), "fixture-model")
+    assert seen["released"] == released
+
+
+def test_failed_server_bind_releases_the_constructed_engine(bridge, fake_native_sdk):
+    server, _ = bridge
+    module, _, seen, path = fake_native_sdk
+    engine = module.OnnxEngine(str(path), "fixture-model")
+    with pytest.raises(OSError):
+        module.BridgeServer(server.server_address, engine)
+    assert seen["released"] == ["tokenizer", "model"]
+    engine.close()
+    assert seen["released"] == ["tokenizer", "model"]
+
+
+def test_idle_server_teardown_releases_native_objects_once(fake_native_sdk):
+    module, _, seen, path = fake_native_sdk
+    server = module.BridgeServer(
+        ("127.0.0.1", 0), module.OnnxEngine(str(path), "fixture-model")
+    )
+    server.server_close()
+    server.server_close()
+    assert seen["released"] == ["tokenizer", "model"]
+    assert_generation_idle(server)
+
+
+def test_busy_server_teardown_fails_explicitly_without_calling_engine_close(
+    fake_native_sdk, monkeypatch
+):
+    module, _, seen, path = fake_native_sdk
+    engine = module.OnnxEngine(str(path), "fixture-model")
+    closes = []
+    native_close = engine.close
+
+    def close():
+        closes.append("close")
+        native_close()
+
+    monkeypatch.setattr(engine, "close", close)
+    server = module.BridgeServer(("127.0.0.1", 0), engine)
+    server.generation_lock.acquire()
+    try:
+        with pytest.raises(
+            RuntimeError, match="active_generation_shutdown_cleanup_unsupported"
+        ):
+            server.server_close()
+        assert closes == []
+        assert seen["released"] == []
+    finally:
+        server.generation_lock.release()
+        server.server_close()
+    assert closes == ["close"]
+    assert seen["released"] == ["tokenizer", "model"]
+
+
+@pytest.mark.parametrize("signal_failure", [False, True])
+def test_main_idle_exit_or_signal_setup_failure_releases_native_objects(
+    fake_native_sdk, monkeypatch, signal_failure
+):
+    module, _, seen, path = fake_native_sdk
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "onnx_gpu_bridge",
+            "--model",
+            str(path),
+            "--model-name",
+            "fixture-model",
+            "--port",
+            "0",
+        ],
+    )
+
+    def set_signal(signum, handler):
+        if signal_failure:
+            raise RuntimeError("signal_setup_failed")
+
+    monkeypatch.setattr(module.signal, "signal", set_signal)
+    monkeypatch.setattr(
+        module.BridgeServer, "serve_forever", lambda *args, **kwargs: None
+    )
+    if signal_failure:
+        with pytest.raises(RuntimeError, match="signal_setup_failed"):
+            module.main()
+    else:
+        module.main()
+    assert seen["released"] == ["tokenizer", "model"]
 
 
 def test_generation_budget_and_cancellation_release_native_generator(fake_native_sdk):
@@ -336,7 +491,7 @@ def test_seed_reaches_native_search_unchanged_in_both_transports(
         "stream",
     ]
     assert seen["providers"] == ["cuda"]
-    assert not server.generation_lock.locked()
+    assert_generation_idle(server)
 
 
 @pytest.mark.parametrize("stream", [False, True])
@@ -356,7 +511,7 @@ def test_native_seed_range_failure_precedes_tokenization_and_http_success(
     }
     assert seen["calls"] == ["model", "tokenizer"]
     assert seen["options"] == []
-    assert not server.generation_lock.locked()
+    assert_generation_idle(server)
 
 
 def test_seed_is_request_local_and_omission_or_null_does_not_set_native_default(
@@ -379,10 +534,11 @@ def test_seed_is_request_local_and_omission_or_null_does_not_set_native_default(
 
 
 def test_cpu_fallback_is_rejected_instead_of_qualified(fake_native_sdk):
-    module, sdk, _, path = fake_native_sdk
+    module, sdk, seen, path = fake_native_sdk
     sdk.Model.device_type = "CPU"
     with pytest.raises(RuntimeError, match="no_cpu_fallback"):
         module.OnnxEngine(str(path), "fixture-model")
+    assert seen["released"] == ["model"]
 
 
 def test_context_and_elapsed_budget_fail_explicitly(fake_native_sdk, monkeypatch):

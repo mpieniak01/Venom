@@ -396,3 +396,44 @@ async def test_local_search_with_max_hops_and_limit(graph_rag_service):
     # With max_hops=3, should reach at least Node 1, Node 2, Node 3
     node_count = sum(1 for i in range(5) if f"Node {i}" in result)
     assert node_count >= 2  # At least the starting node and one hop
+
+
+def test_extraction_prompt_demonstrates_valid_json(graph_rag_service):
+    prompt = graph_rag_service._build_extraction_prompt(
+        "Station Boreal sends telemetry to Aurora."
+    )
+    example = prompt.split("Odpowiedź:\n", 1)[1].split("\n\nWAŻNE:", 1)[0]
+    parsed = json.loads(example)
+    assert len(parsed["entities"]) == 3
+    assert parsed["relationships"][0]["type"] == "CREATED_BY"
+    assert "{{" not in example and "}}" not in example
+
+
+@pytest.mark.parametrize("language", ["json", "JSON", ""])
+def test_nested_graph_json_in_markdown_fence_is_preserved(graph_rag_service, language):
+    payload = {
+        "entities": [
+            {"id": "station_boreal", "name": "Station Boreal", "type": "Station"},
+            {"id": "aurora", "name": "Aurora", "type": "Location"},
+        ],
+        "relationships": [
+            {"source": "station_boreal", "target": "aurora", "type": "SENDS_TO"}
+        ],
+    }
+    encoded = json.dumps(payload, indent=2)
+    fenced = f"Odpowiedź:\n```{language}\n{encoded}\n```\n"
+    assert graph_rag_service._extract_json_block(fenced) == encoded
+    assert graph_rag_service._parse_extraction_response(fenced) == payload
+
+
+def test_graph_json_fence_parser_does_not_repair_invalid_model_output(
+    graph_rag_service,
+):
+    assert "error" in graph_rag_service._parse_extraction_response(
+        '```json\n{{"entities": []}}\n```'
+    )
+    assert "error" in graph_rag_service._parse_extraction_response(
+        '```json\n{"entities": []}'
+    )
+    raw = '{"note": "literal ``` markers", "entities": []}'
+    assert graph_rag_service._extract_json_block(raw) == raw

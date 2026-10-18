@@ -49,6 +49,28 @@ Legacy API/web/Docker requirement names point to Light. The legacy ONNX CPU and
 voice-extra names point to Full; those aliases do not claim an independently
 qualified CPU LLM product or a second version policy.
 
+## Isolated runtime selection
+
+The API recognizes an explicitly configured `VLLM_START_COMMAND` or an executable
+`VLLM_COMPONENT_PYTHON` without importing vLLM into the application. With neither
+set, discovery checks `VENOM_COMPONENTS_DIR/vllm/bin/python`, defaulting to the
+repository's `.venv-components/vllm/bin/python`, as the launcher does. The HTTP
+endpoint is validated consistently for health and inference. Configuration only
+permits an activation attempt; actual lifecycle/readiness checks still decide
+whether it succeeds. Custom ports do not change the selected provider's identity.
+
+Provider activation shares the server-switch gate: active requests drain before
+a switch, concurrent activation returns a conflict, and a live switch owner is
+retained during model loading. These controls do not qualify a model or make a
+running worker safe to stop by an unrelated PID, port or process name.
+
+Functional qualification records must distinguish native generation, retrieval,
+RAG synthesis, graph extraction and speech. Successful retrieval does not prove
+that a model cites its source. Piper-to-Whisper file loopback does not establish
+independent recorded-speech WER or audio-device quality. Graph extraction uses a
+valid JSON example and accepts complete Markdown JSON fences; invalid model JSON
+remains an explicit failure rather than being rewritten into plausible facts.
+
 ## Locks and reproducibility
 
 The initial lock target is **Linux x86_64, CPython 3.12**. Other interpreters and

@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm@sha256:2ed6491b93cd49272ee6de2b5a38440c3448360322c089fc23e370722d74179d
+FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
 
 ARG APP_VERSION=1.10.0
 LABEL org.opencontainers.image.title="venom-backend" \
@@ -15,12 +15,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements/locks/light-linux-py312.txt requirements/locks/light-linux-py312.json requirements/locks/build-linux-py312.txt requirements/locks/build-linux-py312.json /opt/venom-locks/
+COPY requirements/locks/light-linux-py314.txt requirements/locks/light-linux-py314.json requirements/locks/build-linux-py314.txt requirements/locks/build-linux-py314.json /opt/venom-locks/
 RUN python -m venv /opt/venom-venv \
     && /opt/venom-venv/bin/python -m pip install --require-hashes \
-       -r /opt/venom-locks/build-linux-py312.txt \
+       -r /opt/venom-locks/build-linux-py314.txt \
     && /opt/venom-venv/bin/python -m pip install --require-hashes \
-       -r /opt/venom-locks/light-linux-py312.txt \
+       -r /opt/venom-locks/light-linux-py314.txt \
     && /opt/venom-venv/bin/python -m pip check
 
 COPY venom_core /app/venom_core

@@ -1,71 +1,123 @@
-# Dependency profiles: Light/CI release scope
+# Dependency profiles: Python 3.14 candidate
 
-The active config/dependency-profiles.json policy manages only light, ci and build
-on Linux x86_64 / Python 3.12. Light uses the selected released Microsoft Agent
-Framework components. CI extends the same application requirements with test and
-development tools. Build supplies pinned packaging tools; it is not a model runtime.
+The canonical policy is `config/dependency-profiles.json`. This candidate targets
+Linux x86_64, Python **3.14.8** (`platform.python` is the minor `3.14`;
+`python_target` records the exact interpreter). Inputs and lock paths use `py314`.
+These declarations do not establish installation, runtime or security qualification.
+The existing Python 3.12 evidence does not qualify the new interpreter or graph.
 
-The five compatibility inputs requirements.txt, requirements-runtime-common.txt,
-requirements-docker-minimal.txt, requirements-profile-api.txt and
-requirements-profile-web.txt contain the complete Light requirement set. Generated
-SCM manifests contain no recursive -r or -c directives.
+## Six managed profiles
 
-## Retained legacy scope
+| Profile | Kind | Dependency boundary |
+| --- | --- | --- |
+| `light` | Application | MAF core, API, orchestration and the selected application clients; no local model engines. |
+| `ci` | Application | Extends Light with the shared test, lint and audit tools. |
+| `build` | Component | Pinned pip/setuptools/wheel/packaging toolchain used by explicit bootstrap; not a model environment. |
+| `full` | Application | Extends Light with actual memory, vision, web/documents, desktop, hardware and CPU voice/floor consumers. |
+| `full-ci` | Application | Extends Full with the same CI tools; its installed inventory is distinct from exact Full. |
+| `multi-runtime-cuda` | Component | Independent minimal API/model/audio/OCR base for the CUDA daemon; does not extend Light. |
 
-Full, Full-CI, ONNX CPU/extras, ONNX GPU, vLLM and Academy are explicitly deferred in
-policy metadata. Existing legacy manifests and constraints-hf-onnx.txt retain their
-main-branch contents and remain outside generation and active lock qualification.
-No new Full-CI input or deferred component lock is published by this release.
-The bootstrap and qualification CLI reject a request for a deferred profile before
-installation. The metadata does not claim these retained environments are safe,
-installable, migrated to MAF, or compatible with the new Light environment.
+The five compatibility inputs `requirements.txt`, `requirements-runtime-common.txt`,
+`requirements-docker-minimal.txt`, `requirements-profile-api.txt` and
+`requirements-profile-web.txt` continue to represent Light. Generated SCM inputs
+are self-contained and contain no recursive `-r` or `-c` directives.
 
-Legacy overlays may still reference shared compatibility inputs that now map to
-Light. Retaining an overlay file byte-for-byte does not freeze its transitive
-graph or establish compatibility with the migrated core. Do not install these
-overlays until their separate profile migration and qualification are complete.
+## In-process features and the separate daemon
 
-SCM projects and required security checks remain enabled. A complete Light/CI
-audit is evidence for that selected inventory only. It cannot stand in for a Full
-SCM scan, and a hosted installation ERROR remains an ERROR. Prior Full/vLLM findings
-and the Snyk support investigation are not resolved by changing release scope.
+Full retains Torch **2.13.0**, TorchVision **0.28.0** and Transformers **5.17.0**
+for existing in-process DA2 vision and RAG/embedding consumers. Moving the HTTP
+daemon to another interpreter does not move those application consumers. Full
+also declares CPU `onnxruntime` for the existing voice and Rider floor features,
+with faster-whisper, Piper and audio dependencies. It does not install GPU ONNX
+or ONNX GenAI. CPU and GPU ONNX distributions must not share a namespace.
 
-## Inspect generated inputs and locks
+The CUDA daemon has its own `multi-runtime-cuda` component environment and keeps
+matching Torch/Transformers versions. `MULTI_RUNTIME_COMPONENT_PYTHON` selects
+that interpreter; the documented default environment is
+`.venv-components/multi-runtime`. It must not fall back to the application `.venv`
+or a system-site-packages environment. Existing model/device/precision and HTTP
+settings remain separate from dependency installation. Ollama remains an external
+HTTP service; it does not require installing another Python inference engine into
+the application. Systemd selection, service starts, model assets and device/CUDA
+acceptance remain explicit operations, not effects of profile bootstrap.
 
-Activate the existing repository virtualenv before running Python tooling:
+## Removed declarations and retained scope
 
-    source .venv/bin/activate
-    python scripts/dev/dependency_profiles.py generate --check
-    python scripts/dev/dependency_profiles.py audit-locks
+The Light usage audit removed direct `aiortc`, `av`, `tiktoken`, `anthropic` and
+`werkzeug` declarations without a confirmed application consumer in the reviewed
+scope. This is a reduction of direct policy inputs, not a ban on valid transitives:
+for example, Full voice may still require AV through faster-whisper. NumPy remains
+a real core/daemon/Rider dependency; the candidate uses **2.5.4** for Python 3.14.
 
-Generation writes only active inputs and aliases. The lock audit checks every active
-receipt, artifact hash, direct requirement and shared application version. It reports
-deferred profile names separately and never labels them qualified.
+Rich belongs to CI tooling. Packaging is explicit in CI/build, and bootstrap
+installs the pinned build toolchain before invoking the generator and lock audit.
+`google-genai` remains because Google provider activation checks SDK availability.
+Web DDGS/Tavily clients have dynamic consumers and remain Full features.
 
-The six active lock/receipt files are carried from the previously qualified source
-without resolving or installing dependencies again. Their profile policy hashes
-remain authoritative because the effective Light/CI/build requirement sets did not
-change. A receipt's original global policy hash is provenance for the resolution;
-unrelated profile removal does not rewrite its artifacts or claim a new resolution.
-RESOLVED_ONLY lock integrity is distinct from installation, runtime and security
-qualification. Fresh publication checks apply to the new candidate commit.
+Legacy SK/AutoGen/FLAML, GraphRAG SDK, Optimum, WebRTC VAD and Locust are not part
+of the new Full runtime. Existing consumer behavior determines feature groups;
+adding every historical experiment back to Full is not the profile contract.
 
-## Explicit bootstrap
+ONNX LLM/GenAI, standalone legacy ONNX extras, GPU ONNX, vLLM and Academy remain
+explicitly deferred. The active Full CPU voice/floor group does not activate those
+legacy installer profiles. A later ONNX LLM component needs a concrete model
+consumer and its own qualification. vLLM and training remain outside this candidate.
+Legacy overlay bytes may still include a changed shared Light input; byte identity
+does not freeze their effective graph or establish compatibility.
 
-    python scripts/bootstrap_dependency_profile.py --profile ci --venv /explicit/path/to/venv
+## Generation, bootstrap and evidence
 
-An existing target requires explicit --update; environments with legacy engines,
-system site packages, stale ownership or a mismatched inventory are rejected.
-Do not mutate the operator venv to adopt this split. No bootstrap is needed merely
-to review it. Storage, hash receipt, package source and binary artifact guards remain
-active. The installer does not start services or load models.
+Activate the repository virtualenv before Python tooling. The metadata checks are:
 
-## Local security evidence
+```bash
+source .venv/bin/activate
+python scripts/dev/dependency_profiles.py generate --check
+python scripts/dev/dependency_profiles.py audit-locks
+```
 
-The audit-security action requires an explicit active profile, exact interpreter,
-output directory under docs_dev or test-results, and the SCM organization. It verifies
-generated inputs, all active locks, installed inventory and bootstrap tools before
-querying component versions and declared minima. Failed preflight invalidates an old
-PASS report. Partial, unavailable or inconsistent scan output remains incomplete
-ERROR. Local CLI results are not a hosted SCM emulator and cannot override a failed
-GitHub security check.
+Generation and resolution must produce matching Python 3.14 inputs, lock files and
+receipts before installation. A lock-integrity result such as `RESOLVED_ONLY` is
+not an installation, model-runtime or security result. No such qualification is
+claimed for this candidate while root verification is pending. A successful Full
+CI installation does not prove an exact Full installation or unchanged Full
+closure; reports must name the profile, interpreter, inventory and actual checks.
+
+The explicit interfaces, after matching artifacts exist, are:
+
+```bash
+python scripts/bootstrap_dependency_profile.py --profile full-ci --venv /explicit/path/to/full-ci
+python scripts/bootstrap_dependency_profile.py --profile multi-runtime-cuda --venv "$PWD/.venv-components/multi-runtime"
+```
+
+Existing targets require explicit `--update`; bootstrap rejects incompatible
+ownership, system site packages and mismatched inventories. The component cannot
+replace the application `.venv`. Source, hash, artifact and storage checks remain
+active. Desktop source distributions are restricted to exact versions in
+`source_distributions`; every archive must match the official-source SHA-256 and
+the selected lock receipt. Builds use the four pinned build tools with build
+isolation disabled, so unpinned build backends are not fetched. Evdev additionally
+requires a C compiler and Linux input headers. The default remains wheels-only.
+Actual build results must be reported rather than presumed compatible.
+
+Docker launchers continue to provide Light/API. They direct Full, Full CI and the
+CUDA component to host bootstrap instead of advertising an unavailable Full image.
+Installing a profile does not start services, load models or migrate the retained
+operator installation. Preserve the old compatible checkout/environment for any
+separately authorized rollout and rollback.
+
+## Security evidence remains profile-specific
+
+SCM projects and required security checks remain enabled. The `.snyk` file selects
+Python 3.14 explicitly; hosted Snyk chooses its own patch within that minor line,
+while local installation qualification requires exactly 3.14.8. Full installation ERROR,
+previous advisory findings and the Snyk support investigation are not resolved by
+renaming or reducing profiles. Fresh evidence must identify the exact graph and
+scope; local CLI results do not override failed hosted checks.
+
+`audit-security` requires an explicit active profile, exact interpreter, output
+location and SCM organization. Generated inputs, active locks, inventory and
+bootstrap tools are checked before querying dependencies. Failed preflight
+invalidates an old PASS report. Partial, unavailable or inconsistent output remains
+incomplete ERROR. No new scan or model acceptance is implied by this documentation.
+
+Sources: [Python 3.14.8](https://www.python.org/downloads/release/python-3148/), [Snyk SCM Python selection](https://docs.snyk.io/supported-languages/supported-languages-list/python/scm-integrations-and-python).

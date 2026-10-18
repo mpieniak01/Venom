@@ -2291,30 +2291,48 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     assert_runtime_switch_ownership_token(request.ownership_token)
     provider_raw = _normalize_runtime_provider(request.provider)
     _assert_runtime_provider_supported(provider_raw)
-    if provider_raw == "onnx":
-        response = await _activate_onnx_runtime(request.model)
+    active_runtime = get_active_llm_runtime()
+    switch_gate = begin_runtime_switch(
+        source=switch_source,
+        from_runtime=str(active_runtime.provider or "unknown"),
+        to_runtime=provider_raw,
+        reason="set_active_llm_runtime",
+    )
+    try:
+        if not await wait_for_runtime_requests_to_drain(timeout_seconds=30.0):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Nie udało się poczekać na zakończenie aktywnych requestów "
+                    "przed przełączeniem runtime."
+                ),
+            )
+        if provider_raw == "onnx":
+            response = await _activate_onnx_runtime(request.model)
+            emit_runtime_model_event(
+                "runtime_model_selected",
+                source=switch_source,
+                runtime=response.get("active_server", "onnx"),
+                model=response.get("active_model", ""),
+            )
+            return response
+
+        _release_onnx_runtime_caches()
+        _assert_cloud_provider_requirements(provider_raw)
+        validated_model = await _resolve_validated_cloud_model(
+            provider_raw=provider_raw,
+            requested_model=request.model,
+        )
+        response = _activate_cloud_runtime(provider_raw, validated_model)
         emit_runtime_model_event(
             "runtime_model_selected",
             source=switch_source,
-            runtime=response.get("active_server", "onnx"),
-            model=response.get("active_model", ""),
+            runtime=response.get("active_server", provider_raw),
+            model=response.get("active_model", validated_model or ""),
         )
         return response
-
-    _release_onnx_runtime_caches()
-    _assert_cloud_provider_requirements(provider_raw)
-    validated_model = await _resolve_validated_cloud_model(
-        provider_raw=provider_raw,
-        requested_model=request.model,
-    )
-    response = _activate_cloud_runtime(provider_raw, validated_model)
-    emit_runtime_model_event(
-        "runtime_model_selected",
-        source=switch_source,
-        runtime=response.get("active_server", provider_raw),
-        model=response.get("active_model", validated_model or ""),
-    )
-    return response
+    finally:
+        finish_runtime_switch(switch_id=switch_gate.switch_id)
 
 
 def _validate_feedback_alias_request(*, server_name: str, requested_alias: str) -> None:

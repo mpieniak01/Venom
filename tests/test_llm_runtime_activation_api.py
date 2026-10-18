@@ -369,3 +369,116 @@ def test_onnx_activation_validates_actual_http_identity_and_preserves_state(
     else:
         persist.assert_not_called()
         assert system_llm._capture_runtime_settings_snapshot() == before
+
+
+@pytest.mark.parametrize("provider", ["onnx", "openai", "google"])
+def test_provider_activation_obeys_shared_switch_gate(client, monkeypatch, provider):
+    from venom_core.services import runtime_switch_gate as gate
+
+    activate = AsyncMock(return_value={"status": "success", "active_server": provider})
+    monkeypatch.setattr(system_llm, "_activate_onnx_runtime", activate)
+    monkeypatch.setattr(
+        system_llm, "_assert_cloud_provider_requirements", lambda provider: None
+    )
+    monkeypatch.setattr(
+        system_llm, "_resolve_validated_cloud_model", AsyncMock(return_value="served")
+    )
+    monkeypatch.setattr(
+        system_llm,
+        "_activate_cloud_runtime",
+        lambda *args: {"status": "success", "active_server": provider},
+    )
+    monkeypatch.setattr(system_llm, "_release_onnx_runtime_caches", lambda: None)
+    owner = gate.begin_runtime_switch(
+        source="ui", from_runtime="ollama", to_runtime="vllm", reason="existing switch"
+    )
+    try:
+        response = client.post(
+            "/api/v1/system/llm-runtime/active",
+            json={"provider": provider, "model": "served"},
+        )
+        assert response.status_code == 409, response.text
+        assert response.json()["detail"]["code"] == "runtime_switch_in_progress"
+        assert gate.get_runtime_switch_gate_snapshot().switch_id == owner.switch_id
+        activate.assert_not_awaited()
+    finally:
+        gate.finish_runtime_switch(switch_id=owner.switch_id)
+
+
+@pytest.mark.asyncio
+async def test_onnx_provider_activation_waits_for_real_request_guard_to_drain(
+    monkeypatch,
+):
+    import asyncio
+    from contextlib import suppress
+
+    from venom_core.services import runtime_switch_gate as gate
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    activate = AsyncMock(return_value={"status": "success", "active_server": "onnx"})
+    monkeypatch.setattr(system_llm, "_activate_onnx_runtime", activate)
+
+    async def active_request():
+        async with gate.runtime_request_guard(
+            request_kind="simple_chat", provider="onnx", model="old"
+        ):
+            entered.set()
+            await release.wait()
+
+    request_task = asyncio.create_task(active_request())
+    await entered.wait()
+    switch_task = asyncio.create_task(
+        system_llm.set_active_llm_runtime(
+            system_llm.LlmRuntimeActivateRequest(provider="onnx", model="new")
+        )
+    )
+    try:
+        for _ in range(50):
+            if (
+                gate.get_runtime_switch_gate_snapshot().in_progress
+                or switch_task.done()
+            ):
+                break
+            await asyncio.sleep(0)
+        assert gate.get_runtime_switch_gate_snapshot().in_progress
+        assert not switch_task.done()
+        activate.assert_not_awaited()
+        with pytest.raises(system_llm.HTTPException) as exc_info:
+            gate.assert_runtime_request_allowed(request_kind="simple_chat")
+        assert exc_info.value.status_code == 409
+        release.set()
+        response = await asyncio.wait_for(switch_task, 2)
+        assert response["status"] == "success"
+        activate.assert_awaited_once_with("new")
+        assert not gate.get_runtime_switch_gate_snapshot().in_progress
+    finally:
+        release.set()
+        await request_task
+        if not switch_task.done():
+            switch_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await switch_task
+
+
+@pytest.mark.parametrize("drained", [False, True])
+def test_onnx_provider_failure_releases_switch_gate(client, monkeypatch, drained):
+    from venom_core.services import runtime_switch_gate as gate
+
+    activation = AsyncMock(
+        side_effect=system_llm.HTTPException(
+            status_code=400, detail="onnx_model_not_served"
+        )
+    )
+    monkeypatch.setattr(system_llm, "_activate_onnx_runtime", activation)
+    drain = AsyncMock(return_value=drained)
+    monkeypatch.setattr(system_llm, "wait_for_runtime_requests_to_drain", drain)
+    response = client.post(
+        "/api/v1/system/llm-runtime/active",
+        json={"provider": "onnx", "model": "invalid"},
+    )
+    assert response.status_code == (400 if drained else 503), response.text
+    drain.assert_awaited_once_with(timeout_seconds=30.0)
+    assert not gate.get_runtime_switch_gate_snapshot().in_progress
+    if not drained:
+        activation.assert_not_awaited()

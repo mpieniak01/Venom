@@ -93,7 +93,11 @@ class GraphRAGService:
             relationship_type: Typ relacji (np. 'RELATED_TO', 'AUTHORED_BY')
             properties: Opcjonalne właściwości relacji
         """
-        properties = properties or {}
+        properties = dict(properties or {})
+        if "source" in properties:
+            # node_link_data reserves "source" for the start node. Retain the
+            # legacy in-memory alias and persist document provenance separately.
+            properties["document_source"] = properties["source"]
         self.graph.add_edge(
             source_id, target_id, relationship_type=relationship_type, **properties
         )
@@ -597,6 +601,9 @@ Odpowiedź (JSON):"""
             with open(self.graph_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             self.graph = nx.node_link_graph(data, directed=True)
+            for _, _, edge in self.graph.edges(data=True):
+                if "document_source" in edge:
+                    edge["source"] = edge["document_source"]
             self._communities_cache = None  # Wyczyść cache
             logger.info(
                 f"Graf wiedzy załadowany: {self.graph.number_of_nodes()} węzłów, {self.graph.number_of_edges()} krawędzi"

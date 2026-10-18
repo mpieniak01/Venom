@@ -70,6 +70,10 @@ that a model cites its source. Piper-to-Whisper file loopback does not establish
 independent recorded-speech WER or audio-device quality. Graph extraction uses a
 valid JSON example and accepts complete Markdown JSON fences; invalid model JSON
 remains an explicit failure rather than being rewritten into plausible facts.
+Graph edges persist document provenance as `document_source`, because NetworkX
+reserves `source` for the start node in node-link JSON. The existing in-memory
+`source` alias is restored on reload. Legacy files remain readable; provenance
+already lost by an older writer is not guessed from node IDs or nearby facts.
 
 ## Locks and reproducibility
 

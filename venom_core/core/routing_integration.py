@@ -34,11 +34,13 @@ _REASON_CODE_FROM_GOVERNANCE: dict[str, ReasonCode] = {
     "FALLBACK_RATE_LIMIT": ReasonCode.FALLBACK_RATE_LIMIT,
 }
 
-_KNOWN_PROVIDERS = {"openai", "google", "ollama", "vllm"}
+_KNOWN_PROVIDERS = {"openai", "google", "ollama", "vllm", "onnx", "multi_runtime"}
 _RESEARCH_TOOLS = {"browser", "web", "research"}
 _RUNTIME_TARGET_BY_PROVIDER: dict[str, RuntimeTarget] = {
     "ollama": RuntimeTarget.LOCAL_OLLAMA,
     "vllm": RuntimeTarget.LOCAL_VLLM,
+    "onnx": RuntimeTarget.LOCAL_ONNX,
+    "multi_runtime": RuntimeTarget.LOCAL_MULTI_RUNTIME,
     "openai": RuntimeTarget.CLOUD_OPENAI,
     "google": RuntimeTarget.CLOUD_GOOGLE,
 }

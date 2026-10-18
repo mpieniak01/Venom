@@ -233,3 +233,13 @@ raises on that packet instead of treating EOF as successful completion. The publ
 stream emits an error, does not retry or append a successful done event, and marks
 the trace failed even after partial text. Raw provider error bodies are not echoed
 to the caller. This corrects the false completion observed during actual ONNX STOP.
+
+
+## Local worker governance
+
+ONNX and multi_runtime are local runtime targets in the routing contract, alongside
+Ollama/vLLM. Credential validation does not require a cloud key for them and cannot
+invent an auth fallback to Ollama. A local routing hint retains the selected worker
+and its model identity in the serialized decision. This is credential classification,
+not a readiness check: actual endpoint health/model validation remains required.
+Cloud credential validation and the existing fallback policy remain in force.

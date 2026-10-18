@@ -199,7 +199,7 @@ class ProviderGovernance:
                 return CredentialStatus.MISSING_CREDENTIALS
             return CredentialStatus.CONFIGURED
 
-        elif provider in ("ollama", "vllm"):
+        elif provider in ("ollama", "vllm", "onnx", "multi_runtime"):
             # Lokalne runtimes nie wymagają credentials
             return CredentialStatus.CONFIGURED
 

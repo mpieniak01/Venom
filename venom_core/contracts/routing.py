@@ -21,13 +21,20 @@ class RuntimeTarget(Enum):
 
     LOCAL_OLLAMA = "ollama"
     LOCAL_VLLM = "vllm"
+    LOCAL_ONNX = "onnx"
+    LOCAL_MULTI_RUNTIME = "multi_runtime"
     CLOUD_OPENAI = "openai"
     CLOUD_GOOGLE = "google"
     CLOUD_AZURE = "azure"  # Future support
 
     def is_local(self) -> bool:
         """Check if runtime is local (privacy-preserving)."""
-        return self in (RuntimeTarget.LOCAL_OLLAMA, RuntimeTarget.LOCAL_VLLM)
+        return self in (
+            RuntimeTarget.LOCAL_OLLAMA,
+            RuntimeTarget.LOCAL_VLLM,
+            RuntimeTarget.LOCAL_ONNX,
+            RuntimeTarget.LOCAL_MULTI_RUNTIME,
+        )
 
     def is_cloud(self) -> bool:
         """Check if runtime is cloud (paid, requires API key)."""
@@ -71,7 +78,7 @@ class RoutingDecision:
 
     Attributes:
         target_runtime: The selected runtime environment (local or cloud)
-        provider: Provider name (ollama, vllm, openai, google)
+        provider: Selected local runtime or cloud provider name
         model: Specific model name/identifier
         reason_code: Primary reason for this routing decision
         complexity_score: Task complexity score (0-10)

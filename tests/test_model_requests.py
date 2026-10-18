@@ -19,27 +19,23 @@ def test_onnx_build_request_normalizes_provider_and_precision():
 
 
 def test_onnx_build_request_rejects_invalid_execution_provider():
-    try:
+    with pytest.raises(ValidationError) as exc:
         OnnxBuildRequest(
             model_name="google/gemma-3-4b-it",
             execution_provider="bad-provider",
             precision="int4",
         )
-        pytest.fail("expected ValidationError")
-    except ValidationError as exc:
-        assert "execution_provider musi być: cuda|cpu|directml" in str(exc)
+    assert "execution_provider musi być: cuda|cpu|directml" in str(exc.value)
 
 
 def test_onnx_build_request_rejects_invalid_precision():
-    try:
+    with pytest.raises(ValidationError) as exc:
         OnnxBuildRequest(
             model_name="google/gemma-3-4b-it",
             execution_provider="cuda",
             precision="int8",
         )
-        pytest.fail("expected ValidationError")
-    except ValidationError as exc:
-        assert "precision musi być: int4|fp16" in str(exc)
+    assert "precision musi być: int4|fp16" in str(exc.value)
 
 
 def test_validate_runtime_accepts_onnx():
@@ -47,11 +43,9 @@ def test_validate_runtime_accepts_onnx():
 
 
 def test_validate_runtime_rejects_unknown_runtime():
-    try:
+    with pytest.raises(ValueError) as exc:
         validate_runtime("unknown")
-        pytest.fail("expected ValueError")
-    except ValueError as exc:
-        assert "Runtime musi być 'vllm', 'ollama' lub 'onnx'" in str(exc)
+    assert "Runtime musi być 'vllm', 'ollama' lub 'onnx'" in str(exc.value)
 
 
 def test_model_registry_install_request_runs_post_init_for_huggingface():

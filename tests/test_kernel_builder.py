@@ -293,3 +293,62 @@ def test_register_all_services_logs_openai_registration_failure(monkeypatch):
     monkeypatch.setattr(builder, "_register_service", _raise_on_openai)
     kernel = MagicMock()
     builder._register_all_services(kernel)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selection", ["onnx", "active_local", "forced_local", "multi"])
+async def test_onnx_factory_uses_explicit_worker_in_every_registration_mode(selection):
+    """A stale Ollama URL must never receive an ONNX request after local forcing."""
+
+    class OnnxSettings(MockSettings):
+        ONNX_LLM_ENABLED: bool = True
+        ONNX_LLM_ENDPOINT: str = "http://127.0.0.1:8068/v1"
+        ACTIVE_LLM_SERVER: str = "onnx"
+        AI_MODE: str = "LOCAL" if selection == "forced_local" else ""
+
+    settings = OnnxSettings(
+        LLM_SERVICE_TYPE="local" if selection == "active_local" else "onnx",
+        LLM_MODEL_NAME="served-onnx-fixture",
+    )
+    runtime = KernelBuilder(
+        settings=settings,
+        enable_routing=False,
+        enable_multi_service=selection == "multi",
+    ).build_kernel()
+    try:
+        assert len(runtime.services) == 1
+        service = next(iter(runtime.services.values()))
+        assert service.ai_model_id == "served-onnx-fixture"
+        assert str(service._owned_client.base_url) == "http://127.0.0.1:8068/v1/"
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.parametrize(
+    "enabled,endpoint,error",
+    [
+        (False, "http://127.0.0.1:8068/v1", "ONNX_LLM_ENABLED"),
+        (True, "", "ONNX_LLM_ENDPOINT"),
+    ],
+)
+@pytest.mark.parametrize("service_type", ["local", "onnx"])
+@pytest.mark.parametrize("multi", [False, True])
+def test_onnx_invalid_configuration_fails_before_creating_any_client(
+    monkeypatch, enabled, endpoint, error, service_type, multi
+):
+    from venom_core.execution import kernel_builder as module
+
+    class OnnxSettings(MockSettings):
+        ONNX_LLM_ENABLED: bool = enabled
+        ONNX_LLM_ENDPOINT: str = endpoint
+        ACTIVE_LLM_SERVER: str = "onnx"
+
+    forbidden = MagicMock(side_effect=AssertionError("native/HTTP client created"))
+    monkeypatch.setattr(module, "AsyncOpenAI", forbidden)
+    with pytest.raises(ValueError, match=error):
+        KernelBuilder(
+            settings=OnnxSettings(LLM_SERVICE_TYPE=service_type),
+            enable_routing=False,
+            enable_multi_service=multi,
+        ).build_kernel()
+    forbidden.assert_not_called()

@@ -127,6 +127,14 @@ class KernelBuilder:
             self._register_service(kernel, "local", service_id="local_llm")
             logger.info("Zarejestrowano serwis: local_llm")
         except Exception as e:
+            if (
+                self.settings.LLM_SERVICE_TYPE.lower() == "onnx"
+                or str(getattr(self.settings, "ACTIVE_LLM_SERVER", "") or "")
+                .strip()
+                .lower()
+                == "onnx"
+            ):
+                raise
             logger.warning(f"Nie udało się zarejestrować serwisu local: {e}")
 
         # OpenAI (jeśli klucz API dostępny)
@@ -172,6 +180,7 @@ class KernelBuilder:
 
         handlers = {
             "local": self._register_local_service,
+            "onnx": self._register_onnx_service,
             "openai": self._register_openai_service,
             "google": self._register_google_service,
             "azure": self._register_azure_service,
@@ -179,19 +188,42 @@ class KernelBuilder:
         handler = handlers.get(service_type)
         if handler is None:
             raise ValueError(
-                f"Nieznany typ serwisu LLM: {service_type}. Dostępne: local, openai, google, azure"
+                f"Nieznany typ serwisu LLM: {service_type}. Dostępne: local, onnx, openai, google, azure"
             )
         handler(kernel, service_id, model_name, enable_grounding)
 
     def _register_local_service(
         self, kernel: Kernel, service_id: str, model_name: str, _enable_grounding: bool
     ) -> None:
-        logger.debug(
-            f"Konfiguracja lokalnego LLM: endpoint={self.settings.LLM_LOCAL_ENDPOINT}, model={model_name}"
+        active_server = str(
+            getattr(self.settings, "ACTIVE_LLM_SERVER", "") or ""
+        ).lower()
+        service_type = self.settings.LLM_SERVICE_TYPE.lower()
+        if active_server == "onnx" or service_type == "onnx":
+            self._register_onnx_service(
+                kernel, service_id, model_name, _enable_grounding
+            )
+            return
+        self._register_local_http_service(
+            kernel, service_id, model_name, self.settings.LLM_LOCAL_ENDPOINT
         )
+
+    def _register_onnx_service(
+        self, kernel: Kernel, service_id: str, model_name: str, _enable_grounding: bool
+    ) -> None:
+        if not getattr(self.settings, "ONNX_LLM_ENABLED", False):
+            raise ValueError("ONNX_LLM_ENABLED is disabled")
+        endpoint = str(getattr(self.settings, "ONNX_LLM_ENDPOINT", "") or "").strip()
+        if not endpoint:
+            raise ValueError("ONNX_LLM_ENDPOINT is required for the isolated worker")
+        self._register_local_http_service(kernel, service_id, model_name, endpoint)
+
+    def _register_local_http_service(
+        self, kernel: Kernel, service_id: str, model_name: str, endpoint: str
+    ) -> None:
         async_client = AsyncOpenAI(
             api_key=self.settings.LLM_LOCAL_API_KEY,
-            base_url=self.settings.LLM_LOCAL_ENDPOINT,
+            base_url=endpoint,
         )
         chat_service = MafChatService(
             service_id=service_id,

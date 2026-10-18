@@ -197,3 +197,20 @@ and [Python binding](https://github.com/microsoft/onnxruntime-genai/blob/v0.12.2
 This change qualifies neither the older ONNX activation/model-catalog code nor
 the separate legacy task executor. Those paths still require migration before
 Full ONNX, all-route lifecycle or task 266 can be considered complete.
+
+
+## ONNX orchestration uses the same worker boundary
+
+KernelBuilder registers the selected ONNX model as a native MAF HTTP service,
+using only ONNX_LLM_ENDPOINT and the configured served model ID. AI_MODE=LOCAL,
+local routing and multi-service registration retain that selection. Disabled ONNX
+or an absent endpoint fails before creating a client, including multi-service mode.
+A stale LLM_LOCAL_ENDPOINT never supplies an implicit Ollama/native fallback.
+
+POST /tasks no longer substitutes a native ONNX process pool for orchestration.
+Normal and Complex retain their policy, intent, context, tools and history paths;
+Direct still uses Simple. Unsupported tools/structured output remain explicit
+worker errors, rather than silently downgrading the requested workflow.
+The compatibility task cleanup hook owns no model or process and does not prove
+worker GPU release. Activation/catalog/controller migration and real API routing
+qualification remain separate unfinished requirements of task266.

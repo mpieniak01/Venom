@@ -997,6 +997,7 @@ async def test_set_active_llm_server_onnx_external_http(monkeypatch):
         assert response["start_result"]["mode"] == "external_http"
         assert response["active_endpoint"] == endpoint
         assert response["active_model"] == "served-onnx"
+        assert response["lifecycle_state"]["is_complete"] is True
         assert ("ollama", "stop") in controller.actions
         assert ("vllm", "stop") in controller.actions
         assert response["stop_results"]["ollama"]["ok"] is True

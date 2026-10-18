@@ -806,3 +806,90 @@ def test_resolve_selected_model_for_switch_multi_runtime_invalid_request() -> No
             config={},
             models=[],
         )
+
+
+@pytest.mark.parametrize("ready", [True, False])
+def test_onnx_public_catalog_uses_same_worker_ids_as_activation(
+    monkeypatch, tmp_path, ready
+):
+    import httpx
+
+    from venom_core.config import SETTINGS
+    from venom_core.core.llm_server_controller import LlmServerController
+
+    for key, value in {
+        "VENOM_RUNTIME_PROFILE": "full",
+        "ONNX_LLM_ENABLED": True,
+        "ONNX_LLM_ENDPOINT": "http://fixture:8068/v1",
+        "LLM_SERVICE_TYPE": "onnx",
+        "ACTIVE_LLM_SERVER": "onnx",
+        "LLM_MODEL_NAME": "served-exact",
+        "REPO_ROOT": str(tmp_path),
+        "OPENAI_API_KEY": "",
+        "GOOGLE_API_KEY": "",
+        "URL_SCHEME_POLICY": "force_http",
+    }.items():
+        monkeypatch.setattr(SETTINGS, key, value)
+    manager = SimpleNamespace(
+        list_local_models=AsyncMock(
+            return_value=[
+                {
+                    "name": "obsolete-native-model",
+                    "provider": "onnx",
+                    "source": "onnx",
+                    "path": str(tmp_path / "obsolete-native-model"),
+                }
+            ]
+        )
+    )
+    monkeypatch.setattr(system_llm.system_deps, "get_model_manager", lambda: manager)
+    monkeypatch.setattr(
+        system_llm.system_deps,
+        "get_llm_controller",
+        lambda: LlmServerController(SETTINGS),
+    )
+    monkeypatch.setattr(system_llm.system_deps, "get_service_monitor", lambda: None)
+    monkeypatch.setattr(
+        system_llm, "_load_trainable_model_catalog", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        system_llm,
+        "_build_adapter_catalog",
+        lambda **kwargs: {"all_adapters": [], "by_runtime": {}, "by_runtime_model": {}},
+    )
+    original = httpx.AsyncClient
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        assert request.url.host == "fixture"
+        if request.url.path == "/health":
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "engine": "onnx-gpu",
+                    "device": "cuda" if ready else "cpu",
+                },
+            )
+        assert request.url.path == "/v1/models"
+        return httpx.Response(200, json={"data": [{"id": "served-exact"}]})
+
+    monkeypatch.setattr(
+        system_llm.httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    response = _client().get("/api/v1/system/llm-runtime/options")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    target = next(r for r in payload["runtimes"] if r["runtime_id"] == "onnx")
+    assert target["status"] == ("online" if ready else "degraded")
+    assert [m["name"] for m in target["models"]] == (["served-exact"] if ready else [])
+    assert all(m["active"] for m in target["models"])
+    assert [
+        m["name"]
+        for m in payload["model_catalog"]["all_models"]
+        if m["runtime_id"] == "onnx"
+    ] == (["served-exact"] if ready else [])
+    assert calls == (["/health", "/v1/models"] if ready else ["/health"])

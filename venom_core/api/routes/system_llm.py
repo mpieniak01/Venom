@@ -1793,6 +1793,13 @@ def _local_runtime_targets(
             reason = "runtime_not_installed"
         elif str(info.get("error_message") or "").strip():
             reason = str(info.get("error_message")).strip()
+        models = local_models.get(runtime_id, [])
+        if runtime_id == "onnx":
+            models = (
+                _onnx_served_models(info, active_runtime)
+                if runtime_id in allowed
+                else []
+            )
         targets.append(
             _runtime_target_payload(
                 runtime_id=runtime_id,
@@ -1801,11 +1808,37 @@ def _local_runtime_targets(
                 available=runtime_id in installed and runtime_id in allowed,
                 status=status,
                 reason=reason,
-                models=local_models.get(runtime_id, []),
+                models=models,
                 active_runtime=active_runtime,
             )
         )
     return targets
+
+
+def _onnx_served_models(
+    info: dict[str, Any], active_runtime: Any
+) -> list[dict[str, Any]]:
+    """Only the already-observed worker catalog can advertise servable ONNX IDs."""
+    worker = info.get("onnx", {})
+    if not worker.get("ready"):
+        return []
+    return [
+        _runtime_model_payload(
+            runtime_id="onnx",
+            model_id=model_id,
+            name=model_id,
+            provider="onnx",
+            source_type="local-runtime",
+            active=active_runtime.provider == "onnx"
+            and active_runtime.model_name == model_id,
+            capabilities=["text"],
+            chat_compatible=True,
+            owned_by_runtime="onnx",
+            ownership_status="confirmed",
+            compatible_runtimes=["onnx"],
+        )
+        for model_id in worker.get("models", [])
+    ]
 
 
 async def _cloud_runtime_target(
@@ -2054,6 +2087,8 @@ async def _runtime_server_status_snapshot() -> dict[str, dict[str, Any]]:
             "endpoint": server.get("endpoint"),
             "error_message": server.get("error_message"),
         }
+        if name == "onnx":
+            status_map[name]["onnx"] = server.get("onnx", {})
     return status_map
 
 

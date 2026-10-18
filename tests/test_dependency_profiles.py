@@ -850,7 +850,7 @@ def test_current_active_lock_receipts_remain_valid_and_unmodified():
     result = profiles.audit_locks(profiles.ROOT, policy)
     assert result["status"] == "PASS"
     assert result["qualification"] == "LOCK_INTEGRITY_ONLY"
-    assert set(result["packages"]) == {"light", "ci", "build"}
+    assert set(result["packages"]) == set(policy["profiles"])
     assert {path: path.read_bytes() for path in paths} == before
 
 
@@ -1271,21 +1271,136 @@ def test_bootstrap_canonicalizes_dotted_distribution_names(
     assert any("install" in command for command in commands)
 
 
-def test_release_exposes_only_light_ci_build_and_explicit_deferred_profiles():
+def test_release_profiles_keep_actual_consumers_and_defer_separate_engines():
     policy = profiles.load_policy()
-    assert set(policy["profiles"]) == {"light", "ci", "build"}
-    assert set(policy["groups"]) == {"light", "ci", "build"}
+    assert policy["platform"]["python"] == "3.14"
+    assert policy["python_target"] == "3.14.8"
+    assert set(policy["profiles"]) == {
+        "light",
+        "ci",
+        "full",
+        "full-ci",
+        "multi-runtime-cuda",
+        "build",
+    }
     assert set(policy["aliases"].values()) == {"light"}
     assert len(policy["aliases"]) == 5
     assert set(policy["deferred_profiles"]) == {
-        "full",
-        "full-ci",
         "onnx-cpu",
         "onnx-extras",
         "onnx-gpu",
         "vllm",
         "academy",
     }
+    assert all("-py314.txt" in spec["lock"] for spec in policy["profiles"].values())
+
+
+def test_light_preserves_consumers_without_manually_added_sdk_and_webrtc_packages():
+    policy = profiles.load_policy()
+    light = profiles.requirements_for(policy, "light")
+    assert light["numpy"] == "numpy==2.5.4"
+    assert light["google-genai"] == "google-genai==1.64.0"
+    assert light["agent-framework-core"] == "agent-framework-core==1.22.0"
+    assert light["agent-framework-openai"] == "agent-framework-openai==1.17.0"
+    assert (
+        light["agent-framework-orchestrations"]
+        == "agent-framework-orchestrations==1.3.2"
+    )
+    assert not {
+        "aiortc",
+        "av",
+        "tiktoken",
+        "anthropic",
+        "werkzeug",
+        "rich",
+        "packaging",
+    }.intersection(light)
+    ci = profiles.requirements_for(policy, "ci")
+    build = profiles.requirements_for(policy, "build")
+    assert ci["rich"] == "rich==13.9.4"
+    assert ci["packaging"] == build["packaging"] == "packaging==26.0"
+
+
+@pytest.mark.parametrize("profile", ["ci", "full", "full-ci"])
+def test_actual_application_extensions_preserve_shared_light_versions(profile):
+    policy = profiles.load_policy()
+    light = profiles.requirements_for(policy, "light")
+    extension = profiles.requirements_for(policy, profile)
+    assert {name: extension[name] for name in light} == light
+
+
+def test_full_retains_in_process_vision_memory_and_cpu_voice_consumers():
+    policy = profiles.load_policy()
+    full = profiles.requirements_for(policy, "full")
+    for name, requirement in {
+        "torch": "torch==2.13.0",
+        "torchvision": "torchvision==0.28.0",
+        "transformers": "transformers==5.17.0",
+        "scipy": "scipy==1.17.1",
+        "onnxruntime": "onnxruntime==1.26.0",
+        "faster-whisper": "faster-whisper==1.2.1",
+        "piper-tts": "piper-tts==1.8.0",
+    }.items():
+        assert full[name] == requirement
+    assert {
+        "sentence-transformers",
+        "lancedb",
+        "opencv-python-headless",
+        "ddgs",
+        "pypdf",
+    }.issubset(full)
+    assert not {
+        "semantic-kernel",
+        "pyautogen",
+        "autogen-core",
+        "autogen-agentchat",
+        "flaml",
+        "graphrag",
+        "optimum",
+        "webrtcvad",
+        "locust",
+        "vllm",
+        "onnxruntime-gpu",
+        "onnxruntime-genai",
+        "onnxruntime-genai-cuda",
+    }.intersection(full)
+    assert set(profiles.requirements_for(policy, "ci")).issubset(
+        profiles.requirements_for(policy, "full-ci")
+    )
+
+
+def test_cuda_daemon_has_own_consumer_base_without_application_or_cpu_ort():
+    policy = profiles.load_policy()
+    component = policy["profiles"]["multi-runtime-cuda"]
+    assert component["kind"] == "component"
+    assert "extends" not in component
+    assert "MULTI_RUNTIME_COMPONENT_PYTHON" in component["boundary"]
+    runtime = profiles.requirements_for(policy, "multi-runtime-cuda")
+    full = profiles.requirements_for(policy, "full")
+    assert {
+        "torch",
+        "transformers",
+        "numpy",
+        "scipy",
+        "soundfile",
+        "fastapi",
+        "pytesseract",
+    }.issubset(runtime)
+    assert not {
+        "agent-framework-core",
+        "agent-framework-openai",
+        "agent-framework-orchestrations",
+        "google-genai",
+        "onnxruntime",
+        "onnxruntime-gpu",
+        "onnxruntime-genai",
+        "onnxruntime-genai-cuda",
+        "faster-whisper",
+        "piper-tts",
+        "vllm",
+    }.intersection(runtime)
+    for name in {"torch", "torchvision", "transformers", "numpy", "scipy"}:
+        assert runtime[name] == full[name]
 
 
 def test_bootstrap_host_storage_blocks_before_venv_mutation(
@@ -2108,7 +2223,7 @@ def test_security_cli_replaces_old_pass_when_preflight_fails(
 
 @pytest.mark.parametrize(
     "profile",
-    ["full", "full-ci", "onnx-cpu", "onnx-extras", "onnx-gpu", "vllm", "academy"],
+    ["onnx-cpu", "onnx-extras", "onnx-gpu", "vllm", "academy"],
 )
 def test_deferred_bootstrap_stops_before_any_package_or_venv_mutation(
     tmp_path, bootstrap_runner, profile
@@ -2124,12 +2239,12 @@ def test_deferred_bootstrap_stops_before_any_package_or_venv_mutation(
 def test_deferred_cli_cannot_claim_profile_qualification(
     tmp_path, monkeypatch, capsys, action
 ):
-    arguments = ["dependency_profiles.py", action, "--profile", "full"]
+    arguments = ["dependency_profiles.py", action, "--profile", "vllm"]
     if action == "audit-security":
         arguments.extend(
             [
                 "--out-dir",
-                "test-results/full",
+                "test-results/vllm",
                 "--root",
                 str(tmp_path),
                 "--snyk-org",
@@ -2158,13 +2273,13 @@ def test_generation_does_not_mutate_retained_deferred_manifests(tmp_path):
     assert all(
         (tmp_path / name).read_bytes() == content for name, content in retained.items()
     )
-    assert not (tmp_path / "requirements-full-ci.txt").exists()
+    assert (tmp_path / "requirements-full-ci.txt").exists()
 
 
 @pytest.mark.parametrize("mutation", ["active", "managed", "path", "reason", "status"])
 def test_deferred_metadata_cannot_hide_active_or_generated_inputs(tmp_path, mutation):
     policy = profiles.load_policy()
-    spec = policy["deferred_profiles"]["full"]
+    spec = policy["deferred_profiles"]["vllm"]
     if mutation == "active":
         policy["deferred_profiles"]["light"] = spec
     elif mutation == "managed":

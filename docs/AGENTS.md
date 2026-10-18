@@ -115,13 +115,14 @@ Do not diagnose frontend test failures before `npm ci` is completed for `web-nex
 
 ## Environment Variables (Reliable Loading)
 
-If tests depend on `.env.dev`, load variables explicitly:
+If tests depend on `.env.dev`, parse it as data in the child process:
 
 ```bash
-set -a
-source .env.dev
-set +a
+python -m dotenv -f .env.dev run -- pytest -q
 ```
+
+Do not shell-source `.env` files or examples. Command-valued settings may contain
+unquoted spaces; a shell can execute those values instead of loading data.
 
 For preprod smoke checks, prefer project make targets (they set required env contract), e.g.:
 

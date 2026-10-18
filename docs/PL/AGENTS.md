@@ -142,13 +142,14 @@ Nie diagnozuj faili testów frontendu przed wykonaniem `npm ci` w `web-next`.
 
 ## Zmienne środowiskowe (pewne ładowanie)
 
-Jeśli testy zależą od `.env.dev`, ładuj zmienne jawnie:
+Jeśli testy zależą od `.env.dev`, parsuj plik jako dane w procesie potomnym:
 
 ```bash
-set -a
-source .env.dev
-set +a
+python -m dotenv -f .env.dev run -- pytest -q
 ```
+
+Nie wykonuj plików `.env` ani przykładów przez shellowe `source`. Ustawienia
+poleceń mogą zawierać niecytowane spacje; shell wykona wtedy wartość jako komendę.
 
 Dla smoke preprod używaj targetu `make`, który ustawia kontrakt środowiskowy:
 

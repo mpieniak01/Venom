@@ -5971,6 +5971,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_source_distributions.py",
+      "domain": "environment",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Reject unapproved source artifacts and constrain desktop source builds to the verified toolchain."
+    },
+    {
       "path": "tests/test_stack_manager.py",
       "domain": "misc",
       "test_type": "unit",

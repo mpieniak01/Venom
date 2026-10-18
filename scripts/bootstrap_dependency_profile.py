@@ -20,6 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 GIB = 1024**3
@@ -125,6 +126,95 @@ def checked_lock(root: Path, policy: dict[str, Any], profile: str) -> Path:
     return path
 
 
+def checked_artifact_path(lock: Path, name: str, artifact: dict[str, Any]) -> str:
+    """Bind source/build artifacts to the exact official-source hash-lock entry."""
+    version, digest, url = (
+        artifact.get("version"),
+        artifact.get("sha256"),
+        artifact.get("url"),
+    )
+    if (
+        re.sub(r"[-_.]+", "-", name).lower() != name
+        or not isinstance(version, str)
+        or not isinstance(digest, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", digest)
+        or not isinstance(url, str)
+    ):
+        raise ValueError(f"Invalid source/build artifact metadata: {name}")
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "files.pythonhosted.org"
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(f"Unapproved source/build artifact URL: {name}")
+    lines = lock.read_text().splitlines()
+    expected = [f"{name}=={version} " + "\\", f"    --hash=sha256:{digest}"]
+    if not any(lines[index : index + 2] == expected for index in range(len(lines))):
+        raise ValueError(f"Source/build artifact does not match hash-lock: {name}")
+    return parsed.path
+
+
+def check_source_build_toolchain(
+    policy: dict[str, Any], build_lock: Path, artifacts: dict[str, Any]
+) -> None:
+    """Reject stale build seeds before they can mutate an existing target."""
+    declared = {}
+    for line in policy.get("groups", {}).get("build", []):
+        match = re.fullmatch(r"([A-Za-z0-9_.-]+)==([^ ;]+)", line)
+        if match is None:
+            raise ValueError("Source build toolchain requires exact policy pins")
+        name, version = match.groups()
+        declared[re.sub(r"[-_.]+", "-", name).lower()] = version
+    toolchain = json.loads(build_lock.with_suffix(".json").read_text()).get(
+        "artifacts", {}
+    )
+    required = {"pip", "setuptools", "wheel", "packaging"}
+    if set(toolchain) != required or set(declared) != required:
+        raise ValueError("Source builds require the complete locked build toolchain")
+    for name, artifact in toolchain.items():
+        if artifact.get("version") != declared[name]:
+            raise ValueError(
+                f"Source build toolchain is stale relative to policy: {name}"
+            )
+        if not checked_artifact_path(build_lock, name, artifact).endswith(".whl"):
+            raise ValueError(f"Source build toolchain must contain wheels: {name}")
+        if name in artifacts and artifacts[name]["version"] != artifact["version"]:
+            raise ValueError(f"Source build toolchain conflicts with profile: {name}")
+
+
+def source_install_options(
+    policy: dict[str, Any], lock: Path, build_lock: Path
+) -> list[str]:
+    """Permit only declared exact sdists, with a complete wheel-only build seed."""
+    options = ["--only-binary=:all:"]
+    artifacts = json.loads(lock.with_suffix(".json").read_text()).get("artifacts", {})
+    allowed = policy.get("source_distributions", {})
+    sources = []
+    for name, artifact in artifacts.items():
+        url = artifact.get("url", "")
+        if isinstance(url, str) and urlsplit(url).path.endswith(".whl"):
+            continue
+        if name not in allowed or artifact.get("version") != allowed[name]:
+            raise ValueError(f"Unapproved source distribution or version: {name}")
+        path = checked_artifact_path(lock, name, artifact)
+        if not path.endswith((".tar.gz", ".zip", ".tar.bz2", ".tar.xz")):
+            raise ValueError(f"Unsupported source artifact format: {name}")
+        sources.append(name)
+    if not sources:
+        return options
+    check_source_build_toolchain(policy, build_lock, artifacts)
+    if "evdev" in sources:
+        print(
+            "Approved evdev source build requires a C compiler and Linux input headers."
+        )
+    return options + [
+        "--no-binary=" + ",".join(sorted(sources)),
+        "--no-build-isolation",
+    ]
+
+
 def refresh_bootstrap_tools(
     python: Path,
     build_lock: Path,
@@ -217,6 +307,8 @@ def install_profile(
         )
     lock = checked_lock(root, policy, profile)
     build_lock = checked_lock(root, policy, "build")
+    install_options = source_install_options(policy, lock, build_lock)
+    source_builds = "--no-build-isolation" in install_options
     target = target.resolve()
     if target in {Path("/"), Path(sys.base_prefix).resolve(), root.resolve()}:
         raise ValueError(
@@ -241,6 +333,24 @@ def install_profile(
     python = target / "bin/python"
     if not python.is_file():
         raise ValueError("Target virtual environment has no Python executable")
+    if policy.get("python_target"):
+        probe = run(
+            [
+                str(python),
+                "-c",
+                "import json,platform; print(json.dumps(dict(python=platform.python_version(), system=platform.system(), machine=platform.machine())))",
+            ],
+            capture=True,
+        )
+        expected = {
+            "python": policy["python_target"],
+            "system": policy["platform"]["system"],
+            "machine": policy["platform"]["machine"],
+        }
+        if json.loads(probe.stdout) != expected:
+            raise ValueError(
+                "Target interpreter does not match the selected profile; use a fresh venv"
+            )
     isolation = run(
         [
             str(python),
@@ -299,7 +409,7 @@ def install_profile(
             raise ValueError(
                 f"Existing environment has packages outside the selected profile {sorted(unexpected)}; use a fresh venv rather than retaining another profile"
             )
-    if existed:
+    if existed and not source_builds:
         refresh_bootstrap_tools(
             python,
             build_lock,
@@ -309,9 +419,9 @@ def install_profile(
             required_bytes=required_bytes,
             storage_root=storage_root,
         )
-    if not existed:
-        # A mapped, hash-locked toolchain bootstraps packaging for the generator.
-        # Do not downgrade build tools in an already-populated application.
+    if not existed or source_builds:
+        # Sources require this complete hash-locked seed even during --update.
+        # Source preflight rejects any conflicting profile-owned tool pins.
         check_storage_space(target, required_bytes, storage_root=storage_root)
         run(
             [
@@ -322,6 +432,7 @@ def install_profile(
                 "--no-cache-dir",
                 "--require-hashes",
                 "--disable-pip-version-check",
+                "--only-binary=:all:",
                 "-r",
                 str(build_lock),
             ]
@@ -340,7 +451,7 @@ def install_profile(
         "-r",
         str(lock),
     ]
-    command.append("--only-binary=:all:")
+    command.extend(install_options)
     check_storage_space(target, required_bytes, storage_root=storage_root)
     run(command)
     run(

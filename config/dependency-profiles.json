@@ -290,5 +290,15 @@
       "reason": "Academy migration and its locks are outside this release."
     }
   },
-  "python_target": "3.14.8"
+  "python_target": "3.14.8",
+  "source_distributions": {
+    "pyautogui": "0.9.54",
+    "python3-xlib": "0.15",
+    "pytweening": "1.2.0",
+    "pyscreeze": "1.0.1",
+    "pygetwindow": "0.0.9",
+    "mouseinfo": "0.1.3",
+    "pyrect": "0.2.0",
+    "evdev": "2.0.0"
+  }
 }

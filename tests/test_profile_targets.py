@@ -162,3 +162,37 @@ def test_bootstrap_new_profile_space_reservations_cannot_be_lowered():
             bootstrap.required_storage_bytes(name, 0.1)
             == bootstrap.MINIMUM_FREE_GIB[name] * bootstrap.GIB
         )
+
+
+def test_update_rejects_wrong_target_before_package_mutation(tmp_path, monkeypatch):
+    policy = target_policy()
+    (tmp_path / "config").mkdir()
+    (tmp_path / profiles.POLICY).write_text(json.dumps(policy))
+    target = tmp_path / "candidate"
+    (target / "bin").mkdir(parents=True)
+    (target / "bin/python").touch()
+    (target / "pyvenv.cfg").write_text("include-system-site-packages = false")
+    monkeypatch.setattr(
+        bootstrap.sys, "version_info", SimpleNamespace(major=3, minor=14)
+    )
+    monkeypatch.setattr(bootstrap.platform, "python_version", lambda: "3.14.8")
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(bootstrap.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(bootstrap, "checked_lock", lambda *_a: tmp_path / "lock.txt")
+    monkeypatch.setattr(
+        bootstrap, "source_install_options", lambda *_a: ["--only-binary=:all:"]
+    )
+    commands = []
+
+    def run(command, **_kwargs):
+        commands.append(command)
+        assert "install" not in command
+        return SimpleNamespace(
+            stdout=json.dumps(dict(python="3.12.3", system="Linux", machine="x86_64"))
+        )
+
+    monkeypatch.setattr(bootstrap, "run", run)
+    with pytest.raises(ValueError, match="Target interpreter does not match"):
+        bootstrap.install_profile(tmp_path, "light", target, update=True)
+    assert len(commands) == 1
+    assert not (target / ".venom-dependency-profile.json").exists()

@@ -35,6 +35,7 @@ tests/test_rag_integration.py
 tests/test_routing_integration.py
 tests/test_security_scan.py
 tests/test_sonar_change_scope_resolver.py
+tests/test_source_distributions.py
 tests/test_system_connections.py
 tests/test_system_routes_integration_regression.py
 tests/test_test_intelligence_report.py

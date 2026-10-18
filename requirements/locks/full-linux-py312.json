@@ -1156,15 +1156,15 @@
       "version": "0.151.5"
     }
   },
-  "lock_sha256": "0e2b7299c91ed18103cf6a86dacafb33e9bd24d6d64f72ee1da1f83f582ea724",
+  "lock_sha256": "36d96c016a0d4ca957c49c0eaec69139d6932d642711edeaacdca664877c7c29",
   "platform": {
     "machine": "x86_64",
     "python": "3.12",
     "system": "Linux"
   },
-  "policy_sha256": "4e06ec5291aa83cb115d51fd2147f95f88553f3c1dd366802a95ae0e72663fdf",
+  "policy_sha256": "c4b8439c44b5f2f1bcc231d1fa8c3f18e83afc20cd1f3f6f848e0b343e83027e",
   "profile": "full",
-  "profile_policy_sha256": "cae72b11f7a465b8b104ac40d10c3ce86ddfcb56d116cccf04d7f2f07d4cdfbf",
+  "profile_policy_sha256": "dfe67b59a24c2a487a1eecabfaa7bf239fc9dae15be01033231f1b6a4d52b892",
   "qualification": "RESOLVED_ONLY",
   "resolver": {
     "name": "pip",

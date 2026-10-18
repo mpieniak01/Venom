@@ -1,5 +1,13 @@
 version: v1.25.0
+# Match the Python minor used by the qualified Linux profile locks.
+language-settings:
+  python: '3.12'
 ignore:
+  SNYK-PYTHON-VLLM-19883594:
+    - 'vllm@0.31.0':
+        reason: Explicit operator approval on 2026-10-18 until 2026-10-25; upstream fix is not published. Optional isolated vLLM 0.31.0 uses loopback by default and context 512. Track Venom PR 540; review before expiry. This is accepted exposure, not a vulnerability fix.
+        expires: 2026-10-25T23:59:59.000Z
+        created: 2026-10-18T10:33:00.000Z
   SNYK-PYTHON-VLLM-15907607:
     - 'vllm@0.24.0':
         reason: No fixed vLLM release is available; keep vLLM behind explicit local runtime activation and revisit on the next upstream release.

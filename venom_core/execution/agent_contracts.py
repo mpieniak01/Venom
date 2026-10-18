@@ -81,7 +81,7 @@ class ToolPolicy:
 class CompletionOptions(BaseModel):
     """Mutable generation options accepted at Venom's existing agent boundary."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", revalidate_instances="always")
     service_id: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None

@@ -1,4 +1,4 @@
-# Venom v1.9.0 🐍
+# Venom v1.10.0 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -16,7 +16,7 @@
 
 Current environment recommendation: use `dev` and `preprod`. `prod` is still planned and not yet validated/recommended for live operation.
 
-Current development line: v1.9.0. v1.8 remains the last stable release line while this README now reflects the delivered 1.9 scope.
+Current development line: v1.10.0 (local release preparation). v1.8 remains the last stable release line while the 1.9 history below remains the delivered baseline.
 
 It is not a black box. You get explicit process control (Workflow Control Plane), transparent runtime decisions, and full request-level audit trails. You can also choose between three model stacks: `ONNX`, `vLLM`, `Ollama`, depending on hardware, cost, and latency goals.
 
@@ -43,6 +43,10 @@ Venom also ships its own LLM daemon for Gemma4, so text and audio are handled in
 - 🛠️ **Operations and governance** - service panel, policy gate, and provider cost control.
 - 🔍 **Transparency and full auditability** - end-to-end trace of decisions, actions, and outcomes for operational trust, compliance, and faster incident review.
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
+
+## Preparing v1.10.0
+
+The split Light/API release uses Microsoft Agent Framework with active Light, CI and build dependency profiles. Release identity is synchronized across the core API, frontend, containers and CI analysis. Full and model/training profiles remain deferred; historical runtime checks do not qualify them for this release. Fresh cloud gates are required for the final candidate.
 
 ## What changed for v1.9.0
 - Added `@venom-agent`, the local VS Code participant with a bounded tool loop over repo-truth git, code search, file context, and opt-in safe exec. Business value: faster repo-truth answers and fewer manual back-and-forth turns.
@@ -284,7 +288,7 @@ Python 3.12+ (recommended 3.12)
 ```
 
 ### Key packages
-- `semantic-kernel>=1.9.0` - agent orchestration.
+- `agent-framework-core` - agent orchestration (Direct / Normal / Complex contracts).
 - `ddgs>=1.0` - web search.
 - `trafilatura` - web text extraction.
 - `beautifulsoup4` - HTML parsing.

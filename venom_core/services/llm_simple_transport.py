@@ -14,7 +14,7 @@ from venom_core.infrastructure.traffic_control.http_client import (
 
 
 class UpstreamStreamError(RuntimeError):
-    """An HTTP200 stream explicitly failed; it cannot complete successfully."""
+    """An upstream stream failed or ended without explicit generation completion."""
 
 
 def httpx_module() -> Any:
@@ -40,13 +40,26 @@ async def open_stream_response(
             yield response
 
 
+def _packet_finishes_generation(packet: dict[str, Any]) -> bool:
+    choices = packet.get("choices")
+    if not isinstance(choices, list):
+        return False
+    return any(
+        isinstance(choice, dict)
+        and isinstance(reason := choice.get("finish_reason"), str)
+        and bool(reason.strip())
+        for choice in choices
+    )
+
+
 async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
+    completed = False
     async for line in resp.aiter_lines():
         if not line or not line.startswith("data:"):
             continue
         data = line[5:].strip()
         if data == "[DONE]":
-            break
+            return
         if not data:
             continue
         try:
@@ -58,7 +71,12 @@ async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
                 # Error bodies can contain private provider/conversation details.
                 # Fail the stream without echoing that untrusted payload.
                 raise UpstreamStreamError("upstream_stream_error")
+            completed = completed or _packet_finishes_generation(packet)
             yield packet
+    # A clean TCP EOF is not evidence that generation finished. Preserve partial
+    # output, but do not let callers trace success or emit a successful DONE.
+    if not completed:
+        raise UpstreamStreamError("upstream_stream_incomplete")
 
 
 async def read_http_error_response_text(response: Any | None) -> str:

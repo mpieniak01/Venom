@@ -715,3 +715,91 @@ async def test_upstream_sse_error_never_becomes_successful_done(
         name == "update_status" and args[1].name == "FAILED"
         for name, args, _ in tracer.calls
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["onnx", "vllm", "ollama"])
+@pytest.mark.parametrize("partial", [False, True])
+async def test_incomplete_upstream_sse_never_finishes_the_public_request(
+    monkeypatch, provider, partial
+):
+    packets = (
+        ['data: {"choices":[{"delta":{"content":"Część odpowiedzi"}}]}']
+        if partial
+        else []
+    )
+    packets.append("data: malformed-json")
+    calls = []
+
+    @asynccontextmanager
+    async def open_response(**kwargs):
+        calls.append(kwargs)
+        yield _LinesResponse(packets)
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport, "open_stream_response", open_response
+    )
+    tracer = _Tracer()
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: tracer)
+    events = await _collect_events(
+        llm_simple_service._stream_simple_chunks(
+            completions_url="http://fixture/v1/chat/completions",
+            payload={"messages": []},
+            runtime=_Runtime(provider),
+            request_id=uuid4(),
+            model_name="model-x",
+        )
+    )
+    assert [name for name, _ in events] == (
+        ["start", "content", "error"] if partial else ["start", "error"]
+    )
+    assert len(calls) == 1  # A partial generation cannot safely be replayed.
+    assert any(
+        name == "update_status" and args[1].name == "FAILED"
+        for name, args, _ in tracer.calls
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("finish_reason", ["stop", "length", "tool_calls"])
+async def test_explicit_finish_reason_is_a_completed_generation(finish_reason):
+    response = _LinesResponse(
+        [
+            'data: {"choices":[{"delta":{"content":"Gotowe"}}]}',
+            "data: "
+            + json.dumps({"choices": [{"delta": {}, "finish_reason": finish_reason}]}),
+        ]
+    )
+    packets = [
+        packet
+        async for packet in llm_simple_service.llm_simple_transport.iter_stream_packets(
+            response
+        )
+    ]
+    assert packets[-1]["choices"][0]["finish_reason"] == finish_reason
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "packet",
+    [
+        {},
+        {"choices": "stop"},
+        {"choices": ["stop"]},
+        {"choices": [{"finish_reason": None}]},
+        {"choices": [{"finish_reason": True}]},
+        {"choices": [{"finish_reason": " "}]},
+    ],
+)
+async def test_metadata_or_invalid_finish_marker_does_not_complete_sse(packet):
+    response = _LinesResponse(["data: " + json.dumps(packet)])
+    with pytest.raises(
+        llm_simple_service.llm_simple_transport.UpstreamStreamError,
+        match="upstream_stream_incomplete",
+    ):
+        _ = [
+            item
+            async for item in llm_simple_service.llm_simple_transport.iter_stream_packets(
+                response
+            )
+        ]

@@ -78,6 +78,12 @@ class QualificationProcess:
                 try:
                     observed = identity(self.process.pid)
                     break
+                except (ProcessLookupError, FileNotFoundError) as error:
+                    if self.process.poll() is not None:
+                        raise ChildProcessError(
+                            "experiment_exited_before_identity"
+                        ) from error
+                    raise
                 except OwnershipError as error:
                     if (
                         str(error) != "process_command_not_ready"

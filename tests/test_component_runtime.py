@@ -1,12 +1,14 @@
 """Isolated engine controller contracts using harmless real child processes."""
 
 import json
+import os
 import socket
 import subprocess
 import sys
 
 import pytest
 
+from scripts.dev import qualification_process
 from scripts.llm import component_runtime as runtime
 
 
@@ -175,6 +177,42 @@ def test_failed_child_readiness_is_not_left_running(tmp_path, monkeypatch):
     )
     with pytest.raises(RuntimeError, match="exited_before_readiness"):
         runtime.control(args)
+    assert not list(args.state_dir.glob("*.process.json"))
+    manifest = json.loads(
+        (args.state_dir / "test-component.component.json").read_text()
+    )
+    assert manifest["status"] == "START_FAILED"
+
+
+@pytest.mark.parametrize("child_state", ["zombie", "reaped"])
+def test_child_exit_before_identity_is_a_failed_start(
+    tmp_path, monkeypatch, child_state
+):
+    """An early child exit has the same readiness contract in either /proc state."""
+    args = arguments(tmp_path)
+    process = runtime.QualificationProcess(args.state_dir, args.owner)
+    monkeypatch.setattr(runtime, "QualificationProcess", lambda root, owner: process)
+    monkeypatch.setattr(
+        runtime,
+        "engine_command",
+        lambda args: [sys.executable, "-c", "raise SystemExit(7)"],
+    )
+    real_identity = qualification_process.identity
+
+    def identity_after_exit(pid):
+        assert process.process is not None
+        if child_state == "zombie":
+            os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+        else:
+            process.process.wait(timeout=5)
+        return real_identity(pid)
+
+    monkeypatch.setattr(qualification_process, "identity", identity_after_exit)
+    with pytest.raises(RuntimeError, match="component_exited_before_readiness"):
+        runtime.control(args)
+
+    assert process.process is not None
+    assert process.process.returncode == 7
     assert not list(args.state_dir.glob("*.process.json"))
     manifest = json.loads(
         (args.state_dir / "test-component.component.json").read_text()

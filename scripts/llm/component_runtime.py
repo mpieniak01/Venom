@@ -231,7 +231,10 @@ def control(args: argparse.Namespace) -> dict[str, Any]:
     }
     manifest.write_text(json.dumps(info, indent=2) + "\n")
     try:
-        pid = process.start(command, cwd=ROOT, environment=environment)
+        try:
+            pid = process.start(command, cwd=ROOT, environment=environment)
+        except ChildProcessError as error:
+            raise RuntimeError("component_exited_before_readiness") from error
         info["identity"] = owned_identity(process)
         deadline = time.monotonic() + args.start_timeout
         host = "127.0.0.1" if args.host == "0.0.0.0" else args.host

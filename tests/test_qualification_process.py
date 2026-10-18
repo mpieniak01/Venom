@@ -171,3 +171,24 @@ def test_persistently_empty_command_fails_closed_and_reaps_child(monkeypatch, tm
     fake.terminate.assert_called_once()
     fake.wait.assert_called_once_with(timeout=5)
     assert not process.record.exists()
+
+
+def test_live_identity_lookup_failure_is_not_classified_as_child_exit(
+    monkeypatch, tmp_path
+):
+    """A missing identity source must fail closed while reaping the owned child."""
+    process = QualificationProcess(tmp_path, "missing-identity")
+
+    def missing_identity(pid):
+        raise FileNotFoundError("identity source unavailable")
+
+    monkeypatch.setattr(module, "identity", missing_identity)
+    with pytest.raises(FileNotFoundError, match="identity source unavailable"):
+        process.start(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            cwd=tmp_path,
+            environment={"PATH": os.defpath},
+        )
+    assert process.process is not None
+    assert process.process.returncode is not None
+    assert not process.record.exists()

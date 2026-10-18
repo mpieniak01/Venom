@@ -576,11 +576,10 @@ class TestGhostApiFastlaneCoverage:
             ),
             patch.object(ghost_routes_mod, "_publish_ghost_audit", MagicMock()),
         ):
+            prepared_payload = ghost_routes_mod.GhostRunRequest(content="do")
             with pytest.raises(RuntimeError, match="boom"):
                 await ghost_routes_mod._run_ghost_job(
-                    task_id="job-fail",
-                    payload=ghost_routes_mod.GhostRunRequest(content="do"),
-                    actor="tester",
+                    task_id="job-fail", payload=prepared_payload, actor="tester"
                 )
 
     def test_status_endpoint_branches(self, ghost_routes_mod):

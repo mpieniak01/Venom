@@ -22,8 +22,8 @@ def _client(router) -> TestClient:
     return TestClient(app)
 
 
-def test_queue_status_internal_error_returns_500() -> None:
-    queue_routes._queue_cache = TTLCache(ttl_seconds=10.0)
+def test_queue_status_internal_error_returns_500(monkeypatch) -> None:
+    monkeypatch.setattr(queue_routes, "_queue_cache", TTLCache(ttl_seconds=10.0))
     orchestrator = MagicMock()
     orchestrator.get_queue_status.side_effect = RuntimeError("db unavailable")
     queue_routes.set_dependencies(orchestrator)
@@ -33,8 +33,8 @@ def test_queue_status_internal_error_returns_500() -> None:
     assert "statusu kolejki" in response.json()["detail"]
 
 
-def test_queue_mutation_endpoints_success_paths_clear_cache() -> None:
-    queue_routes._queue_cache = TTLCache(ttl_seconds=60.0)
+def test_queue_mutation_endpoints_success_paths_clear_cache(monkeypatch) -> None:
+    monkeypatch.setattr(queue_routes, "_queue_cache", TTLCache(ttl_seconds=60.0))
 
     orchestrator = MagicMock()
     orchestrator.pause_queue = AsyncMock(return_value={"success": True, "paused": True})

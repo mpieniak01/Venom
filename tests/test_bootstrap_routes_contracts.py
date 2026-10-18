@@ -111,7 +111,8 @@ async def test_models_remote_cache_and_probe_paths(monkeypatch: pytest.MonkeyPat
         },
     )
     models, source, error = await models_remote._catalog_for_provider("openai")
-    assert models and models[0].id == "m"
+    assert models
+    assert models[0].id == "m"
     assert source == "cache"
     assert error is None
 
@@ -156,4 +157,5 @@ async def test_queue_permission_and_error_paths(monkeypatch: pytest.MonkeyPatch)
 def test_module_registry_validate_legacy_item_branch():
     settings = SimpleNamespace(API_OPTIONAL_MODULES="broken-item")
     errors = module_registry.validate_optional_modules_config(settings)
-    assert errors and "invalid optional module entry" in errors[0]
+    assert errors
+    assert "invalid optional module entry" in errors[0]

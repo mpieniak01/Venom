@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
@@ -68,71 +68,83 @@ def patch_runtime(mock_runtime_info, monkeypatch):
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch, fake_vector_store):
-    """Real task API and pipeline, with isolated ownership and external model edges."""
-    monkeypatch.setattr(
-        "venom_core.memory.memory_skill.VectorStore", lambda: fake_vector_store
-    )
-    monkeypatch.setattr(
-        "venom_core.perception.eyes.Eyes._check_local_vision", lambda _: False
-    )
-    monkeypatch.setattr(
-        "venom_core.execution.kernel_builder.KernelBuilder.build_kernel",
-        lambda _: Kernel(),
-    )
-    connector = SimpleNamespace(ai_model_id="mock-model", service_id="default")
-    monkeypatch.setattr(Kernel, "get_service", lambda *_args, **_kwargs: connector)
-    state_manager = StateManager(str(tmp_path / "tasks.json"))
-    tracer = RequestTracer(trace_file_path=str(tmp_path / "traces.json"))
-    kernel = Kernel()
-    dispatcher = TaskDispatcher(
-        kernel, goal_store=GoalStore(str(tmp_path / "goals.json"))
-    )
-    monkeypatch.setattr(
-        dispatcher.chat_agent, "process", AsyncMock(return_value=MODEL_REPLY)
-    )
-    intent_manager = IntentManager(kernel=kernel)
-    monkeypatch.setattr(
-        intent_manager, "classify_intent", AsyncMock(return_value="GENERAL_CHAT")
-    )
-    orchestrator = Orchestrator(
-        state_manager,
-        intent_manager=intent_manager,
-        task_dispatcher=dispatcher,
-        request_tracer=tracer,
-    )
-    previous_tasks = set(orchestrator_submit._background_tasks)
+def client_factory(tmp_path, monkeypatch, fake_vector_store):
+    """Create owned task API contexts after each test configures its runtime."""
 
-    @asynccontextmanager
-    async def lifespan(_app):
-        try:
-            yield
-        finally:
-            owned = orchestrator_submit._background_tasks - previous_tasks
-            if owned:
-                _, pending = await asyncio.wait(owned, timeout=1)
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    _, remaining = await asyncio.wait(pending, timeout=1)
-                    assert not remaining, "owned API tasks did not finish cleanup"
-            await state_manager.shutdown()
-            await tracer.shutdown()
+    @contextmanager
+    def build_client():
+        monkeypatch.setattr(
+            "venom_core.memory.memory_skill.VectorStore", lambda: fake_vector_store
+        )
+        monkeypatch.setattr(
+            "venom_core.perception.eyes.Eyes._check_local_vision", lambda _: False
+        )
+        monkeypatch.setattr(
+            "venom_core.execution.kernel_builder.KernelBuilder.build_kernel",
+            lambda _: Kernel(),
+        )
+        connector = SimpleNamespace(ai_model_id="mock-model", service_id="default")
+        monkeypatch.setattr(Kernel, "get_service", lambda *_args, **_kwargs: connector)
+        state_manager = StateManager(str(tmp_path / "tasks.json"))
+        tracer = RequestTracer(trace_file_path=str(tmp_path / "traces.json"))
+        kernel = Kernel()
+        dispatcher = TaskDispatcher(
+            kernel, goal_store=GoalStore(str(tmp_path / "goals.json"))
+        )
+        monkeypatch.setattr(
+            dispatcher.chat_agent, "process", AsyncMock(return_value=MODEL_REPLY)
+        )
+        intent_manager = IntentManager(kernel=kernel)
+        monkeypatch.setattr(
+            intent_manager, "classify_intent", AsyncMock(return_value="GENERAL_CHAT")
+        )
+        orchestrator = Orchestrator(
+            state_manager,
+            intent_manager=intent_manager,
+            task_dispatcher=dispatcher,
+            request_tracer=tracer,
+        )
+        previous_tasks = set(orchestrator_submit._background_tasks)
 
-    app = FastAPI(lifespan=lifespan)
-    app.include_router(tasks_routes.router)
-    app.add_api_route("/healthz", main_app.healthz)
-    app.dependency_overrides = {
-        api_deps.get_orchestrator: lambda: orchestrator,
-        api_deps.get_state_manager: lambda: state_manager,
-        api_deps.get_request_tracer: lambda: tracer,
-    }
-    app.state.orchestrator = orchestrator
-    app.state.model_process = dispatcher.chat_agent.process
-    app.state.task_state = state_manager
-    app.state.request_tracer = tracer
-    module_registry._install_conversation_provider_lifespan(app, SimpleNamespace())
-    with TestClient(app) as test_client:
+        @asynccontextmanager
+        async def lifespan(_app):
+            try:
+                yield
+            finally:
+                owned = orchestrator_submit._background_tasks - previous_tasks
+                if owned:
+                    _, pending = await asyncio.wait(owned, timeout=1)
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        _, remaining = await asyncio.wait(pending, timeout=1)
+                        assert not remaining, "owned API tasks did not finish cleanup"
+                await state_manager.shutdown()
+                await tracer.shutdown()
+
+        app = FastAPI(lifespan=lifespan)
+        app.include_router(tasks_routes.router)
+        app.add_api_route("/healthz", main_app.healthz)
+        app.dependency_overrides = {
+            api_deps.get_orchestrator: lambda: orchestrator,
+            api_deps.get_state_manager: lambda: state_manager,
+            api_deps.get_request_tracer: lambda: tracer,
+        }
+        app.state.orchestrator = orchestrator
+        app.state.model_process = dispatcher.chat_agent.process
+        app.state.task_state = state_manager
+        app.state.request_tracer = tracer
+        module_registry._install_conversation_provider_lifespan(app, SimpleNamespace())
+        with TestClient(app) as test_client:
+            yield test_client
+
+    return build_client
+
+
+@pytest.fixture
+def client(client_factory):
+    """Default owned client for tests that need no pre-construction setup."""
+    with client_factory() as test_client:
         yield test_client
 
 
@@ -142,7 +154,7 @@ def clear_state(client):
     state_manager = client.app.state.task_state
     assert hasattr(state_manager, "_tasks"), "StateManager contract requires '_tasks'"
     assert not state_manager._tasks
-    yield state_manager
+    return state_manager
 
 
 def completed_task(client, task_id):
@@ -284,7 +296,7 @@ def test_task_logs(client, clear_state):
     )
 
 
-def test_fixture_ignores_polluted_application_globals(request, monkeypatch):
+def test_fixture_ignores_polluted_application_globals(client_factory, monkeypatch):
     poisoned_orchestrator = SimpleNamespace(
         submit_task=AsyncMock(
             side_effect=AssertionError("shared orchestrator was used")
@@ -296,33 +308,33 @@ def test_fixture_ignores_polluted_application_globals(request, monkeypatch):
     monkeypatch.setattr(api_deps, "_orchestrator", poisoned_orchestrator)
     api_deps.get_orchestrator.cache_clear()
     try:
-        isolated = request.getfixturevalue("client")
-        response = isolated.post("/api/v1/tasks", json={"content": "Isolated task"})
-        assert response.status_code == 201, response.text
-        task = completed_task(isolated, response.json()["task_id"])
-        assert task["result"] == MODEL_REPLY
-        assert task["context_history"]["llm_runtime"]["model"] == "mock-model"
-        orchestrator = isolated.app.state.orchestrator
-        state = isolated.app.state.task_state
-        for component in (
-            orchestrator.streaming_handler,
-            orchestrator.lessons_manager,
-            orchestrator.session_handler,
-            orchestrator.middleware,
-            orchestrator.flow_coordinator,
-        ):
-            assert component.state_manager is state
-        assert main_app.orchestrator is poisoned_orchestrator
-        assert main_app.state_manager is poisoned_state
-        assert api_deps._orchestrator is poisoned_orchestrator
-        poisoned_orchestrator.submit_task.assert_not_awaited()
+        with client_factory() as isolated:
+            response = isolated.post("/api/v1/tasks", json={"content": "Isolated task"})
+            assert response.status_code == 201, response.text
+            task = completed_task(isolated, response.json()["task_id"])
+            assert task["result"] == MODEL_REPLY
+            assert task["context_history"]["llm_runtime"]["model"] == "mock-model"
+            orchestrator = isolated.app.state.orchestrator
+            state = isolated.app.state.task_state
+            for component in (
+                orchestrator.streaming_handler,
+                orchestrator.lessons_manager,
+                orchestrator.session_handler,
+                orchestrator.middleware,
+                orchestrator.flow_coordinator,
+            ):
+                assert component.state_manager is state
+            assert main_app.orchestrator is poisoned_orchestrator
+            assert main_app.state_manager is poisoned_state
+            assert api_deps._orchestrator is poisoned_orchestrator
+            poisoned_orchestrator.submit_task.assert_not_awaited()
     finally:
         api_deps.get_orchestrator.cache_clear()
 
 
 @pytest.mark.parametrize("poisoned_tracer", [False, True])
 def test_create_task_onnx_runtime_completes_via_tasks_path(
-    request, monkeypatch, poisoned_tracer, patch_runtime
+    client_factory, monkeypatch, poisoned_tracer, patch_runtime
 ):
     stale_tracer = object()
     if poisoned_tracer:
@@ -342,32 +354,31 @@ def test_create_task_onnx_runtime_completes_via_tasks_path(
     monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENDPOINT", MOCK_HTTP)
     # Construct the owned orchestrator with the selected runtime; changing it after
     # construction correctly refreshes its dispatcher and replaces the model stub.
-    client = request.getfixturevalue("client")
-    request.getfixturevalue("clear_state")
-    client.app.state.model_process.return_value = "ONNX OK"
-
-    response = client.post("/api/v1/tasks", json={"content": "test onnx normal"})
-    assert response.status_code == 201, response.text
-    task_id = response.json()["task_id"]
-    payload = completed_task(client, task_id)
-    assert payload["result"] == "ONNX OK"
-    tracer = client.app.state.request_tracer
-    trace = tracer.get_trace(UUID(task_id))
-    # Task completion precedes the asynchronous session/trace success callback.
-    deadline = time.monotonic() + 5
-    while (
-        trace is not None
-        and trace.status in {TraceStatus.PENDING, TraceStatus.PROCESSING}
-        and time.monotonic() < deadline
-    ):
-        time.sleep(0.01)
+    with client_factory() as client:
+        state_manager = client.app.state.task_state
+        assert hasattr(state_manager, "_tasks"), "StateManager contract requires _tasks"
+        assert not state_manager._tasks
+        client.app.state.model_process.return_value = "ONNX OK"
+        response = client.post("/api/v1/tasks", json={"content": "test onnx normal"})
+        assert response.status_code == 201, response.text
+        task_id = response.json()["task_id"]
+        payload = completed_task(client, task_id)
+        assert payload["result"] == "ONNX OK"
+        tracer = client.app.state.request_tracer
         trace = tracer.get_trace(UUID(task_id))
-    assert trace is not None
-    assert trace.status is TraceStatus.COMPLETED, trace.model_dump()
-    assert trace.llm_provider == "onnx"
-    client.app.state.model_process.assert_awaited_once()
-    assert payload["context_history"]["llm_runtime"]["provider"] == "onnx"
-    # Normal uses orchestration and the injected tracer, not a route-owned adapter.
-    assert all(step.component != "OnnxTask" for step in trace.steps)
-    if poisoned_tracer:
-        assert system_deps._request_tracer is stale_tracer
+        deadline = time.monotonic() + 5
+        while (
+            trace is not None
+            and trace.status in {TraceStatus.PENDING, TraceStatus.PROCESSING}
+            and (time.monotonic() < deadline)
+        ):
+            time.sleep(0.01)
+            trace = tracer.get_trace(UUID(task_id))
+        assert trace is not None
+        assert trace.status is TraceStatus.COMPLETED, trace.model_dump()
+        assert trace.llm_provider == "onnx"
+        client.app.state.model_process.assert_awaited_once()
+        assert payload["context_history"]["llm_runtime"]["provider"] == "onnx"
+        assert all((step.component != "OnnxTask" for step in trace.steps))
+        if poisoned_tracer:
+            assert system_deps._request_tracer is stale_tracer

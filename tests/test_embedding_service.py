@@ -147,7 +147,8 @@ def test_clear_cache_invokes_cache_clear():
     service = EmbeddingService(service_type="local")
     service.clear_cache()
     info = service._get_embedding_cached.cache_info()
-    assert info.hits >= 0 and info.misses >= 0
+    assert info.hits >= 0
+    assert info.misses >= 0
 
 
 def test_local_model_name_falls_back_to_default_when_blank(monkeypatch):

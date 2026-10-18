@@ -510,32 +510,29 @@ def test_apply_single_change_rollback_and_health_branches(monkeypatch):
 def test_resource_change_to_config_updates_validation_errors():
     service = ControlPlaneService()
 
+    prepared_resource_change = ResourceChange(
+        resource_type=ResourceType.CONFIG,
+        resource_id="AI_MODE",
+        action="delete",
+    )
     with pytest.raises(ValueError, match="Unsupported action"):
-        service._resource_change_to_config_updates(
-            ResourceChange(
-                resource_type=ResourceType.CONFIG,
-                resource_id="AI_MODE",
-                action="delete",
-            )
-        )
+        service._resource_change_to_config_updates(prepared_resource_change)
 
+    prepared_resource_change_2 = ResourceChange(
+        resource_type=ResourceType.CONFIG,
+        resource_id="",
+        action="update",
+    )
     with pytest.raises(ValueError, match="require resource_id"):
-        service._resource_change_to_config_updates(
-            ResourceChange(
-                resource_type=ResourceType.CONFIG,
-                resource_id="",
-                action="update",
-            )
-        )
+        service._resource_change_to_config_updates(prepared_resource_change_2)
 
+    prepared_resource_change_3 = ResourceChange(
+        resource_type=ResourceType.WORKFLOW,
+        resource_id="wf",
+        action="update",
+    )
     with pytest.raises(ValueError, match="workflow operations API"):
-        service._resource_change_to_config_updates(
-            ResourceChange(
-                resource_type=ResourceType.WORKFLOW,
-                resource_id="wf",
-                action="update",
-            )
-        )
+        service._resource_change_to_config_updates(prepared_resource_change_3)
 
     class _UnsupportedResourceType(Enum):
         UNSUPPORTED = "unsupported"

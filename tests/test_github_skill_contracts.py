@@ -46,7 +46,7 @@ def _make_mock_repo(
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def patched_github():
     """Patch Github class and provide a mock instance + Auth.
 

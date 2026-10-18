@@ -162,9 +162,12 @@ async def test_council_uses_deliberation_and_keeps_request_budget():
     }
     run = session([], **actors)
     await run.run("text task", generation_params={"max_tokens": 32, "temperature": 0})
-    assert calls and all(
-        kwargs["generation_params"] == {"max_tokens": 32, "temperature": 0}
-        for _, kwargs in calls
+    assert calls
+    assert all(
+        (
+            kwargs["generation_params"] == {"max_tokens": 32, "temperature": 0}
+            for _, kwargs in calls
+        )
     )
     assert all("Council" in kwargs["system_message"] for _, kwargs in calls)
     assert (
@@ -348,8 +351,10 @@ async def test_critic_sees_current_candidate_without_old_review_echo():
     )
     await run.run("ORIGINAL_TASK")
     current_review = [text for name, text in calls if name == "Critic"][-1]
-    assert "ORIGINAL_TASK" in current_review and "CURRENT_DRAFT" in current_review
-    assert "FIRST_DRAFT" not in current_review and "OLD_REVIEW" not in current_review
+    assert "ORIGINAL_TASK" in current_review
+    assert "CURRENT_DRAFT" in current_review
+    assert "FIRST_DRAFT" not in current_review
+    assert "OLD_REVIEW" not in current_review
     assert any("FIRST_DRAFT" in m["content"] for m in run.group_chat.messages)
     assert any("OLD_REVIEW" in m["content"] for m in run.group_chat.messages)
 

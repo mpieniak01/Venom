@@ -147,8 +147,8 @@ def test_get_profile_reflects_active_params():
     assert profile["enable_thinking"] is True
 
 
-def test_get_profile_503_when_daemon_not_initialized():
-    runtime_main._daemon = None  # noqa: SLF001
+def test_get_profile_503_when_daemon_not_initialized(monkeypatch):
+    monkeypatch.setattr(runtime_main, "_daemon", None)  # noqa: SLF001
     client = TestClient(runtime_main.app)
     resp = client.get("/v1/daemon/profile")
     assert resp.status_code == 503
@@ -391,8 +391,8 @@ def test_legacy_daemon_config_still_works():
 # ---------------------------------------------------------------------------
 
 
-def test_update_profile_503_when_daemon_not_initialized():
-    runtime_main._daemon = None  # noqa: SLF001
+def test_update_profile_503_when_daemon_not_initialized(monkeypatch):
+    monkeypatch.setattr(runtime_main, "_daemon", None)  # noqa: SLF001
     client = TestClient(runtime_main.app)
     resp = client.post("/v1/daemon/profile", json={"max_new_tokens": 128})
     assert resp.status_code == 503

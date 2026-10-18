@@ -798,9 +798,7 @@ def test_activate_adapter_with_chat_runtime_deploy_onnx_raises_metadata_incomple
     mgr.activate_adapter.return_value = True
 
     # With 202D, ONNX deploy is attempted — incomplete fixture raises ValueError
-    import pytest as _pytest
-
-    with _pytest.raises(ValueError, match="ADAPTER_METADATA_INCOMPLETE"):
+    with pytest.raises(ValueError, match="ADAPTER_METADATA_INCOMPLETE"):
         academy_models.activate_adapter(
             mgr=mgr,
             adapter_id="ok-adapter",
@@ -932,11 +930,10 @@ async def test_validate_adapter_runtime_compatibility_rejects_non_local_runtime(
         encoding="utf-8",
     )
 
+    prepared_mgr_4 = MagicMock()
     with pytest.raises(ValueError, match="supports only local runtimes"):
         await academy_models.validate_adapter_runtime_compatibility(
-            mgr=MagicMock(),
-            adapter_id="adapter-1",
-            runtime_id="openai",
+            mgr=prepared_mgr_4, adapter_id="adapter-1", runtime_id="openai"
         )
 
 
@@ -948,11 +945,10 @@ async def test_validate_adapter_runtime_compatibility_rejects_path_traversal(
     mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
     mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 
+    prepared_mgr_3 = MagicMock()
     with pytest.raises(ValueError, match="outside of models directory"):
         await academy_models.validate_adapter_runtime_compatibility(
-            mgr=MagicMock(),
-            adapter_id="../outside",
-            runtime_id="vllm",
+            mgr=prepared_mgr_3, adapter_id="../outside", runtime_id="vllm"
         )
 
 
@@ -967,11 +963,10 @@ async def test_validate_adapter_runtime_compatibility_raises_not_found_for_missi
     adapter_dir = tmp_path / "adapter-1"
     adapter_dir.mkdir(parents=True)
 
+    prepared_mgr_2 = MagicMock()
     with pytest.raises(FileNotFoundError, match="Adapter not found"):
         await academy_models.validate_adapter_runtime_compatibility(
-            mgr=MagicMock(),
-            adapter_id="adapter-1",
-            runtime_id="vllm",
+            mgr=prepared_mgr_2, adapter_id="adapter-1", runtime_id="vllm"
         )
 
 
@@ -1005,11 +1000,10 @@ async def test_validate_adapter_runtime_compatibility_rejects_incompatible_runti
             ]
         ),
     ):
+        prepared_mgr = MagicMock()
         with pytest.raises(ValueError, match="ADAPTER_RUNTIME_INCOMPATIBLE"):
             await academy_models.validate_adapter_runtime_compatibility(
-                mgr=MagicMock(),
-                adapter_id="adapter-1",
-                runtime_id="onnx",
+                mgr=prepared_mgr, adapter_id="adapter-1", runtime_id="onnx"
             )
 
 

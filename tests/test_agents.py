@@ -422,11 +422,10 @@ async def test_ghost_run_job_failure_and_cancelled_paths(ghost_mod):
         ),
         patch.object(ghost_mod, "_publish_ghost_audit", MagicMock()),
     ):
+        prepared_payload = ghost_mod.GhostRunRequest(content="do")
         with pytest.raises(RuntimeError, match="boom"):
             await ghost_mod._run_ghost_job(
-                task_id="f1",
-                payload=ghost_mod.GhostRunRequest(content="do"),
-                actor="tester",
+                task_id="f1", payload=prepared_payload, actor="tester"
             )
 
     store.clear()
@@ -446,11 +445,10 @@ async def test_ghost_run_job_failure_and_cancelled_paths(ghost_mod):
         ),
         patch.object(ghost_mod, "_publish_ghost_audit", MagicMock()),
     ):
+        prepared_payload_2 = ghost_mod.GhostRunRequest(content="do")
         with pytest.raises(asyncio.CancelledError):
             await ghost_mod._run_ghost_job(
-                task_id="c1",
-                payload=ghost_mod.GhostRunRequest(content="do"),
-                actor="tester",
+                task_id="c1", payload=prepared_payload_2, actor="tester"
             )
 
 

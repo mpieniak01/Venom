@@ -39,6 +39,7 @@ tests/test_academy_training_service.py
 tests/test_adapter_audit_service.py
 tests/test_adapter_runtime_service.py
 tests/test_admin_audit.py
+tests/test_agent_improvements.py
 tests/test_agents.py
 tests/test_agents_ghost_runtime_store.py
 tests/test_agents_release_integration_contracts.py
@@ -50,6 +51,7 @@ tests/test_api_contracts_stability.py
 tests/test_api_queue_runtime_contracts.py
 tests/test_api_routes_contract_matrix.py
 tests/test_api_routes_import_guard.py
+tests/test_api_routes_runtime_contracts.py
 tests/test_architect_agent.py
 tests/test_architecture_contracts_guard.py
 tests/test_assistant_skill.py
@@ -68,11 +70,14 @@ tests/test_bootstrap_runtime_stack_modules.py
 tests/test_browser_skill.py
 tests/test_browser_skill_unit_contracts.py
 tests/test_campaign_flow.py
+tests/test_changed_lines_quality_checker.py
+tests/test_changed_lines_quality_cli.py
 tests/test_changed_lines_quality_gate_runner.py
 tests/test_check_github_actions_node_runtime.py
 tests/test_chrono_skill.py
 tests/test_chronos.py
 tests/test_cloud_provisioner.py
+tests/test_code_generation_utils.py
 tests/test_code_index_skill.py
 tests/test_code_review_optimization.py
 tests/test_coder.py
@@ -82,6 +87,7 @@ tests/test_coding_run_service.py
 tests/test_command_execution_loop.py
 tests/test_complexity_skill.py
 tests/test_component_runtime.py
+tests/test_compose_integration.py
 tests/test_compose_skill.py
 tests/test_config_manager.py
 tests/test_config_sync.py
@@ -108,6 +114,7 @@ tests/test_docker_habitat.py
 tests/test_docker_habitat_contracts.py
 tests/test_docker_habitat_unit.py
 tests/test_docs_skill.py
+tests/test_embedding_service.py
 tests/test_ensure_env_file_script.py
 tests/test_env_contract_sh.py
 tests/test_env_contracts.py
@@ -119,6 +126,7 @@ tests/test_external_discovery_integration.py
 tests/test_eyes.py
 tests/test_feedback_hidden_prompts.py
 tests/test_feedback_loop_policy.py
+tests/test_feedback_routes_logic.py
 tests/test_file_skill.py
 tests/test_flow_coordinator.py
 tests/test_foreman_agent.py
@@ -143,6 +151,7 @@ tests/test_graph_rag_service.py
 tests/test_graph_store.py
 tests/test_hardware_bridge.py
 tests/test_healing_flow.py
+tests/test_hidden_prompts_cache.py
 tests/test_hidden_prompts_semantic.py
 tests/test_historian_agent.py
 tests/test_huggingface_skill.py

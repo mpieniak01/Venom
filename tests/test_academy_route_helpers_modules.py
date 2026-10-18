@@ -146,7 +146,8 @@ def test_academy_conversion_records_and_markdown_builders(tmp_path):
     )
 
     records = academy_conversion.records_from_text("instr\n\nout")
-    assert records and records[0]["instruction"]
+    assert records
+    assert records[0]["instruction"]
     assert academy_conversion.records_from_text("single paragraph")[0]["output"]
 
     md = academy_conversion.serialize_records_to_markdown(records)

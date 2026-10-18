@@ -767,11 +767,11 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
         ),
         patch(
             "venom_core.services.llm_simple_service.get_active_llm_runtime",
-            lambda: current_runtime,
+            return_value=current_runtime,
         ),
         patch(
             "venom_core.services.llm_simple_service._build_chat_completions_url",
-            lambda _runtime: "http://runtime.test/v1/chat/completions",
+            return_value="http://runtime.test/v1/chat/completions",
         ),
         patch(
             "venom_core.services.llm_simple_service._stream_simple_chunks",

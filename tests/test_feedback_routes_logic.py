@@ -17,18 +17,16 @@ def _make_step(component: str, action: str, details: str | None = None):
 
 def test_validate_feedback_payload_errors_and_success():
     task_id = uuid4()
+    prepared_argument = feedback_routes.FeedbackRequest(task_id=task_id, rating="meh")
     with pytest.raises(HTTPException) as exc_rating:
-        feedback_routes._validate_feedback_payload(
-            feedback_routes.FeedbackRequest(task_id=task_id, rating="meh")
-        )
+        feedback_routes._validate_feedback_payload(prepared_argument)
     assert exc_rating.value.status_code == 400
 
+    prepared_argument_2 = feedback_routes.FeedbackRequest(
+        task_id=task_id, rating="down", comment="  "
+    )
     with pytest.raises(HTTPException) as exc_comment:
-        feedback_routes._validate_feedback_payload(
-            feedback_routes.FeedbackRequest(
-                task_id=task_id, rating="down", comment="  "
-            )
-        )
+        feedback_routes._validate_feedback_payload(prepared_argument_2)
     assert exc_comment.value.status_code == 400
 
     assert (

@@ -96,7 +96,8 @@ class TestEscapeStringForCode:
         # Assert
         # Python repr() zachowuje znaki Unicode jeśli są printable
         assert result == "'Zażółć gęślą jaźń 🎉'"
-        assert result.startswith("'") and result.endswith("'")
+        assert result.startswith("'")
+        assert result.endswith("'")
 
     def test_escape_empty_string(self):
         """Test eskejpowania pustego stringa."""

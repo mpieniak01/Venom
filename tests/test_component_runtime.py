@@ -102,7 +102,8 @@ def test_environment_does_not_inherit_application_interpreter_or_cuda(
     monkeypatch.setenv("LD_LIBRARY_PATH", "/operator/.venv/nvidia/lib")
     monkeypatch.setenv("VIRTUAL_ENV", "/operator/.venv")
     environment = runtime.component_environment(python, tmp_path)
-    assert "PYTHONPATH" not in environment and "VIRTUAL_ENV" not in environment
+    assert "PYTHONPATH" not in environment
+    assert "VIRTUAL_ENV" not in environment
     assert environment["LD_LIBRARY_PATH"] == f"{library}:/usr/lib/wsl/lib"
     assert environment["HF_HUB_OFFLINE"] == "1"
     assert "/operator" not in environment["LD_LIBRARY_PATH"]

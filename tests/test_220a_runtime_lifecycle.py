@@ -322,11 +322,11 @@ async def test_ollama_to_multi_runtime_stops_ollama_starts_multi(monkeypatch):
     monkeypatch.setattr(system_routes, "_release_onnx_runtime_caches", lambda: None)
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = f"{OLLAMA_ENDPOINT}/v1"
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", f"{OLLAMA_ENDPOINT}/v1")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
     try:
         response = await system_routes.set_active_llm_server(
             system_routes.ActiveLlmServerRequest(server_name="multi_runtime")
@@ -386,10 +386,10 @@ async def test_multi_runtime_to_ollama_stops_multi_starts_ollama(monkeypatch):
     monkeypatch.setattr(system_routes, "_release_onnx_runtime_caches", lambda: None)
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = f"{MULTI_ENDPOINT}/v1"
-    SETTINGS.LLM_MODEL_NAME = "gemma2:2b"
-    SETTINGS.ACTIVE_LLM_SERVER = "multi_runtime"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", f"{MULTI_ENDPOINT}/v1")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "gemma2:2b")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "multi_runtime")
     try:
         response = await system_routes.set_active_llm_server(
             system_routes.ActiveLlmServerRequest(server_name="ollama")
@@ -452,15 +452,16 @@ async def test_health_check_timeout_prevents_config_write(monkeypatch):
     monkeypatch.setattr(runtime_switch_service, "probe_health_ready", _health_timeout)
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
     try:
+        prepared_argument = system_routes.ActiveLlmServerRequest(
+            server_name="multi_runtime"
+        )
         with pytest.raises(HTTPException) as exc_info:
-            await system_routes.set_active_llm_server(
-                system_routes.ActiveLlmServerRequest(server_name="multi_runtime")
-            )
+            await system_routes.set_active_llm_server(prepared_argument)
         assert exc_info.value.status_code == 503
         # Config must NOT have been written — health failed before config save.
         assert config_written == {}, (
@@ -512,9 +513,9 @@ async def test_onnx_cleanup_failure_does_not_break_switch(monkeypatch):
     )
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.ACTIVE_LLM_SERVER = "onnx"
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "onnx")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
     try:
         response = await system_routes.set_active_llm_server(
             system_routes.ActiveLlmServerRequest(server_name="ollama")
@@ -719,10 +720,9 @@ async def test_failed_stop_never_starts_target(monkeypatch, raises):
     )
     health = AsyncMock(return_value=True)
     monkeypatch.setattr(runtime_switch_service, "probe_health_ready", health)
+    prepared_operation = RuntimeSwitchOrchestrator(controller).execute_lifecycle_switch
     with pytest.raises(HTTPException) as exc_info:
-        await RuntimeSwitchOrchestrator(controller).execute_lifecycle_switch(
-            servers=[source, target], target_server_name="vllm"
-        )
+        await prepared_operation(servers=[source, target], target_server_name="vllm")
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail["error"] == "runtime_stop_failed"
     state = exc_info.value.detail["lifecycle_state"]
@@ -741,10 +741,11 @@ async def test_invalid_target_is_rejected_before_stopping_previous_runtime(
     target = _make_server("onnx", supports_health_wait=True)
     servers = [source] if missing_target else [source, target]
     controller = _DummyController(servers)
+    prepared_operation_2 = RuntimeSwitchOrchestrator(
+        controller
+    ).execute_lifecycle_switch
     with pytest.raises(HTTPException) as exc_info:
-        await RuntimeSwitchOrchestrator(controller).execute_lifecycle_switch(
-            servers=servers, target_server_name="onnx"
-        )
+        await prepared_operation_2(servers=servers, target_server_name="onnx")
     assert exc_info.value.status_code == (404 if missing_target else 503)
     if not missing_target:
         assert exc_info.value.detail["error"] == "runtime_health_url_missing"

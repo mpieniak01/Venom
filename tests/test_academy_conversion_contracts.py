@@ -291,7 +291,8 @@ def test_academy_uploads_validation_and_ingestion(tmp_path: Path) -> None:
         total_examples=10,
         quality_profile="balanced",
     )
-    assert warnings and "Low number of examples" in warnings[0]
+    assert warnings
+    assert "Low number of examples" in warnings[0]
 
     upload_file = tmp_path / "u1.jsonl"
     upload_file.write_text(
@@ -382,8 +383,10 @@ async def test_academy_uploads_process_and_persist_paths(
         logger=logger,
     )
     assert err is None
-    assert info is not None and info["records_estimate"] == 3
-    assert saved and saved[0]["sha256"] == "sha"
+    assert info is not None
+    assert info["records_estimate"] == 3
+    assert saved
+    assert saved[0]["sha256"] == "sha"
 
     async def _persist_none(**_kwargs: Any):
         return None, None
@@ -410,7 +413,8 @@ async def test_academy_uploads_process_and_persist_paths(
         logger=logger,
     )
     assert info2 is None
-    assert err2 is not None and "Failed to persist file" in err2["error"]
+    assert err2 is not None
+    assert "Failed to persist file" in err2["error"]
 
     def _boom_build(**_kwargs: Any):
         raise RuntimeError("boom")
@@ -437,7 +441,8 @@ async def test_academy_uploads_process_and_persist_paths(
         cleanup_uploaded_file_fn=lambda path: cleanup_calls.append(path),
         logger=logger,
     )
-    assert err3 is not None and "Unexpected error" in err3["error"]
+    assert err3 is not None
+    assert "Unexpected error" in err3["error"]
     assert cleanup_calls
 
 
@@ -514,7 +519,8 @@ def _load_route_handlers_module() -> Any:
         / "route_handlers.py"
     )
     spec = importlib.util.spec_from_file_location("route_handlers_cov_fix", module_path)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -635,12 +641,11 @@ def test_route_handlers_convert_dataset_file_error_mapping() -> None:
             ValueError("Invalid file_id: bad")
         )
     )
+    prepared_payload = SimpleNamespace(target_format="json")
+    prepared_req = SimpleNamespace()
     with pytest.raises(HTTPException) as exc_400:
         route_handlers.convert_dataset_file_handler(
-            file_id="bad",
-            payload=SimpleNamespace(target_format="json"),
-            req=SimpleNamespace(),
-            academy=academy,
+            file_id="bad", payload=prepared_payload, req=prepared_req, academy=academy
         )
     assert exc_400.value.status_code == 400
 
@@ -649,12 +654,11 @@ def test_route_handlers_convert_dataset_file_error_mapping() -> None:
             RuntimeError("boom")
         )
     )
+    prepared_payload_2 = SimpleNamespace(target_format="json")
+    prepared_req_2 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc_500:
         route_handlers.convert_dataset_file_handler(
-            file_id="x",
-            payload=SimpleNamespace(target_format="json"),
-            req=SimpleNamespace(),
-            academy=academy,
+            file_id="x", payload=prepared_payload_2, req=prepared_req_2, academy=academy
         )
     assert exc_500.value.status_code == 500
 
@@ -692,10 +696,10 @@ async def test_route_handlers_upload_guard_paths(
                 get=lambda _key, default="": default,
             )
 
+    prepared_req_3 = _Req()
     with pytest.raises(HTTPException) as exc:
         await route_handlers.upload_dataset_files_handler(
-            req=_Req(),
-            academy=academy,
+            req=prepared_req_3, academy=academy
         )
     assert exc.value.status_code == 400
 
@@ -720,7 +724,8 @@ async def test_academy_uploads_persist_with_limits_error_mapping(
         cleanup_uploaded_file_fn=lambda path: cleanup_calls.append(path),
     )
     assert result is None
-    assert err is not None and "File too large" in err["error"]
+    assert err is not None
+    assert "File too large" in err["error"]
 
     async def _value_err(**_kwargs: Any):
         raise ValueError("broken")
@@ -734,7 +739,8 @@ async def test_academy_uploads_persist_with_limits_error_mapping(
         logger=logger,
         cleanup_uploaded_file_fn=lambda path: cleanup_calls.append(path),
     )
-    assert err2 is not None and "Failed to save file" in err2["error"]
+    assert err2 is not None
+    assert "Failed to save file" in err2["error"]
 
     async def _generic_err(**_kwargs: Any):
         raise OSError("disk")
@@ -748,7 +754,8 @@ async def test_academy_uploads_persist_with_limits_error_mapping(
         logger=logger,
         cleanup_uploaded_file_fn=lambda path: cleanup_calls.append(path),
     )
-    assert err3 is not None and "Failed to save file" in err3["error"]
+    assert err3 is not None
+    assert "Failed to save file" in err3["error"]
     assert len(cleanup_calls) == 3
 
 
@@ -802,7 +809,8 @@ def test_academy_uploads_validate_filename_and_cleanup(tmp_path: Path) -> None:
         check_path_traversal_fn=lambda _name: True,
         validate_file_extension_fn=lambda _name, allowed_extensions=None: True,
     )
-    assert filename is None and err is None
+    assert filename is None
+    assert err is None
 
     upload.filename = "../bad"
     _, err2 = au.validate_upload_filename(
@@ -811,7 +819,8 @@ def test_academy_uploads_validate_filename_and_cleanup(tmp_path: Path) -> None:
         check_path_traversal_fn=lambda _name: False,
         validate_file_extension_fn=lambda _name, allowed_extensions=None: True,
     )
-    assert err2 is not None and "path traversal" in err2["error"]
+    assert err2 is not None
+    assert "path traversal" in err2["error"]
 
     upload.filename = "a.exe"
     _, err3 = au.validate_upload_filename(
@@ -820,7 +829,8 @@ def test_academy_uploads_validate_filename_and_cleanup(tmp_path: Path) -> None:
         check_path_traversal_fn=lambda _name: True,
         validate_file_extension_fn=lambda _name, allowed_extensions=None: False,
     )
-    assert err3 is not None and "Invalid file extension" in err3["error"]
+    assert err3 is not None
+    assert "Invalid file extension" in err3["error"]
 
     missing = tmp_path / "missing.bin"
     au.cleanup_uploaded_file(missing, logger=logger)

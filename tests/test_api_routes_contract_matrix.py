@@ -397,7 +397,7 @@ class TestWorkflowOperations:
 class TestWorkflowControl:
     """Contract tests for /api/v1/workflow/control/* endpoints."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def app_and_client(self):
         from venom_core.api.dependencies import (
             get_control_plane_audit_trail,
@@ -1695,10 +1695,11 @@ class TestAgents:
                 ),
                 patch.object(mod, "_publish_ghost_audit", MagicMock()),
             ):
+                prepared_payload = mod.GhostRunRequest(content="run")
                 with pytest.raises(RuntimeError, match="boom"):
                     await mod._run_ghost_job(
                         task_id="internal-fail",
-                        payload=mod.GhostRunRequest(content="run"),
+                        payload=prepared_payload,
                         actor="tester",
                     )
 
@@ -2458,10 +2459,10 @@ class TestSystemConfig:
 
         audit_stream = MagicMock()
         with patch.object(denied_mod, "get_audit_stream", return_value=audit_stream):
+            prepared_permission_error = PermissionError("blocked")
             with pytest.raises(HTTPException) as exc_info:
                 denied_mod.raise_permission_denied_http(
-                    PermissionError("blocked"),
-                    operation="route.policy.test",
+                    prepared_permission_error, operation="route.policy.test"
                 )
 
         assert exc_info.value.status_code == 403

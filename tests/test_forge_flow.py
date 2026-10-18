@@ -185,7 +185,7 @@ async def test_forge_flow_handles_unexpected_exception(monkeypatch):
     result = await flow.execute(uuid4(), "spec", "bad_tool")
 
     assert result["success"] is False
-    assert "bad_tool" == result["tool_name"]
+    assert result["tool_name"] == "bad_tool"
 
 
 # ---------------------------------------------------------------------------

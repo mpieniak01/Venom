@@ -41,7 +41,7 @@ def configure_perf_defaults():
     os.environ.setdefault("VENOM_PIPELINE_CONCURRENCY", "1")
     os.environ.setdefault("VENOM_PIPELINE_BUDGET", "8.0")
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-    yield
+    return
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -53,4 +53,4 @@ def configure_local_settings():
     aby weryfikować faktyczne pliki i zachowanie backendu.
     """
 
-    yield {}
+    return {}

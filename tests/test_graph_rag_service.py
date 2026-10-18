@@ -406,7 +406,8 @@ def test_extraction_prompt_demonstrates_valid_json(graph_rag_service):
     parsed = json.loads(example)
     assert len(parsed["entities"]) == 3
     assert parsed["relationships"][0]["type"] == "CREATED_BY"
-    assert "{{" not in example and "}}" not in example
+    assert "{{" not in example
+    assert "}}" not in example
 
 
 @pytest.mark.parametrize("language", ["json", "JSON", ""])
@@ -471,7 +472,8 @@ def test_legacy_graph_without_document_provenance_loads_without_invention(
     assert graph_rag_service.load_graph()
     edge = graph_rag_service.graph.edges["station_boreal", "aurora"]
     assert edge["relationship_type"] == "SENDS_TO"
-    assert "document_source" not in edge and "source" not in edge
+    assert "document_source" not in edge
+    assert "source" not in edge
 
 
 @pytest.mark.parametrize("language", ["text", "python"])

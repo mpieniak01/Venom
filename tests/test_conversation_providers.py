@@ -61,8 +61,10 @@ async def test_one_entrypoint_for_both_actors_and_context_reset():
 
 def test_context_is_frozen_and_identifiers_are_only_correlation():
     turn = context(language="de")
-    assert turn.actor == "chat" and turn.language == "de"
-    assert turn.target_device_id is None and turn.deadline > turn.created_at
+    assert turn.actor == "chat"
+    assert turn.language == "de"
+    assert turn.target_device_id is None
+    assert turn.deadline > turn.created_at
     with pytest.raises(FrozenInstanceError):
         turn.actor = "voice"
     with conversation.conversation_turn(turn):
@@ -78,7 +80,8 @@ def test_direct_authenticated_host_context_defaults_deadline_and_retains_target(
         created_at=100.0,
         target_device_id="fixture-device",
     )
-    assert turn.deadline == 130.0 and turn.target_device_id == "fixture-device"
+    assert turn.deadline == 130.0
+    assert turn.target_device_id == "fixture-device"
 
 
 @pytest.mark.parametrize(
@@ -142,14 +145,16 @@ async def test_provider_errors_and_timeout_are_explicit_and_reset_context():
         ("error", 30, "conversation_provider_failed"),
         ("timeout", 0.01, "conversation_deadline"),
     ]:
+        prepared_context_6 = context(timeout_s=timeout)
         with pytest.raises(conversation.ConversationProviderError, match=code):
-            await registry.handle(text, context(timeout_s=timeout))
+            await registry.handle(text, prepared_context_6)
         assert conversation.current_conversation_context() is None
     await registry.close()
+    prepared_context_7 = context()
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_registry_closed"
     ):
-        await registry.handle("any", context())
+        await registry.handle("any", prepared_context_7)
 
 
 @pytest.mark.asyncio
@@ -178,27 +183,30 @@ async def test_disabled_provider_is_removed_closed_and_inflight_cancelled():
         conversation.ConversationProviderError, match="conversation_provider_disabled"
     ):
         await active
-    assert provider.closed and not registry.providers
+    assert provider.closed
+    assert not registry.providers
     assert await registry.handle("ordinary", context()) is None
 
 
 @pytest.mark.asyncio
 async def test_invalid_provider_and_output_fail_without_fallback():
     registry = conversation.ConversationProviderRegistry(None)
+    prepared_simple_namespace = SimpleNamespace(handle=lambda *_: None)
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_provider_invalid"
     ):
-        await registry.register("example", SimpleNamespace(handle=lambda *_: None))
+        await registry.register("example", prepared_simple_namespace)
 
     class Invalid:
         async def handle(self, text, turn):
             return "x" * 32769
 
     await registry.register("example", Invalid())
+    prepared_context_8 = context()
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_invalid_output"
     ):
-        await registry.handle("x", context())
+        await registry.handle("x", prepared_context_8)
     assert conversation.current_conversation_context() is None
 
 
@@ -284,10 +292,11 @@ async def test_factory_replacement_and_optional_close():
     assert providers[0].closed
     assert await registry.list_tools() == {}
     await registry.close()
+    prepared_provider = Provider()
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_registry_closed"
     ):
-        await registry.register("example", Provider())
+        await registry.register("example", prepared_provider)
 
 
 @pytest.mark.asyncio
@@ -307,7 +316,8 @@ async def test_shutdown_closes_every_provider_even_when_one_close_fails():
     ) as raised:
         await registry.close()
     assert raised.value.module_id == "first"
-    assert good.closed and not registry.providers
+    assert good.closed
+    assert not registry.providers
     assert await registry.list_tools() == {}
 
 
@@ -330,7 +340,9 @@ async def test_shutdown_during_factory_closes_unpublished_provider():
     await asyncio.sleep(0)
     release.set()
     await asyncio.gather(refreshing, shutting_down)
-    assert registry.closed and provider.closed and not registry.providers
+    assert registry.closed
+    assert provider.closed
+    assert not registry.providers
     await registry.refresh()
 
 
@@ -343,10 +355,11 @@ async def test_invalid_and_expired_contexts_never_invoke_provider():
         conversation.ConversationProviderError, match="conversation_context_required"
     ):
         await registry.handle("/extension", None)
+    prepared_context_9 = context(timeout_s=0)
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_deadline"
     ):
-        await registry.handle("/extension", context(timeout_s=0))
+        await registry.handle("/extension", prepared_context_9)
     assert not provider.calls
     await registry.unregister("missing")
     await registry.close()
@@ -413,10 +426,10 @@ async def test_chat_provider_preserves_trace_streaming_and_bypasses_dispatcher(
     strategy.assert_not_called()
     callback.assert_called_once_with("handled")
     turn = provider.calls[0][1]
-    assert (
-        turn.task_id == str(task_id) and turn.conversation_id == "actual-conversation"
-    )
-    assert turn.actor == "chat" and turn.language == "en"
+    assert turn.task_id == str(task_id)
+    assert turn.conversation_id == "actual-conversation"
+    assert turn.actor == "chat"
+    assert turn.language == "en"
     assert provider.calls[0][0] == "/extension"
     assert conversation.current_conversation_context() is None
 
@@ -482,7 +495,8 @@ async def test_native_voice_extension_precedes_legacy_gpio_and_ignores_actor_cla
     )
     operator.process.assert_not_awaited()
     turn = provider.calls[0][1]
-    assert turn.actor == "voice" and turn.conversation_id == "voice-session"
+    assert turn.actor == "voice"
+    assert turn.conversation_id == "voice-session"
     assert turn.target_device_id is None
     assert conversation.current_conversation_context() is None
 
@@ -503,7 +517,8 @@ async def test_chat_turn_context_starts_before_classification_and_resets(monkeyp
     monkeypatch.setattr(dispatch, "_run_task", execute)
     task_id = uuid4()
     await dispatch.run_task(None, task_id, TaskRequest(content="x", session_id="chat"))
-    assert seen[0].task_id == str(task_id) and seen[0].actor == "chat"
+    assert seen[0].task_id == str(task_id)
+    assert seen[0].actor == "chat"
     assert conversation.current_conversation_context() is None
 
 
@@ -549,7 +564,8 @@ async def test_manual_intervention_during_planning_invalidates_prepared_scope(
     await dispatch.run_task(orch, uuid4(), TaskRequest(content="/extension move"))
     errors.assert_awaited_once()
     assert errors.call_args.args[1].code == "conversation_provider_failed"
-    assert not provider.scope and not registry._prepared
+    assert not provider.scope
+    assert not registry._prepared
     assert conversation.current_conversation_context() is None
 
 
@@ -574,15 +590,16 @@ async def test_prepared_scope_is_finished_when_planning_returns_or_cancels(
 
     monkeypatch.setattr(dispatch, "_run_task", planning)
     if cancel:
+        prepared_uuid4 = uuid4()
+        prepared_task_request = TaskRequest(content="/extension")
         with pytest.raises(asyncio.CancelledError):
-            await dispatch.run_task(None, uuid4(), TaskRequest(content="/extension"))
+            await dispatch.run_task(None, prepared_uuid4, prepared_task_request)
     else:
         await dispatch.run_task(None, uuid4(), TaskRequest(content="/extension"))
     provider.prepare.assert_awaited_once()
     provider.finish.assert_awaited_once()
-    assert (
-        not registry._prepared and conversation.current_conversation_context() is None
-    )
+    assert not registry._prepared
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -654,9 +671,8 @@ async def test_urgent_stop_completes_task_without_classifier_or_inference(
     assert orch._broadcast_event.call_args.kwargs["event_type"] == "TASK_COMPLETED"
     if collector is not None:
         collector.increment_task_completed.assert_called_once_with()
-    assert (
-        not registry._prepared and conversation.current_conversation_context() is None
-    )
+    assert not registry._prepared
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -691,17 +707,14 @@ async def test_native_voice_urgent_bypasses_model_switch_guard():
     )
     assert not entered
     operator.process.assert_not_awaited()
+    prepared_legacy_guard = unavailable_model()
     with pytest.raises(RuntimeError, match="runtime_switch_in_progress"):
         await _invoke_operator_agent(
-            operator,
-            "ordinary",
-            mode="standard",
-            legacy_guard=unavailable_model(),
+            operator, "ordinary", mode="standard", legacy_guard=prepared_legacy_guard
         )
     assert entered == [True]
-    assert (
-        not registry._prepared and conversation.current_conversation_context() is None
-    )
+    assert not registry._prepared
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -737,9 +750,8 @@ async def test_finish_cleans_all_scopes_even_when_one_hook_fails():
     ):
         await registry.finish(turn)
     second.finish.assert_awaited_once_with(turn)
-    assert (
-        not registry._prepared and conversation.current_conversation_context() is None
-    )
+    assert not registry._prepared
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -785,7 +797,8 @@ async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
             self.prepared, self.finished, self.handled, self.scopes = [], [], [], {}
 
         async def prepare(self, text, turn):
-            assert text == "" and turn.actor == "voice"
+            assert text == ""
+            assert turn.actor == "voice"
             assert conversation.current_conversation_context() is turn
             self.prepared.append(turn)
             self.scopes[turn.task_id] = self.epoch
@@ -885,7 +898,8 @@ async def test_manual_during_delayed_asr_invalidates_the_original_voice_scope(
             pending.cancel()
         await asyncio.gather(pending, return_exceptions=True)
     assert provider.handled == provider.prepared == provider.finished
-    assert not provider.scopes and not registry._prepared
+    assert not provider.scopes
+    assert not registry._prepared
     handler.audio_engine.speak.assert_not_awaited()
     operator.process.assert_not_awaited()
     assert conversation.current_conversation_context() is None
@@ -940,7 +954,8 @@ async def test_voice_input_scope_is_released_when_asr_does_not_produce_a_command
     handler.audio_engine.transcribe_checked.assert_awaited_once()
     assert provider.prepare.call_args.args[0] == ""
     assert provider.prepare.call_args.args[1] is provider.finish.call_args.args[0]
-    assert not provider.calls and not registry._prepared
+    assert not provider.calls
+    assert not registry._prepared
     assert conversation.current_conversation_context() is None
 
 
@@ -986,7 +1001,8 @@ async def test_unmatched_expired_chat_falls_through_without_renewing_deadline(
             == "normal reply"
         )
     execution.assert_awaited_once()
-    assert not provider.calls and stale.deadline == original_deadline
+    assert not provider.calls
+    assert stale.deadline == original_deadline
     assert conversation.current_conversation_context() is None
     for route in (registry.handle, registry.urgent):
         provider.urgent = AsyncMock(return_value="stopped")
@@ -994,7 +1010,8 @@ async def test_unmatched_expired_chat_falls_through_without_renewing_deadline(
             conversation.ConversationProviderError, match="conversation_deadline"
         ):
             await route("/extension move", stale)
-    assert not provider.calls and stale.deadline == original_deadline
+    assert not provider.calls
+    assert stale.deadline == original_deadline
     provider.urgent.assert_not_awaited()
 
 
@@ -1012,9 +1029,11 @@ async def test_optional_accepts_requires_a_synchronous_boolean_predicate(kind):
         provider.accepts = Mock(side_effect=RuntimeError("private prefilter detail"))
     registry = conversation.ConversationProviderRegistry(None)
     await registry.register("example", provider)
+    prepared_context_4 = context()
     with pytest.raises(conversation.ConversationProviderError):
-        await registry.handle("/extension", context())
-    assert not provider.calls and conversation.current_conversation_context() is None
+        await registry.handle("/extension", prepared_context_4)
+    assert not provider.calls
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -1048,10 +1067,12 @@ async def test_explicit_forced_tool_preserves_dispatcher_and_other_tool_intents(
         TaskRequest(content="/extension", forced_tool=forced_tool),
     )
     if forced_tool is None:
-        assert result == "handled" and len(provider.calls) == 1
+        assert result == "handled"
+        assert len(provider.calls) == 1
         execution.assert_not_awaited()
     else:
-        assert result == "forced tool reply" and not provider.calls
+        assert result == "forced tool reply"
+        assert not provider.calls
         execution.assert_awaited_once()
 
 
@@ -1111,7 +1132,8 @@ async def test_real_caller_cancellation_propagates_and_resets_context():
     with pytest.raises(asyncio.CancelledError):
         await pending
     await registry.drain()
-    assert not registry._active and conversation.current_conversation_context() is None
+    assert not registry._active
+    assert conversation.current_conversation_context() is None
     await registry.close()
 
 
@@ -1123,11 +1145,13 @@ async def test_provider_self_cancellation_is_a_typed_error_not_caller_cancellati
 
     registry = conversation.ConversationProviderRegistry(None)
     await registry.register("example", Cancelled())
+    prepared_context_5 = context()
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_provider_cancelled"
     ):
-        await registry.handle("/extension", context())
-    assert not registry._active and conversation.current_conversation_context() is None
+        await registry.handle("/extension", prepared_context_5)
+    assert not registry._active
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -1141,11 +1165,13 @@ async def test_returned_exception_is_invalid_output_not_a_thrown_provider_error(
 
     registry = conversation.ConversationProviderRegistry(None)
     await registry.register("example", Invalid())
+    prepared_context = context()
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_invalid_output"
     ):
-        await registry.handle("/extension", context())
-    assert not registry._active and conversation.current_conversation_context() is None
+        await registry.handle("/extension", prepared_context)
+    assert not registry._active
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -1156,11 +1182,13 @@ async def test_provider_thrown_timeout_retains_deadline_classification():
 
     registry = conversation.ConversationProviderRegistry(None)
     await registry.register("example", TimedOut())
+    prepared_context_2 = context()
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_deadline"
     ):
-        await registry.handle("/extension", context())
-    assert not registry._active and conversation.current_conversation_context() is None
+        await registry.handle("/extension", prepared_context_2)
+    assert not registry._active
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -1176,12 +1204,14 @@ async def test_provider_timeout_cancels_child_and_releases_active_tracking():
 
     registry = conversation.ConversationProviderRegistry(None)
     await registry.register("example", Waiting())
+    prepared_context_3 = context(timeout_s=0.02)
     with pytest.raises(
         conversation.ConversationProviderError, match="conversation_deadline"
     ):
-        await registry.handle("/extension", context(timeout_s=0.02))
+        await registry.handle("/extension", prepared_context_3)
     await registry.drain()
-    assert cleaned.is_set() and not registry._active
+    assert cleaned.is_set()
+    assert not registry._active
     assert conversation.current_conversation_context() is None
 
 
@@ -1361,9 +1391,8 @@ async def test_disabling_child_provider_finishes_host_task_or_voice_error(
         assert error == {"type": "error", "message": "conversation_provider_disabled"}
         handler.audio_engine.speak.assert_not_awaited()
         operator.process.assert_not_awaited()
-    assert (
-        not registry._prepared and conversation.current_conversation_context() is None
-    )
+    assert not registry._prepared
+    assert conversation.current_conversation_context() is None
 
 
 @pytest.mark.asyncio
@@ -1508,7 +1537,8 @@ async def test_guarded_voice_routes_one_real_asr_before_any_generation(
             self.prepared, self.finished = [], []
 
         async def prepare(self, text, turn):
-            assert text == "" and turn.actor == "voice"
+            assert text == ""
+            assert turn.actor == "voice"
             assert conversation.current_conversation_context() is turn
             self.prepared.append(turn)
 
@@ -1605,8 +1635,10 @@ async def test_guarded_voice_routes_one_real_asr_before_any_generation(
     handler._invoke_multi_runtime.assert_not_awaited()
     handler._multi_runtime_health_ok.assert_not_awaited()
     handler._multi_runtime_runtime_snapshot_live.assert_not_awaited()
-    assert provider.prepared == provider.finished and len(provider.prepared) == 1
-    assert not registry._prepared and not registry._active
+    assert provider.prepared == provider.finished
+    assert len(provider.prepared) == 1
+    assert not registry._prepared
+    assert not registry._active
     assert conversation.current_conversation_context() is None
     metadata = [
         call.args[1] for call in handler._update_voice_session_metadata.call_args_list
@@ -1667,8 +1699,10 @@ async def test_registered_provider_overrides_invalid_native_decoder_contract(
     }
     monkeypatch.setattr(handler, "_resolve_audio_decoder_plan", lambda: invalid)
     plan = await handler._resolve_voice_input_decoder_plan()
-    assert plan["selected"] == "" and plan["chain"] == []
-    assert plan["effective"] == "faster_whisper" and plan["guarded_voice"] is True
+    assert plan["selected"] == ""
+    assert plan["chain"] == []
+    assert plan["effective"] == "faster_whisper"
+    assert plan["guarded_voice"] is True
     assert "guarded conversation" in plan["fallback_reason"]
     assert "contract invalid" in plan["fallback_reason"]
 
@@ -1764,7 +1798,8 @@ async def test_late_voice_provider_fallback_uses_only_checked_host_asr(
         await handler._process_encoded_audio_buffer(1, [b"fixture"], None)
     handler.audio_engine.transcribe_checked.assert_awaited_once()
     call = handler.audio_engine.transcribe_checked.call_args
-    assert np.array_equal(call.args[0], audio) and call.kwargs["sample_rate"] == 22050
+    assert np.array_equal(call.args[0], audio)
+    assert call.kwargs["sample_rate"] == 22050
     handler.audio_engine.listen.assert_not_awaited()
     handler.audio_engine.transcribe_file.assert_not_called()
     handler._invoke_multi_runtime.assert_not_awaited()
@@ -1785,9 +1820,11 @@ async def test_late_voice_provider_fallback_uses_only_checked_host_asr(
             "message": "fixture ASR failed",
         }
     else:
-        assert len(provider.calls) == 1 and provider.calls[0][1].actor == "voice"
+        assert len(provider.calls) == 1
+        assert provider.calls[0][1].actor == "voice"
         handler.audio_engine.speak.assert_awaited_once_with("handled")
-    assert not registry._active and not registry._prepared
+    assert not registry._active
+    assert not registry._prepared
     assert conversation.current_conversation_context() is None
 
 
@@ -1810,7 +1847,8 @@ def test_reused_app_lifespan_owns_a_fresh_registry_each_cycle(
     app = FastAPI(lifespan=startup)
 
     def factory(host):
-        assert host is app and app.state.started == len(instances) + 1
+        assert host is app
+        assert app.state.started == len(instances) + 1
         provider = Provider()
         instances.append(provider)
         return provider
@@ -1827,7 +1865,8 @@ def test_reused_app_lifespan_owns_a_fresh_registry_each_cycle(
     async def task_turn(task_id: str):
         turn = conversation.create_conversation_context("chat", task_id=task_id)
         registry = conversation.get_conversation_registry()
-        assert registry is app.state.conversation_providers and not registry.closed
+        assert registry is app.state.conversation_providers
+        assert not registry.closed
         await registry.prepare("/extension", turn)
         try:
             result = await conversation.handle_conversation_turn("/extension", turn)
@@ -1844,7 +1883,8 @@ def test_reused_app_lifespan_owns_a_fresh_registry_each_cycle(
             assert response.status_code == 200
             assert response.json() == {"task_id": f"task-{index}", "result": "handled"}
             assert not instances[-1].closed
-        assert registry.closed and instances[-1].closed
+        assert registry.closed
+        assert instances[-1].closed
         expected = previous if previous_closed is False else None
         assert conversation.get_conversation_registry() is expected
     assert registries[0] is not registries[1]
@@ -1941,7 +1981,8 @@ def test_optional_provider_startup_failure_cleans_partial_registry(monkeypatch):
         registry = app.state.conversation_providers
         assert list(registry.providers) == ["first"]
         assert registry.failures["invalid"] == "provider_initialization_failed"
-    assert provider.closed and not app.state.conversation_providers.providers
+    assert provider.closed
+    assert not app.state.conversation_providers.providers
     assert conversation.get_conversation_registry() is None
 
 

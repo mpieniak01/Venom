@@ -279,7 +279,7 @@ def test_conversion_helpers_doc_pdf_branches(tmp_path):
             assert academy_routes._source_to_markdown(docx_path) == "docx-text"  # noqa: SLF001
         try:
             academy_routes._source_to_markdown(doc_path)  # noqa: SLF001
-            assert False, "Expected ValueError for legacy .doc without pandoc support"
+            pytest.fail("Expected ValueError for legacy .doc without pandoc support")
         except ValueError as exc:
             assert "DOC conversion requires Pandoc" in str(exc)
 
@@ -549,13 +549,13 @@ def test_conversion_pdf_docx_missing_optional_dependency_errors(tmp_path):
     with patch("builtins.__import__", side_effect=_deny_optional):
         try:
             academy_routes._extract_text_from_pdf(pdf_path)  # noqa: SLF001
-            assert False, "Expected ValueError for missing pypdf"
+            pytest.fail("Expected ValueError for missing pypdf")
         except ValueError as exc:
             assert "pypdf" in str(exc)
 
         try:
             academy_routes._extract_text_from_docx(docx_path)  # noqa: SLF001
-            assert False, "Expected ValueError for missing python-docx"
+            pytest.fail("Expected ValueError for missing python-docx")
         except ValueError as exc:
             assert "python-docx" in str(exc)
 
@@ -657,7 +657,7 @@ def test_conversion_write_records_cleanup_on_write_error(tmp_path):
     ):
         try:
             academy_routes._write_records_as_target(records, "md")  # noqa: SLF001
-            assert False, "Expected OSError from fdopen"
+            pytest.fail("Expected OSError from fdopen")
         except OSError:
             pass
 

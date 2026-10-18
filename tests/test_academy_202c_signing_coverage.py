@@ -331,12 +331,11 @@ def test_sign_handler_success() -> None:
 
 def test_sign_handler_no_manager_raises_503() -> None:
     academy = _build_academy(manager=None)
+    prepared_request = SimpleNamespace(runtime_id="ollama")
+    prepared_req = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.sign_adapter_for_chat_handler(
-            adapter_id="a1",
-            request=SimpleNamespace(runtime_id="ollama"),
-            req=SimpleNamespace(),
-            academy=academy,
+            adapter_id="a1", request=prepared_request, req=prepared_req, academy=academy
         )
     assert exc.value.status_code == 503
 
@@ -344,13 +343,15 @@ def test_sign_handler_no_manager_raises_503() -> None:
 def test_sign_handler_empty_runtime_raises_400() -> None:
     academy = _build_academy(manager=object())
     academy.academy_models = SimpleNamespace(sign_adapter_for_chat=Mock())
+    prepared_request_2 = SimpleNamespace(
+        runtime_id="", model_id=None, signer=None, conversion_mode="none"
+    )
+    prepared_req_2 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.sign_adapter_for_chat_handler(
             adapter_id="a1",
-            request=SimpleNamespace(
-                runtime_id="", model_id=None, signer=None, conversion_mode="none"
-            ),
-            req=SimpleNamespace(),
+            request=prepared_request_2,
+            req=prepared_req_2,
             academy=academy,
         )
     assert exc.value.status_code == 400
@@ -364,13 +365,15 @@ def test_sign_handler_file_not_found_exact_message_raises_404() -> None:
             side_effect=FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
         )
     )
+    prepared_request_3 = SimpleNamespace(
+        runtime_id="ollama", model_id=None, signer=None, conversion_mode="none"
+    )
+    prepared_req_3 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.sign_adapter_for_chat_handler(
             adapter_id="missing",
-            request=SimpleNamespace(
-                runtime_id="ollama", model_id=None, signer=None, conversion_mode="none"
-            ),
-            req=SimpleNamespace(),
+            request=prepared_request_3,
+            req=prepared_req_3,
             academy=academy,
         )
     assert exc.value.status_code == 404
@@ -382,13 +385,15 @@ def test_sign_handler_file_not_found_other_message_raises_500() -> None:
     academy.academy_models = SimpleNamespace(
         sign_adapter_for_chat=Mock(side_effect=FileNotFoundError("/nonexistent/path"))
     )
+    prepared_request_4 = SimpleNamespace(
+        runtime_id="ollama", model_id=None, signer=None, conversion_mode="none"
+    )
+    prepared_req_4 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.sign_adapter_for_chat_handler(
             adapter_id="a1",
-            request=SimpleNamespace(
-                runtime_id="ollama", model_id=None, signer=None, conversion_mode="none"
-            ),
-            req=SimpleNamespace(),
+            request=prepared_request_4,
+            req=prepared_req_4,
             academy=academy,
         )
     assert exc.value.status_code == 500
@@ -399,13 +404,15 @@ def test_sign_handler_generic_exception_raises_500() -> None:
     academy.academy_models = SimpleNamespace(
         sign_adapter_for_chat=Mock(side_effect=RuntimeError("db exploded"))
     )
+    prepared_request_5 = SimpleNamespace(
+        runtime_id="ollama", model_id=None, signer=None, conversion_mode="none"
+    )
+    prepared_req_5 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.sign_adapter_for_chat_handler(
             adapter_id="a1",
-            request=SimpleNamespace(
-                runtime_id="ollama", model_id=None, signer=None, conversion_mode="none"
-            ),
-            req=SimpleNamespace(),
+            request=prepared_request_5,
+            req=prepared_req_5,
             academy=academy,
         )
     assert exc.value.status_code == 500
@@ -417,11 +424,13 @@ def test_sign_handler_academy_route_error_re_raised_as_http() -> None:
     err = _AcademyRouteError(status_code=503, detail="academy offline")
     academy = _build_academy(manager=object())
     academy._ensure_academy_enabled = lambda: (_ for _ in ()).throw(err)
+    prepared_request_6 = SimpleNamespace(runtime_id="ollama")
+    prepared_req_6 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.sign_adapter_for_chat_handler(
             adapter_id="a1",
-            request=SimpleNamespace(runtime_id="ollama"),
-            req=SimpleNamespace(),
+            request=prepared_request_6,
+            req=prepared_req_6,
             academy=academy,
         )
     assert exc.value.status_code == 503

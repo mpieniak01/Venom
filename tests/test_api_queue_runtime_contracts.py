@@ -27,7 +27,7 @@ def _client(router) -> TestClient:
 
 
 def test_queue_status_cache_and_503(monkeypatch: pytest.MonkeyPatch) -> None:
-    queue_routes._queue_cache = TTLCache(ttl_seconds=60.0)
+    monkeypatch.setattr(queue_routes, "_queue_cache", TTLCache(ttl_seconds=60.0))
     queue_routes.set_dependencies(None)
     client = _client(queue_routes.router)
     assert client.get("/api/v1/queue/status").status_code == 503

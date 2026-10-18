@@ -94,8 +94,8 @@ async def test_feedback_logs_filtering(tmp_path, monkeypatch):
 def test_hidden_prompts_aggregation_dedup(tmp_path, monkeypatch):
     hidden_path = tmp_path / "hidden.jsonl"
     monkeypatch.setattr(hidden_prompts, "HIDDEN_PROMPTS_PATH", hidden_path)
-    hidden_prompts._cache_mtime = None
-    hidden_prompts._cache_entries = []
+    monkeypatch.setattr(hidden_prompts, "_cache_mtime", None)
+    monkeypatch.setattr(hidden_prompts, "_cache_entries", [])
 
     _write_jsonl(
         hidden_path,
@@ -128,8 +128,8 @@ def test_active_hidden_prompts_priority(tmp_path, monkeypatch):
     active_path = tmp_path / "active.json"
     monkeypatch.setattr(hidden_prompts, "HIDDEN_PROMPTS_PATH", hidden_path)
     monkeypatch.setattr(hidden_prompts, "ACTIVE_HIDDEN_PROMPTS_PATH", active_path)
-    hidden_prompts._cache_mtime = None
-    hidden_prompts._cache_entries = []
+    monkeypatch.setattr(hidden_prompts, "_cache_mtime", None)
+    monkeypatch.setattr(hidden_prompts, "_cache_entries", [])
 
     _write_jsonl(
         hidden_path,

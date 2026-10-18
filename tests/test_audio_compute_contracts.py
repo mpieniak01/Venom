@@ -41,7 +41,8 @@ async def test_audio_engine_checked_reuses_one_whisper_and_preserves_language_ra
     engine.whisper.transcribe_checked = checked
     samples = np.zeros(1600, dtype=np.int16)
     assert await engine.transcribe_checked(samples, "de", 22050) == "transcript"
-    assert calls[0][0] is samples and calls[0][1:] == ("de", 22050)
+    assert calls[0][0] is samples
+    assert calls[0][1:] == ("de", 22050)
 
 
 @pytest.mark.asyncio
@@ -68,4 +69,5 @@ async def test_optional_module_receives_host_audio_instance(monkeypatch):
     ):
         monkeypatch.setattr(main, name, None)
     await main._initialize_avatar_stack()
-    assert main.app.state.audio_engine is shared and main.audio_engine is shared
+    assert main.app.state.audio_engine is shared
+    assert main.audio_engine is shared

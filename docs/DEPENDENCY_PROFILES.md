@@ -311,7 +311,7 @@ runtime acceptance, Academy training acceptance or native Gemma4/Ollama audio.
 Security scan completion is separate from disposition. Complete local installed-
 inventory scans recorded CI: 0 findings (166 installed versions, with one disclosed
 extra unresolved `boolean.py` alias), Academy: 0 Critical/10 High/6 Medium/1 Low
-(99 installed versions), Full: 10 High/6 Medium, and vLLM: 20 High/19 Medium/2 Low.
+(109 installed versions), Full: 10 High/6 Medium, and vLLM: 20 High/19 Medium/2 Low.
 The npm production scan found 0 issues; the development graph has 5 High packages.
 Do not add overlapping profile counts together or treat missing coverage as zero.
 No new High/Critical IDs were observed in these candidate scans compared with the
@@ -319,11 +319,18 @@ recorded operator inventory. That comparison is not risk acceptance. This local
 snapshot does not authorize publication, merge or operator rollout. Exact scanned
 inventories/locks and raw results remain in local task records.
 
-Academy's Datasets 5.1.0 permits patched fsspec 2026.7.0; W&B 0.29.0 also removes
-a recorded High. Two independent canonical installs have identical inventories
-and installed RECORD/METADATA, successful `pip check`, and a small local dataset/
-CPU-configuration smoke. No model or training was run. W&B 0.29.0 is the tested
-security fix; it is not the newest available stable W&B release.
+Academy's Datasets 5.1.0 permits patched fsspec 2026.7.0. W&B is now pinned to
+0.31.0, the stable release found in the 18 October metadata snapshot. Its current
+109-package graph passed one clean canonical installation, exact inventory/
+`pip check`, a complete Snyk scan, and local dataset/TRL/PEFT/W&B configuration
+probes. The two independent earlier W&B0.29 installations remain historical
+evidence, not reproducibility proof for the changed graph. No model or training
+was run.
+
+Stable W&B0.31 has mandatory transitive prereleases: `cwevals==0.0.1b1` and
+OpenTelemetry `0.66b1` components. Their exact artifacts are hash-locked and
+included in the complete installed-inventory scan; they are not silently excluded.
+The parent is stable, but this is not a claim of a stable-only dependency graph.
 
 
 ### Own daemon model-loading boundary
@@ -353,7 +360,7 @@ or model-stress work planned for this phase.
 
 An exact pin means qualified compatibility, not necessarily the newest release.
 The current stable-version discovery still has newer unqualified candidates,
-including W&B, Torch and Transformers. Do not call the whole stack latest stable
+including Torch and Transformers. Do not call the whole stack latest stable
 until their dependency constraints and minimal consumer probes are resolved.
 Known compatibility exceptions remain explicit: PyArrow25/NumPy1 for actual RAG,
 Ruff matching the existing pre-commit policy, and Academy's fsspec upper bound

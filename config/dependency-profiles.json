@@ -146,7 +146,7 @@
       "pypdf>=6.13.3,<7",
       "python-docx>=1.1,<2",
       "docker>=7.1,<8",
-      "wandb==0.29.0",
+      "wandb==0.31.0",
       "tensorboard>=2.20,<3",
       "fsspec[http]>=2026.6.0,<=2026.7.0"
     ],

@@ -226,3 +226,10 @@ This bound is not a deadline or interruption of an already executing GPU kernel.
 Native model/tokenizer cleanup occurs only after the generation lock is acquired.
 Real active-shutdown and disconnect/recovery qualification is reported separately
 from fixture tests; it is not implied by the implementation alone.
+
+
+A provider can report an error inside an HTTP200 SSE body. Simple's transport
+raises on that packet instead of treating EOF as successful completion. The public
+stream emits an error, does not retry or append a successful done event, and marks
+the trace failed even after partial text. Raw provider error bodies are not echoed
+to the caller. This corrects the false completion observed during actual ONNX STOP.

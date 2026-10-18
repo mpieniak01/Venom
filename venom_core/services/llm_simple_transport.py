@@ -13,6 +13,10 @@ from venom_core.infrastructure.traffic_control.http_client import (
 )
 
 
+class UpstreamStreamError(RuntimeError):
+    """An HTTP200 stream explicitly failed; it cannot complete successfully."""
+
+
 def httpx_module() -> Any:
     return httpx
 
@@ -50,6 +54,10 @@ async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
         if isinstance(packet, dict):
+            if packet.get("error") is not None:
+                # Error bodies can contain private provider/conversation details.
+                # Fail the stream without echoing that untrusted payload.
+                raise UpstreamStreamError("upstream_stream_error")
             yield packet
 
 

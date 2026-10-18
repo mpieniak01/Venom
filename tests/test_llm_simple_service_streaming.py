@@ -666,3 +666,52 @@ async def test_simple_onnx_worker_uses_shared_http_transport_and_native_usage(
     assert captured[0]["payload"]["stream"] is upstream_stream
     if upstream_stream:
         assert captured[0]["payload"]["stream_options"] == {"include_usage": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["onnx", "vllm", "ollama"])
+@pytest.mark.parametrize("partial", [False, True])
+async def test_upstream_sse_error_never_becomes_successful_done(
+    monkeypatch, provider, partial
+):
+    """HTTP200/SSE error after text must stay failed at the public Simple boundary."""
+    packets = []
+    if partial:
+        packets.append('data: {"choices":[{"delta":{"content":"Partial"}}]}')
+    packets.extend(
+        [
+            'data: {"error":{"message":"private upstream details","type":"generation_cancelled"}}',
+            "data: [DONE]",
+        ]
+    )
+    calls = []
+
+    @asynccontextmanager
+    async def open_response(**kwargs):
+        calls.append(kwargs)
+        yield _LinesResponse(packets)
+
+    monkeypatch.setattr(
+        llm_simple_service.llm_simple_transport, "open_stream_response", open_response
+    )
+    tracer = _Tracer()
+    monkeypatch.setattr(llm_simple_service, "_get_request_tracer", lambda: tracer)
+    events = await _collect_events(
+        llm_simple_service._stream_simple_chunks(
+            completions_url="http://fixture/v1/chat/completions",
+            payload={"messages": []},
+            runtime=_Runtime(provider),
+            request_id=uuid4(),
+            model_name="model-x",
+        )
+    )
+    assert [name for name, _ in events] == (
+        ["start", "content", "error"] if partial else ["start", "error"]
+    )
+    assert events[-1][1]["code"] == "internal_error"
+    assert "private upstream details" not in json.dumps(events)
+    assert len(calls) == 1
+    assert any(
+        name == "update_status" and args[1].name == "FAILED"
+        for name, args, _ in tracer.calls
+    )

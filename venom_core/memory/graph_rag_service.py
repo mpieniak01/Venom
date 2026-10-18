@@ -217,19 +217,31 @@ Odpowiedź (JSON):"""
             }
 
     def _extract_json_block(self, result_text: str) -> str:
-        # Scan complete Markdown fences, preserving nested objects and braces
-        # inside strings. JSON validation remains json.loads' responsibility.
-        payload: list[str] | None = None
+        # Scan complete fences, skipping other languages. Prefer an explicit
+        # JSON block to unlabelled code; json.loads still validates its contents.
+        language: str | None = None
+        payload: list[str] = []
+        plain_candidate: str | None = None
+        saw_json = False
         for line in result_text.splitlines():
             marker = line.strip()
-            if payload is None:
-                if marker.lower() in {"```json", "```"}:
+            if language is None:
+                if marker.startswith("```"):
+                    language = marker[3:].strip().lower()
                     payload = []
+                    saw_json = saw_json or language == "json"
             elif marker == "```":
-                return "\n".join(payload).strip()
-            else:
+                content = "\n".join(payload).strip()
+                if language == "json":
+                    return content
+                if not language and plain_candidate is None:
+                    plain_candidate = content
+                language = None
+            elif language in {"", "json"}:
                 payload.append(line)
-        return result_text
+        if saw_json or plain_candidate is None:
+            return result_text
+        return plain_candidate
 
     def _add_extracted_entities(self, data: Dict[str, Any], source_id: str) -> int:
         entities_count = 0

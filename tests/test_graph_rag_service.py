@@ -472,3 +472,29 @@ def test_legacy_graph_without_document_provenance_loads_without_invention(
     edge = graph_rag_service.graph.edges["station_boreal", "aurora"]
     assert edge["relationship_type"] == "SENDS_TO"
     assert "document_source" not in edge and "source" not in edge
+
+
+@pytest.mark.parametrize("language", ["text", "python"])
+def test_graph_json_parser_skips_other_fences_before_json(graph_rag_service, language):
+    encoded = json.dumps({"entities": [{"id": "boreal"}], "relationships": []})
+    response = (
+        f"```{language}\nAn explanation, not a graph.\n```\n```json\n{encoded}\n```"
+    )
+    assert graph_rag_service._extract_json_block(response) == encoded
+    assert graph_rag_service._parse_extraction_response(response) == json.loads(encoded)
+
+
+def test_graph_json_parser_prefers_explicit_json_over_plain_code(graph_rag_service):
+    encoded = json.dumps({"entities": [{"id": "boreal"}], "relationships": []})
+    response = f"```\nExplanation only.\n```\n```json\n{encoded}\n```"
+    assert graph_rag_service._extract_json_block(response) == encoded
+
+
+def test_graph_json_string_can_contain_backtick_markers(graph_rag_service):
+    encoded = json.dumps(
+        {
+            "entities": [{"id": "boreal", "name": "literal ``` text"}],
+            "relationships": [],
+        }
+    )
+    assert graph_rag_service._extract_json_block(f"```json\n{encoded}\n```") == encoded

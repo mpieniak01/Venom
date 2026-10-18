@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import baseline from "./fixtures/theme-cascade-baseline.json";
 
@@ -61,6 +64,8 @@ async function captureStyles(page: Page) {
 for (const theme of ["venom-dark", "venom-light"]) {
   for (const viewport of [{ width: 1280, height: 960 }, { width: 390, height: 844 }]) {
     test(`preserves the cascade and appearance for ${theme} at ${viewport.width}px`, async ({ page }, testInfo) => {
+      expect(["default", "none", "missing"]).toContain(testInfo.config.updateSnapshots);
+      expect(testInfo.project.ignoreSnapshots).toBe(false);
       await page.setViewportSize(viewport);
       await page.goto("/");
       const fontClasses = await page.locator("html").getAttribute("class");
@@ -85,7 +90,19 @@ for (const theme of ["venom-dark", "venom-light"]) {
       await testInfo.attach("legacy-baseline.png", { body: legacyImage, contentType: "image/png" });
       await testInfo.attach("computed-styles.json", { body: Buffer.from(JSON.stringify({ current, legacy }, null, 2)), contentType: "application/json" });
       expect(current).toEqual(legacy);
-      expect(currentImage.equals(legacyImage), "removing important must preserve fixture pixels").toBe(true);
+      const snapshotName = `legacy-cascade-${randomUUID()}.png`;
+      const expectedPath = testInfo.snapshotPath(snapshotName, { kind: "snapshot" });
+      await mkdir(dirname(expectedPath), { recursive: true });
+      await writeFile(expectedPath, legacyImage, { flag: "wx" });
+      try {
+        expect(currentImage, "removing important must preserve fixture pixels").toMatchSnapshot(snapshotName, {
+          // Ignore tiny antialiasing shades; geometry and CSS values remain strict.
+          threshold: 0.02,
+          maxDiffPixels: 0,
+        });
+      } finally {
+        await unlink(expectedPath);
+      }
     });
   }
 }

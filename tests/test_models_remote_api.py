@@ -357,12 +357,10 @@ def test_models_remote_helpers_and_mapping_branches(monkeypatch):
             ],
         }
     )
-    assert (
-        "chat" in caps
-        and "embeddings" in caps
-        and "token-counting" in caps
-        and "vision" in caps
-    )
+    assert "chat" in caps
+    assert "embeddings" in caps
+    assert "token-counting" in caps
+    assert "vision" in caps
     assert models_remote._map_google_capabilities(
         {"name": "models/foo", "supportedGenerationMethods": []}
     ) == [
@@ -463,7 +461,8 @@ async def test_fetch_live_catalog_and_validate_branches(monkeypatch):
         lambda timeout: _Client([_Resp(401, {})]),
     )
     valid, msg, _ = await models_remote._validate_openai_connection()
-    assert valid is False and "unauthorized" in msg.lower()
+    assert valid is False
+    assert "unauthorized" in msg.lower()
 
     monkeypatch.setattr(
         models_remote.httpx,
@@ -473,7 +472,8 @@ async def test_fetch_live_catalog_and_validate_branches(monkeypatch):
     valid, msg, _ = await models_remote._validate_openai_connection(
         model="missing-model"
     )
-    assert valid is False and "not found" in msg.lower()
+    assert valid is False
+    assert "not found" in msg.lower()
 
     monkeypatch.setattr(
         models_remote.httpx,
@@ -481,7 +481,8 @@ async def test_fetch_live_catalog_and_validate_branches(monkeypatch):
         lambda timeout: _Client([_Resp(500, {})]),
     )
     valid, msg, _ = await models_remote._validate_openai_connection()
-    assert valid is False and "http 500" in msg.lower()
+    assert valid is False
+    assert "http 500" in msg.lower()
 
     # Exception path
     class _ErrClient:
@@ -498,7 +499,8 @@ async def test_fetch_live_catalog_and_validate_branches(monkeypatch):
         models_remote.httpx, "AsyncClient", lambda timeout: _ErrClient()
     )
     valid, msg, _ = await models_remote._validate_openai_connection()
-    assert valid is False and "network-down" in msg
+    assert valid is False
+    assert "network-down" in msg
 
     # Google validation branches
     monkeypatch.setattr(
@@ -507,7 +509,8 @@ async def test_fetch_live_catalog_and_validate_branches(monkeypatch):
         lambda timeout: _Client([_Resp(403, {})]),
     )
     valid, msg, _ = await models_remote._validate_google_connection()
-    assert valid is False and "unauthorized" in msg.lower()
+    assert valid is False
+    assert "unauthorized" in msg.lower()
 
     monkeypatch.setattr(
         models_remote.httpx,
@@ -517,7 +520,8 @@ async def test_fetch_live_catalog_and_validate_branches(monkeypatch):
     valid, msg, _ = await models_remote._validate_google_connection(
         model="gemini-missing"
     )
-    assert valid is False and "not found" in msg.lower()
+    assert valid is False
+    assert "not found" in msg.lower()
 
 
 @pytest.mark.asyncio

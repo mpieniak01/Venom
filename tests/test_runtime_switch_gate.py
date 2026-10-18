@@ -25,13 +25,13 @@ def test_runtime_request_guard_blocks_when_switch_is_active():
         reason="test",
     )
 
+    async def _blocked():
+        async with gate.runtime_request_guard(request_kind="simple_chat"):
+            return None
+
+    blocked_request = _blocked()
     with pytest.raises(HTTPException) as exc_info:
-
-        async def _blocked():
-            async with gate.runtime_request_guard(request_kind="simple_chat"):
-                return None
-
-        asyncio.run(_blocked())
+        asyncio.run(blocked_request)
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail["code"] == "runtime_switch_in_progress"
@@ -93,18 +93,22 @@ def test_finish_runtime_switch_ignores_mismatched_switch_id():
     assert closed.switch_id is None
 
 
-def test_get_snapshot_recovers_stale_switch_gate_without_active_requests():
+def test_get_snapshot_recovers_stale_switch_gate_without_active_requests(monkeypatch):
     with gate._STATE_LOCK:  # noqa: SLF001
-        gate._STATE = gate._RuntimeSwitchGateState(  # noqa: SLF001
-            in_progress=True,
-            active_requests=0,
-            switch_id="stale-switch",
-            source="ui",
-            from_runtime="ollama",
-            to_runtime="multi_runtime",
-            started_at_utc="2000-01-01T00:00:00+00:00",
-            drain_completed_at_utc="2000-01-01T00:00:00+00:00",
-            reason="set_active_llm_server",
+        monkeypatch.setattr(
+            gate,
+            "_STATE",
+            gate._RuntimeSwitchGateState(  # noqa: SLF001
+                in_progress=True,
+                active_requests=0,
+                switch_id="stale-switch",
+                source="ui",
+                from_runtime="ollama",
+                to_runtime="multi_runtime",
+                started_at_utc="2000-01-01T00:00:00+00:00",
+                drain_completed_at_utc="2000-01-01T00:00:00+00:00",
+                reason="set_active_llm_server",
+            ),
         )
 
     snapshot = gate.get_runtime_switch_gate_snapshot()
@@ -113,18 +117,22 @@ def test_get_snapshot_recovers_stale_switch_gate_without_active_requests():
     assert snapshot.switch_id is None
 
 
-def test_get_snapshot_does_not_recover_without_drain_marker():
+def test_get_snapshot_does_not_recover_without_drain_marker(monkeypatch):
     with gate._STATE_LOCK:  # noqa: SLF001
-        gate._STATE = gate._RuntimeSwitchGateState(  # noqa: SLF001
-            in_progress=True,
-            active_requests=0,
-            switch_id="stale-switch",
-            source="ui",
-            from_runtime="ollama",
-            to_runtime="multi_runtime",
-            started_at_utc="2000-01-01T00:00:00+00:00",
-            drain_completed_at_utc=None,
-            reason="set_active_llm_server",
+        monkeypatch.setattr(
+            gate,
+            "_STATE",
+            gate._RuntimeSwitchGateState(  # noqa: SLF001
+                in_progress=True,
+                active_requests=0,
+                switch_id="stale-switch",
+                source="ui",
+                from_runtime="ollama",
+                to_runtime="multi_runtime",
+                started_at_utc="2000-01-01T00:00:00+00:00",
+                drain_completed_at_utc=None,
+                reason="set_active_llm_server",
+            ),
         )
 
     snapshot = gate.get_runtime_switch_gate_snapshot()
@@ -144,16 +152,21 @@ def test_parse_iso_utc_handles_invalid_and_naive_values():
 
 
 @pytest.mark.asyncio
-async def test_live_async_switch_is_not_recovered_as_stale():
+async def test_live_async_switch_is_not_recovered_as_stale(monkeypatch):
     owner = gate.begin_runtime_switch(
         source="ui", from_runtime="ollama", to_runtime="onnx"
     )
     try:
         with gate._STATE_LOCK:
-            gate._STATE.started_at_utc = "2000-01-01T00:00:00+00:00"
-            gate._STATE.drain_completed_at_utc = "2000-01-01T00:00:00+00:00"
+            monkeypatch.setattr(
+                gate._STATE, "started_at_utc", "2000-01-01T00:00:00+00:00"
+            )
+            monkeypatch.setattr(
+                gate._STATE, "drain_completed_at_utc", "2000-01-01T00:00:00+00:00"
+            )
         snapshot = gate.get_runtime_switch_gate_snapshot()
-        assert snapshot.in_progress and snapshot.switch_id == owner.switch_id
+        assert snapshot.in_progress
+        assert snapshot.switch_id == owner.switch_id
         with pytest.raises(HTTPException) as exc_info:
             gate.begin_runtime_switch(
                 source="ui", from_runtime="onnx", to_runtime="vllm"
@@ -164,7 +177,7 @@ async def test_live_async_switch_is_not_recovered_as_stale():
 
 
 @pytest.mark.asyncio
-async def test_abandoned_finished_async_owner_can_still_be_recovered():
+async def test_abandoned_finished_async_owner_can_still_be_recovered(monkeypatch):
     async def abandoned_switch():
         return gate.begin_runtime_switch(
             source="ui", from_runtime="ollama", to_runtime="onnx"
@@ -174,8 +187,12 @@ async def test_abandoned_finished_async_owner_can_still_be_recovered():
     owner = await task
     try:
         with gate._STATE_LOCK:
-            gate._STATE.started_at_utc = "2000-01-01T00:00:00+00:00"
-            gate._STATE.drain_completed_at_utc = "2000-01-01T00:00:00+00:00"
+            monkeypatch.setattr(
+                gate._STATE, "started_at_utc", "2000-01-01T00:00:00+00:00"
+            )
+            monkeypatch.setattr(
+                gate._STATE, "drain_completed_at_utc", "2000-01-01T00:00:00+00:00"
+            )
         assert not gate.get_runtime_switch_gate_snapshot().in_progress
     finally:
         gate.finish_runtime_switch(switch_id=owner.switch_id)

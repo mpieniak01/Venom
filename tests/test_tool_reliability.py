@@ -22,7 +22,7 @@ def _allow_toolchain_operations():
 
 
 @pytest.mark.asyncio
-async def test_toolchain_reliability():
+async def test_toolchain_reliability(monkeypatch):
     """
     Verify the entire toolchain works together in the current environment:
     1. FileSkill: Create a python script.
@@ -83,16 +83,18 @@ def test_add():
         try:
             # Add tmpdir to PYTHONPATH so pytest can import 'script'
             if original_pythonpath:
-                os.environ["PYTHONPATH"] = f"{tmpdir}{os.pathsep}{original_pythonpath}"
+                monkeypatch.setenv(
+                    "PYTHONPATH", f"{tmpdir}{os.pathsep}{original_pythonpath}"
+                )
             else:
-                os.environ["PYTHONPATH"] = str(tmpdir)
+                monkeypatch.setenv("PYTHONPATH", str(tmpdir))
 
             test_path = str(workspace / "test_script.py")
             pass_test_result = await test_skill.run_pytest(test_path=test_path)
         finally:
             # Restore original PYTHONPATH
             if original_pythonpath:
-                os.environ["PYTHONPATH"] = original_pythonpath
+                monkeypatch.setenv("PYTHONPATH", original_pythonpath)
             else:
                 os.environ.pop("PYTHONPATH", None)
 

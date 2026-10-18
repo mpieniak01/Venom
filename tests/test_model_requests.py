@@ -25,7 +25,7 @@ def test_onnx_build_request_rejects_invalid_execution_provider():
             execution_provider="bad-provider",
             precision="int4",
         )
-        assert False, "expected ValidationError"
+        pytest.fail("expected ValidationError")
     except ValidationError as exc:
         assert "execution_provider musi być: cuda|cpu|directml" in str(exc)
 
@@ -37,7 +37,7 @@ def test_onnx_build_request_rejects_invalid_precision():
             execution_provider="cuda",
             precision="int8",
         )
-        assert False, "expected ValidationError"
+        pytest.fail("expected ValidationError")
     except ValidationError as exc:
         assert "precision musi być: int4|fp16" in str(exc)
 
@@ -49,7 +49,7 @@ def test_validate_runtime_accepts_onnx():
 def test_validate_runtime_rejects_unknown_runtime():
     try:
         validate_runtime("unknown")
-        assert False, "expected ValueError"
+        pytest.fail("expected ValueError")
     except ValueError as exc:
         assert "Runtime musi być 'vllm', 'ollama' lub 'onnx'" in str(exc)
 

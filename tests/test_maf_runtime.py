@@ -102,7 +102,8 @@ async def test_native_maf_executes_bound_tool_once_and_sends_result():
         settings=CompletionOptions(function_choice_behavior=ToolPolicy.Auto()),
         kernel=runtime,
     )
-    assert result.content == "gotowe" and calls == ["ok"]
+    assert result.content == "gotowe"
+    assert calls == ["ok"]
     assert any(
         m["role"] == "tool" and "wynik: ok" in m["content"]
         for m in requests[1]["messages"]
@@ -151,9 +152,10 @@ async def test_provider_failure_is_not_replaced_by_empty_success():
     )
     history = ConversationHistory()
     history.add_user_message("pytanie")
+    prepared_settings = CompletionOptions()
     with pytest.raises(Exception, match="offline"):
         await model.get_chat_message_content(
-            chat_history=history, settings=CompletionOptions()
+            chat_history=history, settings=prepared_settings
         )
     await model.aclose()
 
@@ -319,8 +321,9 @@ async def test_optional_settings_preserve_existing_dispatcher_call():
 
 @pytest.mark.parametrize("field", ["model", "messages", "tools", "stream"])
 def test_generation_extensions_cannot_override_routing_or_tool_policy(field):
+    prepared_completion_options = CompletionOptions(extra_body={field: "override"})
     with pytest.raises(ValueError, match="cannot_override_transport"):
-        MafChatService._options(CompletionOptions(extra_body={field: "override"}))
+        MafChatService._options(prepared_completion_options)
 
 
 def test_default_service_alias_preserves_named_local_runtime_selection():
@@ -369,8 +372,9 @@ async def test_custom_tool_cannot_self_declare_read_permissions(monkeypatch):
     CustomTool.custom.__venom_tool__["permission_skill"] = "FileReadSkill"
     runtime = AgentRuntime()
     runtime.add_plugin(CustomTool(), "Custom")
+    prepared_operation = runtime.native_tools()[0].func
     with pytest.raises(Exception, match="Brak uprawnień"):
-        runtime.native_tools()[0].func()
+        prepared_operation()
 
 
 @pytest.mark.asyncio
@@ -398,9 +402,11 @@ async def test_integrator_reads_sync_and_async_platform_results_without_awaiting
         get_assigned_issues=async_issues if is_async else sync_issues
     )
     result = await actor.poll_issues()
-    assert len(result) == 1 and result[0].startswith("#42:")
+    assert len(result) == 1
+    assert result[0].startswith("#42:")
     if not is_async:
-        assert called_in and called_in[0] != main_thread
+        assert called_in
+        assert called_in[0] != main_thread
 
 
 @pytest.mark.asyncio
@@ -658,7 +664,8 @@ async def test_completed_tool_history_survives_failed_continuation(failure):
             chat_history=history, settings=settings, kernel=runtime
         )
         assert result.content == "done"
-        assert effects == ["once"] and len(history) == 3
+        assert effects == ["once"]
+        assert len(history) == 3
     finally:
         if not task.done():
             task.cancel()

@@ -49,11 +49,11 @@ def test_validate_routing_blocks_onnx_in_task_mode(monkeypatch):
         "venom_core.core.orchestrator.task_pipeline.task_validator.normalize_forced_provider",
         lambda value: value,
     )
+    prepared_task_id = uuid4()
+    prepared_request = TaskRequest(content="test")
     with pytest.raises(RuntimeError, match="runtime_not_supported"):
         validator.validate_routing(
-            task_id=uuid4(),
-            request=TaskRequest(content="test"),
-            forced_provider="",
+            task_id=prepared_task_id, request=prepared_request, forced_provider=""
         )
     assert len(calls["set_runtime_error"]) == 1
     envelope = calls["set_runtime_error"][0][1]

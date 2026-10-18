@@ -43,7 +43,9 @@ def _client_with_router(router) -> TestClient:
     return TestClient(app, client=("127.0.0.1", 50000))
 
 
-def test_routes_agents_calendar_memory_projection_nodes_queue_strategy() -> None:
+def test_routes_agents_calendar_memory_projection_nodes_queue_strategy(
+    monkeypatch,
+) -> None:
     # agents routes
     shadow_agent = MagicMock()
     shadow_agent.get_status.return_value = {"enabled": True}
@@ -104,7 +106,7 @@ def test_routes_agents_calendar_memory_projection_nodes_queue_strategy() -> None
         {"id": "b", "text": "beta"},
     ]
     vector_store.update_metadata.return_value = True
-    memory_projection_routes.PCA = _FakePCA
+    monkeypatch.setattr(memory_projection_routes, "PCA", _FakePCA)
     memory_projection_routes.set_dependencies(vector_store)
     projection_client = _client_with_router(memory_projection_routes.router)
     assert projection_client.post("/api/v1/memory/embedding-project").status_code == 200
@@ -122,7 +124,7 @@ def test_routes_agents_calendar_memory_projection_nodes_queue_strategy() -> None
     assert nodes_client.get("/api/v1/nodes/n1").status_code == 200
 
     # queue route
-    queue_routes._queue_cache = TTLCache(ttl_seconds=1.0)
+    monkeypatch.setattr(queue_routes, "_queue_cache", TTLCache(ttl_seconds=1.0))
     queue_routes.set_dependencies(
         MagicMock(get_queue_status=MagicMock(return_value={"paused": False}))
     )
@@ -286,7 +288,7 @@ def test_routes_system_config_governance_runtime_scheduler_services_status(
 
     # system services and system status
     monkeypatch.setattr(system_deps, "get_service_monitor", lambda: monitor)
-    system_services._services_cache = TTLCache(ttl_seconds=1.0)
+    monkeypatch.setattr(system_services, "_services_cache", TTLCache(ttl_seconds=1.0))
     svc_client = _client_with_router(system_services.router)
     assert svc_client.get("/api/v1/system/services/svc1").status_code == 200
     status_client = _client_with_router(system_status.router)

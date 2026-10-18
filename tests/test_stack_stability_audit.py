@@ -12,7 +12,8 @@ def _load_module():
     repo_root = Path(__file__).resolve().parents[1]
     script_path = repo_root / "scripts" / "dev" / "stack_stability_audit.py"
     spec = importlib.util.spec_from_file_location("stack_stability_audit", script_path)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

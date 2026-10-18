@@ -141,7 +141,7 @@ class TestAPIParameterValidation:
 
         try:
             datetime.fromisoformat(invalid_date.replace("Z", "+00:00"))
-            assert False, "Should raise ValueError"
+            pytest.fail("Should raise ValueError")
         except ValueError:
             # Expected behavior
             pass
@@ -159,7 +159,7 @@ class TestAPIParameterValidation:
             try:
                 datetime.fromisoformat(date_str.replace("Z", "+00:00"))
             except ValueError:
-                assert False, f"Should parse valid ISO 8601: {date_str}"
+                pytest.fail(f"Should parse valid ISO 8601: {date_str}")
 
 
 if __name__ == "__main__":

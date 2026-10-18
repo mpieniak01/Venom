@@ -127,8 +127,9 @@ async def test_strategy_async_endpoints_success_and_error_paths():
     assert campaign_result["result"]["started"] is True
 
     executive.create_roadmap.side_effect = RuntimeError("boom")
+    prepared_simple_namespace = SimpleNamespace(vision="x")
     with pytest.raises(HTTPException) as exc:
-        await strategy_routes.create_roadmap(SimpleNamespace(vision="x"))
+        await strategy_routes.create_roadmap(prepared_simple_namespace)
     assert exc.value.status_code == 500
 
 

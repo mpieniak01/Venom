@@ -141,7 +141,8 @@ def test_tts_helpers_resolve_list_and_root(monkeypatch, tmp_path):
     assert root == storage_piper
 
     listed = _list_available_tts_models()
-    assert listed and listed[0]["id"] == "pl_PL-test.onnx"
+    assert listed
+    assert listed[0]["id"] == "pl_PL-test.onnx"
 
     assert _resolve_tts_model_path("pl_PL-test.onnx") == model_file.resolve()
 
@@ -171,8 +172,9 @@ def test_tts_helpers_reject_outside_or_invalid_model(monkeypatch, tmp_path):
         _resolve_tts_model_path("voice.bin")
     assert exc_ext.value.status_code == 404
 
+    prepared_str = str(outside.resolve())
     with pytest.raises(main_module.HTTPException) as exc_outside:
-        _resolve_tts_model_path(str(outside.resolve()))
+        _resolve_tts_model_path(prepared_str)
     assert exc_outside.value.status_code == 404
 
 
@@ -194,10 +196,9 @@ def test_tts_helpers_reject_non_onnx_even_when_selected(monkeypatch, tmp_path):
 
 
 def test_require_localhost_request_rejects_non_loopback():
+    prepared_simple_namespace = SimpleNamespace(client=SimpleNamespace(host="10.1.2.3"))
     with pytest.raises(main_module.HTTPException) as exc:
-        main_module._require_localhost_request(
-            SimpleNamespace(client=SimpleNamespace(host="10.1.2.3"))
-        )
+        main_module._require_localhost_request(prepared_simple_namespace)
     assert exc.value.status_code == 403
 
 

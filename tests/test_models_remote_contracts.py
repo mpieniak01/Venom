@@ -54,4 +54,5 @@ async def test_models_remote_helpers_and_validate_publish(
         models_remote.ValidationRequest(provider="openai", model="gpt-4o")
     )
     assert result["status"] == "success"
-    assert published and published[0]["action"] == "validate_provider"
+    assert published
+    assert published[0]["action"] == "validate_provider"

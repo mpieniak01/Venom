@@ -58,7 +58,8 @@ def test_legacy_orchestrator_shim_file_exports_public_api():
     spec = importlib.util.spec_from_file_location(
         "venom_core.core.orchestrator_legacy_shim", shim_path
     )
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 

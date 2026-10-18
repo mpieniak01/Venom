@@ -144,7 +144,8 @@ def test_persona_factory_generate_with_archetype():
     # Impulsive buyer
     impulsive = factory.generate_persona(goal="Test", archetype="impulsive_buyer")
     assert impulsive.tech_literacy == TechLiteracy.HIGH
-    assert impulsive.age >= 18 and impulsive.age <= 35
+    assert impulsive.age >= 18
+    assert impulsive.age <= 35
 
 
 def test_persona_factory_generate_diverse_personas():

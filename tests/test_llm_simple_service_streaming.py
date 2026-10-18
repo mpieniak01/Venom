@@ -432,8 +432,9 @@ async def test_stream_simple_chat_validation_and_endpoint_guards(monkeypatch):
         "get_active_llm_runtime",
         lambda: _Runtime(model_name=None),
     )
+    prepared_simple_chat_request = SimpleChatRequest(content="hello")
     with pytest.raises(HTTPException) as exc_missing_model:
-        await llm_simple_service.stream_simple_chat(SimpleChatRequest(content="hello"))
+        await llm_simple_service.stream_simple_chat(prepared_simple_chat_request)
     assert exc_missing_model.value.status_code == 400
 
     runtime = _Runtime(model_name="model-x")
@@ -441,8 +442,9 @@ async def test_stream_simple_chat_validation_and_endpoint_guards(monkeypatch):
     monkeypatch.setattr(
         llm_simple_service, "_build_chat_completions_url", lambda _rt: None
     )
+    prepared_simple_chat_request_2 = SimpleChatRequest(content="hello")
     with pytest.raises(HTTPException) as exc_no_endpoint:
-        await llm_simple_service.stream_simple_chat(SimpleChatRequest(content="hello"))
+        await llm_simple_service.stream_simple_chat(prepared_simple_chat_request_2)
     assert exc_no_endpoint.value.status_code == 503
 
 

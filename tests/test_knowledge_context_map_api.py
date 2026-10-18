@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from venom_core.api.dependencies import (
@@ -11,6 +12,18 @@ from venom_core.api.dependencies import (
 from venom_core.main import app
 from venom_core.memory.lessons_store import Lesson, LessonsStore
 from venom_core.services.session_store import SessionStore
+
+
+@pytest.fixture(autouse=True)
+def isolate_dependency_overrides(monkeypatch):
+    """Izoluj wpisy przed testem i potwierdź rzeczywisty rollback po jego wykonaniu."""
+    previous = app.dependency_overrides
+    previous_entries = previous.copy()
+    with monkeypatch.context() as isolated:
+        isolated.setattr(app, "dependency_overrides", {})
+        yield
+    assert app.dependency_overrides is previous
+    assert app.dependency_overrides == previous_entries
 
 
 class DummyVectorStore:
@@ -100,7 +113,6 @@ def test_memory_ingest_stores_contract_metadata(tmp_path: Path):
         assert metadata["retention_scope"] == "session"
     finally:
         client.close()
-        app.dependency_overrides = {}
 
 
 def test_knowledge_context_map_returns_session_lesson_and_memory(tmp_path: Path):
@@ -142,7 +154,6 @@ def test_knowledge_context_map_returns_session_lesson_and_memory(tmp_path: Path)
         assert "session->memory_entry" in relations
     finally:
         client.close()
-        app.dependency_overrides = {}
 
 
 def test_knowledge_entries_federated_filtering_by_source_and_tag(tmp_path: Path):
@@ -185,7 +196,6 @@ def test_knowledge_entries_federated_filtering_by_source_and_tag(tmp_path: Path)
         assert entry["session_id"] == "sess-2"
     finally:
         client.close()
-        app.dependency_overrides = {}
 
 
 def test_knowledge_entries_rejects_invalid_time_window(tmp_path: Path):
@@ -212,7 +222,6 @@ def test_knowledge_entries_rejects_invalid_time_window(tmp_path: Path):
         assert "created_from > created_to" in str(response.json()["detail"])
     finally:
         client.close()
-        app.dependency_overrides = {}
 
 
 def test_knowledge_entries_denies_non_localhost_client(tmp_path: Path):
@@ -228,7 +237,6 @@ def test_knowledge_entries_denies_non_localhost_client(tmp_path: Path):
         )
     finally:
         client.close()
-        app.dependency_overrides = {}
 
 
 def test_knowledge_context_map_skips_expired_lesson_and_memory_records(tmp_path: Path):
@@ -274,4 +282,3 @@ def test_knowledge_context_map_skips_expired_lesson_and_memory_records(tmp_path:
         assert "session->memory_entry" not in relations
     finally:
         client.close()
-        app.dependency_overrides = {}

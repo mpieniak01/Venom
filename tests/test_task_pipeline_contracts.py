@@ -245,8 +245,9 @@ class TestTaskValidatorRouting:
         validator = TaskValidator(orch)
         task_id = uuid4()
 
+        prepared_task_request_2 = TaskRequest(content="x")
         with pytest.raises(RuntimeError, match="runtime_not_supported"):
-            validator.validate_routing(task_id, TaskRequest(content="x"), None)
+            validator.validate_routing(task_id, prepared_task_request_2, None)
 
         assert orch._errors_set[task_id]["error_code"] == "runtime_not_supported"
 
@@ -262,10 +263,11 @@ class TestTaskValidatorRouting:
             "venom_core.core.orchestrator.task_pipeline.task_validator.get_active_llm_runtime",
             lambda: runtime,
         )
+        prepared_operation = TaskValidator(_make_orch()).validate_routing
+        prepared_uuid4 = uuid4()
+        prepared_task_request = TaskRequest(content="x")
         with pytest.raises(RuntimeError, match="runtime_not_supported"):
-            TaskValidator(_make_orch()).validate_routing(
-                uuid4(), TaskRequest(content="x"), None
-            )
+            prepared_operation(prepared_uuid4, prepared_task_request, None)
 
     def test_validate_routing_accepts_enabled_onnx_http_worker(self, monkeypatch):
         runtime = self._make_runtime(provider="onnx")
@@ -300,8 +302,9 @@ class TestTaskValidatorRouting:
         validator = TaskValidator(orch)
         task_id = uuid4()
 
+        prepared_task_request_3 = TaskRequest(content="x")
         with pytest.raises(RuntimeError, match="forced_provider_mismatch"):
-            validator.validate_routing(task_id, TaskRequest(content="x"), "openai")
+            validator.validate_routing(task_id, prepared_task_request_3, "openai")
 
         assert orch._errors_set[task_id]["error_code"] == "forced_provider_mismatch"
 

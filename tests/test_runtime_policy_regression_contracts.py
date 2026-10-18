@@ -79,7 +79,8 @@ async def test_observability_initialization_branches(tmp_path: Path) -> None:
         llm_server_controller_cls=_Controller,
         set_event_broadcaster_fn=lambda _v: None,
     )
-    assert tracer is not None and tracer.started is True
+    assert tracer is not None
+    assert tracer.started is True
     assert isinstance(registry, _Registry)
     assert isinstance(monitor, _Monitor)
     assert isinstance(controller, _Controller)
@@ -357,7 +358,8 @@ async def test_skill_adapter_async_and_missing_args() -> None:
 
     adapter = skill_adapter_module.SkillMcpLikeAdapter(_Skill())
     tools = adapter.list_tools()
-    assert tools and tools[0].input_schema["properties"]["x"]["type"] == "integer"
+    assert tools
+    assert tools[0].input_schema["properties"]["x"]["type"] == "integer"
     with pytest.raises(ValueError, match="Missing required arguments"):
         await adapter.invoke_tool("noop", {})
     with pytest.raises(ValidationError):

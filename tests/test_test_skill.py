@@ -11,7 +11,7 @@ from venom_core.execution.skills.test_skill import TestSkill
 @pytest.fixture
 def test_skill():
     """Fixture dla TestSkill wymuszający ścieżkę lokalną (stabilne testy jednostkowe)."""
-    yield TestSkill(habitat=None, allow_local_execution=True)
+    return TestSkill(habitat=None, allow_local_execution=True)
 
 
 @pytest.mark.asyncio

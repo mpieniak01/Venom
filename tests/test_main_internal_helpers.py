@@ -742,8 +742,9 @@ def test_resolve_tts_model_path_validates_location_suffix_and_existence(
 
     outside = tmp_path / "outside.onnx"
     outside.write_text("fake")
+    prepared_str = str(outside.resolve())
     with pytest.raises(main_module.HTTPException) as exc_outside:
-        main_module._resolve_tts_model_path(str(outside.resolve()))
+        main_module._resolve_tts_model_path(prepared_str)
     assert exc_outside.value.status_code == 404
 
     with pytest.raises(main_module.HTTPException) as exc_missing:
@@ -2080,7 +2081,7 @@ async def test_initialize_gardener_and_git_exception_paths(monkeypatch, tmp_path
 async def test_initialize_node_manager_guard_paths(monkeypatch):
     # Feature disabled: function returns early.
     monkeypatch.setattr(main_module.SETTINGS, "ENABLE_NEXUS", False)
-    main_module.node_manager = None
+    monkeypatch.setattr(main_module, "node_manager", None)
     await main_module._initialize_node_manager()
     assert main_module.node_manager is None
 
@@ -2221,7 +2222,7 @@ async def test_initialize_background_scheduler_skips_startup_retention_when_rece
     monkeypatch.setattr(main_module, "request_tracer", None)
     monkeypatch.setattr(main_module, "vector_store", None)
     monkeypatch.setattr(main_module, "event_broadcaster", object())
-    main_module.startup_runtime_retention_task = None
+    monkeypatch.setattr(main_module, "startup_runtime_retention_task", None)
 
     await main_module._initialize_background_scheduler()
 
@@ -2233,7 +2234,7 @@ async def test_initialize_background_scheduler_skips_startup_retention_when_rece
 @pytest.mark.asyncio
 async def test_shutdown_runtime_components_cancels_startup_retention_task(monkeypatch):
     task = asyncio.create_task(asyncio.sleep(10))
-    main_module.startup_runtime_retention_task = task
+    monkeypatch.setattr(main_module, "startup_runtime_retention_task", task)
 
     monkeypatch.setattr(
         main_module.llm_simple_routes,
@@ -2246,27 +2247,34 @@ async def test_shutdown_runtime_components_cancels_startup_retention_task(monkey
         MagicMock(side_effect=RuntimeError("boom")),
     )
 
-    main_module.request_tracer = None
-    main_module.desktop_sensor = None
-    main_module.shadow_agent = None
-    main_module.node_manager = None
-    main_module.background_scheduler = None
-    main_module.file_watcher = None
-    main_module.gardener_agent = None
-    main_module.hardware_bridge = None
-    main_module.audio_engine = None
-    main_module.event_broadcaster = None
-    main_module.hardware_bridge_health = None
-    main_module.dream_engine = None
-    main_module.state_manager = SimpleNamespace(shutdown=AsyncMock())
+    monkeypatch.setattr(main_module, "request_tracer", None)
+    monkeypatch.setattr(main_module, "desktop_sensor", None)
+    monkeypatch.setattr(main_module, "shadow_agent", None)
+    monkeypatch.setattr(main_module, "node_manager", None)
+    monkeypatch.setattr(main_module, "background_scheduler", None)
+    monkeypatch.setattr(main_module, "file_watcher", None)
+    monkeypatch.setattr(main_module, "gardener_agent", None)
+    monkeypatch.setattr(main_module, "hardware_bridge", None)
+    monkeypatch.setattr(main_module, "audio_engine", None)
+    monkeypatch.setattr(main_module, "event_broadcaster", None)
+    monkeypatch.setattr(
+        main_module, "state_manager", SimpleNamespace(shutdown=AsyncMock())
+    )
 
-    await main_module._shutdown_runtime_components()
+    assert not hasattr(main_module, "hardware_bridge_health")
+    assert not hasattr(main_module, "dream_engine")
+    with monkeypatch.context() as legacy_state:
+        legacy_state.setattr(main_module, "hardware_bridge_health", None, raising=False)
+        legacy_state.setattr(main_module, "dream_engine", None, raising=False)
+        await main_module._shutdown_runtime_components()
+    assert not hasattr(main_module, "hardware_bridge_health")
+    assert not hasattr(main_module, "dream_engine")
     assert main_module.startup_runtime_retention_task is None
     assert task.cancelled() is True
 
 
-def test_clear_startup_runtime_retention_task_sets_none():
-    main_module.startup_runtime_retention_task = object()
+def test_clear_startup_runtime_retention_task_sets_none(monkeypatch):
+    monkeypatch.setattr(main_module, "startup_runtime_retention_task", object())
     main_module._clear_startup_runtime_retention_task()
     assert main_module.startup_runtime_retention_task is None
 
@@ -2275,7 +2283,7 @@ def test_clear_startup_runtime_retention_task_sets_none():
 async def test_shutdown_runtime_components_handles_done_task_and_stops_all(monkeypatch):
     done_task = asyncio.create_task(asyncio.sleep(0))
     await done_task
-    main_module.startup_runtime_retention_task = done_task
+    monkeypatch.setattr(main_module, "startup_runtime_retention_task", done_task)
 
     monkeypatch.setattr(
         main_module.llm_simple_routes,
@@ -2288,15 +2296,27 @@ async def test_shutdown_runtime_components_handles_done_task_and_stops_all(monke
         MagicMock(return_value=None),
     )
 
-    main_module.request_tracer = SimpleNamespace(stop_watchdog=AsyncMock())
-    main_module.desktop_sensor = SimpleNamespace(stop=AsyncMock())
-    main_module.shadow_agent = SimpleNamespace(stop=AsyncMock())
-    main_module.node_manager = SimpleNamespace(stop=AsyncMock())
-    main_module.background_scheduler = SimpleNamespace(stop=AsyncMock())
-    main_module.file_watcher = SimpleNamespace(stop=AsyncMock())
-    main_module.gardener_agent = SimpleNamespace(stop=AsyncMock())
-    main_module.hardware_bridge = SimpleNamespace(disconnect=AsyncMock())
-    main_module.state_manager = SimpleNamespace(shutdown=AsyncMock())
+    monkeypatch.setattr(
+        main_module, "request_tracer", SimpleNamespace(stop_watchdog=AsyncMock())
+    )
+    monkeypatch.setattr(
+        main_module, "desktop_sensor", SimpleNamespace(stop=AsyncMock())
+    )
+    monkeypatch.setattr(main_module, "shadow_agent", SimpleNamespace(stop=AsyncMock()))
+    monkeypatch.setattr(main_module, "node_manager", SimpleNamespace(stop=AsyncMock()))
+    monkeypatch.setattr(
+        main_module, "background_scheduler", SimpleNamespace(stop=AsyncMock())
+    )
+    monkeypatch.setattr(main_module, "file_watcher", SimpleNamespace(stop=AsyncMock()))
+    monkeypatch.setattr(
+        main_module, "gardener_agent", SimpleNamespace(stop=AsyncMock())
+    )
+    monkeypatch.setattr(
+        main_module, "hardware_bridge", SimpleNamespace(disconnect=AsyncMock())
+    )
+    monkeypatch.setattr(
+        main_module, "state_manager", SimpleNamespace(shutdown=AsyncMock())
+    )
 
     await main_module._shutdown_runtime_components()
 
@@ -2485,9 +2505,9 @@ async def test_initialize_shadow_stack_disabled(monkeypatch):
     monkeypatch.setattr(
         main_module.SETTINGS, "ENABLE_PROACTIVE_MODE", False, raising=False
     )
-    main_module.shadow_agent = "old"
-    main_module.desktop_sensor = "old"
-    main_module.notifier = "old"
+    monkeypatch.setattr(main_module, "shadow_agent", "old")
+    monkeypatch.setattr(main_module, "desktop_sensor", "old")
+    monkeypatch.setattr(main_module, "notifier", "old")
 
     await main_module._initialize_shadow_stack()
 

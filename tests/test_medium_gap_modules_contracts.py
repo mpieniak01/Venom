@@ -472,8 +472,9 @@ class TestKernelBuilderGaps:
         from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         kb = KernelBuilder(settings=self._make_mock_settings())
+        prepared_kernel_2 = Kernel()
         with pytest.raises(ValueError, match="Nieznany typ serwisu"):
-            kb._register_service(Kernel(), "unknown_service")
+            kb._register_service(prepared_kernel_2, "unknown_service")
 
     def test_register_google_service_unavailable_raises(self):
         """_register_google_service raises ValueError when Google SDK is missing."""
@@ -485,8 +486,11 @@ class TestKernelBuilderGaps:
         original = kbmod.GOOGLE_AVAILABLE
         kbmod.GOOGLE_AVAILABLE = False
         try:
+            prepared_kernel = Kernel()
             with pytest.raises(ValueError, match="Provider MAF"):
-                kb._register_google_service(Kernel(), "google", "gemini-pro", False)
+                kb._register_google_service(
+                    prepared_kernel, "google", "gemini-pro", False
+                )
         finally:
             kbmod.GOOGLE_AVAILABLE = original
 
@@ -500,8 +504,11 @@ class TestKernelBuilderGaps:
         original = kbmod.GOOGLE_AVAILABLE
         kbmod.GOOGLE_AVAILABLE = True
         try:
+            prepared_kernel_3 = Kernel()
             with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
-                kb._register_google_service(Kernel(), "google", "gemini-pro", False)
+                kb._register_google_service(
+                    prepared_kernel_3, "google", "gemini-pro", False
+                )
         finally:
             kbmod.GOOGLE_AVAILABLE = original
 
@@ -511,8 +518,9 @@ class TestKernelBuilderGaps:
         from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 
         kb = KernelBuilder(settings=self._make_mock_settings(OPENAI_API_KEY=None))
+        prepared_kernel_4 = Kernel()
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-            kb._register_openai_service(Kernel(), "openai", "gpt-4", False)
+            kb._register_openai_service(prepared_kernel_4, "openai", "gpt-4", False)
 
     def test_register_azure_service_missing_config_raises(self):
         """_register_azure_service raises NotImplementedError when credentials missing."""
@@ -523,8 +531,9 @@ class TestKernelBuilderGaps:
         settings.AZURE_OPENAI_ENDPOINT = None
         settings.AZURE_OPENAI_KEY = None
         kb = KernelBuilder(settings=settings)
+        prepared_kernel_5 = Kernel()
         with pytest.raises(NotImplementedError, match="Azure OpenAI"):
-            kb._register_azure_service(Kernel(), "azure", "gpt-4", False)
+            kb._register_azure_service(prepared_kernel_5, "azure", "gpt-4", False)
 
     def test_build_kernel_multi_service(self):
         """build_kernel in multi_service mode calls _register_all_services."""
@@ -1004,7 +1013,8 @@ class TestWorkLedgerGaps:
         rec_60 = ledger._get_overrun_recommendation(60)
         # All should return non-empty strings
         for rec in [rec_5, rec_20, rec_40, rec_60]:
-            assert isinstance(rec, str) and len(rec) > 0
+            assert isinstance(rec, str)
+            assert len(rec) > 0
         # They should all be distinct (different thresholds produce different text)
         assert len({rec_5, rec_20, rec_40, rec_60}) == 4
 

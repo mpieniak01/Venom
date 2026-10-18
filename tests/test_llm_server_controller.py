@@ -91,11 +91,9 @@ def test_onnx_controller_describes_external_worker_truthfully(
     assert server["health_url"] == f"{scheme}://127.0.0.1:8068/health"
     assert all(value == managed for value in server["supports"].values())
     caps = controller.get_capabilities("onnx")
-    assert (
-        not caps.is_in_process
-        and not caps.supports_cache_flush
-        and not caps.supports_model_unload
-    )
+    assert not caps.is_in_process
+    assert not caps.supports_cache_flush
+    assert not caps.supports_model_unload
     assert caps.supports_health_wait
 
 
@@ -134,4 +132,5 @@ def test_vllm_invalid_endpoint_has_no_health_target(endpoint):
         ).list_servers()
         if s["name"] == "vllm"
     )
-    assert server["endpoint"] is None and server["health_url"] is None
+    assert server["endpoint"] is None
+    assert server["health_url"] is None

@@ -204,7 +204,8 @@ def test_optional_import_path_marks_mcp_available_when_module_exists(monkeypatch
         Path(__file__).resolve().parents[1] / "venom_core/skills/mcp_manager_skill.py"
     )
     spec = importlib.util.spec_from_file_location("mcp_manager_skill_cov", module_path)
-    assert spec and spec.loader
+    assert spec
+    assert spec.loader
 
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -281,7 +282,7 @@ def test_sanitize_env_uses_os_environ_by_default(manager, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_import_uses_sanitized_env(manager):
+async def test_import_uses_sanitized_env(manager, monkeypatch):
     """Test że import_mcp_tool używa sanityzowanego env (PR-132C)."""
     import os
 
@@ -302,7 +303,7 @@ async def test_import_uses_sanitized_env(manager):
     # Dodaj wrażliwe zmienne do os.environ (tymczasowo dla testu)
     original_env = os.environ.copy()
     try:
-        os.environ["TEST_API_KEY"] = "secret123"
+        monkeypatch.setenv("TEST_API_KEY", "secret123")
 
         await manager.import_mcp_tool(
             repo_url="https://fake.git",

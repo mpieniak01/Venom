@@ -68,7 +68,7 @@ def test_model_introspection_analysis_endpoint_exposes_timeline() -> None:
     assert timeline[2]["reason_code"] == "live_analysis_disabled"
 
 
-def test_model_introspection_stream_endpoint_forwards_sse() -> None:
+def test_model_introspection_stream_endpoint_forwards_sse(monkeypatch) -> None:
     models_dependencies.set_dependencies(model_manager=None)
 
     async def fake_stream_model_introspection_analysis(**kwargs):
@@ -76,8 +76,10 @@ def test_model_introspection_stream_endpoint_forwards_sse() -> None:
         yield 'event: analysis_done\ndata: {"status":"completed"}\n\n'
 
     original = models_introspection.stream_model_introspection_analysis
-    models_introspection.stream_model_introspection_analysis = (
-        fake_stream_model_introspection_analysis
+    monkeypatch.setattr(
+        models_introspection,
+        "stream_model_introspection_analysis",
+        fake_stream_model_introspection_analysis,
     )
     try:
         client = _client()
@@ -91,7 +93,9 @@ def test_model_introspection_stream_endpoint_forwards_sse() -> None:
             },
         )
     finally:
-        models_introspection.stream_model_introspection_analysis = original
+        monkeypatch.setattr(
+            models_introspection, "stream_model_introspection_analysis", original
+        )
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
@@ -101,7 +105,7 @@ def test_model_introspection_stream_endpoint_forwards_sse() -> None:
     assert "event: analysis_done" in response.text
 
 
-def test_model_introspection_analyze_endpoint_forwards_top_p() -> None:
+def test_model_introspection_analyze_endpoint_forwards_top_p(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     async def _fake_analyze(**kwargs):
@@ -113,7 +117,9 @@ def test_model_introspection_analyze_endpoint_forwards_top_p() -> None:
         }
 
     original = models_introspection.analyze_model_with_optional_live_run
-    models_introspection.analyze_model_with_optional_live_run = _fake_analyze
+    monkeypatch.setattr(
+        models_introspection, "analyze_model_with_optional_live_run", _fake_analyze
+    )
     try:
         client = _client()
         response = client.post(
@@ -127,13 +133,15 @@ def test_model_introspection_analyze_endpoint_forwards_top_p() -> None:
             },
         )
     finally:
-        models_introspection.analyze_model_with_optional_live_run = original
+        monkeypatch.setattr(
+            models_introspection, "analyze_model_with_optional_live_run", original
+        )
 
     assert response.status_code == 200
     assert captured["top_p"] == 0.91
 
 
-def test_model_introspection_stream_endpoint_forwards_top_p() -> None:
+def test_model_introspection_stream_endpoint_forwards_top_p(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     async def _fake_stream(**kwargs):
@@ -141,7 +149,9 @@ def test_model_introspection_stream_endpoint_forwards_top_p() -> None:
         yield 'event: analysis_done\ndata: {"status":"completed"}\n\n'
 
     original = models_introspection.stream_model_introspection_analysis
-    models_introspection.stream_model_introspection_analysis = _fake_stream
+    monkeypatch.setattr(
+        models_introspection, "stream_model_introspection_analysis", _fake_stream
+    )
     try:
         client = _client()
         response = client.post(
@@ -155,38 +165,46 @@ def test_model_introspection_stream_endpoint_forwards_top_p() -> None:
             },
         )
     finally:
-        models_introspection.stream_model_introspection_analysis = original
+        monkeypatch.setattr(
+            models_introspection, "stream_model_introspection_analysis", original
+        )
 
     assert response.status_code == 200
     assert captured["top_p"] == 0.77
 
 
-def test_model_introspection_snapshot_endpoint_returns_500_without_internal_detail() -> (
-    None
-):
+def test_model_introspection_snapshot_endpoint_returns_500_without_internal_detail(
+    monkeypatch,
+) -> None:
     async def _boom_snapshot(**_kwargs):
         raise RuntimeError("secret backend detail")
 
     original = models_introspection.build_model_introspection_snapshot
-    models_introspection.build_model_introspection_snapshot = _boom_snapshot
+    monkeypatch.setattr(
+        models_introspection, "build_model_introspection_snapshot", _boom_snapshot
+    )
     try:
         client = _client()
         response = client.get("/api/v1/models/introspection")
     finally:
-        models_introspection.build_model_introspection_snapshot = original
+        monkeypatch.setattr(
+            models_introspection, "build_model_introspection_snapshot", original
+        )
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
 
 
-def test_model_introspection_analyze_endpoint_returns_500_without_internal_detail() -> (
-    None
-):
+def test_model_introspection_analyze_endpoint_returns_500_without_internal_detail(
+    monkeypatch,
+) -> None:
     async def _boom_analyze(**_kwargs):
         raise RuntimeError("sensitive trace")
 
     original = models_introspection.analyze_model_with_optional_live_run
-    models_introspection.analyze_model_with_optional_live_run = _boom_analyze
+    monkeypatch.setattr(
+        models_introspection, "analyze_model_with_optional_live_run", _boom_analyze
+    )
     try:
         client = _client()
         response = client.post(
@@ -199,20 +217,24 @@ def test_model_introspection_analyze_endpoint_returns_500_without_internal_detai
             },
         )
     finally:
-        models_introspection.analyze_model_with_optional_live_run = original
+        monkeypatch.setattr(
+            models_introspection, "analyze_model_with_optional_live_run", original
+        )
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
 
 
-def test_model_introspection_stream_endpoint_returns_500_without_internal_detail() -> (
-    None
-):
+def test_model_introspection_stream_endpoint_returns_500_without_internal_detail(
+    monkeypatch,
+) -> None:
     def _boom_stream(**_kwargs):
         raise RuntimeError("stream failure")
 
     original = models_introspection.stream_model_introspection_analysis
-    models_introspection.stream_model_introspection_analysis = _boom_stream
+    monkeypatch.setattr(
+        models_introspection, "stream_model_introspection_analysis", _boom_stream
+    )
     try:
         client = _client()
         response = client.post(
@@ -225,18 +247,24 @@ def test_model_introspection_stream_endpoint_returns_500_without_internal_detail
             },
         )
     finally:
-        models_introspection.stream_model_introspection_analysis = original
+        monkeypatch.setattr(
+            models_introspection, "stream_model_introspection_analysis", original
+        )
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
 
 
-def test_model_introspection_analyze_endpoint_maps_value_error_to_safe_400() -> None:
+def test_model_introspection_analyze_endpoint_maps_value_error_to_safe_400(
+    monkeypatch,
+) -> None:
     async def _bad_request(**_kwargs):
         raise ValueError("internal validation detail")
 
     original = models_introspection.analyze_model_with_optional_live_run
-    models_introspection.analyze_model_with_optional_live_run = _bad_request
+    monkeypatch.setattr(
+        models_introspection, "analyze_model_with_optional_live_run", _bad_request
+    )
     try:
         client = _client()
         response = client.post(
@@ -249,7 +277,9 @@ def test_model_introspection_analyze_endpoint_maps_value_error_to_safe_400() -> 
             },
         )
     finally:
-        models_introspection.analyze_model_with_optional_live_run = original
+        monkeypatch.setattr(
+            models_introspection, "analyze_model_with_optional_live_run", original
+        )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid request parameters"
@@ -270,7 +300,7 @@ def test_model_introspection_stream_endpoint_maps_value_error_to_safe_400() -> N
     assert response.json()["detail"] == "Invalid request parameters"
 
 
-def test_model_introspection_probe_endpoint_returns_payload() -> None:
+def test_model_introspection_probe_endpoint_returns_payload(monkeypatch) -> None:
     async def _fake_probe(**_kwargs):
         return {
             "status": "ok",
@@ -280,7 +310,9 @@ def test_model_introspection_probe_endpoint_returns_payload() -> None:
         }
 
     original = models_introspection.run_model_introspection_probe
-    models_introspection.run_model_introspection_probe = _fake_probe
+    monkeypatch.setattr(
+        models_introspection, "run_model_introspection_probe", _fake_probe
+    )
     try:
         client = _client()
         response = client.post(
@@ -293,7 +325,9 @@ def test_model_introspection_probe_endpoint_returns_payload() -> None:
             },
         )
     finally:
-        models_introspection.run_model_introspection_probe = original
+        monkeypatch.setattr(
+            models_introspection, "run_model_introspection_probe", original
+        )
 
     assert response.status_code == 200
     payload = response.json()
@@ -302,7 +336,9 @@ def test_model_introspection_probe_endpoint_returns_payload() -> None:
     assert payload["probe"]["probe"]["mode"] == "hidden"
 
 
-def test_model_introspection_probe_endpoint_ignores_legacy_probe_fields() -> None:
+def test_model_introspection_probe_endpoint_ignores_legacy_probe_fields(
+    monkeypatch,
+) -> None:
     captured: dict[str, object] = {}
 
     async def _fake_probe(**kwargs):
@@ -315,7 +351,9 @@ def test_model_introspection_probe_endpoint_ignores_legacy_probe_fields() -> Non
         }
 
     original = models_introspection.run_model_introspection_probe
-    models_introspection.run_model_introspection_probe = _fake_probe
+    monkeypatch.setattr(
+        models_introspection, "run_model_introspection_probe", _fake_probe
+    )
     try:
         client = _client()
         response = client.post(
@@ -330,7 +368,9 @@ def test_model_introspection_probe_endpoint_ignores_legacy_probe_fields() -> Non
             },
         )
     finally:
-        models_introspection.run_model_introspection_probe = original
+        monkeypatch.setattr(
+            models_introspection, "run_model_introspection_probe", original
+        )
 
     assert response.status_code == 200
     assert captured["mode"] == "logits"
@@ -340,12 +380,16 @@ def test_model_introspection_probe_endpoint_ignores_legacy_probe_fields() -> Non
     assert captured["target_output_token_index"] == 4
 
 
-def test_model_introspection_probe_endpoint_maps_value_error_to_safe_400() -> None:
+def test_model_introspection_probe_endpoint_maps_value_error_to_safe_400(
+    monkeypatch,
+) -> None:
     async def _bad_probe(**_kwargs):
         raise ValueError("sensitive validation details")
 
     original = models_introspection.run_model_introspection_probe
-    models_introspection.run_model_introspection_probe = _bad_probe
+    monkeypatch.setattr(
+        models_introspection, "run_model_introspection_probe", _bad_probe
+    )
     try:
         client = _client()
         response = client.post(
@@ -358,18 +402,24 @@ def test_model_introspection_probe_endpoint_maps_value_error_to_safe_400() -> No
             },
         )
     finally:
-        models_introspection.run_model_introspection_probe = original
+        monkeypatch.setattr(
+            models_introspection, "run_model_introspection_probe", original
+        )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid request parameters"
 
 
-def test_model_introspection_probe_endpoint_maps_exception_to_safe_500() -> None:
+def test_model_introspection_probe_endpoint_maps_exception_to_safe_500(
+    monkeypatch,
+) -> None:
     async def _boom_probe(**_kwargs):
         raise RuntimeError("internal probe stack detail")
 
     original = models_introspection.run_model_introspection_probe
-    models_introspection.run_model_introspection_probe = _boom_probe
+    monkeypatch.setattr(
+        models_introspection, "run_model_introspection_probe", _boom_probe
+    )
     try:
         client = _client()
         response = client.post(
@@ -382,7 +432,9 @@ def test_model_introspection_probe_endpoint_maps_exception_to_safe_500() -> None
             },
         )
     finally:
-        models_introspection.run_model_introspection_probe = original
+        monkeypatch.setattr(
+            models_introspection, "run_model_introspection_probe", original
+        )
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"

@@ -33,7 +33,8 @@ def test_onnx_path_resolution_and_message_format(tmp_path: Path):
     )
     client = OnnxLlmClient(settings=settings)
     resolved = client._resolve_runtime_model_path()
-    assert resolved is not None and resolved.name == "nested"
+    assert resolved is not None
+    assert resolved.name == "nested"
 
     text = client._messages_to_text(
         [

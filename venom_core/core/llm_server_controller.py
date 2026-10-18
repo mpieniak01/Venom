@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from venom_core.config import Settings
 from venom_core.utils.llm_runtime import (
     build_onnx_worker_health_url,
-    resolve_onnx_worker_endpoint,
+    resolve_local_worker_endpoint,
 )
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
@@ -135,13 +135,14 @@ class LlmServerController:
             f"bash {repo_root / 'scripts/llm/vllm_service.sh'} restart",
         )
 
+        vllm_endpoint = resolve_local_worker_endpoint(cfg.VLLM_ENDPOINT)
         servers["vllm"] = LlmServerConfig(
             name="vllm",
             display_name="vLLM",
             provider="vllm",
             description="Runtime OpenAI-compatible (port 8001).",
-            endpoint=cfg.VLLM_ENDPOINT,
-            health_url=f"{cfg.VLLM_ENDPOINT.rstrip('/')}/models",
+            endpoint=vllm_endpoint,
+            health_url=f"{vllm_endpoint}/models" if vllm_endpoint else None,
             commands={
                 "start": vllm_start_cmd,
                 "stop": vllm_stop_cmd,
@@ -237,7 +238,7 @@ class LlmServerController:
             ),
         )
 
-        onnx_endpoint = resolve_onnx_worker_endpoint(
+        onnx_endpoint = resolve_local_worker_endpoint(
             getattr(cfg, "ONNX_LLM_ENDPOINT", None)
         )
         onnx_commands = {

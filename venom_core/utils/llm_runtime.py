@@ -114,7 +114,7 @@ def _apply_http_policy_if_present(raw_url: object) -> Optional[str]:
     return apply_http_policy_to_url(text)
 
 
-def resolve_onnx_worker_endpoint(raw_endpoint: object) -> str | None:
+def resolve_local_worker_endpoint(raw_endpoint: object) -> str | None:
     """Resolve one explicit HTTP worker address for metadata and inference alike."""
     try:
         endpoint = _apply_http_policy_if_present(raw_endpoint)
@@ -218,7 +218,7 @@ def _resolve_local_runtime(
     if active_server == "vllm":
         return (
             "vllm",
-            _apply_http_policy_if_present(getattr(settings, "VLLM_ENDPOINT", endpoint)),
+            resolve_local_worker_endpoint(getattr(settings, "VLLM_ENDPOINT", endpoint)),
         )
     if active_server == "ollama":
         candidate = _apply_http_policy_if_present(endpoint)
@@ -228,7 +228,7 @@ def _resolve_local_runtime(
             candidate = apply_http_policy_to_url("http://localhost:11434/v1")
         return "ollama", candidate
     if active_server == "onnx":
-        return "onnx", resolve_onnx_worker_endpoint(
+        return "onnx", resolve_local_worker_endpoint(
             getattr(settings, "ONNX_LLM_ENDPOINT", None)
         )
     normalized_endpoint = _apply_http_policy_if_present(endpoint)
@@ -239,7 +239,7 @@ def _resolve_non_local_runtime(
     *, service_type: str, endpoint: Optional[str], settings
 ) -> Tuple[str, Optional[str]]:
     if service_type == "onnx":
-        return "onnx", resolve_onnx_worker_endpoint(
+        return "onnx", resolve_local_worker_endpoint(
             getattr(settings, "ONNX_LLM_ENDPOINT", None)
         )
     if service_type == "openai":
@@ -274,7 +274,7 @@ def format_runtime_label(runtime: LLMRuntimeInfo) -> str:
 
 def build_onnx_worker_health_url(endpoint: object) -> str | None:
     """Use the same validated worker origin and scheme as chat requests."""
-    resolved = resolve_onnx_worker_endpoint(endpoint)
+    resolved = resolve_local_worker_endpoint(endpoint)
     if resolved is None:
         return None
     parsed = urlparse(resolved)

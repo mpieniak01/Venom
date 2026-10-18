@@ -66,7 +66,6 @@ from venom_core.utils.llm_runtime import (
     compute_llm_config_hash,
     detect_runtime_drift,
     get_active_llm_runtime,
-    infer_local_provider,
     is_onnx_worker_health_ready,
 )
 from venom_core.utils.logger import get_logger
@@ -218,7 +217,15 @@ def _is_ollama_installed() -> bool:
 
 
 def _is_vllm_installed() -> bool:
-    return system_llm_service.is_vllm_installed()
+    return (
+        system_llm_service.is_vllm_worker_configured(
+            SETTINGS.VLLM_ENDPOINT,
+            start_command=SETTINGS.VLLM_START_COMMAND,
+            component_python=SETTINGS.VLLM_COMPONENT_PYTHON,
+            components_dir=SETTINGS.VENOM_COMPONENTS_DIR,
+        )
+        or system_llm_service.is_vllm_installed()
+    )
 
 
 def _is_onnx_runtime_installed() -> bool:
@@ -2880,7 +2887,7 @@ async def _set_active_llm_server_impl(
         )
         return {
             "status": "success",
-            "active_server": infer_local_provider(runtime.endpoint),
+            "active_server": runtime.provider,
             "active_model": selected_model,
             "config_hash": runtime.config_hash,
             "runtime_id": runtime.runtime_id,

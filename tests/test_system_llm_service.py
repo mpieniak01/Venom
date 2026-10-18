@@ -172,3 +172,52 @@ async def test_worker_probe_timeout_is_offline_not_empty_success(monkeypatch):
     result = await svc.inspect_onnx_worker("http://fixture:8068/v1")
     assert not result["ready"] and result["status"] == "offline"
     assert "private" not in str(result)
+
+
+@pytest.mark.parametrize("component", ["explicit", "components_dir", "default"])
+def test_vllm_component_configuration_needs_no_application_sdk(
+    monkeypatch, tmp_path, component
+):
+    repo = tmp_path / "repository"
+    root = (
+        tmp_path / "components"
+        if component == "components_dir"
+        else repo / ".venv-components"
+    )
+    interpreter = root / "vllm/bin/python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text("#!/bin/sh\nexit 0\n")
+    interpreter.chmod(0o700)
+    monkeypatch.setattr(
+        svc, "__file__", str(repo / "venom_core/services/system_llm_service.py")
+    )
+    kwargs = {
+        "component_python": str(interpreter) if component == "explicit" else "",
+        "components_dir": str(root) if component == "components_dir" else "",
+    }
+    assert svc.is_vllm_worker_configured("http://127.0.0.1:8067/v1", **kwargs)
+    interpreter.chmod(0o600)
+    assert not svc.is_vllm_worker_configured("http://127.0.0.1:8067/v1", **kwargs)
+    interpreter.unlink()
+    assert not svc.is_vllm_worker_configured("http://127.0.0.1:8067/v1", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["", "file:///model", "http://host:bad/v1", "http://user:secret@host/v1"],
+)
+def test_vllm_configured_command_still_requires_valid_endpoint(endpoint):
+    assert not svc.is_vllm_worker_configured(endpoint, start_command="owned start")
+
+
+def test_vllm_explicit_command_is_configuration_not_sdk_or_health(monkeypatch):
+    def unexpected(*args):
+        raise AssertionError(
+            "No SDK lookup or command execution during configuration check"
+        )
+
+    monkeypatch.setattr(svc.importlib.util, "find_spec", unexpected)
+    monkeypatch.setattr(svc.shutil, "which", unexpected)
+    assert svc.is_vllm_worker_configured(
+        "http://127.0.0.1:8067/v1", start_command="owned start"
+    )

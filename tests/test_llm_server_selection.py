@@ -1529,3 +1529,57 @@ def test_vllm_autofix_context_uses_runtime_provider_not_config(monkeypatch):
         local_models=[{"name": "live:model", "path": "/valid/path"}]
     )
     assert context is not None
+
+
+@pytest.mark.asyncio
+async def test_external_vllm_selection_needs_no_application_sdk_and_keeps_provider(
+    monkeypatch,
+):
+    original = _snapshot_settings()
+    for key, value in {
+        "VENOM_RUNTIME_PROFILE": "full",
+        "VLLM_START_COMMAND": "/owned/component start",
+        "VLLM_ENDPOINT": "http://127.0.0.1:8067/v1",
+    }.items():
+        monkeypatch.setattr(SETTINGS, key, value)
+    monkeypatch.setattr(
+        system_routes.system_llm_service.shutil, "which", lambda name: None
+    )
+    monkeypatch.setattr(
+        system_routes.system_llm_service.importlib.util, "find_spec", lambda name: None
+    )
+    controller = DummyController(
+        [
+            {
+                "name": "vllm",
+                "supports": {"start": True, "stop": True},
+                "endpoint": SETTINGS.VLLM_ENDPOINT,
+            }
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager([{"name": "served-exact", "provider": "vllm"}]),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(system_routes.config_manager, "get_config", lambda **kwargs: {})
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "update_config", _capture_update_config(updates)
+    )
+    try:
+        response = await system_routes.set_active_llm_server(
+            system_routes.ActiveLlmServerRequest(
+                server_name="vllm", model="served-exact"
+            )
+        )
+        assert response["active_server"] == "vllm"
+        assert response["active_model"] == "served-exact"
+        assert response["runtime_id"] == "vllm@http://127.0.0.1:8067/v1"
+        assert SETTINGS.LLM_LOCAL_ENDPOINT == "http://127.0.0.1:8067/v1"
+        assert updates["ACTIVE_LLM_SERVER"] == "vllm"
+        assert ("vllm", "start") in controller.actions
+    finally:
+        _restore_settings(original)

@@ -773,7 +773,7 @@ async def test_onnx_health_checks_actual_worker_device(monkeypatch, payload, exp
     ],
 )
 def test_invalid_onnx_endpoint_has_no_health_or_inference_target(endpoint):
-    assert llm_runtime.resolve_onnx_worker_endpoint(endpoint) is None
+    assert llm_runtime.resolve_local_worker_endpoint(endpoint) is None
     assert llm_runtime.build_onnx_worker_health_url(endpoint) is None
 
 

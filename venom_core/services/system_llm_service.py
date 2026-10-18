@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -11,7 +13,7 @@ import httpx
 from venom_core.utils.llm_runtime import (
     build_onnx_worker_health_url,
     is_onnx_worker_health_ready,
-    resolve_onnx_worker_endpoint,
+    resolve_local_worker_endpoint,
 )
 
 _RUNTIME_PROVIDER_ALIASES = {
@@ -48,6 +50,35 @@ def is_vllm_installed() -> bool:
     return importlib.util.find_spec("vllm") is not None
 
 
+def is_vllm_worker_configured(
+    endpoint: str | None,
+    *,
+    start_command: str = "",
+    component_python: str = "",
+    components_dir: str = "",
+) -> bool:
+    """Find the isolated launch configuration, without importing its SDK.
+
+    Configuration permits an activation attempt; only lifecycle health confirms
+    readiness. The default interpreter matches scripts/llm/vllm_service.sh.
+    """
+    if resolve_local_worker_endpoint(endpoint) is None:
+        return False
+    if start_command.strip():
+        return True
+    component_root = (
+        Path(components_dir.strip())
+        if components_dir.strip()
+        else Path(__file__).resolve().parents[2] / ".venv-components"
+    )
+    interpreter = (
+        Path(component_python.strip())
+        if component_python.strip()
+        else component_root / "vllm/bin/python"
+    )
+    return interpreter.is_file() and os.access(interpreter, os.X_OK)
+
+
 def is_onnx_worker_configured(endpoint: str | None) -> bool:
     """Configured is distinct from installed/online; no native SDK in the app."""
     return build_onnx_worker_health_url(endpoint) is not None
@@ -57,7 +88,7 @@ async def inspect_onnx_worker(
     endpoint: str | None, *, api_key: str = "", timeout: float = 3.0
 ) -> dict[str, Any]:
     """Read actual CUDA health and served IDs without loading/downloading a model."""
-    base = resolve_onnx_worker_endpoint(endpoint) or ""
+    base = resolve_local_worker_endpoint(endpoint) or ""
     health_url = build_onnx_worker_health_url(base)
     result: dict[str, Any] = {
         "ready": False,

@@ -172,6 +172,8 @@ class Settings(BaseSettings):
     VLLM_ENDPOINT: str = _default_url("localhost", 8001, "/v1")
     VLLM_CHAT_TEMPLATE: str = ""
     VLLM_ENFORCE_EAGER: bool = True  # Disable CUDA Graphs to save VRAM
+    VLLM_COMPONENT_PYTHON: str = ""
+    VENOM_COMPONENTS_DIR: str = ""
     VLLM_START_COMMAND: str = ""
     VLLM_STOP_COMMAND: str = ""
     VLLM_RESTART_COMMAND: str = ""

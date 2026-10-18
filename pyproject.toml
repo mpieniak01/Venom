@@ -73,6 +73,7 @@ module = [
     "transformers",
     "pypandoc",
     "pypdf",
+    "pytesseract",
     "radon.visitors",
     "sentence_transformers",
     "sounddevice",

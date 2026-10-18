@@ -38,7 +38,11 @@ that interpreter; the documented default environment is
 or a system-site-packages environment. Existing model/device/precision and HTTP
 settings remain separate from dependency installation. Ollama remains an external
 HTTP service; it does not require installing another Python inference engine into
-the application. Systemd selection, service starts, model assets and device/CUDA
+the application. CUDA is an accelerator, not an engine: Ollama can use its own
+GPU backend, while in-process vision/embeddings select their own device. The
+`multi-runtime-cuda` name identifies the qualified GPU dependency target; daemon
+execution still supports explicit `auto`, `cuda` and `cpu` settings. This GPU
+package set is not a lightweight CPU-only installation profile. Systemd selection, service starts, model assets and device/CUDA
 acceptance remain explicit operations, not effects of profile bootstrap.
 
 ## Removed declarations and retained scope
@@ -121,3 +125,22 @@ invalidates an old PASS report. Partial, unavailable or inconsistent output rema
 incomplete ERROR. No new scan or model acceptance is implied by this documentation.
 
 Sources: [Python 3.14.8](https://www.python.org/downloads/release/python-3148/), [Snyk SCM Python selection](https://docs.snyk.io/supported-languages/supported-languages-list/python/scm-integrations-and-python).
+
+## Local candidate checks (2026-10-18)
+
+Six Python 3.14.8 locks passed integrity/shared-version checks. Full CI and the
+CUDA component were installed into separate isolated candidates and passed exact
+inventory comparison plus `pip check`. Exact Full was resolved, not separately
+installed; Full CI must not be reported as that installation.
+
+One offline Gemma4 CUDA test used the existing local model: load 30.44 seconds,
+one short response `OK.`, followed by unload/stop. VRAM returned from 11136 MiB
+to the 1185 MiB baseline. No model matrix or new model download was performed.
+
+Local Snyk covered Light (94/94), CI (151/151) and build (4/4) without findings.
+Installed CUDA component and Full CI audits were complete but returned 16 and 17
+advisory IDs respectively. The shared 16 affect Torch, Transformers and
+Accelerate; Full CI also reports Bleach. Snyk supplied no `fixedIn` versions.
+These are findings, not a green security gate; no additional ignore was added.
+The retained reports name their commit, inventory and scan scope. Final Sonar
+and PR-fast results must be recorded independently for the final candidate.

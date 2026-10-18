@@ -358,6 +358,14 @@ checks remain enabled; this scope split does not bypass branch protection.
 Completed MAF/runtime fixes remain part of the branch, with no additional feature
 or model-stress work planned for this phase.
 
+Further Academy development, training and qualification of newer Academy versions
+are outside the remaining core stabilization. Academy stays a separate opt-in
+component; both dev/preprod example configurations now set `ENABLE_ACADEMY=false`,
+matching the code default. Existing operator configuration is not rewritten.
+Blanket upgrades of every package to latest are also outside this bounded scope.
+Release-payload review, including `scripts/dev`, belongs to the separate Sonar task;
+this change does not alter packaging or scanner coverage.
+
 An exact pin means qualified compatibility, not necessarily the newest release.
 The current stable-version discovery still has newer unqualified candidates,
 including Torch and Transformers. Do not call the whole stack latest stable

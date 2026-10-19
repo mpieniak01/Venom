@@ -352,20 +352,22 @@ def test_list_mcp_tools_for_single_adapter(skill_manager):
 
 
 def test_register_mcp_adapter_rejects_unknown_tool_in_tool_skill_map(skill_manager):
+    prepared_dummy_mcp_adapter = _DummyMcpAdapter()
     with pytest.raises(ValueError, match="nie udostępnia toola"):
         skill_manager.register_mcp_adapter(
             "dummy",
-            _DummyMcpAdapter(),
+            prepared_dummy_mcp_adapter,
             skill_name="FileSkill",
             tool_skill_map={"missing_tool": "GitReadSkill"},
         )
 
 
 def test_register_mcp_adapter_rejects_empty_skill_name_in_tool_skill_map(skill_manager):
+    prepared_dummy_mcp_adapter_2 = _DummyMcpAdapter()
     with pytest.raises(ValueError, match="pustą nazwę skilla"):
         skill_manager.register_mcp_adapter(
             "dummy",
-            _DummyMcpAdapter(),
+            prepared_dummy_mcp_adapter_2,
             skill_name="FileSkill",
             tool_skill_map={"tool_a": "   "},
         )

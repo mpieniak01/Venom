@@ -21,7 +21,7 @@ def test_assert_runtime_switch_source_allowed_rejects_unknown() -> None:
 
 
 def test_assert_runtime_switch_ownership_token_paths(monkeypatch) -> None:
-    telemetry._missing_runtime_switch_token_warned = False  # noqa: SLF001
+    monkeypatch.setattr(telemetry, "_missing_runtime_switch_token_warned", False)  # noqa: SLF001
     monkeypatch.setenv("VENOM_RUNTIME_SWITCH_TOKEN", "")
     telemetry.assert_runtime_switch_ownership_token("anything")
 
@@ -37,7 +37,7 @@ def test_assert_runtime_switch_ownership_token_warns_once_when_disabled(
     monkeypatch,
 ) -> None:
     warnings: list[str] = []
-    telemetry._missing_runtime_switch_token_warned = False  # noqa: SLF001
+    monkeypatch.setattr(telemetry, "_missing_runtime_switch_token_warned", False)  # noqa: SLF001
     monkeypatch.setenv("VENOM_RUNTIME_SWITCH_TOKEN", "")
     monkeypatch.setattr(
         telemetry.logger, "warning", lambda message: warnings.append(message)
@@ -90,7 +90,7 @@ def test_runtime_switch_guard_status(monkeypatch) -> None:
 
 
 def test_emit_runtime_model_event_tracks_last_event(monkeypatch) -> None:
-    telemetry._last_runtime_switch_event = {}  # noqa: SLF001
+    monkeypatch.setattr(telemetry, "_last_runtime_switch_event", {})  # noqa: SLF001
     monkeypatch.setattr(telemetry.metrics_module, "get_metrics_collector", lambda: None)
 
     telemetry.emit_runtime_model_event(
@@ -111,6 +111,8 @@ def test_emit_runtime_model_event_tracks_last_event(monkeypatch) -> None:
     assert isinstance(payload["at_utc"], str)
 
 
-def test_get_last_runtime_switch_event_returns_none_when_not_emitted() -> None:
-    telemetry._last_runtime_switch_event = {}  # noqa: SLF001
+def test_get_last_runtime_switch_event_returns_none_when_not_emitted(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(telemetry, "_last_runtime_switch_event", {})  # noqa: SLF001
     assert telemetry.get_last_runtime_switch_event() is None

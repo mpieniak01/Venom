@@ -276,10 +276,10 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
     )
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
 
     request = system_routes.ActiveLlmServerRequest(server_name="ollama")
     response = await system_routes.set_active_llm_server(request)
@@ -326,10 +326,10 @@ async def test_set_active_llm_server_fallbacks_to_previous(monkeypatch):
     )
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "missing"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "missing")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="ollama")
         response = await system_routes.set_active_llm_server(request)
@@ -392,10 +392,10 @@ async def test_set_active_llm_server_waits_for_previous_runtime_shutdown_before_
     monkeypatch.setattr(runtime_switch_service, "probe_until_shutdown", _fake_shutdown)
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="ollama")
         response = await system_routes.set_active_llm_server(request)
@@ -488,11 +488,11 @@ async def test_set_active_llm_server_waits_for_active_runtime_requests_to_drain(
     monkeypatch.setattr(system_routes, "RuntimeSwitchOrchestrator", _DummyOrchestrator)
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
 
     request = system_routes.ActiveLlmServerRequest(server_name="ollama")
     try:
@@ -633,10 +633,10 @@ async def test_set_active_llm_server_raises_without_models(monkeypatch):
     )
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "missing"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "missing")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="ollama")
         with pytest.raises(system_routes.HTTPException) as exc:
@@ -684,10 +684,10 @@ async def test_set_active_llm_server_uses_available_ollama_model_when_requested_
     )
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "missing"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "missing")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
     try:
         request = system_routes.ActiveLlmServerRequest(
             server_name="ollama",
@@ -738,10 +738,10 @@ async def test_set_active_llm_server_aborts_when_stopping_other_server_fails(
     )
 
     original = _snapshot_settings()
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="ollama")
         before = _snapshot_settings()
@@ -788,7 +788,7 @@ async def test_get_llm_servers_filters_vllm_outside_full_profile(monkeypatch):
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "light"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "light")
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
@@ -843,8 +843,8 @@ async def test_get_llm_servers_includes_onnx_when_enabled(monkeypatch):
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.ONNX_LLM_ENABLED = True
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENABLED", True)
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
@@ -854,9 +854,9 @@ async def test_get_llm_servers_includes_onnx_when_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_active_llm_server_rejects_vllm_for_light_profile():
+async def test_set_active_llm_server_rejects_vllm_for_light_profile(monkeypatch):
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "light"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "light")
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="vllm")
         with pytest.raises(system_routes.HTTPException) as exc:
@@ -918,8 +918,8 @@ async def test_get_llm_servers_deduplicates_onnx(monkeypatch):
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.ONNX_LLM_ENABLED = True
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENABLED", True)
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
@@ -931,8 +931,8 @@ async def test_get_llm_servers_deduplicates_onnx(monkeypatch):
 @pytest.mark.asyncio
 async def test_set_active_llm_server_onnx_external_http(monkeypatch):
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.ONNX_LLM_ENABLED = True
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENABLED", True)
     try:
         controller = DummyController(
             [
@@ -1011,8 +1011,8 @@ async def test_set_active_llm_server_onnx_fails_when_other_server_stop_fails(
     monkeypatch,
 ):
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.ONNX_LLM_ENABLED = True
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENABLED", True)
     try:
         controller = DummyController(
             [
@@ -1110,8 +1110,8 @@ async def test_get_llm_servers_excludes_not_installed_runtime(monkeypatch):
     monkeypatch.setattr(system_routes, "_probe_servers", _noop_probe)
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.ONNX_LLM_ENABLED = True
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "ONNX_LLM_ENABLED", True)
     try:
         response = await system_routes.get_llm_servers()
         names = [entry["name"] for entry in response["servers"]]
@@ -1166,10 +1166,10 @@ async def test_set_active_llm_server_releases_onnx_caches_when_switching_to_olla
     )
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.ACTIVE_LLM_SERVER = "onnx"
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "onnx")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
     try:
         request = system_routes.ActiveLlmServerRequest(server_name="ollama")
         response = await system_routes.set_active_llm_server(request)
@@ -1224,11 +1224,11 @@ async def test_set_active_llm_server_normalizes_gemma4_audio_alias(monkeypatch):
     )
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
-    SETTINGS.LLM_MODEL_NAME = "google/gemma-4-E2B-it"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", LOCALHOST_11434_V1)
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "google/gemma-4-E2B-it")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
     try:
         request = system_routes.ActiveLlmServerRequest(
             server_name="gemma4_audio",
@@ -1288,11 +1288,11 @@ async def test_set_active_llm_server_fails_when_persistence_fails(monkeypatch):
     )
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = "http://localhost:8014/v1"
-    SETTINGS.LLM_MODEL_NAME = "google/gemma-4-E2B-it"
-    SETTINGS.ACTIVE_LLM_SERVER = "multi_runtime"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "LLM_LOCAL_ENDPOINT", "http://localhost:8014/v1")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "google/gemma-4-E2B-it")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "multi_runtime")
     try:
         request = system_routes.ActiveLlmServerRequest(
             server_name="gemma4_audio",
@@ -1360,10 +1360,10 @@ async def test_set_active_llm_server_resolves_feedback_loop_alias_to_primary(
     )
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
     try:
         request = system_routes.ActiveLlmServerRequest(
             server_name="ollama",
@@ -1434,10 +1434,10 @@ async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_gu
     )
 
     original = _snapshot_settings()
-    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
-    SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
-    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    monkeypatch.setattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full")
+    monkeypatch.setattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
+    monkeypatch.setattr(SETTINGS, "LLM_MODEL_NAME", "phi3:mini")
     try:
         request = system_routes.ActiveLlmServerRequest(
             server_name="ollama",

@@ -246,7 +246,8 @@ def test_each_localized_menu_finishes_with_one_supported_choice_and_no_addon_pro
     assert result.returncode == 0, result.stdout + result.stderr
     assert prompt in result.stderr
     assert "FULL" not in result.stderr
-    assert "vLLM" not in result.stderr and "ONNX" not in result.stderr
+    assert "vLLM" not in result.stderr
+    assert "ONNX" not in result.stderr
     assert installer_sandbox.commands.read_text().split("|")[1:3] == [canonical, "none"]
 
 

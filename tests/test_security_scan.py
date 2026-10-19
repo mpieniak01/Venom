@@ -66,7 +66,8 @@ def test_complete_reports_distinguish_findings_from_execution(
 def test_invalid_or_skipped_python_dependencies_never_pass(payload):
     parsed = scan._json_or_none(json.dumps(payload))
     result = scan._audit_result(command(), scan._parse_python_audit(parsed))
-    assert result["complete"] is False and result["status"] == "error"
+    assert result["complete"] is False
+    assert result["status"] == "error"
 
 
 def test_python_vulnerabilities_are_valid_evidence_with_exit_one():
@@ -82,7 +83,8 @@ def test_python_vulnerabilities_are_valid_evidence_with_exit_one():
         }
     )
     result = scan._audit_result(command(1), parsed)
-    assert result["complete"] and result["status"] == "findings"
+    assert result["complete"]
+    assert result["status"] == "findings"
     assert result["vuln_total"] == 1
     assert result["packages_with_vulns"][0]["vulns"][0]["id"] == "TEST-1"
 
@@ -146,7 +148,8 @@ def test_missing_scanner_returns_unavailable(monkeypatch, tmp_path):
 def test_scanner_launch_failure_is_reported(monkeypatch, error, expected):
     monkeypatch.setattr(scan.subprocess, "run", Mock(side_effect=error))
     result = scan._run(["scanner"])
-    assert result.returncode == expected and not result.ok
+    assert result.returncode == expected
+    assert not result.ok
 
 
 def test_malformed_json_is_not_empty_report():
@@ -239,7 +242,8 @@ def test_report_and_printed_summary_preserve_completeness(
     monkeypatch.setattr(scan, "_scan_python", lambda root: data["python"])
     monkeypatch.setattr(scan, "_scan_web", lambda root: data["web"])
     result = scan._build_report(tmp_path)
-    assert result["status"] == status and result["complete"] is complete
+    assert result["status"] == status
+    assert result["complete"] is complete
     scan._print_summary(result)
     assert f"- status: {status}" in capsys.readouterr().out
 

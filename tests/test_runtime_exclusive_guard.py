@@ -253,10 +253,11 @@ async def test_preflight_conflict_when_llm_run_active(monkeypatch):
 
     monkeypatch.setattr(guard, "_healthcheck_runtime", _noop_healthcheck)
 
+    prepared_benchmark_service = _BenchmarkService()
     with pytest.raises(RuntimeExclusiveConflictError):
         await guard.preflight_for_benchmark(
             source="coding",
-            benchmark_service=_BenchmarkService(),
+            benchmark_service=prepared_benchmark_service,
             coding_benchmark_service=None,
             endpoint="http://127.0.0.1:11434",
         )

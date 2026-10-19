@@ -715,7 +715,8 @@ def test_onnx_runtime_requires_explicit_component_endpoint(service_type, active_
         onnx_endpoint="http://localhost:18083/v1",
     )
     runtime = llm_runtime.get_active_llm_runtime(settings)
-    assert runtime.provider == "onnx" and runtime.endpoint == settings.ONNX_LLM_ENDPOINT
+    assert runtime.provider == "onnx"
+    assert runtime.endpoint == settings.ONNX_LLM_ENDPOINT
     assert llm_runtime._build_health_url(runtime) == "http://localhost:18083/health"
 
 

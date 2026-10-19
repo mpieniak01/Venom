@@ -151,8 +151,9 @@ def test_engine_failure_is_503_not_empty_success(bridge):
         raise RuntimeError("native engine failed")
 
     server.engine.generate = broken
+    prepared_message = message()
     with pytest.raises(urllib.error.HTTPError) as error:
-        request(base, message())
+        request(base, prepared_message)
     assert error.value.code == 503
     assert "native engine failed" in json.load(error.value)["error"]["message"]
     assert_generation_idle(server)
@@ -162,8 +163,9 @@ def test_serial_worker_rejects_parallel_generation(bridge):
     server, base = bridge
     server.generation_lock.acquire()
     try:
+        prepared_message_2 = message()
         with pytest.raises(urllib.error.HTTPError) as error:
-            request(base, message())
+            request(base, prepared_message_2)
         assert error.value.code == 429
     finally:
         server.generation_lock.release()
@@ -183,8 +185,9 @@ def test_serial_worker_rejects_parallel_generation(bridge):
     ],
 )
 def test_unsupported_or_invalid_contract_is_rejected(changes):
+    prepared_message_3 = message(**changes)
     with pytest.raises(RequestError):
-        validate_request(message(**changes), "fixture-model")
+        validate_request(prepared_message_3, "fixture-model")
 
 
 @pytest.mark.parametrize("seed", [-(2**63), -(2**31), -1, 0, 1, 2**31 - 1, 2**63 - 1])
@@ -198,8 +201,9 @@ def test_seed_validation_preserves_signed_64_bit_integers(seed):
     "seed", [True, False, 0.0, 1.5, "0", [], {}, -(2**63) - 1, 2**63]
 )
 def test_seed_validation_rejects_coercion_and_signed_64_bit_overflow(seed):
+    prepared_message_4 = message(seed=seed)
     with pytest.raises(RequestError, match="seed_must_be_signed_64_bit_integer"):
-        validate_request(message(seed=seed), "fixture-model")
+        validate_request(prepared_message_4, "fixture-model")
 
 
 @pytest.mark.parametrize("changes", [{}, {"seed": None}])
@@ -357,8 +361,11 @@ def test_engine_close_is_idempotent_and_releases_tokenizer_before_model(
     engine.close()
     engine.close()
     assert seen["released"] == ["tokenizer", "model"]
+    prepared_argument = engine.generate(
+        validate_request(message(), "fixture-model"), {}
+    )
     with pytest.raises(RuntimeError, match="engine_closed"):
-        list(engine.generate(validate_request(message(), "fixture-model"), {}))
+        list(prepared_argument)
     assert seen["options"] == []
 
 
@@ -495,12 +502,11 @@ def test_stop_before_native_execution_creates_no_request_native_objects(
     engine = module.OnnxEngine(str(path), "fixture-model")
     stop_event = threading.Event()
     stop_event.set()
+    prepared_argument_2 = engine.generate(
+        validate_request(message(), "fixture-model"), {}, stop_event
+    )
     with pytest.raises(module.GenerationCancelled, match="worker_stopping"):
-        list(
-            engine.generate(
-                validate_request(message(), "fixture-model"), {}, stop_event
-            )
-        )
+        list(prepared_argument_2)
     assert seen["calls"] == ["model", "tokenizer"]
     assert seen["options"] == []
     engine.close()
@@ -612,10 +618,12 @@ def test_requests_after_stop_are_rejected_without_generation(
 
     monkeypatch.setattr(server.engine, "generate", forbidden)
     server.stop_event.set()
-    with pytest.raises(urllib.error.HTTPError) as error:
-        if endpoint.endswith("completions"):
-            request(base, message(stream=True))
-        else:
+    if endpoint.endswith("completions"):
+        payload = message(stream=True)
+        with pytest.raises(urllib.error.HTTPError) as error:
+            request(base, payload)
+    else:
+        with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(base + endpoint, timeout=2)
     assert error.value.code == 503
     assert json.load(error.value)["error"] == {
@@ -861,8 +869,9 @@ def test_native_seed_range_failure_precedes_tokenization_and_http_success(
     server, base = bridge
     module, _, seen, path = fake_native_sdk
     server.engine = module.OnnxEngine(str(path), "fixture-model")
+    prepared_message_5 = message(seed=seed, stream=stream)
     with pytest.raises(urllib.error.HTTPError) as error:
-        request(base, message(seed=seed, stream=stream))
+        request(base, prepared_message_5)
     assert error.value.code == 400
     assert json.load(error.value)["error"] == {
         "message": "seed_out_of_native_range",
@@ -906,13 +915,19 @@ def test_context_and_elapsed_budget_fail_explicitly(fake_native_sdk, monkeypatch
     module, _, seen, path = fake_native_sdk
     engine = module.OnnxEngine(str(path), "fixture-model")
     engine.context_length = 3
+    prepared_argument_3 = engine.generate(
+        validate_request(message(), "fixture-model"), {}
+    )
     with pytest.raises(RequestError, match="context_limit"):
-        list(engine.generate(validate_request(message(), "fixture-model"), {}))
+        list(prepared_argument_3)
     engine.context_length = 2048
     ticks = iter([0, 61])
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    prepared_argument_4 = engine.generate(
+        validate_request(message(), "fixture-model"), {}
+    )
     with pytest.raises(TimeoutError, match="deadline"):
-        list(engine.generate(validate_request(message(), "fixture-model"), {}))
+        list(prepared_argument_4)
     assert seen["destroyed"][-1] == 0
 
 

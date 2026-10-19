@@ -3276,10 +3276,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_knowledge_memory_tasks_integration.py",
@@ -3288,10 +3289,11 @@
       "intent": "integration",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Integration-heavy behavior delegated to release lane. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_knowledge_ttl.py",
@@ -3367,10 +3369,11 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_lessons_manager.py",
@@ -5526,10 +5529,11 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_runtime_exclusive_guard.py",
@@ -6264,10 +6268,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_tasks_stream.py",
@@ -6400,10 +6405,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_toolmaker_agent.py",

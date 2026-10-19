@@ -99,7 +99,8 @@ async def test_catalog_and_news_paths():
         registry, ModelProvider.HUGGINGFACE, kind="papers", month="2026-02"
     )
     news_other = await catalog.list_news(registry, ModelProvider.OLLAMA)
-    assert news_blog["items"] and news_papers["items"]
+    assert news_blog["items"]
+    assert news_papers["items"]
     assert news_other["items"] == []
 
     search_hf = await catalog.search_external_models(
@@ -494,7 +495,8 @@ async def test_catalog_cache_stale_and_ollama_variants():
         }
     )
     fresh = await catalog._fetch_ollama_models(registry, limit=5)
-    assert len(fresh) == 1 and fresh[0]["size_gb"] is None
+    assert len(fresh) == 1
+    assert fresh[0]["size_gb"] is None
 
 
 def test_manifest_load_error_and_defaults(tmp_path: Path):

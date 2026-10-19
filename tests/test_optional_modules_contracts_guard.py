@@ -47,7 +47,8 @@ def _run_check(manifest: Path) -> subprocess.CompletedProcess[str]:
 
 def _load_script_module():
     spec = spec_from_file_location("check_optional_modules_contracts", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

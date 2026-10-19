@@ -526,7 +526,8 @@ async def test_hf_download_snapshot_success_calls_callback(tmp_path):
         )
 
     assert result is not None
-    assert called and "Pobieranie org/model" in called[0]
+    assert called
+    assert "Pobieranie org/model" in called[0]
 
 
 def test_remove_cached_model_success_missing_and_rmtree_error(tmp_path, monkeypatch):

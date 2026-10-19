@@ -122,10 +122,12 @@ async def test_worker_probe_requires_real_cuda_health_before_catalog(
         "http://fixture:8068/v1", api_key="fixture-key"
     )
     if health == {"status": "ok", "engine": "onnx-gpu", "device": "cuda"}:
-        assert result["ready"] and result["models"] == ["served-exact"]
+        assert result["ready"]
+        assert result["models"] == ["served-exact"]
         assert calls == ["/health", "/v1/models"]
     else:
-        assert not result["ready"] and result["models"] == []
+        assert not result["ready"]
+        assert result["models"] == []
         assert calls == ["/health"]
 
 
@@ -152,7 +154,8 @@ async def test_worker_probe_rejects_invalid_catalog(monkeypatch, data):
         lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
     )
     result = await svc.inspect_onnx_worker("http://fixture:8068/v1")
-    assert not result["ready"] and result["error"] == "onnx_worker_models_invalid"
+    assert not result["ready"]
+    assert result["error"] == "onnx_worker_models_invalid"
 
 
 @pytest.mark.asyncio
@@ -170,7 +173,8 @@ async def test_worker_probe_timeout_is_offline_not_empty_success(monkeypatch):
         lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
     )
     result = await svc.inspect_onnx_worker("http://fixture:8068/v1")
-    assert not result["ready"] and result["status"] == "offline"
+    assert not result["ready"]
+    assert result["status"] == "offline"
     assert "private" not in str(result)
 
 

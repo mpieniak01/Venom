@@ -229,17 +229,17 @@ def test_shell_skill_timeout_sandbox(temp_workspace):
     assert "pomyślnie" in result.lower() or "exit_code=0" in result
 
 
-def test_shell_skill_config_enable_sandbox_false(temp_workspace):
+def test_shell_skill_config_enable_sandbox_false(temp_workspace, monkeypatch):
     """Test czy ENABLE_SANDBOX=False wyłącza sandbox."""
     original_enable = SETTINGS.ENABLE_SANDBOX
-    SETTINGS.ENABLE_SANDBOX = False
+    monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", False)
 
     skill = ShellSkill(use_sandbox=True)  # Prosi o sandbox
 
     # Ale sandbox powinien być wyłączony przez config
     assert not skill.use_sandbox
 
-    SETTINGS.ENABLE_SANDBOX = original_enable
+    monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", original_enable)
 
 
 @requires_docker

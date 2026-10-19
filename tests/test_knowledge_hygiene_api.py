@@ -139,12 +139,9 @@ class TestAPIParameterValidation:
         # Ten test weryfikuje że niepoprawny format daty jest odrzucany
         invalid_date = "not-a-date"
 
-        try:
-            datetime.fromisoformat(invalid_date.replace("Z", "+00:00"))
-            assert False, "Should raise ValueError"
-        except ValueError:
-            # Expected behavior
-            pass
+        normalized_date = invalid_date.replace("Z", "+00:00")
+        with pytest.raises(ValueError):
+            datetime.fromisoformat(normalized_date)
 
     def test_valid_iso8601_formats(self):
         """Test różnych poprawnych formatów ISO 8601."""
@@ -156,10 +153,7 @@ class TestAPIParameterValidation:
         ]
 
         for date_str in valid_formats:
-            try:
-                datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            except ValueError:
-                assert False, f"Should parse valid ISO 8601: {date_str}"
+            datetime.fromisoformat(date_str.replace("Z", "+00:00"))
 
 
 if __name__ == "__main__":

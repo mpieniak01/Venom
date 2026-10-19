@@ -22,7 +22,7 @@ _set_mocked_module("venom_core.memory.embedding_service")
 from uuid import uuid4  # noqa: E402
 
 import pytest  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 # Target modules
@@ -351,8 +351,9 @@ async def test_tasks_streaming_and_errors(mock_app):
     # Valid status
     _validate_trace_status("COMPLETED")
     # Invalid status
-    with pytest.raises(Exception):  # HTTPException
+    with pytest.raises(HTTPException) as error:
         _validate_trace_status("INVALID_STATUS")
+    assert error.value.status_code == 400
 
     # Context helpers
     mock_task_for_runtime = VenomTask(

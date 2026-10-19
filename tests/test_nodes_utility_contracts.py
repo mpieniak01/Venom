@@ -55,7 +55,7 @@ def test_node_message_from_response():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def _models_usage_app():
     """FastAPI app with models_usage router mounted and a clean TTL cache."""
     import venom_core.api.routes.models_usage as mu_module
@@ -72,7 +72,7 @@ def _models_usage_app():
     return app, mu_module, deps
 
 
-@pytest.fixture()
+@pytest.fixture
 def _models_usage_client(_models_usage_app):
     app, _, _ = _models_usage_app
     return TestClient(app, raise_server_exceptions=False)
@@ -212,7 +212,9 @@ async def test_council_session_run_success():
     session.manager.run.assert_awaited_once_with(
         "write hello world", generation_params={"max_tokens": 32}
     )
-    assert "THE COUNCIL" in result and "Coder" in result and "✅" in result
+    assert "THE COUNCIL" in result
+    assert "Coder" in result
+    assert "✅" in result
 
 
 @pytest.mark.asyncio
@@ -245,7 +247,8 @@ def test_extract_result_empty_messages():
     """_extract_result returns a fallback string when no messages exist."""
     session = _make_council_session(messages=[])
     result = session._extract_result()
-    assert isinstance(result, str) and len(result) > 0
+    assert isinstance(result, str)
+    assert len(result) > 0
 
 
 def test_extract_result_with_terminate():

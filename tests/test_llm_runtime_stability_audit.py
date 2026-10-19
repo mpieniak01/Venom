@@ -15,7 +15,8 @@ def _load_module():
     spec = importlib.util.spec_from_file_location(
         "llm_runtime_stability_audit", script_path
     )
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -131,7 +132,8 @@ def test_generation_rejects_false_successes(monkeypatch, body, reason):
     module = _load_module()
     monkeypatch.setattr(module.request, "urlopen", lambda *a, **k: _response(body))
     ok, message = module._verify_generation("http://fixture", model="model")
-    assert not ok and reason in message
+    assert not ok
+    assert reason in message
 
 
 @pytest.mark.parametrize(
@@ -145,7 +147,8 @@ def test_generation_requires_successful_sse_response(monkeypatch, status, conten
         lambda *a, **k: _response(b"", status=status, content_type=content_type),
     )
     ok, message = module._verify_generation("http://fixture", model="model")
-    assert not ok and "not_sse" in message
+    assert not ok
+    assert "not_sse" in message
 
 
 def test_generation_network_failure_is_not_success(monkeypatch):
@@ -156,21 +159,24 @@ def test_generation_network_failure_is_not_success(monkeypatch):
 
     monkeypatch.setattr(module.request, "urlopen", unavailable)
     ok, message = module._verify_generation("http://fixture", model="model")
-    assert not ok and "offline fixture" in message
+    assert not ok
+    assert "offline fixture" in message
 
 
 def test_stream_has_deadline_and_bounded_frames():
     module = _load_module()
+    prepared_argument = io.BytesIO()
     with pytest.raises(TimeoutError, match="deadline"):
-        module._read_generation_stream(io.BytesIO(), deadline=-1)
+        module._read_generation_stream(prepared_argument, deadline=-1)
+    prepared_argument_2 = io.BytesIO(b"x" * 65537)
+    prepared_deadline = module.time.monotonic() + 10
+    with pytest.raises(ValueError, match="too_large"):
+        module._read_generation_stream(prepared_argument_2, deadline=prepared_deadline)
+    prepared_argument_3 = io.BytesIO(b": keepalive\n\n" * 100000)
+    prepared_deadline_2 = module.time.monotonic() + 10
     with pytest.raises(ValueError, match="too_large"):
         module._read_generation_stream(
-            io.BytesIO(b"x" * 65537), deadline=module.time.monotonic() + 10
-        )
-    with pytest.raises(ValueError, match="too_large"):
-        module._read_generation_stream(
-            io.BytesIO(b": keepalive\n\n" * 100000),
-            deadline=module.time.monotonic() + 10,
+            prepared_argument_3, deadline=prepared_deadline_2
         )
 
 
@@ -210,10 +216,13 @@ def test_generation_uses_actual_api_schema_over_loopback():
         server.shutdown()
         server.server_close()
         worker.join(timeout=2)
-    assert ok and "generation_chars=5" in message and not worker.is_alive()
+    assert ok
+    assert "generation_chars=5" in message
+    assert not worker.is_alive()
     assert captured["path"] == "/api/v1/llm/simple/stream"
     assert captured["payload"]["model"] == "exact-model"
-    assert captured["payload"]["content"] and captured["payload"]["max_tokens"] == 32
+    assert captured["payload"]["content"]
+    assert captured["payload"]["max_tokens"] == 32
     assert captured["payload"]["stream"] is True
 
 
@@ -251,8 +260,10 @@ def test_audit_does_not_pass_health_only(monkeypatch):
         },
         preferred_patterns=[],
     )
-    assert not result.ok and "fixture_generation_failed" in result.errors
-    assert calls["generations"] == ["model"] and len(calls["unloads"]) == 1
+    assert not result.ok
+    assert "fixture_generation_failed" in result.errors
+    assert calls["generations"] == ["model"]
+    assert len(calls["unloads"]) == 1
 
 
 def test_audit_does_not_unload_a_concurrent_model_selection(monkeypatch):
@@ -266,8 +277,10 @@ def test_audit_does_not_unload_a_concurrent_model_selection(monkeypatch):
         },
         preferred_patterns=[],
     )
-    assert not result.ok and "identity_changed" in result.errors
-    assert calls["generations"] == ["model"] and not calls["unloads"]
+    assert not result.ok
+    assert "identity_changed" in result.errors
+    assert calls["generations"] == ["model"]
+    assert not calls["unloads"]
 
 
 def test_recovered_secondary_activation_still_requires_generation(monkeypatch):
@@ -292,7 +305,8 @@ def test_recovered_secondary_activation_still_requires_generation(monkeypatch):
         },
         preferred_patterns=[],
     )
-    assert result.ok and calls["generations"] == ["first", "second"]
+    assert result.ok
+    assert calls["generations"] == ["first", "second"]
     assert len(calls["unloads"]) == 2
 
 
@@ -309,7 +323,8 @@ def test_onnx_without_declared_model_cannot_qualify(monkeypatch):
         options_payload={},
         preferred_patterns=[],
     )
-    assert not result.ok and result.errors == ["no_models_available_for_runtime"]
+    assert not result.ok
+    assert result.errors == ["no_models_available_for_runtime"]
 
 
 def test_initial_identity_mismatch_never_generates_or_unloads(monkeypatch):
@@ -326,5 +341,7 @@ def test_initial_identity_mismatch_never_generates_or_unloads(monkeypatch):
         },
         preferred_patterns=[],
     )
-    assert not result.ok and result.errors == ["foreign_model"]
-    assert not calls["generations"] and not calls["unloads"]
+    assert not result.ok
+    assert result.errors == ["foreign_model"]
+    assert not calls["generations"]
+    assert not calls["unloads"]

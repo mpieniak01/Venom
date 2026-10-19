@@ -56,20 +56,26 @@ def mock_app():
 # --- System Config Tests ---
 
 
-def test_system_config_routes(mock_app):
+def test_system_config_routes(mock_app, monkeypatch):
     mock_app.app.include_router(system_config.router)
 
     # Test get_runtime_config
-    mock_config_manager.get_effective_config_with_sources.return_value = (
-        {"key": "val"},
-        {"key": "env"},
+    monkeypatch.setattr(
+        mock_config_manager.get_effective_config_with_sources,
+        "return_value",
+        (
+            {"key": "val"},
+            {"key": "env"},
+        ),
     )
     resp = mock_app.client.get("/api/v1/config/runtime")
     assert resp.status_code == 200
     assert resp.json()["config"]["key"] == "val"
 
     # Test update_runtime_config
-    mock_config_manager.update_config.return_value = {"status": "updated"}
+    monkeypatch.setattr(
+        mock_config_manager.update_config, "return_value", {"status": "updated"}
+    )
     resp = mock_app.client.post(
         "/api/v1/config/runtime", json={"updates": {"key": "new"}}
     )
@@ -78,13 +84,19 @@ def test_system_config_routes(mock_app):
     mock_config_manager.update_config.assert_called_with({"key": "new"})
 
     # Test get_config_backups
-    mock_config_manager.get_backup_list.return_value = [{"filename": "backup1.env"}]
+    monkeypatch.setattr(
+        mock_config_manager.get_backup_list,
+        "return_value",
+        [{"filename": "backup1.env"}],
+    )
     resp = mock_app.client.get("/api/v1/config/backups")
     assert resp.status_code == 200
     assert resp.json()["backups"][0]["filename"] == "backup1.env"
 
     # Test restore_config_backup
-    mock_config_manager.restore_backup.return_value = {"status": "restored"}
+    monkeypatch.setattr(
+        mock_config_manager.restore_backup, "return_value", {"status": "restored"}
+    )
     resp = mock_app.client.post(
         "/api/v1/config/restore", json={"backup_filename": "backup1.env"}
     )
@@ -96,12 +108,12 @@ def test_system_config_routes(mock_app):
 # --- System Governance Tests ---
 
 
-def test_system_governance_routes(mock_app):
+def test_system_governance_routes(mock_app, monkeypatch):
     mock_app.app.include_router(system_governance.router)
 
     # Mock State Manager
     mock_state = MagicMock()
-    mock_system_deps.get_state_manager.return_value = mock_state
+    monkeypatch.setattr(mock_system_deps.get_state_manager, "return_value", mock_state)
 
     # Test get_cost_mode
     mock_state.is_paid_mode_enabled.return_value = True
@@ -122,7 +134,7 @@ def test_system_governance_routes(mock_app):
     mock_state.disable_paid_mode.assert_called_once()
 
     # Test get_autonomy_level
-    mock_permission_guard.get_current_level.return_value = 10
+    monkeypatch.setattr(mock_permission_guard.get_current_level, "return_value", 10)
     mock_level_info = MagicMock()
     mock_level_info.name = "Test Level"
     mock_level_info.color = "blue"
@@ -130,23 +142,29 @@ def test_system_governance_routes(mock_app):
     mock_level_info.permissions = {}
     mock_level_info.risk_level = "low"
     mock_level_info.color_name = "Blue"
-    mock_permission_guard.get_level_info.return_value = mock_level_info
+    monkeypatch.setattr(
+        mock_permission_guard.get_level_info, "return_value", mock_level_info
+    )
 
     resp = mock_app.client.get("/api/v1/system/autonomy")
     assert resp.status_code == 200
     assert resp.json()["current_level"] == 10
 
     # Test set_autonomy_level
-    mock_permission_guard.set_level.return_value = True
+    monkeypatch.setattr(mock_permission_guard.set_level, "return_value", True)
     resp = mock_app.client.post("/api/v1/system/autonomy", json={"level": 20})
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
 
     # Test get_all_autonomy_levels
-    mock_permission_guard.get_all_levels.return_value = {
-        10: MagicMock(id=10, name="L1"),
-        20: MagicMock(id=20, name="L2"),
-    }
+    monkeypatch.setattr(
+        mock_permission_guard.get_all_levels,
+        "return_value",
+        {
+            10: MagicMock(id=10, name="L1"),
+            20: MagicMock(id=20, name="L2"),
+        },
+    )
     resp = mock_app.client.get("/api/v1/system/autonomy/levels")
     assert resp.status_code == 200
     assert len(resp.json()["levels"]) == 2
@@ -207,7 +225,7 @@ async def test_strategy_routes(mock_app):
 # --- System Runtime Tests ---
 
 
-def test_system_runtime_routes(mock_app):
+def test_system_runtime_routes(mock_app, monkeypatch):
     mock_app.app.include_router(system_runtime.router)
 
     # Mock Runtime Controller
@@ -237,7 +255,9 @@ def test_system_runtime_routes(mock_app):
 
         # Mock Service Monitor via system_deps
         mock_monitor = MagicMock()
-        mock_system_deps.get_service_monitor.return_value = mock_monitor
+        monkeypatch.setattr(
+            mock_system_deps.get_service_monitor, "return_value", mock_monitor
+        )
         mock_monitor.get_all_services.return_value = []  # Empty for simplicity
 
         resp = mock_app.client.get("/api/v1/runtime/status")
@@ -271,11 +291,13 @@ def test_system_runtime_routes(mock_app):
 
 
 @pytest.mark.asyncio
-async def test_system_scheduler_routes(mock_app):
+async def test_system_scheduler_routes(mock_app, monkeypatch):
     mock_app.app.include_router(system_scheduler.router)
 
     mock_scheduler = MagicMock()  # Changed to MagicMock as methods are sync
-    mock_system_deps.get_background_scheduler.return_value = mock_scheduler
+    monkeypatch.setattr(
+        mock_system_deps.get_background_scheduler, "return_value", mock_scheduler
+    )
 
     # Test get_scheduler_status
     mock_scheduler.get_status.return_value = {"running": True}
@@ -310,17 +332,21 @@ async def test_system_scheduler_routes(mock_app):
 
 
 @pytest.mark.asyncio
-async def test_system_services_routes(mock_app):
+async def test_system_services_routes(mock_app, monkeypatch):
     mock_app.app.include_router(system_services.router)
 
     mock_monitor = MagicMock()  # Changed to MagicMock
-    mock_system_deps.get_service_monitor.return_value = mock_monitor
+    monkeypatch.setattr(
+        mock_system_deps.get_service_monitor, "return_value", mock_monitor
+    )
 
     # check_health is awaited in route
     mock_monitor.check_health = AsyncMock()
 
     # Clear cache
-    system_services._services_cache = TTLCache(ttl_seconds=1.0)  # Reset cache
+    monkeypatch.setattr(
+        system_services, "_services_cache", TTLCache(ttl_seconds=1.0)
+    )  # Reset cache
 
     # Mock Service objects
     mock_svc = MagicMock()

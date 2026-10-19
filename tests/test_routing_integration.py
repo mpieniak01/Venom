@@ -408,9 +408,12 @@ def test_actual_governance_keeps_selected_local_worker(
         runtime_info=SimpleNamespace(provider=provider, model_name="served-model"),
     )
     assert decision.policy_gate_passed
-    assert decision.provider == provider and decision.target_runtime.value == provider
-    assert decision.target_runtime.is_local() and not decision.target_runtime.is_cloud()
-    assert decision.fallback_chain == [provider] and not decision.fallback_applied
+    assert decision.provider == provider
+    assert decision.target_runtime.value == provider
+    assert decision.target_runtime.is_local()
+    assert not decision.target_runtime.is_cloud()
+    assert decision.fallback_chain == [provider]
+    assert not decision.fallback_applied
     assert decision.reason_code != ReasonCode.FALLBACK_AUTH_ERROR
     assert decision.to_dict()["target_runtime"] == provider
     assert governance.fallback_history == []

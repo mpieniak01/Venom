@@ -39,7 +39,8 @@ def test_parse_unknown_command(content):
     assert result.forced_tool is None
     assert result.forced_provider is None
     assert result.cleaned == content
-    assert result.forced_intent is None and not result.session_reset
+    assert result.forced_intent is None
+    assert not result.session_reset
 
 
 def test_normalize_forced_provider():

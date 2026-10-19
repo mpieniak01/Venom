@@ -617,8 +617,9 @@ class TestExtractVenomTools:
             def native_tools(self):
                 raise RuntimeError("schema broken")
 
+        prepared_dummy_agent = DummyAgent(kernel=BrokenRuntime())
         with pytest.raises(RuntimeError, match="schema broken"):
-            extract_venom_tools(DummyAgent(kernel=BrokenRuntime()))
+            extract_venom_tools(prepared_dummy_agent)
 
     def test_extract_tools_excludes_undeclared_members(self):
         class Plugin:
@@ -644,8 +645,10 @@ class TestNativeToolDeclarations:
             def public_but_not_declared(self):
                 return "not a tool"
 
+        prepared_operation = AgentRuntime().add_plugin
+        prepared_plugin = Plugin()
         with pytest.raises(ValueError, match="tool_group_has_no_functions"):
-            AgentRuntime().add_plugin(Plugin(), "Plugin")
+            prepared_operation(prepared_plugin, "Plugin")
 
     def test_inherited_declared_tools_keep_their_public_schema(self):
         class Base:

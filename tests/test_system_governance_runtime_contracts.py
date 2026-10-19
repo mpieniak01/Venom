@@ -183,14 +183,13 @@ def test_governance_set_autonomy_invalid_level_publishes_failure(monkeypatch):
         state=SimpleNamespace(user=None),
         headers={"X-Actor": "roi-tester"},
     )
+    prepared_payload = SimpleNamespace(level=99)
     with pytest.raises(HTTPException) as exc:
-        governance_routes.set_autonomy_level(
-            request=request,
-            payload=SimpleNamespace(level=99),
-        )
+        governance_routes.set_autonomy_level(request=request, payload=prepared_payload)
     assert exc.value.status_code == 400
     entries = stream.get_entries(action="autonomy.level_changed", limit=1)
-    assert entries and entries[0].status == "failure"
+    assert entries
+    assert entries[0].status == "failure"
     assert entries[0].details["new_level"] == 99
     permission_guard.set_level(previous)
     stream.clear()
@@ -318,11 +317,10 @@ def test_docker_recover_from_name_conflict_raises_when_retries_exhausted(
         SimpleNamespace(containers=SimpleNamespace())
     )
 
+    prepared_error = ApiError("conflict")
     with pytest.raises(RuntimeError, match="Wyczerpano limit retry"):
         habitat._recover_from_name_conflict(
-            error=ApiError("conflict"),
-            workspace_path=workspace,
-            retries_left=0,
+            error=prepared_error, workspace_path=workspace, retries_left=0
         )
 
 
@@ -432,8 +430,8 @@ def test_system_api_map_cache_and_runtime_update(monkeypatch):
         previous_cache = system_routes._API_MAP_CACHE
         previous_time = system_routes._LAST_CACHE_TIME
         try:
-            system_routes._API_MAP_CACHE = None
-            system_routes._LAST_CACHE_TIME = 0
+            monkeypatch.setattr(system_routes, "_API_MAP_CACHE", None)
+            monkeypatch.setattr(system_routes, "_LAST_CACHE_TIME", 0)
 
             first = client.get("/api/v1/system/api-map")
             second = client.get("/api/v1/system/api-map")
@@ -453,8 +451,8 @@ def test_system_api_map_cache_and_runtime_update(monkeypatch):
             assert redis is not None
             assert redis["status"] == "down"
         finally:
-            system_routes._API_MAP_CACHE = previous_cache
-            system_routes._LAST_CACHE_TIME = previous_time
+            monkeypatch.setattr(system_routes, "_API_MAP_CACHE", previous_cache)
+            monkeypatch.setattr(system_routes, "_LAST_CACHE_TIME", previous_time)
 
 
 def test_ensure_learning_log_boot_id_rotates_log(tmp_path, monkeypatch):

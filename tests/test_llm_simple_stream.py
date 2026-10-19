@@ -136,7 +136,7 @@ def simple_client(monkeypatch):
     monkeypatch.setattr("httpx.AsyncClient", DummyAsyncClient)
 
     client = TestClient(app)
-    yield client, tracer
+    return client, tracer
 
 
 def test_simple_stream_emits_chunks_and_traces(simple_client):
@@ -214,16 +214,20 @@ async def test_stream_simple_chunks_retries_on_503_then_succeeds(monkeypatch):
         sleep_calls.append(delay)
 
     monkeypatch.setattr(asyncio, "sleep", _fake_sleep)
-    SequencedAsyncClient.responses = [
-        RetryableHTTPStatusStreamResponse(status_code=503),
-        SuccessfulStreamResponse(
-            [
-                'data: {"choices":[{"delta":{"content":"ok"}}]}',
-                "data: [DONE]",
-            ]
-        ),
-    ]
-    SequencedAsyncClient.attempt_count = 0
+    monkeypatch.setattr(
+        SequencedAsyncClient,
+        "responses",
+        [
+            RetryableHTTPStatusStreamResponse(status_code=503),
+            SuccessfulStreamResponse(
+                [
+                    'data: {"choices":[{"delta":{"content":"ok"}}]}',
+                    "data: [DONE]",
+                ]
+            ),
+        ],
+    )
+    monkeypatch.setattr(SequencedAsyncClient, "attempt_count", 0)
     monkeypatch.setattr("httpx.AsyncClient", SequencedAsyncClient)
 
     stream = llm_simple_service._stream_simple_chunks(
@@ -257,11 +261,15 @@ async def test_stream_simple_chunks_stops_after_max_attempts(monkeypatch):
         sleep_calls.append(delay)
 
     monkeypatch.setattr(asyncio, "sleep", _fake_sleep)
-    SequencedAsyncClient.responses = [
-        RetryableHTTPStatusStreamResponse(status_code=503),
-        RetryableHTTPStatusStreamResponse(status_code=503),
-    ]
-    SequencedAsyncClient.attempt_count = 0
+    monkeypatch.setattr(
+        SequencedAsyncClient,
+        "responses",
+        [
+            RetryableHTTPStatusStreamResponse(status_code=503),
+            RetryableHTTPStatusStreamResponse(status_code=503),
+        ],
+    )
+    monkeypatch.setattr(SequencedAsyncClient, "attempt_count", 0)
     monkeypatch.setattr("httpx.AsyncClient", SequencedAsyncClient)
 
     stream = llm_simple_service._stream_simple_chunks(

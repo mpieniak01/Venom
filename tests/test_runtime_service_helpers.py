@@ -62,7 +62,8 @@ def test_runtime_state_machine_helpers_cover_all_branches() -> None:
         service_type_enum=st,
         service_status_enum=ss,
     )
-    assert info.status == ss.RUNNING and info.port == 7711
+    assert info.status == ss.RUNNING
+    assert info.port == 7711
 
     settings.VENOM_PAUSE_BACKGROUND_TASKS = True
     rsm.update_config_managed_status(
@@ -206,7 +207,8 @@ def test_runtime_health_checks_helpers_cover_paths(tmp_path, monkeypatch) -> Non
             "uptime_seconds": 12.3,
         },
     )
-    assert info.pid == 10 and info.uptime_seconds == 12
+    assert info.pid == 10
+    assert info.uptime_seconds == 12
 
     rhc.apply_process_metrics(info=info, pid=11, get_process_info_fn=lambda _pid: None)
     pid_path = tmp_path / "x.pid"
@@ -251,7 +253,9 @@ def test_runtime_health_checks_helpers_cover_paths(tmp_path, monkeypatch) -> Non
         service_type_enum=st,
         service_status_enum=ss,
     )
-    assert info.status == ss.RUNNING and info.port == 8000 and applied == [99]
+    assert info.status == ss.RUNNING
+    assert info.port == 8000
+    assert applied == [99]
 
     rhc.update_pid_file_service_status(
         info=info,
@@ -273,7 +277,8 @@ def test_runtime_health_checks_helpers_cover_paths(tmp_path, monkeypatch) -> Non
         service_type_enum=st,
         service_status_enum=ss,
     )
-    assert info.status == ss.ERROR and "pid-fail" in str(info.error_message)
+    assert info.status == ss.ERROR
+    assert "pid-fail" in str(info.error_message)
 
     assert rhc.check_port_listening(
         process_monitor=SimpleNamespace(check_port_listening=lambda p: p == 12), port=12
@@ -321,9 +326,9 @@ def test_runtime_health_checks_helpers_cover_paths(tmp_path, monkeypatch) -> Non
         service_type_enum=st,
         service_status_enum=ss,
     )
-    assert (
-        info.status == ss.RUNNING and got_pids == [11] and info.runtime_version == "v2"
-    )
+    assert info.status == ss.RUNNING
+    assert got_pids == [11]
+    assert info.runtime_version == "v2"
 
     class _FailProc:
         def __init__(self, exc: Exception) -> None:

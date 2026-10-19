@@ -168,9 +168,12 @@ tests/test_knowledge_context_map_api.py
 tests/test_knowledge_context_service.py
 tests/test_knowledge_entries_service.py
 tests/test_knowledge_graph_service.py
+tests/test_knowledge_hygiene_api.py
+tests/test_knowledge_memory_tasks_integration.py
 tests/test_launchpad_agents.py
 tests/test_learning.py
 tests/test_learning_logs.py
+tests/test_lessons_governance.py
 tests/test_lessons_manager.py
 tests/test_light_release_installers.py
 tests/test_llm_runtime_activation_api.py
@@ -295,6 +298,7 @@ tests/test_route_service_extractions.py
 tests/test_routing_contract.py
 tests/test_routing_integration.py
 tests/test_runtime_conversion_contracts.py
+tests/test_runtime_environment_regressions.py
 tests/test_runtime_exclusive_guard.py
 tests/test_runtime_policy_regression_contracts.py
 tests/test_runtime_registry_contracts.py
@@ -333,6 +337,7 @@ tests/test_system_llm_service.py
 tests/test_system_routes_integration_regression.py
 tests/test_system_routes_roi.py
 tests/test_task_pipeline_contracts.py
+tests/test_task_validator.py
 tests/test_tasks_stream.py
 tests/test_tasks_stream_service.py
 tests/test_test_catalog_tools.py
@@ -341,6 +346,7 @@ tests/test_test_lane_contracts_guard.py
 tests/test_test_skill.py
 tests/test_test_skill_local.py
 tests/test_token_economist.py
+tests/test_tool_reliability.py
 tests/test_toolmaker_agent.py
 tests/test_training_metrics_parser.py
 tests/test_translation_service.py

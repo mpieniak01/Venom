@@ -62,7 +62,8 @@ async def test_template_skips_classifier_context_and_executes_bound_handler(regi
             orch, task_id, request, request.content, False
         )
         provider.handle.assert_not_awaited()
-        assert intent == "MODULE_CONVERSATION" and required
+        assert intent == "MODULE_CONVERSATION"
+        assert required
         assert debug == {"source": "template", "provider_id": "device"}
         assert (
             task.context_history["response_template"]["handler"]
@@ -375,7 +376,8 @@ async def test_complex_keeps_planning_and_full_context_for_known_module_command(
             orch, uuid4(), request, request.content, False
         )
     assert intent == "COMPLEX_PLANNING"
-    assert context == "full planning context" and debug["source"] == "forced"
+    assert context == "full planning context"
+    assert debug["source"] == "forced"
     assert "response_template" not in task.context_history
     orch.context_builder.build_context.assert_awaited_once()
     provider.handle.assert_not_awaited()
@@ -393,7 +395,8 @@ async def test_missing_classifier_debug_does_not_create_a_provider_template(regi
     intent, debug = await dispatch._classify_intent_and_log(
         orch, uuid4(), TaskRequest(content="pomoc"), "pomoc"
     )
-    assert intent == "HELP_REQUEST" and debug == {}
+    assert intent == "HELP_REQUEST"
+    assert debug == {}
     assert (
         resolve_response_template(TaskRequest(content="pomoc"), intent).handler
         == "help"

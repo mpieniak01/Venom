@@ -27,8 +27,9 @@ def test_ingest_helpers_and_errors() -> None:
         svc.require_nonempty("", "bad")
 
     logger = SimpleNamespace(exception=lambda *_args, **_kwargs: None)
+    prepared_runtime_error = RuntimeError("boom")
     with pytest.raises(HTTPException) as exc:
-        svc.raise_memory_http_error(RuntimeError("boom"), context="x", logger=logger)
+        svc.raise_memory_http_error(prepared_runtime_error, context="x", logger=logger)
     assert exc.value.status_code == 500
 
 
@@ -46,7 +47,9 @@ def test_graph_helpers_nodes_edges_and_counters() -> None:
     svc.ensure_session_node(sessions, "s1")
     svc.ensure_user_node(users, "u1")
     edges = svc.build_relation_edges("1", "s1", "u1")
-    assert sessions and users and len(edges) == 2
+    assert sessions
+    assert users
+    assert len(edges) == 2
 
     svc.increment_memory_view_counter("overview")
     snap = svc.memory_view_counter_snapshot()
@@ -75,7 +78,8 @@ def test_lesson_collection_and_flow_edges() -> None:
         ],
         flow_edges,
     )
-    assert flow_edges and flow_edges[0]["data"]["source"] == "a"
+    assert flow_edges
+    assert flow_edges[0]["data"]["source"] == "a"
 
 
 def test_build_memory_graph_payload() -> None:

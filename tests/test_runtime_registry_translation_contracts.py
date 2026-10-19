@@ -103,10 +103,9 @@ def test_main_runtime_state_helpers_for_coverage(monkeypatch: pytest.MonkeyPatch
     _require_localhost_request(
         SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
     )
+    prepared_simple_namespace = SimpleNamespace(client=SimpleNamespace(host="10.0.0.2"))
     with pytest.raises(HTTPException):
-        _require_localhost_request(
-            SimpleNamespace(client=SimpleNamespace(host="10.0.0.2"))
-        )
+        _require_localhost_request(prepared_simple_namespace)
 
     assert (
         _runtime_switch_state_label(
@@ -558,7 +557,9 @@ async def test_runtime_stack_guard_and_exception_paths(tmp_path: Path):
         lessons_store_cls=lambda **_kw: (_ for _ in ()).throw(RuntimeError("lessons")),
         orchestrator=None,
     )
-    assert vector is None and graph is None and lessons is None
+    assert vector is None
+    assert graph is None
+    assert lessons is None
 
     gardener, git = await runtime_stack_module.initialize_gardener_and_git(
         workspace_path=tmp_path,
@@ -571,7 +572,8 @@ async def test_runtime_stack_guard_and_exception_paths(tmp_path: Path):
         ),
         git_skill_cls=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("git")),
     )
-    assert gardener is None and git is None
+    assert gardener is None
+    assert git is None
 
     scheduler, startup = await runtime_stack_module.initialize_background_scheduler(
         settings=SimpleNamespace(),
@@ -586,7 +588,8 @@ async def test_runtime_stack_guard_and_exception_paths(tmp_path: Path):
         asyncio_module=asyncio,
         clear_startup_runtime_retention_task=lambda: None,
     )
-    assert scheduler is None and startup is None
+    assert scheduler is None
+    assert startup is None
 
     assert (
         runtime_stack_module.initialize_audio_engine_if_enabled(
@@ -793,7 +796,8 @@ async def test_provider_runtime_additional_branches(monkeypatch, tmp_path: Path)
         ]
     )
     info = await hf.get_model_info("ok/model")
-    assert info is not None and info.name == "ok/model"
+    assert info is not None
+    assert info.name == "ok/model"
 
 
 @pytest.mark.asyncio
@@ -941,7 +945,8 @@ async def test_runtime_stack_additional_branches(tmp_path: Path):
         documenter_agent_cls=_Doc,
         file_watcher_cls=_Watcher,
     )
-    assert doc is None and watcher is None
+    assert doc is None
+    assert watcher is None
 
     settings = SimpleNamespace(
         ENABLE_AUDIO_INTERFACE=True,
@@ -1017,7 +1022,8 @@ async def test_provider_more_branches_for_ollama_and_hf(tmp_path: Path):
     )
     found = await ollama.get_model_info("model-a")
     missing = await ollama.get_model_info("model-b")
-    assert found is not None and found.name == "model-a"
+    assert found is not None
+    assert found.name == "model-a"
     assert missing is None
 
     hf = providers_module.HuggingFaceModelProvider(cache_dir=str(tmp_path))

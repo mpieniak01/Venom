@@ -85,8 +85,9 @@ def test_swarm_schema_error_is_not_reported_as_empty_success():
             raise RuntimeError("schema broken")
 
     agent = DummyAgent(kernel=BrokenRuntime())
+    prepared_cast = cast(BaseAgent, agent)
     with pytest.raises(RuntimeError, match="schema broken"):
-        swarm_mod.extract_venom_tools(cast(BaseAgent, agent))
+        swarm_mod.extract_venom_tools(prepared_cast)
 
 
 @pytest.mark.asyncio

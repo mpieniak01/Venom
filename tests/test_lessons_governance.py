@@ -71,4 +71,4 @@ async def test_toggle_learning_updates_settings(monkeypatch):
     request = memory_routes.LearningToggleRequest(enabled=not original)
     result = await memory_routes.toggle_learning(request)
     assert result["enabled"] == (not original)
-    SETTINGS.ENABLE_META_LEARNING = original
+    monkeypatch.setattr(SETTINGS, "ENABLE_META_LEARNING", original)

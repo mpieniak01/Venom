@@ -356,13 +356,12 @@ def test_onnx_activation_validates_actual_http_identity_and_preserves_state(
         json={"provider": "onnx", "model": requested},
     )
     assert response.status_code == expected, response.text
-    assert requests and all(url.startswith("http://worker:8068/") for url in requests)
+    assert requests
+    assert all(url.startswith("http://worker:8068/") for url in requests)
     if expected == 200:
         body = response.json()
-        assert (
-            body["active_model"] == "served-exact"
-            and body["active_endpoint"] == "http://worker:8068/v1"
-        )
+        assert body["active_model"] == "served-exact"
+        assert body["active_endpoint"] == "http://worker:8068/v1"
         assert body["runtime_id"] == "onnx@http://worker:8068/v1"
         assert persist.call_args.args[0]["LAST_MODEL_ONNX"] == "served-exact"
         assert settings.LLM_LOCAL_ENDPOINT == "http://stale:9/v1"

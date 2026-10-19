@@ -381,10 +381,9 @@ def test_main_runtime_state_and_access_helpers(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("venom_core.main.get_last_runtime_switch_event", lambda: None)
     req = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
     _require_localhost_request(req)
+    prepared_simple_namespace = SimpleNamespace(client=SimpleNamespace(host="10.0.0.2"))
     with pytest.raises(HTTPException):
-        _require_localhost_request(
-            SimpleNamespace(client=SimpleNamespace(host="10.0.0.2"))
-        )
+        _require_localhost_request(prepared_simple_namespace)
 
     assert (
         _runtime_switch_state_label(

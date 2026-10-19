@@ -42,7 +42,8 @@ class TestTokenBucket:
         bucket.tokens = 5.0
         assert bucket.acquire(10) is False
         # Tokeny mogą się lekko zwiększyć przez czas w _refill() (microseconds)
-        assert bucket.tokens >= 5.0 and bucket.tokens < 5.1
+        assert bucket.tokens >= 5.0
+        assert bucket.tokens < 5.1
 
     def test_token_bucket_try_acquire_with_wait(self):
         """Test try_acquire z sugerowanym czasem oczekiwania."""

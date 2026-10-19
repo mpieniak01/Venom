@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, describe, it, mock } from "node:test";
 
 import { ApiError, apiFetch } from "../lib/api-client";
 
@@ -7,6 +7,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  mock.restoreAll();
 });
 
 describe("apiFetch retry policy", () => {
@@ -73,4 +74,25 @@ describe("apiFetch retry policy", () => {
     assert.equal(capture.headers.get("X-Test-Header"), "abc");
     assert.equal(capture.headers.get("Content-Type"), "application/json");
   });
+  it("awaits response parsing inside the retry error boundary", async () => {
+    let calls = 0;
+    const interrupted = Response.json({ ok: false });
+    Object.defineProperty(interrupted, "json", {
+      value: () => Promise.reject(new TypeError("response body interrupted")),
+    });
+    globalThis.fetch = async () => ++calls === 1 ? interrupted : Response.json({ ok: true });
+    const result = await apiFetch<{ ok: boolean }>("/api/v1/system/llm-servers/active");
+    assert.equal(result.ok, true);
+    assert.equal(calls, 2);
+  });
+
+  it("keeps retries bounded and waits for each configured backoff", async () => {
+    let calls = 0;
+    const timer = mock.method(globalThis, "setTimeout");
+    globalThis.fetch = async () => { calls += 1; throw new TypeError("offline"); };
+    await assert.rejects(apiFetch("/api/v1/system/llm-servers/active"), /offline/);
+    assert.equal(calls, 3);
+    assert.deepEqual(timer.mock.calls.map((call) => call.arguments[1]), [200, 500]);
+  });
+
 });

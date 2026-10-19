@@ -33,7 +33,7 @@ export function AcademyDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadStatus();
+    void loadStatus();
   }, []);
 
   async function loadStatus() {

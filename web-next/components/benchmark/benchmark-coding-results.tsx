@@ -18,7 +18,7 @@ interface HistoryItem {
   run_id: string;
   status: CodingBenchmarkRunStatus;
   config: CodingBenchmarkRun["config"];
-  summary?: CodingBenchmarkRun["summary"];
+  summary?: Exclude<CodingBenchmarkRun["summary"], undefined>;
   created_at: string;
   finished_at?: string | null;
   error_message?: string | null;

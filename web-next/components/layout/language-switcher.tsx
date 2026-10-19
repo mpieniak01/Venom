@@ -14,7 +14,7 @@ const LANGUAGE_OPTIONS = [
 function FlagIcon({ code }: Readonly<{ code: LanguageCode }>) {
   if (code === "pl") {
     return (
-      <svg viewBox="0 0 24 16" className="h-4 w-6 rounded-sm shadow-sm">
+      <svg aria-hidden="true" viewBox="0 0 24 16" className="h-4 w-6 rounded-sm shadow-sm">
         <rect width="24" height="16" fill="#f4f4f5" />
         <rect y="8" width="24" height="8" fill="#d32f45" />
       </svg>
@@ -22,7 +22,7 @@ function FlagIcon({ code }: Readonly<{ code: LanguageCode }>) {
   }
   if (code === "en") {
     return (
-      <svg viewBox="0 0 24 16" className="h-4 w-6 rounded-sm shadow-sm">
+      <svg aria-hidden="true" viewBox="0 0 24 16" className="h-4 w-6 rounded-sm shadow-sm">
         <rect width="24" height="16" fill="#1f2a44" />
         <path
           d="M0 1.5L22.5 16H24v-1.5L1.5 0H0v1.5zM24 1.5L1.5 16H0v-1.5L22.5 0H24v1.5z"
@@ -36,7 +36,7 @@ function FlagIcon({ code }: Readonly<{ code: LanguageCode }>) {
     );
   }
   return (
-    <svg viewBox="0 0 24 16" className="h-4 w-6 rounded-sm shadow-sm">
+    <svg aria-hidden="true" viewBox="0 0 24 16" className="h-4 w-6 rounded-sm shadow-sm">
       <rect width="24" height="16" fill="#000" />
       <rect y="5.33" width="24" height="5.34" fill="#dd0000" />
       <rect y="10.67" width="24" height="5.33" fill="#ffce00" />

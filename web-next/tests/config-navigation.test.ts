@@ -27,4 +27,13 @@ describe("configuration navigation", () => {
     assert.equal(state.scope, "all");
     assert.equal(state.visibility, "environment");
   });
+  it("preserves the resource allowlist when simplifying its regex", () => {
+    for (const resource of ["core:model", "path/to-file.ext", "a_b-1", "a".repeat(200)]) {
+      assert.equal(parseConfigNavigation(`?resource=${encodeURIComponent(resource)}`).resource, resource);
+    }
+    for (const resource of ["/leading", "bad\\path", "with space", "a".repeat(201)]) {
+      assert.equal(parseConfigNavigation(`?resource=${encodeURIComponent(resource)}`).resource, null);
+    }
+  });
+
 });

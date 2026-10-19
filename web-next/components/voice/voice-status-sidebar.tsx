@@ -572,7 +572,7 @@ function VoiceSessionCard({
   runtimeAlignment,
 }: Readonly<{
   session: NonNullable<VoiceStatusUpdate["latest_voice_session"]>;
-  runtimeAlignment?: VoiceStatusUpdate["runtime_alignment"] | null;
+  runtimeAlignment?: Exclude<VoiceStatusUpdate["runtime_alignment"], undefined> | null;
 }>) {
   const t = useTranslation();
   const confidence = formatConfidence(session.emotion_confidence);

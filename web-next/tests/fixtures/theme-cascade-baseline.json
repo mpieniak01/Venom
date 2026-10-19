@@ -1,0 +1,116 @@
+{
+  "source_revision": "c26badee2e4eeccd95a465f2ff56336739fbd195",
+  "source_css_sha256": "1c81e7d521bae9fde90742e9f35db71db7c8aa52a1e3ec7c77d28b2ed117e177",
+  "declarations": [
+    {
+      "selector": ".glass-panel",
+      "property": "background",
+      "value": "var(--bg-panel)"
+    },
+    {
+      "selector": ".glass-panel",
+      "property": "border",
+      "value": "var(--border-glass)"
+    },
+    {
+      "selector": ".glass-panel",
+      "property": "backdrop-filter",
+      "value": "blur(16px)"
+    },
+    {
+      "selector": ".kpi-panel",
+      "property": "padding",
+      "value": "1.5rem"
+    },
+    {
+      "selector": ".kpi-panel",
+      "property": "border",
+      "value": "1px solid var(--primary-dim)"
+    },
+    {
+      "selector": ".kpi-panel",
+      "property": "background",
+      "value": "linear-gradient(135deg, var(--bg-panel), var(--surface-muted))"
+    },
+    {
+      "selector": ".queue-panel",
+      "property": "border",
+      "value": "1px solid var(--primary-dim)"
+    },
+    {
+      "selector": ".command-console-panel",
+      "property": "padding",
+      "value": "1.25rem 1.5rem"
+    },
+    {
+      "selector": ".sidebar,\naside",
+      "property": "background-color",
+      "value": "var(--bg-sidebar)"
+    },
+    {
+      "selector": ".sidebar,\naside",
+      "property": "backdrop-filter",
+      "value": "none"
+    },
+    {
+      "selector": ".sidebar,\naside",
+      "property": "border-right",
+      "value": "1px solid rgba(255, 255, 255, 0.05)"
+    },
+    {
+      "selector": ".sidebar,\naside",
+      "property": "border-left",
+      "value": "none"
+    },
+    {
+      "selector": ".sidebar,\naside",
+      "property": "border-radius",
+      "value": "0"
+    },
+    {
+      "selector": "aside.glass-panel::after,\nnav.glass-panel::after",
+      "property": "display",
+      "value": "none"
+    },
+    {
+      "selector": "input,\ntextarea",
+      "property": "background-color",
+      "value": "var(--ui-surface)"
+    },
+    {
+      "selector": "input,\ntextarea",
+      "property": "border",
+      "value": "1px solid var(--ui-border)"
+    },
+    {
+      "selector": "input,\ntextarea",
+      "property": "color",
+      "value": "var(--text-primary)"
+    },
+    {
+      "selector": "input,\ntextarea",
+      "property": "font-family",
+      "value": "var(--font-tech)"
+    },
+    {
+      "selector": "input,\ntextarea",
+      "property": "border-radius",
+      "value": "4px"
+    },
+    {
+      "selector": "input:focus,\ntextarea:focus",
+      "property": "border-color",
+      "value": "var(--primary)"
+    },
+    {
+      "selector": "input:focus,\ntextarea:focus",
+      "property": "outline",
+      "value": "none"
+    },
+    {
+      "selector": "input:focus,\ntextarea:focus",
+      "property": "box-shadow",
+      "value": "0 0 10px var(--primary-dim)"
+    }
+  ]
+}

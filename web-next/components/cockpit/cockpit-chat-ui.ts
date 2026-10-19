@@ -256,8 +256,8 @@ export function useCockpitChatUi({
         } else {
           updateFeedbackState(requestId, { message: t("cockpit.feedback.success") });
         }
-        refreshHistory();
-        refreshTasks();
+        void refreshHistory();
+        void refreshTasks();
       } catch (error) {
         updateFeedbackState(requestId, {
           message:
@@ -402,7 +402,7 @@ export function useCockpitChatUi({
     }
   }, [generationParams, models, pushToast, setTuningSaving, updateModelConfig, t]);
 
-  const handleExportPinnedLogs = useCallback(async () => {
+  const handleExportPinnedLogs = useCallback(() => {
     if (pinnedLogs.length === 0) return;
     setExportingPinned(true);
     try {

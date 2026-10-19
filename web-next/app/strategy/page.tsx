@@ -368,7 +368,7 @@ export default function StrategyPage() {
       showToast("success", "Roadmapa utworzona.");
       setVisionInput("");
       setShowVisionForm(false);
-      refreshRoadmap();
+      void refreshRoadmap();
     } catch (err) {
       showToast(
         "error",
@@ -395,7 +395,7 @@ export default function StrategyPage() {
         clearTimeout(campaignRefreshTimer.current);
       }
       campaignRefreshTimer.current = setTimeout(() => {
-        refreshRoadmap();
+        void refreshRoadmap();
         fetchStatusReport({ silent: true });
       }, AUTO_REFRESH_DELAY_MS);
     } catch (err) {

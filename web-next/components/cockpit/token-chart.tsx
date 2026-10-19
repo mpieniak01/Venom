@@ -1,26 +1,44 @@
 "use client";
 
 import type { Chart } from "chart.js/auto";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { useTranslation } from "@/lib/i18n";
 
 import type { TokenSample } from "@/components/cockpit/token-types";
+
+type ChartModule = Pick<typeof import("chart.js/auto"), "default">;
+
+const loadChartModule = () => import("chart.js/auto");
 
 type TokenChartProps = Readonly<{
   history: TokenSample[];
   height?: number;
+  loadChart?: () => Promise<ChartModule>;
 }>;
 
-export function TokenChart({ history, height = 220 }: TokenChartProps) {
+export function TokenChart({ history, height = 220, loadChart = loadChartModule }: TokenChartProps) {
+  const t = useTranslation();
+  const [failed, setFailed] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
-  const chartModuleRef = useRef<typeof import("chart.js/auto") | null>(null);
+  const chartModuleRef = useRef<ChartModule | null>(null);
+
+  const destroyChart = useCallback(() => {
+    const chart = chartRef.current;
+    chartRef.current = null;
+    try {
+      chart?.destroy();
+    } catch (error) {
+      console.warn("Token chart cleanup failed", error);
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
-      chartRef.current?.destroy();
-      chartRef.current = null;
+      destroyChart();
     };
-  }, []);
+  }, [destroyChart]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -35,7 +53,7 @@ export function TokenChart({ history, height = 220 }: TokenChartProps) {
       if (!canvasRef.current) return;
       let chartModule = chartModuleRef.current;
       if (!chartModule) {
-        chartModule = await import("chart.js/auto");
+        chartModule = await loadChart();
         chartModuleRef.current = chartModule;
       }
       if (!isMounted) return;
@@ -86,12 +104,29 @@ export function TokenChart({ history, height = 220 }: TokenChartProps) {
       });
     };
 
-    renderChart();
+    void renderChart().catch((error: unknown) => {
+      if (!isMounted) return;
+      console.warn("Token chart rendering failed", error);
+      destroyChart();
+      setFailed(true);
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [history, height]);
+  }, [history, height, loadChart, destroyChart]);
+
+  if (failed) {
+    return (
+      <div className="overflow-auto text-xs text-theme-muted" style={{ height }}>
+        <ul aria-label={t("cockpit.metrics.tokens.history")}>
+          {history.map((sample, index) => (
+            <li key={`${sample.timestamp}-${index}`}>{sample.timestamp}: {sample.value}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
   return <canvas ref={canvasRef} className="w-full" style={{ height }} />;
 }

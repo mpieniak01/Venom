@@ -81,6 +81,8 @@ type PollingEntry<T> = {
   listeners: Set<() => void>;
   timer?: ReturnType<typeof setInterval>;
   fetching: boolean;
+  inFlight?: Promise<void>;
+  refreshRequest?: { after: Promise<void>; promise: Promise<void> };
   suspendedUntil?: number;
 };
 
@@ -117,7 +119,7 @@ function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number
 }
 
 async function triggerFetch<T>(entry: PollingEntry<T>) {
-  if (entry.fetching) return;
+  if (entry.fetching) return entry.inFlight;
   const now = Date.now();
   if (entry.suspendedUntil && entry.suspendedUntil > now) {
     entry.state = {
@@ -128,6 +130,9 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
     notifyEntry(entry);
     return;
   }
+  let finishFetch!: () => void;
+  const inFlight = new Promise<void>((resolve) => { finishFetch = resolve; });
+  entry.inFlight = inFlight;
   entry.fetching = true;
   if (entry.state.data === null) {
     entry.state = { ...entry.state, loading: true, refreshing: false };
@@ -140,7 +145,7 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
     entry.state = {
       data: result,
       loading: false,
-      refreshing: false,
+      refreshing: entry.refreshRequest?.after === inFlight,
       error: null,
     };
     entry.suspendedUntil = undefined;
@@ -155,12 +160,14 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
     entry.state = {
       ...entry.state,
       loading: false,
-      refreshing: false,
+      refreshing: entry.refreshRequest?.after === inFlight,
       error: message,
     };
   } finally {
     entry.fetching = false;
+    entry.inFlight = undefined;
     notifyEntry(entry);
+    finishFetch();
   }
 }
 
@@ -191,6 +198,24 @@ function clearEntrySuspension<T>(entry: PollingEntry<T>) {
   entry.suspendedUntil = undefined;
 }
 
+function refreshEntry<T>(entry: PollingEntry<T>): Promise<void> {
+  clearEntrySuspension(entry);
+  const inFlight = entry.inFlight;
+  if (!inFlight) return triggerFetch(entry);
+  if (entry.refreshRequest?.after === inFlight) return entry.refreshRequest.promise;
+
+  // A request already in flight may contain a pre-mutation snapshot. Share one
+  // follow-up among refreshes waiting for that request, not the stale response.
+  const promise = inFlight.then(() => {
+    clearEntrySuspension(entry);
+    return triggerFetch(entry);
+  }).finally(() => {
+    if (entry.refreshRequest?.promise === promise) entry.refreshRequest = undefined;
+  });
+  entry.refreshRequest = { after: inFlight, promise };
+  return promise;
+}
+
 function markPollingReady(setReady: (value: boolean) => void) {
   setReady(true);
 }
@@ -216,9 +241,7 @@ function usePolling<T>(
   const fallbackEntry = useMemo<PollingEntry<T>>(
     () => ({
       state: { data: null, loading: true, refreshing: false, error: null },
-      fetcher: async () => {
-        throw new Error("Polling entry not initialized.");
-      },
+      fetcher: () => Promise.reject(new Error("Polling entry not initialized.")),
       interval: 0,
       listeners: new Set(),
       fetching: false,
@@ -281,8 +304,7 @@ function usePolling<T>(
 
   const refresh = useCallback(async () => {
     if (pollingDisabled || entry === fallbackEntry) return;
-    clearEntrySuspension(entry);
-    await triggerFetch(entry);
+    await refreshEntry(entry);
   }, [entry, fallbackEntry, pollingDisabled]);
 
   return useMemo(

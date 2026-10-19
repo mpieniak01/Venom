@@ -32,7 +32,7 @@ export function LessonPruningPanel() {
     const [tagToPrune, setTagToPrune] = useState("");
     const [countToPrune, setCountToPrune] = useState("10");
 
-    const handleAction = async (
+    const handleAction = (
         actionName: string,
         actionFn: () => Promise<{ deleted: number; remaining: number }>
     ) => {
@@ -52,7 +52,7 @@ export function LessonPruningPanel() {
                 `${t("brain.hygiene.opSuccess")} (${result.deleted}, ${result.remaining})`,
                 "success"
             );
-            refreshStats();
+            void refreshStats();
         } catch (err) {
             pushToast(`${t("brain.hygiene.opError")} (${actionName})`, "error");
             console.error(err);

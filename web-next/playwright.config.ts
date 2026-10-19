@@ -29,6 +29,7 @@ const webServerCommand = isProdServer
 
 const config: PlaywrightTestConfig = {
   testDir: "./tests",
+  testMatch: "**/*.spec.ts",
   fullyParallel: true,
   timeout: 30_000,
   expect: {

@@ -117,19 +117,14 @@ async function selectChatMode(page: Page, label: string) {
   const expected = new RegExp(label.split(" ")[0], "i");
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await trigger.waitFor({ state: "visible", timeout: 10000 });
-    await trigger.click({ force: true });
+    await expect(trigger).toBeEnabled();
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
     await page.getByTestId("chat-mode-menu").waitFor({ state: "visible", timeout: 10000 });
     const option = page.getByTestId(`chat-mode-option-${modeValue}`);
     await option.waitFor({ state: "visible", timeout: 10000 });
     await option.scrollIntoViewIfNeeded();
-    try {
-      await option.click({ timeout: 3000 });
-    } catch {
-      // Fallback for flaky viewport clipping in dropdown portals.
-      await option.evaluate((element) => {
-        (element as HTMLButtonElement).click();
-      });
-    }
+    await option.click({ timeout: 3000 });
     try {
       await expect(trigger).toContainText(expected, { timeout: 5000 });
       return;

@@ -39,26 +39,38 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
     data: queue,
     refresh: refreshQueue,
     loading: queueLoading,
+    refreshing: queueRefreshing,
+    error: queueError,
   } = useQueueStatus();
   const { refresh: refreshTasks } = useTasks();
   const [message, setMessage] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
+  const [queueRefreshPending, setQueueRefreshPending] = useState(0);
   const queueAvailable = Boolean(queue) && !queueLoading;
   const t = useTranslation();
   const queueOfflineMessage = t("quickActions.offlineMessage");
 
-  const runAction = async (name: string, fn: () => Promise<unknown>) => {
+  const refreshQueueAfterMutation = async () => {
+    setQueueRefreshPending((pending) => pending + 1);
+    try {
+      await refreshQueue();
+    } finally {
+      setQueueRefreshPending((pending) => pending - 1);
+    }
+  };
+
+  const runAction = async (action: QuickActionItem) => {
     if (running) return;
-    setRunning(name);
+    setRunning(action.id);
     setMessage(null);
     try {
-      await fn();
-      setMessage(t("quickActions.successMessage", { action: name }));
-      refreshQueue();
-      refreshTasks();
+      await action.handler();
+      setMessage(t("quickActions.successMessage", { action: action.label }));
+      void refreshQueueAfterMutation();
+      void refreshTasks();
     } catch (err) {
       setMessage(
-        err instanceof Error ? err.message : t("quickActions.errorMessage", { action: name }),
+        err instanceof Error ? err.message : t("quickActions.errorMessage", { action: action.label }),
       );
     } finally {
       setRunning(null);
@@ -107,12 +119,18 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   );
 
   const handleQuickAction = async (action: QuickActionItem) => {
+    if (running) return;
+    if (action.id === "toggle" && (queueRefreshing || queueRefreshPending > 0)) return;
+    if (action.id === "toggle" && queueError) {
+      setMessage(queueError);
+      return;
+    }
     if (!queueAvailable) {
       setMessage(queueOfflineMessage);
       return;
     }
     if (action.confirm && !confirm(action.confirm)) return;
-    await runAction(action.label, action.handler);
+    await runAction(action);
   };
 
   const badgeLabel = (action: QuickActionItem) => {
@@ -137,7 +155,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
         />
         <div className="space-y-2">
           {actions.map((action) => {
-            const isRunning = running === action.id;
+            const isRunning = running === action.id || (action.id === "toggle" && (queueRefreshing || queueRefreshPending > 0));
             return (
               <ListCard
                 key={action.id}

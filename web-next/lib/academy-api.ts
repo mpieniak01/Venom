@@ -840,7 +840,7 @@ type RuntimeOptionsPayload = {
   };
   adapter_catalog?: UnifiedModelCatalogResponse["adapter_catalog"];
   selector_flow?: string[];
-  model_audit?: UnifiedModelCatalogResponse["model_audit"];
+  model_audit?: Exclude<UnifiedModelCatalogResponse["model_audit"], undefined>;
 };
 
 export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {

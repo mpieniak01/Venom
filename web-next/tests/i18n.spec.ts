@@ -25,10 +25,10 @@ test.describe("Internationalization (i18n)", () => {
         // Topbar
         await expect(page.getByTestId("topbar-command-center")).toContainText("Centrum dowodzenia");
 
-        // Sidebar
-        const calendarLink = page.locator('a[href="/calendar"]');
-        await expect(calendarLink).toBeVisible();
-        await expect(calendarLink).toHaveAttribute("aria-label", "Kalendarz");
+        // Assert a core navigation item; calendar is not part of the core sidebar.
+        const voiceLink = page.getByTestId("sidebar").locator('a[href="/voice"]');
+        await expect(voiceLink).toBeVisible();
+        await expect(voiceLink).toHaveAttribute("aria-label", "Głos");
 
         // 3. Switch to English
         // Open language menu
@@ -42,7 +42,7 @@ test.describe("Internationalization (i18n)", () => {
         // Topbar
         await expect(page.getByTestId("topbar-command-center")).toContainText("Command Center");
         // Sidebar
-        await expect(page.locator('a[href="/calendar"]')).toHaveAttribute("aria-label", "Calendar");
+        await expect(voiceLink).toHaveAttribute("aria-label", "Voice chat");
 
         // 5. Switch to German
         await page.getByRole("button", { name: /Przełącz język|Switch language|Sprache wechseln/i }).click();
@@ -54,7 +54,7 @@ test.describe("Internationalization (i18n)", () => {
         // Topbar
         await expect(page.getByTestId("topbar-command-center")).toContainText("Leitstand");
         // Sidebar
-        await expect(page.locator('a[href="/calendar"]')).toHaveAttribute("aria-label", "Kalender");
+        await expect(voiceLink).toHaveAttribute("aria-label", "Sprachchat");
 
         // 7. Switch back to Polish
         await page.getByRole("button", { name: /Przełącz język|Switch language|Sprache wechseln/i }).click();
@@ -64,6 +64,6 @@ test.describe("Internationalization (i18n)", () => {
 
         // 8. Verify Polish content again
         await expect(page.getByTestId("topbar-command-center")).toContainText("Centrum dowodzenia");
-        await expect(page.locator('a[href="/calendar"]')).toHaveAttribute("aria-label", "Kalendarz");
+        await expect(voiceLink).toHaveAttribute("aria-label", "Głos");
     });
 });

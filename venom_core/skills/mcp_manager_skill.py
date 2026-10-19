@@ -267,21 +267,23 @@ class McpManagerSkill(BaseSkill):
 
         tools_list = []
         try:
-            async with stdio_client(server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
+            async with (
+                stdio_client(server_params) as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
 
-                    # List tools
-                    result = await session.list_tools()
+                # List tools
+                result = await session.list_tools()
 
-                    for tool in result.tools:
-                        tools_list.append(
-                            McpToolMetadata(
-                                name=tool.name,
-                                description=tool.description or "",
-                                input_schema=tool.inputSchema,
-                            )
+                for tool in result.tools:
+                    tools_list.append(
+                        McpToolMetadata(
+                            name=tool.name,
+                            description=tool.description or "",
+                            input_schema=tool.inputSchema,
                         )
+                    )
         except Exception as e:
             self.logger.error(f"Introspekcja nieudana: {e}")
             raise e

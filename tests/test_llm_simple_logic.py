@@ -494,10 +494,9 @@ async def test_service_handles_missing_model_and_endpoint(monkeypatch):
 
     monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", _no_adapter)
 
+    prepared_argument = llm_simple_service.SimpleChatRequest(content="x")
     with pytest.raises(llm_simple_service.HTTPException) as missing_model:
-        await llm_simple_service.stream_simple_chat(
-            llm_simple_service.SimpleChatRequest(content="x")
-        )
+        await llm_simple_service.stream_simple_chat(prepared_argument)
     assert missing_model.value.status_code == 400
 
     runtime = DummyRuntime(provider="ollama", model_name="model-x")
@@ -507,10 +506,9 @@ async def test_service_handles_missing_model_and_endpoint(monkeypatch):
     monkeypatch.setattr(
         llm_simple_service, "_build_chat_completions_url", lambda _rt: None
     )
+    prepared_argument_2 = llm_simple_service.SimpleChatRequest(content="x")
     with pytest.raises(llm_simple_service.HTTPException) as missing_endpoint:
-        await llm_simple_service.stream_simple_chat(
-            llm_simple_service.SimpleChatRequest(content="x")
-        )
+        await llm_simple_service.stream_simple_chat(prepared_argument_2)
     assert missing_endpoint.value.status_code == 503
 
 
@@ -579,7 +577,8 @@ def test_service_resolve_post_attempt_action_retry_and_done(monkeypatch):
     )
     assert action_done == "done"
     assert llm_simple_service._apply_post_attempt_action(action_done) == (False, True)
-    assert collector_calls and collector_calls[-1]["success"] is True
+    assert collector_calls
+    assert collector_calls[-1]["success"] is True
 
 
 def test_service_helper_branches_and_emitters(monkeypatch):
@@ -707,7 +706,8 @@ async def test_service_stream_single_attempt_wrapper_covers_retry_config(monkeyp
     ):
         events.append(event)
 
-    assert events and events[0].startswith("event: content")
+    assert events
+    assert events[0].startswith("event: content")
     assert captured["retry"].max_attempts == 2
     assert runtime_telemetry == {}
 
@@ -804,7 +804,6 @@ def test_stream_service_packet_update_and_post_attempt_branches() -> None:
 
     events = llm_simple_stream_service.update_stream_state_from_packet(
         packet={"choices": [{"delta": {"content": "A"}}]},
-        runtime=SimpleNamespace(provider="ollama"),
         state=state,
         runtime_telemetry=None,
         extract_runtime_telemetry_fn=None,
@@ -836,10 +835,9 @@ async def test_stream_simple_chat_rejects_when_runtime_switch_is_active():
         reason="test",
     )
     try:
+        prepared_simple_chat_request_2 = SimpleChatRequest(content="hello")
         with pytest.raises(HTTPException) as exc_info:
-            await llm_simple_service.stream_simple_chat(
-                SimpleChatRequest(content="hello")
-            )
+            await llm_simple_service.stream_simple_chat(prepared_simple_chat_request_2)
         assert exc_info.value.status_code == 409
         assert exc_info.value.detail["code"] == "runtime_switch_in_progress"
     finally:
@@ -880,13 +878,13 @@ def test_usage_only_final_packet_is_preserved_for_non_ollama_runtime():
             "choices": [],
             "usage": {"prompt_tokens": 3, "completion_tokens": 7, "total_tokens": 10},
         },
-        runtime=DummyRuntime("vllm"),
         state=state,
         request_id=uuid4(),
         stream_start=0,
         runtime_telemetry=telemetry,
     )
-    assert events == [] and state.chunk_count == 0
+    assert events == []
+    assert state.chunk_count == 0
     assert telemetry["completion_tokens"] == 7
     assert '"completion_tokens": 7' in llm_simple_service._build_done_event(telemetry)
 
@@ -908,7 +906,8 @@ def test_simple_payload_preserves_explicit_seed_in_both_transport_modes(
     if seed is None:
         assert "seed" not in payload
     else:
-        assert payload["seed"] == seed and type(payload["seed"]) is int
+        assert payload["seed"] == seed
+        assert type(payload["seed"]) is int
 
 
 @pytest.mark.parametrize("seed", [True, 1.0, "42", 2**63, -(2**63) - 1])
@@ -945,8 +944,8 @@ async def test_simple_onnx_disabled_or_unconfigured_fails_before_model_work(
 
     monkeypatch.setattr(llm_simple_service, "_get_active_adapter_id", forbidden)
     monkeypatch.setattr(llm_simple_service, "_trace_simple_request", forbidden)
+    prepared_simple_chat_request = SimpleChatRequest(content="test", seed=seed)
     with pytest.raises(HTTPException) as error:
-        await llm_simple_service.stream_simple_chat(
-            SimpleChatRequest(content="test", seed=seed)
-        )
-    assert error.value.status_code == 503 and detail in error.value.detail
+        await llm_simple_service.stream_simple_chat(prepared_simple_chat_request)
+    assert error.value.status_code == 503
+    assert detail in error.value.detail

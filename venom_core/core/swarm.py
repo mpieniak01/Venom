@@ -77,12 +77,7 @@ class VenomAgent(Executor):
     ) -> None:
         self.conversation.extend(message.messages)
 
-    @handler
-    async def respond(
-        self,
-        request: GroupChatRequestMessage,
-        ctx: WorkflowContext[GroupChatResponseMessage],
-    ) -> None:
+    def _build_turn_transcript(self, request: GroupChatRequestMessage) -> str:
         transcript = "\n\n".join(
             f"[{message.author_name or message.role}]: {message.text}"
             for message in self._turn_messages()
@@ -91,65 +86,80 @@ class VenomAgent(Executor):
             transcript += "\n\n" + request.additional_instruction
         if self.deliberation:
             transcript += f"\n\nTeraz wyłącznie tura {self.name}. Wykonaj swoją rolę względem zadania [User]."
-        # Errors and cancellation propagate to CouncilSession. No fake successful
-        # participant output is generated when an underlying model/tool fails.
-        if self.deliberation:
-            candidate = transcript
-            if self.name == "Critic":
-                candidates = [
-                    message
-                    for message in self.conversation
-                    if message.author_name == "Coder"
-                ]
-                if not candidates:
-                    raise ValueError("council_critic_missing_coder_candidate")
-                candidate = candidates[-1].text
-            blocked, policy_report = self.venom_agent.validate_deliberation_input(
-                candidate
-            )
-            logger.info(f"Council turn started: {self.name}; policy_blocked={blocked}")
-            if blocked:
-                result = policy_report
-            else:
-                review_types: dict[str, type[_CriticReview] | type[_GuardianReview]] = {
-                    "Critic": _CriticReview,
-                    "Guardian": _GuardianReview,
+        return transcript
+
+    def _deliberation_candidate(self, transcript: str) -> str:
+        if self.name != "Critic":
+            return transcript
+        candidates = [
+            message for message in self.conversation if message.author_name == "Coder"
+        ]
+        if not candidates:
+            raise ValueError("council_critic_missing_coder_candidate")
+        return candidates[-1].text
+
+    def _format_deliberation_review(
+        self,
+        result: str,
+        review_type: type[_CriticReview] | type[_GuardianReview] | None,
+    ) -> str:
+        if review_type is None:
+            return result
+        review = review_type.model_validate_json(result)
+        if self.name == "Guardian":
+            final_line = "TERMINATE" if review.decision == "APPROVED" else "REVISE"
+            return f"{review.feedback}\n{final_line}"
+        return f"{review.decision}\n{review.feedback}"
+
+    async def _deliberate_turn(self, transcript: str) -> str:
+        candidate = self._deliberation_candidate(transcript)
+        blocked, policy_report = self.venom_agent.validate_deliberation_input(candidate)
+        logger.info(f"Council turn started: {self.name}; policy_blocked={blocked}")
+        if blocked:
+            result = policy_report
+        else:
+            review_types: dict[str, type[_CriticReview] | type[_GuardianReview]] = {
+                "Critic": _CriticReview,
+                "Guardian": _GuardianReview,
+            }
+            review_type = review_types.get(self.name)
+            response_format = None
+            if review_type is not None:
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": f"council_{self.name.lower()}_review",
+                        "strict": True,
+                        "schema": review_type.model_json_schema(),
+                    },
                 }
-                review_type = review_types.get(self.name)
-                response_format = None
-                if review_type is not None:
-                    response_format = {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": f"council_{self.name.lower()}_review",
-                            "strict": True,
-                            "schema": review_type.model_json_schema(),
-                        },
-                    }
-                result = await self.venom_agent.deliberate(
-                    transcript,
-                    system_message=self.system_message,
-                    generation_params=self.generation_params,
-                    enable_functions=self.name in {"Coder", "Guardian"},
-                    response_format=response_format,
-                )
-                if review_type is not None:
-                    review = review_type.model_validate_json(result)
-                    if self.name == "Guardian":
-                        final_line = (
-                            "TERMINATE" if review.decision == "APPROVED" else "REVISE"
-                        )
-                        result = f"{review.feedback}\n{final_line}"
-                    else:
-                        result = f"{review.decision}\n{review.feedback}"
-                if policy_report:
-                    result = f"{policy_report}\n\nDODATKOWE UWAGI LLM:\n{result}"
-            logger.info(f"Council turn finished: {self.name}")
+            result = await self.venom_agent.deliberate(
+                transcript,
+                system_message=self.system_message,
+                generation_params=self.generation_params,
+                enable_functions=self.name in {"Coder", "Guardian"},
+                response_format=response_format,
+            )
+            result = self._format_deliberation_review(result, review_type)
+            if policy_report:
+                result = f"{policy_report}\n\nDODATKOWE UWAGI LLM:\n{result}"
+        logger.info(f"Council turn finished: {self.name}")
+        return result
+
+    @handler
+    async def respond(
+        self,
+        request: GroupChatRequestMessage,
+        ctx: WorkflowContext[GroupChatResponseMessage],
+    ) -> None:
+        transcript = self._build_turn_transcript(request)
+        # Errors and cancellation propagate; failed participants never become success.
+        if self.deliberation:
+            result = await self._deliberate_turn(transcript)
         else:
             result = await self.venom_agent.process(transcript)
         response = Message("assistant", [result], author_name=self.name)
-        # GroupChat broadcasts a response to other participants, excluding its
-        # author. Keep the author's own turn once and record Venom's transcript.
+        # GroupChat excludes the author from broadcasts: record its own turn once.
         self.conversation.append(response)
         self.output_messages.append(response)
         await ctx.send_message(GroupChatResponseMessage(response))

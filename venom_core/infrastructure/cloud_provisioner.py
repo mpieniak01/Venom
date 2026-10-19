@@ -126,6 +126,31 @@ class CloudProvisioner:
         if self.hive_url:
             logger.info(f"HIVE_URL skonfigurowany: {self.hive_url}")
 
+    def _ssh_connect_kwargs(
+        self,
+        host: str,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> dict[str, object]:
+        """Build SSH credentials with the existing key-before-password priority."""
+        user = user or self.default_user
+        connect_kwargs: dict[str, object] = {
+            "host": host,
+            "username": user,
+            "known_hosts": None,
+        }
+
+        # Preferuj klucz SSH
+        if self.ssh_key_path and Path(self.ssh_key_path).exists():
+            connect_kwargs["client_keys"] = [self.ssh_key_path]
+        elif password:
+            connect_kwargs["password"] = password
+        else:
+            raise CloudProvisionerError(
+                "Brak klucza SSH ani hasła. Nie można nawiązać połączenia."
+            )
+        return connect_kwargs
+
     async def _execute_ssh_command(
         self,
         host: str,
@@ -148,45 +173,26 @@ class CloudProvisioner:
         Raises:
             CloudProvisionerError: Jeśli połączenie nie powiedzie się
         """
-        user = user or self.default_user
-        connect_kwargs: dict[str, object] = {
-            "host": host,
-            "username": user,
-            "known_hosts": None,
-        }
-
-        # Preferuj klucz SSH
-        if self.ssh_key_path and Path(self.ssh_key_path).exists():
-            connect_kwargs["client_keys"] = [self.ssh_key_path]
-        elif password:
-            connect_kwargs["password"] = password
-        else:
-            raise CloudProvisionerError(
-                "Brak klucza SSH ani hasła. Nie można nawiązać połączenia."
-            )
+        connect_kwargs = self._ssh_connect_kwargs(host, user, password)
 
         try:
-            async with asyncio.timeout(self.timeout):
-                async with asyncssh.connect(**connect_kwargs) as conn:
-                    result = await conn.run(command, check=False)
-                    raw_stdout = result.stdout if result.stdout else ""
-                    raw_stderr = result.stderr if result.stderr else ""
-                    stdout = (
-                        raw_stdout.decode()
-                        if isinstance(raw_stdout, bytes)
-                        else raw_stdout
-                    )
-                    stderr = (
-                        raw_stderr.decode()
-                        if isinstance(raw_stderr, bytes)
-                        else raw_stderr
-                    )
-                    exit_code = result.exit_status or 0
+            async with (
+                asyncio.timeout(self.timeout),
+                asyncssh.connect(**connect_kwargs) as conn,
+            ):
+                result = await conn.run(command, check=False)
+                raw_stdout = result.stdout if result.stdout else ""
+                raw_stderr = result.stderr if result.stderr else ""
+                stdout = (
+                    raw_stdout.decode() if isinstance(raw_stdout, bytes) else raw_stdout
+                )
+                stderr = (
+                    raw_stderr.decode() if isinstance(raw_stderr, bytes) else raw_stderr
+                )
+                exit_code = result.exit_status or 0
 
-                    logger.debug(
-                        f"SSH Command '{command[:50]}...' exit_code={exit_code}"
-                    )
-                    return stdout, stderr, exit_code
+                logger.debug(f"SSH Command '{command[:50]}...' exit_code={exit_code}")
+                return stdout, stderr, exit_code
 
         except asyncio.TimeoutError:
             raise CloudProvisionerError(
@@ -297,55 +303,43 @@ class CloudProvisioner:
         remote_dir = f"/opt/{stack_name}"
         remote_compose = f"{remote_dir}/docker-compose.yml"
 
-        user = user or self.default_user
-        connect_kwargs: dict[str, object] = {
-            "host": host,
-            "username": user,
-            "known_hosts": None,
-        }
-
-        if self.ssh_key_path and Path(self.ssh_key_path).exists():
-            connect_kwargs["client_keys"] = [self.ssh_key_path]
-        elif password:
-            connect_kwargs["password"] = password
-        else:
-            raise CloudProvisionerError(
-                "Brak klucza SSH ani hasła. Nie można nawiązać połączenia."
-            )
+        connect_kwargs = self._ssh_connect_kwargs(host, user, password)
 
         try:
-            async with asyncio.timeout(self.timeout):
-                async with asyncssh.connect(**connect_kwargs) as conn:
-                    # Utworzenie katalogu
-                    await conn.run(f"mkdir -p {remote_dir}", check=True)
+            async with (
+                asyncio.timeout(self.timeout),
+                asyncssh.connect(**connect_kwargs) as conn,
+            ):
+                # Utworzenie katalogu
+                await conn.run(f"mkdir -p {remote_dir}", check=True)
 
-                    # Przesłanie pliku
-                    async with conn.start_sftp_client() as sftp:
-                        await sftp.put(str(compose_path), remote_compose)
-                        logger.info(f"✓ Plik przesłany do {remote_compose}")
+                # Przesłanie pliku
+                async with conn.start_sftp_client() as sftp:
+                    await sftp.put(str(compose_path), remote_compose)
+                    logger.info(f"✓ Plik przesłany do {remote_compose}")
 
-                    # Uruchomienie stacku
-                    result = await conn.run(
-                        f"cd {remote_dir} && docker-compose up -d", check=False
+                # Uruchomienie stacku
+                result = await conn.run(
+                    f"cd {remote_dir} && docker-compose up -d", check=False
+                )
+
+                if result.exit_status != 0:
+                    stderr_output = (
+                        result.stderr.decode()
+                        if isinstance(result.stderr, bytes)
+                        else result.stderr
+                    )
+                    raise CloudProvisionerError(
+                        f"docker-compose up failed: {stderr_output}"
                     )
 
-                    if result.exit_status != 0:
-                        stderr_output = (
-                            result.stderr.decode()
-                            if isinstance(result.stderr, bytes)
-                            else result.stderr
-                        )
-                        raise CloudProvisionerError(
-                            f"docker-compose up failed: {stderr_output}"
-                        )
-
-                    logger.info(f"✓ Stack '{stack_name}' uruchomiony pomyślnie")
-                    return {
-                        "status": "deployed",
-                        "stack_name": stack_name,
-                        "remote_dir": remote_dir,
-                        "host": host,
-                    }
+                logger.info(f"✓ Stack '{stack_name}' uruchomiony pomyślnie")
+                return {
+                    "status": "deployed",
+                    "stack_name": stack_name,
+                    "remote_dir": remote_dir,
+                    "host": host,
+                }
 
         except asyncio.TimeoutError:
             raise CloudProvisionerError(f"Timeout podczas deploymentu na {host}")

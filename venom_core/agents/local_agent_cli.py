@@ -405,9 +405,13 @@ class LocalAgent:
 
         lines = [result.final_answer]
         if result.tool_calls:
-            lines.append("")
-            lines.append("--- Trace ---")
-            lines.append(result.format_trace())
+            lines.extend(
+                [
+                    "",
+                    "--- Trace ---",
+                    result.format_trace(),
+                ]
+            )
         return "\n".join(lines)
 
     def run_interactive(self) -> None:

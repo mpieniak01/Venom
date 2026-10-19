@@ -437,10 +437,11 @@ class WorkflowOperationService:
         try:
             workflow_uuid = self._validate_and_parse_uuid(workflow_id)
         except ValueError:
+            retry_metadata = metadata or {}
             return self._invalid_uuid_response(
                 workflow_id,
                 WorkflowOperation.RETRY,
-                {"step_id": step_id, **(metadata or {})},
+                {"step_id": step_id, **retry_metadata},
             )
 
         with self._lock:

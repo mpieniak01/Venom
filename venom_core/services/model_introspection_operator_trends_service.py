@@ -404,9 +404,11 @@ def evaluate_persisted_slo_windows(
     fallback_rate_max: float = _DEFAULT_FALLBACK_RATE_MAX,
 ) -> dict[str, Any]:
     path = _resolve_storage_path(settings=settings)
-    with _STORE_LOCK:
-        with _file_lock(path):
-            records = _read_records(path)
+    with (
+        _STORE_LOCK,
+        _file_lock(path),
+    ):
+        records = _read_records(path)
     return evaluate_consecutive_slo_windows(
         records,
         window=window,
@@ -419,9 +421,11 @@ def evaluate_persisted_slo_windows(
 
 def get_operator_run_records(settings: Any = None) -> list[dict[str, Any]]:
     path = _resolve_storage_path(settings=settings)
-    with _STORE_LOCK:
-        with _file_lock(path):
-            return _read_records(path)
+    with (
+        _STORE_LOCK,
+        _file_lock(path),
+    ):
+        return _read_records(path)
 
 
 def record_operator_run(
@@ -460,12 +464,14 @@ def record_operator_run(
     )
     if record is None:
         return None
-    with _STORE_LOCK:
-        with _file_lock(path):
-            records = _read_records(path)
-            next_records = _upsert_record(records, record)
-            try:
-                _write_records(path, next_records)
-            except OSError:
-                logger.warning("Failed to persist operator trends store", exc_info=True)
-            return compute_run_trends(next_records)
+    with (
+        _STORE_LOCK,
+        _file_lock(path),
+    ):
+        records = _read_records(path)
+        next_records = _upsert_record(records, record)
+        try:
+            _write_records(path, next_records)
+        except OSError:
+            logger.warning("Failed to persist operator trends store", exc_info=True)
+        return compute_run_trends(next_records)

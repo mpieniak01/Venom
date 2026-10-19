@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from venom_core.core.orchestrator import (
     COUNCIL_COLLABORATION_KEYWORDS,
     COUNCIL_TASK_THRESHOLD,
@@ -12,11 +14,21 @@ from venom_core.core.orchestrator import (
 class TestOrchestratorCouncilDecision:
     """Testy dla metody _should_use_council()."""
 
-    def setup_method(self):
-        """Setup przed każdym testem."""
-        # Mock dependencies
+    @pytest.fixture(autouse=True)
+    def setup_dependencies(self, monkeypatch):
+        """Izoluj integracje konstruktora, zachowując rzeczywisty routing Council."""
         self.state_manager = MagicMock()
-        self.orchestrator = Orchestrator(state_manager=self.state_manager)
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.orchestrator_core.Eyes", MagicMock()
+        )
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.orchestrator_core.MemorySkill", MagicMock()
+        )
+        self.orchestrator = Orchestrator(
+            state_manager=self.state_manager,
+            intent_manager=MagicMock(),
+            task_dispatcher=MagicMock(),
+        )
 
     def test_should_use_council_disabled(self):
         """Test: Council wyłączony przez flagę."""

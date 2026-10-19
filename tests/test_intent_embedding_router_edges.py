@@ -117,7 +117,7 @@ async def test_intent_manager_embedding_hit_sets_debug(temp_lexicon_dir):
 
         manager = IntentManager(kernel=MagicMock())
         manager._classify_from_lexicon = MagicMock(return_value="")
-        manager._classify_from_keywords = AsyncMock(return_value="")
+        manager._classify_from_keywords = MagicMock(return_value="")
         router = MagicMock()
         router.is_enabled.return_value = True
         router.classify = AsyncMock(
@@ -138,7 +138,7 @@ async def test_intent_manager_embedding_miss_without_kernel_fallback(temp_lexico
 
         manager = IntentManager(kernel=None)
         manager._classify_from_lexicon = MagicMock(return_value="")
-        manager._classify_from_keywords = AsyncMock(return_value="")
+        manager._classify_from_keywords = MagicMock(return_value="")
         manager.embedding_router = MagicMock(
             is_enabled=MagicMock(return_value=True),
             classify=AsyncMock(return_value=(None, 0.2, [("A", 0.2), ("B", 0.19)])),
@@ -157,7 +157,7 @@ async def test_intent_manager_llm_exception_uses_help_heuristic(temp_lexicon_dir
 
         manager = IntentManager(kernel=MagicMock())
         manager._classify_from_lexicon = MagicMock(return_value="")
-        manager._classify_from_keywords = AsyncMock(return_value="")
+        manager._classify_from_keywords = MagicMock(return_value="")
         manager.embedding_router = None
         manager._classify_from_llm = AsyncMock(side_effect=RuntimeError("llm down"))
 

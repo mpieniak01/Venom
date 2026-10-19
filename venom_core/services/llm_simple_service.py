@@ -667,7 +667,6 @@ def _emit_internal_error_and_mark_failed(
 def _update_stream_state_from_packet(
     *,
     packet: dict[str, Any],
-    runtime,
     state: _SimpleStreamState,
     request_id: UUID,
     stream_start: float,
@@ -675,7 +674,6 @@ def _update_stream_state_from_packet(
 ) -> list[str]:
     return _update_stream_state_from_packet_impl(
         packet=packet,
-        runtime=runtime,
         state=state,
         runtime_telemetry=runtime_telemetry,
         extract_runtime_telemetry_fn=_extract_runtime_telemetry,
@@ -724,7 +722,6 @@ async def _stream_single_attempt(
         attempt=attempt,
         handle_packet_fn=lambda packet: _update_stream_state_from_packet(
             packet=packet,
-            runtime=runtime,
             state=state,
             request_id=request_id,
             stream_start=stream_start,
@@ -1077,10 +1074,7 @@ async def _stream_simple_chunks_non_stream(
             )
 
 
-async def stream_simple_chat(request: SimpleChatRequest):
-    assert_runtime_request_allowed(request_kind="simple_chat")
-    await asyncio.sleep(0)
-    runtime = get_active_llm_runtime()
+def _validate_simple_chat_runtime(runtime) -> str:
     runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
     runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
     if runtime_provider == "onnx" or runtime_service_type == "onnx":
@@ -1094,6 +1088,14 @@ async def stream_simple_chat(request: SimpleChatRequest):
                 status_code=503,
                 detail="Brak endpointu workera ONNX. Skonfiguruj ONNX_LLM_ENDPOINT.",
             )
+    return runtime_provider
+
+
+async def stream_simple_chat(request: SimpleChatRequest):
+    assert_runtime_request_allowed(request_kind="simple_chat")
+    await asyncio.sleep(0)
+    runtime = get_active_llm_runtime()
+    runtime_provider = _validate_simple_chat_runtime(runtime)
     model_name = _resolve_model_name_for_simple_request(
         request_model=request.model,
         runtime_model=runtime.model_name,

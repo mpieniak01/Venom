@@ -162,7 +162,8 @@ class ControlPlaneService:
                 self._store_pending_plan(execution_ticket, response, request)
 
             # Log to audit trail
-            duration_ms = (time.time() - start_time) * 1000
+            duration_seconds = time.time() - start_time
+            duration_ms = duration_seconds * 1000
             self._audit_trail.log_operation(
                 triggered_by=triggered_by,
                 operation_type="plan",
@@ -181,7 +182,8 @@ class ControlPlaneService:
 
         except Exception as e:
             logger.exception("Failed to plan changes")
-            duration_ms = (time.time() - start_time) * 1000
+            duration_seconds = time.time() - start_time
+            duration_ms = duration_seconds * 1000
             self._audit_trail.log_operation(
                 triggered_by=triggered_by,
                 operation_type="plan",
@@ -249,7 +251,8 @@ class ControlPlaneService:
                 self._pending_plans.pop(request.execution_ticket, None)
 
             # Log to audit trail
-            duration_ms = (time.time() - start_time) * 1000
+            duration_seconds = time.time() - start_time
+            duration_ms = duration_seconds * 1000
             self._audit_trail.log_operation(
                 triggered_by=triggered_by,
                 operation_type="apply",
@@ -288,7 +291,8 @@ class ControlPlaneService:
 
         except Exception as e:
             logger.exception("Failed to apply changes")
-            duration_ms = (time.time() - start_time) * 1000
+            duration_seconds = time.time() - start_time
+            duration_ms = duration_seconds * 1000
             self._audit_trail.log_operation(
                 triggered_by=triggered_by,
                 operation_type="apply",

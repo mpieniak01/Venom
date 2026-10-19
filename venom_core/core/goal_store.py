@@ -356,10 +356,14 @@ class GoalStore:
         vision = self.get_vision()
         if vision:
             progress = vision.get_progress()
-            report.append(f"🎯 VISION: {vision.title}")
-            report.append(f"   Status: {vision.status.value}")
-            report.append(f"   Postęp: {progress:.1f}%")
-            report.append(f"   {vision.description}\n")
+            report.extend(
+                [
+                    f"🎯 VISION: {vision.title}",
+                    f"   Status: {vision.status.value}",
+                    f"   Postęp: {progress:.1f}%",
+                    f"   {vision.description}\n",
+                ]
+            )
         else:
             report.append("⚠️ Brak zdefiniowanej wizji\n")
 

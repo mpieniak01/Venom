@@ -328,8 +328,6 @@ def update_self_learning_evaluation_baseline(
             status_code=500,
             detail=_error_detail_with_reason_code(
                 reason_code="SELF_LEARNING_EVAL_BASELINE_UPDATE_FAILED",
-                message=(
-                    f"Failed to update self-learning evaluation baseline: {str(exc)}"
-                ),
+                message=f"Failed to update self-learning evaluation baseline: {str(exc)}",
             ),
         ) from exc

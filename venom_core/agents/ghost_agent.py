@@ -590,18 +590,16 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
 
         # Heurystyka dla Notatnika
         if "notatnik" in task_lower or "notepad" in task_lower:
-            steps.append(
-                ActionStep("hotkey", "Otwórz okno 'Uruchom'", {"keys": "win+r"})
-            )
-            steps.append(
-                ActionStep("wait", "Czekaj na otwarcie okna", {"duration": 1.0})
-            )
-            steps.append(
-                ActionStep("type", "Wpisz nazwę aplikacji", {"text": "notepad"})
-            )
-            steps.append(ActionStep("hotkey", "Potwierdź enter", {"keys": "enter"}))
-            steps.append(
-                ActionStep("wait", "Czekaj aż Notatnik się pojawi", {"duration": 2.0})
+            steps.extend(
+                [
+                    ActionStep("hotkey", "Otwórz okno 'Uruchom'", {"keys": "win+r"}),
+                    ActionStep("wait", "Czekaj na otwarcie okna", {"duration": 1.0}),
+                    ActionStep("type", "Wpisz nazwę aplikacji", {"text": "notepad"}),
+                    ActionStep("hotkey", "Potwierdź enter", {"keys": "enter"}),
+                    ActionStep(
+                        "wait", "Czekaj aż Notatnik się pojawi", {"duration": 2.0}
+                    ),
+                ]
             )
 
             text_to_type = extract_text_to_type()
@@ -627,51 +625,47 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
 
         # Heurystyka dla Spotify / multimediów
         if "spotify" in task_lower:
-            steps.append(
-                ActionStep(
-                    "screenshot",
-                    "Zrób screenshot aby znaleźć okno Spotify",
-                    {},
-                )
+            steps.extend(
+                [
+                    ActionStep(
+                        "screenshot",
+                        "Zrób screenshot aby znaleźć okno Spotify",
+                        {},
+                    ),
+                    ActionStep(
+                        "locate",
+                        "Zlokalizuj okno Spotify",
+                        {"description": "okno aplikacji Spotify"},
+                    ),
+                    ActionStep("click", "Aktywuj okno Spotify", {"use_located": True}),
+                    ActionStep(
+                        "hotkey",
+                        "Przejdź do następnej piosenki",
+                        {"keys": "ctrl+right"},
+                    ),
+                    ActionStep(
+                        "wait",
+                        "Czekaj aż utwór się zmieni",
+                        {"duration": 1.5},
+                    ),
+                    ActionStep("screenshot", "Zweryfikuj odtwarzanie", {}),
+                ]
             )
-            steps.append(
-                ActionStep(
-                    "locate",
-                    "Zlokalizuj okno Spotify",
-                    {"description": "okno aplikacji Spotify"},
-                )
-            )
-            steps.append(
-                ActionStep("click", "Aktywuj okno Spotify", {"use_located": True})
-            )
-            steps.append(
-                ActionStep(
-                    "hotkey",
-                    "Przejdź do następnej piosenki",
-                    {"keys": "ctrl+right"},
-                )
-            )
-            steps.append(
-                ActionStep(
-                    "wait",
-                    "Czekaj aż utwór się zmieni",
-                    {"duration": 1.5},
-                )
-            )
-            steps.append(ActionStep("screenshot", "Zweryfikuj odtwarzanie", {}))
             return steps
 
         # Domyślny plan: screenshot + orientacja
-        steps.append(ActionStep("screenshot", "Zrób screenshot ekranu", {}))
-        steps.append(
-            ActionStep(
-                "locate",
-                "Spróbuj znaleźć opisany element",
-                {"description": task},
-            )
-        )
-        steps.append(
-            ActionStep("wait", "Czekaj na potwierdzenie zadania", {"duration": 1.0})
+        steps.extend(
+            [
+                ActionStep("screenshot", "Zrób screenshot ekranu", {}),
+                ActionStep(
+                    "locate",
+                    "Spróbuj znaleźć opisany element",
+                    {"description": task},
+                ),
+                ActionStep(
+                    "wait", "Czekaj na potwierdzenie zadania", {"duration": 1.0}
+                ),
+            ]
         )
         return steps
 

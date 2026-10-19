@@ -340,10 +340,8 @@ def hello_world():
             chat_history.add_message(
                 ChatMessageContent(
                     role=AuthorRole.USER,
-                    content=(
-                        f"Plik {script_name} nie został utworzony. Proszę zapisać kod "
-                        f"używając write_file('{script_name}', kod)."
-                    ),
+                    content=f"Plik {script_name} nie został utworzony. Proszę zapisać kod "
+                    f"używając write_file('{script_name}', kod).",
                 )
             )
             return {

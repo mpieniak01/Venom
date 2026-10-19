@@ -2910,9 +2910,11 @@ class SelfLearningService:
 
     def _append_run_snapshot(self, run: SelfLearningRun) -> None:
         snapshot = run.to_dict()
-        with self._snapshot_lock:
-            with self._runs_log_file.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
+        with (
+            self._snapshot_lock,
+            self._runs_log_file.open("a", encoding="utf-8") as handle,
+        ):
+            handle.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
 
     def _load_persisted_runs(self) -> None:
         if not self._runs_log_file.exists():

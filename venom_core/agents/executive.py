@@ -417,9 +417,13 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
         current_milestone = self.goal_store.get_next_milestone()
         if current_milestone:
             progress = current_milestone.get_progress()
-            meeting_notes.append(f"📋 AKTUALNY MILESTONE: {current_milestone.title}")
-            meeting_notes.append(f"   Status: {current_milestone.status.value}")
-            meeting_notes.append(f"   Postęp: {progress:.1f}%\n")
+            meeting_notes.extend(
+                [
+                    f"📋 AKTUALNY MILESTONE: {current_milestone.title}",
+                    f"   Status: {current_milestone.status.value}",
+                    f"   Postęp: {progress:.1f}%\n",
+                ]
+            )
 
             # Zadania w milestone
             tasks = self.goal_store.get_tasks(parent_id=current_milestone.goal_id)
@@ -427,9 +431,13 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
             in_progress = [t for t in tasks if t.status == GoalStatus.IN_PROGRESS]
             pending = [t for t in tasks if t.status == GoalStatus.PENDING]
 
-            meeting_notes.append(f"   ✅ Ukończone: {len(completed)}")
-            meeting_notes.append(f"   🔄 W trakcie: {len(in_progress)}")
-            meeting_notes.append(f"   ⏸️ Oczekujące: {len(pending)}\n")
+            meeting_notes.extend(
+                [
+                    f"   ✅ Ukończone: {len(completed)}",
+                    f"   🔄 W trakcie: {len(in_progress)}",
+                    f"   ⏸️ Oczekujące: {len(pending)}\n",
+                ]
+            )
 
             # Blokery
             blocked = [t for t in tasks if t.status == GoalStatus.BLOCKED]
@@ -444,9 +452,13 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
         # 2. Co dalej?
         next_task = self.goal_store.get_next_task()
         if next_task:
-            meeting_notes.append(f"🎯 NASTĘPNE ZADANIE: {next_task.title}")
-            meeting_notes.append(f"   Priorytet: {next_task.priority}")
-            meeting_notes.append(f"   {next_task.description}\n")
+            meeting_notes.extend(
+                [
+                    f"🎯 NASTĘPNE ZADANIE: {next_task.title}",
+                    f"   Priorytet: {next_task.priority}",
+                    f"   {next_task.description}\n",
+                ]
+            )
         else:
             meeting_notes.append("✅ Wszystkie zadania w Milestone ukończone!\n")
 

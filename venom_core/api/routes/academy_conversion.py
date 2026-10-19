@@ -417,9 +417,13 @@ def write_target_text(out_file: TextIO, records: List[Dict[str, str]]) -> None:
     """Write records in plain text format."""
     lines: list[str] = []
     for item in records:
-        lines.append(item.get("instruction", ""))
-        lines.append(item.get("output", ""))
-        lines.append("")
+        lines.extend(
+            [
+                item.get("instruction", ""),
+                item.get("output", ""),
+                "",
+            ]
+        )
     out_file.write("\n".join(lines).strip() + "\n")
 
 

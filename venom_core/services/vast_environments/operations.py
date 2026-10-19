@@ -187,11 +187,10 @@ def _save_result(
                 service.journal, service.journal.plan(plan_id), qualification
             )
         except (VastError, OSError) as error:
-            code = (
-                error.code
-                if isinstance(error, VastError)
-                else "vast.qualification_history_write_failed"
-            )
+            if isinstance(error, VastError):
+                code = error.code
+            else:
+                code = "vast.qualification_history_write_failed"
             result["qualification_history"] = {"status": "error", "error": code}
         fresh.reports[operation] = result
         service.journal.save_record(fresh)
@@ -225,10 +224,9 @@ def _observe(service: Environments, plan_id: str):
     try:
         return service.reconcile(plan_id)
     except VastError as error:
-        transient = error.code in {"vast.transport_error", "vast.retry_exhausted"} or (
-            error.status is not None
-            and (error.status in {408, 429} or error.status >= 500)
-        )
+        transient = error.code in {"vast.transport_error", "vast.retry_exhausted"}
+        if not transient and error.status is not None:
+            transient = error.status in {408, 429} or error.status >= 500
         if not transient:
             raise
         return service.journal.record(plan_id)

@@ -734,10 +734,8 @@ async def switch_model(request: ModelSwitchRequest):
                 except Exception as exc:
                     raise HTTPException(
                         status_code=503,
-                        detail=(
-                            "Nie udało się zastosować polityki pojedynczego modelu "
-                            f"Ollama: {exc}"
-                        ),
+                        detail="Nie udało się zastosować polityki pojedynczego modelu "
+                        f"Ollama: {exc}",
                     ) from exc
             return {
                 "success": True,

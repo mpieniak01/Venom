@@ -326,60 +326,84 @@ class AnalystAgent(BaseAgent):
 
         # Nagłówek
         report = ["📊 RAPORT ANALITYCZNY VENOM STRATEGIST\n"]
-        report.append(
-            f"Data wygenerowania: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        report.extend(
+            [
+                f"Data wygenerowania: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+                # Sekcja 1: Statystyki ogólne
+                "=" * 60,
+                "STATYSTYKI OGÓLNE",
+                "=" * 60,
+                f"Łączna liczba zadań: {self.total_tasks}",
+                f"Zadania zakończone sukcesem: {self.successful_tasks}",
+                f"Zadania nieudane: {self.failed_tasks}",
+            ]
         )
-
-        # Sekcja 1: Statystyki ogólne
-        report.append("=" * 60)
-        report.append("STATYSTYKI OGÓLNE")
-        report.append("=" * 60)
-        report.append(f"Łączna liczba zadań: {self.total_tasks}")
-        report.append(f"Zadania zakończone sukcesem: {self.successful_tasks}")
-        report.append(f"Zadania nieudane: {self.failed_tasks}")
         success_rate = (
             self.successful_tasks / self.total_tasks * 100
             if self.total_tasks > 0
             else 0
         )
-        report.append(f"Skuteczność: {success_rate:.1f}%")
-        report.append(f"Łączny koszt: ${self.total_cost_usd:.4f}")
-        report.append(f"Łączna liczba tokenów: {self.total_tokens:,}")
+        report.extend(
+            [
+                f"Skuteczność: {success_rate:.1f}%",
+                f"Łączny koszt: ${self.total_cost_usd:.4f}",
+                f"Łączna liczba tokenów: {self.total_tokens:,}",
+            ]
+        )
 
         avg_cost = self.total_cost_usd / self.total_tasks if self.total_tasks > 0 else 0
-        report.append(f"Średni koszt zadania: ${avg_cost:.4f}\n")
-
-        # Sekcja 2: Breakdown per serwis
-        report.append("=" * 60)
-        report.append("BREAKDOWN PER SERWIS")
-        report.append("=" * 60)
+        report.extend(
+            [
+                f"Średni koszt zadania: ${avg_cost:.4f}\n",
+                # Sekcja 2: Breakdown per serwis
+                "=" * 60,
+                "BREAKDOWN PER SERWIS",
+                "=" * 60,
+            ]
+        )
 
         cost_breakdown = self.get_cost_breakdown()
         for service, stats in cost_breakdown.items():
-            report.append(f"\n🔹 {service.upper()}")
-            report.append(f"   Liczba zadań: {stats['tasks_count']}")
-            report.append(f"   Koszt całkowity: ${stats['total_cost_usd']:.6f}")
-            report.append(f"   Koszt per zadanie: ${stats['cost_per_task_usd']:.6f}")
-            report.append(f"   Skuteczność: {stats['success_rate']:.1f}%")
+            report.extend(
+                [
+                    f"\n🔹 {service.upper()}",
+                    f"   Liczba zadań: {stats['tasks_count']}",
+                    f"   Koszt całkowity: ${stats['total_cost_usd']:.6f}",
+                    f"   Koszt per zadanie: ${stats['cost_per_task_usd']:.6f}",
+                    f"   Skuteczność: {stats['success_rate']:.1f}%",
+                ]
+            )
 
         # Sekcja 3: Analiza routingu
-        report.append("\n" + "=" * 60)
-        report.append("ANALIZA EFEKTYWNOŚCI ROUTINGU")
-        report.append("=" * 60)
+        report.extend(
+            [
+                "\n" + "=" * 60,
+                "ANALIZA EFEKTYWNOŚCI ROUTINGU",
+                "=" * 60,
+            ]
+        )
 
         routing_analysis = self.analyze_routing_efficiency()
         if "complexity_analysis" in routing_analysis:
             for complexity, data in routing_analysis["complexity_analysis"].items():
-                report.append(f"\n📌 {complexity}")
-                report.append(f"   Liczba zadań: {data['tasks_count']}")
-                report.append(f"   Skuteczność: {data['success_rate']:.1f}%")
-                report.append(f"   Średni koszt: ${data['avg_cost_usd']:.6f}")
-                report.append(f"   Używane serwisy: {', '.join(data['services_used'])}")
+                report.extend(
+                    [
+                        f"\n📌 {complexity}",
+                        f"   Liczba zadań: {data['tasks_count']}",
+                        f"   Skuteczność: {data['success_rate']:.1f}%",
+                        f"   Średni koszt: ${data['avg_cost_usd']:.6f}",
+                        f"   Używane serwisy: {', '.join(data['services_used'])}",
+                    ]
+                )
 
         # Sekcja 4: Rekomendacje
-        report.append("\n" + "=" * 60)
-        report.append("REKOMENDACJE OPTYMALIZACYJNE")
-        report.append("=" * 60)
+        report.extend(
+            [
+                "\n" + "=" * 60,
+                "REKOMENDACJE OPTYMALIZACYJNE",
+                "=" * 60,
+            ]
+        )
 
         recommendations = self.generate_recommendations()
         for i, rec in enumerate(recommendations, 1):

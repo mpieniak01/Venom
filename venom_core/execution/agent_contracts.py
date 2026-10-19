@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, Callable, Iterator
 
 from pydantic import BaseModel, ConfigDict
 
@@ -91,10 +91,7 @@ class CompletionOptions(BaseModel):
     response_format: dict[str, Any] | type[BaseModel] | None = None
 
 
-F = TypeVar("F", bound=Callable[..., Any])
-
-
-def tool_function(
+def tool_function[F: Callable[..., Any]](
     *,
     name: str | None = None,
     description: str = "",

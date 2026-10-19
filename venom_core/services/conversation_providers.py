@@ -78,9 +78,11 @@ def create_conversation_context(
     timeout_s: float = 30.0,
 ) -> ConversationContext:
     now = time.monotonic()
-    selected_language: Language = (
-        "en" if language == "en" else "de" if language == "de" else "pl"
-    )
+    selected_language: Language = "pl"
+    if language == "en":
+        selected_language = "en"
+    elif language == "de":
+        selected_language = "de"
     return ConversationContext(
         task_id=task_id or uuid4().hex,
         conversation_id=conversation_id or uuid4().hex,
@@ -141,7 +143,7 @@ class ConversationProviderRegistry:
             if self.closed:
                 return
             desired = dict(self.factories())
-            for module_id in list(self.providers):
+            for module_id in self.providers.copy():
                 if self._registered_factories.get(module_id) is not desired.get(
                     module_id
                 ):
@@ -209,7 +211,7 @@ class ConversationProviderRegistry:
         self._registered_factories.pop(module_id, None)
         if provider is None:
             return
-        for task, owner in list(self._active.items()):
+        for task, owner in self._active.copy().items():
             if owner == module_id:
                 task.cancel()
         for prepared in self._prepared.values():
@@ -254,7 +256,7 @@ class ConversationProviderRegistry:
             return {}
         await self.refresh()
         catalog = {}
-        for module_id, provider in list(self.providers.items()):
+        for module_id, provider in self.providers.copy().items():
             getter = getattr(provider, "list_tools", None)
             if not callable(getter):
                 continue
@@ -307,7 +309,7 @@ class ConversationProviderRegistry:
         providers = dict(self.providers)
         self._prepared[context] = providers
         with conversation_turn(context):
-            for module_id, provider in list(providers.items()):
+            for module_id, provider in providers.copy().items():
                 if callable(getattr(provider, "prepare", None)):
                     await self._invoke(module_id, provider, "prepare", context, text)
 
@@ -317,7 +319,7 @@ class ConversationProviderRegistry:
         providers = self._prepared.pop(context, {})
         failure = None
         with conversation_turn(context):
-            for module_id, provider in list(providers.items()):
+            for module_id, provider in providers.copy().items():
                 if not callable(getattr(provider, "finish", None)):
                     continue
                 try:
@@ -489,7 +491,7 @@ class ConversationProviderRegistry:
         self._validate_context(context)
         await self.refresh()
         with conversation_turn(context):
-            for module_id, provider in list(self.providers.items()):
+            for module_id, provider in self.providers.copy().items():
                 if not callable(getattr(provider, operation, None)):
                     continue
                 if not self._accepts(module_id, provider, text, context):
@@ -516,7 +518,7 @@ class ConversationProviderRegistry:
         self.closed = True
         failure = None
         async with self._refresh_lock:
-            for module_id in list(self.providers):
+            for module_id in self.providers.copy():
                 try:
                     await self.unregister(module_id)
                 except ConversationProviderError as exc:

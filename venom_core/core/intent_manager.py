@@ -465,9 +465,8 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
                     logger.info(
                         "IntentManager działa w trybie testowym z mockowalnym kernel builderem"
                     )
-                except (
-                    Exception
-                ) as exc:  # pragma: no cover - ochrona środowisk testowych
+                except Exception as exc:  # pragma: no cover
+                    # Ochrona środowisk testowych bez dostępnego kernela.
                     self.kernel = None
                     self._llm_disabled = True
                     logger.warning(
@@ -510,9 +509,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         if lexicon_intent:
             return lexicon_intent
 
-        keyword_intent = await self._classify_from_keywords(
-            normalized, user_input, language
-        )
+        keyword_intent = self._classify_from_keywords(normalized, user_input, language)
         if keyword_intent:
             return keyword_intent
 
@@ -624,7 +621,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         }
         return intent
 
-    async def _classify_from_keywords(
+    def _classify_from_keywords(
         self, normalized: str, user_input: str, language: str
     ) -> str:
         if self._contains_keyword(normalized, self.HELP_KEYWORDS):

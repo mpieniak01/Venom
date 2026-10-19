@@ -428,18 +428,17 @@ class RuntimeSwitchOrchestrator:
         state.mark_done(LifecycleStep.START_DONE)
 
         caps_dict = target.get("capabilities", {})
-        if caps_dict.get("supports_health_wait"):
-            if health_url:
-                is_ready = await probe_health_ready(target_name, health_url)
-                if not is_ready:
-                    state.mark_failed(
-                        LifecycleStep.HEALTH_READY,
-                        "Health check timeout - serwer nie odpowiada",
-                    )
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Health check timeout — serwer LLM nie osiągnął gotowości.",
-                    )
+        if caps_dict.get("supports_health_wait") and health_url:
+            is_ready = await probe_health_ready(target_name, health_url)
+            if not is_ready:
+                state.mark_failed(
+                    LifecycleStep.HEALTH_READY,
+                    "Health check timeout - serwer nie odpowiada",
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Health check timeout — serwer LLM nie osiągnął gotowości.",
+                )
 
         state.mark_done(LifecycleStep.HEALTH_READY)
         return start_result

@@ -1433,6 +1433,78 @@ class AudioStreamHandler:
                 decoder_selected=decoder_selected,
             )
 
+    @staticmethod
+    def _native_runtime_result_metadata(
+        runtime_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Project shared runtime-result metadata for successful and incomplete turns."""
+        return {
+            "execution_trace": runtime_result.get("execution_trace") or [],
+            "selected_policy": runtime_result.get("selected_policy"),
+            "selected_image_strategy": runtime_result.get("selected_image_strategy"),
+            "retrieval_used": runtime_result.get("retrieval_used"),
+            "retrieval_context_items": runtime_result.get("retrieval_context_items"),
+            "retrieval_route": runtime_result.get("retrieval_route"),
+            "assistant_used": runtime_result.get("assistant_used"),
+            "economy_mode_activated": runtime_result.get("economy_mode_activated"),
+            "degradation_reasons": runtime_result.get("degradation_reasons") or [],
+            "component_snapshot": runtime_result.get("component_snapshot") or [],
+            "component_snapshot_timestamp_ms": runtime_result.get(
+                "component_snapshot_timestamp_ms"
+            ),
+            "component_snapshot_version": runtime_result.get(
+                "component_snapshot_version"
+            ),
+        }
+
+    @staticmethod
+    def _native_runtime_success_metadata(
+        runtime_result: dict[str, Any],
+        *,
+        transcription: str,
+        response_text: str,
+        decoder_selected: str,
+        voice_mode: str,
+        native_audio_ms: float,
+    ) -> dict[str, Any]:
+        insights = _build_voice_session_insights_payload(
+            transcript=transcription,
+            response=response_text,
+            voice_mode=voice_mode,
+            pipeline_id="multi_runtime_piper",
+            **_multi_runtime_voice_flags(),
+            raw_thinking_available=bool(
+                runtime_result.get("raw_thinking_available", False)
+            ),
+        )
+        return {
+            "pipeline_id": "multi_runtime_piper",
+            "audio_runtime_provider": MULTI_RUNTIME_ID,
+            "audio_runtime_model": _coerce_str(runtime_result.get("model"), ""),
+            "audio_input_status": "verified",
+            "decoder_source": "multi_runtime",
+            "decoder_selected": decoder_selected,
+            "decoder_effective": "gemma_native",
+            "decoder_fallback_reason": "",
+            "fallback_reason": "",
+            "request_id": _coerce_str(runtime_result.get("request_id"), ""),
+            "trace_id": _coerce_str(runtime_result.get("trace_id"), ""),
+            "audio_hash": _coerce_str(runtime_result.get("audio_hash"), ""),
+            "transcription_used_for_generation": _coerce_str(
+                runtime_result.get("transcription_used_for_generation"),
+                "",
+            )
+            or transcription,
+            "native_audio_ms": native_audio_ms,
+            "transcription": transcription,
+            "transcription_length": len(transcription or ""),
+            "response_text": response_text,
+            "response_length": len(response_text or ""),
+            "conversation_provider_handled": False,
+            **AudioStreamHandler._native_runtime_result_metadata(runtime_result),
+            **insights,
+        }
+
     async def _process_native_multi_runtime_in_turn(
         self,
         connection_id: int,
@@ -1525,69 +1597,18 @@ class AudioStreamHandler:
                     },
                 )
                 return False
-            insights = _build_voice_session_insights_payload(
-                transcript=transcription,
-                response=response_text,
-                voice_mode=self._connection_voice_mode(connection_id),
-                pipeline_id="multi_runtime_piper",
-                **_multi_runtime_voice_flags(),
-                raw_thinking_available=bool(
-                    runtime_result.get("raw_thinking_available", False)
-                ),
-            )
-
             self._update_voice_session_metadata(
                 session_dir,
                 {
                     **snapshot,
-                    "pipeline_id": "multi_runtime_piper",
-                    "audio_runtime_provider": MULTI_RUNTIME_ID,
-                    "audio_runtime_model": _coerce_str(runtime_result.get("model"), ""),
-                    "audio_input_status": "verified",
-                    "decoder_source": "multi_runtime",
-                    "decoder_selected": decoder_selected,
-                    "decoder_effective": "gemma_native",
-                    "decoder_fallback_reason": "",
-                    "fallback_reason": "",
-                    "request_id": _coerce_str(runtime_result.get("request_id"), ""),
-                    "trace_id": _coerce_str(runtime_result.get("trace_id"), ""),
-                    "audio_hash": _coerce_str(runtime_result.get("audio_hash"), ""),
-                    "transcription_used_for_generation": _coerce_str(
-                        runtime_result.get("transcription_used_for_generation"),
-                        "",
-                    )
-                    or transcription,
-                    "native_audio_ms": timings_ms["native_audio_ms"],
-                    "transcription": transcription,
-                    "transcription_length": len(transcription or ""),
-                    "response_text": response_text,
-                    "response_length": len(response_text or ""),
-                    "conversation_provider_handled": False,
-                    "execution_trace": runtime_result.get("execution_trace") or [],
-                    "selected_policy": runtime_result.get("selected_policy"),
-                    "selected_image_strategy": runtime_result.get(
-                        "selected_image_strategy"
+                    **self._native_runtime_success_metadata(
+                        runtime_result,
+                        transcription=transcription,
+                        response_text=response_text,
+                        decoder_selected=decoder_selected,
+                        voice_mode=self._connection_voice_mode(connection_id),
+                        native_audio_ms=timings_ms["native_audio_ms"],
                     ),
-                    "retrieval_used": runtime_result.get("retrieval_used"),
-                    "retrieval_context_items": runtime_result.get(
-                        "retrieval_context_items"
-                    ),
-                    "retrieval_route": runtime_result.get("retrieval_route"),
-                    "assistant_used": runtime_result.get("assistant_used"),
-                    "economy_mode_activated": runtime_result.get(
-                        "economy_mode_activated"
-                    ),
-                    "degradation_reasons": runtime_result.get("degradation_reasons")
-                    or [],
-                    "component_snapshot": runtime_result.get("component_snapshot")
-                    or [],
-                    "component_snapshot_timestamp_ms": runtime_result.get(
-                        "component_snapshot_timestamp_ms"
-                    ),
-                    "component_snapshot_version": runtime_result.get(
-                        "component_snapshot_version"
-                    ),
-                    **insights,
                     "timings_ms": timings_ms,
                     "runtime": self._build_runtime_metadata(operator_agent),
                     **self._voice_contract_payload(connection_id),
@@ -1717,22 +1738,7 @@ class AudioStreamHandler:
             "transcription_length": len(transcription),
             "response_text": response_text,
             "response_length": len(response_text),
-            "execution_trace": runtime_result.get("execution_trace") or [],
-            "selected_policy": runtime_result.get("selected_policy"),
-            "selected_image_strategy": runtime_result.get("selected_image_strategy"),
-            "retrieval_used": runtime_result.get("retrieval_used"),
-            "retrieval_context_items": runtime_result.get("retrieval_context_items"),
-            "retrieval_route": runtime_result.get("retrieval_route"),
-            "assistant_used": runtime_result.get("assistant_used"),
-            "economy_mode_activated": runtime_result.get("economy_mode_activated"),
-            "degradation_reasons": runtime_result.get("degradation_reasons") or [],
-            "component_snapshot": runtime_result.get("component_snapshot") or [],
-            "component_snapshot_timestamp_ms": runtime_result.get(
-                "component_snapshot_timestamp_ms"
-            ),
-            "component_snapshot_version": runtime_result.get(
-                "component_snapshot_version"
-            ),
+            **AudioStreamHandler._native_runtime_result_metadata(runtime_result),
             **_build_voice_session_insights_payload(
                 transcript=transcription,
                 response=response_text,

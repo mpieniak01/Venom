@@ -525,6 +525,14 @@ def _validate_requested_model_available(
     return None
 
 
+def _find_monitor_status(server: dict, status_lookup: dict) -> Any:
+    for field in ("name", "display_name"):
+        key = str(server.get(field) or "").lower()
+        if key and (status := status_lookup.get(key)):
+            return status
+    return None
+
+
 def _merge_monitor_status_into_servers(servers: list[dict], service_monitor) -> None:
     if not service_monitor:
         return
@@ -534,15 +542,7 @@ def _merge_monitor_status_into_servers(servers: list[dict], service_monitor) -> 
     for server in servers:
         if server.get("name") == "onnx" and isinstance(server.get("onnx"), dict):
             continue  # This request already observed the worker; a monitor may be stale.
-        status = None
-        name_key = str(server.get("name") or "").lower()
-        display_key = str(server.get("display_name") or "").lower()
-        for key in (name_key, display_key):
-            if not key:
-                continue
-            status = status_lookup.get(key)
-            if status:
-                break
+        status = _find_monitor_status(server, status_lookup)
         if not status:
             continue
         server["status"] = status.status.value
@@ -2867,10 +2867,8 @@ async def _set_active_llm_server_impl(
             except Exception as exc:
                 raise HTTPException(
                     status_code=503,
-                    detail=(
-                        "Nie udało się zastosować polityki pojedynczego modelu "
-                        f"Ollama: {exc}"
-                    ),
+                    detail="Nie udało się zastosować polityki pojedynczego modelu "
+                    f"Ollama: {exc}",
                 ) from exc
         _trace_switch(
             request_tracer,

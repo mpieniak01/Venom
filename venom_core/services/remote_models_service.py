@@ -439,7 +439,8 @@ async def validate_openai_connection(
             provider="openai", timeout=timeout_seconds
         ) as client:
             response = await client.aget(url, headers=headers, raise_for_status=False)
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        elapsed_seconds = time.perf_counter() - start
+        elapsed_ms = elapsed_seconds * 1000.0
         if response.status_code == 200:
             return True, "OpenAI API reachable", elapsed_ms
         if response.status_code == 401:
@@ -452,10 +453,12 @@ async def validate_openai_connection(
             elapsed_ms,
         )
     except http_error_type as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        elapsed_seconds = time.perf_counter() - start
+        elapsed_ms = elapsed_seconds * 1000.0
         return False, f"OpenAI validation error: {exc}", elapsed_ms
     except Exception as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        elapsed_seconds = time.perf_counter() - start
+        elapsed_ms = elapsed_seconds * 1000.0
         return False, f"OpenAI validation error: {exc}", elapsed_ms
 
 
@@ -483,7 +486,8 @@ async def validate_google_connection(
                 params={"key": api_key},
                 raise_for_status=False,
             )
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        elapsed_seconds = time.perf_counter() - start
+        elapsed_ms = elapsed_seconds * 1000.0
         if response.status_code == 200:
             return True, "Google API reachable", elapsed_ms
         if response.status_code in (401, 403):
@@ -496,10 +500,12 @@ async def validate_google_connection(
             elapsed_ms,
         )
     except http_error_type as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        elapsed_seconds = time.perf_counter() - start
+        elapsed_ms = elapsed_seconds * 1000.0
         return False, f"Google validation error: {exc}", elapsed_ms
     except Exception as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        elapsed_seconds = time.perf_counter() - start
+        elapsed_ms = elapsed_seconds * 1000.0
         return False, f"Google validation error: {exc}", elapsed_ms
 
 

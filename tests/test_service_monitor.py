@@ -15,6 +15,8 @@ from venom_core.core.service_monitor import (
     ServiceRegistry,
     ServiceStatus,
 )
+from venom_core.execution.maf_runtime import AgentRuntime
+from venom_core.execution.skills.assistant_skill import AssistantSkill
 
 
 @pytest.fixture
@@ -728,6 +730,25 @@ async def test_check_semantic_kernel_service_counts_functions(service_monitor):
     await service_monitor._check_semantic_kernel_service(service)
     assert service.status == ServiceStatus.ONLINE
     assert "3 funkcji" in (service.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_health_with_registered_maf_tools(service_monitor):
+    runtime = AgentRuntime()
+    runtime.add_plugin(AssistantSkill(), plugin_name="Assistant")
+    service_monitor.set_orchestrator(
+        SimpleNamespace(task_dispatcher=SimpleNamespace(kernel=runtime))
+    )
+    service = service_monitor.registry.get_service("Semantic Kernel")
+    assert service is not None
+    tool_count = len(runtime.native_tools())
+    assert tool_count > 0
+
+    await service_monitor._check_semantic_kernel_service(service)
+
+    assert service.status == ServiceStatus.ONLINE, service.error_message
+    assert service.error_message == f"1 skille, {tool_count} funkcji"
+    assert service_monitor.get_summary()["system_healthy"] is True
 
 
 def test_get_memory_metrics(service_monitor):

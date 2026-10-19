@@ -11,6 +11,7 @@ import asyncio
 import shutil
 import subprocess
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -517,14 +518,15 @@ class ServiceHealthMonitor:
             # Zliczanie pluginów i funkcji
             kernel = orchestrator.task_dispatcher.kernel
 
-            # Pobierz pluginy (W SK v1.0+ to słownik)
+            # MAF stores tool groups as mappings; keep the legacy monitor ID.
             plugins = getattr(kernel, "plugins", {})
             plugin_count = len(plugins)
 
             # Zlicz funkcje we wszystkich pluginach
             function_count = 0
             for plugin in plugins.values():
-                function_count += len(plugin.functions)
+                functions = plugin if isinstance(plugin, Mapping) else plugin.functions
+                function_count += len(functions)
 
             service.status = ServiceStatus.ONLINE
             service.error_message = f"{plugin_count} skille, {function_count} funkcji"

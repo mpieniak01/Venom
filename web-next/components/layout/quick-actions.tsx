@@ -40,13 +40,24 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
     refresh: refreshQueue,
     loading: queueLoading,
     refreshing: queueRefreshing,
+    error: queueError,
   } = useQueueStatus();
   const { refresh: refreshTasks } = useTasks();
   const [message, setMessage] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
+  const [queueRefreshPending, setQueueRefreshPending] = useState(0);
   const queueAvailable = Boolean(queue) && !queueLoading;
   const t = useTranslation();
   const queueOfflineMessage = t("quickActions.offlineMessage");
+
+  const refreshQueueAfterMutation = async () => {
+    setQueueRefreshPending((pending) => pending + 1);
+    try {
+      await refreshQueue();
+    } finally {
+      setQueueRefreshPending((pending) => pending - 1);
+    }
+  };
 
   const runAction = async (action: QuickActionItem) => {
     if (running) return;
@@ -55,7 +66,8 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
     try {
       await action.handler();
       setMessage(t("quickActions.successMessage", { action: action.label }));
-      await Promise.all([refreshQueue(), refreshTasks()]);
+      void refreshQueueAfterMutation();
+      void refreshTasks();
     } catch (err) {
       setMessage(
         err instanceof Error ? err.message : t("quickActions.errorMessage", { action: action.label }),
@@ -107,7 +119,12 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   );
 
   const handleQuickAction = async (action: QuickActionItem) => {
-    if (running || queueRefreshing) return;
+    if (running) return;
+    if (action.id === "toggle" && (queueRefreshing || queueRefreshPending > 0)) return;
+    if (action.id === "toggle" && queueError) {
+      setMessage(queueError);
+      return;
+    }
     if (!queueAvailable) {
       setMessage(queueOfflineMessage);
       return;
@@ -138,7 +155,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
         />
         <div className="space-y-2">
           {actions.map((action) => {
-            const isRunning = running === action.id;
+            const isRunning = running === action.id || (action.id === "toggle" && (queueRefreshing || queueRefreshPending > 0));
             return (
               <ListCard
                 key={action.id}

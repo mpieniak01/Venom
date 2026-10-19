@@ -12,11 +12,13 @@ import { LanguageProvider } from "../lib/i18n";
 import type { PlanRequest } from "../types/workflow-control";
 
 const originalFetch = globalThis.fetch;
+const originalConfirm = globalThis.confirm;
 const cacheKey = "trainable-models-cache";
 
 afterEach(() => {
   cleanup();
   globalThis.fetch = originalFetch;
+  globalThis.confirm = originalConfirm;
   window.localStorage.removeItem(cacheKey);
   window.localStorage.removeItem("venom-language");
   mock.restoreAll();
@@ -129,23 +131,33 @@ describe("QuickActions queue refresh boundary", () => {
     let paused = false;
     let hold = false;
     let resolveStatus: ((response: Response) => void) | undefined;
+    let resolveTasks: ((response: Response) => void) | undefined;
     let postError = false;
+    let statusError = false;
+    let statusReads = 0;
     const status = () => ({ active: 0, pending: 0, limit: 5, paused });
     releasePending = () => {
       hold = false;
       resolveStatus?.(Response.json(status()));
+      resolveTasks?.(Response.json([]));
     };
+    globalThis.confirm = () => true;
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (init?.method === "POST") {
         posts.push(url);
-        return postError
-          ? Response.json({ error: "pause denied" }, { status: 400 })
-          : Response.json({ message: "accepted" });
+        if (postError) return Response.json({ error: "action denied" }, { status: 400 });
+        paused = !url.endsWith("/queue/resume");
+        return Response.json({ message: "accepted" });
       }
       if (url.endsWith("/queue/status")) {
+        statusReads += 1;
+        if (statusError) return new Response("Unavailable", { status: 400 });
         if (hold) return new Promise<Response>((resolve) => { resolveStatus = resolve; });
         return Response.json(status());
+      }
+      if (url.endsWith("/tasks") && hold) {
+        return new Promise<Response>((resolve) => { resolveTasks = resolve; });
       }
       return Response.json([]);
     };
@@ -159,19 +171,25 @@ describe("QuickActions queue refresh boundary", () => {
       posts, queue,
       holdStatus: () => { hold = true; },
       rejectPost: () => { postError = true; },
-      releaseStatus: async (nextPaused: boolean) => {
+      rejectStatus: () => { statusError = true; },
+      releaseStatus: async (stalePaused: boolean) => {
         assert.ok(resolveStatus);
-        paused = nextPaused;
         hold = false;
-        await act(async () => { resolveStatus?.(Response.json(status())); });
+        await act(async () => {
+          resolveStatus?.(Response.json({ ...status(), paused: stalePaused }));
+          resolveTasks?.(Response.json([]));
+        });
       },
       statusPending: () => resolveStatus !== undefined,
+      tasksPending: () => resolveTasks !== undefined,
+      statusReads: () => statusReads,
     };
   }
 
+  const emergencyButton = () => screen.getByRole("button", { name: /Emergency stop|Awaryjne zatrzymanie|Notstopp/i });
   const pauseButton = () => screen.getByRole("button", { name: /Pause queue|Wstrzymaj kolejkę|Warteschlange pausieren/i });
 
-  it("keeps the action busy through a delayed refresh then uses the new queue direction", async () => {
+  it("blocks stale toggles but allows emergency during delayed queue and task refresh", async () => {
     const h = await mountQueue();
     h.holdStatus();
     fireEvent.click(pauseButton());
@@ -183,30 +201,68 @@ describe("QuickActions queue refresh boundary", () => {
     assert.equal(h.posts.length, 1);
     assert.ok(screen.getByText(/Sending|Wysyłam|Senden/));
     assert.ok(h.posts[0].endsWith("/queue/pause"));
-    await h.releaseStatus(true);
-    const resume = await screen.findByRole("button", { name: /Resume queue|Wznów kolejkę|Warteschlange fortsetzen/i });
-    fireEvent.click(resume);
+    assert.equal(h.tasksPending(), true);
+    fireEvent.click(emergencyButton());
     await waitFor(() => assert.equal(h.posts.length, 2));
-    assert.ok(h.posts[1].endsWith("/queue/resume"));
+    assert.ok(h.posts[1].endsWith("/queue/emergency-stop"));
+    assert.equal(h.queue.result.current.refreshing, true);
+    const readsBeforeRelease = h.statusReads();
+    await h.releaseStatus(false);
+    await waitFor(() => assert.ok(h.statusReads() > readsBeforeRelease));
+    await waitFor(() => assert.equal(h.queue.result.current.data?.paused, true));
+    const resume = await screen.findByRole("button", { name: /Resume queue|Wznów kolejkę|Warteschlange fortsetzen/i });
+    await waitFor(() => assert.equal(screen.queryByText(/Sending|Wysyłam|Senden/), null));
+    fireEvent.click(resume);
+    await waitFor(() => assert.equal(h.posts.length, 3));
+    assert.ok(h.posts[2].endsWith("/queue/resume"));
     await waitFor(() => assert.equal(h.queue.result.current.refreshing, false));
   });
 
-  it("ignores clicks during an existing refresh and still reports a later POST failure", async () => {
+  it("does not toggle from a failed status read but still allows emergency", async () => {
+    const h = await mountQueue();
+    h.holdStatus();
+    let refresh!: Promise<void>;
+    act(() => { refresh = h.queue.result.current.refresh(); });
+    fireEvent.click(emergencyButton());
+    await waitFor(() => assert.equal(h.posts.length, 1));
+    h.rejectStatus();
+    await h.releaseStatus(false);
+    await refresh;
+    await waitFor(() => assert.equal(h.queue.result.current.error, "Request failed: 400"));
+    fireEvent.click(pauseButton());
+    assert.equal(h.posts.length, 1);
+    assert.match(screen.getByText(/Request failed: 400/).textContent ?? "", /Request failed: 400/);
+    fireEvent.click(emergencyButton());
+    await waitFor(() => assert.equal(h.posts.length, 2));
+    assert.ok(h.posts[1].endsWith("/queue/emergency-stop"));
+  });
+
+  it("blocks only toggle during a background refresh and preserves later POST errors", async () => {
     const h = await mountQueue();
     h.holdStatus();
     let refresh!: Promise<void>;
     act(() => { refresh = h.queue.result.current.refresh(); });
     assert.equal(h.queue.result.current.refreshing, true);
     fireEvent.click(pauseButton());
-    assert.deepEqual(h.posts, []);
+    assert.equal(h.posts.length, 0);
+    fireEvent.click(emergencyButton());
+    await waitFor(() => assert.equal(h.posts.length, 1));
+    assert.ok(h.posts[0].endsWith("/queue/emergency-stop"));
+    assert.equal(h.queue.result.current.refreshing, true);
+    const readsBeforeRelease = h.statusReads();
     await h.releaseStatus(false);
     await refresh;
+    await waitFor(() => assert.ok(h.statusReads() > readsBeforeRelease));
+    await waitFor(() => assert.equal(h.queue.result.current.data?.paused, true));
+    const resume = await screen.findByRole("button", { name: /Resume queue|Wznów kolejkę|Warteschlange fortsetzen/i });
+    await waitFor(() => assert.equal(screen.queryByText(/Sending|Wysyłam|Senden/), null));
     h.rejectPost();
-    fireEvent.click(pauseButton());
+    fireEvent.click(resume);
     const error = await screen.findByText(/Request failed: 400/);
     assert.match(error.textContent ?? "", /Request failed: 400/);
-    assert.equal(h.posts.length, 1);
-    fireEvent.click(pauseButton());
-    await waitFor(() => assert.equal(h.posts.length, 2));
+    assert.equal(h.posts.length, 2);
+    assert.ok(h.posts[1].endsWith("/queue/resume"));
+    fireEvent.click(resume);
+    await waitFor(() => assert.equal(h.posts.length, 3));
   });
 });

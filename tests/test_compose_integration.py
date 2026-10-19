@@ -162,7 +162,8 @@ services:
     success2, _ = stack_manager.deploy_stack(compose_simple, stack2_name)
 
     # Oba powinny się udać
-    assert success1 and success2
+    assert success1
+    assert success2
 
     # Sprawdź izolację katalogów
     stack1_dir = Path(temp_workspace) / "stacks" / stack1_name

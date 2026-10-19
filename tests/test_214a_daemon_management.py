@@ -118,9 +118,9 @@ def test_daemon_status_includes_component_snapshot_metadata():
     assert data["component_snapshot_timestamp_ms"] > 0
 
 
-def test_daemon_status_no_daemon_returns_503():
-    runtime_main._daemon = None  # noqa: SLF001
-    runtime_main._warming = False
+def test_daemon_status_no_daemon_returns_503(monkeypatch):
+    monkeypatch.setattr(runtime_main, "_daemon", None)  # noqa: SLF001
+    monkeypatch.setattr(runtime_main, "_warming", False)
     client = TestClient(runtime_main.app, raise_server_exceptions=False)
     resp = client.get("/v1/daemon/status")
     assert resp.status_code == 503

@@ -91,7 +91,7 @@ def client(app_with_academy):
 @pytest.fixture
 def strict_client(app_with_academy):
     # Nie bypass localhost guard - testuje go
-    yield TestClient(app_with_academy)
+    return TestClient(app_with_academy)
 
 
 # ==================== Upload Tests ====================
@@ -1063,7 +1063,11 @@ def test_compute_bytes_hash_is_stable():
     from venom_core.api.routes.academy import _compute_bytes_hash
 
     payload = b"academy-hash-payload"
-    assert _compute_bytes_hash(payload) == _compute_bytes_hash(payload)
+    expected_digest = "50972b8fc5cdd4125059b5c04b83f1672291ed6f9aba231c2cb304d3bc7c007c"
+    first_digest = _compute_bytes_hash(payload)
+    second_digest = _compute_bytes_hash(payload)
+    assert first_digest == expected_digest
+    assert second_digest == expected_digest
     assert _compute_bytes_hash(payload) != _compute_bytes_hash(payload + b"-x")
 
 

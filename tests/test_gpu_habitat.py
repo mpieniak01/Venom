@@ -284,7 +284,8 @@ def test_get_gpu_info_no_gpu(monkeypatch):
 
     assert info["available"] is False
     assert "message" in info
-    assert isinstance(info["message"], str) and info["message"]
+    assert isinstance(info["message"], str)
+    assert info["message"]
 
 
 def test_get_gpu_info_with_gpu(monkeypatch):
@@ -416,9 +417,22 @@ def test_local_runtime_cpu_fallback(tmp_path, monkeypatch):
         assert habitat.use_local_runtime is True
 
 
-def test_local_runtime_training_execution(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "supplied_cache", [False, True], ids=["default-cache", "supplied-cache"]
+)
+def test_local_runtime_training_execution(tmp_path, monkeypatch, supplied_cache):
     """Test uruchomienia treningu w trybie local runtime (Popen)."""
     monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", True)
+    cache_environment = {
+        "HF_HOME": str(tmp_path / "supplied-hf"),
+        "HF_DATASETS_CACHE": str(tmp_path / "supplied-datasets"),
+        "HUGGINGFACE_HUB_CACHE": str(tmp_path / "supplied-hub"),
+    }
+    for name, value in cache_environment.items():
+        if supplied_cache:
+            monkeypatch.setenv(name, value)
+        else:
+            monkeypatch.delenv(name, raising=False)
 
     # Mock subprocess.Popen
     process_mock = SimpleNamespace(pid=12345, poll=lambda: None)
@@ -464,6 +478,10 @@ def test_local_runtime_training_execution(tmp_path, monkeypatch):
             env = popen_kwargs["env"]
             assert env["WANDB_DISABLED"] == "true"
             assert env["WANDB_MODE"] == "disabled"
-            assert env["HF_HOME"].endswith("/.hf-cache")
-            assert env["HF_DATASETS_CACHE"].endswith("/.hf-cache/datasets")
-            assert env["HUGGINGFACE_HUB_CACHE"].endswith("/.hf-cache/hub")
+            if supplied_cache:
+                for name, value in cache_environment.items():
+                    assert env[name] == value
+            else:
+                assert env["HF_HOME"].endswith("/.hf-cache")
+                assert env["HF_DATASETS_CACHE"].endswith("/.hf-cache/datasets")
+                assert env["HUGGINGFACE_HUB_CACHE"].endswith("/.hf-cache/hub")

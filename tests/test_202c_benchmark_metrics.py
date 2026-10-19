@@ -75,7 +75,8 @@ def test_first_text_is_timed_before_done_ignoring_metadata_and_whitespace(monkey
         + frame("done", {}, 0.01)
     )
     result = run(monkeypatch, frames)
-    assert result.ok and result.text == "hello world"
+    assert result.ok
+    assert result.text == "hello world"
     assert result.first_token_latency_ms == pytest.approx(40)
     assert result.latency_ms == pytest.approx(130)
     assert result.event_count == 5
@@ -101,7 +102,8 @@ def test_invalid_or_failed_stream_is_not_a_successful_sample(
     monkeypatch, frames, reason
 ):
     result = run(monkeypatch, frames)
-    assert not result.ok and reason in result.error
+    assert not result.ok
+    assert reason in result.error
 
 
 def test_wall_clock_deadline_is_not_reset_by_new_events(monkeypatch):
@@ -112,13 +114,15 @@ def test_wall_clock_deadline_is_not_reset_by_new_events(monkeypatch):
         + frame("done", {}),
         timeout=0.1,
     )
-    assert not result.ok and "deadline_exceeded" in result.error
+    assert not result.ok
+    assert "deadline_exceeded" in result.error
 
 
 def test_non_sse_body_is_not_a_timing_measurement(monkeypatch):
     monkeypatch.setattr(Response, "headers", {"Content-Type": "application/json"})
     result = run(monkeypatch, [])
-    assert not result.ok and "response_is_not_sse" in result.error
+    assert not result.ok
+    assert "response_is_not_sse" in result.error
 
 
 def test_benchmark_reports_observed_latency_and_no_word_based_token_rate(monkeypatch):
@@ -160,7 +164,8 @@ def test_late_terminal_event_cannot_bypass_wall_clock_deadline(monkeypatch):
         frame("content", {"text": "one"}, 0.01) + frame("done", {}, 0.2),
         timeout=0.1,
     )
-    assert not result.ok and "deadline_exceeded" in result.error
+    assert not result.ok
+    assert "deadline_exceeded" in result.error
 
 
 def test_native_usage_drives_rate_and_receiver_tpot_not_word_or_event_counts(
@@ -184,11 +189,15 @@ def test_native_usage_drives_rate_and_receiver_tpot_not_word_or_event_counts(
         )
     )
     result = run(monkeypatch, frames)
-    assert result.ok and result.output_tokens == 7 and result.prompt_tokens == 3
-    assert result.usage_source == "upstream" and result.total_tokens == 10
+    assert result.ok
+    assert result.output_tokens == 7
+    assert result.prompt_tokens == 3
+    assert result.usage_source == "upstream"
+    assert result.total_tokens == 10
     assert result.tokens_per_second == pytest.approx(7 / 0.11)
     assert result.time_per_output_token_ms == pytest.approx((110 - 30) / 6)
-    assert len(result.text.split()) == 2 and result.event_count == 4
+    assert len(result.text.split()) == 2
+    assert result.event_count == 4
 
 
 def test_aggregated_single_text_event_has_no_observable_tpot(monkeypatch):
@@ -201,7 +210,8 @@ def test_aggregated_single_text_event_has_no_observable_tpot(monkeypatch):
             0.01,
         ),
     )
-    assert result.ok and result.tokens_per_second == pytest.approx(7 / 0.11)
+    assert result.ok
+    assert result.tokens_per_second == pytest.approx(7 / 0.11)
     assert result.time_per_output_token_ms is None
 
 
@@ -215,8 +225,10 @@ def test_heuristic_usage_without_upstream_provenance_is_not_token_evidence(monke
             0.01,
         ),
     )
-    assert result.ok and result.output_tokens is None
-    assert result.tokens_per_second is None and result.time_per_output_token_ms is None
+    assert result.ok
+    assert result.output_tokens is None
+    assert result.tokens_per_second is None
+    assert result.time_per_output_token_ms is None
 
 
 @pytest.mark.parametrize(
@@ -371,7 +383,8 @@ def test_resource_samples_deduplicate_overlapping_roots_and_exclude_historic_cpu
     state.node_used_mb = 200.0
     sampler._gpu.add(60.0, 2.0)
     result = sampler.finish()
-    assert result["status"] == "OK" and not result["errors"]
+    assert result["status"] == "OK"
+    assert not result["errors"]
     assert result["cpu_seconds_observed"] == pytest.approx(6.0)
     assert result["cpu_mean_percent_one_core"] == pytest.approx(300.0)
     assert result["process_rss_mb_sampled_peak"] == 90.0
@@ -437,7 +450,8 @@ def test_resource_no_roots_means_nullable_metrics_without_threads_or_subprocesse
     assert result["status"] == "UNAVAILABLE"
     assert result["root_identities"] == []
     assert result["process_sample_count"] == result["gpu_sample_count"] == 0
-    assert state.threads == [] and state.memory_reads == []
+    assert state.threads == []
+    assert state.memory_reads == []
     for key in (
         "cpu_mean_percent_one_core",
         "cpu_seconds_observed",
@@ -1011,10 +1025,12 @@ def test_native_receiver_times_text_and_reads_usage_after_finish(monkeypatch):
         )
         + native_frame("[DONE]"),
     )
-    assert result.ok and result.text == "kot ma"
+    assert result.ok
+    assert result.text == "kot ma"
     assert result.first_token_latency_ms == pytest.approx(30)
     assert result.latency_ms == pytest.approx(110)
-    assert result.output_tokens == 7 and result.total_tokens == 10
+    assert result.output_tokens == 7
+    assert result.total_tokens == 10
     assert result.reported_model == "fixture-model"
     assert result.tokens_per_second == pytest.approx(7 / 0.11)
     assert result.time_per_output_token_ms == pytest.approx((110 - 30) / 6)
@@ -1025,7 +1041,8 @@ def test_native_eof_after_successful_finish_is_complete(monkeypatch, terminal):
     result = run_native(
         monkeypatch, native_frame(native_packet("answer", finish=terminal), 0.1)
     )
-    assert result.ok and result.tokens_per_second is None
+    assert result.ok
+    assert result.tokens_per_second is None
     assert result.time_per_output_token_ms is None
 
 
@@ -1086,7 +1103,8 @@ def test_native_rejects_partial_abort_error_and_invalid_evidence(
     monkeypatch, frames, reason
 ):
     result = run_native(monkeypatch, frames)
-    assert not result.ok and reason in result.error
+    assert not result.ok
+    assert reason in result.error
 
 
 def test_native_missing_model_is_unconfirmed_and_usage_is_not_estimated(monkeypatch):
@@ -1094,8 +1112,10 @@ def test_native_missing_model_is_unconfirmed_and_usage_is_not_estimated(monkeypa
         monkeypatch,
         native_frame(native_packet("many words", finish="stop", model=None), 0.1),
     )
-    assert result.ok and result.reported_model is None
-    assert result.output_tokens is None and result.tokens_per_second is None
+    assert result.ok
+    assert result.reported_model is None
+    assert result.output_tokens is None
+    assert result.tokens_per_second is None
 
 
 def test_native_late_done_cannot_bypass_absolute_deadline(monkeypatch):
@@ -1104,7 +1124,8 @@ def test_native_late_done_cannot_bypass_absolute_deadline(monkeypatch):
         native_frame(native_packet("answer"), 0.01) + native_frame("[DONE]", 0.2),
         timeout=0.1,
     )
-    assert not result.ok and "deadline_exceeded" in result.error
+    assert not result.ok
+    assert "deadline_exceeded" in result.error
 
 
 def test_native_text_response_has_native_usage_but_no_stream_ttft(monkeypatch):
@@ -1143,11 +1164,13 @@ def test_native_text_response_has_native_usage_but_no_stream_ttft(monkeypatch):
         seed=42,
         stream=False,
     )
-    assert result.ok and result.output_tokens == 7
+    assert result.ok
+    assert result.output_tokens == 7
     assert result.first_token_latency_ms is None
     assert result.time_per_output_token_ms is None
     assert result.tokens_per_second == pytest.approx(70)
-    assert captured[0]["stream"] is False and captured[0]["seed"] == 42
+    assert captured[0]["stream"] is False
+    assert captured[0]["seed"] == 42
     assert captured[0]["max_tokens"] == 17
     assert "stream_options" not in captured[0]
 
@@ -1176,7 +1199,8 @@ def test_simple_nonstream_payload_has_no_token_stream_ttft(monkeypatch):
         temperature=0,
         stream=False,
     )
-    assert result.ok and captured[0]["stream"] is False
+    assert result.ok
+    assert captured[0]["stream"] is False
     assert result.first_token_latency_ms is None
     assert result.time_per_output_token_ms is None
 
@@ -1188,7 +1212,8 @@ def test_jsonl_preserves_stream_and_per_case_output_budget(tmp_path):
         + "\n"
     )
     case = common.load_prompts_jsonl(path)[0]
-    assert case["stream"] is False and case["max_tokens"] == 17
+    assert case["stream"] is False
+    assert case["max_tokens"] == 17
 
 
 @pytest.mark.parametrize(
@@ -1224,7 +1249,8 @@ def test_native_benchmark_uses_case_metadata_without_venom_activation(
         ],
         seed=42,
     )
-    assert len(captured) == 5 and result["measurement_complete"]
+    assert len(captured) == 5
+    assert result["measurement_complete"]
     assert all(url.endswith("/v1") for url, _ in captured)
     assert all(
         args["stream"] is False and args["max_tokens"] == 17 and args["seed"] == 42
@@ -1346,13 +1372,15 @@ def test_native_fragmented_utf8_and_unterminated_error_are_not_silently_accepted
     )
     split = wire.index("ż".encode()) + 1
     result = run_native(monkeypatch, [(0, wire[:split]), (0.1, wire[split:])])
-    assert result.ok and result.text == "żółw"
+    assert result.ok
+    assert result.text == "żółw"
     result = run_native(
         monkeypatch,
         native_frame(native_packet("text", finish="stop"))
         + [(0, b'data: {"error": "failed"}')],
     )
-    assert not result.ok and "incomplete_native_event" in result.error
+    assert not result.ok
+    assert "incomplete_native_event" in result.error
 
 
 def test_native_read_socket_timeout_uses_remaining_wall_clock_budget(monkeypatch):
@@ -1375,7 +1403,8 @@ def test_native_read_socket_timeout_uses_remaining_wall_clock_budget(monkeypatch
         temperature=0,
         timeout_sec=1,
     )
-    assert result.ok and timeouts[0] == 1
+    assert result.ok
+    assert timeouts[0] == 1
     assert timeouts[-1] == pytest.approx(0.5)
     assert timeouts == sorted(timeouts, reverse=True)
 

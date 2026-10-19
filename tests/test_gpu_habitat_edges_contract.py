@@ -304,7 +304,8 @@ def test_signal_validated_local_job_sends_signal_only_when_pid_valid(monkeypatch
         {"pid": 321}, gpu_habitat_mod.signal.SIGTERM
     )
     assert sent is True
-    assert calls and calls[0][0] == 321
+    assert calls
+    assert calls[0][0] == 321
 
     monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: None)
     sent = habitat._signal_validated_local_job(
@@ -363,7 +364,8 @@ def test_send_signal_to_validated_pid_fallback_kill_command(monkeypatch):
         habitat._send_signal_to_validated_pid(321, gpu_habitat_mod.signal.SIGTERM)
         is True
     )
-    assert calls and calls[0][0] == ["kill", "-s", "SIGTERM", "321"]
+    assert calls
+    assert calls[0][0] == ["kill", "-s", "SIGTERM", "321"]
 
 
 def test_send_signal_to_validated_pid_rejects_invalid_signal():
@@ -468,7 +470,8 @@ def test_cleanup_job_local_pid_without_process_uses_validated_signal(monkeypatch
     )
 
     habitat.cleanup_job("job-local")
-    assert called and called[0][0] == 222
+    assert called
+    assert called[0][0] == 222
     assert "job-local" not in habitat.training_containers
 
 

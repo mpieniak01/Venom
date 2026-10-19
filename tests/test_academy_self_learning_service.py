@@ -17,6 +17,7 @@ from venom_core.services.academy.self_learning_service import (
     RunLimits,
     SelfLearningRun,
     SelfLearningService,
+    SelfLearningValidationError,
     _clamp01,
     _is_valid_uuid,
     _normalize_evaluation_baseline_payload,
@@ -1756,7 +1757,7 @@ def test_start_run_fails_when_training_base_model_resolution_is_empty(
         "venom_core.services.academy.self_learning_service.resolve_effective_training_base_model",
         lambda *_args, **_kwargs: "",
     )
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(SelfLearningValidationError) as exc:
         service.start_run(
             mode="llm_finetune",
             sources=["docs"],
@@ -1829,8 +1830,9 @@ def test_ensure_no_active_training_jobs_blocks_running_jobs(tmp_path: Path):
         def get_training_status(_job_name: str):
             return {"status": "running"}
 
+    prepared_habitat = HabitatStub()
     with pytest.raises(Exception, match="Aktywny trening już trwa"):
-        service._ensure_no_active_training_jobs(habitat=HabitatStub())
+        service._ensure_no_active_training_jobs(habitat=prepared_habitat)
 
 
 @pytest.mark.asyncio
@@ -1906,10 +1908,11 @@ async def test_wait_for_training_completion_handles_failed_timeout_and_missing_a
         def get_training_status(_job_name: str):
             return {"status": "failed", "logs": "training crashed"}
 
+    prepared_habitat_2 = FailedHabitat()
     with pytest.raises(Exception, match="Błąd podczas treningu modelu"):
         await service._wait_for_training_completion(
             run=run,
-            habitat=FailedHabitat(),
+            habitat=prepared_habitat_2,
             training_job_id="job-failed",
             output_dir=output_dir,
         )
@@ -1929,10 +1932,11 @@ async def test_wait_for_training_completion_handles_failed_timeout_and_missing_a
         0,
     )
     try:
+        prepared_habitat_3 = RunningHabitat()
         with pytest.raises(Exception, match="przekroczył limit czasu"):
             await service._wait_for_training_completion(
                 run=run,
-                habitat=RunningHabitat(),
+                habitat=prepared_habitat_3,
                 training_job_id="job-timeout",
                 output_dir=output_dir,
             )
@@ -1944,10 +1948,11 @@ async def test_wait_for_training_completion_handles_failed_timeout_and_missing_a
         def get_training_status(_job_name: str):
             return {"status": "finished", "logs": "finished without adapter"}
 
+    prepared_habitat_4 = FinishedNoAdapterHabitat()
     with pytest.raises(Exception, match="bez zapisu adaptera"):
         await service._wait_for_training_completion(
             run=run,
-            habitat=FinishedNoAdapterHabitat(),
+            habitat=prepared_habitat_4,
             training_job_id="job-no-adapter",
             output_dir=output_dir,
         )
@@ -2125,7 +2130,8 @@ def test_list_runs_refreshes_live_state_and_sorts_desc(tmp_path: Path):
     finally:
         monkeypatch.undo()
 
-    assert run_a.run_id in refreshed and run_b.run_id in refreshed
+    assert run_a.run_id in refreshed
+    assert run_b.run_id in refreshed
     assert payload[0]["run_id"] == run_b.run_id
 
 

@@ -61,6 +61,7 @@ async def test_state_integrity_e2e():
     assert task.get("status") in {"COMPLETED", "FAILED"}
     assert task.get("result") is not None
     logs = task.get("logs") or []
-    assert isinstance(logs, list) and len(logs) > 0
+    assert isinstance(logs, list)
+    assert len(logs) > 0
     context = task.get("context_history") or {}
     assert isinstance(context, dict)

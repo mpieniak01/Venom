@@ -200,10 +200,11 @@ def test_audit_adapters_handler_maps_generic_error_to_structured_http_500() -> N
 def test_raise_adapter_activation_http_exception_maps_academy_route_error() -> None:
     academy = _build_academy_base()
 
+    prepared_exc_2 = _AcademyRouteError(status_code=409, detail="route error")
     with pytest.raises(HTTPException) as exc:
         route_handlers._raise_adapter_activation_http_exception(
             academy=academy,
-            exc=_AcademyRouteError(status_code=409, detail="route error"),
+            exc=prepared_exc_2,
             adapter_id="a1",
             requested_runtime_id="ollama",
             requested_model_id="gemma3:latest",
@@ -216,10 +217,11 @@ def test_raise_adapter_activation_http_exception_maps_academy_route_error() -> N
 def test_raise_adapter_activation_http_exception_maps_runtime_error() -> None:
     academy = _build_academy_base()
 
+    prepared_exc_3 = RuntimeError("boom")
     with pytest.raises(HTTPException) as exc:
         route_handlers._raise_adapter_activation_http_exception(
             academy=academy,
-            exc=RuntimeError("boom"),
+            exc=prepared_exc_3,
             adapter_id="a1",
             requested_runtime_id="ollama",
             requested_model_id="gemma3:latest",
@@ -241,12 +243,13 @@ def test_raise_adapter_activation_http_exception_maps_runtime_unavailable_to_htt
 ):
     academy = _build_academy_base()
 
+    prepared_exc = RuntimeError(
+        "ADAPTER_RUNTIME_SERVICE_UNAVAILABLE: Ollama runtime is offline"
+    )
     with pytest.raises(HTTPException) as exc:
         route_handlers._raise_adapter_activation_http_exception(
             academy=academy,
-            exc=RuntimeError(
-                "ADAPTER_RUNTIME_SERVICE_UNAVAILABLE: Ollama runtime is offline"
-            ),
+            exc=prepared_exc,
             adapter_id="a1",
             requested_runtime_id="ollama",
             requested_model_id="gemma3:latest",
@@ -266,10 +269,11 @@ def test_raise_adapter_activation_http_exception_maps_runtime_unavailable_to_htt
 def test_raise_adapter_activation_http_exception_maps_generic_error() -> None:
     academy = _build_academy_base()
 
+    prepared_exc_4 = Exception("boom")
     with pytest.raises(HTTPException) as exc:
         route_handlers._raise_adapter_activation_http_exception(
             academy=academy,
-            exc=Exception("boom"),
+            exc=prepared_exc_4,
             adapter_id="a1",
             requested_runtime_id="ollama",
             requested_model_id="gemma3:latest",
@@ -293,11 +297,11 @@ async def test_activate_adapter_handler_returns_503_when_manager_missing() -> No
     academy.require_localhost_request = lambda _req: None
     academy._get_model_manager = lambda: None
     academy.academy_models = SimpleNamespace()
+    prepared_request_5 = SimpleNamespace(adapter_id="a1")
+    prepared_req_9 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         await route_handlers.activate_adapter_handler(
-            request=SimpleNamespace(adapter_id="a1"),
-            req=SimpleNamespace(),
-            academy=academy,
+            request=prepared_request_5, req=prepared_req_9, academy=academy
         )
     assert exc.value.status_code == 503
 
@@ -357,16 +361,16 @@ async def test_activate_adapter_handler_maps_reason_code_value_error_to_http_400
         ),
     )
 
+    prepared_request_4 = SimpleNamespace(
+        adapter_id="a1",
+        runtime_id="ollama",
+        model_id="gemma-3-4b-it",
+        deploy_to_chat_runtime=True,
+    )
+    prepared_req_8 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         await route_handlers.activate_adapter_handler(
-            request=SimpleNamespace(
-                adapter_id="a1",
-                runtime_id="ollama",
-                model_id="gemma-3-4b-it",
-                deploy_to_chat_runtime=True,
-            ),
-            req=SimpleNamespace(),
-            academy=academy,
+            request=prepared_request_4, req=prepared_req_8, academy=academy
         )
 
     assert exc.value.status_code == 400
@@ -396,16 +400,16 @@ async def test_activate_adapter_handler_requires_runtime_model_for_chat_runtime_
         activate_adapter=activate_mock,
     )
 
+    prepared_request = SimpleNamespace(
+        adapter_id="a1",
+        runtime_id="ollama",
+        model_id="",
+        deploy_to_chat_runtime=True,
+    )
+    prepared_req = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         await route_handlers.activate_adapter_handler(
-            request=SimpleNamespace(
-                adapter_id="a1",
-                runtime_id="ollama",
-                model_id="",
-                deploy_to_chat_runtime=True,
-            ),
-            req=SimpleNamespace(),
-            academy=academy,
+            request=prepared_request, req=prepared_req, academy=academy
         )
 
     assert exc.value.status_code == 400
@@ -450,20 +454,20 @@ async def test_start_training_handler_maps_runtime_error_to_structured_http_500(
         ),
     )
 
+    prepared_request_2 = SimpleNamespace(
+        base_model="gemma-3-4b-it",
+        runtime_id="ollama",
+        dataset_path=None,
+        lora_rank=8,
+        learning_rate=0.0002,
+        num_epochs=2,
+        max_seq_length=1024,
+        batch_size=1,
+    )
+    prepared_req_2 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         await route_handlers.start_training_handler(
-            request=SimpleNamespace(
-                base_model="gemma-3-4b-it",
-                runtime_id="ollama",
-                dataset_path=None,
-                lora_rank=8,
-                learning_rate=0.0002,
-                num_epochs=2,
-                max_seq_length=1024,
-                batch_size=1,
-            ),
-            req=SimpleNamespace(),
-            academy=academy,
+            request=prepared_request_2, req=prepared_req_2, academy=academy
         )
 
     assert exc.value.status_code == 500
@@ -497,16 +501,16 @@ async def test_activate_adapter_handler_maps_missing_adapter_to_http_404() -> No
         activate_adapter=lambda **_kwargs: {"success": True},
     )
 
+    prepared_request_3 = SimpleNamespace(
+        adapter_id="missing",
+        runtime_id="ollama",
+        model_id="gemma3:latest",
+        deploy_to_chat_runtime=True,
+    )
+    prepared_req_7 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         await route_handlers.activate_adapter_handler(
-            request=SimpleNamespace(
-                adapter_id="missing",
-                runtime_id="ollama",
-                model_id="gemma3:latest",
-                deploy_to_chat_runtime=True,
-            ),
-            req=SimpleNamespace(),
-            academy=academy,
+            request=prepared_request_3, req=prepared_req_7, academy=academy
         )
 
     assert exc.value.status_code == 404
@@ -554,7 +558,8 @@ def test_list_dataset_uploads_and_delete_upload_paths() -> None:
         }
     ]
     uploads = route_handlers.list_dataset_uploads_handler(academy=academy)
-    assert uploads and uploads[0].id == "f1"
+    assert uploads
+    assert uploads[0].id == "f1"
 
     academy.require_localhost_request = lambda _req: None
     academy._get_uploads_dir = lambda: "/tmp"
@@ -573,22 +578,20 @@ def test_list_dataset_uploads_and_delete_upload_paths() -> None:
     academy.academy_uploads = SimpleNamespace(
         delete_upload_file=lambda **_kwargs: (_ for _ in ()).throw(ValueError("bad"))
     )
+    prepared_req_10 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.delete_dataset_upload_handler(
-            file_id="f1",
-            req=SimpleNamespace(),
-            academy=academy,
+            file_id="f1", req=prepared_req_10, academy=academy
         )
     assert exc.value.status_code == 400
 
     academy.academy_uploads = SimpleNamespace(
         delete_upload_file=lambda **_kwargs: (_ for _ in ()).throw(FileNotFoundError())
     )
+    prepared_req_11 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.delete_dataset_upload_handler(
-            file_id="f1",
-            req=SimpleNamespace(),
-            academy=academy,
+            file_id="f1", req=prepared_req_11, academy=academy
         )
     assert exc.value.status_code == 404
 
@@ -644,11 +647,10 @@ def test_conversion_listing_download_and_stream_helpers() -> None:
     assert isinstance(file_resp, FileResponse)
 
     academy._check_path_traversal = lambda _fid: False
+    prepared_req_12 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.download_dataset_conversion_file_handler(
-            file_id="bad",
-            req=SimpleNamespace(),
-            academy=academy,
+            file_id="bad", req=prepared_req_12, academy=academy
         )
     assert exc.value.status_code == 400
 
@@ -679,10 +681,10 @@ def test_list_dataset_conversion_files_maps_generic_error_to_structured_http_500
         )
     )
 
+    prepared_req_3 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.list_dataset_conversion_files_handler(
-            req=SimpleNamespace(),
-            academy=academy,
+            req=prepared_req_3, academy=academy
         )
 
     assert exc.value.status_code == 500
@@ -709,11 +711,10 @@ async def test_preview_dataset_conversion_file_maps_generic_error_to_structured_
         read_text_preview=AsyncMock(side_effect=RuntimeError("boom"))
     )
 
+    prepared_req_4 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         await route_handlers.preview_dataset_conversion_file_handler(
-            file_id="f1",
-            req=SimpleNamespace(),
-            academy=academy,
+            file_id="f1", req=prepared_req_4, academy=academy
         )
 
     assert exc.value.status_code == 500
@@ -739,11 +740,10 @@ def test_download_dataset_conversion_file_maps_generic_error_to_structured_http_
         guess_media_type=lambda _path: (_ for _ in ()).throw(RuntimeError("boom"))
     )
 
+    prepared_req_5 = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
         route_handlers.download_dataset_conversion_file_handler(
-            file_id="f1",
-            req=SimpleNamespace(),
-            academy=academy,
+            file_id="f1", req=prepared_req_5, academy=academy
         )
 
     assert exc.value.status_code == 500
@@ -793,11 +793,9 @@ def test_deactivate_adapter_handler_maps_generic_error_to_structured_http_500() 
         ),
     )
 
+    prepared_req_6 = SimpleNamespace(query_params={})
     with pytest.raises(HTTPException) as exc:
-        route_handlers.deactivate_adapter_handler(
-            req=SimpleNamespace(query_params={}),
-            academy=academy,
-        )
+        route_handlers.deactivate_adapter_handler(req=prepared_req_6, academy=academy)
 
     assert exc.value.status_code == 500
     assert exc.value.detail == {

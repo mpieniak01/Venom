@@ -43,40 +43,32 @@ def test_swarm_module_imports():
 
 def test_create_local_llm_config_invalid_temperature_high():
     """Test walidacji temperatury - wartość za wysoka."""
-    try:
+    with pytest.raises(ValueError) as exc:
         create_local_llm_config(temperature=1.5)
-        assert False, "Powinien rzucić ValueError dla temperature > 1.0"
-    except ValueError as e:
-        assert "Temperature" in str(e)
-        assert "0.0-1.0" in str(e)
+    assert "Temperature" in str(exc.value)
+    assert "0.0-1.0" in str(exc.value)
 
 
 def test_create_local_llm_config_invalid_temperature_low():
     """Test walidacji temperatury - wartość za niska."""
-    try:
+    with pytest.raises(ValueError) as exc:
         create_local_llm_config(temperature=-0.1)
-        assert False, "Powinien rzucić ValueError dla temperature < 0.0"
-    except ValueError as e:
-        assert "Temperature" in str(e)
-        assert "0.0-1.0" in str(e)
+    assert "Temperature" in str(exc.value)
+    assert "0.0-1.0" in str(exc.value)
 
 
 def test_create_local_llm_config_invalid_base_url_empty():
     """Test walidacji base_url - pusty string."""
-    try:
+    with pytest.raises(ValueError) as exc:
         create_local_llm_config(base_url="")
-        assert False, "Powinien rzucić ValueError dla pustego base_url"
-    except ValueError as e:
-        assert "base_url" in str(e)
+    assert "base_url" in str(exc.value)
 
 
 def test_create_local_llm_config_invalid_model_empty():
     """Test walidacji model - pusty string."""
-    try:
+    with pytest.raises(ValueError) as exc:
         create_local_llm_config(model="")
-        assert False, "Powinien rzucić ValueError dla pustego model"
-    except ValueError as e:
-        assert "model" in str(e)
+    assert "model" in str(exc.value)
 
 
 def test_create_local_llm_config_edge_case_temperature_zero():

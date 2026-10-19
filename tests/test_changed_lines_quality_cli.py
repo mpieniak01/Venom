@@ -11,7 +11,8 @@ def _load_module():
     spec = importlib.util.spec_from_file_location(
         "check_new_code_coverage", script_path
     )
-    assert spec and spec.loader
+    assert spec
+    assert spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

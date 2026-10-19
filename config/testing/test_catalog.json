@@ -771,10 +771,11 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_agents.py",
@@ -962,10 +963,11 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_apprentice_agent.py",
@@ -1322,10 +1324,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_changed_lines_quality_cli.py",
@@ -1334,10 +1337,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_changed_lines_quality_gate_runner.py",
@@ -1416,10 +1420,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_code_index_skill.py",
@@ -1590,10 +1595,11 @@
       "intent": "integration",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Integration-heavy behavior delegated to release lane."
+      "rationale": "Integration-heavy behavior delegated to release lane. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_compose_skill.py",
@@ -2136,10 +2142,11 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_energy_manager.py",
@@ -2365,10 +2372,11 @@
       "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_file_floor_threshold_guard.py",
@@ -2884,10 +2892,11 @@
       "intent": "regression",
       "primary_lane": "release",
       "allowed_lanes": [
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Default release-lane regression coverage. Included in the local changed-test regression for Sonar remediation."
     },
     {
       "path": "tests/test_hidden_prompts_semantic.py",

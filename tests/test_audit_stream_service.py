@@ -95,10 +95,10 @@ def test_get_audit_stream_singleton_and_env_limit(monkeypatch):
     previous_stream = audit_stream_module._audit_stream
     try:
         monkeypatch.setenv("VENOM_AUDIT_STREAM_MAX_ENTRIES", "invalid")
-        audit_stream_module._audit_stream = None
+        monkeypatch.setattr(audit_stream_module, "_audit_stream", None)
         first = audit_stream_module.get_audit_stream()
         second = audit_stream_module.get_audit_stream()
         assert first is second
         assert first._max_entries == 5000
     finally:
-        audit_stream_module._audit_stream = previous_stream
+        monkeypatch.setattr(audit_stream_module, "_audit_stream", previous_stream)

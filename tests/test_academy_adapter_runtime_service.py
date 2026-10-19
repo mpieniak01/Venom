@@ -205,12 +205,11 @@ def test_resolve_llama_cpp_convert_script_raises_when_missing(
 ):
     monkeypatch.delenv("VENOM_LLAMA_CPP_CONVERT_SCRIPT", raising=False)
     monkeypatch.delenv("VENOM_LLAMA_CPP_DIR", raising=False)
+    prepared_settings_obj_3 = SimpleNamespace(
+        ACADEMY_LLAMA_CPP_DIR="", REPO_ROOT=str(tmp_path)
+    )
     with pytest.raises(FileNotFoundError, match="convert_lora_to_gguf.py not found"):
-        ars._resolve_llama_cpp_convert_script(
-            settings_obj=SimpleNamespace(
-                ACADEMY_LLAMA_CPP_DIR="", REPO_ROOT=str(tmp_path)
-            )
-        )
+        ars._resolve_llama_cpp_convert_script(settings_obj=prepared_settings_obj_3)
 
 
 def test_resolve_existing_ollama_adapter_gguf_prefers_named_candidate(tmp_path: Path):
@@ -412,6 +411,24 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_runtime_unavailable_when_d
             ),
         ),
     ):
+        prepared_deploy_deps = {
+            "require_trusted_adapter_base_model_fn": lambda **_kw: ("gemma-3-4b-it"),
+            "canonical_runtime_model_id_fn": lambda value: (
+                "gemma-3-4b-it"
+                if value.strip().lower() in {"gemma3:latest", "gemma3:4b"}
+                else value.strip().lower()
+            ),
+            "config_manager_obj": MagicMock(),
+            "compute_llm_config_hash_fn": lambda *_args: "hash-offline",
+            "runtime_endpoint_for_hash_fn": lambda *_args, **_kwargs: (
+                "http://localhost:11434/v1"
+            ),
+            "is_runtime_model_dir_fn": lambda _path: False,
+            "get_active_llm_runtime_fn": lambda: SimpleNamespace(
+                provider="ollama",
+                model_name="gemma3:4b",
+            ),
+        }
         with pytest.raises(RuntimeError, match="ADAPTER_RUNTIME_SERVICE_UNAVAILABLE"):
             ars._deploy_adapter_to_chat_runtime(
                 mgr=mgr,
@@ -419,26 +436,7 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_runtime_unavailable_when_d
                 runtime_id="ollama",
                 model_id="gemma3:4b",
                 settings_obj=settings_obj,
-                deploy_deps={
-                    "require_trusted_adapter_base_model_fn": lambda **_kw: (
-                        "gemma-3-4b-it"
-                    ),
-                    "canonical_runtime_model_id_fn": lambda value: (
-                        "gemma-3-4b-it"
-                        if value.strip().lower() in {"gemma3:latest", "gemma3:4b"}
-                        else value.strip().lower()
-                    ),
-                    "config_manager_obj": MagicMock(),
-                    "compute_llm_config_hash_fn": lambda *_args: "hash-offline",
-                    "runtime_endpoint_for_hash_fn": lambda *_args, **_kwargs: (
-                        "http://localhost:11434/v1"
-                    ),
-                    "is_runtime_model_dir_fn": lambda _path: False,
-                    "get_active_llm_runtime_fn": lambda: SimpleNamespace(
-                        provider="ollama",
-                        model_name="gemma3:4b",
-                    ),
-                },
+                deploy_deps=prepared_deploy_deps,
             )
 
 
@@ -504,6 +502,24 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_deploy_failed_when_probe_o
             ars, "_probe_ollama_runtime_unavailable_reason", return_value=None
         ),
     ):
+        prepared_deploy_deps_2 = {
+            "require_trusted_adapter_base_model_fn": lambda **_kw: ("gemma-3-4b-it"),
+            "canonical_runtime_model_id_fn": lambda value: (
+                "gemma-3-4b-it"
+                if value.strip().lower() in {"gemma3:latest", "gemma3:4b"}
+                else value.strip().lower()
+            ),
+            "config_manager_obj": MagicMock(),
+            "compute_llm_config_hash_fn": lambda *_args: "hash-probe-ok",
+            "runtime_endpoint_for_hash_fn": lambda *_args, **_kwargs: (
+                "http://localhost:11434/v1"
+            ),
+            "is_runtime_model_dir_fn": lambda _path: False,
+            "get_active_llm_runtime_fn": lambda: SimpleNamespace(
+                provider="ollama",
+                model_name="gemma3:4b",
+            ),
+        }
         with pytest.raises(RuntimeError, match="ADAPTER_RUNTIME_DEPLOY_FAILED"):
             ars._deploy_adapter_to_chat_runtime(
                 mgr=mgr,
@@ -511,26 +527,7 @@ def test_deploy_adapter_to_chat_runtime_ollama_raises_deploy_failed_when_probe_o
                 runtime_id="ollama",
                 model_id="gemma3:4b",
                 settings_obj=settings_obj,
-                deploy_deps={
-                    "require_trusted_adapter_base_model_fn": lambda **_kw: (
-                        "gemma-3-4b-it"
-                    ),
-                    "canonical_runtime_model_id_fn": lambda value: (
-                        "gemma-3-4b-it"
-                        if value.strip().lower() in {"gemma3:latest", "gemma3:4b"}
-                        else value.strip().lower()
-                    ),
-                    "config_manager_obj": MagicMock(),
-                    "compute_llm_config_hash_fn": lambda *_args: "hash-probe-ok",
-                    "runtime_endpoint_for_hash_fn": lambda *_args, **_kwargs: (
-                        "http://localhost:11434/v1"
-                    ),
-                    "is_runtime_model_dir_fn": lambda _path: False,
-                    "get_active_llm_runtime_fn": lambda: SimpleNamespace(
-                        provider="ollama",
-                        model_name="gemma3:4b",
-                    ),
-                },
+                deploy_deps=prepared_deploy_deps_2,
             )
 
 
@@ -973,18 +970,16 @@ def test_deploy_adapter_to_vllm_runtime_raises_for_non_runtime_model_dir(
             ars, "_resolve_local_training_base_model_for_merge", return_value=""
         ),
     ):
+        prepared_settings_obj = SimpleNamespace(ACADEMY_MODELS_DIR=str(models_dir))
         with pytest.raises(RuntimeError, match="Failed to prepare runtime-usable vLLM"):
             ars._deploy_adapter_to_vllm_runtime(
                 adapter_id=adapter_id,
-                settings_obj=SimpleNamespace(ACADEMY_MODELS_DIR=str(models_dir)),
-                build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: (
-                    runtime_model_dir
-                ),
+                settings_obj=prepared_settings_obj,
+                build_vllm_runtime_model_from_adapter_fn=lambda **_kwargs: runtime_model_dir,
                 is_runtime_model_dir_fn=lambda _path: False,
                 restart_vllm_runtime_fn=lambda **_kwargs: None,
                 get_active_llm_runtime_fn=lambda: SimpleNamespace(
-                    provider="vllm",
-                    model_name="old-model",
+                    provider="vllm", model_name="old-model"
                 ),
             )
 
@@ -1183,12 +1178,13 @@ def test_restart_vllm_runtime_runs_service_and_surfaces_failures(
         "run",
         return_value=SimpleNamespace(returncode=1, stdout="", stderr="broken"),
     ):
+        prepared_settings_obj_2 = SimpleNamespace()
         with pytest.raises(
             RuntimeError, match="Failed to restart vLLM runtime: broken"
         ):
             ars._restart_vllm_runtime(
                 resolve_repo_root_fn=lambda **_kwargs: tmp_path,
-                settings_obj=SimpleNamespace(),
+                settings_obj=prepared_settings_obj_2,
             )
 
 

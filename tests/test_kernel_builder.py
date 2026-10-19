@@ -273,8 +273,11 @@ def test_register_google_service_requires_maf_provider(monkeypatch):
 
     builder = KernelBuilder(settings=GoogleSettings())
     monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", False)
+    prepared_magic_mock = MagicMock()
     with pytest.raises(ValueError, match="Provider MAF"):
-        builder._register_google_service(MagicMock(), "google", "gemini-x", False)
+        builder._register_google_service(
+            prepared_magic_mock, "google", "gemini-x", False
+        )
 
 
 def test_register_all_services_logs_openai_registration_failure(monkeypatch):
@@ -356,10 +359,11 @@ def test_onnx_invalid_configuration_fails_before_creating_any_client(
 
     forbidden = MagicMock(side_effect=AssertionError("native/HTTP client created"))
     monkeypatch.setattr(module, "AsyncOpenAI", forbidden)
+    prepared_operation = KernelBuilder(
+        settings=OnnxSettings(LLM_SERVICE_TYPE=service_type),
+        enable_routing=False,
+        enable_multi_service=multi,
+    ).build_kernel
     with pytest.raises(ValueError, match=error):
-        KernelBuilder(
-            settings=OnnxSettings(LLM_SERVICE_TYPE=service_type),
-            enable_routing=False,
-            enable_multi_service=multi,
-        ).build_kernel()
+        prepared_operation()
     forbidden.assert_not_called()

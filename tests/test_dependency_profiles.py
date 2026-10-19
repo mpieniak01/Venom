@@ -358,10 +358,12 @@ def test_example_application_extensions_preserve_every_light_policy(policy, prof
 def test_example_voice_and_gpu_worker_cannot_overlap_ort_distributions(policy):
     full = profiles.requirements_for(policy, "full")
     gpu = profiles.requirements_for(policy, "onnx-gpu")
-    assert "onnxruntime" in full and "onnxruntime-gpu" not in full
+    assert "onnxruntime" in full
+    assert "onnxruntime-gpu" not in full
     assert full["webrtcvad-wheels"] == "webrtcvad-wheels==2.0.14.post1"
     assert "webrtcvad" not in full
-    assert "onnxruntime-gpu" in gpu and "onnxruntime" not in gpu
+    assert "onnxruntime-gpu" in gpu
+    assert "onnxruntime" not in gpu
     assert policy["profiles"]["onnx-gpu"]["kind"] == "component"
     assert policy["profiles"]["academy"]["kind"] == "component"
 
@@ -407,8 +409,9 @@ def test_transitive_onnx_namespace_collision_is_rejected(policy, packages):
 def test_forbidden_transitive_packages_do_not_enter_application_lock(
     policy, pip_report, name
 ):
+    prepared_pip_report = pip_report(name)
     with pytest.raises(ValueError, match="Forbidden application"):
-        profiles.render_lock(policy, "light", pip_report(name))
+        profiles.render_lock(policy, "light", prepared_pip_report)
 
 
 def test_generation_check_reports_drift_without_writing(tmp_path, policy):
@@ -578,7 +581,8 @@ def test_lock_uses_clean_resolver_report_and_frozen_parent(
 
     def resolve(command, **kwargs):
         commands.append(command)
-        assert "--dry-run" in command and "--ignore-installed" in command
+        assert "--dry-run" in command
+        assert "--ignore-installed" in command
         assert "--constraint" in command
         constraint = Path(command[command.index("--constraint") + 1])
         assert "example==1.2.3" in constraint.read_text()
@@ -1712,9 +1716,11 @@ def test_refresh_bootstrap_preserves_engine_pins_and_only_updates_old_tools(
     assert len(observed) == expected_calls
     if observed:
         command, temporary_manifest, content = observed[0]
-        assert "pip==26.2.1" in content and "--hash=sha256:" + "a" * 64 in content
+        assert "pip==26.2.1" in content
+        assert "--hash=sha256:" + "a" * 64 in content
         assert "setuptools" not in content
-        assert "--no-cache-dir" in command and "--require-hashes" in command
+        assert "--no-cache-dir" in command
+        assert "--require-hashes" in command
         assert not temporary_manifest.exists()
 
 

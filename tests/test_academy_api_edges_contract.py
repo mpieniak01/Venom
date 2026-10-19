@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
@@ -79,7 +80,7 @@ def test_ensure_academy_enabled_raises_when_disabled_even_in_tests(mock_settings
         lessons_store=MagicMock(),
         model_manager=MagicMock(),
     )
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(academy_routes.AcademyRouteError) as exc:
         academy_routes._ensure_academy_enabled()
     assert "disabled" in str(exc.value).lower()
 
@@ -94,7 +95,7 @@ def test_ensure_academy_enabled_raises_when_missing_dependencies(mock_settings):
         lessons_store=MagicMock(),
         model_manager=MagicMock(),
     )
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(academy_routes.AcademyRouteError) as exc:
         academy_routes._ensure_academy_enabled()
     assert "not initialized" in str(exc.value)
 
@@ -173,14 +174,14 @@ def test_deactivate_adapter_returns_503_when_model_manager_missing(mock_settings
 
 def test_require_localhost_request_handles_missing_client():
     req = SimpleNamespace(client=None)
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(academy_routes.AcademyRouteError) as exc:
         academy_routes.require_localhost_request(req)
     assert "Access denied" in str(exc.value)
-    if hasattr(exc.value, "detail"):
-        detail = exc.value.detail
-        assert detail["decision"] == "block"
-        assert detail["reason_code"] == "PERMISSION_DENIED"
-        assert detail["technical_context"]["operation"] == "academy.localhost_guard"
+    assert exc.value.status_code == 403
+    detail = exc.value.detail
+    assert detail["decision"] == "block"
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "academy.localhost_guard"
 
 
 def test_save_finished_job_metadata_logs_without_user_data(tmp_path):
@@ -296,7 +297,7 @@ def test_estimate_records_from_content_parametrized(filename, content, expected)
 
 
 def test_estimate_records_from_content_returns_zero_on_invalid_json():
-    with pytest.raises(Exception):
+    with pytest.raises(json.JSONDecodeError):
         academy_routes._estimate_records_from_content("bad.json", b"{")
 
 

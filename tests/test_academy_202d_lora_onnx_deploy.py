@@ -397,32 +397,31 @@ class TestDeployAdapterToOnnxRuntime:
         bad_onnx_dir.mkdir()
         # no genai_config.json
 
+        import venom_core.services.academy.adapter_runtime_service as _svc2
         from venom_core.services.academy.adapter_runtime_service import (
             _deploy_adapter_to_onnx_runtime,
         )
 
-        with pytest.raises(RuntimeError, match="genai_config.json missing"):
-            import venom_core.services.academy.adapter_runtime_service as _svc2
-
-            with (
-                patch.object(
-                    _svc2, "_resolve_academy_models_dir", return_value=tmp_path
-                ),
-                patch.object(
-                    _svc2,
-                    "_require_trusted_adapter_base_model",
-                    return_value="google/gemma-3-4b-it",
-                ),
-                patch.object(
-                    _svc2,
-                    "_resolve_hf_cache_snapshot_for_repo_id",
-                    return_value=str((tmp_path / "hf-snapshot").resolve()),
-                ),
-            ):
+        with (
+            patch.object(_svc2, "_resolve_academy_models_dir", return_value=tmp_path),
+            patch.object(
+                _svc2,
+                "_require_trusted_adapter_base_model",
+                return_value="google/gemma-3-4b-it",
+            ),
+            patch.object(
+                _svc2,
+                "_resolve_hf_cache_snapshot_for_repo_id",
+                return_value=str((tmp_path / "hf-snapshot").resolve()),
+            ),
+        ):
+            settings_obj = MagicMock(ONNX_LLM_MODEL_PATH="")
+            config_manager = MagicMock()
+            with pytest.raises(RuntimeError, match="genai_config.json missing"):
                 _deploy_adapter_to_onnx_runtime(
                     adapter_id="test-adapter-001",
-                    settings_obj=MagicMock(ONNX_LLM_MODEL_PATH=""),
-                    config_manager_obj=MagicMock(),
+                    settings_obj=settings_obj,
+                    config_manager_obj=config_manager,
                     compute_llm_config_hash_fn=lambda *a: "h",
                     runtime_endpoint_for_hash_fn=lambda *a, **kw: None,
                     build_onnx_runtime_model_from_adapter_fn=lambda **_: bad_onnx_dir,
@@ -441,17 +440,20 @@ class TestDeployAdapterToOnnxRuntime:
             _deploy_adapter_to_onnx_runtime,
         )
 
+        prepared_settings_obj = MagicMock(ONNX_LLM_MODEL_PATH="")
+        prepared_config_manager_obj = MagicMock()
+        prepared_build_onnx_runtime_model_from_adapter_fn = MagicMock()
         with (
             patch.object(_svc3, "_resolve_academy_models_dir", return_value=tmp_path),
             pytest.raises(FileNotFoundError, match="Adapter not found"),
         ):
             _deploy_adapter_to_onnx_runtime(
                 adapter_id="test-adapter-001",
-                settings_obj=MagicMock(ONNX_LLM_MODEL_PATH=""),
-                config_manager_obj=MagicMock(),
+                settings_obj=prepared_settings_obj,
+                config_manager_obj=prepared_config_manager_obj,
                 compute_llm_config_hash_fn=lambda *a: "h",
                 runtime_endpoint_for_hash_fn=lambda *a, **kw: None,
-                build_onnx_runtime_model_from_adapter_fn=MagicMock(),
+                build_onnx_runtime_model_from_adapter_fn=prepared_build_onnx_runtime_model_from_adapter_fn,
                 get_active_llm_runtime_fn=lambda: MagicMock(provider="ollama"),
             )
 

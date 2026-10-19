@@ -620,11 +620,10 @@ def test_create_container_wraps_non_conflict_api_error(monkeypatch, tmp_path):
 
 def test_recover_from_name_conflict_raises_when_retries_exhausted(tmp_path):
     instance = _make_habitat_instance()
+    prepared_error = Exception("conflict")
     with pytest.raises(RuntimeError, match="Wyczerpano limit retry"):
         instance._recover_from_name_conflict(
-            error=Exception("conflict"),
-            workspace_path=tmp_path / "workspace",
-            retries_left=0,
+            error=prepared_error, workspace_path=tmp_path / "workspace", retries_left=0
         )
 
 

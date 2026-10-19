@@ -458,7 +458,7 @@ def test_start_self_learning_internal_error(
     assert response.status_code == 500
     detail = response.json()["detail"]
     assert detail["reason_code"] == "SELF_LEARNING_START_FAILED"
-    assert "Failed to process self-learning request: boom" == detail["message"]
+    assert detail["message"] == "Failed to process self-learning request: boom"
 
 
 def test_list_self_learning_runs(client: TestClient):

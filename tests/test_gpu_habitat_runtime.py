@@ -113,34 +113,33 @@ def test_run_training_job_rejects_dataset_outside_allowed_roots(tmp_path: Path) 
     outside_dataset = tmp_path / "outside.jsonl"
     outside_dataset.write_text("{}", encoding="utf-8")
 
+    prepared_manager = SimpleNamespace(
+        _is_path_within_base=lambda _path, _base: False,
+    )
+    prepared_request = runtime.TrainingJobRequest(
+        dataset_path=str(outside_dataset),
+        base_model="phi",
+        output_dir="out",
+        lora_rank=8,
+        learning_rate=0.0002,
+        num_epochs=1,
+        max_seq_length=512,
+        batch_size=1,
+        job_name="job-outside",
+    )
+    prepared_deps = runtime.TrainingJobDeps(
+        settings=SimpleNamespace(
+            ACADEMY_TRAINING_DIR=str(training_dir),
+            ACADEMY_MODELS_DIR=str(models_dir),
+            STORAGE_PREFIX="",
+        ),
+        logger=_Logger(),
+        docker_module=SimpleNamespace(types=SimpleNamespace(DeviceRequest=object)),
+        image_not_found_error=RuntimeError,
+    )
     with pytest.raises(ValueError, match="poza dozwolonymi katalogami"):
         runtime.run_training_job(
-            manager=SimpleNamespace(
-                _is_path_within_base=lambda _path, _base: False,
-            ),
-            request=runtime.TrainingJobRequest(
-                dataset_path=str(outside_dataset),
-                base_model="phi",
-                output_dir="out",
-                lora_rank=8,
-                learning_rate=0.0002,
-                num_epochs=1,
-                max_seq_length=512,
-                batch_size=1,
-                job_name="job-outside",
-            ),
-            deps=runtime.TrainingJobDeps(
-                settings=SimpleNamespace(
-                    ACADEMY_TRAINING_DIR=str(training_dir),
-                    ACADEMY_MODELS_DIR=str(models_dir),
-                    STORAGE_PREFIX="",
-                ),
-                logger=_Logger(),
-                docker_module=SimpleNamespace(
-                    types=SimpleNamespace(DeviceRequest=object)
-                ),
-                image_not_found_error=RuntimeError,
-            ),
+            manager=prepared_manager, request=prepared_request, deps=prepared_deps
         )
 
 
@@ -213,7 +212,8 @@ def test_cleanup_helpers_cover_missing_and_fallback_paths() -> None:
         cleanup_docker_job_fn=lambda _job: calls.append("docker"),
         logger=logger,
     )
-    assert "local" in calls and "docker" in calls
+    assert "local" in calls
+    assert "docker" in calls
 
 
 def test_stream_job_logs_handles_decode_error() -> None:
@@ -382,28 +382,26 @@ def test_run_training_job_local_runtime_and_validation(tmp_path: Path) -> None:
     assert result["job_name"] == "job-1"
     assert (models_dir / "out" / "train_script.py").exists()
 
+    prepared_request_2 = runtime.TrainingJobRequest(
+        dataset_path=str(training_dir / "missing.jsonl"),
+        base_model="phi",
+        output_dir="out",
+        lora_rank=8,
+        learning_rate=0.0002,
+        num_epochs=1,
+        max_seq_length=512,
+        batch_size=1,
+        job_name="job-1",
+    )
+    prepared_deps_2 = runtime.TrainingJobDeps(
+        settings=settings,
+        logger=logger,
+        docker_module=SimpleNamespace(types=SimpleNamespace(DeviceRequest=object)),
+        image_not_found_error=RuntimeError,
+    )
     with pytest.raises(ValueError, match="Dataset nie istnieje"):
         runtime.run_training_job(
-            manager=manager,
-            request=runtime.TrainingJobRequest(
-                dataset_path=str(training_dir / "missing.jsonl"),
-                base_model="phi",
-                output_dir="out",
-                lora_rank=8,
-                learning_rate=0.0002,
-                num_epochs=1,
-                max_seq_length=512,
-                batch_size=1,
-                job_name="job-1",
-            ),
-            deps=runtime.TrainingJobDeps(
-                settings=settings,
-                logger=logger,
-                docker_module=SimpleNamespace(
-                    types=SimpleNamespace(DeviceRequest=object)
-                ),
-                image_not_found_error=RuntimeError,
-            ),
+            manager=manager, request=prepared_request_2, deps=prepared_deps_2
         )
 
 
@@ -652,4 +650,5 @@ def test_run_training_job_docker_runtime_paths(tmp_path: Path) -> None:
     assert result["status"] == "running"
     assert result["container_id"] == "abc123456789"
     assert "job-2" in manager.training_containers
-    assert device_calls and device_calls[0]["count"] == -1
+    assert device_calls
+    assert device_calls[0]["count"] == -1

@@ -131,14 +131,15 @@ class TestInputSkill:
     async def test_get_mouse_position(self, input_skill):
         """Test pobierania pozycji myszy."""
         result = await input_skill.get_mouse_position()
-        assert "500" in result and "300" in result
+        assert "500" in result
+        assert "300" in result
 
     @pytest.mark.asyncio
-    async def test_take_screenshot(self, input_skill):
+    async def test_take_screenshot(self, input_skill, monkeypatch):
         """Test robienia zrzutu ekranu."""
         mock_screenshot = MagicMock()
         mock_screenshot.size = (1920, 1080)
-        mock_pyautogui.screenshot.return_value = mock_screenshot
+        monkeypatch.setattr(mock_pyautogui.screenshot, "return_value", mock_screenshot)
 
         result = await input_skill.take_screenshot()
         assert "✅" in result

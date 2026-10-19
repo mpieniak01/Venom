@@ -745,9 +745,10 @@ async def test_lifespan_cleans_up_after_request_context_error(monkeypatch):
     monkeypatch.setattr(runtime_main, "_startup_model_loader", AsyncMock())
     monkeypatch.setattr(runtime_main, "_daemon", daemon)
     monkeypatch.setattr(runtime_main, "_PROBE_EXECUTOR", executor)
+    context_error = ValueError("context error")
     with pytest.raises(ValueError, match="context error"):
         async with runtime_main.lifespan(runtime_main.app):
-            raise ValueError("context error")
+            raise context_error
     daemon.unload_all.assert_called_once()
     executor.shutdown.assert_called_once()
 
@@ -818,7 +819,8 @@ async def test_voice_replay_reads_audio_off_event_loop(monkeypatch, tmp_path):
         timeout=5,
     )
     assert await replay._run(args) == 0
-    assert read_threads and all(thread != event_loop_thread for thread in read_threads)
+    assert read_threads
+    assert all(thread != event_loop_thread for thread in read_threads)
     assert client.post.call_args.kwargs["files"]["audio"] == (
         "recording.wav",
         b"recorded wav",

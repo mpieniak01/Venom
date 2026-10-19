@@ -320,7 +320,9 @@ async def test_reset_invalid_mode(git_skill, temp_workspace):
 
     assert "❌" in result
     assert "Nieprawidłowy tryb" in result or "invalid" in result.lower()
-    assert "soft" in result and "mixed" in result and "hard" in result
+    assert "soft" in result
+    assert "mixed" in result
+    assert "hard" in result
 
 
 def test_git_skill_pull_helpers():

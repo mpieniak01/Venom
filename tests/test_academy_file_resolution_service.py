@@ -146,9 +146,10 @@ def test_file_resolution_wrappers_and_binary_paths(tmp_path: Path) -> None:
         == "pdf-extract"
     )
 
+    prepared_argument = source.with_suffix(".doc")
     with pytest.raises(ValueError):
         file_resolution.markdown_from_binary_document_with_impls(
-            source.with_suffix(".doc"),
+            prepared_argument,
             ".doc",
             ext_pdf=".pdf",
             ext_docx=".docx",

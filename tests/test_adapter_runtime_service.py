@@ -107,8 +107,10 @@ def test_build_onnx_export_cmd_covers_execution_provider_and_precision(
         tmp_dir=tmp_path / "out",
     )
     assert cmd[0] == ars.sys.executable
-    assert "-e" in cmd and "cpu" in cmd
-    assert "-p" in cmd and "int4" in cmd
+    assert "-e" in cmd
+    assert "cpu" in cmd
+    assert "-p" in cmd
+    assert "int4" in cmd
 
 
 def test_resolve_onnx_builder_script_error_message_includes_default_paths(monkeypatch):
@@ -118,7 +120,6 @@ def test_resolve_onnx_builder_script_error_message_includes_default_paths(monkey
         patch.object(ars, "_resolve_installed_onnx_builder", return_value=None),
         patch.object(ars, "_resolve_repo_root", return_value=Path("/tmp/repo")),
     ):
+        prepared_settings_obj = SimpleNamespace(ONNX_BUILDER_SCRIPT="")
         with pytest.raises(FileNotFoundError, match="default paths"):
-            ars._resolve_onnx_builder_script(
-                settings_obj=SimpleNamespace(ONNX_BUILDER_SCRIPT="")
-            )
+            ars._resolve_onnx_builder_script(settings_obj=prepared_settings_obj)

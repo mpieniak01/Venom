@@ -187,7 +187,7 @@ def mock_app():
     return MockApp()
 
 
-def test_agents_routes(mock_app):
+def test_agents_routes(mock_app, monkeypatch):
     # Mock dependencies
     mock_gardener = MagicMock()
     mock_gardener.get_status.return_value = "idle"
@@ -232,11 +232,11 @@ def test_agents_routes(mock_app):
     assert "rejected" in resp.json()["message"]
 
     # Test error cases
-    agents_routes._gardener_agent = None
+    monkeypatch.setattr(agents_routes, "_gardener_agent", None)
     resp = mock_app.client.get("/api/v1/gardener/status")
     assert resp.status_code == 503
 
-    agents_routes._shadow_agent = None
+    monkeypatch.setattr(agents_routes, "_shadow_agent", None)
     resp = mock_app.client.post("/api/v1/shadow/reject", json=mock_task_request)
     assert resp.status_code == 503
 

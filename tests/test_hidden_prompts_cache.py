@@ -5,8 +5,8 @@ import venom_core.core.hidden_prompts as hidden
 
 
 def test_get_cached_hidden_response_prefers_active(tmp_path: Path, monkeypatch):
-    hidden.HIDDEN_PROMPTS_PATH = tmp_path / "hidden.jsonl"
-    hidden.ACTIVE_HIDDEN_PROMPTS_PATH = tmp_path / "active.json"
+    monkeypatch.setattr(hidden, "HIDDEN_PROMPTS_PATH", tmp_path / "hidden.jsonl")
+    monkeypatch.setattr(hidden, "ACTIVE_HIDDEN_PROMPTS_PATH", tmp_path / "active.json")
 
     # zapis agregowanych (score)
     hidden.HIDDEN_PROMPTS_PATH.write_text(
@@ -47,8 +47,8 @@ def test_get_cached_hidden_response_prefers_active(tmp_path: Path, monkeypatch):
 
 
 def test_get_cached_hidden_response_respects_min_score(tmp_path: Path, monkeypatch):
-    hidden.HIDDEN_PROMPTS_PATH = tmp_path / "hidden.jsonl"
-    hidden.ACTIVE_HIDDEN_PROMPTS_PATH = tmp_path / "active.json"
+    monkeypatch.setattr(hidden, "HIDDEN_PROMPTS_PATH", tmp_path / "hidden.jsonl")
+    monkeypatch.setattr(hidden, "ACTIVE_HIDDEN_PROMPTS_PATH", tmp_path / "active.json")
 
     # wpis z niskim score (pojedynczy)
     hidden.HIDDEN_PROMPTS_PATH.write_text(

@@ -156,7 +156,8 @@ def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
     )
     assert status_info["status"] == "finished"
     assert status == "finished"
-    assert updates and updates[-1]["status"] == "finished"
+    assert updates
+    assert updates[-1]["status"] == "finished"
 
     adapter_dir = tmp_path / "adapter"
     adapter_dir.mkdir()
@@ -192,12 +193,14 @@ def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
         update_job_fn=lambda _id, payload: cleaned.append(payload),
         log_internal_operation_failure_fn=lambda _msg: None,
     )
-    assert cleaned and cleaned[-1]["container_cleaned"] is True
+    assert cleaned
+    assert cleaned[-1]["container_cleaned"] is True
 
 
 def test_stream_helpers_and_job_ops() -> None:
     ts, msg = at.parse_stream_log_line("2026-01-01 hello")
-    assert ts == "2026-01-01" and msg == "hello"
+    assert ts == "2026-01-01"
+    assert msg == "hello"
     assert at.parse_stream_log_line("plain") == (None, "plain")
 
     parser = SimpleNamespace(
@@ -215,7 +218,8 @@ def test_stream_helpers_and_job_ops() -> None:
     metrics = at.extract_metrics_data(
         parser=parser, all_metrics=all_metrics, message="loss=0.1"
     )
-    assert metrics and metrics["loss"] == 0.1
+    assert metrics
+    assert metrics["loss"] == 0.1
     assert (
         at.extract_metrics_data(parser=parser, all_metrics=all_metrics, message="nope")
         is None
@@ -274,7 +278,8 @@ def test_stream_helpers_and_job_ops() -> None:
         limit=1,
         status="running",
     )
-    assert len(summaries) == 1 and summaries[0].job_id == "2"
+    assert len(summaries) == 1
+    assert summaries[0].job_id == "2"
 
     updates: list[dict[str, object]] = []
     out = at.cancel_training_job(
@@ -287,7 +292,8 @@ def test_stream_helpers_and_job_ops() -> None:
         ),
     )
     assert out["success"] is True
-    assert updates and updates[-1]["status"] == "cancelled"
+    assert updates
+    assert updates[-1]["status"] == "cancelled"
 
 
 @pytest.mark.asyncio

@@ -114,7 +114,8 @@ async def test_initialize_node_manager_and_memory_stores(tmp_path: Path):
     nm_module.NodeManager = _NM
     with patch.dict("sys.modules", {nm_module.__name__: nm_module}):
         nm = await stack.initialize_node_manager(settings=settings, logger=logger)
-        assert nm is not None and nm.started is True
+        assert nm is not None
+        assert nm.started is True
 
     vec_cls = Mock(return_value=SimpleNamespace())
     graph_store = SimpleNamespace(load_graph=Mock())
@@ -130,7 +131,9 @@ async def test_initialize_node_manager_and_memory_stores(tmp_path: Path):
         lessons_store_cls=lessons_cls,
         orchestrator=orch,
     )
-    assert vector is not None and graph is graph_store and lessons is lessons_obj
+    assert vector is not None
+    assert graph is graph_store
+    assert lessons is lessons_obj
     assert orch.lessons_store is lessons_obj
 
 
@@ -391,8 +394,10 @@ async def test_initialize_shadow_stack_enabled_paths_and_callbacks():
             system_log_event_type="SYS",
         )
 
-    assert shadow_agent is not None and shadow_agent.started is True
-    assert desktop_sensor is not None and desktop_sensor.started is True
+    assert shadow_agent is not None
+    assert shadow_agent.started is True
+    assert desktop_sensor is not None
+    assert desktop_sensor.started is True
     assert notifier is not None
 
     clipboard_cb = desktop_sensor.kwargs["clipboard_callback"]

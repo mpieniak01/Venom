@@ -435,8 +435,9 @@ async def test_get_git_status_uses_cache(monkeypatch):
 @pytest.mark.asyncio
 async def test_init_repository_variants():
     git_routes.set_dependencies(None)
+    prepared_argument = git_routes.InitRepoRequest(url=None)
     with pytest.raises(HTTPException) as exc:
-        await git_routes.init_repository(git_routes.InitRepoRequest(url=None))
+        await git_routes.init_repository(prepared_argument)
     assert exc.value.status_code == 503
 
     git_routes.set_dependencies(DummyGitSkill(branch="main", status="ok"))

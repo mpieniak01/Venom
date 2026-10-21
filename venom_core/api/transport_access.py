@@ -16,6 +16,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from venom_core.config import SETTINGS
 
 _LOCALHOSTS = {"127.0.0.1", "::1", "localhost"}
+_SHARED_ENTRY_SCOPE_KEY = "venom.shared_entry"
 _PROXY_HEADERS = {
     b"x-venom-proxy",
     b"x-venom-client-address",
@@ -25,7 +26,9 @@ _PROXY_HEADERS = {
 
 def is_shared_entry(request: Request | None) -> bool:
     scope = getattr(request, "scope", {})
-    return isinstance(scope, Mapping) and bool(scope.get("venom.shared_entry", False))
+    return isinstance(scope, Mapping) and bool(
+        scope.get(_SHARED_ENTRY_SCOPE_KEY, False)
+    )
 
 
 def is_localhost_request(request: Request) -> bool:
@@ -78,7 +81,7 @@ class TransportAccessMiddleware:
             ):
                 # A proxy marker never proves localhost when its provenance is
                 # incomplete. Valid metadata below can establish the exact policy.
-                scope["venom.shared_entry"] = True
+                scope[_SHARED_ENTRY_SCOPE_KEY] = True
                 try:
                     address = str(
                         ipaddress.ip_address(
@@ -90,7 +93,7 @@ class TransportAccessMiddleware:
                 if address:
                     scope["client"] = (address, 0)
                     scope["venom.verified_proxy"] = True
-                    scope["venom.shared_entry"] = (
+                    scope[_SHARED_ENTRY_SCOPE_KEY] = (
                         headers.get(b"x-venom-shared-entry") == b"1"
                         or SETTINGS.VENOM_OPERATOR_ACCESS == "trusted_lan"
                     )

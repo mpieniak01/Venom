@@ -7,7 +7,10 @@ from venom_core.services.transport_identity import read_transport_identity
 router = APIRouter(prefix="/api/v1/transport", tags=["transport"])
 
 
-@router.get("/identity")
+@router.get(
+    "/identity",
+    responses={503: {"description": "The installation identity is unavailable."}},
+)
 def get_transport_identity() -> dict[str, str | int]:
     try:
         return read_transport_identity()

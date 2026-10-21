@@ -76,13 +76,16 @@ class TransportAccessMiddleware:
                 and peer[0] in _LOCALHOSTS
                 and headers.get(b"x-venom-proxy") == b"1"
             ):
+                # A proxy marker never proves localhost when its provenance is
+                # incomplete. Valid metadata below can establish the exact policy.
+                scope["venom.shared_entry"] = True
                 try:
                     address = str(
                         ipaddress.ip_address(
                             headers.get(b"x-venom-client-address", b"").decode("ascii")
                         )
                     )
-                except (ValueError, UnicodeError):
+                except ValueError:
                     address = ""
                 if address:
                     scope["client"] = (address, 0)

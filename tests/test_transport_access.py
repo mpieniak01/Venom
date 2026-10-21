@@ -144,14 +144,35 @@ def test_secure_profile_does_not_enable_lan_operator(app, monkeypatch):
         assert client.get("/operator", headers=proxy_headers()).status_code == 403
 
 
-@pytest.mark.parametrize("address", ["bad", "é", ""])
-def test_invalid_metadata_fails_closed_without_trust(app, address):
-    headers = proxy_headers(address)
+@pytest.mark.parametrize("profile", ["secure", "trusted_lan"])
+@pytest.mark.parametrize("address", [None, "bad", "é", ""])
+def test_invalid_metadata_cannot_inherit_loopback_privileges(
+    app, monkeypatch, profile, address
+):
+    monkeypatch.setattr(SETTINGS, "VENOM_OPERATOR_ACCESS", profile)
+    headers = {**proxy_headers(address, "0"), "x-authenticated-user": "admin"}
+    if address is None:
+        headers.pop("x-venom-client-address")
     if address == "é":
         # ASGI accepts raw header bytes; HTTPX restricts Python str headers to ASCII.
         headers["x-venom-client-address"] = address.encode("utf-8")
     with TestClient(app, client=("127.0.0.1", 12000)) as client:
         assert client.get("/metadata", headers=headers).json()["verified"] is False
+        assert client.post("/operator", headers=headers).status_code == 403
+        for path in ("/admin", "/academy-admin", "/knowledge-admin"):
+            assert client.get(path, headers=headers).status_code == 403
+        assert client.get("/audit-actor", headers=headers).json() == {
+            "actor": "client:127.0.0.1"
+        }
+
+
+def test_valid_secure_loopback_proxy_metadata_preserves_local_access(app, monkeypatch):
+    monkeypatch.setattr(SETTINGS, "VENOM_OPERATOR_ACCESS", "secure")
+    with TestClient(app, client=("127.0.0.1", 12000)) as client:
+        headers = proxy_headers("127.0.0.1", "0")
+        assert client.get("/metadata", headers=headers).json()["verified"] is True
+        assert client.get("/admin", headers=headers).status_code == 200
+        assert client.post("/operator", headers=headers).json()["local"] is True
 
 
 def test_proxy_metadata_is_removed_after_normalization(app):

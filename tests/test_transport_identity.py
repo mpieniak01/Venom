@@ -52,6 +52,10 @@ def test_invalid_identity_is_not_replaced(identity_path, content):
         response = client.get("/api/v1/transport/identity")
     assert response.status_code == 503
     assert response.json()["detail"]["reason_code"] == "TRANSPORT_IDENTITY_UNAVAILABLE"
+    documented = app.openapi()["paths"]["/api/v1/transport/identity"]["get"][
+        "responses"
+    ]
+    assert str(response.status_code) in documented
     assert identity_path.read_text() == content
 
 

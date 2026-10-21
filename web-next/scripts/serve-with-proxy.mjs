@@ -21,6 +21,11 @@ const { requestHandler, upgradeHandler } = createTransportProxy({
   uiTarget: `http://127.0.0.1:${innerPort}`, settings,
 });
 const server = http.createServer(requestHandler);
+const sockets = new Set();
+server.on("connection", (socket) => {
+  sockets.add(socket);
+  socket.once("close", () => sockets.delete(socket));
+});
 server.on("upgrade", upgradeHandler);
 const childArgs = mode === "start"
   ? ["scripts/start-server.mjs"]
@@ -34,11 +39,13 @@ function stop(signal = "SIGTERM") {
   if (stopping) return;
   stopping = true;
   server.close();
+  // HTTP close does not retire active streams or upgraded connections.
+  for (const socket of sockets) socket.destroy();
   child.kill(signal);
 }
 process.on("SIGINT", () => stop("SIGINT"));
 process.on("SIGTERM", () => stop());
 child.once("error", (error) => { console.error(error); stop(); process.exitCode = 1; });
-child.once("exit", (code) => { stop(); process.exitCode = code || 0; });
+child.once("exit", (code) => { stop(); process.exitCode = process.exitCode || (code ?? 1); });
 server.once("error", (error) => { console.error(error); stop(); process.exitCode = 1; });
-server.listen(port, host, () => console.log(`[transport] ${settings.profile} entry http://${host}:${port}; API streamed to configured backend`));
+server.listen(port, host, () => console.log(`[transport] ${settings.profile} entry http://${host}:${server.address().port}; API streamed to configured backend`));

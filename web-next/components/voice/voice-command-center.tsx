@@ -3004,9 +3004,9 @@ function VoiceCommandCenterPanel({
           )}
 
           {microphoneCapability !== "available" && !debugDryRunActive && (
-            <p role="status" data-testid="microphone-capability" className="text-sm text-amber-300">
+            <output data-testid="microphone-capability" className="block text-sm text-amber-300">
               {t(microphoneCapability === "insecure_context" ? "voice.status.microphoneInsecure" : "voice.status.microphoneUnavailable")}
-            </p>
+            </output>
           )}
 
           <Button

@@ -6543,6 +6543,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_transport_identity.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "security",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Durable passive identity and fail-closed file handling."
+    },
+    {
       "path": "tests/test_update_sonar_scope_group.py",
       "domain": "testing_tooling",
       "test_type": "unit",

@@ -61,6 +61,7 @@ from venom_core.api.routes import system_status as system_status_routes
 from venom_core.api.routes import system_storage as system_storage_routes
 from venom_core.api.routes import tasks as tasks_routes
 from venom_core.api.routes import traffic_control as traffic_control_routes
+from venom_core.api.routes import transport as transport_routes
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.api.routes import workflow_operations as workflow_operations_routes
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
@@ -1987,6 +1988,7 @@ app.include_router(benchmark_routes.router)
 app.include_router(benchmark_coding_routes.router)
 app.include_router(calendar_routes.router)
 app.include_router(traffic_control_routes.router)
+app.include_router(transport_routes.router)
 include_optional_api_routers(app, SETTINGS)
 
 

@@ -721,3 +721,85 @@ print('actual-application-openapi-pass')
     )
     assert result.returncode == 0, result.stderr + result.stdout[-2000:]
     assert "actual-application-openapi-pass" in result.stdout
+
+
+def test_new_ledger_and_leaf_directory_are_private_under_standard_umask(tmp_path):
+    import os
+    import stat
+
+    parent = tmp_path / "private-runtime"
+    value = RuntimeAdmission(parent / "ledger.sqlite3")
+    previous = os.umask(0o022)
+    try:
+        lease = acquire(value)
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE(parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(value.database.stat().st_mode) == 0o600
+    assert (
+        stat.S_IMODE(value.database.with_suffix(".host.lock").stat().st_mode) == 0o600
+    )
+    assert lease.release()
+
+
+def test_existing_parent_is_preserved_and_owned_legacy_ledger_becomes_private(tmp_path):
+    import stat
+
+    parent = tmp_path / "existing-runtime"
+    parent.mkdir(mode=0o750)
+    value = RuntimeAdmission(parent / "ledger.sqlite3")
+    lease = acquire(value)
+    value.database.chmod(0o644)
+    assert lease.release()
+    assert stat.S_IMODE(parent.stat().st_mode) == 0o750
+    assert stat.S_IMODE(value.database.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("target_kind", ["file", "parent", "hardlink", "fifo"])
+def test_unsafe_ledger_paths_are_rejected_without_touching_targets(
+    tmp_path, target_kind
+):
+    import os
+
+    outside = tmp_path / "outside"
+    outside.mkdir(mode=0o750)
+    target = outside / "original.sqlite3"
+    target.write_bytes(b"not an admission ledger")
+    target.chmod(0o640)
+    database = tmp_path / "ledger.sqlite3"
+    if target_kind == "file":
+        database.symlink_to(target)
+    elif target_kind == "parent":
+        parent = tmp_path / "linked-parent"
+        parent.symlink_to(outside, target_is_directory=True)
+        database = parent / "new.sqlite3"
+    elif target_kind == "hardlink":
+        os.link(target, database)
+    else:
+        os.mkfifo(database)
+    value = RuntimeAdmission(database)
+    assert value.snapshot() == {
+        "api_version": 1,
+        "status": "quarantined",
+        "active_operations": 0,
+        "code": "runtime_storage_unsafe",
+    }
+    with pytest.raises(RuntimeAdmissionError, match="runtime_storage_unsafe"):
+        acquire(value)
+    assert target.read_bytes() == b"not an admission ledger"
+    assert target.stat().st_mode & 0o777 == 0o640
+    assert outside.stat().st_mode & 0o777 == 0o750
+    assert not (outside / "new.sqlite3").exists()
+    assert not (outside / "new.host.lock").exists()
+
+
+def test_unsafe_host_lock_does_not_rewrite_external_file_or_create_ledger(tmp_path):
+    target = tmp_path / "external-lock"
+    target.write_text("unrelated file")
+    database = tmp_path / "ledger.sqlite3"
+    database.with_suffix(".host.lock").symlink_to(target)
+    value = RuntimeAdmission(database)
+    with pytest.raises(RuntimeAdmissionError, match="runtime_storage_unsafe"):
+        acquire(value)
+    assert not database.exists()
+    assert target.read_text() == "unrelated file"

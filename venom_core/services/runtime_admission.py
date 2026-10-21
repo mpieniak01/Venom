@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sqlite3
+import stat
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterator
@@ -56,7 +57,7 @@ def _own_host_namespace(database: Path) -> None:
         if previous is not None:  # A fork inherited the parent's open descriptor.
             os.close(previous[1])
             del _HOST_LOCKS[path]
-        descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        descriptor = _open_private_file(path)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
@@ -81,6 +82,41 @@ class RuntimeAdmissionError(HTTPException):
         super().__init__(status_code=409, detail={"code": code})
 
 
+def _assert_safe_ledger_path(database: Path) -> None:
+    """Reject symlinks and special files before SQLite can follow/open them."""
+    for index, path in enumerate((database, *database.parents)):
+        try:
+            entry = path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise RuntimeAdmissionError("runtime_storage_unsafe") from exc
+        expected_type = stat.S_ISREG if index == 0 else stat.S_ISDIR
+        if not expected_type(entry.st_mode) or (index == 0 and entry.st_nlink != 1):
+            raise RuntimeAdmissionError("runtime_storage_unsafe")
+
+
+def _open_private_file(path: Path) -> int:
+    """Create/repair only an owned regular file, without following its symlink."""
+    try:
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            entry = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(entry.st_mode)
+                or entry.st_nlink != 1
+                or entry.st_uid != os.geteuid()
+            ):
+                raise RuntimeAdmissionError("runtime_storage_unsafe")
+            os.fchmod(descriptor, 0o600)
+        except BaseException:
+            os.close(descriptor)
+            raise
+        return descriptor
+    except OSError as exc:
+        raise RuntimeAdmissionError("runtime_storage_unsafe") from exc
+
+
 class RuntimeAdmission:
     """SQLite-serialized host admission, with durable crash/quarantine evidence.
 
@@ -97,8 +133,11 @@ class RuntimeAdmission:
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         ensure_data_mutation_allowed("runtime_admission")
-        self.database.parent.mkdir(parents=True, exist_ok=True)
+        _assert_safe_ledger_path(self.database)
+        self.database.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        _assert_safe_ledger_path(self.database)
         _own_host_namespace(self.database)
+        os.close(_open_private_file(self.database))
         connection = sqlite3.connect(self.database, timeout=5.0)
         connection.row_factory = sqlite3.Row
         try:
@@ -156,7 +195,14 @@ class RuntimeAdmission:
             "status": "available" if self.enabled else "disabled",
             "active_operations": 0,
         }
-        if not self.enabled or not self.database.exists():
+        if not self.enabled:
+            return result
+        try:
+            _assert_safe_ledger_path(self.database)
+        except RuntimeAdmissionError as exc:
+            result.update(status="quarantined", code=exc.code)
+            return result
+        if not self.database.exists():
             return result
         try:
             uri = self.database.resolve().as_uri() + "?mode=ro"

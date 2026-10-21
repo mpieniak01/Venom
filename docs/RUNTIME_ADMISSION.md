@@ -20,7 +20,11 @@ Venom backend, not the Windows Codex application or its tools.
 
 The ledger is `runtime-admission.sqlite3` under `MEMORY_ROOT`; relative roots
 are anchored at the source repository, not the caller's working directory.
-Mutations respect `ensure_data_mutation_allowed`. It stores one lease and
+Mutations respect `ensure_data_mutation_allowed`. The ledger and host lock are
+private files (`0600`); a newly created ledger directory is `0700`. Existing
+parent-directory permissions remain unchanged. Symbolic links in the ledger path,
+non-regular files and hard-linked ledgers are rejected as `runtime_storage_unsafe`;
+read-only observations fail closed without modifying those paths. It stores one lease and
 at most 128 current/uncertain operation rows (then fail closed until recovery): no prompts, generated text, credentials or
 weights. Read-only snapshots create no file, execute no DDL, and work when
 mutations are forbidden. Independent direct daemon clients, another installation

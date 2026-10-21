@@ -518,7 +518,9 @@ class TrafficControlledHttpClient:
                     if inspect.isawaitable(raise_result):
                         await raise_result
                 except httpx.HTTPStatusError as exc:
-                    if _runtime_request(self, method, url):
+                    if _runtime_request(self, method, url) and isinstance(
+                        response, httpx.Response
+                    ):
                         await _capture_runtime_error(response)
                         if response.status_code in _REJECTED_BEFORE_WORK:
                             raise _RuntimeHttpRejection(exc) from exc

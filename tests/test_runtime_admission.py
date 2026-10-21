@@ -1111,3 +1111,45 @@ async def test_caller_status_error_after_accepted_response_is_not_transport_proo
             await consume_accepted_response()
     assert admission.snapshot()["status"] == "quarantined"
     assert admission.snapshot()["active_operations"] == 1
+
+
+@pytest.mark.asyncio
+async def test_prior_rejection_cannot_hide_later_accepted_work_in_same_operation(
+    admission,
+):
+    import httpx
+
+    from venom_core.infrastructure.traffic_control.http_client import (
+        TrafficControlledHttpClient,
+    )
+
+    statuses = iter([400, 200])
+    url = "http://fixture/v1/chat/completions"
+    async with TrafficControlledHttpClient(provider="ollama") as client:
+        await client._async_client.aclose()
+        client._async_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(
+                    next(statuses), json={"error": "rejected"}
+                )
+            )
+        )
+        with admission.operation(kind="outer_chat"):
+
+            async def first_request():
+                async with client.astream("POST", url, disable_retry=True):
+                    pytest.fail("rejected request reached consumer")
+
+            with pytest.raises(httpx.HTTPStatusError) as saved:
+                await first_request()
+
+            async def later_request():
+                async with client.astream("POST", url, disable_retry=True) as response:
+                    assert response.status_code == 200
+                    # A real but old proof must not certify the accepted worker.
+                    raise saved.value
+
+            with pytest.raises(httpx.HTTPStatusError):
+                await later_request()
+    assert admission.snapshot()["status"] == "quarantined"
+    assert admission.snapshot()["active_operations"] == 1

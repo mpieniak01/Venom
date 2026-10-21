@@ -89,7 +89,9 @@ any generation response** carries typed proof bound to that exact operation.
 Only HTTP 400/401/403/404/405/413/415/422 qualify; the original HTTP error still
 reaches the caller, but rejected work does not leave an orphan admission row.
 A status/message raised by a caller or replayed from another operation is not
-proof. HTTP 408/409/429/5xx, timeouts and errors after an accepted 2xx response
+proof. Every subsequent admitted activity invalidates earlier rejection proof,
+including retries nested in the same outer chat operation. HTTP 408/409/429/5xx,
+timeouts and errors after an accepted 2xx response
 retain quarantine. Error diagnostics sample at most 2048 bytes for 250 ms and
 retain fixed reason codes, a prefix hash and size/completeness metadata; raw
 upstream body is not copied into the normal-chat trace/browser error.

@@ -1034,3 +1034,80 @@ async def test_error_body_diagnostic_is_bounded_and_raw_body_never_reaches_trace
     assert diagnostic["truncated_or_incomplete"]
     assert "secret-key-value" not in json.dumps(errors)
     assert admission.snapshot()["status"] == "available"
+
+
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        (b"[]", "unspecified"),
+        (b'{"error": 42}', "unspecified"),
+        (b'{"error":{"message":"model private-name not found"}}', "model_not_found"),
+        (b'{"error":"model is required"}', "model_required"),
+        (b'{"error":"unrecognized private diagnostic"}', "unspecified"),
+    ],
+)
+def test_upstream_reason_is_a_fixed_code_not_raw_error_body(body, expected):
+    from venom_core.infrastructure.traffic_control.http_client import _error_reason
+
+    assert _error_reason(body) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["read_error", "stalled_body"])
+async def test_rejected_error_body_read_is_bounded_without_inventing_model_completion(
+    admission, monkeypatch, failure
+):
+    import json
+
+    import httpx
+
+    class UnavailableErrorBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"private diagnostic prefix"
+            if failure == "read_error":
+                raise httpx.ReadError("error body became unavailable")
+            await asyncio.Event().wait()
+
+    def handler(_request):
+        return httpx.Response(400, stream=UnavailableErrorBody())
+
+    events, errors = await _normal_chat_with_mock_transport(monkeypatch, handler)
+    assert [name for name, _ in events] == ["start", "error"]
+    diagnostic = json.loads(errors[0]["error_details"]["response"])
+    assert diagnostic["truncated_or_incomplete"]
+    assert diagnostic["reason_code"] == "unspecified"
+    assert "private diagnostic prefix" not in json.dumps(errors)
+    # The HTTP rejection, not receipt of its optional body, proves no generation
+    # was accepted. A timeout of an accepted request is covered separately.
+    assert admission.snapshot()["status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_caller_status_error_after_accepted_response_is_not_transport_proof(
+    admission,
+):
+    import httpx
+
+    from venom_core.infrastructure.traffic_control.http_client import (
+        TrafficControlledHttpClient,
+    )
+
+    async with TrafficControlledHttpClient(provider="ollama") as client:
+        await client._async_client.aclose()
+        client._async_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(200, json={}))
+        )
+
+        async def consume_accepted_response():
+            async with client.astream(
+                "POST", "http://fixture/v1/chat/completions", disable_retry=True
+            ) as response:
+                assert response.status_code == 200
+                # A consumer cannot turn its own exception/status into rejection proof.
+                rejected = httpx.Response(400, request=response.request)
+                rejected.raise_for_status()
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await consume_accepted_response()
+    assert admission.snapshot()["status"] == "quarantined"
+    assert admission.snapshot()["active_operations"] == 1

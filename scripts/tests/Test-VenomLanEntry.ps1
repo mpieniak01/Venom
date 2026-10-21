@@ -56,7 +56,7 @@ function Get-Service { param($Name) return [pscustomobject]@{ Status = 'Running'
 function Invoke-RestMethod {
     param($Uri, $TimeoutSec, $Headers)
     if (-not $global:VenomLanFixtureIdentity) { throw 'Fixture identity unavailable.' }
-    return [pscustomobject]@{ protocol_version = 1; service_role = 'venom'; peer_id = 'fixture-peer'; operator_access = 'trusted_lan' }
+    return [pscustomobject]@{ protocol_version = 1; service_role = 'venom'; peer_id = '0123456789abcdef0123456789abcdef'; operator_access = 'trusted_lan' }
 }
 function Assert-Equal {
     param($Actual, $Expected, $Message)
@@ -64,7 +64,7 @@ function Assert-Equal {
 }
 function Inspect-Fixture {
     param([string]$StateFile)
-    return (& $scriptPath -Mode Inspect -Distribution Fixture-WSL -InterfaceAlias Fixture-LAN -StateFile $StateFile -ExpectedPeerId fixture-peer -Json | ConvertFrom-Json)
+    return (& $scriptPath -Mode Inspect -Distribution Fixture-WSL -InterfaceAlias Fixture-LAN -StateFile $StateFile -ExpectedPeerId 0123456789abcdef0123456789abcdef -Json | ConvertFrom-Json)
 }
 try {
     $stateFile = Join-Path $taskTempRoot 'entry.json'
@@ -92,11 +92,11 @@ try {
     $global:VenomLanFixtureIdentity = $true
     $global:VenomLanFixtureRows = @('0.0.0.0 8080 172.20.0.8 8080')
     Remove-Item -LiteralPath $stateFile
-    & $scriptPath -Mode Apply -Distribution Fixture-WSL -InterfaceAlias Fixture-LAN -StateFile $stateFile -ExpectedPeerId fixture-peer | Out-Null
+    & $scriptPath -Mode Apply -Distribution Fixture-WSL -InterfaceAlias Fixture-LAN -StateFile $stateFile -ExpectedPeerId 0123456789abcdef0123456789abcdef | Out-Null
     Assert-Equal (Test-Path -LiteralPath $stateFile) $true 'Apply records ownership.'
     Assert-Equal $global:VenomLanFixtureWrites 1 'Apply creates one fixture mapping.'
     $global:VenomLanFixtureAddress = '192.168.50.11'
-    & $scriptPath -Mode Reconcile -Distribution Fixture-WSL -InterfaceAlias Fixture-LAN -StateFile $stateFile -ExpectedPeerId fixture-peer | Out-Null
+    & $scriptPath -Mode Reconcile -Distribution Fixture-WSL -InterfaceAlias Fixture-LAN -StateFile $stateFile -ExpectedPeerId 0123456789abcdef0123456789abcdef | Out-Null
     $recorded = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
     Assert-Equal $recorded.mapping.listen_address '192.168.50.11' 'DHCP reconcile updates owned address.'
     Assert-Equal $global:VenomLanFixtureWrites 3 'Reconcile deletes old and adds new only.'

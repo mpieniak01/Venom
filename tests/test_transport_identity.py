@@ -65,7 +65,19 @@ def test_symlink_is_rejected_without_changing_target(identity_path, tmp_path):
     assert json.loads(target.read_text()) == {"peer_id": "other"}
 
 
-def test_existing_named_peer_id_is_supported(identity_path):
+def test_existing_canonical_peer_id_is_supported(identity_path):
     identity_path.parent.mkdir()
-    identity_path.write_text(json.dumps({"peer_id": "installation-1"}))
-    assert read_transport_identity()["peer_id"] == "installation-1"
+    identity_path.write_text(
+        json.dumps({"peer_id": "0123456789abcdef0123456789abcdef"})
+    )
+    assert read_transport_identity()["peer_id"] == "0123456789abcdef0123456789abcdef"
+
+
+@pytest.mark.parametrize(
+    "peer_id", ["installation-1", "a" * 31, "a" * 33, "A" * 32, "g" * 32]
+)
+def test_v1_rejects_noncanonical_persisted_peer_ids(identity_path, peer_id):
+    identity_path.parent.mkdir()
+    identity_path.write_text(json.dumps({"peer_id": peer_id}))
+    with pytest.raises(ValueError):
+        read_transport_identity()

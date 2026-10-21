@@ -25,7 +25,7 @@ param(
     [int]$TargetPort = 3300,
     [ValidateSet('localhost_relay', 'wsl_ip')]
     [string]$TargetMode = 'localhost_relay',
-    [ValidatePattern('^[A-Za-z0-9._:-]{0,64}$')]
+    [ValidatePattern('^([0-9a-f]{32})?$')]
     [string]$ExpectedPeerId = '',
     [string]$StateFile = '',
     [switch]$RegisterTask,

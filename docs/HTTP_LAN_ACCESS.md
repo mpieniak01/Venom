@@ -10,10 +10,11 @@ size limits, environment mutation policy and command deduplication still apply.
 The passive unauthenticated `GET /api/v1/transport/identity` returns:
 
 ```json
-{"protocol_version":1,"peer_id":"durable-installation-id","service_role":"venom","operator_access":"trusted_lan"}
+{"protocol_version":1,"peer_id":"0123456789abcdef0123456789abcdef","service_role":"venom","operator_access":"trusted_lan"}
 ```
 
-The installation creates its peer ID once in `data/transport/identity.json`, under
+The v1 peer ID is a UUID represented by exactly 32 lowercase hexadecimal digits,
+without hyphens. The installation creates its peer ID once in `data/transport/identity.json`, under
 the existing `STORAGE_PREFIX` namespace. `VENOM_TRANSPORT_IDENTITY_FILE` can point
 to an existing persistent location. Keep it across restarts and IP changes.
 A corrupt, oversized or symlink identity is rejected, never silently replaced.
@@ -87,7 +88,7 @@ Choose the existing distribution and the active **Private** adapter explicitly.
 `Inspect` is read-only:
 
 ```powershell
-.\scripts\Manage-VenomLanEntry.ps1 -Mode Inspect -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId paired-id -Json
+.\scripts\Manage-VenomLanEntry.ps1 -Mode Inspect -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId 0123456789abcdef0123456789abcdef -Json
 ```
 
 The preferred `TargetMode localhost_relay` forwards to the verified Windows
@@ -104,8 +105,8 @@ review it explicitly outside this helper. Unrelated mappings/rules are preserved
 The helper never starts IP Helper or changes a network category implicitly.
 
 ```powershell
-.\scripts\Manage-VenomLanEntry.ps1 -Mode Apply -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId paired-id
-.\scripts\Manage-VenomLanEntry.ps1 -Mode Reconcile -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId paired-id
+.\scripts\Manage-VenomLanEntry.ps1 -Mode Apply -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId 0123456789abcdef0123456789abcdef
+.\scripts\Manage-VenomLanEntry.ps1 -Mode Reconcile -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId 0123456789abcdef0123456789abcdef
 .\scripts\Manage-VenomLanEntry.ps1 -Mode Remove -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi
 ```
 

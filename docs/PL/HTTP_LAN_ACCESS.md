@@ -10,9 +10,10 @@ deadline, limity, polityka mutacji środowiska i deduplikacja poleceń.
 Pasywne, nieuwierzytelnione `GET /api/v1/transport/identity` zwraca:
 
 ```json
-{"protocol_version":1,"peer_id":"trwale-id-instalacji","service_role":"venom","operator_access":"trusted_lan"}
+{"protocol_version":1,"peer_id":"0123456789abcdef0123456789abcdef","service_role":"venom","operator_access":"trusted_lan"}
 ```
 
+Kontrakt v1 wymaga UUID zapisanego jako 32 małe znaki hex, bez myślników.
 ID powstaje raz w `data/transport/identity.json`, w istniejącej przestrzeni
 `STORAGE_PREFIX`. `VENOM_TRANSPORT_IDENTITY_FILE` może wskazać trwałą lokalizację.
 Zachowaj plik po restarcie i zmianie IP. Korupcja, nadmierny rozmiar i symlink
@@ -87,7 +88,7 @@ podsieci i niczego nie instaluje. Jawnie wybierz istniejącą dystrybucję
 i aktywny interfejs **Private**. `Inspect` jest tylko odczytem:
 
 ```powershell
-.\scripts\Manage-VenomLanEntry.ps1 -Mode Inspect -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId sparowane-id -Json
+.\scripts\Manage-VenomLanEntry.ps1 -Mode Inspect -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId 0123456789abcdef0123456789abcdef -Json
 ```
 
 Preferowany `TargetMode localhost_relay` wskazuje zweryfikowany relay Windows
@@ -104,8 +105,8 @@ jego osobny przegląd należy do operatora. Helper nie przejmuje ani nie zmienia
 cudzych reguł/mapowań, nie uruchamia sam IP Helper i nie zmienia kategorii sieci.
 
 ```powershell
-.\scripts\Manage-VenomLanEntry.ps1 -Mode Apply -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId sparowane-id
-.\scripts\Manage-VenomLanEntry.ps1 -Mode Reconcile -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId sparowane-id
+.\scripts\Manage-VenomLanEntry.ps1 -Mode Apply -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId 0123456789abcdef0123456789abcdef
+.\scripts\Manage-VenomLanEntry.ps1 -Mode Reconcile -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi -ExpectedPeerId 0123456789abcdef0123456789abcdef
 .\scripts\Manage-VenomLanEntry.ps1 -Mode Remove -Distribution Ubuntu-Venom -InterfaceAlias Wi-Fi
 ```
 

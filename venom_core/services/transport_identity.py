@@ -12,7 +12,7 @@ from pathlib import Path
 
 from venom_core.config import SETTINGS
 
-_PEER_ID = re.compile(r"[A-Za-z0-9._:-]{1,64}", re.ASCII)
+_PEER_ID = re.compile(r"[0-9a-f]{32}", re.ASCII)
 
 
 def _read_peer_id(path: Path) -> str:

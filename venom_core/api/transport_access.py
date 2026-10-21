@@ -83,6 +83,7 @@ class TransportAccessMiddleware:
                     scope["venom.verified_proxy"] = True
                     scope["venom.shared_entry"] = (
                         headers.get(b"x-venom-shared-entry") == b"1"
+                        or SETTINGS.VENOM_OPERATOR_ACCESS == "trusted_lan"
                     )
             scope["headers"] = [
                 (key, value)

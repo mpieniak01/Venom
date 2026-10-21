@@ -81,6 +81,8 @@ def _trusted_identity_hosts() -> set[str]:
 
 
 def _is_trusted_identity_source(request: Request | None) -> bool:
+    if getattr(request, "scope", {}).get("venom.shared_entry", False):
+        return False
     client_host = _client_host_from_request(request).lower()
     if not client_host:
         return False

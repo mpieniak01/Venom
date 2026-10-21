@@ -2,8 +2,11 @@
 
 import pytest
 from fastapi import FastAPI, Request, WebSocket
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
+from venom_core.api.routes import academy, knowledge
+from venom_core.api.routes.permission_denied_contract import resolve_actor_from_request
 from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.api.transport_access import (
     TransportAccessMiddleware,
@@ -31,6 +34,25 @@ def app(monkeypatch):
     def admin(request: Request):
         require_localhost_request(request)
         return {"ok": True}
+
+    @app.get("/academy-admin")
+    def academy_admin(request: Request):
+        try:
+            academy.require_localhost_request(request)
+        except academy.AcademyRouteError as exc:
+            return JSONResponse(
+                status_code=exc.status_code, content={"detail": exc.detail}
+            )
+        return {"ok": True}
+
+    @app.get("/knowledge-admin")
+    def knowledge_admin(request: Request):
+        knowledge._enforce_knowledge_entries_access(request)
+        return {"ok": True}
+
+    @app.get("/audit-actor")
+    def audit_actor(request: Request):
+        return {"actor": resolve_actor_from_request(request)}
 
     @app.get("/metadata")
     def metadata(request: Request):
@@ -149,3 +171,27 @@ def test_websocket_metadata_uses_the_same_unbuffered_boundary(app):
     with TestClient(app, client=("127.0.0.1", 12000)) as client:
         with client.websocket_connect("/ws", headers=proxy_headers()) as socket:
             assert socket.receive_json() == {"verified": True}
+
+
+@pytest.mark.parametrize("path", ["/academy-admin", "/knowledge-admin"])
+def test_other_local_only_routes_reject_shared_loopback_relay(app, path):
+    with TestClient(app, client=("127.0.0.1", 12000)) as client:
+        assert client.get(path).status_code == 200
+        headers = proxy_headers("127.0.0.1")
+        headers.update({"host": "localhost:3300", "origin": "http://localhost:3300"})
+        assert client.get(path, headers=headers).status_code == 403
+
+
+def test_shared_loopback_relay_cannot_assert_an_audit_identity(app):
+    with TestClient(app, client=("127.0.0.1", 12000)) as client:
+        headers = {**proxy_headers("127.0.0.1"), "x-authenticated-user": "admin"}
+        assert client.get("/audit-actor", headers=headers).json() == {
+            "actor": "client:127.0.0.1"
+        }
+
+
+def test_backend_lan_profile_fails_closed_when_entry_profile_is_misconfigured(app):
+    with TestClient(app, client=("127.0.0.1", 12000)) as client:
+        headers = proxy_headers("127.0.0.1", "0")
+        assert client.get("/admin", headers=headers).status_code == 403
+        assert client.get("/academy-admin", headers=headers).status_code == 403

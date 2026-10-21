@@ -35,6 +35,7 @@ const child = spawn(process.execPath, childArgs, {
   env: { ...process.env, PORT: String(innerPort), HOSTNAME: "127.0.0.1" },
 });
 let stopping = false;
+let requestedStop = false;
 function stop(signal = "SIGTERM") {
   if (stopping) return;
   stopping = true;
@@ -43,9 +44,9 @@ function stop(signal = "SIGTERM") {
   for (const socket of sockets) socket.destroy();
   child.kill(signal);
 }
-process.on("SIGINT", () => stop("SIGINT"));
-process.on("SIGTERM", () => stop());
+process.on("SIGINT", () => { requestedStop = true; stop("SIGINT"); });
+process.on("SIGTERM", () => { requestedStop = true; stop(); });
 child.once("error", (error) => { console.error(error); stop(); process.exitCode = 1; });
-child.once("exit", (code) => { stop(); process.exitCode = process.exitCode || (code ?? 1); });
+child.once("exit", (code) => { stop(); process.exitCode = process.exitCode || (code ?? (requestedStop ? 0 : 1)); });
 server.once("error", (error) => { console.error(error); stop(); process.exitCode = 1; });
 server.listen(port, host, () => console.log(`[transport] ${settings.profile} entry http://${host}:${server.address().port}; API streamed to configured backend`));

@@ -60,7 +60,11 @@ async function backend() {
   return `http://127.0.0.1:${(server.address() as net.AddressInfo).port}`;
 }
 
-async function launch(origin: string, childExit?: number) {
+async function launch(
+  origin: string,
+  childExit?: number,
+  options: { port?: number; allowEarlyExit?: boolean } = {},
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "venom-managed-entry-"));
   directories.push(directory);
   await mkdir(path.join(directory, "scripts"));
@@ -75,7 +79,7 @@ async function launch(origin: string, childExit?: number) {
   const env: NodeJS.ProcessEnv = { ...process.env, VENOM_OPERATOR_ACCESS: "secure", API_PROXY_TARGET: origin };
   delete env.FIXTURE_CHILD_EXIT;
   if (childExit !== undefined) env.FIXTURE_CHILD_EXIT = String(childExit);
-  const wrapper = spawn(process.execPath, [wrapperPath, "start", "--hostname", "127.0.0.1", "--port", "0"], {
+  const wrapper = spawn(process.execPath, [wrapperPath, "start", "--hostname", "127.0.0.1", "--port", String(options.port ?? 0)], {
     cwd: directory, env, stdio: ["ignore", "pipe", "pipe"],
   });
   wrappers.push(wrapper);
@@ -99,57 +103,70 @@ async function launch(origin: string, childExit?: number) {
     wrapper.stderr!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
     wrapper.once("error", reject);
     wrapper.once("exit", () => {
-      if (!childPid || !entry) reject(new Error(`Entry stopped before readiness: ${output}`));
+      if (!options.allowEarlyExit && (!childPid || !entry)) reject(new Error(`Entry stopped before readiness: ${output}`));
     });
   });
-  await within(ready);
-  return { wrapper, exited, childPid: childPid!, origin: entry! };
+  if (options.allowEarlyExit) await within(exited);
+  else await within(ready);
+  return { wrapper, exited, childPid: childPid!, origin: entry!, output: () => output };
 }
 
 describe("managed entry process lifecycle", () => {
-  it("closes active HTTP streams and upgraded sockets when stopped", { timeout: 15000 }, async () => {
-    const running = await launch(await backend());
-    const response = await within(new Promise<http.IncomingMessage>((resolve, reject) => {
-      http.get(`${running.origin}/api/events`, resolve).once("error", reject);
-    }));
-    await once(response, "data");
-    response.on("error", () => { /* An intentional shutdown can reset the stream. */ });
-    const streamClosed = new Promise<void>((resolve) => response.once("close", resolve));
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    it(`closes active HTTP streams and upgraded sockets on requested ${signal} with exit 0`, { timeout: 15000 }, async () => {
+      const running = await launch(await backend());
+      const response = await within(new Promise<http.IncomingMessage>((resolve, reject) => {
+        http.get(`${running.origin}/api/events`, resolve).once("error", reject);
+      }));
+      await once(response, "data");
+      response.on("error", () => { /* An intentional shutdown can reset the stream. */ });
+      const streamClosed = new Promise<void>((resolve) => response.once("close", resolve));
 
-    const address = new URL(running.origin);
-    const socket = net.connect({ host: address.hostname, port: Number(address.port) });
-    sockets.add(socket);
-    socket.once("close", () => sockets.delete(socket));
-    await once(socket, "connect");
-    const upgraded = within(new Promise<void>((resolve, reject) => {
-      let received = "";
-      socket.on("data", (chunk) => {
-        received += chunk.toString();
-        if (received.includes("101 Switching Protocols") && received.includes("\r\n\r\nlive")) resolve();
-      });
-      socket.once("error", reject);
-    }));
-    socket.write(`GET /ws/events HTTP/1.1\r\nHost: ${address.host}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
-    await upgraded;
-    const upgradedClosed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+      const address = new URL(running.origin);
+      const socket = net.connect({ host: address.hostname, port: Number(address.port) });
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+      await once(socket, "connect");
+      const upgraded = within(new Promise<void>((resolve, reject) => {
+        let received = "";
+        socket.on("data", (chunk) => {
+          received += chunk.toString();
+          if (received.includes("101 Switching Protocols") && received.includes("\r\n\r\nlive")) resolve();
+        });
+        socket.once("error", reject);
+      }));
+      socket.write(`GET /ws/events HTTP/1.1\r\nHost: ${address.host}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+      await upgraded;
+      const upgradedClosed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
 
-    running.wrapper.kill("SIGTERM");
-    await within(Promise.all([streamClosed, upgradedClosed, running.exited]));
-    assert.equal(response.destroyed, true);
-    assert.equal(socket.destroyed, true);
-    // The independent backend remains up; stopping it cannot mask leaks.
-    assert.equal(servers[0].listening, true);
+      running.wrapper.kill(signal);
+      const [, , exit] = await within(Promise.all([streamClosed, upgradedClosed, running.exited]));
+      assert.deepEqual(exit, { code: 0, signal: null });
+      assert.equal(response.destroyed, true);
+      assert.equal(socket.destroyed, true);
+      // The independent backend remains up; stopping it cannot mask leaks.
+      assert.equal(servers[0].listening, true);
+    });
+
+  }
+
+  it("preserves a server listen error as a failed exit", { timeout: 15000 }, async () => {
+    const origin = await backend();
+    const running = await launch(origin, undefined, {
+      port: Number(new URL(origin).port), allowEarlyExit: true,
+    });
+    assert.deepEqual(await within(running.exited), { code: 1, signal: null });
+    assert.match(running.output(), /EADDRINUSE/);
   });
 
   it("reports a child terminated by signal as a failed exit", { timeout: 15000 }, async () => {
     const running = await launch(await backend());
     process.kill(running.childPid, "SIGTERM");
     const exit = await within(running.exited);
-    assert.notEqual(exit.code, 0);
-    assert.equal(exit.signal, null);
+    assert.deepEqual(exit, { code: 1, signal: null });
   });
 
-  for (const code of [0, 7]) {
+  for (const code of [0, 1, 7]) {
     it(`preserves an ordinary child exit code ${code}`, { timeout: 15000 }, async () => {
       const running = await launch(await backend(), code);
       assert.deepEqual(await within(running.exited), { code, signal: null });

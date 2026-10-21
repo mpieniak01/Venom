@@ -360,6 +360,7 @@ tests/test_retention_optimization.py
 tests/test_retrieval_policy.py
 tests/test_route_service_extractions.py
 tests/test_routing_contract.py
+tests/test_runtime_admission.py
 tests/test_runtime_controller_api.py
 tests/test_runtime_controller_roi.py
 tests/test_runtime_conversion_contracts.py

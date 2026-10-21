@@ -138,6 +138,10 @@ class Settings(BaseSettings):
     LLM_LOCAL_API_KEY: str = "venom-local"  # Dummy key dla lokalnych serwerów
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
     GOOGLE_API_KEY: str = ""  # Opcjonalne, wymagane dla Google Gemini
+    FEATURE_COOPERATION_LAB: bool = False  # Optional external module, API ABI 1.6.
+    RUNTIME_ADMISSION_ENABLED: bool = (
+        False  # Enable before host startup for runtime leases.
+    )
     LLM_WARMUP_ON_STARTUP: bool = True
     LLM_WARMUP_PROMPT: str = "Ping."
     LLM_WARMUP_TIMEOUT_SECONDS: float = 5.0

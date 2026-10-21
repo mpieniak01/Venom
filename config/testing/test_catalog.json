@@ -5484,6 +5484,20 @@
       "rationale": "Performance scenario kept outside fast lanes."
     },
     {
+      "path": "tests/test_runtime_admission.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Host lease ownership, actual worker completion, cancellation, quarantine and durable recovery."
+    },
+    {
       "path": "tests/test_runtime_controller_api.py",
       "domain": "runtime",
       "test_type": "route_contract",

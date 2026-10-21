@@ -297,6 +297,7 @@ tests/test_retrieval_policy.py
 tests/test_route_service_extractions.py
 tests/test_routing_contract.py
 tests/test_routing_integration.py
+tests/test_runtime_admission.py
 tests/test_runtime_conversion_contracts.py
 tests/test_runtime_environment_regressions.py
 tests/test_runtime_exclusive_guard.py

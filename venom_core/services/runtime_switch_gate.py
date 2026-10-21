@@ -162,6 +162,7 @@ def get_runtime_switch_gate_snapshot() -> RuntimeSwitchGateSnapshot:
 
 
 def assert_runtime_request_allowed(*, request_kind: str) -> None:
+    get_runtime_admission().assert_host_available()
     with _STATE_LOCK:
         if not _STATE.in_progress:
             return

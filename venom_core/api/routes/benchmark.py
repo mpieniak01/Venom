@@ -12,6 +12,7 @@ from venom_core.api.schemas.benchmark import (
     BenchmarkStartResponse,
     BenchmarkStatusResponse,
 )
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.services.runtime_exclusive_guard import (
     RuntimeExclusiveConflictError,
     RuntimeExclusivePreflightError,
@@ -56,6 +57,7 @@ def set_dependencies(
         500: {"description": "Błąd wewnętrzny podczas uruchamiania benchmarku"},
     },
 )
+@admitted_operation("benchmark_route")
 async def start_benchmark(request: BenchmarkStartRequest):
     """
     Rozpoczyna benchmark wielu modeli.

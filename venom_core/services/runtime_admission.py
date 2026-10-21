@@ -13,7 +13,7 @@ import sqlite3
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterator
-from contextlib import contextmanager, nullcontext
+from contextlib import closing, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
@@ -160,7 +160,7 @@ class RuntimeAdmission:
             return result
         try:
             uri = self.database.resolve().as_uri() + "?mode=ro"
-            with sqlite3.connect(uri, uri=True, timeout=2.0) as db:
+            with closing(sqlite3.connect(uri, uri=True, timeout=2.0)) as db:
                 db.row_factory = sqlite3.Row
                 db.execute("BEGIN")  # A consistent read-only snapshot, never DDL.
                 lease = db.execute("SELECT * FROM lease").fetchone()
@@ -170,6 +170,18 @@ class RuntimeAdmission:
             return result
         result.update(self._snapshot_rows(lease, operations))
         return result
+
+    def assert_host_available(self) -> None:
+        """Read-only preflight before constructing HTTP/SSE responses.
+
+        Actual worker admission still rechecks atomically; this is not a lease.
+        """
+        if not self.enabled:
+            return
+        self._require_supported()
+        snapshot = self.snapshot()
+        if "owner" in snapshot or snapshot["status"] == "quarantined":
+            raise RuntimeAdmissionError()
 
     @staticmethod
     def _snapshot_rows(
@@ -265,14 +277,18 @@ class RuntimeAdmission:
                 ancestor=ancestor,
                 nested=nested,
             )
+            if mutation:
+                own_token = ancestor["token"] if nested and ancestor is not None else ""
+                if db.execute(
+                    "SELECT 1 FROM operation WHERE token<>?", (own_token,)
+                ).fetchone():
+                    raise RuntimeAdmissionError()
             if (
                 nested
                 and ancestor is not None
                 and (kind != "cleanup" or ancestor["kind"] == "cleanup")
             ):
                 return None
-            if mutation and db.execute("SELECT 1 FROM operation").fetchone():
-                raise RuntimeAdmissionError()
             if (
                 db.execute("SELECT COUNT(*) FROM operation").fetchone()[0]
                 >= _MAX_OPERATIONS

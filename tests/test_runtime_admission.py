@@ -597,3 +597,127 @@ def test_uncertain_operation_ledger_has_bounded_growth(admission, monkeypatch):
             pytest.fail("full evidence ledger admitted more work")
     assert admission.snapshot()["active_operations"] == 2
     assert admission.recover(confirm_quiescent=lambda: True)
+
+
+def test_existing_stream_preflight_reports_busy_before_preparing_sse(admission):
+    from venom_core.services.runtime_switch_gate import assert_runtime_request_allowed
+
+    lease = acquire(admission)
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        assert_runtime_request_allowed(request_kind="simple_chat")
+    assert lease.release()
+    assert_runtime_request_allowed(request_kind="simple_chat")
+
+
+@pytest.mark.asyncio
+async def test_nested_mutation_still_respects_independent_active_generation(admission):
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def independent_chat():
+        with admission.operation(kind="chat"):
+            started.set()
+            await finish.wait()
+
+    other = asyncio.create_task(independent_chat())
+    await started.wait()
+    with admission.operation(kind="benchmark_start"):
+        with pytest.raises(RuntimeAdmissionError):
+            with admission.operation(kind="model_unload", mutation=True):
+                pytest.fail("nested mutation bypassed another chat's generation")
+    finish.set()
+    await other
+
+
+@pytest.mark.asyncio
+async def test_benchmark_route_conflict_survives_legacy_generic_error_handlers(
+    admission,
+):
+    from venom_core.api.routes import benchmark, benchmark_coding
+
+    lease = acquire(admission)
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        await benchmark.start_benchmark(None)
+    # Coding start returns before its worker; admission is outside legacy catches.
+    function = next(
+        value
+        for name, value in vars(benchmark_coding).items()
+        if name.startswith("start_") and callable(value)
+    )
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        await function(None)
+    assert lease.release()
+
+
+@pytest.mark.skipif(
+    not admission_module.sys.platform.startswith("linux"),
+    reason="Linux application file descriptor regression",
+)
+def test_readonly_snapshot_always_closes_database_file_descriptor(admission):
+    import gc
+    from pathlib import Path
+
+    lease = acquire(admission)
+    target = str(admission.database.resolve())
+
+    def descriptors():
+        total = 0
+        for path in Path("/proc/self/fd").iterdir():
+            try:
+                total += admission_module.os.readlink(path) == target
+            except FileNotFoundError:
+                pass
+        return total
+
+    baseline = descriptors()
+    was_enabled = gc.isenabled()
+    gc.disable()  # Do not let GC hide a connection left open by a transaction CM.
+    try:
+        for _ in range(20):
+            assert admission.snapshot()["status"] == "owned"
+        assert descriptors() == baseline
+    finally:
+        if was_enabled:
+            gc.enable()
+    assert lease.release()
+
+
+@pytest.mark.parametrize("enabled", ["false", "true"])
+def test_actual_application_openapi_resolves_wrapped_route_annotations(enabled):
+    import os
+    import subprocess
+    import sys
+
+    environment = {
+        **os.environ,
+        "VENOM_RUNTIME_PROFILE": "llm_off",
+        "LLM_WARMUP_ON_STARTUP": "false",
+        "FEATURE_COOPERATION_LAB": "false",
+        "RUNTIME_ADMISSION_ENABLED": enabled,
+        "API_OPTIONAL_MODULES": "",
+    }
+    script = """
+from venom_core.main import app
+schema = app.openapi()
+assert len(schema['paths']) > 100
+expected = {
+    '/api/v1/benchmark/start': 'BenchmarkStartRequest',
+    '/api/v1/benchmark/coding/start': 'CodingBenchmarkStartRequest',
+    '/api/v1/system/llm-servers/active': 'ActiveLlmServerRequest',
+    '/api/v1/system/llm-runtime/active': 'LlmRuntimeActivateRequest',
+    '/api/v1/models/switch': 'ModelSwitchRequest',
+}
+for path, request_type in expected.items():
+    request = schema['paths'][path]['post']['requestBody']['content']['application/json']['schema']
+    assert request['$ref'] == '#/components/schemas/' + request_type
+    assert request_type in schema['components']['schemas']
+print('actual-application-openapi-pass')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout[-2000:]
+    assert "actual-application-openapi-pass" in result.stdout

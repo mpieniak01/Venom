@@ -93,6 +93,11 @@ async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
 async def read_http_error_response_text(response: Any | None) -> str:
     if response is None:
         return ""
+    extensions = getattr(response, "extensions", None)
+    if isinstance(extensions, dict):
+        diagnostic = extensions.get("venom_runtime_error_diagnostic")
+        if isinstance(diagnostic, dict):
+            return json.dumps(diagnostic)
     try:
         body = await response.aread()
     except Exception:

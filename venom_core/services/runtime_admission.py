@@ -74,6 +74,20 @@ def _execution_identity() -> tuple[int, int]:
     return threading.get_ident(), id(task)
 
 
+class RuntimeOperationRejection:
+    """Typed host-transport proof bound to the operation that was rejected.
+
+    Only a transport that observes rejection before accepting a response creates
+    this marker. A status number/message supplied by a caller is never proof.
+    """
+
+    def __init__(self) -> None:
+        self._rejected_operation = _CURRENT_OPERATION.get()
+
+    def confirms_rejection(self, operation: str | None) -> bool:
+        return operation is not None and self._rejected_operation == operation
+
+
 class RuntimeAdmissionError(HTTPException):
     """Stable error code; presentation/translation belongs to the caller."""
 
@@ -390,8 +404,13 @@ class RuntimeAdmission:
         uncertain = False
         try:
             yield
-        except BaseException:
-            uncertain = confirm_quiescent is None or not confirm_quiescent()
+        except BaseException as exc:
+            rejected = isinstance(
+                exc, RuntimeOperationRejection
+            ) and exc.confirms_rejection(_CURRENT_OPERATION.get())
+            uncertain = not rejected and (
+                confirm_quiescent is None or not confirm_quiescent()
+            )
             raise
         finally:
             if uncertain and operation is None:

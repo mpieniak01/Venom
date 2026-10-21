@@ -154,6 +154,7 @@ tests/test_healing_flow.py
 tests/test_hidden_prompts_cache.py
 tests/test_hidden_prompts_semantic.py
 tests/test_historian_agent.py
+tests/test_http_lan_launchers.py
 tests/test_huggingface_skill.py
 tests/test_ingestion_engine_roi.py
 tests/test_input_skill.py
@@ -351,6 +352,8 @@ tests/test_tool_reliability.py
 tests/test_toolmaker_agent.py
 tests/test_training_metrics_parser.py
 tests/test_translation_service.py
+tests/test_transport_access.py
+tests/test_transport_identity.py
 tests/test_update_sonar_scope_group.py
 tests/test_ux_analyst.py
 tests/test_vast_cli.py

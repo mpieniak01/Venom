@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getServerApiBaseUrl } from "@/lib/env";
+import { getApiBaseUrl } from "@/lib/env";
 import type {
   IntrospectionSnapshot,
   SnapshotResponse,
@@ -40,7 +40,7 @@ export function useModelIntrospectionSnapshot(
     setError(null);
     try {
       const response = await fetch(
-        `${getServerApiBaseUrl()}/api/v1/models/introspection`,
+        `${getApiBaseUrl()}/api/v1/models/introspection`,
         {
           cache: "no-store",
         },

@@ -44,6 +44,7 @@ from venom_core.api.schemas.academy import (
     TrainingResponse,
     UploadFileInfo,
 )
+from venom_core.api.transport_access import is_localhost_request
 from venom_core.services.academy import file_resolution as academy_file_resolution
 from venom_core.utils.logger import get_logger
 
@@ -162,7 +163,7 @@ def _normalize_job_status(raw_status: Optional[str]) -> str:
 
 def require_localhost_request(req: Request) -> None:
     client_host = req.client.host if req.client else "unknown"
-    if client_host not in ["127.0.0.1", "::1", "localhost"]:
+    if not is_localhost_request(req):
         logger.warning(
             "Próba dostępu do endpointu administracyjnego Academy z hosta: %s",
             client_host,

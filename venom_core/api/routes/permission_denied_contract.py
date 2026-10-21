@@ -9,6 +9,7 @@ from typing import Any, NoReturn
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from venom_core.api.transport_access import is_shared_entry
 from venom_core.core.autonomy_enforcement import AutonomyPermissionDenied
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
@@ -81,6 +82,8 @@ def _trusted_identity_hosts() -> set[str]:
 
 
 def _is_trusted_identity_source(request: Request | None) -> bool:
+    if is_shared_entry(request):
+        return False
     client_host = _client_host_from_request(request).lower()
     if not client_host:
         return False

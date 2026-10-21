@@ -61,9 +61,14 @@ from venom_core.api.routes import system_status as system_status_routes
 from venom_core.api.routes import system_storage as system_storage_routes
 from venom_core.api.routes import tasks as tasks_routes
 from venom_core.api.routes import traffic_control as traffic_control_routes
+from venom_core.api.routes import transport as transport_routes
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.api.routes import workflow_operations as workflow_operations_routes
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
+from venom_core.api.transport_access import (
+    TransportAccessMiddleware,
+    is_localhost_request,
+)
 from venom_core.bootstrap.agents import initialize_academy, initialize_calendar_skill
 from venom_core.bootstrap.model_services import initialize_model_services
 from venom_core.bootstrap.observability import initialize_observability
@@ -254,8 +259,7 @@ def _resolve_voice_session_wav_path(session_id: str) -> Path:
 
 
 def _require_localhost_request(req: Request) -> None:
-    client_host = req.client.host if req.client else "unknown"
-    if client_host not in {"127.0.0.1", "::1"}:
+    if not is_localhost_request(req):
         raise HTTPException(status_code=403, detail="Access denied")
 
 
@@ -1678,6 +1682,7 @@ app = FastAPI(title="Venom Core", version=APP_VERSION, lifespan=lifespan)
 
 # Traffic Control Middleware (must be added before CORS for proper ordering)
 app.add_middleware(TrafficControlMiddleware)
+app.add_middleware(TransportAccessMiddleware)
 
 # CORS dla lokalnego UI (bezpośredni dostęp do API, bez proxy Next).
 app.add_middleware(
@@ -1987,6 +1992,7 @@ app.include_router(benchmark_routes.router)
 app.include_router(benchmark_coding_routes.router)
 app.include_router(calendar_routes.router)
 app.include_router(traffic_control_routes.router)
+app.include_router(transport_routes.router)
 include_optional_api_routers(app, SETTINGS)
 
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { VenomWebSocket } from "@/lib/ws-client";
+import { createBrowserUuid } from "@/lib/optional-modules/transport";
 
 type TelemetryEntry = {
   id: string;
@@ -17,7 +18,7 @@ export function useTelemetryFeed(maxEntries = 100) {
       setEntries((prev) => {
         const next = [
           {
-            id: crypto.randomUUID(),
+            id: createBrowserUuid(),
             ts: Date.now(),
             payload: data,
           },

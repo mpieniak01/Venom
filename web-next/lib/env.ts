@@ -1,12 +1,13 @@
 import { applyHttpPolicyToUrl, buildHttpBaseUrl, isLocalOrPrivateHost } from "@/lib/url-policy";
 
-const DEFAULT_API_PORT = 8000;
+const DEFAULT_API_PORT = 8800;
 
 const getEnv = (key: string): string | undefined => {
   if (typeof process === "undefined") return undefined;
   // Next only exposes public variables referenced by their literal name.
   // Dynamic process.env[key] lookups are empty in the browser bundle.
   const publicValues: Record<string, string | undefined> = {
+    NEXT_PUBLIC_TRANSPORT_PROFILE: process.env.NEXT_PUBLIC_TRANSPORT_PROFILE,
     NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_API_LOCALHOST_FALLBACK: process.env.NEXT_PUBLIC_API_LOCALHOST_FALLBACK,
@@ -60,6 +61,9 @@ const getEnvApiBase = (): string =>
   getEnv("NEXT_PUBLIC_API_URL") ||
   "";
 
+const isTrustedLanBrowser = (): boolean =>
+  Boolean(getBrowserWindow()) && getEnv("NEXT_PUBLIC_TRANSPORT_PROFILE") === "trusted_lan";
+
 const resolveBrowserBase = (): string => {
   const envApiBase = getEnvApiBase();
   if (!envApiBase) return "";
@@ -98,20 +102,13 @@ const resolveBrowserWsBase = (): string => {
   if (!browserWindow) {
     return normalizeWs(buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT));
   }
-  const origin = browserWindow.location.origin;
-  try {
-    const parsed = new URL(origin);
-    if (isLocalOrPrivateHost(parsed.hostname) && parsed.port && Number(parsed.port) !== DEFAULT_API_PORT) {
-      parsed.port = String(DEFAULT_API_PORT);
-      return normalizeWs(parsed.toString());
-    }
-  } catch {
-    return sanitizeBase(origin.replace(/^https/, "wss").replace(/^http/, "ws"));
-  }
-  return sanitizeBase(origin.replace(/^https:/, "wss:").replace(/^http:/, "ws:"));
+  return normalizeWs(browserWindow.location.origin);
 };
 
 export const getServerApiBaseUrl = (): string => {
+  if (getEnv("NEXT_PUBLIC_TRANSPORT_PROFILE") === "trusted_lan") {
+    return sanitizeBase(getEnv("API_PROXY_TARGET") || buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT));
+  }
   const envApiBase = getEnvApiBase();
   const explicit = envApiBase ? sanitizeBase(applyHttpPolicyToUrl(envApiBase)) : "";
   if (explicit) return explicit;
@@ -119,6 +116,7 @@ export const getServerApiBaseUrl = (): string => {
 };
 
 export const getApiBaseUrl = (): string => {
+  if (isTrustedLanBrowser()) return "";
   const resolved = resolveBrowserBase();
   if (resolved) return sanitizeBase(resolved);
   const fallback = resolveDefaultLocalApiBase();
@@ -126,6 +124,7 @@ export const getApiBaseUrl = (): string => {
 };
 
 export const getWsBaseUrl = (): string => {
+  if (isTrustedLanBrowser()) return resolveBrowserWsBase();
   const explicit = getEnv("NEXT_PUBLIC_WS_BASE");
   if (explicit) return normalizeWs(explicit);
   const httpBase = getApiBaseUrl();
@@ -148,9 +147,8 @@ const buildWsEndpoint = (base: string, pathname: string): string => {
 };
 
 export const getAudioWsUrl = (): string => {
-  const explicit = getEnv("NEXT_PUBLIC_AUDIO_WS_BASE");
-  const base = explicit || getEnvApiBase() || buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);
-  return buildWsEndpoint(base, "/ws/audio");
+  const explicit = isTrustedLanBrowser() ? "" : getEnv("NEXT_PUBLIC_AUDIO_WS_BASE");
+  return buildWsEndpoint(explicit || getWsBaseUrl(), "/ws/audio");
 };
 
 const DEFAULT_GEMMA4_PORT = 8014;

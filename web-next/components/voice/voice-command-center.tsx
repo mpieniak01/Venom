@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   Dispatch,
   MutableRefObject,
@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getAudioWsUrl } from "@/lib/env";
+import { getMicrophoneCapability } from "@/lib/optional-modules/transport";
 import { useTranslation } from "@/lib/i18n";
 import type { VoiceOrbState } from "@/components/voice/voice-orb";
 import { useOrbEffectsConfig } from "@/components/voice/use-orb-effects-config";
@@ -1006,6 +1007,10 @@ const getVoiceCaptureStartError = (
   }
   if (!isConnected) {
     return t("voice.status.channelOffline");
+  }
+  const capability = getMicrophoneCapability();
+  if (capability !== "available") {
+    return t(capability === "insecure_context" ? "voice.status.microphoneInsecure" : "voice.status.microphoneUnavailable");
   }
   return null;
 };
@@ -2418,6 +2423,8 @@ function useVoiceCommandCenterMetricsRef(params: {
   );
 }
 
+const subscribeMicrophoneCapability = () => () => undefined;
+
 function VoiceCommandCenterPanel({
   onTranscriptReady,
   voiceModePreset = "standard",
@@ -2432,6 +2439,7 @@ function VoiceCommandCenterPanel({
   const [connected, setConnected] = useState(false);
   const [isVoiceModeEnabled, setIsVoiceModeEnabled] = useState<boolean>(audioEnabled);
   const [recording, setRecording] = useState(false);
+  const microphoneCapability = useSyncExternalStore(subscribeMicrophoneCapability, getMicrophoneCapability, () => "available");
   const [transcription, setTranscription] = useState("");
   const [response, setResponse] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -2995,6 +3003,12 @@ function VoiceCommandCenterPanel({
             </div>
           )}
 
+          {microphoneCapability !== "available" && !debugDryRunActive && (
+            <output data-testid="microphone-capability" className="block text-sm text-amber-300">
+              {t(microphoneCapability === "insecure_context" ? "voice.status.microphoneInsecure" : "voice.status.microphoneUnavailable")}
+            </output>
+          )}
+
           <Button
             type="button"
             onPointerDown={onRecordingPointerDown}
@@ -3004,7 +3018,7 @@ function VoiceCommandCenterPanel({
             variant="outline"
             size="md"
             className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${viewState.recordingButtonClass}`}
-            disabled={!viewState.effectiveConnected || !viewState.effectiveIsVoiceModeEnabled}
+            disabled={!viewState.effectiveConnected || !viewState.effectiveIsVoiceModeEnabled || (!debugDryRunActive && microphoneCapability !== "available")}
           >
             🎙 {viewState.recordingButtonLabel}
           </Button>

@@ -69,7 +69,7 @@ describe("env api base policy", () => {
     setWindowLocation("http://localhost:3000");
 
     const mod = await loadEnvModule("fallback-enabled");
-    assert.equal(mod.getApiBaseUrl(), "http://127.0.0.1:8000");
+    assert.equal(mod.getApiBaseUrl(), "http://127.0.0.1:8800");
   });
 
   it("prefers explicit api base over localhost fallback policy", async () => {
@@ -102,6 +102,40 @@ describe("env api base policy", () => {
 
     const mod = await loadEnvModule("explicit-events-port");
     assert.equal(mod.getWsBaseUrl(), "ws://127.0.0.1:8800");
+  });
+
+  it("uses the panel origin for default event and audio WebSockets", async () => {
+    delete process.env.NEXT_PUBLIC_API_BASE;
+    delete process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.API_PROXY_TARGET;
+    delete process.env.NEXT_PUBLIC_WS_BASE;
+    delete process.env.NEXT_PUBLIC_AUDIO_WS_BASE;
+    setWindowLocation("http://venom.test:3300");
+    const mod = await loadEnvModule("same-origin-defaults");
+    assert.equal(mod.getWsBaseUrl(), "ws://venom.test:3300");
+    assert.equal(mod.getAudioWsUrl(), "ws://venom.test:3300/ws/audio");
+  });
+
+  it("trusted LAN ignores old absolute browser API/WS targets", async () => {
+    process.env.NEXT_PUBLIC_TRANSPORT_PROFILE = "trusted_lan";
+    process.env.NEXT_PUBLIC_API_BASE = "http://127.0.0.1:8000";
+    process.env.NEXT_PUBLIC_WS_BASE = "ws://127.0.0.1:8000";
+    process.env.NEXT_PUBLIC_AUDIO_WS_BASE = "ws://127.0.0.1:8000";
+    process.env.NEXT_PUBLIC_API_LOCALHOST_FALLBACK = "true";
+    setWindowLocation("http://venom.test:3300");
+    const mod = await loadEnvModule("same-origin-lan");
+    assert.equal(mod.getApiBaseUrl(), "");
+    assert.equal(mod.getWsBaseUrl(), "ws://venom.test:3300");
+    assert.equal(mod.getAudioWsUrl(), "ws://venom.test:3300/ws/audio");
+  });
+
+  it("trusted LAN server requests use the configured internal API instead of stale public URLs", async () => {
+    process.env.NEXT_PUBLIC_TRANSPORT_PROFILE = "trusted_lan";
+    process.env.NEXT_PUBLIC_API_BASE = "http://127.0.0.1:8000";
+    process.env.API_PROXY_TARGET = "http://127.0.0.1:8800";
+    process.env.URL_SCHEME_POLICY = "force_https";
+    const mod = await loadEnvModule("lan-server-api");
+    assert.equal(mod.getServerApiBaseUrl(), "http://127.0.0.1:8800");
   });
 
 });

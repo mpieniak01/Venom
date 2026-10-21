@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     REPO_ROOT: str = "."
     MEMORY_ROOT: str = _storage_path("./data/memory")
     STATE_FILE_PATH: str = f"{_storage_path('./data/memory')}/state_dump.json"
+    VENOM_TRANSPORT_IDENTITY_FILE: str = (
+        f"{_storage_path('./data/transport')}/identity.json"
+    )
+    VENOM_OPERATOR_ACCESS: str = "secure"  # secure|trusted_lan, explicit opt-in
+    VENOM_LAN_ORIGINS: str = ""  # Exact comma-separated panel origins; no wildcard.
     # Endpoint używany do lokalnego wykrywania adresu IP hosta (bez wysyłania payloadu)
     # Używamy nazwy DNS zamiast hardcoded IP (łatwiejsza konfiguracja i mniej false-positive w skanerach).
     NETWORK_PROBE_HOST: str = "dns.google"

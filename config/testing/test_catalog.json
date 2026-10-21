@@ -2963,6 +2963,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_http_lan_launchers.py",
+      "domain": "environment",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Generic launcher port propagation and selected dotenv profile precedence without service starts."
+    },
+    {
       "path": "tests/test_huggingface_skill.py",
       "domain": "skills",
       "test_type": "unit",
@@ -6541,6 +6555,34 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_transport_access.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "security",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared-entry provenance and localhost/admin isolation."
+    },
+    {
+      "path": "tests/test_transport_identity.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "security",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Durable passive identity and fail-closed file handling."
     },
     {
       "path": "tests/test_update_sonar_scope_group.py",

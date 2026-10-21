@@ -41,6 +41,9 @@ If manifest is invalid or contract requirements are not met:
 - the affected entry remains inactive with a public diagnostic reason,
 - other modules and core remain available; authoring validation still reports the error.
 
+The public HTTP LAN/browser helper and access boundary are documented in
+[Trusted HTTP LAN entry](HTTP_LAN_ACCESS.md).
+
 ## 4. Module structure (target model only)
 
 ### 4.1. Module in a separate repository (target for products)

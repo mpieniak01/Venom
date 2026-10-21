@@ -6543,6 +6543,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_transport_access.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "security",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Shared-entry provenance and localhost/admin isolation."
+    },
+    {
       "path": "tests/test_transport_identity.py",
       "domain": "api",
       "test_type": "route_contract",

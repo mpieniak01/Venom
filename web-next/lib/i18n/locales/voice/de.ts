@@ -111,6 +111,8 @@ export const voice = {
     recordingStarted: "Aufnahme gestartet.",
     recordingEnded: "Aufnahme beendet.",
     recordingFailed: "Das Mikrofon konnte nicht gestartet werden.",
+    microphoneInsecure: "Das Browsermikrofon erfordert HTTPS oder localhost. Bedienfelder und Roboterkamera bleiben über HTTP im LAN verfügbar.",
+    microphoneUnavailable: "Die Mikrofonaufnahme ist in diesem Browser nicht verfügbar.",
     browserAudioContextMissing: "AudioContext wird in diesem Browser nicht unterstützt.",
     browserMediaRecorderMissing: "MediaRecorder wird in diesem Browser nicht unterstützt.",
     processing: "Verarbeite ({{status}})",

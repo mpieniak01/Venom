@@ -14,6 +14,7 @@ from venom_core.api.schemas.system import (
     RestoreBackupResponse,
     RuntimeConfigResponse,
 )
+from venom_core.api.transport_access import is_localhost_request
 from venom_core.services.config_manager import config_manager
 from venom_core.utils.logger import get_logger
 
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 def require_localhost_request(req: Request) -> None:
     """Dopuszcza wyłącznie żądania administracyjne z localhosta."""
     client_host = req.client.host if req.client else "unknown"
-    if client_host not in ["127.0.0.1", "::1", "localhost"]:
+    if not is_localhost_request(req):
         logger.warning(
             "Próba dostępu do endpointu administracyjnego z nieautoryzowanego hosta: %s",
             client_host,

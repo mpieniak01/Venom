@@ -48,4 +48,9 @@ def read_transport_identity() -> dict[str, str | int]:
             finally:
                 temporary.unlink()
         peer_id = _read_peer_id(path)
-    return {"protocol_version": 1, "peer_id": peer_id, "service_role": "venom"}
+    return {
+        "protocol_version": 1,
+        "peer_id": peer_id,
+        "service_role": "venom",
+        "operator_access": SETTINGS.VENOM_OPERATOR_ACCESS,
+    }

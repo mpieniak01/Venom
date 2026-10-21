@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { POLLING } from "@/lib/ui-config";
+import { createBrowserUuid } from "@/lib/optional-modules/transport";
 
 type SessionContextValue = {
   sessionId: string;
@@ -14,7 +15,6 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 const SESSION_ID_KEY = "venom-session-id";
 const SESSION_BUILD_KEY = "venom-next-build-id";
 const SESSION_BOOT_KEY = "venom-backend-boot-id";
-let sessionIdFallbackCounter = 0;
 
 const getBuildId = () => {
   if (globalThis.window === undefined) return "unknown";
@@ -23,23 +23,7 @@ const getBuildId = () => {
   return nextData?.buildId ?? "unknown";
 };
 
-const createSessionId = () => {
-  const rand = (() => {
-    const webCrypto: Crypto | undefined = globalThis.crypto;
-
-    if (webCrypto?.randomUUID) {
-      return webCrypto.randomUUID().slice(0, 8);
-    }
-    if (webCrypto?.getRandomValues) {
-      const bytes = new Uint8Array(4);
-      webCrypto.getRandomValues(bytes);
-      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-    }
-    sessionIdFallbackCounter += 1;
-    return `${Date.now().toString(36)}${sessionIdFallbackCounter.toString(36)}`.slice(-12);
-  })();
-  return `session-${Date.now()}-${rand}`;
-};
+const createSessionId = () => `session-${Date.now()}-${createBrowserUuid().slice(0, 8)}`;
 
 const resolveInitialSessionId = () => {
   if (globalThis.window === undefined) return "";

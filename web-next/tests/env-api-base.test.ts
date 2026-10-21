@@ -129,4 +129,13 @@ describe("env api base policy", () => {
     assert.equal(mod.getAudioWsUrl(), "ws://venom.test:3300/ws/audio");
   });
 
+  it("trusted LAN server requests use the configured internal API instead of stale public URLs", async () => {
+    process.env.NEXT_PUBLIC_TRANSPORT_PROFILE = "trusted_lan";
+    process.env.NEXT_PUBLIC_API_BASE = "http://127.0.0.1:8000";
+    process.env.API_PROXY_TARGET = "http://127.0.0.1:8800";
+    process.env.URL_SCHEME_POLICY = "force_https";
+    const mod = await loadEnvModule("lan-server-api");
+    assert.equal(mod.getServerApiBaseUrl(), "http://127.0.0.1:8800");
+  });
+
 });

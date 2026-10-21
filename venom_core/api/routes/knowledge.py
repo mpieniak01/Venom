@@ -23,7 +23,7 @@ from venom_core.api.schemas.knowledge import (
     KnowledgeSourceOrigin,
     LearningToggleRequest,
 )
-from venom_core.api.transport_access import is_localhost_request
+from venom_core.api.transport_access import is_localhost_request, is_shared_entry
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
@@ -108,7 +108,7 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 def _is_localhost_request(req: Request | None) -> bool:
     if req is None:
         return False
-    if getattr(req, "scope", {}).get("venom.shared_entry", False):
+    if is_shared_entry(req):
         return False
     if is_localhost_request(req):
         return True

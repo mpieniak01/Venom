@@ -106,6 +106,9 @@ const resolveBrowserWsBase = (): string => {
 };
 
 export const getServerApiBaseUrl = (): string => {
+  if (getEnv("NEXT_PUBLIC_TRANSPORT_PROFILE") === "trusted_lan") {
+    return sanitizeBase(getEnv("API_PROXY_TARGET") || buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT));
+  }
   const envApiBase = getEnvApiBase();
   const explicit = envApiBase ? sanitizeBase(applyHttpPolicyToUrl(envApiBase)) : "";
   if (explicit) return explicit;

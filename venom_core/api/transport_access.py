@@ -7,6 +7,7 @@ it. A shared LAN entry never proves localhost, including Windows portproxy relay
 from __future__ import annotations
 
 import ipaddress
+from collections.abc import Mapping
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request
@@ -22,11 +23,16 @@ _PROXY_HEADERS = {
 }
 
 
+def is_shared_entry(request: Request | None) -> bool:
+    scope = getattr(request, "scope", {})
+    return isinstance(scope, Mapping) and bool(scope.get("venom.shared_entry", False))
+
+
 def is_localhost_request(request: Request) -> bool:
     return bool(
         request.client
         and request.client.host in _LOCALHOSTS
-        and not getattr(request, "scope", {}).get("venom.shared_entry", False)
+        and not is_shared_entry(request)
     )
 
 

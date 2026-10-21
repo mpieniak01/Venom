@@ -14,6 +14,8 @@ API_APP="${API_APP:-venom_core.main:app}"
 HOST="${HOST:-0.0.0.0}"
 HOST_DISPLAY="${HOST_DISPLAY:-127.0.0.1}"
 PORT="${PORT:-8000}"
+# Match the selected API listener; a configured dotenv value still overrides this fallback.
+export API_PROXY_TARGET="${API_PROXY_TARGET:-http://${HOST_DISPLAY}:${PORT}}"
 PID_FILE="${PID_FILE:-.venom.pid}"
 WEB_DIR="${WEB_DIR:-web-next}"
 WEB_PORT="${WEB_PORT:-3000}"

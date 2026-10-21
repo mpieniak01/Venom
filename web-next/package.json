@@ -10,7 +10,7 @@
     "predev": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "dev": "node scripts/serve-with-proxy.mjs dev",
     "dev:turbo": "node scripts/serve-with-proxy.mjs dev --turbo",
-    "dev:turbo:debug": "NEXT_TELEMETRY_DISABLED=1 NEXT_DEBUG=true NODE_OPTIONS=--trace-warnings next dev --turbo",
+    "dev:turbo:debug": "NEXT_TELEMETRY_DISABLED=1 NEXT_DEBUG=true NODE_OPTIONS=--trace-warnings node scripts/serve-with-proxy.mjs dev --turbo",
     "prebuild": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",

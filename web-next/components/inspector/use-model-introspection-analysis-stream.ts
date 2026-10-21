@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getServerApiBaseUrl } from "@/lib/env";
+import { getApiBaseUrl } from "@/lib/env";
 import {
   processAnalysisStream,
   updateLiveAnalysisResult,
@@ -91,7 +91,7 @@ export function useModelIntrospectionAnalysisStream(
     setAnalysisResult(null);
     try {
       const response = await fetch(
-        `${getServerApiBaseUrl()}/api/v1/models/introspection/analyze/stream`,
+        `${getApiBaseUrl()}/api/v1/models/introspection/analyze/stream`,
         {
           method: "POST",
           headers: {

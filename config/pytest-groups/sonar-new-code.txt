@@ -154,6 +154,7 @@ tests/test_healing_flow.py
 tests/test_hidden_prompts_cache.py
 tests/test_hidden_prompts_semantic.py
 tests/test_historian_agent.py
+tests/test_http_lan_launchers.py
 tests/test_huggingface_skill.py
 tests/test_ingestion_engine_roi.py
 tests/test_input_skill.py

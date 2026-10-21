@@ -47,7 +47,10 @@ Next wyprowadza `NEXT_PUBLIC_TRANSPORT_PROFILE` z `VENOM_OPERATOR_ACCESS`.
 Przy buildzie produkcyjnym ustaw profil także podczas kompilacji. W LAN API
 przeglądarki używa względnych URL, a event/audio WS originu panelu, również
 przy starych publicznych URL API/WS w konfiguracji. Serwerowy fallback API to
-8800. `VENOM_PROXY_MAX_BODY_BYTES` domyślnie wynosi 64 MiB i ogranicza zarówno
+8800. Generyczny Make przekazuje faktyczne PORT (domyślnie 8000), zamiast
+zakładać port profilu Full. Jawne API_PROXY_TARGET i wartości wybranego pliku
+dotenv zachowują pierwszeństwo; build produkcyjny również czyta ten plik.
+`VENOM_PROXY_MAX_BODY_BYTES` domyślnie wynosi 64 MiB i ogranicza zarówno
 zadeklarowane, jak i chunked uploady bez buforowania ich w całości.
 
 ## Operator i administracja localhost

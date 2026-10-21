@@ -15,6 +15,7 @@ WEB_DIR ?= web-next
 WEB_PORT ?= 3000
 WEB_HOST ?= 0.0.0.0
 WEB_DISPLAY ?= 127.0.0.1
+WEB_API_PROXY_TARGET ?= $(if $(strip $(API_PROXY_TARGET)),$(API_PROXY_TARGET),http://$(HOST_DISPLAY):$(PORT))
 WEB_PID_FILE ?= .web-next.pid
 NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
@@ -134,7 +135,7 @@ define start_web_turbo_target
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "▶️  Uruchamiam UI ($(1), host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(4) $(ENV_RUN_ABS) setsid $(NPM) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
+	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(4) $(ENV_RUN_ABS) setsid $(NPM) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI ($(1)) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
@@ -186,7 +187,7 @@ _start:
 		PID_FILE="$(PID_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" WEB_HOST="$(WEB_HOST)" WEB_DISPLAY="$(WEB_DISPLAY)" WEB_PID_FILE="$(WEB_PID_FILE)" \
 		START_MODE="$(START_MODE)" START_WEB_MODE="$(START_WEB_MODE)" ALLOW_DEGRADED_START="$(ALLOW_DEGRADED_START)" BACKEND_RELOAD="$(BACKEND_RELOAD)" \
 		UVICORN_DEV_FLAGS="$(UVICORN_DEV_FLAGS)" UVICORN_PROD_FLAGS="$(UVICORN_PROD_FLAGS)" BACKEND_LOG="$(BACKEND_LOG)" WEB_LOG="$(WEB_LOG)" \
-		WEB_NODE_PATH="$(WEB_NODE_PATH)" WEB_APP_VERSION="$(WEB_APP_VERSION)" WEB_START_RETRIES="$(WEB_START_RETRIES)" \
+		API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" WEB_NODE_PATH="$(WEB_NODE_PATH)" WEB_APP_VERSION="$(WEB_APP_VERSION)" WEB_START_RETRIES="$(WEB_START_RETRIES)" \
 		$(if $(VLLM_ENDPOINT),VLLM_ENDPOINT="$(VLLM_ENDPOINT)") VLLM_START_TIMEOUT_SEC="$(VLLM_START_TIMEOUT_SEC)" \
 		ENV_FILE="$(ENV_FILE)" ENV_EXAMPLE_FILE="$(ENV_EXAMPLE_FILE)" NPM="$(NPM)" \
 		bash scripts/dev/start_stack.sh
@@ -309,9 +310,9 @@ web:
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "🛠  Buduję Next.js (npm run build)..."
-	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(NPM) run build >/dev/null 2>&1
+	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) $(NPM) run build >/dev/null 2>&1
 	@echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) setsid $(NPM) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
+	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) setsid $(NPM) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
@@ -322,7 +323,7 @@ web-dev:
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"
-	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
+	cd $(WEB_DIR) && API_PROXY_TARGET="$(WEB_API_PROXY_TARGET)" NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"

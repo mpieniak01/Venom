@@ -191,6 +191,7 @@ tests/test_historian_agent.py
 tests/test_history_api.py
 tests/test_history_order_api.py
 tests/test_history_payload_details.py
+tests/test_http_lan_launchers.py
 tests/test_huggingface_skill.py
 tests/test_hybrid_model_router.py
 tests/test_ingestion_engine.py

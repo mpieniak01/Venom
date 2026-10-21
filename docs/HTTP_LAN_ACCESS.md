@@ -47,7 +47,10 @@ VENOM_LAN_ORIGINS in trusted_lan, without wildcards, covering fonts and HMR.
 configuration. Set the profile during a production build as well as startup.
 In LAN mode browser API calls use relative URLs, and event/audio WS use the
 panel origin even if an old public API/WS URL remains configured. The server API
-fallback is port 8800. `VENOM_PROXY_MAX_BODY_BYTES` defaults to 64 MiB; both declared
+fallback is port 8800. Generic Make passes its actual PORT (default 8000) rather
+than assuming the Full profile port. An explicit API_PROXY_TARGET and the selected
+dotenv file retain precedence; production builds also load that selected file.
+`VENOM_PROXY_MAX_BODY_BYTES` defaults to 64 MiB; both declared
 and chunked request bodies are bounded without buffering the whole upload.
 
 ## Operator access and localhost administration

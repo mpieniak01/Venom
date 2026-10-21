@@ -76,6 +76,7 @@ from venom_core.core.model_registry_types import (
     ModelStatus,
     OperationStatus,
 )
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -211,6 +212,7 @@ class ModelRegistry:
     def get_model_capabilities(self, model_name: str) -> Optional[ModelCapabilities]:
         return operations_get_model_capabilities(self, model_name)
 
+    @admitted_operation("model_load", mutation=True)
     async def activate_model(self, model_name: str, runtime: str) -> bool:
         return await runtime_activate_model(self, model_name, runtime)
 

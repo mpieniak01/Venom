@@ -17,6 +17,7 @@ from venom_core.services.multi_runtime_profile_service import (
     build_default_profile,
     build_profile_response,
 )
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.services.runtime_controller import ServiceType, runtime_controller
 from venom_core.utils.logger import get_logger
 
@@ -185,6 +186,7 @@ async def get_multi_runtime_profile() -> MultiRuntimeProfileResponse:
     "/runtime/multi-runtime/profile",
     responses=MULTI_RUNTIME_PROFILE_RESPONSES,
 )
+@admitted_operation("runtime_profile", mutation=True)
 async def update_multi_runtime_profile(
     body: MultiRuntimeProfileUpdateRequest,
 ) -> MultiRuntimeProfileUpdateResponse:

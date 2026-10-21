@@ -13,6 +13,7 @@ from venom_core.execution.agent_contracts import (
 from venom_core.execution.agent_contracts import ConversationHistory as ChatHistory
 from venom_core.execution.maf_runtime import AgentRuntime as Kernel
 from venom_core.infrastructure.hardware_pi import HardwareBridge
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.llm_runtime import get_active_llm_runtime, infer_local_provider
 from venom_core.utils.logger import get_logger
 
@@ -320,6 +321,7 @@ def _build_voice_retry_history(
     return retry_history
 
 
+@admitted_operation("ollama_fallback", mutation=False)
 async def _ollama_native_call(
     chat_history: ChatHistory,
     max_tokens: int,

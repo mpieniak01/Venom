@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
+from venom_core.services.runtime_admission import get_runtime_admission
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -312,7 +313,8 @@ async def runtime_request_guard(
         snapshot.active_requests,
     )
     try:
-        yield snapshot
+        with get_runtime_admission().operation(kind=request_kind):
+            yield snapshot
     finally:
         with _STATE_LOCK:
             _STATE.active_requests = max(0, _STATE.active_requests - 1)

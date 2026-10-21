@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -122,6 +123,7 @@ class OllamaAgentLoop:
         )
         self.tool_handlers[name] = handler
 
+    @admitted_operation("ollama_agent_generation", mutation=False)
     def _call_ollama(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wywołuje Ollama /api/chat i zwraca sparsowany JSON."""
         payload: Dict[str, Any] = {

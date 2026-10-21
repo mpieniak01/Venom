@@ -14,6 +14,7 @@ import httpx
 from fastapi import HTTPException
 
 from venom_core.services.onnx_runtime_cleanup import release_onnx_runtime_best_effort
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.llm_runtime import (
     LifecycleStep,
     LifecycleSwitchState,
@@ -73,6 +74,7 @@ async def _release_multi_runtime_models(endpoint: str) -> bool:
         return False
 
 
+@admitted_operation("runtime_unload", mutation=True)
 async def release_runtime_resources(
     server_name: str,
     *,

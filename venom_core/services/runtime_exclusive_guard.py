@@ -11,6 +11,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from venom_core.config import SETTINGS
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -72,6 +73,7 @@ class RuntimeExclusiveGuard:
         self._acquired_at = None
         self._lock.release()
 
+    @admitted_operation("benchmark_preflight", mutation=True)
     async def preflight_for_benchmark(
         self,
         *,

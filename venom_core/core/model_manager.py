@@ -63,6 +63,7 @@ from venom_core.core.model_manager_versions import (
     register_version as register_version_impl,
 )
 from venom_core.services.onnx_runtime_cleanup import release_onnx_runtime_best_effort
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -270,6 +271,7 @@ class ModelManager(ModelManagerDiscoveryMixin):
             ),
         )
 
+    @admitted_operation("model_switch", mutation=True)
     def activate_version(self, version_id: str) -> bool:
         """
         Aktywuje wersję modelu (hot swap).
@@ -420,6 +422,7 @@ PARAMETER top_k 40
                 return str(candidate.resolve())
         return str(path)
 
+    @admitted_operation("adapter_load", mutation=True)
     def load_adapter_for_kernel(
         self, version_id: str, kernel_builder
     ) -> bool | tuple[Any, Any]:
@@ -836,6 +839,7 @@ PARAMETER top_k 40
             logger.error(f"Błąd podczas usuwania modelu: {e}")
             return False
 
+    @admitted_operation("model_unload", mutation=True)
     async def unload_all(self) -> bool:
         """
         Panic Button - wymusza zwolnienie pamięci VRAM/RAM.

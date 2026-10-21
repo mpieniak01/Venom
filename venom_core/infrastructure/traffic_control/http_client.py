@@ -6,6 +6,7 @@ import inspect
 import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -18,9 +19,31 @@ from venom_core.infrastructure.traffic_control.retry_policy import (
     RetryPolicy,
     is_retriable_http_error,
 )
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _runtime_request(client: Any, method: str, url: str, **kwargs: Any) -> bool:
+    path = urlsplit(url).path.rstrip("/")
+    return (
+        method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+        and (
+            path.endswith(
+                (
+                    "/chat/completions",
+                    "/completions",
+                    "/api/chat",
+                    "/api/generate",
+                    "/embeddings",
+                )
+            )
+            or "/daemon/" in path
+        )
+        and client.provider
+        in {"ollama", "vllm", "multi_runtime", "onnx", "local", "llm"}
+    )
 
 
 class TrafficControlledHttpClient:
@@ -94,6 +117,7 @@ class TrafficControlledHttpClient:
             return TrafficController(TrafficControlConfig())
         return get_traffic_controller()
 
+    @admitted_operation("runtime_http", when=_runtime_request)
     def request(
         self,
         method: str,
@@ -143,6 +167,7 @@ class TrafficControlledHttpClient:
         self._raise_request_failure(error=error, method=method, url=url)
         raise RuntimeError("unreachable")
 
+    @admitted_operation("runtime_http", when=_runtime_request)
     async def arequest(
         self,
         method: str,
@@ -199,6 +224,7 @@ class TrafficControlledHttpClient:
         raise RuntimeError("unreachable")
 
     @asynccontextmanager
+    @admitted_operation("runtime_http", when=_runtime_request)
     async def astream(
         self,
         method: str,

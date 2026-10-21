@@ -10,8 +10,10 @@ from __future__ import annotations
 import asyncio
 import os
 import sqlite3
+import sys
+import threading
 from collections.abc import Awaitable, Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
@@ -25,11 +27,50 @@ from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 
 RUNTIME_ADMISSION_API_VERSION = 1
+_MAX_OPERATIONS = 128
 _T = TypeVar("_T")
 _CURRENT_OPERATION: ContextVar[str | None] = ContextVar(
     "runtime_operation", default=None
 )
 _CURRENT_LEASE: ContextVar[str | None] = ContextVar("runtime_lease", default=None)
+_CURRENT_EXECUTION: ContextVar[tuple[int, int] | None] = ContextVar(
+    "runtime_execution", default=None
+)
+
+_HOST_LOCKS: dict[Path, tuple[int, int]] = {}
+_HOST_LOCKS_MUTEX = threading.Lock()
+
+
+def _own_host_namespace(database: Path) -> None:
+    """Fail closed when a second API process shares this runtime namespace."""
+    if not sys.platform.startswith("linux"):
+        raise RuntimeAdmissionError("runtime_topology_unsupported")
+    import fcntl  # Only the Linux application process uses this, never Codex tools.
+
+    path = database.resolve().with_suffix(".host.lock")
+    pid = os.getpid()
+    with _HOST_LOCKS_MUTEX:
+        previous = _HOST_LOCKS.get(path)
+        if previous is not None and previous[0] == pid:
+            return
+        if previous is not None:  # A fork inherited the parent's open descriptor.
+            os.close(previous[1])
+            del _HOST_LOCKS[path]
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            os.close(descriptor)
+            raise RuntimeAdmissionError("runtime_topology_unsupported") from exc
+        _HOST_LOCKS[path] = (pid, descriptor)
+
+
+def _execution_identity() -> tuple[int, int]:
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:
+        task = None
+    return threading.get_ident(), id(task)
 
 
 class RuntimeAdmissionError(HTTPException):
@@ -51,11 +92,13 @@ class RuntimeAdmission:
     def __init__(self, database: Path, *, enabled: bool = True) -> None:
         self.database = database
         self.enabled = enabled
+        self._tasks: set[asyncio.Task[Any]] = set()
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         ensure_data_mutation_allowed("runtime_admission")
         self.database.parent.mkdir(parents=True, exist_ok=True)
+        _own_host_namespace(self.database)
         connection = sqlite3.connect(self.database, timeout=5.0)
         connection.row_factory = sqlite3.Row
         try:
@@ -107,25 +150,36 @@ class RuntimeAdmission:
         return RuntimeLease(self, token)
 
     def snapshot(self) -> dict[str, Any]:
-        if not self.enabled:
-            return {
-                "api_version": RUNTIME_ADMISSION_API_VERSION,
-                "status": "disabled",
-                "active_operations": 0,
-            }
-        with self._transaction() as db:
-            lease = db.execute("SELECT * FROM lease").fetchone()
-            operations = db.execute("SELECT COUNT(*) FROM operation").fetchone()[0]
-            uncertain = db.execute(
-                "SELECT COUNT(*) FROM operation WHERE uncertain=1"
-            ).fetchone()[0]
-        status = "busy" if operations else "available"
+        """Observe without creating storage or requiring mutation permission."""
         result: dict[str, Any] = {
             "api_version": RUNTIME_ADMISSION_API_VERSION,
-            "status": status,
-            "active_operations": operations,
+            "status": "available" if self.enabled else "disabled",
+            "active_operations": 0,
         }
-        if uncertain:
+        if not self.enabled or not self.database.exists():
+            return result
+        try:
+            uri = self.database.resolve().as_uri() + "?mode=ro"
+            with sqlite3.connect(uri, uri=True, timeout=2.0) as db:
+                db.row_factory = sqlite3.Row
+                db.execute("BEGIN")  # A consistent read-only snapshot, never DDL.
+                lease = db.execute("SELECT * FROM lease").fetchone()
+                operations = db.execute("SELECT * FROM operation").fetchall()
+        except sqlite3.Error:
+            result.update(status="quarantined", code="runtime_ledger_unavailable")
+            return result
+        result.update(self._snapshot_rows(lease, operations))
+        return result
+
+    @staticmethod
+    def _snapshot_rows(
+        lease: sqlite3.Row | None, operations: list[sqlite3.Row]
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "status": "busy" if operations else "available",
+            "active_operations": len(operations),
+        }
+        if any(row["uncertain"] or row["pid"] != os.getpid() for row in operations):
             result["status"] = "quarantined"
         if lease is not None:
             result.update(
@@ -137,30 +191,93 @@ class RuntimeAdmission:
                 result["status"] = "cancelling" if lease["cancelled"] else "owned"
         return result
 
+    @staticmethod
+    def _ancestor(db: sqlite3.Connection) -> sqlite3.Row | None:
+        return db.execute(
+            "SELECT * FROM operation WHERE token=?",
+            (_CURRENT_OPERATION.get(),),
+        ).fetchone()
+
+    @staticmethod
+    def _validate_lease(
+        db: sqlite3.Connection,
+        *,
+        token: str | None,
+        kind: str,
+        cleanup: bool,
+        ancestor: sqlite3.Row | None,
+        nested: bool = False,
+    ) -> None:
+        lease = db.execute("SELECT * FROM lease").fetchone()
+        if lease is None:
+            if token is not None:
+                raise RuntimeAdmissionError("runtime_lease_invalid")
+            return
+        if token != lease["token"] or (
+            not cleanup and (lease["quarantine"] or lease["cancelled"])
+        ):
+            raise RuntimeAdmissionError()
+        # A lifecycle task can delegate one real operation to its owned thread.
+        # Context copying never admits two generations in parallel.
+        if nested:
+            return
+        active = db.execute(
+            "SELECT kind FROM operation WHERE lease_token=?", (token,)
+        ).fetchall()
+        delegated = (
+            ancestor is not None
+            and ancestor["kind"] == "lifecycle"
+            and ancestor["lease_token"] == token
+        )
+        if active and (
+            not delegated
+            or kind == "lifecycle"
+            or any(row["kind"] != "lifecycle" for row in active)
+        ):
+            raise RuntimeAdmissionError()
+
     def _enter(
-        self, kind: str, *, mutation: bool = False, token: str | None = None
+        self,
+        kind: str,
+        *,
+        mutation: bool = False,
+        token: str | None = None,
+        detached: bool = False,
+        cleanup: bool = False,
     ) -> str | None:
         if not self.enabled:
             return None
-        # The outer operation's context is a capability, not just a claimed owner.
-        inherited = _CURRENT_OPERATION.get()
         with self._transaction() as db:
+            ancestor = self._ancestor(db)
+            if ancestor is not None and ancestor["kind"] == "cleanup" and not cleanup:
+                raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
+            nested = (
+                ancestor is not None
+                and ancestor["kind"] != "lifecycle"
+                and _CURRENT_EXECUTION.get() == _execution_identity()
+                and not detached
+            )
+            self._validate_lease(
+                db,
+                token=token,
+                kind=kind,
+                cleanup=cleanup,
+                ancestor=ancestor,
+                nested=nested,
+            )
             if (
-                inherited
-                and db.execute(
-                    "SELECT 1 FROM operation WHERE token=? AND uncertain=0",
-                    (inherited,),
-                ).fetchone()
+                nested
+                and ancestor is not None
+                and (kind != "cleanup" or ancestor["kind"] == "cleanup")
             ):
                 return None
-            lease = db.execute("SELECT * FROM lease").fetchone()
-            if lease is not None:
-                if token != lease["token"] or lease["quarantine"] or lease["cancelled"]:
-                    raise RuntimeAdmissionError()
-            elif token is not None:
-                raise RuntimeAdmissionError("runtime_lease_invalid")
             if mutation and db.execute("SELECT 1 FROM operation").fetchone():
                 raise RuntimeAdmissionError()
+            if (
+                db.execute("SELECT COUNT(*) FROM operation").fetchone()[0]
+                >= _MAX_OPERATIONS
+            ):
+                raise RuntimeAdmissionError("runtime_recovery_required")
             operation = uuid4().hex
             db.execute(
                 "INSERT INTO operation (token,lease_token,kind,pid) VALUES (?,?,?,?)",
@@ -177,6 +294,7 @@ class RuntimeAdmission:
             ).fetchone()
             if row is None:
                 return
+            uncertain = uncertain or bool(row["uncertain"])
             if uncertain and row["lease_token"]:
                 db.execute(
                     "UPDATE lease SET quarantine=1 WHERE token=?", (row["lease_token"],)
@@ -199,12 +317,14 @@ class RuntimeAdmission:
         mutation: bool = False,
         lease_token: str | None = None,
         confirm_quiescent: Callable[[], bool] | None = None,
+        _cleanup: bool = False,
     ) -> Iterator[None]:
         """Cover real work, not just queueing it or waiting on its HTTP caller."""
         token = lease_token or _CURRENT_LEASE.get()
-        operation = self._enter(kind, mutation=mutation, token=token)
+        operation = self._enter(kind, mutation=mutation, token=token, cleanup=_cleanup)
         context = _CURRENT_OPERATION.set(operation or _CURRENT_OPERATION.get())
         lease_context = _CURRENT_LEASE.set(token)
+        execution_context = _CURRENT_EXECUTION.set(_execution_identity())
         uncertain = False
         try:
             yield
@@ -212,9 +332,48 @@ class RuntimeAdmission:
             uncertain = confirm_quiescent is None or not confirm_quiescent()
             raise
         finally:
+            if uncertain and operation is None:
+                self.mark_current_uncertain()
+            _CURRENT_EXECUTION.reset(execution_context)
             _CURRENT_LEASE.reset(lease_context)
             _CURRENT_OPERATION.reset(context)
             self._finish(operation, uncertain=uncertain)
+
+    def mark_current_uncertain(self) -> None:
+        """Keep failure evidence even if a legacy caller catches an exception."""
+        if not self.enabled or _CURRENT_OPERATION.get() is None:
+            return
+        operation = _CURRENT_OPERATION.get()
+        with self._transaction() as db:
+            db.execute("UPDATE operation SET uncertain=1 WHERE token=?", (operation,))
+            db.execute(
+                "UPDATE lease SET quarantine=1 WHERE token IN (SELECT lease_token FROM operation WHERE token=?)",
+                (operation,),
+            )
+
+    def reserve_background(self, *, kind: str) -> Callable[[Callable[[], Any]], Any]:
+        """Reserve before spawning a thread; invoke returned function exactly once.
+
+        Only host scheduling code uses this. The reservation survives the
+        caller returning and is removed when the real worker terminates.
+        """
+        operation = self._enter(kind, detached=True)
+
+        def execute(function: Callable[[], Any]) -> Any:
+            context = _CURRENT_OPERATION.set(operation)
+            execution = _CURRENT_EXECUTION.set(_execution_identity())
+            uncertain = False
+            try:
+                return function()
+            except BaseException:
+                uncertain = True
+                raise
+            finally:
+                _CURRENT_EXECUTION.reset(execution)
+                _CURRENT_OPERATION.reset(context)
+                self._finish(operation, uncertain=uncertain)
+
+        return execute
 
     def _cancel(self, token: str) -> None:
         with self._transaction() as db:
@@ -287,6 +446,24 @@ class RuntimeLease:
         ):
             yield
 
+    @contextmanager
+    def cleanup(self, *, confirm_quiescent: Callable[[], bool]) -> Iterator[None]:
+        """Only release this adapter's resources; generation is forbidden here."""
+        with self._admission.operation(
+            kind="cleanup",
+            lease_token=self._token,
+            confirm_quiescent=confirm_quiescent,
+            _cleanup=True,
+        ):
+            yield
+            if not confirm_quiescent():
+                raise RuntimeAdmissionError("runtime_quiescence_unconfirmed")
+        with self._admission._transaction() as db:
+            db.execute("UPDATE lease SET quarantine=0 WHERE token=?", (self._token,))
+            db.execute(
+                "UPDATE operation SET uncertain=0 WHERE lease_token=?", (self._token,)
+            )
+
     async def run(
         self,
         factory: Callable[[], Awaitable[_T]],
@@ -300,14 +477,19 @@ class RuntimeLease:
         """
 
         async def execute() -> _T:
-            with self.operation(confirm_quiescent=confirm_quiescent):
+            with self.operation(kind="lifecycle", confirm_quiescent=confirm_quiescent):
                 return await factory()
 
         task = asyncio.create_task(execute())
-        # A cancelled waiter cannot retrieve a late worker exception itself.
-        task.add_done_callback(
-            lambda done: None if done.cancelled() else done.exception()
-        )
+        # Keep a strong reference even if the HTTP waiter disappears.
+        self._admission._tasks.add(task)
+
+        def finished(done: asyncio.Task[Any]) -> None:
+            self._admission._tasks.discard(done)
+            if not done.cancelled():
+                done.exception()
+
+        task.add_done_callback(finished)
         try:
             return await asyncio.shield(task)
         except asyncio.CancelledError:
@@ -341,8 +523,15 @@ def get_runtime_admission() -> RuntimeAdmission:
     return _ADMISSION
 
 
-def admitted_operation(kind: str, *, mutation: bool = False) -> Callable[[Any], Any]:
+def admitted_operation(
+    kind: str, *, mutation: bool = False, when: Callable[..., bool] | None = None
+) -> Callable[[Any], Any]:
     """Guard sync, async and streaming host entrypoints without changing results."""
+
+    def scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        if when is not None and not when(*args, **kwargs):
+            return nullcontext()
+        return get_runtime_admission().operation(kind=kind, mutation=mutation)
 
     def decorate(function: Any) -> Any:
         import inspect
@@ -351,7 +540,7 @@ def admitted_operation(kind: str, *, mutation: bool = False) -> Callable[[Any], 
 
             @wraps(function)
             async def stream(*args: Any, **kwargs: Any) -> Any:
-                with get_runtime_admission().operation(kind=kind, mutation=mutation):
+                with scope(args, kwargs):
                     async for item in function(*args, **kwargs):
                         yield item
 
@@ -360,7 +549,7 @@ def admitted_operation(kind: str, *, mutation: bool = False) -> Callable[[Any], 
 
             @wraps(function)
             async def asynchronous(*args: Any, **kwargs: Any) -> Any:
-                with get_runtime_admission().operation(kind=kind, mutation=mutation):
+                with scope(args, kwargs):
                     return await function(*args, **kwargs)
 
             return asynchronous
@@ -368,14 +557,14 @@ def admitted_operation(kind: str, *, mutation: bool = False) -> Callable[[Any], 
 
             @wraps(function)
             def generator(*args: Any, **kwargs: Any) -> Any:
-                with get_runtime_admission().operation(kind=kind, mutation=mutation):
+                with scope(args, kwargs):
                     yield from function(*args, **kwargs)
 
             return generator
 
         @wraps(function)
         def synchronous(*args: Any, **kwargs: Any) -> Any:
-            with get_runtime_admission().operation(kind=kind, mutation=mutation):
+            with scope(args, kwargs):
                 return function(*args, **kwargs)
 
         return synchronous

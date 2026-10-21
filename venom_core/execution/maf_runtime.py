@@ -16,6 +16,7 @@ from venom_core.execution.agent_contracts import (
     ConversationHistory,
     ConversationMessage,
 )
+from venom_core.services.runtime_admission import admitted_operation
 
 if TYPE_CHECKING:
     from agent_framework import AgentResponse, ChatContext, ChatResponse, Message
@@ -250,6 +251,7 @@ class MafChatService:
             options["extra_body"] = extensions
         return cast("OpenAIChatCompletionOptions", options)
 
+    @admitted_operation("maf_generation", mutation=False)
     async def get_chat_message_content(
         self,
         *,
@@ -306,6 +308,7 @@ class MafChatService:
     async def get_chat_message_contents(self, **kwargs):
         return [await self.get_chat_message_content(**kwargs)]
 
+    @admitted_operation("maf_stream", mutation=False)
     async def get_streaming_chat_message_contents(
         self,
         *,

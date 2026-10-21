@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from venom_core.config import SETTINGS
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -289,6 +290,7 @@ class OnnxLlmClient:
         except Exception:
             return fallback
 
+    @admitted_operation("onnx_generation", mutation=False)
     def stream_generate(
         self,
         *,
@@ -350,6 +352,7 @@ class OnnxLlmClient:
             )
         )
 
+    @admitted_operation("onnx_unload", mutation=True)
     def close(self) -> None:
         """Release model/tokenizer references to allow runtime memory cleanup."""
         with self._lock:

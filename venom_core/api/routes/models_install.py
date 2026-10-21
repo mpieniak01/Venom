@@ -32,6 +32,7 @@ from venom_core.services.feedback_loop_policy import (
     resolve_feedback_loop_model,
 )
 from venom_core.services.ollama_runtime_policy import enforce_single_loaded_ollama_model
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.services.runtime_switch_telemetry import (
     assert_runtime_switch_ownership_token,
     assert_runtime_switch_source_allowed,
@@ -664,6 +665,7 @@ async def install_model(
         500: {"description": "Błąd serwera podczas zmiany modelu"},
     },
 )
+@admitted_operation("model_switch", mutation=True)
 async def switch_model(request: ModelSwitchRequest):
     """
     Zmienia aktywny model dla okreslonej roli.

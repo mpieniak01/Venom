@@ -43,6 +43,7 @@ from venom_core.services.feedback_loop_policy import (
 )
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
 from venom_core.services.ollama_runtime_policy import enforce_single_loaded_ollama_model
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.services.runtime_switch_gate import (
     begin_runtime_switch,
     finish_runtime_switch,
@@ -2136,6 +2137,7 @@ async def get_llm_servers():
     "/system/llm-servers/{server_name}/{action}",
     responses=LLM_SERVER_CONTROL_RESPONSES,
 )
+@admitted_operation("runtime_command", mutation=True)
 async def control_llm_server(server_name: str, action: str):
     """
     Wykonuje akcję (start/stop/restart) na wskazanym serwerze LLM.
@@ -2290,6 +2292,7 @@ def get_llm_runtime_queue_snapshot():
     "/system/llm-runtime/active",
     responses=LLM_RUNTIME_ACTIVATE_RESPONSES,
 )
+@admitted_operation("runtime_switch", mutation=True)
 async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     Przelacza runtime LLM na provider (openai/google/onnx).
@@ -2738,6 +2741,7 @@ async def _resolve_switch_model_selection(
     return selected_model, last_model_key, feedback_resolution
 
 
+@admitted_operation("runtime_switch", mutation=True)
 async def _set_active_llm_server_impl(
     *,
     request: ActiveLlmServerRequest,

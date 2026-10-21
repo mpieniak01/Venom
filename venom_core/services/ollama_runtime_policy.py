@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from venom_core.services.runtime_admission import admitted_operation
+
 
 def _resolve_ollama_base_url(endpoint: str | None) -> str:
     value = str(endpoint or "").strip()
@@ -36,6 +38,7 @@ def _extract_loaded_model_names(payload: Any) -> list[str]:
     return loaded
 
 
+@admitted_operation("ollama_unload", mutation=True)
 async def enforce_single_loaded_ollama_model(
     *, endpoint: str | None, selected_model: str | None
 ) -> dict[str, Any]:

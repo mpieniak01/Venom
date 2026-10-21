@@ -66,7 +66,10 @@ with lease.cleanup(confirm_quiescent=self.is_quiescent):
 A lifecycle delegates one actual operation to its own thread. Two concurrent
 generations are refused. Context-manager enter/exit must occur in the same
 execution context; do not enter in a load thread and exit in a different thread.
-Cleanup is permitted after cancel/quarantine and cannot admit generation.
+Cleanup is permitted after cancel/quarantine and cannot admit generation. Its
+quiescence check also runs when the cleanup body raises: a verified joined worker
+clears owned quarantine while preserving that error; an unconfirmed worker remains
+quarantined.
 
 `cancel()` prevents subsequent work; it does not terminate a worker or release
 ownership. `run(factory)` retains a strong reference to its shielded worker, so

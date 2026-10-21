@@ -26,6 +26,24 @@ def acquire(admission, run="run-1"):
     )
 
 
+def run_scoped(scope, failure=None):
+    """Exercise one admitted action, distinguishing entry from a body failure."""
+    with scope:
+        if failure is not None:
+            raise failure
+        return "admitted"
+
+
+async def invoke_host_entrypoint(function, args, kwargs, stream):
+    if stream == "async":
+        return await function(*args, **kwargs)
+    if stream == "async_stream":
+        return [item async for item in function(*args, **kwargs)]
+    if stream == "sync_stream":
+        return list(function(*args, **kwargs))
+    return function(*args, **kwargs)
+
+
 def test_disabled_is_fail_closed_without_creating_files(tmp_path):
     value = RuntimeAdmission(tmp_path / "disabled.sqlite3", enabled=False)
     with value.operation(kind="existing_chat"):
@@ -47,9 +65,9 @@ def test_unqualified_worker_topology_is_rejected(admission, monkeypatch, name, v
 def test_exclusive_owner_blocks_host_and_wrong_capability(admission):
     lease = acquire(admission)
     assert admission.snapshot()["owner"] == "cooperation_lab"
+    scope = admission.operation(kind="chat")
     with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
-        with admission.operation(kind="chat"):
-            pytest.fail("chat cannot enter while lab owns its runtime")
+        run_scoped(scope)
     with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
         acquire(admission, "run-2")
     foreign = replace(lease, _token="forged")
@@ -79,9 +97,9 @@ def test_cancel_never_frees_active_operation(admission):
         assert not lease.release()
         assert not lease.recover(confirm_quiescent=lambda: True)
         assert admission.snapshot()["status"] == "cancelling"
+    scope = lease.operation()
     with pytest.raises(RuntimeAdmissionError):
-        with lease.operation():
-            pytest.fail("cancelled lease started another operation")
+        run_scoped(scope)
     assert lease.release()
 
 
@@ -113,9 +131,10 @@ async def test_waiter_cancel_keeps_actual_worker_owned_until_late_completion(adm
 
 def test_failed_adapter_quarantines_and_requires_trusted_quiescence(admission):
     lease = acquire(admission)
-    with pytest.raises(RuntimeError):
-        with lease.operation():
-            raise RuntimeError("adapter failed before confirming process exit")
+    scope = lease.operation()
+    failure = RuntimeError("adapter failed before confirming process exit")
+    with pytest.raises(RuntimeError, match="adapter failed"):
+        run_scoped(scope, failure)
     assert admission.snapshot()["status"] == "quarantined"
     assert not lease.release()
     assert not lease.recover(confirm_quiescent=lambda: False)
@@ -125,9 +144,10 @@ def test_failed_adapter_quarantines_and_requires_trusted_quiescence(admission):
 
 def test_terminal_model_failure_with_confirmed_join_is_not_quarantined(admission):
     lease = acquire(admission)
-    with pytest.raises(ValueError):
-        with lease.operation(confirm_quiescent=lambda: True):
-            raise ValueError("model rejected input after worker joined")
+    scope = lease.operation(confirm_quiescent=lambda: True)
+    failure = ValueError("model rejected input after worker joined")
+    with pytest.raises(ValueError, match="model rejected"):
+        run_scoped(scope, failure)
     assert lease.release()
 
 
@@ -189,8 +209,9 @@ async def test_child_task_cannot_reuse_parent_operation_as_its_own(admission):
             pytest.fail("parallel mutation bypassed parent generation")
 
     with admission.operation(kind="chat"):
+        task = asyncio.create_task(mutation())
         with pytest.raises(RuntimeAdmissionError):
-            await asyncio.create_task(mutation())
+            await task
 
 
 def test_reserved_background_worker_has_no_queue_admission_gap(admission):
@@ -210,15 +231,16 @@ def test_reserved_background_worker_has_no_queue_admission_gap(admission):
 
 
 def test_uncertain_host_transport_prevents_experiment_and_switch(admission):
-    with pytest.raises(TimeoutError):
-        with admission.operation(kind="chat_stream"):
-            raise TimeoutError("socket ended without a terminal generation packet")
+    scope = admission.operation(kind="chat_stream")
+    failure = TimeoutError("socket ended without a terminal generation packet")
+    with pytest.raises(TimeoutError, match="terminal generation packet"):
+        run_scoped(scope, failure)
     assert admission.snapshot()["status"] == "quarantined"
     with pytest.raises(RuntimeAdmissionError):
         acquire(admission)
+    scope = admission.operation(kind="stop", mutation=True)
     with pytest.raises(RuntimeAdmissionError):
-        with admission.operation(kind="stop", mutation=True):
-            pytest.fail("uncertain generation may still occupy the daemon")
+        run_scoped(scope)
     assert not admission.recover(confirm_quiescent=lambda: False)
     assert admission.recover(confirm_quiescent=lambda: True)
     assert acquire(admission).release()
@@ -368,15 +390,7 @@ async def test_real_host_entrypoints_reject_while_experiment_owns_runtime(
         function = getattr(function, name)
     lease = acquire(admission)
     with pytest.raises(RuntimeAdmissionError):
-        if stream == "async":
-            await function(*args, **kwargs)
-        elif stream == "async_stream":
-            async for _ in function(*args, **kwargs):
-                pytest.fail("stream unexpectedly admitted")
-        elif stream == "sync_stream":
-            list(function(*args, **kwargs))
-        else:
-            function(*args, **kwargs)
+        await invoke_host_entrypoint(function, args, kwargs, stream)
     assert lease.release()
 
 
@@ -388,9 +402,13 @@ async def test_existing_runtime_request_guard_and_http_paths_are_integrated(admi
     from venom_core.services.runtime_switch_gate import runtime_request_guard
 
     lease = acquire(admission)
-    with pytest.raises(RuntimeAdmissionError):
+
+    async def guarded_request():
         async with runtime_request_guard(request_kind="simple_chat"):
-            pytest.fail("existing simple/voice guard did not honor lab lease")
+            return "admitted"
+
+    with pytest.raises(RuntimeAdmissionError):
+        await guarded_request()
     async with TrafficControlledHttpClient(provider="ollama") as client:
         with pytest.raises(RuntimeAdmissionError):
             await client.apost("http://127.0.0.1:11434/api/chat", json={})
@@ -473,18 +491,19 @@ def test_cleanup_after_failure_requires_verified_quiescence_and_forbids_generati
     admission,
 ):
     lease = acquire(admission)
-    with pytest.raises(RuntimeError):
-        with lease.operation():
-            raise RuntimeError("worker failed")
+    scope = lease.operation()
+    failure = RuntimeError("worker failed")
+    with pytest.raises(RuntimeError, match="worker failed"):
+        run_scoped(scope, failure)
     lease.cancel()
+    cleanup = lease.cleanup(confirm_quiescent=lambda: False)
     with pytest.raises(RuntimeAdmissionError, match="runtime_quiescence_unconfirmed"):
-        with lease.cleanup(confirm_quiescent=lambda: False):
-            pass
+        run_scoped(cleanup)
     assert not lease.release()
     with lease.cleanup(confirm_quiescent=lambda: True):
+        scope = lease.operation()
         with pytest.raises(RuntimeAdmissionError):
-            with lease.operation():
-                pytest.fail("cleanup admitted another generation")
+            run_scoped(scope)
     assert lease.release()
 
 
@@ -506,9 +525,10 @@ def test_readonly_snapshot_is_side_effect_free_even_when_mutations_denied(
 def test_orphaned_host_operation_is_reported_as_quarantine_after_restart(
     admission, monkeypatch
 ):
-    with pytest.raises(TimeoutError):
-        with admission.operation(kind="chat"):
-            raise TimeoutError("unconfirmed daemon generation")
+    scope = admission.operation(kind="chat")
+    failure = TimeoutError("unconfirmed daemon generation")
+    with pytest.raises(TimeoutError, match="unconfirmed daemon generation"):
+        run_scoped(scope, failure)
     with admission._transaction() as db:
         db.execute("UPDATE operation SET pid=999999")
     assert admission.snapshot()["status"] == "quarantined"
@@ -589,12 +609,13 @@ def test_nested_caught_transport_failure_remains_visible_to_admission(admission)
 def test_uncertain_operation_ledger_has_bounded_growth(admission, monkeypatch):
     monkeypatch.setattr(admission_module, "_MAX_OPERATIONS", 2)
     for _ in range(2):
-        with pytest.raises(TimeoutError):
-            with admission.operation(kind="transport"):
-                raise TimeoutError("terminal completion unknown")
+        scope = admission.operation(kind="transport")
+        failure = TimeoutError("terminal completion unknown")
+        with pytest.raises(TimeoutError, match="terminal completion unknown"):
+            run_scoped(scope, failure)
+    scope = admission.operation(kind="new_work")
     with pytest.raises(RuntimeAdmissionError, match="runtime_recovery_required"):
-        with admission.operation(kind="new_work"):
-            pytest.fail("full evidence ledger admitted more work")
+        run_scoped(scope)
     assert admission.snapshot()["active_operations"] == 2
     assert admission.recover(confirm_quiescent=lambda: True)
 
@@ -621,9 +642,9 @@ async def test_nested_mutation_still_respects_independent_active_generation(admi
     other = asyncio.create_task(independent_chat())
     await started.wait()
     with admission.operation(kind="benchmark_start"):
+        scope = admission.operation(kind="model_unload", mutation=True)
         with pytest.raises(RuntimeAdmissionError):
-            with admission.operation(kind="model_unload", mutation=True):
-                pytest.fail("nested mutation bypassed another chat's generation")
+            run_scoped(scope)
     finish.set()
     await other
 
@@ -803,3 +824,27 @@ def test_unsafe_host_lock_does_not_rewrite_external_file_or_create_ledger(tmp_pa
         acquire(value)
     assert not database.exists()
     assert target.read_text() == "unrelated file"
+
+
+@pytest.mark.parametrize("quiescent", [False, True])
+def test_cleanup_body_failure_still_reconciles_only_verified_quiescence(
+    admission, quiescent
+):
+    lease = acquire(admission)
+    scope = lease.operation()
+    generation_error = RuntimeError("generation worker failed")
+    with pytest.raises(RuntimeError, match="generation worker failed"):
+        run_scoped(scope, generation_error)
+    lease.cancel()
+    cleanup = lease.cleanup(confirm_quiescent=lambda: quiescent)
+    cleanup_error = ValueError("housekeeping failed after worker close")
+    expected = ValueError if quiescent else RuntimeAdmissionError
+    message = "housekeeping failed" if quiescent else "runtime_quiescence_unconfirmed"
+    with pytest.raises(expected, match=message):
+        run_scoped(cleanup, cleanup_error)
+    assert admission.snapshot()["active_operations"] == 0
+    assert lease.release() is quiescent
+    if quiescent:
+        assert acquire(admission, "after-verified-cleanup").release()
+    else:
+        assert admission.snapshot()["status"] == "quarantined"

@@ -19,7 +19,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -29,7 +29,7 @@ from venom_core.core.environment_policy import ensure_data_mutation_allowed
 
 RUNTIME_ADMISSION_API_VERSION = 1
 _MAX_OPERATIONS = 128
-_T = TypeVar("_T")
+_SELECT_LEASE = "SELECT * FROM lease"
 _CURRENT_OPERATION: ContextVar[str | None] = ContextVar(
     "runtime_operation", default=None
 )
@@ -209,7 +209,7 @@ class RuntimeAdmission:
             with closing(sqlite3.connect(uri, uri=True, timeout=2.0)) as db:
                 db.row_factory = sqlite3.Row
                 db.execute("BEGIN")  # A consistent read-only snapshot, never DDL.
-                lease = db.execute("SELECT * FROM lease").fetchone()
+                lease = db.execute(_SELECT_LEASE).fetchone()
                 operations = db.execute("SELECT * FROM operation").fetchall()
         except sqlite3.Error:
             result.update(status="quarantined", code="runtime_ledger_unavailable")
@@ -266,7 +266,7 @@ class RuntimeAdmission:
         ancestor: sqlite3.Row | None,
         nested: bool = False,
     ) -> None:
-        lease = db.execute("SELECT * FROM lease").fetchone()
+        lease = db.execute(_SELECT_LEASE).fetchone()
         if lease is None:
             if token is not None:
                 raise RuntimeAdmissionError("runtime_lease_invalid")
@@ -443,7 +443,7 @@ class RuntimeAdmission:
 
     def _release(self, token: str) -> bool:
         with self._transaction() as db:
-            row = db.execute("SELECT * FROM lease").fetchone()
+            row = db.execute(_SELECT_LEASE).fetchone()
             if row is None:
                 return True
             if row["token"] != token:
@@ -511,34 +511,44 @@ class RuntimeLease:
     @contextmanager
     def cleanup(self, *, confirm_quiescent: Callable[[], bool]) -> Iterator[None]:
         """Only release this adapter's resources; generation is forbidden here."""
-        with self._admission.operation(
-            kind="cleanup",
-            lease_token=self._token,
-            confirm_quiescent=confirm_quiescent,
-            _cleanup=True,
-        ):
-            yield
-            if not confirm_quiescent():
-                raise RuntimeAdmissionError("runtime_quiescence_unconfirmed")
-        with self._admission._transaction() as db:
-            db.execute("UPDATE lease SET quarantine=0 WHERE token=?", (self._token,))
-            db.execute(
-                "UPDATE operation SET uncertain=0 WHERE lease_token=?", (self._token,)
-            )
+        verified = False
+        try:
+            with self._admission.operation(
+                kind="cleanup",
+                lease_token=self._token,
+                confirm_quiescent=confirm_quiescent,
+                _cleanup=True,
+            ):
+                try:
+                    yield
+                finally:
+                    verified = confirm_quiescent()
+                    if not verified:
+                        raise RuntimeAdmissionError("runtime_quiescence_unconfirmed")
+        finally:
+            if verified:
+                with self._admission._transaction() as db:
+                    db.execute(
+                        "UPDATE lease SET quarantine=0 WHERE token=?", (self._token,)
+                    )
+                    db.execute(
+                        "UPDATE operation SET uncertain=0 WHERE lease_token=?",
+                        (self._token,),
+                    )
 
-    async def run(
+    async def run[T](
         self,
-        factory: Callable[[], Awaitable[_T]],
+        factory: Callable[[], Awaitable[T]],
         *,
         confirm_quiescent: Callable[[], bool] | None = None,
-    ) -> _T:
+    ) -> T:
         """Keep ownership until the actual task finishes, despite waiter cancel.
 
         Adapters must await their child process/CUDA completion before returning.
         A bounded model request may continue while the run is cancelling.
         """
 
-        async def execute() -> _T:
+        async def execute() -> T:
             with self.operation(kind="lifecycle", confirm_quiescent=confirm_quiescent):
                 return await factory()
 

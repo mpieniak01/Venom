@@ -38,6 +38,16 @@ _CURRENT_EXECUTION: ContextVar[tuple[int, int] | None] = ContextVar(
     "runtime_execution", default=None
 )
 
+
+@dataclass
+class _OperationEvidence:
+    revision: object
+
+
+_CURRENT_EVIDENCE: ContextVar[_OperationEvidence | None] = ContextVar(
+    "runtime_operation_evidence", default=None
+)
+
 _HOST_LOCKS: dict[Path, tuple[int, int]] = {}
 _HOST_LOCKS_MUTEX = threading.Lock()
 
@@ -72,6 +82,28 @@ def _execution_identity() -> tuple[int, int]:
     except RuntimeError:
         task = None
     return threading.get_ident(), id(task)
+
+
+class RuntimeOperationRejection:
+    """Typed host-transport proof bound to the operation that was rejected.
+
+    Only a transport that observes rejection before accepting a response creates
+    this marker. A status number/message supplied by a caller is never proof.
+    """
+
+    def __init__(self) -> None:
+        self._rejected_operation = _CURRENT_OPERATION.get()
+        evidence = _CURRENT_EVIDENCE.get()
+        self._revision = evidence.revision if evidence is not None else None
+
+    def confirms_rejection(self, operation: str | None) -> bool:
+        evidence = _CURRENT_EVIDENCE.get()
+        return (
+            operation is not None
+            and self._rejected_operation == operation
+            and evidence is not None
+            and self._revision is evidence.revision
+        )
 
 
 class RuntimeAdmissionError(HTTPException):
@@ -384,14 +416,27 @@ class RuntimeAdmission:
         """Cover real work, not just queueing it or waiting on its HTTP caller."""
         token = lease_token or _CURRENT_LEASE.get()
         operation = self._enter(kind, mutation=mutation, token=token, cleanup=_cleanup)
+        evidence = _CURRENT_EVIDENCE.get()
+        if operation is not None or evidence is None:
+            evidence = _OperationEvidence(object())
+        else:
+            # Nested work shares the operation ID, but never an earlier rejection
+            # proof. Mutating its shared revision survives ContextVar restoration.
+            evidence.revision = object()
+        evidence_context = _CURRENT_EVIDENCE.set(evidence)
         context = _CURRENT_OPERATION.set(operation or _CURRENT_OPERATION.get())
         lease_context = _CURRENT_LEASE.set(token)
         execution_context = _CURRENT_EXECUTION.set(_execution_identity())
         uncertain = False
         try:
             yield
-        except BaseException:
-            uncertain = confirm_quiescent is None or not confirm_quiescent()
+        except BaseException as exc:
+            rejected = isinstance(
+                exc, RuntimeOperationRejection
+            ) and exc.confirms_rejection(_CURRENT_OPERATION.get())
+            uncertain = not rejected and (
+                confirm_quiescent is None or not confirm_quiescent()
+            )
             raise
         finally:
             if uncertain and operation is None:
@@ -399,6 +444,7 @@ class RuntimeAdmission:
             _CURRENT_EXECUTION.reset(execution_context)
             _CURRENT_LEASE.reset(lease_context)
             _CURRENT_OPERATION.reset(context)
+            _CURRENT_EVIDENCE.reset(evidence_context)
             self._finish(operation, uncertain=uncertain)
 
     def mark_current_uncertain(self) -> None:

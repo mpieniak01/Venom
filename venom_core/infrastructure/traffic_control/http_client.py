@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import inspect
+import json
 import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
@@ -19,7 +22,10 @@ from venom_core.infrastructure.traffic_control.retry_policy import (
     RetryPolicy,
     is_retriable_http_error,
 )
-from venom_core.services.runtime_admission import admitted_operation
+from venom_core.services.runtime_admission import (
+    RuntimeOperationRejection,
+    admitted_operation,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -44,6 +50,66 @@ def _runtime_request(client: Any, method: str, url: str, **kwargs: Any) -> bool:
         and client.provider
         in {"ollama", "vllm", "multi_runtime", "onnx", "local", "llm"}
     )
+
+
+_REJECTED_BEFORE_WORK = frozenset({400, 401, 403, 404, 405, 413, 415, 422})
+_ERROR_BODY_LIMIT = 2048
+_RUNTIME_ERROR_DIAGNOSTIC = "venom_runtime_error_diagnostic"
+
+
+class _RuntimeHttpRejection(httpx.HTTPStatusError, RuntimeOperationRejection):
+    """Actual pre-response rejection, retaining the normal HTTP exception ABI."""
+
+    def __init__(self, error: httpx.HTTPStatusError) -> None:
+        httpx.HTTPStatusError.__init__(
+            self, str(error), request=error.request, response=error.response
+        )
+        RuntimeOperationRejection.__init__(self)
+
+
+def _error_reason(body: bytes) -> str:
+    """Return only fixed reason codes; an upstream body may contain secrets."""
+    try:
+        payload = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return "unspecified"
+    if not isinstance(payload, dict):
+        return "unspecified"
+    message = payload.get("error")
+    if isinstance(message, dict):
+        message = message.get("message")
+    if not isinstance(message, str):
+        return "unspecified"
+    message = message.lower()
+    if "thinking" in message and ("not support" in message or "unsupported" in message):
+        return "unsupported_thinking"
+    if "model" in message and "not found" in message:
+        return "model_not_found"
+    if "model" in message and "required" in message:
+        return "model_required"
+    return "unspecified"
+
+
+async def _capture_runtime_error(response: httpx.Response) -> None:
+    """Bound both bytes and time; never retain raw body in browser diagnostics."""
+    body = bytearray()
+    read_complete = False
+    try:
+        async with asyncio.timeout(0.25):
+            async for chunk in response.aiter_bytes(chunk_size=_ERROR_BODY_LIMIT):
+                body.extend(chunk[: _ERROR_BODY_LIMIT - len(body)])
+                if len(body) == _ERROR_BODY_LIMIT:
+                    break
+            else:
+                read_complete = True
+    except (httpx.HTTPError, TimeoutError, RuntimeError):
+        pass
+    response.extensions[_RUNTIME_ERROR_DIAGNOSTIC] = {
+        "reason_code": _error_reason(bytes(body)),
+        "body_prefix_sha256": hashlib.sha256(body).hexdigest(),
+        "sampled_bytes": len(body),
+        "truncated_or_incomplete": not read_complete,
+    }
 
 
 class TrafficControlledHttpClient:
@@ -447,9 +513,18 @@ class TrafficControlledHttpClient:
     ) -> AsyncIterator[httpx.Response]:
         async with self._async_client.stream(method, url, **kwargs) as response:
             if raise_for_status:
-                raise_result = response.raise_for_status()
-                if inspect.isawaitable(raise_result):
-                    await raise_result
+                try:
+                    raise_result = response.raise_for_status()
+                    if inspect.isawaitable(raise_result):
+                        await raise_result
+                except httpx.HTTPStatusError as exc:
+                    if _runtime_request(self, method, url) and isinstance(
+                        response, httpx.Response
+                    ):
+                        await _capture_runtime_error(response)
+                        if response.status_code in _REJECTED_BEFORE_WORK:
+                            raise _RuntimeHttpRejection(exc) from exc
+                    raise
             self._record_outbound_success(response=response, method=method)
             yield response
 

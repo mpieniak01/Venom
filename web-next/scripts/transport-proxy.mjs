@@ -2,6 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import { isIP } from "node:net";
 import { Transform } from "node:stream";
+import { configuredLanOrigins } from "./transport-config.mjs";
 
 const HOP_HEADERS = new Set([
   "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -28,13 +29,7 @@ export function isPrivateAddress(value) {
 export function proxySettings(env = process.env) {
   const profile = env.VENOM_OPERATOR_ACCESS || "secure";
   if (!["secure", "trusted_lan"].includes(profile)) throw new Error("Invalid VENOM_OPERATOR_ACCESS");
-  const origins = (env.VENOM_LAN_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean);
-  for (const origin of origins) {
-    const url = new URL(origin);
-    if (!["http:", "https:"].includes(url.protocol) || url.origin !== origin || url.username || url.password) {
-      throw new Error("VENOM_LAN_ORIGINS requires exact HTTP(S) origins");
-    }
-  }
+  const origins = configuredLanOrigins(env);
   if (profile === "trusted_lan" && !origins.length) throw new Error("trusted_lan requires VENOM_LAN_ORIGINS");
   const target = new URL(env.API_PROXY_TARGET || "http://127.0.0.1:8800");
   if (!["http:", "https:"].includes(target.protocol) || target.username || target.password || target.pathname !== "/" || target.search || target.hash) {

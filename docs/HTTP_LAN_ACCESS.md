@@ -40,6 +40,8 @@ The standard `npm run dev`, `dev:turbo` and `start` use
 on a private ephemeral loopback port, and streams `/api/*` and `/ws/*` directly to
 `API_PROXY_TARGET`. Next frontend rewrites are no longer the proxy. Keep this
 entry in production; do not publish the private Next child listener.
+In development Next allowedDevOrigins contains only hostnames from explicit
+VENOM_LAN_ORIGINS in trusted_lan, without wildcards, covering fonts and HMR.
 
 `NEXT_PUBLIC_TRANSPORT_PROFILE` is derived from `VENOM_OPERATOR_ACCESS` by Next
 configuration. Set the profile during a production build as well as startup.

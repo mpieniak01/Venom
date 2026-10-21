@@ -40,6 +40,8 @@ Standardowe `npm run dev`, `dev:turbo` i `start` korzystają z
 na prywatnym, tymczasowym porcie loopback i strumieniuje `/api/*`, `/ws/*`
 bezpośrednio do `API_PROXY_TARGET`. Rewrite Next nie jest już proxy.
 Zachowaj to wejście również w produkcji; nie publikuj prywatnego portu Next.
+W trybie dev allowedDevOrigins Next zawiera wyłącznie nazwy hostów z jawnych
+VENOM_LAN_ORIGINS dla trusted_lan, bez wildcardów; dotyczy to fontów i HMR.
 
 Next wyprowadza `NEXT_PUBLIC_TRANSPORT_PROFILE` z `VENOM_OPERATOR_ACCESS`.
 Przy buildzie produkcyjnym ustaw profil także podczas kompilacji. W LAN API

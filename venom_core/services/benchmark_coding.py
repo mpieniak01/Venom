@@ -20,6 +20,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from venom_core.services.runtime_admission import (
+    admitted_operation,
+    get_runtime_admission,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -343,6 +347,7 @@ class CodingBenchmarkService:
                 f"Nieznane zadania: {invalid_tasks}. Dozwolone: {sorted(_VALID_TASKS)}"
             )
 
+    @admitted_operation("coding_benchmark_start", mutation=False)
     def start_run(
         self,
         models: list[str],
@@ -381,12 +386,19 @@ class CodingBenchmarkService:
             self._runs[run_id] = run
         self._persist_meta(run)
         # Uruchom scheduler w tle
-        thread = threading.Thread(
-            target=self._run_scheduler_thread,
-            args=(run_id,),
-            daemon=True,
+        reserved = get_runtime_admission().reserve_background(
+            kind="coding_benchmark_worker"
         )
-        thread.start()
+        try:
+            thread = threading.Thread(
+                target=reserved,
+                args=(lambda: self._run_scheduler_thread(run_id),),
+                daemon=True,
+            )
+            thread.start()
+        except BaseException:
+            reserved(lambda: None)
+            raise
         return run_id
 
     def _build_scheduler_command(self, run: CodingBenchmarkRun) -> list[str]:
@@ -426,6 +438,7 @@ class CodingBenchmarkService:
             cmd.append("--stop-on-failure")
         return cmd
 
+    @admitted_operation("coding_benchmark_worker", mutation=False)
     def _run_scheduler_thread(self, run_id: str) -> None:
         """Uruchamia scheduler w wątku i aktualizuje stan run."""
         with self._lock:

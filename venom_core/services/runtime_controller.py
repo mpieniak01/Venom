@@ -25,6 +25,7 @@ import httpx
 from venom_core.config import SETTINGS
 from venom_core.services.process_monitor import ProcessMonitor
 from venom_core.services.profile_config import RuntimeProfile, get_profile_capabilities
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.services.runtime_health_checks import (
     apply_process_metrics as apply_process_metrics_impl,
 )
@@ -552,6 +553,12 @@ class RuntimeController:
             logger=logger,
         )
 
+    @admitted_operation(
+        "runtime_service",
+        mutation=True,
+        when=lambda self, service_type: service_type
+        in {ServiceType.LLM_OLLAMA, ServiceType.LLM_VLLM},
+    )
     def start_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Uruchamia usługę."""
         service_name = service_type.value
@@ -586,6 +593,12 @@ class RuntimeController:
             self._add_to_history(service_name, "start", False, message)
             return {"success": False, "message": message}
 
+    @admitted_operation(
+        "runtime_service",
+        mutation=True,
+        when=lambda self, service_type: service_type
+        in {ServiceType.LLM_OLLAMA, ServiceType.LLM_VLLM},
+    )
     def stop_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Zatrzymuje usługę."""
         service_name = service_type.value
@@ -611,6 +624,12 @@ class RuntimeController:
             self._add_to_history(service_name, "stop", False, message)
             return {"success": False, "message": message}
 
+    @admitted_operation(
+        "runtime_service",
+        mutation=True,
+        when=lambda self, service_type: service_type
+        in {ServiceType.LLM_OLLAMA, ServiceType.LLM_VLLM},
+    )
     def restart_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Restartuje usługę."""
         service_name = service_type.value

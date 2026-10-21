@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from venom_core.config import Settings
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.llm_runtime import (
     build_onnx_worker_health_url,
     resolve_local_worker_endpoint,
@@ -329,6 +330,7 @@ class LlmServerController:
             logger.debug(f"Systemd nie jest dostępny: {e}")
             return False
 
+    @admitted_operation("runtime_command", mutation=True)
     async def run_action(self, server_name: str, action: str) -> LlmCommandResult:
         """
         Uruchamia zdefiniowaną komendę.

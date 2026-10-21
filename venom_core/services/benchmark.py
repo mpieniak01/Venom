@@ -27,6 +27,7 @@ from venom_core.config import SETTINGS
 from venom_core.core.llm_server_controller import LlmServerController
 from venom_core.core.model_registry import ModelRegistry
 from venom_core.core.service_monitor import ServiceHealthMonitor
+from venom_core.services.runtime_admission import admitted_operation
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -348,6 +349,7 @@ class BenchmarkService:
         except KeyError as e:
             raise ValueError(f"Brak wymaganego pola w pytaniu: {e}") from e
 
+    @admitted_operation("benchmark_start", mutation=False)
     async def start_benchmark(self, models: List[str], num_questions: int = 5) -> str:
         """
         Rozpoczyna benchmark wielu modeli.
@@ -431,6 +433,7 @@ class BenchmarkService:
             # Proste czyszczenie pamięci
             pass
 
+    @admitted_operation("benchmark_worker", mutation=False)
     async def _run_benchmark_task(self, benchmark_id: str):
         """
         Zadanie wykonania benchmarku (uruchamiane w tle).

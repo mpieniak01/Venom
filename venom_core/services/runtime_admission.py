@@ -275,6 +275,9 @@ class RuntimeAdmission:
             result.update(
                 {key: lease[key] for key in ("owner", "run_id", "engine", "model")}
             )
+            # Process metadata lets optional modules distinguish a crash
+            # quarantine from a still-live worker. Never expose the lease token.
+            result["owner_pid"] = lease["pid"]
             if lease["quarantine"] or lease["pid"] != os.getpid():
                 result["status"] = "quarantined"
             else:

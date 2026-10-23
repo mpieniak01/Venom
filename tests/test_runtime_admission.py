@@ -1,6 +1,7 @@
 """Durable host ownership: actual work lifetime, not HTTP/TTL lifetime."""
 
 import asyncio
+import os
 from dataclasses import replace
 
 import pytest
@@ -65,6 +66,7 @@ def test_unqualified_worker_topology_is_rejected(admission, monkeypatch, name, v
 def test_exclusive_owner_blocks_host_and_wrong_capability(admission):
     lease = acquire(admission)
     assert admission.snapshot()["owner"] == "cooperation_lab"
+    assert admission.snapshot()["owner_pid"] == os.getpid()
     scope = admission.operation(kind="chat")
     with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
         run_scoped(scope)

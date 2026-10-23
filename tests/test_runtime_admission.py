@@ -1155,3 +1155,131 @@ async def test_prior_rejection_cannot_hide_later_accepted_work_in_same_operation
                 await later_request()
     assert admission.snapshot()["status"] == "quarantined"
     assert admission.snapshot()["active_operations"] == 1
+
+
+def test_process_instance_identity_is_stable_but_changes_with_boot(monkeypatch):
+    from pathlib import Path
+
+    identity = admission_module.process_instance_identity(os.getpid())
+    assert identity is not None and len(identity) == 64
+    assert identity == admission_module.process_instance_identity(os.getpid())
+    original = Path.read_text
+
+    def changed_boot(path, *args, **kwargs):
+        return (
+            "another-boot"
+            if path.name == "boot_id"
+            else original(path, *args, **kwargs)
+        )
+
+    monkeypatch.setattr(Path, "read_text", changed_boot)
+    assert identity != admission_module.process_instance_identity(os.getpid())
+
+
+@pytest.mark.parametrize("pid", [0, -1, True, None])
+def test_process_instance_identity_rejects_invalid_pid(pid):
+    assert admission_module.process_instance_identity(pid) is None
+
+
+def test_process_instance_identity_requires_readable_consistent_proc_metadata(
+    monkeypatch,
+):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: "malformed")
+    assert admission_module.process_instance_identity(os.getpid()) is None
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError()),
+    )
+    assert admission_module.process_instance_identity(os.getpid()) is None
+
+
+def test_legacy_lease_schema_migrates_and_reused_pid_is_quarantined(
+    admission, monkeypatch
+):
+    import sqlite3
+
+    with sqlite3.connect(admission.database) as db:
+        db.execute(
+            "CREATE TABLE lease (id INTEGER PRIMARY KEY, token TEXT, owner TEXT, run_id TEXT, engine TEXT, model TEXT, pid INTEGER, cancelled INTEGER DEFAULT 0, quarantine INTEGER DEFAULT 0)"
+        )
+    lease = acquire(admission)
+    original = admission.snapshot()
+    assert original[
+        "owner_process_identity"
+    ] == admission_module.process_instance_identity(os.getpid())
+    monkeypatch.setattr(
+        admission_module,
+        "process_instance_identity",
+        lambda _pid: "different-process-lifetime",
+    )
+    current = admission.snapshot()
+    assert current["owner_pid"] == os.getpid()
+    assert current["owner_process_identity"] == original["owner_process_identity"]
+    assert current["status"] == "quarantined"
+    assert lease.release()
+
+
+def test_process_identity_supports_container_init_pid_one(monkeypatch):
+    from pathlib import Path
+
+    boot = ["boot-one"]
+
+    def proc_metadata(path, *_args, **_kwargs):
+        if path.name == "boot_id":
+            return boot[0]
+        assert str(path) == "/proc/1/stat"
+        return "1 (container api) R " + "0 " * 18 + "42"
+
+    monkeypatch.setattr(Path, "read_text", proc_metadata)
+    monkeypatch.setattr(os, "readlink", lambda _path: "pid:[4026531836]")
+    identity = admission_module.process_instance_identity(1)
+    assert identity is not None and len(identity) == 64
+    boot[0] = "boot-two"
+    assert admission_module.process_instance_identity(1) != identity
+
+
+def test_recovery_startup_holds_writer_lock_and_preserves_quarantine(admission):
+    import sqlite3
+    from contextlib import closing
+
+    lease = acquire(admission)
+    with admission._transaction() as db:
+        db.execute("UPDATE lease SET quarantine=1")
+    observed = []
+    with admission.recovery_startup(
+        permitted=lambda value: observed.append(value) or True
+    ):
+        with closing(sqlite3.connect(admission.database, timeout=0.01)) as other:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                other.execute("BEGIN IMMEDIATE")
+    assert observed[0]["status"] == "quarantined"
+    assert observed[0]["active_operations"] == 0
+    assert "token" not in observed[0]
+    assert admission.snapshot()["status"] == "quarantined"
+    assert lease.recover(confirm_quiescent=lambda: True)
+
+
+def test_recovery_startup_rechecks_fresh_state_and_fails_closed(admission):
+    lease = acquire(admission)
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        with admission.recovery_startup(permitted=lambda _value: True):
+            pytest.fail("normal owned lease is not a recovery startup")
+    with admission._transaction() as db:
+        db.execute("UPDATE lease SET quarantine=1")
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        with admission.recovery_startup(permitted=lambda _value: False):
+            pytest.fail("owner identity was not proven stale")
+    assert admission.snapshot()["status"] == "quarantined"
+    with admission._transaction() as db:
+        db.execute(
+            "INSERT INTO operation(token,lease_token,kind,pid) SELECT 'busy',token,'generation',pid FROM lease"
+        )
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        with admission.recovery_startup(permitted=lambda _value: True):
+            pytest.fail("active work must prevent recovery startup")
+    with admission._transaction() as db:
+        db.execute("DELETE FROM operation")
+    assert lease.recover(confirm_quiescent=lambda: True)

@@ -8,6 +8,7 @@ has no TTL: cancellation and caller disconnection cannot prove GPU quiescence.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import sqlite3
 import stat
@@ -74,6 +75,27 @@ def _own_host_namespace(database: Path) -> None:
             os.close(descriptor)
             raise RuntimeAdmissionError("runtime_topology_unsupported") from exc
         _HOST_LOCKS[path] = (pid, descriptor)
+
+
+def process_instance_identity(pid: int) -> str | None:
+    """Identify one Linux process lifetime across PID reuse and host reboot.
+
+    Missing/denied proc metadata is unknown, never proof of process death.
+    The digest contains no command line, environment or lease capability.
+    """
+    if type(pid) is not int or pid <= 0 or not sys.platform.startswith("linux"):
+        return None
+    try:
+        process = Path("/proc") / str(pid)
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        before = (process / "stat").read_text().rsplit(")", 1)[1].split()[19]
+        namespace = os.readlink(process / "ns/pid")
+        after = (process / "stat").read_text().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError, ValueError):
+        return None
+    if not boot or not before.isdecimal() or before != after or not namespace:
+        return None
+    return hashlib.sha256(f"{boot}\0{namespace}\0{before}".encode()).hexdigest()
 
 
 def _execution_identity() -> tuple[int, int]:
@@ -178,8 +200,14 @@ class RuntimeAdmission:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS lease (id INTEGER PRIMARY KEY CHECK(id=1), "
                 "token TEXT UNIQUE, owner TEXT, run_id TEXT, engine TEXT, model TEXT, "
-                "pid INTEGER, cancelled INTEGER DEFAULT 0, quarantine INTEGER DEFAULT 0)"
+                "pid INTEGER, cancelled INTEGER DEFAULT 0, quarantine INTEGER DEFAULT 0, "
+                "process_identity TEXT)"
             )
+            columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(lease)")
+            }
+            if "process_identity" not in columns:
+                connection.execute("ALTER TABLE lease ADD COLUMN process_identity TEXT")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS operation (token TEXT PRIMARY KEY, "
                 "lease_token TEXT, kind TEXT, pid INTEGER, uncertain INTEGER DEFAULT 0)"
@@ -215,8 +243,17 @@ class RuntimeAdmission:
                 raise RuntimeAdmissionError()
             token = uuid4().hex
             db.execute(
-                "INSERT INTO lease (id,token,owner,run_id,engine,model,pid) VALUES (1,?,?,?,?,?,?)",
-                (token, owner, run_id, engine, model, os.getpid()),
+                "INSERT INTO lease (id,token,owner,run_id,engine,model,pid,process_identity) "
+                "VALUES (1,?,?,?,?,?,?,?)",
+                (
+                    token,
+                    owner,
+                    run_id,
+                    engine,
+                    model,
+                    os.getpid(),
+                    process_instance_identity(os.getpid()),
+                ),
             )
         return RuntimeLease(self, token)
 
@@ -249,6 +286,30 @@ class RuntimeAdmission:
         result.update(self._snapshot_rows(lease, operations))
         return result
 
+    @contextmanager
+    def recovery_startup(
+        self, *, permitted: Callable[[dict[str, Any]], bool]
+    ) -> Iterator[None]:
+        """Open module state under exclusive host/ledger ownership in quarantine.
+
+        This admits no generation and clears no lease. The trusted predicate
+        receives a fresh snapshot inside the writer transaction and must not
+        re-enter the ledger. The process-wide namespace lock remains owned.
+        """
+        self._require_supported()
+        with self._transaction() as db:
+            runtime = self._snapshot_rows(
+                db.execute(_SELECT_LEASE).fetchone(),
+                db.execute("SELECT * FROM operation").fetchall(),
+            )
+            if (
+                runtime["status"] != "quarantined"
+                or runtime["active_operations"] != 0
+                or not permitted(runtime)
+            ):
+                raise RuntimeAdmissionError()
+            yield
+
     def assert_host_available(self) -> None:
         """Read-only preflight before constructing HTTP/SSE responses.
 
@@ -278,7 +339,17 @@ class RuntimeAdmission:
             # Process metadata lets optional modules distinguish a crash
             # quarantine from a still-live worker. Never expose the lease token.
             result["owner_pid"] = lease["pid"]
-            if lease["quarantine"] or lease["pid"] != os.getpid():
+            recorded_identity = (
+                lease["process_identity"]
+                if "process_identity" in lease.keys()
+                else None
+            )
+            result["owner_process_identity"] = recorded_identity
+            same_instance = lease["pid"] == os.getpid() and (
+                recorded_identity is None
+                or recorded_identity == process_instance_identity(os.getpid())
+            )
+            if lease["quarantine"] or not same_instance:
                 result["status"] = "quarantined"
             else:
                 result["status"] = "cancelling" if lease["cancelled"] else "owned"

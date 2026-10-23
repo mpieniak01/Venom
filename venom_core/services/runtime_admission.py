@@ -83,7 +83,7 @@ def process_instance_identity(pid: int) -> str | None:
     Missing/denied proc metadata is unknown, never proof of process death.
     The digest contains no command line, environment or lease capability.
     """
-    if type(pid) is not int or pid <= 1 or not sys.platform.startswith("linux"):
+    if type(pid) is not int or pid <= 0 or not sys.platform.startswith("linux"):
         return None
     try:
         process = Path("/proc") / str(pid)

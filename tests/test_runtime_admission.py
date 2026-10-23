@@ -1220,3 +1220,22 @@ def test_legacy_lease_schema_migrates_and_reused_pid_is_quarantined(
     assert current["owner_process_identity"] == original["owner_process_identity"]
     assert current["status"] == "quarantined"
     assert lease.release()
+
+
+def test_process_identity_supports_container_init_pid_one(monkeypatch):
+    from pathlib import Path
+
+    boot = ["boot-one"]
+
+    def proc_metadata(path, *_args, **_kwargs):
+        if path.name == "boot_id":
+            return boot[0]
+        assert str(path) == "/proc/1/stat"
+        return "1 (container api) R " + "0 " * 18 + "42"
+
+    monkeypatch.setattr(Path, "read_text", proc_metadata)
+    monkeypatch.setattr(os, "readlink", lambda _path: "pid:[4026531836]")
+    identity = admission_module.process_instance_identity(1)
+    assert identity is not None and len(identity) == 64
+    boot[0] = "boot-two"
+    assert admission_module.process_instance_identity(1) != identity

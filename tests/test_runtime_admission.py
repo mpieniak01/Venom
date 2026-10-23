@@ -1155,3 +1155,68 @@ async def test_prior_rejection_cannot_hide_later_accepted_work_in_same_operation
                 await later_request()
     assert admission.snapshot()["status"] == "quarantined"
     assert admission.snapshot()["active_operations"] == 1
+
+
+def test_process_instance_identity_is_stable_but_changes_with_boot(monkeypatch):
+    from pathlib import Path
+
+    identity = admission_module.process_instance_identity(os.getpid())
+    assert identity is not None and len(identity) == 64
+    assert identity == admission_module.process_instance_identity(os.getpid())
+    original = Path.read_text
+
+    def changed_boot(path, *args, **kwargs):
+        return (
+            "another-boot"
+            if path.name == "boot_id"
+            else original(path, *args, **kwargs)
+        )
+
+    monkeypatch.setattr(Path, "read_text", changed_boot)
+    assert identity != admission_module.process_instance_identity(os.getpid())
+
+
+@pytest.mark.parametrize("pid", [0, -1, True, None])
+def test_process_instance_identity_rejects_invalid_pid(pid):
+    assert admission_module.process_instance_identity(pid) is None
+
+
+def test_process_instance_identity_requires_readable_consistent_proc_metadata(
+    monkeypatch,
+):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: "malformed")
+    assert admission_module.process_instance_identity(os.getpid()) is None
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError()),
+    )
+    assert admission_module.process_instance_identity(os.getpid()) is None
+
+
+def test_legacy_lease_schema_migrates_and_reused_pid_is_quarantined(
+    admission, monkeypatch
+):
+    import sqlite3
+
+    with sqlite3.connect(admission.database) as db:
+        db.execute(
+            "CREATE TABLE lease (id INTEGER PRIMARY KEY, token TEXT, owner TEXT, run_id TEXT, engine TEXT, model TEXT, pid INTEGER, cancelled INTEGER DEFAULT 0, quarantine INTEGER DEFAULT 0)"
+        )
+    lease = acquire(admission)
+    original = admission.snapshot()
+    assert original[
+        "owner_process_identity"
+    ] == admission_module.process_instance_identity(os.getpid())
+    monkeypatch.setattr(
+        admission_module,
+        "process_instance_identity",
+        lambda _pid: "different-process-lifetime",
+    )
+    current = admission.snapshot()
+    assert current["owner_pid"] == os.getpid()
+    assert current["owner_process_identity"] == original["owner_process_identity"]
+    assert current["status"] == "quarantined"
+    assert lease.release()

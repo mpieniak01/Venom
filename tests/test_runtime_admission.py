@@ -1239,3 +1239,47 @@ def test_process_identity_supports_container_init_pid_one(monkeypatch):
     assert identity is not None and len(identity) == 64
     boot[0] = "boot-two"
     assert admission_module.process_instance_identity(1) != identity
+
+
+def test_recovery_startup_holds_writer_lock_and_preserves_quarantine(admission):
+    import sqlite3
+    from contextlib import closing
+
+    lease = acquire(admission)
+    with admission._transaction() as db:
+        db.execute("UPDATE lease SET quarantine=1")
+    observed = []
+    with admission.recovery_startup(
+        permitted=lambda value: observed.append(value) or True
+    ):
+        with closing(sqlite3.connect(admission.database, timeout=0.01)) as other:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                other.execute("BEGIN IMMEDIATE")
+    assert observed[0]["status"] == "quarantined"
+    assert observed[0]["active_operations"] == 0
+    assert "token" not in observed[0]
+    assert admission.snapshot()["status"] == "quarantined"
+    assert lease.recover(confirm_quiescent=lambda: True)
+
+
+def test_recovery_startup_rechecks_fresh_state_and_fails_closed(admission):
+    lease = acquire(admission)
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        with admission.recovery_startup(permitted=lambda _value: True):
+            pytest.fail("normal owned lease is not a recovery startup")
+    with admission._transaction() as db:
+        db.execute("UPDATE lease SET quarantine=1")
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        with admission.recovery_startup(permitted=lambda _value: False):
+            pytest.fail("owner identity was not proven stale")
+    assert admission.snapshot()["status"] == "quarantined"
+    with admission._transaction() as db:
+        db.execute(
+            "INSERT INTO operation(token,lease_token,kind,pid) SELECT 'busy',token,'generation',pid FROM lease"
+        )
+    with pytest.raises(RuntimeAdmissionError, match="runtime_busy"):
+        with admission.recovery_startup(permitted=lambda _value: True):
+            pytest.fail("active work must prevent recovery startup")
+    with admission._transaction() as db:
+        db.execute("DELETE FROM operation")
+    assert lease.recover(confirm_quiescent=lambda: True)

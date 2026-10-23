@@ -286,6 +286,30 @@ class RuntimeAdmission:
         result.update(self._snapshot_rows(lease, operations))
         return result
 
+    @contextmanager
+    def recovery_startup(
+        self, *, permitted: Callable[[dict[str, Any]], bool]
+    ) -> Iterator[None]:
+        """Open module state under exclusive host/ledger ownership in quarantine.
+
+        This admits no generation and clears no lease. The trusted predicate
+        receives a fresh snapshot inside the writer transaction and must not
+        re-enter the ledger. The process-wide namespace lock remains owned.
+        """
+        self._require_supported()
+        with self._transaction() as db:
+            runtime = self._snapshot_rows(
+                db.execute(_SELECT_LEASE).fetchone(),
+                db.execute("SELECT * FROM operation").fetchall(),
+            )
+            if (
+                runtime["status"] != "quarantined"
+                or runtime["active_operations"] != 0
+                or not permitted(runtime)
+            ):
+                raise RuntimeAdmissionError()
+            yield
+
     def assert_host_available(self) -> None:
         """Read-only preflight before constructing HTTP/SSE responses.
 

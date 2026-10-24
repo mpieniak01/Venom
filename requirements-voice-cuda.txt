@@ -1,0 +1,5 @@
+# GPU voice compatibility overlay for Linux x86_64.
+# CTranslate2 uses the CUDA 12 cuBLAS ABI; ONNX GPU can retain CUDA 13.
+# This package adds nvidia/cublas/lib and does not replace the ONNX engine.
+# CUDA 12.9 Update 1: https://docs.nvidia.com/cuda/archive/12.9.1/cuda-toolkit-release-notes/index.html
+nvidia-cublas-cu12==12.9.1.4; sys_platform == "linux" and platform_machine == "x86_64"

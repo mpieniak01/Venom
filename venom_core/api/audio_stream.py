@@ -532,6 +532,7 @@ class AudioStreamHandler:
         voice = getattr(audio_engine, "voice", None) if audio_engine else None
         whisper_loaded = bool(getattr(whisper, "model", None))
         voice_loaded = bool(getattr(voice, "voice", None))
+        tts_session = getattr(getattr(voice, "voice", None), "session", None)
         dependencies = {
             "ffmpeg": shutil.which("ffmpeg") is not None,
             "faster_whisper": importlib.util.find_spec("faster_whisper") is not None,
@@ -558,8 +559,8 @@ class AudioStreamHandler:
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
             "tts_error_code": getattr(voice, "load_error_code", None),
             "tts_device": "cuda" if getattr(voice, "use_cuda", False) else "cpu",
-            "tts_execution_providers": voice.voice.session.get_providers()
-            if voice_loaded and hasattr(getattr(voice, "voice", None), "session")
+            "tts_execution_providers": tts_session.get_providers()
+            if tts_session is not None
             else [],
             "dependencies": dependencies,
             "mode_contracts": mode_contracts_payload(),

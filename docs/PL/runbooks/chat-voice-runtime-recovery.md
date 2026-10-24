@@ -8,6 +8,11 @@ API uruchamiane przez `scripts/dev/start_stack.sh` korzysta z wrappera
 Nie importuje Torch, nie instaluje pakietów i nie zmienia globalnego środowiska.
 Obejmuje to układ CUDA 13 `nvidia/cu13/lib`.
 
+Whisper/CTranslate2 może równolegle wymagać ABI cuBLAS 12. Przypięty dodatek
+`requirements-voice-cuda.txt` dostarcza tę bibliotekę do istniejącego venv GPU.
+Ustawienie `AUDIO_DEVICE=cuda` wybiera GPU dla STT. Biblioteki cuBLAS 12 i 13
+mają osobne nazwy SONAME i pozostają dostępne przez ten sam wrapper.
+
 Dla syntezy GPU ustaw `TTS_USE_CUDA=true`. Załadowany głos musi mieć
 `CUDAExecutionProvider`; niepowodzenie nie może być przedstawione jako poprawna
 synteza ciszy. Wybór jest zachowany przy przełączaniu modelu TTS. Status audio
@@ -31,7 +36,9 @@ Dla osieroconej operacji hosta wymagane są wszystkie dowody:
    pustą listę i nie działa runner. Pozostałe generacyjne workery są zatrzymane.
    Samo rozłączenie klienta, `empty_cache()` lub brak PID API nie wystarcza.
 4. Zaufany callback ponownie sprawdza te warunki w publicznym
-   `get_runtime_admission().recover(confirm_quiescent=...)`.
+   `get_runtime_admission().recover(confirm_quiescent=...)`. Proces recovery
+   musi następnie zakończyć się przed startem API: blokada namespace jest
+   utrzymywana przez cały czas życia tego procesu.
 5. Po starcie przez istniejący launcher potwierdź `available/0`, spójny runtime,
    odpowiedź czatu i rzeczywistą syntezę GPU. Ping/pong voice nie potwierdza
    rozpoznawania mowy ani odpowiedzi modelu.

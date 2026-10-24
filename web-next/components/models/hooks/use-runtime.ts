@@ -12,6 +12,9 @@ import type {
 } from "@/lib/types";
 import {
     removeRegistryModel,
+    releaseAllModelResources,
+    useModelResources,
+    type ModelResourcesResult,
     setActiveLlmRuntime,
     setActiveLlmServer,
     switchModel,
@@ -142,6 +145,11 @@ export function useRuntime() {
     const [operationsCollapsed, setOperationsCollapsed] = useState(false);
     const [pendingActions, setPendingActions] = useState<Record<string, boolean>>({});
 
+    const modelResources = useModelResources();
+    const [resourceRelease, setResourceRelease] = useState<ModelResourcesResult | null>(null);
+    const [resourceReleaseError, setResourceReleaseError] = useState<string | null>(null);
+    const [resourceReleaseRows, setResourceReleaseRows] = useState<ModelResourcesResult["runtimes"]>([]);
+    const [releasingResources, setReleasingResources] = useState(false);
     const installed = useModels(0);
     const operations = useModelOperations(10, 0);
     const runtimeOptions = useLlmRuntimeOptions(0);
@@ -330,6 +338,29 @@ export function useRuntime() {
         ],
     );
 
+    const handleReleaseAllModels = useCallback(async () => {
+        if (releasingResources) return;
+        setReleasingResources(true);
+        setResourceRelease(null);
+        setResourceReleaseRows([]);
+        setResourceReleaseError(null);
+        try {
+            const result = await releaseAllModelResources();
+            if (!result.released) throw new Error("model_resources_release_unconfirmed");
+            setResourceRelease(result);
+            setResourceReleaseRows(result.runtimes);
+        } catch (error) {
+            const payload = error instanceof ApiError ? error.data as { detail?: { code?: string; runtimes?: ModelResourcesResult["runtimes"] } } : null;
+            const code = payload?.detail?.code;
+            if (Array.isArray(payload?.detail?.runtimes)) setResourceReleaseRows(payload.detail.runtimes);
+            const busy = code === "runtime_busy" || code === "model_resources_releasing" || code === "runtime_switch_in_progress" || code === "runtime_release_work_not_drained" || code === "model_resources_work_not_drained";
+            setResourceReleaseError(t(busy ? "models.resources.busy" : "models.resources.failed"));
+        } finally {
+            await Promise.allSettled([activeServer.refresh(), installed.refresh(), runtimeOptions.refresh(), modelResources.refresh()]);
+            setReleasingResources(false);
+        }
+    }, [releasingResources, activeServer, installed, runtimeOptions, modelResources, t]);
+
     const handleActivateRuntimeModel = useCallback(async (server: string, model: string) => {
         const key = `activate:${server}:${model}`;
         try {
@@ -375,6 +406,7 @@ export function useRuntime() {
     };
 
     return {
+        modelResources, resourceRelease, resourceReleaseRows, resourceReleaseError, releasingResources, handleReleaseAllModels,
         installedCollapsed,
         setInstalledCollapsed,
         operationsCollapsed,

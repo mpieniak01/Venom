@@ -1,0 +1,44 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import type { ModelResourcesMemory, ModelResourcesResult } from "@/hooks/use-api";
+
+type Props = {
+  releasing: boolean;
+  memory?: ModelResourcesMemory;
+  result: ModelResourcesResult | null;
+  entries?: ModelResourcesResult["runtimes"];
+  error: string | null;
+  onRelease: () => Promise<void>;
+  t: (key: string) => string;
+};
+
+export function ModelResourcesControl({ releasing, memory, result, entries = result?.runtimes ?? [], error, onRelease, t }: Readonly<Props>) {
+  const observed = result?.memory_after ?? memory;
+  return <section data-testid="global-model-resources" className="rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 className="font-semibold">{t("models.resources.title")}</h2>
+        <p className="text-sm text-[color:var(--ui-muted)]">{t("models.resources.description")}</p>
+      </div>
+      <Button variant="secondary" size="sm" disabled={releasing} onClick={() => void onRelease()} data-testid="release-all-models">
+        {t(releasing ? "models.resources.releasing" : "models.resources.release")}
+      </Button>
+    </div>
+    <div className="mt-3 flex flex-wrap gap-4 text-sm" aria-live="polite">
+      {observed && <span>{t("models.resources.ram")}: {observed.rss_mib.toFixed(0)} MiB</span>}
+      {observed?.gpu.map(gpu => <span key={gpu.index}>GPU {gpu.index} · VRAM {gpu.used_mib} / {gpu.total_mib} MiB</span>)}
+      {observed && observed.gpu.length === 0 && <span>{t("models.resources.noGpuReading")}</span>}
+    </div>
+    <div role="status" className="mt-2 text-sm">
+      {releasing && t("models.resources.releasing")}
+      {error && <span className="text-red-400">{error}</span>}
+      {!releasing && !error && result?.released && <span className="text-emerald-400">{t("models.resources.released")}</span>}
+    </div>
+    {entries.length > 0 && <div className="mt-2 flex flex-wrap gap-2 text-xs" data-testid="resource-release-results">
+      {entries.map((entry, index) => <span key={entry.runtime + index} className={entry.verified ? "text-emerald-400" : "text-red-400"}>
+        {entry.verified ? "✓" : "×"} {t("models.resources.categories." + entry.runtime)}
+      </span>)}
+    </div>}
+  </section>;
+}

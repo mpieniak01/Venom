@@ -415,6 +415,13 @@ class RuntimeAdmission:
             return None
         with self._transaction() as db:
             ancestor = self._ancestor(db)
+            if (
+                cleanup
+                and token is None
+                and ancestor is not None
+                and ancestor["kind"] != "cleanup"
+            ):
+                raise RuntimeAdmissionError()
             own_cleanup = (
                 ancestor["token"]
                 if ancestor is not None and ancestor["kind"] == "cleanup"

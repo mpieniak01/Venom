@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+import psutil
 from fastapi import HTTPException
 
+from venom_core.services.model_resources import (
+    prepare_registered_models,
+    release_barrier,
+    release_registered_models,
+    wait_for_model_work,
+)
 from venom_core.services.runtime_admission import (
     admitted_operation,
     get_runtime_admission,
@@ -72,51 +80,107 @@ async def _stop_worker(controller: Any, server: dict[str, Any]) -> None:
 
 
 @admitted_operation("cleanup", mutation=True, cleanup=True)
-async def release_all_runtime_models(controller: Any) -> dict[str, Any]:
-    """Keep admission closed until every configured local worker is verified idle.
-
-    Ollama stays available with an empty /api/ps so other screens can load their
-    own model. Fixed-model workers stop; the existing activation flow restarts them.
-    """
-    gate = begin_runtime_switch(
-        source="models-release",
-        from_runtime="local",
-        to_runtime="idle",
-        reason="operator_release",
-    )
+async def _release_all_models(
+    controller: Any, failures: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Release only under a host barrier; retain evidence on every partial failure."""
     results = []
+    servers = [s for s in controller.list_servers() if s["name"] in _LOCAL_RUNTIMES]
+    if not servers:
+        raise ValueError("runtime_release_no_local_workers")
+    for server in servers:
+        result: dict[str, Any] = {
+            "runtime": server["name"],
+            "models": [],
+            "verified": False,
+        }
+        try:
+            if not await _listening(server["endpoint"]):
+                result["state"] = "stopped"
+            elif server["name"] == "ollama":
+                result["models"] = await _unload_ollama(server["endpoint"])
+                result["state"] = "idle"
+            else:
+                await _stop_worker(controller, server)
+                result["state"] = "stopped"
+            result["verified"] = True
+        except Exception:
+            result["state"] = "failed"
+        results.append(result)
+    local_results = await asyncio.to_thread(release_registered_models)
+    results.extend(
+        {
+            **row,
+            "runtime": row["category"],
+            "state": "unloaded" if row["verified"] else "failed",
+        }
+        for row in local_results + failures
+    )
+    verified = bool(results) and all(row["verified"] for row in results)
+    if not verified or not get_runtime_admission().recover(
+        confirm_quiescent=lambda: verified
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "runtime_release_failed", "runtimes": results},
+        )
+    return {"status": "success", "released": True, "runtimes": results}
+
+
+def memory_snapshot() -> dict[str, Any]:
+    """Observed process RAM and device VRAM, not a promise of zero GPU use."""
+    result: dict[str, Any] = {
+        "rss_mib": round(psutil.Process(os.getpid()).memory_info().rss / 1024**2, 1),
+        "gpu": [],
+    }
+    import subprocess
+
     try:
-        await wait_for_runtime_requests_to_drain()
-        servers = [s for s in controller.list_servers() if s["name"] in _LOCAL_RUNTIMES]
-        if not servers:
-            raise ValueError("runtime_release_no_local_workers")
-        for server in servers:
-            result: dict[str, Any] = {
-                "runtime": server["name"],
-                "models": [],
-                "verified": False,
+        output = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=True,
+        ).stdout
+        result["gpu"] = [
+            {
+                "index": int(parts[0]),
+                "used_mib": int(parts[1]),
+                "total_mib": int(parts[2]),
             }
-            try:
-                if not await _listening(server["endpoint"]):
-                    result["state"] = "stopped"
-                elif server["name"] == "ollama":
-                    result["models"] = await _unload_ollama(server["endpoint"])
-                    result["state"] = "idle"
-                else:
-                    await _stop_worker(controller, server)
-                    result["state"] = "stopped"
-                result["verified"] = True
-            except Exception:
-                result["state"] = "failed"
-            results.append(result)
-        verified = bool(results) and all(row["verified"] for row in results)
-        if not verified or not get_runtime_admission().recover(
-            confirm_quiescent=lambda: verified
-        ):
-            raise HTTPException(
-                status_code=502,
-                detail={"code": "runtime_release_failed", "runtimes": results},
-            )
-        return {"status": "success", "released": True, "runtimes": results}
-    finally:
-        finish_runtime_switch(switch_id=gate.switch_id)
+            for line in output.splitlines()
+            if len(parts := line.split(",")) == 3
+        ]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        result["gpu_available"] = False
+    return result
+
+
+async def release_all_runtime_models(controller: Any) -> dict[str, Any]:
+    """Pause consumers and drain work before verifying global RAM/VRAM release."""
+    with release_barrier():
+        gate = begin_runtime_switch(
+            source="models-release",
+            from_runtime="local",
+            to_runtime="idle",
+            reason="operator_release",
+        )
+        try:
+            before = await asyncio.to_thread(memory_snapshot)
+            failures = await prepare_registered_models()
+            if not await wait_for_runtime_requests_to_drain():
+                raise HTTPException(
+                    status_code=409, detail={"code": "runtime_release_work_not_drained"}
+                )
+            await asyncio.to_thread(wait_for_model_work)
+            result = await _release_all_models(controller, failures)
+            result["memory_before"] = before
+            result["memory_after"] = await asyncio.to_thread(memory_snapshot)
+            return result
+        finally:
+            finish_runtime_switch(switch_id=gate.switch_id)

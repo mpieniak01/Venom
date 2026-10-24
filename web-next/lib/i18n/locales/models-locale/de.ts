@@ -9,6 +9,18 @@ export const models = {
     models: "Modelle",
     remoteModels: "Remote Modelle",
   },
+  resources: {
+    categories: {"vision": "Bildanalyse", "stt": "Spracherkennung", "tts": "Sprachausgabe", "embeddings": "Embeddings", "voice_sessions": "Sprachstreams", "ollama": "Ollama", "multi_runtime": "Multi-Runtime", "vllm": "vLLM", "onnx": "ONNX"},
+    title: "Modellspeicher · RAM / VRAM",
+    description: "LLMs, Bildanalyse, Sprache und Embeddings. Stoppt aktive Streams und gibt Ressourcen frei.",
+    release: "Alle Modelle entladen",
+    releasing: "Modelle und Laufzeiten werden freigegeben…",
+    released: "Modellressourcen freigegeben. Die nächste Verwendung kann das gewählte Modell erneut laden.",
+    failed: "Nicht alle Ressourcen konnten freigegeben werden. Modelle oder Prozesse können weiterhin Speicher belegen.",
+    busy: "Eine Modelloperation läuft. Beenden Sie diese und versuchen Sie es erneut.",
+    ram: "RAM des API-Prozesses",
+    noGpuReading: "VRAM: Messwert nicht verfügbar",
+  },
   runtime: {
     title: "Laufzeitsteuerung",
     description: "Wählen Sie Server und Modell, dann aktivieren. Unten sehen Sie die aktuell laufende Runtime.",

@@ -2174,7 +2174,22 @@ async def control_llm_server(server_name: str, action: str):
         ) from exc
 
 
-@router.post("/system/llm-runtime/release")
+@router.get("/system/models/resources")
+async def get_model_resources():
+    """Read host RAM/VRAM and the registered local model owners without loading them."""
+    from venom_core.services.model_resources import resource_snapshot
+    from venom_core.services.runtime_admission import get_runtime_admission
+    from venom_core.services.runtime_release_service import memory_snapshot
+
+    return {
+        "status": "success",
+        "memory": await asyncio.to_thread(memory_snapshot),
+        "resources": resource_snapshot(),
+        "runtime": get_runtime_admission().snapshot(),
+    }
+
+
+@router.post("/system/models/release")
 async def release_llm_runtime():
     """Unload local LLMs and verify resource release before clearing uncertainty."""
     from venom_core.services.runtime_release_service import release_all_runtime_models

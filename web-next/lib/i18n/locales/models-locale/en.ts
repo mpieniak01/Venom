@@ -9,6 +9,18 @@ export const models = {
     models: "Models",
     remoteModels: "Remote Models",
   },
+  resources: {
+    categories: {"vision": "Vision", "stt": "Speech recognition", "tts": "Speech synthesis", "embeddings": "Embeddings", "voice_sessions": "Voice streams", "ollama": "Ollama", "multi_runtime": "Multi-Runtime", "vllm": "vLLM", "onnx": "ONNX"},
+    title: "Model memory · RAM / VRAM",
+    description: "LLMs, vision, voice and embeddings. Stops their active streams and releases resources.",
+    release: "Unload all models",
+    releasing: "Releasing models and engines…",
+    released: "Model resources released. The next use may load the selected model again.",
+    failed: "Some resources could not be released. Models or processes may still occupy memory.",
+    busy: "A model operation is active. Finish it, then retry releasing resources.",
+    ram: "API process RAM",
+    noGpuReading: "VRAM: reading unavailable",
+  },
   runtime: {
     title: "Runtime Control",
     description: "Select server and model, then activate. Below you see the currently running runtime.",

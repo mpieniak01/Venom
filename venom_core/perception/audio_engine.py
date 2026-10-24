@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 import numpy as np
 
+from venom_core.services.model_resources import model_operation, register_model_resource
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -40,8 +41,15 @@ class WhisperSkill:
         self.compute_type = compute_type
         self.model: Optional[Any] = None
         self._inference_lock = threading.RLock()
+        register_model_resource(self, "stt", "release_model_resource")
         logger.info(f"Inicjalizacja WhisperSkill: model={model_size}, device={device}")
 
+    def release_model_resource(self) -> bool:
+        with self._inference_lock:
+            self.model = None
+        return self.model is None
+
+    @model_operation
     def _load_model(self):
         """Lazy loading modelu (tylko gdy potrzebny)."""
         if self.model is None:
@@ -63,6 +71,7 @@ class WhisperSkill:
                 logger.error(f"Błąd podczas ładowania modelu Whisper: {e}")
                 raise
 
+    @model_operation
     def _transcribe_buffer_sync(
         self,
         audio_buffer: np.ndarray,
@@ -284,6 +293,7 @@ class VoiceSkill:
         self.use_cuda = use_cuda
         self.load_error_code: str | None = None
         self.voice: Optional[Any] = None
+        register_model_resource(self, "tts", "release_model_resource")
         self.output_sample_rate = 22050
         self.audio_queue: queue.Queue[Optional[np.ndarray]] = queue.Queue()
         self._playback_thread: Optional[threading.Thread] = None
@@ -315,6 +325,12 @@ class VoiceSkill:
         logger.info(f"Inicjalizacja VoiceSkill: model_path={self.model_path}")
         return False
 
+    def release_model_resource(self) -> bool:
+        self.stop_playback_sync()
+        self.voice = None
+        return self.voice is None
+
+    @model_operation
     def _load_model(self):
         """Lazy loading modelu TTS."""
         if self.voice is None and not self.is_fallback_mode:
@@ -353,6 +369,7 @@ class VoiceSkill:
                 logger.error(f"Błąd podczas ładowania modelu TTS: {e}")
                 self.is_fallback_mode = True
 
+    @model_operation
     async def speak(self, text: str) -> Optional[np.ndarray]:
         """
         Syntetyzuje mowę z tekstu.
@@ -399,6 +416,7 @@ class VoiceSkill:
             logger.error(f"Błąd podczas syntezy mowy: {e}")
             return None
 
+    @model_operation
     def _synthesize_with_piper(self, text: str) -> np.ndarray:
         """Dostosowuje aktualne API piper-tts do kontraktu PCM int16."""
         voice = self.voice

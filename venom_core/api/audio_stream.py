@@ -509,7 +509,28 @@ class AudioStreamHandler:
             "payload": {},
         }
         self._daemon_snapshot_meta_refreshing = False
+        from venom_core.services.model_resources import register_model_resource
+
+        register_model_resource(self, "voice_sessions", "release_model_resource")
         logger.info("AudioStreamHandler zainicjalizowany")
+
+    async def prepare_model_release(self) -> None:
+        """Stop microphone consumers before releasing STT/TTS model objects."""
+        self.resources_suspended = True
+        for state in list(self.active_connections.values()):
+            timer = state.get("silence_finalize_task")
+            if timer is not None:
+                timer.cancel()
+                await asyncio.gather(timer, return_exceptions=True)
+            websocket = state["websocket"]
+            try:
+                await websocket.close(code=1012, reason="model_resources_released")
+            except RuntimeError:
+                pass
+        self.active_connections.clear()
+
+    def release_model_resource(self) -> bool:
+        return not self.active_connections
 
     class _ConnectionState(TypedDict):
         websocket: WebSocket
@@ -778,6 +799,11 @@ class AudioStreamHandler:
             audio_bytes: Surowe dane audio
             operator_agent: Agent operatora
         """
+        self.resources_suspended = False
+
+        if getattr(self, "resources_suspended", False):
+            return
+
         conn = self.active_connections[connection_id]
         if conn.get("recording_format") != "pcm16":
             conn["audio_bytes_buffer"].append(audio_bytes)

@@ -12,7 +12,7 @@ from uuid import UUID
 
 import httpx
 import psutil
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from venom_core.api.routes import academy, system_deps
 from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
@@ -20,6 +20,7 @@ from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
 )
+from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.api.schemas.system_llm import (
     ActiveLlmServerRequest,
     LlmRuntimeActivateRequest,
@@ -2189,7 +2190,16 @@ async def get_model_resources():
     }
 
 
-@router.post("/system/models/release")
+@router.post(
+    "/system/models/release",
+    dependencies=[Depends(require_localhost_request)],
+    responses={
+        **LLM_SERVERS_RESPONSES,
+        403: {"description": "Local administration access required"},
+        409: {"description": "Model work could not be drained"},
+        502: {"description": "Resource release could not be verified"},
+    },
+)
 async def release_llm_runtime():
     """Unload local LLMs and verify resource release before clearing uncertainty."""
     from venom_core.services.runtime_release_service import release_all_runtime_models

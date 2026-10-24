@@ -27,6 +27,8 @@ from venom_core.services.runtime_switch_gate import (
     wait_for_runtime_requests_to_drain,
 )
 
+_OLLAMA_UNLOAD_TIMEOUT = 5.0
+
 _LOCAL_RUNTIMES = frozenset({"ollama", "multi_runtime", "vllm", "onnx"})
 
 
@@ -59,10 +61,15 @@ async def _unload_ollama(endpoint: str) -> list[str]:
                 json={"model": name, "prompt": "", "stream": False, "keep_alive": 0},
             )
             response.raise_for_status()
-        response = await client.get(base + "/api/ps")
-        response.raise_for_status()
-        if response.json()["models"]:
-            raise ValueError("runtime_release_models_remaining")
+        deadline = asyncio.get_running_loop().time() + _OLLAMA_UNLOAD_TIMEOUT
+        while True:
+            response = await client.get(base + "/api/ps")
+            response.raise_for_status()
+            if not response.json()["models"]:
+                break
+            if asyncio.get_running_loop().time() >= deadline:
+                raise ValueError("runtime_release_models_remaining")
+            await asyncio.sleep(0.1)
     return names
 
 
@@ -161,6 +168,23 @@ def memory_snapshot() -> dict[str, Any]:
     return result
 
 
+async def _settle_cleanup(controller, failures, runtime_ids):
+    """Caller cancellation cannot reopen admission while native unload is running."""
+    task = asyncio.create_task(_release_all_models(controller, failures, runtime_ids))
+    interrupted = False
+    while True:
+        try:
+            result = await asyncio.shield(task)
+            break
+        except asyncio.CancelledError:
+            if task.cancelled():
+                raise
+            interrupted = True
+    if interrupted:
+        raise asyncio.CancelledError
+    return result
+
+
 async def release_all_runtime_models(
     controller: Any, *, runtime_ids: set[str] | None = None
 ) -> dict[str, Any]:
@@ -184,7 +208,7 @@ async def release_all_runtime_models(
             # the first preparation was stopping producers. Reconcile after drain.
             failures = await prepare_registered_models()
             await asyncio.to_thread(wait_for_model_work)
-            result = await _release_all_models(controller, failures, runtime_ids)
+            result = await _settle_cleanup(controller, failures, runtime_ids)
             result["memory_before"] = before
             result["memory_after"] = await asyncio.to_thread(memory_snapshot)
             return result

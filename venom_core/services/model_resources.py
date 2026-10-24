@@ -107,10 +107,11 @@ def wait_for_model_work(timeout: float = 30) -> None:
 
 def resource_snapshot() -> list[dict[str, Any]]:
     with _CONDITION:
-        return [
-            {"category": category, "owner": type(owner).__name__}
-            for owner, (category, _) in list(_OWNERS.items())
-        ]
+        owners = tuple(_OWNERS.items())
+    return [
+        {"category": category, "owner": type(owner).__name__}
+        for owner, (category, _) in owners
+    ]
 
 
 def release_registered_models() -> list[dict[str, Any]]:

@@ -248,6 +248,7 @@ async def test_ollama_retained_models_are_failure(monkeypatch):
         "AsyncClient",
         lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
     )
+    monkeypatch.setattr(service, "_OLLAMA_UNLOAD_TIMEOUT", 0)
     with pytest.raises(ValueError, match="models_remaining"):
         await service._unload_ollama("http://127.0.0.1:11434")
 
@@ -386,3 +387,187 @@ async def test_release_reconciles_children_queued_by_already_admitted_work(world
     )
     await task
     assert result["released"] and not owner.pending
+
+
+@pytest.mark.asyncio
+async def test_late_audio_and_control_do_not_resume_a_released_channel(world):
+    from unittest.mock import AsyncMock
+
+    from venom_core.api.audio_stream import AudioStreamHandler
+
+    handler = AudioStreamHandler()
+    handler.resources_suspended = True
+    handler._start_recording = AsyncMock()
+    handler._handle_audio_data(123, b"late audio", None)
+    await handler._handle_control_message(123, '{"command":"start_recording"}', None)
+    assert handler.resources_suspended is True
+    handler._start_recording.assert_not_awaited()
+    assert handler.active_connections == {}
+
+
+@pytest.mark.asyncio
+async def test_audio_accept_is_blocked_during_release_and_explicitly_resumes_after(
+    world,
+):
+    from unittest.mock import AsyncMock
+
+    from venom_core.api.audio_stream import AudioStreamHandler
+
+    handler = AudioStreamHandler()
+    socket = SimpleNamespace(accept=AsyncMock(), close=AsyncMock())
+    with resources.release_barrier():
+        await handler.handle_websocket(socket)
+    socket.accept.assert_not_awaited()
+    socket.close.assert_awaited_once_with(code=1013, reason="model_resources_releasing")
+    handler.resources_suspended = True
+    identity = await handler._accept_connection(socket)
+    assert identity in handler.active_connections
+    assert handler.resources_suspended is False
+
+
+@pytest.mark.asyncio
+async def test_audio_prepare_uses_a_snapshot_when_closed_connections_remove_themselves(
+    world,
+):
+    from unittest.mock import AsyncMock
+
+    from venom_core.api.audio_stream import AudioStreamHandler
+
+    handler = AudioStreamHandler()
+    sockets = []
+    for identity in (1, 2):
+
+        async def close(*, code, reason, cid=identity):
+            assert code == 1012
+            assert reason == "model_resources_released"
+            handler.active_connections.pop(cid)
+
+        socket = SimpleNamespace(close=AsyncMock(side_effect=close))
+        sockets.append(socket)
+        handler.active_connections[identity] = {"websocket": socket}
+    await handler.prepare_model_release()
+    assert handler.release_model_resource() is True
+    for socket in sockets:
+        socket.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_release_keeps_barrier_until_native_unload_finishes(world):
+    started, finish = threading.Event(), threading.Event()
+
+    class Owner:
+        def __init__(self):
+            resources.register_model_resource(self, "vision", "release")
+
+        def release(self):
+            started.set()
+            assert finish.wait(3)
+            return True
+
+    owner = Owner()
+
+    @resources.model_operation
+    def new_work():
+        return "available"
+
+    task = asyncio.create_task(
+        service.release_all_runtime_models(
+            SimpleNamespace(list_servers=lambda: []), runtime_ids=set()
+        )
+    )
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        for _ in range(2):
+            task.cancel()
+            await asyncio.sleep(0)
+            with pytest.raises(HTTPException, match="model_resources_releasing"):
+                new_work()
+        assert owner is not None
+    finally:
+        finish.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert new_work() == "available"
+    assert world.snapshot()["status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_ollama_waits_for_delayed_inventory_after_unload(monkeypatch):
+    import httpx
+
+    original = httpx.AsyncClient
+    reads = 0
+
+    def handle(request):
+        nonlocal reads
+        if request.method == "GET":
+            reads += 1
+            return httpx.Response(
+                200, json={"models": [{"name": "fixture"}] if reads < 3 else []}
+            )
+        return httpx.Response(200, json={"done": True})
+
+    monkeypatch.setattr(
+        service.httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    assert await service._unload_ollama("http://127.0.0.1:11434") == ["fixture"]
+    assert reads == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "peer,headers,expected",
+    [
+        ("127.0.0.1", {}, 200),
+        ("::1", {}, 200),
+        ("192.0.2.10", {}, 403),
+        (
+            "127.0.0.1",
+            {
+                "x-venom-proxy": "1",
+                "x-venom-client-address": "192.0.2.10",
+                "x-venom-shared-entry": "1",
+            },
+            403,
+        ),
+        (
+            "192.0.2.10",
+            {
+                "x-venom-proxy": "1",
+                "x-venom-client-address": "127.0.0.1",
+                "x-venom-shared-entry": "0",
+            },
+            403,
+        ),
+        ("127.0.0.1", {"x-venom-proxy": "1"}, 403),
+    ],
+)
+async def test_global_release_obeys_transport_admin_boundary(
+    monkeypatch, peer, headers, expected
+):
+    from unittest.mock import AsyncMock
+
+    import httpx
+    from fastapi import FastAPI
+
+    from venom_core.api.routes import system_llm
+    from venom_core.api.transport_access import TransportAccessMiddleware
+    from venom_core.config import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "VENOM_OPERATOR_ACCESS", "secure")
+    release = AsyncMock(return_value={"released": True})
+    monkeypatch.setattr(service, "release_all_runtime_models", release)
+    monkeypatch.setattr(system_llm.system_deps, "get_llm_controller", lambda: object())
+    monkeypatch.setattr(system_llm, "_installed_local_servers", lambda: set())
+    app = FastAPI()
+    app.add_middleware(TransportAccessMiddleware)
+    app.include_router(system_llm.router)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, client=(peer, 1234)),
+        base_url="http://localhost",
+    ) as client:
+        response = await client.post("/api/v1/system/models/release", headers=headers)
+    assert response.status_code == expected
+    assert release.await_count == (1 if expected == 200 else 0)

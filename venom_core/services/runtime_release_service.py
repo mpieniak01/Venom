@@ -174,11 +174,15 @@ async def release_all_runtime_models(
         )
         try:
             before = await asyncio.to_thread(memory_snapshot)
-            failures = await prepare_registered_models()
+            await prepare_registered_models()
             if not await wait_for_runtime_requests_to_drain():
                 raise HTTPException(
                     status_code=409, detail={"code": "runtime_release_work_not_drained"}
                 )
+            await asyncio.to_thread(wait_for_model_work)
+            # Already admitted asynchronous work may have queued children while
+            # the first preparation was stopping producers. Reconcile after drain.
+            failures = await prepare_registered_models()
             await asyncio.to_thread(wait_for_model_work)
             result = await _release_all_models(controller, failures, runtime_ids)
             result["memory_before"] = before

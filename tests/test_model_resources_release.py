@@ -352,3 +352,37 @@ def test_whisper_release_unloads_native_weights_without_cpu_offload(world):
     native.unload_model.assert_called_once_with(to_cpu=False)
     assert skill.model is None
     assert rows[0]["category"] == "stt" and rows[0]["verified"]
+
+
+@pytest.mark.asyncio
+async def test_release_reconciles_children_queued_by_already_admitted_work(world):
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    class Owner:
+        pending = False
+
+        def __init__(self):
+            resources.register_model_resource(self, "vision", "release")
+
+        async def prepare_model_release(self):
+            self.pending = False
+            finish.set()
+
+        def release(self):
+            return not self.pending
+
+    owner = Owner()
+
+    @resources.model_operation
+    async def submit():
+        started.set()
+        await finish.wait()
+        owner.pending = True
+
+    task = asyncio.create_task(submit())
+    await started.wait()
+    result = await service.release_all_runtime_models(
+        SimpleNamespace(list_servers=lambda: []), runtime_ids=set()
+    )
+    await task
+    assert result["released"] and not owner.pending

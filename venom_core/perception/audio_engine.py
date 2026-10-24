@@ -584,6 +584,7 @@ class AudioEngine:
         """Synchronously transcribe an audio file from disk."""
         return self.whisper.transcribe_file(file_path, language=language)
 
+    @model_operation
     async def set_tts_model_path(self, model_path: Optional[str]) -> dict[str, bool]:
         """
         Przełącza model TTS i opcjonalnie podgrzewa nowy głos.
@@ -610,6 +611,7 @@ class AudioEngine:
             != str(getattr(self.voice, "model_path", "") or ""),
         }
 
+    @model_operation
     async def warmup(self) -> dict[str, bool]:
         """Preload STT/TTS models so first user-facing request is faster."""
         warmup_state = {"whisper_loaded": False, "tts_loaded": False}

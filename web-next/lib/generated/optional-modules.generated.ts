@@ -45,6 +45,19 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
   },
   {
     schemaVersion: 1,
+    moduleId: "cooperation_lab",
+    displayName: "Cooperation Lab",
+    routePath: "/cooperation-lab",
+    featureFlagEnv: "NEXT_PUBLIC_FEATURE_COOPERATION_LAB",
+    navLabel: "Cooperation Lab",
+    navLabels: {
+      pl: "Laboratorium współpracy",
+      en: "Cooperation Lab",
+      de: "Kooperationslabor",
+    },
+  },
+  {
+    schemaVersion: 1,
     moduleId: "google_home_bridge",
     displayName: "Google Home",
     routePath: "/google-home",
@@ -86,6 +99,7 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
   "brand_studio": () => process.env.NEXT_PUBLIC_FEATURE_BRAND_STUDIO ?? "",
+  "cooperation_lab": () => process.env.NEXT_PUBLIC_FEATURE_COOPERATION_LAB ?? "",
   "google_home_bridge": () => process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE ?? "",
   "module_example": () => process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE ?? "",
   "rider": () => process.env.NEXT_PUBLIC_FEATURE_RIDER ?? ""

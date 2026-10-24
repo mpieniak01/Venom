@@ -6,6 +6,7 @@ export type OptionalModuleComponentLoader = () => Promise<ComponentType | null>;
 
 export const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, OptionalModuleComponentLoader> = {
   "brand_studio": async () => (await import("@/optional-modules/venom-module-brand-studio/page")).default ?? null,
+  "cooperation_lab": async () => (await import("@/optional-modules/venom-module-cooperation-lab/page")).default ?? null,
   "google_home_bridge": async () => (await import("@/optional-modules/venom-module-google-home/page")).default ?? null,
   "module_example": async () => (await import("@/optional-modules/venom-module-example/page")).default ?? null,
   "rider": async () => (await import("@/optional-modules/venom-module-rider/page")).default ?? null,

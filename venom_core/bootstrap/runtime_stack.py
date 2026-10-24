@@ -313,6 +313,7 @@ def initialize_audio_engine_if_enabled(
         audio_engine = audio_engine_cls(
             whisper_model_size=settings.WHISPER_MODEL_SIZE,
             tts_model_path=settings.TTS_MODEL_PATH,
+            tts_use_cuda=getattr(settings, "TTS_USE_CUDA", False),
             device=settings.AUDIO_DEVICE,
         )
         logger.info("AudioEngine zainicjalizowany")

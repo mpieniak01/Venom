@@ -477,3 +477,52 @@ def test_daemon_launcher_preserves_flags_in_own_interpreter(tmp_path, device):
     finally:
         result = run_daemon_launcher("stop", environment, root)
         assert result.returncode == 0, result.stderr
+
+
+def test_host_gpu_loader_uses_selected_venv_cuda13_and_preserves_explicit_paths(
+    tmp_path,
+):
+    from scripts.llm.with_gpu_libraries import library_path
+
+    cuda = tmp_path / "lib/python3.14/site-packages/nvidia/cu13/lib"
+    cudnn = tmp_path / "lib/python3.14/site-packages/nvidia/cudnn/lib"
+    cuda.mkdir(parents=True)
+    cudnn.mkdir(parents=True)
+    paths = library_path(tmp_path, f"{cuda}:/explicit/lib::/explicit/lib").split(
+        os.pathsep
+    )
+    assert paths[:2] == [str(cuda), str(cudnn)]
+    assert paths.count(str(cuda)) == 1
+    assert paths.count("/explicit/lib") == 1
+    assert "" not in paths
+
+
+def test_host_gpu_loader_executes_child_without_changing_parent_or_importing_engines(
+    monkeypatch, tmp_path
+):
+    from scripts.llm import with_gpu_libraries
+
+    calls = []
+    monkeypatch.setattr(with_gpu_libraries.sys, "prefix", str(tmp_path))
+    monkeypatch.setattr(
+        with_gpu_libraries.sys,
+        "argv",
+        ["with_gpu_libraries.py", "/fixture/uvicorn", "app:app"],
+    )
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/explicit/lib")
+    monkeypatch.setattr(
+        with_gpu_libraries.os, "execvpe", lambda *args: calls.append(args)
+    )
+    with_gpu_libraries.main()
+    assert calls[0][0] == "/fixture/uvicorn"
+    assert calls[0][1] == ["/fixture/uvicorn", "app:app"]
+    assert calls[0][2]["LD_LIBRARY_PATH"].endswith("/explicit/lib")
+    assert os.environ["LD_LIBRARY_PATH"] == "/explicit/lib"
+
+
+def test_host_gpu_loader_rejects_missing_child(monkeypatch):
+    from scripts.llm import with_gpu_libraries
+
+    monkeypatch.setattr(with_gpu_libraries.sys, "argv", ["with_gpu_libraries.py"])
+    with pytest.raises(SystemExit, match="usage"):
+        with_gpu_libraries.main()

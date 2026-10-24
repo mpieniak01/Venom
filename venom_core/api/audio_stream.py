@@ -556,6 +556,11 @@ class AudioStreamHandler:
             and not bool(getattr(voice, "is_fallback_mode", False)),
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
+            "tts_error_code": getattr(voice, "load_error_code", None),
+            "tts_device": "cuda" if getattr(voice, "use_cuda", False) else "cpu",
+            "tts_execution_providers": voice.voice.session.get_providers()
+            if voice_loaded and hasattr(getattr(voice, "voice", None), "session")
+            else [],
             "dependencies": dependencies,
             "mode_contracts": mode_contracts_payload(),
             "runtime_switch_gate": get_runtime_switch_gate_status(),

@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, cast
 
 import httpx
 from openai import AsyncOpenAI
@@ -67,7 +67,7 @@ class _CompletionStream(httpx.AsyncByteStream):
         self.pending += chunk
         while b"\n" in self.pending:
             line, self.pending = self.pending.split(b"\n", 1)
-            if line.strip() == b"data: [DONE]":
+            if line.startswith(b"data:") and line[5:].strip() == b"[DONE]":
                 self.completed = True
         # Bound evidence storage independently of model output length.
         self.pending = self.pending[-128:]
@@ -127,7 +127,7 @@ async def _observe_response(response: httpx.Response) -> None:
     elif response.is_success and "text/event-stream" in response.headers.get(
         "content-type", ""
     ):
-        stream = _CompletionStream(response.stream)
+        stream = _CompletionStream(cast(httpx.AsyncByteStream, response.stream))
         response.extensions["venom_maf_stream"] = stream
         if response.is_stream_consumed:
             stream.observe(response.content + b"\n")

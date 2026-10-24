@@ -434,7 +434,7 @@ if [[ -z "$backend_reused" ]]; then
 
   echo "▶️  Uruchamiam Venom backend (uvicorn na ${HOST}:${PORT})"
   : > "$BACKEND_LOG"
-  run_with_env_file setsid "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
+  run_with_env_file setsid "$PYTHON_BIN" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
   echo $! > "$PID_FILE"
   BACKEND_STARTED=1
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"

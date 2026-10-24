@@ -15,7 +15,7 @@ import stat
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterator
-from contextlib import closing, contextmanager, nullcontext
+from contextlib import aclosing, closing, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
@@ -735,8 +735,9 @@ def admitted_operation(
             @wraps(function)
             async def stream(*args: Any, **kwargs: Any) -> Any:
                 with scope(args, kwargs):
-                    async for item in function(*args, **kwargs):
-                        yield item
+                    async with aclosing(function(*args, **kwargs)) as iterator:
+                        async for item in iterator:
+                            yield item
 
             return stream
         if inspect.iscoroutinefunction(function):

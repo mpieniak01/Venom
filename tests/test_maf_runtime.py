@@ -799,3 +799,133 @@ async def test_maf_done_stream_releases_admission(maf_admission):
         assert maf_admission.snapshot()["status"] == "available"
     finally:
         await model.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_status", [200, 503])
+async def test_maf_followup_rejection_requires_completed_prior_response(
+    maf_admission, first_status
+):
+    from venom_core.execution.maf_transport import maf_transport_scope
+
+    attempts = 0
+
+    def respond(request):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(
+                first_status,
+                json=completion()
+                if first_status == 200
+                else {"error": {"message": "unknown attempt"}},
+            )
+        return httpx.Response(422, json={"error": {"message": "followup rejected"}})
+
+    model = service(respond)
+    try:
+        with pytest.raises(Exception, match="followup rejected"):
+            with maf_admission.operation(kind="maf_generation"), maf_transport_scope():
+                try:
+                    await model._owned_client.chat.completions.create(
+                        model="fixture", messages=[]
+                    )
+                except Exception:
+                    assert first_status == 503
+                await model._owned_client.chat.completions.create(
+                    model="fixture", messages=[]
+                )
+        assert maf_admission.snapshot()["status"] == (
+            "available" if first_status == 200 else "quarantined"
+        )
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_maf_rejection_cannot_mask_later_timeout(maf_admission):
+    from venom_core.execution.maf_transport import maf_transport_scope
+
+    attempts = 0
+
+    def respond(request):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(400, json={"error": {"message": "rejected"}})
+        raise httpx.ReadTimeout("unknown followup", request=request)
+
+    model = service(respond)
+    try:
+        with pytest.raises(Exception, match="timed out"):
+            with maf_admission.operation(kind="maf_generation"), maf_transport_scope():
+                with pytest.raises(Exception, match="rejected"):
+                    await model._owned_client.chat.completions.create(
+                        model="fixture", messages=[]
+                    )
+                await model._owned_client.chat.completions.create(
+                    model="fixture", messages=[]
+                )
+        assert maf_admission.snapshot()["status"] == "quarantined"
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_maf_real_stream_close_keeps_uncertain_work_and_cleans_context(
+    maf_admission,
+):
+    from venom_core.execution import maf_transport
+
+    class Interrupted(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            packet = {
+                "id": "fixture",
+                "object": "chat.completion.chunk",
+                "created": 1,
+                "model": "fixture",
+                "choices": [
+                    {"index": 0, "delta": {"content": "partial"}, "finish_reason": None}
+                ],
+            }
+            yield ("data: " + json.dumps(packet) + "\n\n").encode()
+            raise httpx.ReadError("interrupted fixture")
+
+    model = service(
+        lambda request: httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, stream=Interrupted()
+        )
+    )
+    iterator = model.get_streaming_chat_message_contents(
+        chat_history=ConversationHistory(system_message="fixture")
+    )
+    try:
+        assert (await anext(iterator))[0].content == "partial"
+        await iterator.aclose()
+        assert maf_admission.snapshot()["status"] == "quarantined"
+        assert maf_transport._EVIDENCE.get() is None
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_maf_stream_transport_error_is_not_rejection(maf_admission):
+    class Interrupted(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b": keepalive\n\n"
+            raise httpx.ReadError("interrupted fixture")
+
+    model = service(
+        lambda request: httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, stream=Interrupted()
+        )
+    )
+    try:
+        with pytest.raises(Exception, match="interrupted fixture"):
+            async for _ in model.get_streaming_chat_message_contents(
+                chat_history=ConversationHistory(system_message="fixture")
+            ):
+                pass
+        assert maf_admission.snapshot()["status"] == "quarantined"
+    finally:
+        await model.aclose()

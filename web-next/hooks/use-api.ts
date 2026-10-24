@@ -574,7 +574,7 @@ export type ModelResourcesResult = {
 
 export function useModelResources() {
   return usePolling<{ memory: ModelResourcesMemory }>(
-    "model-resources", () => apiFetch("/api/v1/system/models/resources"), 0,
+    "model-resources", () => apiFetch("/api/v1/system/models/resources"), 5000,
   );
 }
 export function releaseAllModelResources() {

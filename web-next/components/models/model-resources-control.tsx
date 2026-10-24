@@ -14,7 +14,12 @@ type Props = {
 };
 
 export function ModelResourcesControl({ releasing, memory, result, entries = result?.runtimes ?? [], error, onRelease, t }: Readonly<Props>) {
-  const observed = result?.memory_after ?? memory;
+  const observed = memory ?? result?.memory_after;
+  const grouped = [...entries.reduce((groups, row) => {
+    const previous = groups.get(row.runtime);
+    groups.set(row.runtime, { ...row, verified: row.verified && (previous?.verified ?? true) });
+    return groups;
+  }, new Map<string, ModelResourcesResult["runtimes"][number]>()).values()];
   return <section data-testid="global-model-resources" className="rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -36,7 +41,7 @@ export function ModelResourcesControl({ releasing, memory, result, entries = res
       {!releasing && !error && result?.released && <span className="text-emerald-400">{t("models.resources.released")}</span>}
     </div>
     {entries.length > 0 && <div className="mt-2 flex flex-wrap gap-2 text-xs" data-testid="resource-release-results">
-      {entries.map((entry, index) => <span key={entry.runtime + index} className={entry.verified ? "text-emerald-400" : "text-red-400"}>
+      {grouped.map((entry, index) => <span key={entry.runtime + index} className={entry.verified ? "text-emerald-400" : "text-red-400"}>
         {entry.verified ? "✓" : "×"} {t("models.resources.categories." + entry.runtime)}
       </span>)}
     </div>}

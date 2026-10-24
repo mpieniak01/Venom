@@ -29,11 +29,27 @@ describe("global model memory control", () => {
   });
   it("shows the measured post-release values, not a fabricated zero", () => {
     const html = renderToStaticMarkup(React.createElement(ModelResourcesControl, {
-      releasing: false, memory, error: null, onRelease: async () => {}, t,
+      releasing: false, memory: undefined, error: null, onRelease: async () => {}, t,
       result: { status: "success", released: true, memory_before: memory,
         memory_after: { ...memory, gpu: [{ index: 0, used_mib: 300, total_mib: 12000 }] }, runtimes: [] },
     }));
     assert.match(html, /300/);
     assert.match(html, /models.resources.released/);
   });
+});
+
+
+it("updates the live VRAM reading after release and combines repeated owner results", () => {
+  const html = renderToStaticMarkup(React.createElement(ModelResourcesControl, {
+    releasing: false, memory: { ...memory, gpu: [{ index: 0, used_mib: 2200, total_mib: 12000 }] },
+    result: { status: "success", released: true, memory_before: memory,
+      memory_after: { ...memory, gpu: [{ index: 0, used_mib: 300, total_mib: 12000 }] }, runtimes: [] },
+    entries: [
+      { runtime: "vision", verified: true, state: "unloaded" },
+      { runtime: "vision", verified: false, state: "failed" },
+    ], error: null, onRelease: async () => {}, t,
+  }));
+  assert.match(html, /2200/);
+  assert.equal((html.match(/models.resources.categories.vision/g) ?? []).length, 1);
+  assert.match(html, /text-red-400/);
 });

@@ -46,6 +46,10 @@ class WhisperSkill:
 
     def release_model_resource(self) -> bool:
         with self._inference_lock:
+            native = getattr(self.model, "model", None)
+            unload = getattr(native, "unload_model", None)
+            if callable(unload):
+                unload(to_cpu=False)
             self.model = None
         return self.model is None
 

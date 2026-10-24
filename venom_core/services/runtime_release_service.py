@@ -81,13 +81,12 @@ async def _stop_worker(controller: Any, server: dict[str, Any]) -> None:
 
 @admitted_operation("cleanup", mutation=True, cleanup=True)
 async def _release_all_models(
-    controller: Any, failures: list[dict[str, Any]]
+    controller: Any, failures: list[dict[str, Any]], runtime_ids: set[str] | None = None
 ) -> dict[str, Any]:
     """Release only under a host barrier; retain evidence on every partial failure."""
     results = []
-    servers = [s for s in controller.list_servers() if s["name"] in _LOCAL_RUNTIMES]
-    if not servers:
-        raise ValueError("runtime_release_no_local_workers")
+    selected = _LOCAL_RUNTIMES if runtime_ids is None else runtime_ids
+    servers = [s for s in controller.list_servers() if s["name"] in selected]
     for server in servers:
         result: dict[str, Any] = {
             "runtime": server["name"],
@@ -116,7 +115,7 @@ async def _release_all_models(
         }
         for row in local_results + failures
     )
-    verified = bool(results) and all(row["verified"] for row in results)
+    verified = all(row["verified"] for row in results)
     if not verified or not get_runtime_admission().recover(
         confirm_quiescent=lambda: verified
     ):
@@ -161,7 +160,9 @@ def memory_snapshot() -> dict[str, Any]:
     return result
 
 
-async def release_all_runtime_models(controller: Any) -> dict[str, Any]:
+async def release_all_runtime_models(
+    controller: Any, *, runtime_ids: set[str] | None = None
+) -> dict[str, Any]:
     """Pause consumers and drain work before verifying global RAM/VRAM release."""
     with release_barrier():
         gate = begin_runtime_switch(
@@ -178,7 +179,7 @@ async def release_all_runtime_models(controller: Any) -> dict[str, Any]:
                     status_code=409, detail={"code": "runtime_release_work_not_drained"}
                 )
             await asyncio.to_thread(wait_for_model_work)
-            result = await _release_all_models(controller, failures)
+            result = await _release_all_models(controller, failures, runtime_ids)
             result["memory_before"] = before
             result["memory_after"] = await asyncio.to_thread(memory_snapshot)
             return result

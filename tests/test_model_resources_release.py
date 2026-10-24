@@ -188,7 +188,10 @@ async def test_release_endpoint_delegates_to_global_coordinator(world, monkeypat
         system_llm.system_deps, "get_llm_controller", lambda: controller
     )
 
-    async def release(value):
+    monkeypatch.setattr(system_llm, "_installed_local_servers", lambda: {"ollama"})
+
+    async def release(value, *, runtime_ids):
+        assert runtime_ids == {"ollama"}
         assert value is controller
         return {"released": True}
 
@@ -291,3 +294,56 @@ def test_memory_snapshot_reports_actual_values_without_loading_torch(monkeypatch
     result = service.memory_snapshot()
     assert result["rss_mib"] > 0
     assert result["gpu"] == [{"index": 0, "used_mib": 1200, "total_mib": 12288}]
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_engine_is_not_mistaken_for_an_active_worker(
+    world, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(service, "_listening", AsyncMock(return_value=False))
+    controller = SimpleNamespace(
+        list_servers=lambda: [
+            {"name": "ollama", "endpoint": "http://127.0.0.1:11434"},
+            {"name": "onnx", "endpoint": "invalid-unconfigured-endpoint"},
+        ]
+    )
+    result = await service.release_all_runtime_models(
+        controller, runtime_ids={"ollama"}
+    )
+    assert result["released"]
+    assert [row["runtime"] for row in result["runtimes"]] == ["ollama"]
+    assert world.snapshot()["status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_global_release_does_not_require_any_llm_installation(world):
+    class Voice:
+        def __init__(self):
+            resources.register_model_resource(self, "tts", "release")
+
+        def release(self):
+            return True
+
+    voice = Voice()
+    result = await service.release_all_runtime_models(
+        SimpleNamespace(list_servers=lambda: []), runtime_ids=set()
+    )
+    assert result["released"] and voice is not None
+    assert [row["runtime"] for row in result["runtimes"]] == ["tts"]
+
+
+def test_whisper_release_unloads_native_weights_without_cpu_offload(world):
+    from unittest.mock import Mock
+
+    from venom_core.perception.audio_engine import WhisperSkill
+
+    skill = WhisperSkill()
+    native = SimpleNamespace(unload_model=Mock())
+    skill.model = SimpleNamespace(model=native)
+    with resources.release_barrier():
+        rows = resources.release_registered_models()
+    native.unload_model.assert_called_once_with(to_cpu=False)
+    assert skill.model is None
+    assert rows[0]["category"] == "stt" and rows[0]["verified"]

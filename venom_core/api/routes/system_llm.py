@@ -2197,7 +2197,9 @@ async def release_llm_runtime():
     controller = system_deps.get_llm_controller()
     if controller is None:
         raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
-    return await release_all_runtime_models(controller)
+    return await release_all_runtime_models(
+        controller, runtime_ids=_installed_local_servers()
+    )
 
 
 @router.get("/system/llm-servers/active")

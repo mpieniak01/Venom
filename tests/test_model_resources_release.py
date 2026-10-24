@@ -192,6 +192,7 @@ async def test_partial_failure_never_claims_release_or_clears_uncertainty(
         await service.release_all_runtime_models(controller)
     assert error.value.status_code == 502
     assert error.value.detail["code"] == "runtime_release_failed"
+    assert error.value.detail["runtimes"][0]["error"] == "runtime_release_ValueError"
     assert world.snapshot()["status"] == "quarantined"
 
 
@@ -590,3 +591,46 @@ async def test_global_release_obeys_transport_admin_boundary(
         response = await client.post("/api/v1/system/models/release", headers=headers)
     assert response.status_code == expected
     assert release.await_count == (1 if expected == 200 else 0)
+
+
+def test_batch_embedding_keeps_release_barrier_until_native_encode_finishes(world):
+    import numpy as np
+
+    from venom_core.memory.embedding_service import EmbeddingService
+
+    started, finish = threading.Event(), threading.Event()
+    outputs = []
+
+    class BatchModel:
+        def encode(self, texts, **kwargs):
+            started.set()
+            assert finish.wait(3)
+            return np.ones((len(texts), 2))
+
+    owner = EmbeddingService(service_type="local")
+    owner._model = BatchModel()
+    worker = threading.Thread(
+        target=lambda: outputs.append(owner.get_embeddings_batch(["a", "b"]))
+    )
+    worker.start()
+    try:
+        assert started.wait(2)
+        with resources.release_barrier():
+            with pytest.raises(HTTPException) as caught:
+                resources.wait_for_model_work(timeout=0)
+            assert caught.value.detail["code"] == "model_resources_work_not_drained"
+            with pytest.raises(HTTPException) as rejected:
+                owner.get_embeddings_batch(["late"])
+            assert rejected.value.detail["code"] == "model_resources_releasing"
+            assert owner._model is not None
+            finish.set()
+            worker.join(2)
+            assert not worker.is_alive()
+            resources.wait_for_model_work(timeout=0)
+            rows = resources.release_registered_models()
+            assert all(row["verified"] for row in rows)
+            assert owner._model is None
+        assert outputs == [[[1.0, 1.0], [1.0, 1.0]]]
+    finally:
+        finish.set()
+        worker.join(3)

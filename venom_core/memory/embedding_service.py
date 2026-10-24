@@ -179,6 +179,7 @@ class EmbeddingService:
         logger.debug(f"Generowanie embeddingu dla tekstu ({len(text)} znaków)")
         return self._get_embedding_cached(text_normalized)
 
+    @model_operation
     def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Generuje embeddingi dla wielu tekstów (batch processing).

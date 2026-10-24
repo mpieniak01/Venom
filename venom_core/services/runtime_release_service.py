@@ -26,6 +26,9 @@ from venom_core.services.runtime_switch_gate import (
     finish_runtime_switch,
     wait_for_runtime_requests_to_drain,
 )
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 _OLLAMA_UNLOAD_TIMEOUT = 5.0
 
@@ -110,8 +113,24 @@ async def _release_all_models(
                 await _stop_worker(controller, server)
                 result["state"] = "stopped"
             result["verified"] = True
-        except Exception:
+        except Exception as exc:
+            logger.opt(exception=True).warning(
+                "Runtime release failed runtime={}", server["name"]
+            )
             result["state"] = "failed"
+            # Keep URLs, credentials and provider responses out of API error codes.
+            known_codes = {
+                "runtime_release_local_only",
+                "runtime_release_models_remaining",
+                "runtime_release_stop_unsupported",
+                "runtime_release_stop_failed",
+                "runtime_release_worker_still_running",
+            }
+            result["error"] = (
+                str(exc)
+                if isinstance(exc, ValueError) and str(exc) in known_codes
+                else "runtime_release_" + type(exc).__name__
+            )
         results.append(result)
     local_results = await asyncio.to_thread(release_registered_models)
     results.extend(

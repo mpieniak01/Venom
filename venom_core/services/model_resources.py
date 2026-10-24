@@ -13,6 +13,10 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 _CONDITION = threading.Condition(threading.RLock())
 _LOCAL = threading.local()
 _OWNERS: weakref.WeakKeyDictionary[Any, tuple[str, str]] = weakref.WeakKeyDictionary()
@@ -124,6 +128,11 @@ def release_registered_models() -> list[dict[str, Any]]:
         try:
             verified = getattr(owner, method)() is True
         except Exception:
+            logger.opt(exception=True).warning(
+                "Model release failed category={} owner={}",
+                category,
+                type(owner).__name__,
+            )
             verified = False
         results.append(
             {"category": category, "owner": type(owner).__name__, "verified": verified}
@@ -149,6 +158,11 @@ async def prepare_registered_models() -> list[dict[str, Any]]:
             try:
                 await prepare()
             except Exception:
+                logger.opt(exception=True).warning(
+                    "Model preparation failed category={} owner={}",
+                    category,
+                    type(owner).__name__,
+                )
                 failures.append(
                     {
                         "category": category,

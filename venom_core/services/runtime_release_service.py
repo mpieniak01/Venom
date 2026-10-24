@@ -89,6 +89,20 @@ async def _stop_worker(controller: Any, server: dict[str, Any]) -> None:
     raise ValueError("runtime_release_worker_still_running")
 
 
+def _release_error_code(error: Exception) -> str:
+    # Keep URLs, credentials and provider responses out of API error codes.
+    known_codes = {
+        "runtime_release_local_only",
+        "runtime_release_models_remaining",
+        "runtime_release_stop_unsupported",
+        "runtime_release_stop_failed",
+        "runtime_release_worker_still_running",
+    }
+    if isinstance(error, ValueError) and str(error) in known_codes:
+        return str(error)
+    return "runtime_release_" + type(error).__name__
+
+
 @admitted_operation("cleanup", mutation=True, cleanup=True)
 async def _release_all_models(
     controller: Any, failures: list[dict[str, Any]], runtime_ids: set[str] | None = None
@@ -118,19 +132,7 @@ async def _release_all_models(
                 "Runtime release failed runtime={}", server["name"]
             )
             result["state"] = "failed"
-            # Keep URLs, credentials and provider responses out of API error codes.
-            known_codes = {
-                "runtime_release_local_only",
-                "runtime_release_models_remaining",
-                "runtime_release_stop_unsupported",
-                "runtime_release_stop_failed",
-                "runtime_release_worker_still_running",
-            }
-            result["error"] = (
-                str(exc)
-                if isinstance(exc, ValueError) and str(exc) in known_codes
-                else "runtime_release_" + type(exc).__name__
-            )
+            result["error"] = _release_error_code(exc)
         results.append(result)
     local_results = await asyncio.to_thread(release_registered_models)
     results.extend(

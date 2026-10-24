@@ -2198,6 +2198,7 @@ async def get_model_resources():
         403: {"description": "Local administration access required"},
         409: {"description": "Model work could not be drained"},
         502: {"description": "Resource release could not be verified"},
+        503: {"description": LLM_CONTROLLER_UNAVAILABLE},
     },
 )
 async def release_llm_runtime():

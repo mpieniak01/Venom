@@ -123,3 +123,11 @@ def test_keep_alive_preserves_valid_go_duration_grammar(value):
     from venom_core.utils.ollama_tuning import normalize_ollama_keep_alive
 
     assert normalize_ollama_keep_alive(value) == value
+
+
+@pytest.mark.parametrize("value", ["١٢s", "１２m", "١٢", "１.５s", "1s٢m"])
+def test_keep_alive_rejects_non_ascii_digits(value):
+    from venom_core.utils.ollama_tuning import normalize_ollama_keep_alive
+
+    with pytest.raises(ValueError, match="invalid_ollama_keep_alive"):
+        normalize_ollama_keep_alive(value)

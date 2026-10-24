@@ -94,7 +94,7 @@ def build_ollama_runtime_options(settings) -> Dict[str, Any]:
     }
 
 
-_DURATION_PART = re.compile(r"([0-9]+(?:\.[0-9]*)?|\.[0-9]+)(ns|us|µs|μs|ms|s|m|h)")
+_DURATION_PART = re.compile(r"(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|μs|ms|s|m|h)", re.ASCII)
 _DURATION_UNITS_NS = {
     "ns": 1,
     "us": 1000,
@@ -134,7 +134,7 @@ def normalize_ollama_keep_alive(value: str | int) -> str | int:
     text = str(value).strip()
     if not text or len(text) > 128:
         raise ValueError("invalid_ollama_keep_alive")
-    if re.fullmatch(r"[+-]?[0-9]+", text):
+    if re.fullmatch(r"[+-]?\d+", text, flags=re.ASCII):
         seconds = int(text)
         if seconds > (2**63 - 1) // 1000000000:
             raise ValueError("ollama_keep_alive_out_of_range")

@@ -526,3 +526,80 @@ def test_host_gpu_loader_rejects_missing_child(monkeypatch):
     monkeypatch.setattr(with_gpu_libraries.sys, "argv", ["with_gpu_libraries.py"])
     with pytest.raises(SystemExit, match="usage"):
         with_gpu_libraries.main()
+
+
+def test_gpu_loader_uses_uvicorn_shebang_instead_of_bootstrap_python(tmp_path):
+    from scripts.llm.with_gpu_libraries import command_python
+
+    configured = tmp_path / "configured/bin"
+    configured.mkdir(parents=True)
+    python = configured / "python"
+    python.write_text("#!/bin/sh\nexit 0\n")
+    python.chmod(0o700)
+    entry = configured / "uvicorn"
+    entry.write_text(f"#!{python}\n")
+    entry.chmod(0o700)
+    alias = tmp_path / "uvicorn-alias"
+    alias.symlink_to(entry)
+    assert command_python(str(entry), tmp_path) == str(python)
+    assert command_python(str(alias), tmp_path) == str(python)
+    assert command_python("configured/bin/uvicorn", tmp_path) == str(python)
+
+
+def test_gpu_loader_honors_non_adjacent_interpreter_and_env_shebang(
+    tmp_path, monkeypatch
+):
+    from scripts.llm.with_gpu_libraries import command_python
+
+    (tmp_path / "actual").mkdir()
+    python = tmp_path / "actual/python3"
+    python.write_text("#!/bin/sh\nexit 0\n")
+    python.chmod(0o700)
+    entry = tmp_path / "uvicorn"
+    entry.write_text(f"#!{python}\n")
+    entry.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + str(python.parent))
+    assert command_python("uvicorn", tmp_path) == str(python)
+    entry.write_text("#!/usr/bin/env -S python3 -s\n")
+    assert command_python(str(entry), tmp_path) == str(python)
+
+
+def test_gpu_loader_supports_pip_shell_trampoline_and_rejects_unknown_runtime(tmp_path):
+    from scripts.llm.with_gpu_libraries import command_python
+
+    entry = tmp_path / "uvicorn"
+    entry.write_text("#!/bin/sh\n")
+    entry.chmod(0o700)
+    with pytest.raises(ValueError, match="uvicorn_python_not_found"):
+        command_python(str(entry), tmp_path)
+    python = tmp_path / "python"
+    python.write_text("#!/bin/sh\nexit 0\n")
+    python.chmod(0o700)
+    assert command_python(str(entry), tmp_path) == str(python)
+
+
+def test_gpu_loader_cli_selects_the_child_interpreter(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    entry = tmp_path / "uvicorn"
+    entry.write_text(f"#!{sys.executable}\n")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "scripts/llm/with_gpu_libraries.py"),
+            "--print-command-python",
+            str(root),
+            str(entry),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    selected = result.stdout.strip()
+    prefix = subprocess.check_output(
+        [selected, "-c", "import sys;print(sys.prefix)"], text=True
+    ).strip()
+    assert Path(prefix).resolve() == Path(sys.prefix).resolve()

@@ -5,10 +5,12 @@ który działa jako dodatkowa warstwa przed klasyfikacją LLM w IntentManager.
 """
 
 import json
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from fastapi import HTTPException
 
 from venom_core.config import SETTINGS
 from venom_core.services.model_resources import model_operation, register_model_resource
@@ -51,10 +53,14 @@ class IntentEmbeddingRouter:
         self.intent_embeddings: Dict[str, np.ndarray] = {}
         self.intent_phrases: Dict[str, List[str]] = {}
         self._initialized = False
+        self._resources_released = False
+        self._reload_lock = threading.Lock()
 
         # Próba inicjalizacji - jeśli się nie uda, router będzie wyłączony
         try:
             self._initialize()
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning(
                 "Nie udało się zainicjalizować IntentEmbeddingRouter: %s. "
@@ -72,7 +78,27 @@ class IntentEmbeddingRouter:
         self._initialized = False
         self._resources_released = True
         self.intent_embeddings.clear()
+        self.intent_phrases.clear()
         return self.model is None
+
+    @model_operation
+    def _reload_after_release(self) -> None:
+        with self._reload_lock:
+            if not self._resources_released:
+                return
+            try:
+                self._initialize()
+            except HTTPException:
+                raise
+            except Exception as exc:
+                self.model = None
+                self._initialized = False
+                self.intent_embeddings.clear()
+                self.intent_phrases.clear()
+                logger.warning(
+                    "Embedding reload unavailable; retaining fallback: {}", exc
+                )
+            self._resources_released = False
 
     @model_operation
     def _encode_input(self, user_input: str):
@@ -191,8 +217,7 @@ class IntentEmbeddingRouter:
         if getattr(self, "_resources_released", False):
             from anyio import to_thread
 
-            await to_thread.run_sync(self._initialize)
-            self._resources_released = False
+            await to_thread.run_sync(self._reload_after_release)
         # Jeśli router nie jest zainicjalizowany, zwróć None (fallback)
         if not self._initialized or not self.model:
             return None, 0.0, []
@@ -257,6 +282,8 @@ class IntentEmbeddingRouter:
 
             return top1_intent, top1_score, top2
 
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning(
                 "Błąd klasyfikacji embeddingowej: %s. Fallback do następnej warstwy.",

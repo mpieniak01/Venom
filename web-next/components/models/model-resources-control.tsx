@@ -33,13 +33,13 @@ export function ModelResourcesControl({ releasing, memory, result, entries = res
     <div className="mt-3 flex flex-wrap gap-4 text-sm" aria-live="polite">
       {observed && <span>{t("models.resources.ram")}: {observed.rss_mib.toFixed(0)} MiB</span>}
       {observed?.gpu.map(gpu => <span key={gpu.index}>GPU {gpu.index} · VRAM {gpu.used_mib} / {gpu.total_mib} MiB</span>)}
-      {observed && observed.gpu.length === 0 && <span>{t("models.resources.noGpuReading")}</span>}
+      {observed?.gpu.length === 0 && <span>{t("models.resources.noGpuReading")}</span>}
     </div>
-    <div role="status" className="mt-2 text-sm">
+    <output className="mt-2 block text-sm">
       {releasing && t("models.resources.releasing")}
       {error && <span className="text-red-400">{error}</span>}
       {!releasing && !error && result?.released && <span className="text-emerald-400">{t("models.resources.released")}</span>}
-    </div>
+    </output>
     {entries.length > 0 && <div className="mt-2 flex flex-wrap gap-2 text-xs" data-testid="resource-release-results">
       {grouped.map((entry, index) => <span key={entry.runtime + index} className={entry.verified ? "text-emerald-400" : "text-red-400"}>
         {entry.verified ? "✓" : "×"} {t("models.resources.categories." + entry.runtime)}

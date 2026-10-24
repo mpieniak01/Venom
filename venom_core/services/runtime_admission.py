@@ -402,6 +402,34 @@ class RuntimeAdmission:
         ):
             raise RuntimeAdmissionError()
 
+    @staticmethod
+    def _validate_cleanup_barrier(
+        db: sqlite3.Connection,
+        *,
+        ancestor: sqlite3.Row | None,
+        token: str | None,
+        cleanup: bool,
+    ) -> None:
+        if (
+            cleanup
+            and token is None
+            and ancestor is not None
+            and ancestor["kind"] != "cleanup"
+        ):
+            raise RuntimeAdmissionError()
+        own_cleanup = (
+            ancestor["token"]
+            if ancestor is not None and ancestor["kind"] == "cleanup"
+            else ""
+        )
+        if db.execute(
+            "SELECT 1 FROM operation WHERE kind='cleanup' AND token<>? AND uncertain=0",
+            (own_cleanup,),
+        ).fetchone():
+            raise RuntimeAdmissionError()
+        if ancestor is not None and ancestor["kind"] == "cleanup" and not cleanup:
+            raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
+
     def _enter(
         self,
         kind: str,
@@ -415,25 +443,9 @@ class RuntimeAdmission:
             return None
         with self._transaction() as db:
             ancestor = self._ancestor(db)
-            if (
-                cleanup
-                and token is None
-                and ancestor is not None
-                and ancestor["kind"] != "cleanup"
-            ):
-                raise RuntimeAdmissionError()
-            own_cleanup = (
-                ancestor["token"]
-                if ancestor is not None and ancestor["kind"] == "cleanup"
-                else ""
+            self._validate_cleanup_barrier(
+                db, ancestor=ancestor, token=token, cleanup=cleanup
             )
-            if db.execute(
-                "SELECT 1 FROM operation WHERE kind='cleanup' AND token<>? AND uncertain=0",
-                (own_cleanup,),
-            ).fetchone():
-                raise RuntimeAdmissionError()
-            if ancestor is not None and ancestor["kind"] == "cleanup" and not cleanup:
-                raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
             nested = (
                 ancestor is not None
                 and ancestor["kind"] != "lifecycle"

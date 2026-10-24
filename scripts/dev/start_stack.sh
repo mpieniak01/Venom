@@ -42,7 +42,12 @@ OLLAMA_BASE_URL="$(env_contract_get OLLAMA_BASE_URL "http://localhost:11434" "$E
 OLLAMA_HEALTH_URL="$(env_contract_get OLLAMA_HEALTH_URL "${OLLAMA_BASE_URL%/}/api/tags" "$ENV_FILE")"
 VLLM_START_TIMEOUT_SEC="${VLLM_START_TIMEOUT_SEC:-240}"
 NPM="${NPM:-npm}"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+  DEFAULT_PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
+else
+  DEFAULT_PYTHON_BIN="python3"
+fi
+PYTHON_BIN="${PYTHON_BIN:-$DEFAULT_PYTHON_BIN}"
 if [[ "$PYTHON_BIN" != /* ]]; then
   candidate_python="$ROOT_DIR/$PYTHON_BIN"
   if [[ -e "$candidate_python" ]]; then
@@ -61,25 +66,14 @@ if ! "$PYTHON_BIN" -c "import sys; print(sys.version_info[0])" >/dev/null 2>&1; 
   fi
 fi
 
-DOTENV_AVAILABLE="0"
-if "$PYTHON_BIN" -c "import dotenv" >/dev/null 2>&1; then
-  DOTENV_AVAILABLE="1"
-else
-  echo "⚠️  Brak modułu 'python-dotenv' dla $PYTHON_BIN. Używam fallback: source '$ENV_FILE'."
+if ! "$PYTHON_BIN" -c "import dotenv" >/dev/null 2>&1; then
+  echo "❌ Brak python-dotenv dla $PYTHON_BIN. Uzupełnij wymagania projektu w wybranym środowisku."
+  exit 1
 fi
 
 run_with_env_file() {
-  if [[ "$DOTENV_AVAILABLE" == "1" ]]; then
-    "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- "$@"
-  else
-    (
-      set -a
-      # shellcheck disable=SC1090
-      source "$ENV_FILE"
-      set +a
-      "$@"
-    )
-  fi
+  # Values such as lifecycle commands remain data; never source a dotenv file.
+  env_contract_run "$PYTHON_BIN" "$ENV_FILE" "$@"
 }
 
 extract_url_port() {
@@ -434,7 +428,8 @@ if [[ -z "$backend_reused" ]]; then
 
   echo "▶️  Uruchamiam Venom backend (uvicorn na ${HOST}:${PORT})"
   : > "$BACKEND_LOG"
-  run_with_env_file setsid "$PYTHON_BIN" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
+  api_python="$("$PYTHON_BIN" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" --print-command-python "$ROOT_DIR" "$UVICORN")"
+  run_with_env_file setsid "$api_python" "$ROOT_DIR/scripts/llm/with_gpu_libraries.py" "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
   echo $! > "$PID_FILE"
   BACKEND_STARTED=1
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"

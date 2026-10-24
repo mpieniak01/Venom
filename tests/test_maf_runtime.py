@@ -695,7 +695,8 @@ async def test_maf_rejected_http_releases_own_operation(maf_admission, status, s
     history = ConversationHistory(system_message="fixture")
     history.add_user_message("fixture")
     try:
-        with pytest.raises(Exception, match="rejected fixture") as caught:
+
+        async def exercise_operation():
             if stream:
                 async for _ in model.get_streaming_chat_message_contents(
                     chat_history=history
@@ -703,6 +704,9 @@ async def test_maf_rejected_http_releases_own_operation(maf_admission, status, s
                     pytest.fail("rejected request must not produce content")
             else:
                 await model.get_chat_message_content(chat_history=history)
+
+        with pytest.raises(Exception, match="rejected fixture") as caught:
+            await exercise_operation()
         assert caught.value.__cause__ is not None
         assert maf_admission.snapshot()["status"] == "available"
         assert maf_admission.snapshot()["active_operations"] == 0
@@ -719,10 +723,14 @@ async def test_maf_unknown_server_failure_remains_quarantined(maf_admission, sta
         )
     )
     try:
-        with pytest.raises(Exception, match="uncertain fixture"):
+
+        async def exercise_operation():
             await model.get_chat_message_content(
                 chat_history=ConversationHistory(system_message="fixture")
             )
+
+        with pytest.raises(Exception, match="uncertain fixture"):
+            await exercise_operation()
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
         await model.aclose()
@@ -744,11 +752,15 @@ async def test_maf_timeout_before_later_rejection_stays_quarantined(maf_admissio
     model = service(respond)
     client = model._owned_client
     try:
-        with pytest.raises(Exception, match="later rejection"):
+
+        async def exercise_operation():
             with maf_admission.operation(kind="maf_generation"), maf_transport_scope():
                 with pytest.raises(Exception, match="timed out"):
                     await client.chat.completions.create(model="fixture", messages=[])
                 await client.chat.completions.create(model="fixture", messages=[])
+
+        with pytest.raises(Exception, match="later rejection"):
+            await exercise_operation()
         assert attempts == 2
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
@@ -774,11 +786,15 @@ async def test_maf_stream_eof_without_done_keeps_quarantine(maf_admission):
         )
     )
     try:
-        with pytest.raises(Exception, match="upstream_stream_incomplete"):
+
+        async def exercise_operation():
             async for _ in model.get_streaming_chat_message_contents(
                 chat_history=ConversationHistory(system_message="fixture")
             ):
                 pass
+
+        with pytest.raises(Exception, match="upstream_stream_incomplete"):
+            await exercise_operation()
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
         await model.aclose()
@@ -824,7 +840,8 @@ async def test_maf_followup_rejection_requires_completed_prior_response(
 
     model = service(respond)
     try:
-        with pytest.raises(Exception, match="followup rejected"):
+
+        async def exercise_operation():
             with maf_admission.operation(kind="maf_generation"), maf_transport_scope():
                 try:
                     await model._owned_client.chat.completions.create(
@@ -835,6 +852,9 @@ async def test_maf_followup_rejection_requires_completed_prior_response(
                 await model._owned_client.chat.completions.create(
                     model="fixture", messages=[]
                 )
+
+        with pytest.raises(Exception, match="followup rejected"):
+            await exercise_operation()
         assert maf_admission.snapshot()["status"] == (
             "available" if first_status == 200 else "quarantined"
         )
@@ -857,7 +877,8 @@ async def test_maf_rejection_cannot_mask_later_timeout(maf_admission):
 
     model = service(respond)
     try:
-        with pytest.raises(Exception, match="timed out"):
+
+        async def exercise_operation():
             with maf_admission.operation(kind="maf_generation"), maf_transport_scope():
                 with pytest.raises(Exception, match="rejected"):
                     await model._owned_client.chat.completions.create(
@@ -866,6 +887,9 @@ async def test_maf_rejection_cannot_mask_later_timeout(maf_admission):
                 await model._owned_client.chat.completions.create(
                     model="fixture", messages=[]
                 )
+
+        with pytest.raises(Exception, match="timed out"):
+            await exercise_operation()
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
         await model.aclose()
@@ -921,11 +945,15 @@ async def test_maf_stream_transport_error_is_not_rejection(maf_admission):
         )
     )
     try:
-        with pytest.raises(Exception, match="interrupted fixture"):
+
+        async def exercise_operation():
             async for _ in model.get_streaming_chat_message_contents(
                 chat_history=ConversationHistory(system_message="fixture")
             ):
                 pass
+
+        with pytest.raises(Exception, match="interrupted fixture"):
+            await exercise_operation()
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
         await model.aclose()
@@ -947,5 +975,51 @@ async def test_maf_serializes_negative_keep_alive_as_number_for_ollama():
         )
         assert requests[0]["keep_alive"] == -1
         assert type(requests[0]["keep_alive"]) is int
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [True, False])
+@pytest.mark.parametrize(
+    "extensions",
+    [
+        {"keep_alive": "forever"},
+        {"keep_alive": "5min"},
+        {"model": "override"},
+    ],
+)
+async def test_local_option_rejection_does_not_quarantine_or_dispatch(
+    maf_admission, stream, extensions
+):
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json=completion())
+
+    model = service(respond)
+    history = ConversationHistory(system_message="fixture")
+    settings = CompletionOptions(extra_body=extensions)
+
+    async def attempt():
+        if stream:
+            async for _ in model.get_streaming_chat_message_contents(
+                chat_history=history, settings=settings
+            ):
+                pytest.fail("Invalid local options produced content")
+        else:
+            await model.get_chat_message_content(
+                chat_history=history, settings=settings
+            )
+
+    try:
+        with pytest.raises(ValueError):
+            await attempt()
+        assert requests == []
+        assert maf_admission.snapshot()["status"] == "available"
+        assert maf_admission.snapshot()["active_operations"] == 0
+        await model.get_chat_message_content(chat_history=history)
+        assert len(requests) == 1
     finally:
         await model.aclose()

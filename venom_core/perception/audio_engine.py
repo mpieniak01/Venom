@@ -273,6 +273,10 @@ class WhisperSkill:
         )
 
 
+class _TtsCudaUnavailableError(RuntimeError):
+    """Piper returned a session without the requested CUDA provider."""
+
+
 class VoiceSkill:
     """
     Skill do syntezy mowy (TTS) przy użyciu piper-tts.
@@ -334,44 +338,43 @@ class VoiceSkill:
         self.voice = None
         return self.voice is None
 
+    def _load_piper_voice(self):
+        import piper
+
+        voice = piper.PiperVoice.load(self.model_path, use_cuda=self.use_cuda)
+        if (
+            self.use_cuda
+            and "CUDAExecutionProvider" not in voice.session.get_providers()
+        ):
+            raise _TtsCudaUnavailableError("tts_cuda_unavailable")
+        return voice
+
     @model_operation
     def _load_model(self):
-        """Lazy loading modelu TTS."""
-        if self.voice is None and not self.is_fallback_mode:
-            try:
-                import piper
-
-                voice = piper.PiperVoice.load(self.model_path, use_cuda=self.use_cuda)
-                if (
-                    self.use_cuda
-                    and "CUDAExecutionProvider" not in voice.session.get_providers()
-                ):
-                    raise RuntimeError("tts_cuda_unavailable")
-                self.voice = voice
-                self.load_error_code = None
-                logger.info(
-                    "Model Piper TTS załadowany pomyślnie (CUDA={})", self.use_cuda
-                )
-            except ModuleNotFoundError as exc:
-                self.load_error_code = (
-                    "tts_package_missing"
-                    if exc.name == "piper"
-                    else "tts_dependency_unavailable"
-                )
-                logger.error(
-                    "Piper TTS import failed ({}): {}", self.load_error_code, exc
-                )
-                self.is_fallback_mode = True
-            except ImportError as exc:
-                self.load_error_code = "tts_dependency_unavailable"
-                logger.error("Piper TTS dependency failed: {}", exc)
-                self.is_fallback_mode = True
-            except Exception as e:
-                self.load_error_code = (
-                    "tts_cuda_unavailable" if self.use_cuda else "tts_model_load_failed"
-                )
-                logger.error(f"Błąd podczas ładowania modelu TTS: {e}")
-                self.is_fallback_mode = True
+        """Load once; an error never enables a silent CPU inference fallback."""
+        if self.voice is not None or self.is_fallback_mode:
+            return
+        try:
+            self.voice = self._load_piper_voice()
+        except ModuleNotFoundError as exc:
+            self.load_error_code = "tts_dependency_unavailable"
+            if exc.name == "piper":
+                self.load_error_code = "tts_package_missing"
+            logger.error("Piper TTS import failed ({}): {}", self.load_error_code, exc)
+        except ImportError as exc:
+            self.load_error_code = "tts_dependency_unavailable"
+            logger.error("Piper TTS dependency failed: {}", exc)
+        except _TtsCudaUnavailableError as exc:
+            self.load_error_code = "tts_cuda_unavailable"
+            logger.error("Piper TTS CUDA provider unavailable: {}", exc)
+        except Exception as exc:
+            self.load_error_code = "tts_model_load_failed"
+            logger.error("Piper TTS model load failed: {}", exc)
+        else:
+            self.load_error_code = None
+            logger.info("Model Piper TTS załadowany pomyślnie (CUDA={})", self.use_cuda)
+            return
+        self.is_fallback_mode = True
 
     @model_operation
     async def speak(self, text: str) -> Optional[np.ndarray]:

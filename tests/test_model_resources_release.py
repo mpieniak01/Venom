@@ -29,17 +29,24 @@ def world(tmp_path, monkeypatch):
 
 
 def uncertain(admission):
-    with pytest.raises(RuntimeError):
+    def exercise_operation():
         with admission.operation(kind="runtime_switch", mutation=True):
             raise RuntimeError("transport lost")
+
+    with pytest.raises(RuntimeError):
+        exercise_operation()
 
 
 def test_cleanup_is_exclusive_and_cannot_generate_or_clear_live_work(world):
     uncertain(world)
     with world.operation(kind="cleanup", mutation=True, _cleanup=True):
-        with pytest.raises(RuntimeAdmissionError):
+
+        def exercise_operation():
             with world.operation(kind="generation"):
                 pytest.fail("cleanup must not generate")
+
+        with pytest.raises(RuntimeAdmissionError):
+            exercise_operation()
         failures = []
 
         def attempt():
@@ -61,15 +68,23 @@ def test_cleanup_is_exclusive_and_cannot_generate_or_clear_live_work(world):
 
 def test_cleanup_never_erases_an_active_lease_or_host_operation(world):
     with world.operation(kind="generation"):
-        with pytest.raises(RuntimeAdmissionError):
+
+        def exercise_operation():
             with world.operation(kind="cleanup", mutation=True, _cleanup=True):
                 pytest.fail("live operation was erased")
+
+        with pytest.raises(RuntimeAdmissionError):
+            exercise_operation()
     lease = world.acquire(
         owner="fixture", run_id="run", engine="fixture", model="fixture"
     )
-    with pytest.raises(RuntimeAdmissionError):
+
+    def exercise_operation():
         with world.operation(kind="cleanup", mutation=True, _cleanup=True):
             pytest.fail("owned runtime was erased")
+
+    with pytest.raises(RuntimeAdmissionError):
+        exercise_operation()
     assert lease.release()
 
 
@@ -151,7 +166,8 @@ async def test_global_release_verifies_daemons_voice_and_vision_before_recovery(
     result = await service.release_all_runtime_models(controller)
     assert result["released"]
     assert events.index("prepare:vision") < events.index("unload:ollama")
-    assert len(owners) == 4 and len(result["runtimes"]) == 5
+    assert len(owners) == 4
+    assert len(result["runtimes"]) == 5
     assert world.snapshot()["status"] == "available"
 
 
@@ -336,7 +352,8 @@ async def test_global_release_does_not_require_any_llm_installation(
     result = await service.release_all_runtime_models(
         SimpleNamespace(list_servers=lambda: []), runtime_ids=set()
     )
-    assert result["released"] and voice is not None
+    assert result["released"]
+    assert voice is not None
     assert [row["runtime"] for row in result["runtimes"]] == ["tts"]
 
 
@@ -352,7 +369,8 @@ def test_whisper_release_unloads_native_weights_without_cpu_offload(world):
         rows = resources.release_registered_models()
     native.unload_model.assert_called_once_with(to_cpu=False)
     assert skill.model is None
-    assert rows[0]["category"] == "stt" and rows[0]["verified"]
+    assert rows[0]["category"] == "stt"
+    assert rows[0]["verified"]
 
 
 @pytest.mark.asyncio
@@ -386,7 +404,8 @@ async def test_release_reconciles_children_queued_by_already_admitted_work(world
         SimpleNamespace(list_servers=lambda: []), runtime_ids=set()
     )
     await task
-    assert result["released"] and not owner.pending
+    assert result["released"]
+    assert not owner.pending
 
 
 @pytest.mark.asyncio

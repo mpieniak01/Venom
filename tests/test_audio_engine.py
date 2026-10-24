@@ -334,3 +334,34 @@ async def test_switching_tts_model_preserves_requested_cuda(tmp_path, monkeypatc
     monkeypatch.setattr(VoiceSkill, "_load_model", lambda self: None)
     await engine.set_tts_model_path(str(second))
     assert engine.voice.use_cuda is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("invalid ONNX"),
+        MemoryError("out of memory"),
+        ValueError("bad config"),
+    ],
+)
+def test_cuda_tts_does_not_mislabel_model_failures_as_missing_cuda(
+    tmp_path, monkeypatch, error
+):
+    import sys
+    from types import SimpleNamespace
+
+    from venom_core.perception.audio_engine import VoiceSkill
+
+    model = tmp_path / "voice.onnx"
+    model.touch()
+
+    def fail(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setitem(
+        sys.modules, "piper", SimpleNamespace(PiperVoice=SimpleNamespace(load=fail))
+    )
+    skill = VoiceSkill(model_path=str(model), use_cuda=True)
+    skill._load_model()
+    assert skill.load_error_code == "tts_model_load_failed"
+    assert skill.voice is None

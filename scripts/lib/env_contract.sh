@@ -124,3 +124,11 @@ env_contract_origin() {
     printf 'empty'
   fi
 }
+
+
+env_contract_run() {
+  local python_bin="$1"
+  local env_file="$2"
+  shift 2
+  "$python_bin" -m dotenv -f "$env_file" run -- "$@"
+}

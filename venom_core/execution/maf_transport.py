@@ -99,6 +99,8 @@ class _MafHttpRejection(RuntimeError, RuntimeOperationRejection):
 
 
 async def _observe_request(request: httpx.Request) -> None:
+    # AsyncClient awaits event hooks, even when header bookkeeping needs no I/O.
+    # https://www.python-httpx.org/advanced/event-hooks/
     evidence = _EVIDENCE.get()
     if evidence is not None:
         # A later rejection cannot erase an earlier timeout or accepted work.
@@ -118,6 +120,7 @@ async def _observe_request(request: httpx.Request) -> None:
 
 
 async def _observe_response(response: httpx.Response) -> None:
+    # HTTPX requires an async hook here; response observation itself is synchronous.
     evidence = _EVIDENCE.get()
     if evidence is None or evidence.request is not response.request:
         return

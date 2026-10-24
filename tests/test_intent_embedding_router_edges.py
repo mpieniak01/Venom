@@ -164,3 +164,53 @@ async def test_intent_manager_llm_exception_uses_help_heuristic(temp_lexicon_dir
         intent = await manager.classify_intent("czy możesz pomóc z setupem?")
         assert intent == "HELP_REQUEST"
         assert manager.last_intent_debug["source"] == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_release_reload_without_optional_dependency_falls_back_only_once(
+    tmp_path, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+    router = IntentEmbeddingRouter(tmp_path)
+    router.release_model_resource()
+    original = router._initialize
+    router._initialize = Mock(wraps=original)
+    assert await router.classify("hello") == (None, 0.0, [])
+    assert await router.classify("again") == (None, 0.0, [])
+    assert router._initialize.call_count == 1
+    assert router._resources_released is False
+
+
+@pytest.mark.asyncio
+async def test_release_reload_preserves_barrier_and_does_not_duplicate_phrases(
+    temp_lexicon_dir, monkeypatch
+):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
+    from venom_core.services.model_resources import release_barrier
+
+    monkeypatch.setattr(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True)
+    model = MagicMock()
+    model.encode.side_effect = lambda phrases, **_kw: np.array(
+        [[1.0, 0.0] for _ in phrases]
+    )
+    constructor = sys.modules["sentence_transformers"].SentenceTransformer
+    constructor.return_value = model
+    router = IntentEmbeddingRouter(temp_lexicon_dir)
+    initial = {key: list(value) for key, value in router.intent_phrases.items()}
+    router.release_model_resource()
+    with release_barrier():
+        with pytest.raises(HTTPException, match="model_resources_releasing"):
+            await router.classify("hello")
+    assert router._resources_released is True
+    await asyncio.gather(router.classify("hello"), router.classify("again"))
+    assert constructor.call_count == 2
+    assert router.intent_phrases == initial

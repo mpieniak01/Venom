@@ -76,3 +76,50 @@ def test_keep_alive_numeric_seconds_are_json_numbers(configured, expected):
     actual = normalize_ollama_keep_alive(configured)
     assert actual == expected
     assert type(actual) is type(expected)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "forever",
+        "5min",
+        "1.5",
+        "1h-2m",
+        "1e3s",
+        "NaN",
+        "1d",
+        True,
+        None,
+        1.5,
+        "9" * 129,
+        "2562047h47m16.854775808s",
+        9223372037,
+    ],
+)
+def test_keep_alive_rejects_invalid_or_overflowing_values_before_transport(value):
+    from venom_core.utils.ollama_tuning import normalize_ollama_keep_alive
+
+    with pytest.raises(ValueError):
+        normalize_ollama_keep_alive(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "1h30m",
+        "-1.5h",
+        ".5s",
+        "1.s",
+        "1us",
+        "1µs",
+        "1μs",
+        "0.9ns0.9ns",
+        "2562047h47m16.854775807s",
+        "-2562047h47m16.854775808s",
+    ],
+)
+def test_keep_alive_preserves_valid_go_duration_grammar(value):
+    from venom_core.utils.ollama_tuning import normalize_ollama_keep_alive
+
+    assert normalize_ollama_keep_alive(value) == value

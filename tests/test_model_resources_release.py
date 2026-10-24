@@ -318,7 +318,12 @@ async def test_unconfigured_engine_is_not_mistaken_for_an_active_worker(
 
 
 @pytest.mark.asyncio
-async def test_global_release_does_not_require_any_llm_installation(world):
+@pytest.mark.parametrize("admission_enabled", [True, False])
+async def test_global_release_does_not_require_any_llm_installation(
+    world, admission_enabled
+):
+    world.enabled = admission_enabled
+
     class Voice:
         def __init__(self):
             resources.register_model_resource(self, "tts", "release")

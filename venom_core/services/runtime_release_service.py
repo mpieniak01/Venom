@@ -116,8 +116,9 @@ async def _release_all_models(
         for row in local_results + failures
     )
     verified = all(row["verified"] for row in results)
-    if not verified or not get_runtime_admission().recover(
-        confirm_quiescent=lambda: verified
+    admission = get_runtime_admission()
+    if not verified or (
+        admission.enabled and not admission.recover(confirm_quiescent=lambda: verified)
     ):
         raise HTTPException(
             status_code=502,

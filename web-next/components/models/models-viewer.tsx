@@ -1,5 +1,6 @@
 "use client";
 
+import { ModelResourcesControl } from "./model-resources-control";
 import React, { useState } from "react";
 import Link from "next/link";
 import { configHref } from "@/lib/config-navigation";
@@ -35,6 +36,15 @@ export const ModelsViewer = () => {
       />
 
       <Link className="inline-block text-sm underline underline-offset-4" href={configHref({ tab: "integrations", integration: "core:local-runtime", visibility: "all" })}>{t("config.navigation.overviewShortcut")}</Link>
+      <ModelResourcesControl
+        releasing={logic.releasingResources}
+        memory={logic.modelResources.data?.memory}
+        result={logic.resourceRelease}
+        entries={logic.resourceReleaseRows}
+        error={logic.resourceReleaseError}
+        onRelease={logic.handleReleaseAllModels}
+        t={t}
+      />
       {/* Tabs */}
       <div className={THEME_TAB_BAR_CLASS}>
         <Button

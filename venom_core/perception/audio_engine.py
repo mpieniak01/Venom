@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 import numpy as np
 
+from venom_core.services.model_resources import model_operation, register_model_resource
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -40,8 +41,19 @@ class WhisperSkill:
         self.compute_type = compute_type
         self.model: Optional[Any] = None
         self._inference_lock = threading.RLock()
+        register_model_resource(self, "stt", "release_model_resource")
         logger.info(f"Inicjalizacja WhisperSkill: model={model_size}, device={device}")
 
+    def release_model_resource(self) -> bool:
+        with self._inference_lock:
+            native = getattr(self.model, "model", None)
+            unload = getattr(native, "unload_model", None)
+            if callable(unload):
+                unload(to_cpu=False)
+            self.model = None
+        return self.model is None
+
+    @model_operation
     def _load_model(self):
         """Lazy loading modelu (tylko gdy potrzebny)."""
         if self.model is None:
@@ -63,6 +75,7 @@ class WhisperSkill:
                 logger.error(f"Błąd podczas ładowania modelu Whisper: {e}")
                 raise
 
+    @model_operation
     def _transcribe_buffer_sync(
         self,
         audio_buffer: np.ndarray,
@@ -260,6 +273,10 @@ class WhisperSkill:
         )
 
 
+class _TtsCudaUnavailableError(RuntimeError):
+    """Piper returned a session without the requested CUDA provider."""
+
+
 class VoiceSkill:
     """
     Skill do syntezy mowy (TTS) przy użyciu piper-tts.
@@ -270,6 +287,7 @@ class VoiceSkill:
         self,
         model_path: Optional[str] = None,
         speaker_id: int = 0,
+        use_cuda: bool = False,
     ):
         """
         Inicjalizacja Piper TTS.
@@ -280,7 +298,10 @@ class VoiceSkill:
         """
         self.model_path = model_path
         self.speaker_id = speaker_id
+        self.use_cuda = use_cuda
+        self.load_error_code: str | None = None
         self.voice: Optional[Any] = None
+        register_model_resource(self, "tts", "release_model_resource")
         self.output_sample_rate = 22050
         self.audio_queue: queue.Queue[Optional[np.ndarray]] = queue.Queue()
         self._playback_thread: Optional[threading.Thread] = None
@@ -312,23 +333,50 @@ class VoiceSkill:
         logger.info(f"Inicjalizacja VoiceSkill: model_path={self.model_path}")
         return False
 
+    def release_model_resource(self) -> bool:
+        self.stop_playback_sync()
+        self.voice = None
+        return self.voice is None
+
+    def _load_piper_voice(self):
+        import piper
+
+        voice = piper.PiperVoice.load(self.model_path, use_cuda=self.use_cuda)
+        if (
+            self.use_cuda
+            and "CUDAExecutionProvider" not in voice.session.get_providers()
+        ):
+            raise _TtsCudaUnavailableError("tts_cuda_unavailable")
+        return voice
+
+    @model_operation
     def _load_model(self):
-        """Lazy loading modelu TTS."""
-        if self.voice is None and not self.is_fallback_mode:
-            try:
-                import piper
+        """Load once; an error never enables a silent CPU inference fallback."""
+        if self.voice is not None or self.is_fallback_mode:
+            return
+        try:
+            self.voice = self._load_piper_voice()
+        except ModuleNotFoundError as exc:
+            self.load_error_code = "tts_dependency_unavailable"
+            if exc.name == "piper":
+                self.load_error_code = "tts_package_missing"
+            logger.error("Piper TTS import failed ({}): {}", self.load_error_code, exc)
+        except ImportError as exc:
+            self.load_error_code = "tts_dependency_unavailable"
+            logger.error("Piper TTS dependency failed: {}", exc)
+        except _TtsCudaUnavailableError as exc:
+            self.load_error_code = "tts_cuda_unavailable"
+            logger.error("Piper TTS CUDA provider unavailable: {}", exc)
+        except Exception as exc:
+            self.load_error_code = "tts_model_load_failed"
+            logger.error("Piper TTS model load failed: {}", exc)
+        else:
+            self.load_error_code = None
+            logger.info("Model Piper TTS załadowany pomyślnie (CUDA={})", self.use_cuda)
+            return
+        self.is_fallback_mode = True
 
-                self.voice = piper.PiperVoice.load(self.model_path)
-                logger.info("Model Piper TTS załadowany pomyślnie")
-            except ImportError:
-                logger.warning(
-                    "piper-tts nie jest zainstalowany. VoiceSkill działa w trybie mock."
-                )
-                self.is_fallback_mode = True
-            except Exception as e:
-                logger.error(f"Błąd podczas ładowania modelu TTS: {e}")
-                self.is_fallback_mode = True
-
+    @model_operation
     async def speak(self, text: str) -> Optional[np.ndarray]:
         """
         Syntetyzuje mowę z tekstu.
@@ -350,6 +398,9 @@ class VoiceSkill:
 
             voice = self.voice
             if voice is None or self.is_fallback_mode:
+                if self.use_cuda:
+                    # A requested GPU execution cannot become a silent mock success.
+                    return None
                 # Mock mode - zwróć ciszę
                 logger.warning("TTS w trybie mock (fallback) - zwracam ciszę")
                 return np.zeros(16000, dtype=np.int16)  # 1 sekunda ciszy
@@ -372,6 +423,7 @@ class VoiceSkill:
             logger.error(f"Błąd podczas syntezy mowy: {e}")
             return None
 
+    @model_operation
     def _synthesize_with_piper(self, text: str) -> np.ndarray:
         """Dostosowuje aktualne API piper-tts do kontraktu PCM int16."""
         voice = self.voice
@@ -489,6 +541,7 @@ class AudioEngine:
         whisper_model_size: str = "base",
         tts_model_path: Optional[str] = None,
         device: str = "cpu",
+        tts_use_cuda: bool = False,
     ):
         """
         Inicjalizacja silnika audio.
@@ -502,7 +555,7 @@ class AudioEngine:
             model_size=whisper_model_size,
             device=device,
         )
-        self.voice = VoiceSkill(model_path=tts_model_path)
+        self.voice = VoiceSkill(model_path=tts_model_path, use_cuda=tts_use_cuda)
         logger.info("AudioEngine zainicjalizowany")
 
     async def listen(
@@ -534,6 +587,7 @@ class AudioEngine:
         """Synchronously transcribe an audio file from disk."""
         return self.whisper.transcribe_file(file_path, language=language)
 
+    @model_operation
     async def set_tts_model_path(self, model_path: Optional[str]) -> dict[str, bool]:
         """
         Przełącza model TTS i opcjonalnie podgrzewa nowy głos.
@@ -545,7 +599,7 @@ class AudioEngine:
         previous_model_path = str(getattr(current_voice, "model_path", "") or "")
         await asyncio.to_thread(current_voice.stop_playback_sync)
 
-        self.voice = VoiceSkill(model_path=model_path)
+        self.voice = VoiceSkill(model_path=model_path, use_cuda=current_voice.use_cuda)
         loaded = False
         if not self.voice.is_fallback_mode:
             try:
@@ -560,6 +614,7 @@ class AudioEngine:
             != str(getattr(self.voice, "model_path", "") or ""),
         }
 
+    @model_operation
     async def warmup(self) -> dict[str, bool]:
         """Preload STT/TTS models so first user-facing request is faster."""
         warmup_state = {"whisper_loaded": False, "tts_loaded": False}

@@ -560,6 +560,27 @@ export function useActiveLlmServer(intervalMs = 0) {
   );
 }
 
+export type ModelResourcesMemory = {
+  rss_mib: number;
+  gpu: { index: number; used_mib: number; total_mib: number }[];
+};
+export type ModelResourcesResult = {
+  status: string;
+  released: boolean;
+  memory_before: ModelResourcesMemory;
+  memory_after: ModelResourcesMemory;
+  runtimes: { runtime: string; verified: boolean; state: string }[];
+};
+
+export function useModelResources() {
+  return usePolling<{ memory: ModelResourcesMemory }>(
+    "model-resources", () => apiFetch("/api/v1/system/models/resources"), 5000,
+  );
+}
+export function releaseAllModelResources() {
+  return apiFetch<ModelResourcesResult>("/api/v1/system/models/release", { method: "POST" });
+}
+
 export async function setActiveLlmServer(serverName: string, model?: string) {
   return apiFetch<ActiveLlmServerResponse>("/api/v1/system/llm-servers/active", {
     method: "POST",

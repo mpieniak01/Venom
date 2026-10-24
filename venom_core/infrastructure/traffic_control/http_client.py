@@ -23,6 +23,7 @@ from venom_core.infrastructure.traffic_control.retry_policy import (
     is_retriable_http_error,
 )
 from venom_core.services.runtime_admission import (
+    REJECTED_BEFORE_WORK_HTTP_STATUSES,
     RuntimeOperationRejection,
     admitted_operation,
 )
@@ -52,7 +53,7 @@ def _runtime_request(client: Any, method: str, url: str, **kwargs: Any) -> bool:
     )
 
 
-_REJECTED_BEFORE_WORK = frozenset({400, 401, 403, 404, 405, 413, 415, 422})
+_REJECTED_BEFORE_WORK = REJECTED_BEFORE_WORK_HTTP_STATUSES
 _ERROR_BODY_LIMIT = 2048
 _RUNTIME_ERROR_DIAGNOSTIC = "venom_runtime_error_diagnostic"
 

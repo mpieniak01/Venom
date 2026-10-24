@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from decimal import Decimal, localcontext
 from typing import Any, Dict
 
 PROFILE_BALANCED = "balanced-12-24gb"
@@ -90,3 +92,52 @@ def build_ollama_runtime_options(settings) -> Dict[str, Any]:
         "flash_attention": resolved["flash_attention"],
         "kv_cache_type": resolved["kv_cache_type"],
     }
+
+
+_DURATION_PART = re.compile(r"(\d+(?:\.\d*)?|\.\d+)(ns|us|µs|μs|ms|s|m|h)", re.ASCII)
+_DURATION_UNITS_NS = {
+    "ns": 1,
+    "us": 1000,
+    "µs": 1000,
+    "μs": 1000,
+    "ms": 1000000,
+    "s": 1000000000,
+    "m": 60000000000,
+    "h": 3600000000000,
+}
+
+
+def _validate_duration_text(text: str) -> None:
+    """Match Go time.ParseDuration, including signed compounds and int64 bounds."""
+    negative = text.startswith("-")
+    body = text[1:] if text.startswith(("+", "-")) else text
+    total, position = 0, 0
+    limit = 2**63 if negative else 2**63 - 1
+    with localcontext() as context:
+        context.prec = 160
+        while position < len(body):
+            part = _DURATION_PART.match(body, position)
+            if part is None:
+                raise ValueError("invalid_ollama_keep_alive")
+            total += int(Decimal(part[1]) * _DURATION_UNITS_NS[part[2]])
+            if total > limit:
+                raise ValueError("ollama_keep_alive_out_of_range")
+            position = part.end()
+    if not body:
+        raise ValueError("invalid_ollama_keep_alive")
+
+
+def normalize_ollama_keep_alive(value: str | int) -> str | int:
+    """Validate locally; Ollama accepts numeric seconds or Go duration strings."""
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError("invalid_ollama_keep_alive")
+    text = str(value).strip()
+    if not text or len(text) > 128:
+        raise ValueError("invalid_ollama_keep_alive")
+    if re.fullmatch(r"[+-]?\d+", text, flags=re.ASCII):
+        seconds = int(text)
+        if seconds > (2**63 - 1) // 1000000000:
+            raise ValueError("ollama_keep_alive_out_of_range")
+        return seconds
+    _validate_duration_text(text)
+    return text

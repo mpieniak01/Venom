@@ -15,7 +15,7 @@ import stat
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterator
-from contextlib import closing, contextmanager, nullcontext
+from contextlib import aclosing, closing, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
@@ -29,6 +29,8 @@ from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 
 RUNTIME_ADMISSION_API_VERSION = 1
+# Only these HTTP rejections establish that generation never started.
+REJECTED_BEFORE_WORK_HTTP_STATUSES = frozenset({400, 401, 403, 404, 405, 413, 415, 422})
 _MAX_OPERATIONS = 128
 _SELECT_LEASE = "SELECT * FROM lease"
 _CURRENT_OPERATION: ContextVar[str | None] = ContextVar(
@@ -400,6 +402,34 @@ class RuntimeAdmission:
         ):
             raise RuntimeAdmissionError()
 
+    @staticmethod
+    def _validate_cleanup_barrier(
+        db: sqlite3.Connection,
+        *,
+        ancestor: sqlite3.Row | None,
+        token: str | None,
+        cleanup: bool,
+    ) -> None:
+        if (
+            cleanup
+            and token is None
+            and ancestor is not None
+            and ancestor["kind"] != "cleanup"
+        ):
+            raise RuntimeAdmissionError()
+        own_cleanup = (
+            ancestor["token"]
+            if ancestor is not None and ancestor["kind"] == "cleanup"
+            else ""
+        )
+        if db.execute(
+            "SELECT 1 FROM operation WHERE kind='cleanup' AND token<>? AND uncertain=0",
+            (own_cleanup,),
+        ).fetchone():
+            raise RuntimeAdmissionError()
+        if ancestor is not None and ancestor["kind"] == "cleanup" and not cleanup:
+            raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
+
     def _enter(
         self,
         kind: str,
@@ -413,8 +443,9 @@ class RuntimeAdmission:
             return None
         with self._transaction() as db:
             ancestor = self._ancestor(db)
-            if ancestor is not None and ancestor["kind"] == "cleanup" and not cleanup:
-                raise RuntimeAdmissionError()  # Cleanup cannot start new generation.
+            self._validate_cleanup_barrier(
+                db, ancestor=ancestor, token=token, cleanup=cleanup
+            )
             nested = (
                 ancestor is not None
                 and ancestor["kind"] != "lifecycle"
@@ -431,9 +462,12 @@ class RuntimeAdmission:
             )
             if mutation:
                 own_token = ancestor["token"] if nested and ancestor is not None else ""
-                if db.execute(
-                    "SELECT 1 FROM operation WHERE token<>?", (own_token,)
-                ).fetchone():
+                query = "SELECT 1 FROM operation WHERE token<>?"
+                if cleanup and token is None:
+                    # A trusted host cleanup may verify uncertain daemon work.
+                    # It cannot erase or interrupt a live host operation or lease.
+                    query += " AND (uncertain=0 OR lease_token IS NOT NULL)"
+                if db.execute(query, (own_token,)).fetchone():
                     raise RuntimeAdmissionError()
             if (
                 nested
@@ -598,13 +632,23 @@ class RuntimeAdmission:
                 and current["token"] != expected_token
             ):
                 raise RuntimeAdmissionError("runtime_lease_invalid")
+            ancestor = self._ancestor(db)
+            cleanup_token = (
+                ancestor["token"]
+                if ancestor is not None
+                and ancestor["kind"] == "cleanup"
+                and ancestor["lease_token"] is None
+                else ""
+            )
             if db.execute(
-                "SELECT 1 FROM operation WHERE uncertain=0 AND pid=?", (os.getpid(),)
+                "SELECT 1 FROM operation WHERE uncertain=0 AND pid=? AND token<>?",
+                (os.getpid(), cleanup_token),
             ).fetchone():
                 return False
             if not confirm_quiescent():
                 return False
-            db.execute("DELETE FROM operation")
+            # Keep the cleanup barrier until its host operation actually exits.
+            db.execute("DELETE FROM operation WHERE token<>?", (cleanup_token,))
             db.execute("DELETE FROM lease")
         return True
 
@@ -716,14 +760,20 @@ def get_runtime_admission() -> RuntimeAdmission:
 
 
 def admitted_operation(
-    kind: str, *, mutation: bool = False, when: Callable[..., bool] | None = None
+    kind: str,
+    *,
+    mutation: bool = False,
+    when: Callable[..., bool] | None = None,
+    cleanup: bool = False,
 ) -> Callable[[Any], Any]:
     """Guard sync, async and streaming host entrypoints without changing results."""
 
     def scope(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         if when is not None and not when(*args, **kwargs):
             return nullcontext()
-        return get_runtime_admission().operation(kind=kind, mutation=mutation)
+        return get_runtime_admission().operation(
+            kind=kind, mutation=mutation, _cleanup=cleanup
+        )
 
     def decorate(function: Any) -> Any:
         import inspect
@@ -733,8 +783,9 @@ def admitted_operation(
             @wraps(function)
             async def stream(*args: Any, **kwargs: Any) -> Any:
                 with scope(args, kwargs):
-                    async for item in function(*args, **kwargs):
-                        yield item
+                    async with aclosing(function(*args, **kwargs)) as iterator:
+                        async for item in iterator:
+                            yield item
 
             return stream
         if inspect.iscoroutinefunction(function):

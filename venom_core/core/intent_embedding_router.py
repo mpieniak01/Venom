@@ -5,12 +5,15 @@ który działa jako dodatkowa warstwa przed klasyfikacją LLM w IntentManager.
 """
 
 import json
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from fastapi import HTTPException
 
 from venom_core.config import SETTINGS
+from venom_core.services.model_resources import model_operation, register_model_resource
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -46,13 +49,18 @@ class IntentEmbeddingRouter:
         self.margin = margin if margin is not None else SETTINGS.INTENT_EMBED_MARGIN
 
         self.model: Any = None
+        register_model_resource(self, "embeddings", "release_model_resource")
         self.intent_embeddings: Dict[str, np.ndarray] = {}
         self.intent_phrases: Dict[str, List[str]] = {}
         self._initialized = False
+        self._resources_released = False
+        self._reload_lock = threading.Lock()
 
         # Próba inicjalizacji - jeśli się nie uda, router będzie wyłączony
         try:
             self._initialize()
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning(
                 "Nie udało się zainicjalizować IntentEmbeddingRouter: %s. "
@@ -65,6 +73,40 @@ class IntentEmbeddingRouter:
             self.intent_embeddings = {}
             self.intent_phrases = {}
 
+    def release_model_resource(self) -> bool:
+        self.model = None
+        self._initialized = False
+        self._resources_released = True
+        self.intent_embeddings.clear()
+        self.intent_phrases.clear()
+        return self.model is None
+
+    @model_operation
+    def _reload_after_release(self) -> None:
+        with self._reload_lock:
+            if not self._resources_released:
+                return
+            try:
+                self._initialize()
+            except HTTPException:
+                raise
+            except Exception as exc:
+                self.model = None
+                self._initialized = False
+                self.intent_embeddings.clear()
+                self.intent_phrases.clear()
+                logger.warning(
+                    "Embedding reload unavailable; retaining fallback: {}", exc
+                )
+            self._resources_released = False
+
+    @model_operation
+    def _encode_input(self, user_input: str):
+        return self.model.encode(
+            [user_input], convert_to_numpy=True, show_progress_bar=False
+        )[0]
+
+    @model_operation
     def _initialize(self) -> None:
         """Inicjalizuje model i buduje cache embeddingów intencji."""
         if not SETTINGS.ENABLE_INTENT_EMBEDDING_ROUTER:
@@ -172,6 +214,10 @@ class IntentEmbeddingRouter:
             - score: Najwyższy wynik podobieństwa
             - top2: Lista (intent, score) dla dwóch najlepszych dopasowań
         """
+        if getattr(self, "_resources_released", False):
+            from anyio import to_thread
+
+            await to_thread.run_sync(self._reload_after_release)
         # Jeśli router nie jest zainicjalizowany, zwróć None (fallback)
         if not self._initialized or not self.model:
             return None, 0.0, []
@@ -182,9 +228,7 @@ class IntentEmbeddingRouter:
 
             # Oblicz embedding dla wejścia w thread pool aby nie blokować event loop
             input_embedding = await to_thread.run_sync(
-                lambda: self.model.encode(
-                    [user_input], convert_to_numpy=True, show_progress_bar=False
-                )[0]
+                lambda: self._encode_input(user_input)
             )
 
             # Oblicz podobieństwo cosinusowe z każdym centroidem intencji
@@ -238,6 +282,8 @@ class IntentEmbeddingRouter:
 
             return top1_intent, top1_score, top2
 
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning(
                 "Błąd klasyfikacji embeddingowej: %s. Fallback do następnej warstwy.",

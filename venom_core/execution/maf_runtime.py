@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from contextlib import aclosing
 from functools import wraps
 from typing import TYPE_CHECKING, Any, cast
 
@@ -16,7 +17,15 @@ from venom_core.execution.agent_contracts import (
     ConversationHistory,
     ConversationMessage,
 )
-from venom_core.services.runtime_admission import admitted_operation
+from venom_core.execution.maf_transport import (
+    install_maf_transport_observer,
+    maf_transport_scope,
+)
+from venom_core.services.runtime_admission import (
+    admitted_operation,
+    get_runtime_admission,
+)
+from venom_core.utils.ollama_tuning import normalize_ollama_keep_alive
 
 if TYPE_CHECKING:
     from agent_framework import AgentResponse, ChatContext, ChatResponse, Message
@@ -169,6 +178,7 @@ class MafChatService:
         self.service_id = service_id
         self.ai_model_id = ai_model_id
         async_client = async_client or AsyncOpenAI(api_key=api_key, base_url=base_url)
+        install_maf_transport_observer(async_client)
         self.client = OpenAIChatCompletionClient(
             model=ai_model_id,
             async_client=async_client,
@@ -233,6 +243,10 @@ class MafChatService:
             key: options.pop(key) for key in options.copy() if key not in standard
         }
         extensions.update(settings.extra_body or {})
+        if "keep_alive" in extensions:
+            extensions["keep_alive"] = normalize_ollama_keep_alive(
+                extensions["keep_alive"]
+            )
         if set(extensions) & {
             "model",
             "messages",
@@ -251,7 +265,6 @@ class MafChatService:
             options["extra_body"] = extensions
         return cast("OpenAIChatCompletionOptions", options)
 
-    @admitted_operation("maf_generation", mutation=False)
     async def get_chat_message_content(
         self,
         *,
@@ -259,56 +272,79 @@ class MafChatService:
         settings: CompletionOptions | None = None,
         kernel: AgentRuntime | None = None,
     ):
-        messages = self._messages(chat_history)
-        options = self._options(settings)
-        response: AgentResponse[Any] | ChatResponse[Any]
-        if (
-            settings is not None
-            and settings.function_choice_behavior is not None
-            and kernel is not None
+        # This phase only builds local request data; it cannot start daemon work.
+        # Check ownership first, and never quarantine a rejected local option.
+        with get_runtime_admission().operation(
+            kind="maf_validation", confirm_quiescent=lambda: True
         ):
-            from agent_framework import chat_middleware
-
-            tools = kernel.native_tools(settings.function_choice_behavior.filters)
-            input_count = len(messages)
-            recorded_count = 0
-
-            def record_intermediate(native_messages: Sequence[Message]) -> None:
-                nonlocal recorded_count
-                for message in native_messages[recorded_count:]:
-                    chat_history.add_message(
-                        ConversationMessage(
-                            message.role, message.text, native_message=message
-                        )
-                    )
-                recorded_count = len(native_messages)
-
-            @chat_middleware
-            async def preserve_tool_history(
-                context: ChatContext, call_next: Callable[[], Awaitable[None]]
-            ) -> None:
-                # Each call contains the generated prefix after the original inputs.
-                # Save completed tool results before another provider await can fail.
-                record_intermediate(context.messages[input_count:])
-                await call_next()
-
-            response = await self.client.as_agent(
-                tools=tools, middleware=[preserve_tool_history]
-            ).run(messages, options=options)
-            # The caller still owns persistence of the final assistant response.
-            record_intermediate(response.messages[:-1])
-        else:
-            response = await self.client.get_response(messages, options=options)
-        return ConversationMessage(
-            "assistant",
-            response.text,
-            native_message=response.messages[-1] if response.messages else None,
+            messages = self._messages(chat_history)
+            options = self._options(settings)
+        return await self._generate(
+            chat_history=chat_history,
+            settings=settings,
+            kernel=kernel,
+            messages=messages,
+            options=options,
         )
+
+    @admitted_operation("maf_generation", mutation=False)
+    async def _generate(
+        self,
+        *,
+        chat_history: ConversationHistory,
+        settings: CompletionOptions | None,
+        kernel: AgentRuntime | None,
+        messages: list[Any],
+        options: OpenAIChatCompletionOptions,
+    ):
+        with maf_transport_scope():
+            response: AgentResponse[Any] | ChatResponse[Any]
+            if (
+                settings is not None
+                and settings.function_choice_behavior is not None
+                and kernel is not None
+            ):
+                from agent_framework import chat_middleware
+
+                tools = kernel.native_tools(settings.function_choice_behavior.filters)
+                input_count = len(messages)
+                recorded_count = 0
+
+                def record_intermediate(native_messages: Sequence[Message]) -> None:
+                    nonlocal recorded_count
+                    for message in native_messages[recorded_count:]:
+                        chat_history.add_message(
+                            ConversationMessage(
+                                message.role, message.text, native_message=message
+                            )
+                        )
+                    recorded_count = len(native_messages)
+
+                @chat_middleware
+                async def preserve_tool_history(
+                    context: ChatContext, call_next: Callable[[], Awaitable[None]]
+                ) -> None:
+                    # Each call contains the generated prefix after the original inputs.
+                    # Save completed tool results before another provider await can fail.
+                    record_intermediate(context.messages[input_count:])
+                    await call_next()
+
+                response = await self.client.as_agent(
+                    tools=tools, middleware=[preserve_tool_history]
+                ).run(messages, options=options)
+                # The caller still owns persistence of the final assistant response.
+                record_intermediate(response.messages[:-1])
+            else:
+                response = await self.client.get_response(messages, options=options)
+            return ConversationMessage(
+                "assistant",
+                response.text,
+                native_message=response.messages[-1] if response.messages else None,
+            )
 
     async def get_chat_message_contents(self, **kwargs):
         return [await self.get_chat_message_content(**kwargs)]
 
-    @admitted_operation("maf_stream", mutation=False)
     async def get_streaming_chat_message_contents(
         self,
         *,
@@ -316,11 +352,29 @@ class MafChatService:
         settings: CompletionOptions | None = None,
         **kwargs,
     ) -> AsyncIterator[list[ConversationMessage]]:
-        async for update in self.client.get_response(
-            self._messages(chat_history), stream=True, options=self._options(settings)
+        # This phase only builds local request data; it cannot start daemon work.
+        # Check ownership first, and never quarantine a rejected local option.
+        with get_runtime_admission().operation(
+            kind="maf_validation", confirm_quiescent=lambda: True
         ):
-            if update.text:
-                yield [ConversationMessage("assistant", update.text)]
+            messages = self._messages(chat_history)
+            options = self._options(settings)
+        async with aclosing(self._stream(messages, options)) as stream:
+            async for chunk in stream:
+                yield chunk
+
+    @admitted_operation("maf_stream", mutation=False)
+    async def _stream(
+        self, messages: list[Any], options: OpenAIChatCompletionOptions
+    ) -> AsyncIterator[list[ConversationMessage]]:
+        with maf_transport_scope():
+            async for update in self.client.get_response(
+                messages,
+                stream=True,
+                options=options,
+            ):
+                if update.text:
+                    yield [ConversationMessage("assistant", update.text)]
 
     async def aclose(self) -> None:
         if self._owned_client is not None:

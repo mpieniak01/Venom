@@ -4,6 +4,13 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+# Git/pre-commit can export this worktree's index and config into the hook.
+# Tests create other repositories: their Git commands must discover their own
+# metadata rather than stage changes into the release worktree's index.
+while IFS= read -r git_local_var; do
+  unset "$git_local_var"
+done < <(git rev-parse --local-env-vars)
+
 upstream_ref=""
 if upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; then
   :

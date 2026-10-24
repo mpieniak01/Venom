@@ -9,6 +9,18 @@ export const models = {
     models: "Modele",
     remoteModels: "Modele zdalne",
   },
+  resources: {
+    categories: {"vision": "Wizja", "stt": "Rozpoznawanie mowy", "tts": "Synteza mowy", "embeddings": "Embeddingi", "voice_sessions": "Strumienie głosu", "ollama": "Ollama", "multi_runtime": "Multi-Runtime", "vllm": "vLLM", "onnx": "ONNX"},
+    title: "Pamięć modeli · RAM / VRAM",
+    description: "LLM, wizja, głos i embeddingi. Zatrzymuje ich aktywne strumienie i zwalnia zasoby.",
+    release: "Wyładuj wszystkie modele",
+    releasing: "Zwalnianie modeli i silników…",
+    released: "Zasoby modeli zwolnione. Kolejne użycie może ponownie załadować wybrany model.",
+    failed: "Nie udało się zwolnić wszystkich zasobów. Część modeli lub procesów może nadal zajmować pamięć.",
+    busy: "Trwa operacja na modelach. Zakończ ją i ponów zwalnianie zasobów.",
+    ram: "RAM procesu API",
+    noGpuReading: "VRAM: odczyt niedostępny",
+  },
   runtime: {
     title: "Sterowanie Runtime",
     description: "Wybierz serwer i model, następnie aktywuj. Poniżej widzisz aktualnie pracujący runtime.",

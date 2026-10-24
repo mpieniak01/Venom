@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Any, List, Optional
 
 from venom_core.config import SETTINGS
+from venom_core.services.model_resources import model_operation, register_model_resource
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,6 +37,7 @@ class EmbeddingService:
         ):
             self.service_type = "local"
         self._model: Optional[Any] = None
+        register_model_resource(self, "embeddings", "release_model_resource")
         self._client: Optional[Any] = None
         self._local_fallback_mode = False
         self._local_model_name = (
@@ -52,6 +54,12 @@ class EmbeddingService:
             self._get_embedding_impl_wrapper
         )
 
+    def release_model_resource(self) -> bool:
+        self._model = None
+        self._get_embedding_cached.cache_clear()
+        return self._model is None
+
+    @model_operation
     def _ensure_model_loaded(self) -> None:
         """Lazy loading modelu embeddingów."""
         if self._model is not None or self._client is not None:
@@ -99,6 +107,7 @@ class EmbeddingService:
                 f"Nieznany typ serwisu embeddingów: {self.service_type}. Dostępne: local, openai"
             )
 
+    @model_operation
     def _get_embedding_impl(self, text: str) -> List[float]:
         """
         Wewnętrzna implementacja generowania embeddingu (bez cache).
@@ -170,6 +179,7 @@ class EmbeddingService:
         logger.debug(f"Generowanie embeddingu dla tekstu ({len(text)} znaków)")
         return self._get_embedding_cached(text_normalized)
 
+    @model_operation
     def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Generuje embeddingi dla wielu tekstów (batch processing).

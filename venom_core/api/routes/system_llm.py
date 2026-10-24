@@ -12,7 +12,7 @@ from uuid import UUID
 
 import httpx
 import psutil
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from venom_core.api.routes import academy, system_deps
 from venom_core.api.routes.models_introspection import get_introspection_queue_metrics
@@ -20,6 +20,7 @@ from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
 )
+from venom_core.api.routes.system_config import require_localhost_request
 from venom_core.api.schemas.system_llm import (
     ActiveLlmServerRequest,
     LlmRuntimeActivateRequest,
@@ -2172,6 +2173,44 @@ async def control_llm_server(server_name: str, action: str):
         raise HTTPException(
             status_code=500, detail="Błąd podczas wykonywania komendy"
         ) from exc
+
+
+@router.get("/system/models/resources")
+async def get_model_resources():
+    """Read host RAM/VRAM and the registered local model owners without loading them."""
+    from venom_core.services.model_resources import resource_snapshot
+    from venom_core.services.runtime_admission import get_runtime_admission
+    from venom_core.services.runtime_release_service import memory_snapshot
+
+    return {
+        "status": "success",
+        "memory": await asyncio.to_thread(memory_snapshot),
+        "resources": resource_snapshot(),
+        "runtime": get_runtime_admission().snapshot(),
+    }
+
+
+@router.post(
+    "/system/models/release",
+    dependencies=[Depends(require_localhost_request)],
+    responses={
+        **LLM_SERVERS_RESPONSES,
+        403: {"description": "Local administration access required"},
+        409: {"description": "Model work could not be drained"},
+        502: {"description": "Resource release could not be verified"},
+        503: {"description": LLM_CONTROLLER_UNAVAILABLE},
+    },
+)
+async def release_llm_runtime():
+    """Unload local LLMs and verify resource release before clearing uncertainty."""
+    from venom_core.services.runtime_release_service import release_all_runtime_models
+
+    controller = system_deps.get_llm_controller()
+    if controller is None:
+        raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
+    return await release_all_runtime_models(
+        controller, runtime_ids=_installed_local_servers()
+    )
 
 
 @router.get("/system/llm-servers/active")

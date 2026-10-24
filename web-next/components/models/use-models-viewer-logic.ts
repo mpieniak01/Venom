@@ -38,6 +38,12 @@ export function useModelsViewerLogic() {
         handleInstall: catalog.handleInstall,
 
         // Runtime
+        modelResources: runtime.modelResources,
+        resourceRelease: runtime.resourceRelease,
+        resourceReleaseRows: runtime.resourceReleaseRows,
+        resourceReleaseError: runtime.resourceReleaseError,
+        releasingResources: runtime.releasingResources,
+        handleReleaseAllModels: runtime.handleReleaseAllModels,
         installedCollapsed: runtime.installedCollapsed, setInstalledCollapsed: runtime.setInstalledCollapsed,
         operationsCollapsed: runtime.operationsCollapsed, setOperationsCollapsed: runtime.setOperationsCollapsed,
         installed: runtime.installed, operations: runtime.operations,

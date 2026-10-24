@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, TypedDict
 import anyio
 import httpx
 import numpy as np
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
@@ -33,6 +33,7 @@ from venom_core.services.conversation_providers import (
     prepare_conversation_turn,
     urgent_conversation_turn,
 )
+from venom_core.services.model_resources import model_operation
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
 from venom_core.services.runtime_switch_gate import (
     assert_runtime_request_allowed,
@@ -504,12 +505,35 @@ class AudioStreamHandler:
         self.vad_threshold = vad_threshold
         self.silence_duration = silence_duration
         self.active_connections: Dict[int, AudioStreamHandler._ConnectionState] = {}
+        self.resources_suspended = False
         self._daemon_snapshot_meta_cache: dict[str, Any] = {
             "captured_at": 0.0,
             "payload": {},
         }
         self._daemon_snapshot_meta_refreshing = False
+        from venom_core.services.model_resources import register_model_resource
+
+        register_model_resource(self, "voice_sessions", "release_model_resource")
         logger.info("AudioStreamHandler zainicjalizowany")
+
+    async def prepare_model_release(self) -> None:
+        """Stop microphone consumers before releasing STT/TTS model objects."""
+        self.resources_suspended = True
+        connections = tuple(self.active_connections.values())
+        for state in connections:
+            timer = state.get("silence_finalize_task")
+            if timer is not None:
+                timer.cancel()
+                await asyncio.gather(timer, return_exceptions=True)
+            websocket = state["websocket"]
+            try:
+                await websocket.close(code=1012, reason="model_resources_released")
+            except RuntimeError:
+                pass
+        self.active_connections.clear()
+
+    def release_model_resource(self) -> bool:
+        return not self.active_connections
 
     class _ConnectionState(TypedDict):
         websocket: WebSocket
@@ -532,6 +556,7 @@ class AudioStreamHandler:
         voice = getattr(audio_engine, "voice", None) if audio_engine else None
         whisper_loaded = bool(getattr(whisper, "model", None))
         voice_loaded = bool(getattr(voice, "voice", None))
+        tts_session = getattr(getattr(voice, "voice", None), "session", None)
         dependencies = {
             "ffmpeg": shutil.which("ffmpeg") is not None,
             "faster_whisper": importlib.util.find_spec("faster_whisper") is not None,
@@ -556,6 +581,11 @@ class AudioStreamHandler:
             and not bool(getattr(voice, "is_fallback_mode", False)),
             "tts_model_path": getattr(voice, "model_path", None),
             "tts_fallback": getattr(voice, "is_fallback_mode", None),
+            "tts_error_code": getattr(voice, "load_error_code", None),
+            "tts_device": "cuda" if getattr(voice, "use_cuda", False) else "cpu",
+            "tts_execution_providers": tts_session.get_providers()
+            if tts_session is not None
+            else [],
             "dependencies": dependencies,
             "mode_contracts": mode_contracts_payload(),
             "runtime_switch_gate": get_runtime_switch_gate_status(),
@@ -566,19 +596,10 @@ class AudioStreamHandler:
         """Zwraca metadane ostatniej zapisanej sesji głosowej."""
         return collect_latest_voice_session_record(VOICE_SESSION_ROOT)
 
-    async def handle_websocket(
-        self,
-        websocket: WebSocket,
-        operator_agent=None,
-    ):
-        """
-        Obsługuje połączenie WebSocket dla audio.
-
-        Args:
-            websocket: Połączenie WebSocket
-            operator_agent: Agent do przetwarzania komend głosowych (opcjonalny)
-        """
+    @model_operation
+    async def _accept_connection(self, websocket: WebSocket) -> int:
         await websocket.accept()
+        self.resources_suspended = False
         connection_id = id(websocket)
         self.active_connections[connection_id] = {
             "websocket": websocket,
@@ -594,6 +615,26 @@ class AudioStreamHandler:
             "audio_config": {},
             "voice_mode": "standard",
         }
+
+        return connection_id
+
+    async def handle_websocket(
+        self,
+        websocket: WebSocket,
+        operator_agent=None,
+    ):
+        """
+        Obsługuje połączenie WebSocket dla audio.
+
+        Args:
+            websocket: Połączenie WebSocket
+            operator_agent: Agent do przetwarzania komend głosowych (opcjonalny)
+        """
+        try:
+            connection_id = await self._accept_connection(websocket)
+        except HTTPException:
+            await websocket.close(code=1013, reason="model_resources_releasing")
+            return
 
         logger.info(f"Nowe połączenie audio WebSocket: {connection_id}")
 
@@ -622,6 +663,7 @@ class AudioStreamHandler:
             if connection_id in self.active_connections:
                 del self.active_connections[connection_id]
 
+    @model_operation
     async def _handle_control_message(
         self, connection_id: int, message: str, operator_agent
     ) -> None:
@@ -633,6 +675,8 @@ class AudioStreamHandler:
             message: Wiadomość JSON
             operator_agent: Agent operatora
         """
+        if self.resources_suspended or connection_id not in self.active_connections:
+            return
         import json
 
         try:
@@ -772,6 +816,9 @@ class AudioStreamHandler:
             audio_bytes: Surowe dane audio
             operator_agent: Agent operatora
         """
+        if self.resources_suspended or connection_id not in self.active_connections:
+            return
+
         conn = self.active_connections[connection_id]
         if conn.get("recording_format") != "pcm16":
             conn["audio_bytes_buffer"].append(audio_bytes)
@@ -1805,6 +1852,7 @@ class AudioStreamHandler:
             return True
         return False
 
+    @model_operation
     async def _process_audio_buffer(
         self,
         connection_id: int,
@@ -1969,6 +2017,7 @@ class AudioStreamHandler:
             logger.error(f"Błąd podczas przetwarzania bufora audio: {e}")
             await self._send_json(connection_id, {"type": "error", "message": str(e)})
 
+    @model_operation
     async def _process_encoded_audio_buffer(
         self,
         connection_id: int,

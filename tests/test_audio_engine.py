@@ -261,3 +261,107 @@ def test_stereo_wav_preserves_int16_output_with_new_numpy(tmp_path):
     assert samples.dtype == np.int16
     assert samples.flags.c_contiguous
     np.testing.assert_array_equal(samples, [0, 1000, -1000])
+
+
+@pytest.mark.parametrize("missing_package", [False, True])
+def test_piper_import_error_distinguishes_package_and_cuda_dependency(
+    tmp_path, monkeypatch, missing_package
+):
+    import builtins
+
+    model = tmp_path / "voice.onnx"
+    model.write_bytes(b"fixture")
+    original_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if name == "piper":
+            if missing_package:
+                raise ModuleNotFoundError("No module named piper", name="piper")
+            raise ImportError("libcudart.so.13 cannot be opened")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    skill = VoiceSkill(str(model), use_cuda=True)
+    skill._load_model()
+    assert skill.voice is None
+    assert skill.is_fallback_mode
+    assert skill.load_error_code == (
+        "tts_package_missing" if missing_package else "tts_dependency_unavailable"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cuda_available", [False, True])
+async def test_explicit_piper_cuda_never_becomes_cpu_or_silent_mock(
+    tmp_path, monkeypatch, cuda_available
+):
+    import sys
+    from types import SimpleNamespace
+
+    model = tmp_path / "voice.onnx"
+    model.write_bytes(b"fixture")
+    options = []
+    providers = (
+        ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        if cuda_available
+        else ["CPUExecutionProvider"]
+    )
+    voice = SimpleNamespace(session=SimpleNamespace(get_providers=lambda: providers))
+
+    def load(path, *, use_cuda):
+        options.append(use_cuda)
+        return voice
+
+    monkeypatch.setitem(
+        sys.modules, "piper", SimpleNamespace(PiperVoice=SimpleNamespace(load=load))
+    )
+    skill = VoiceSkill(str(model), use_cuda=True)
+    skill._load_model()
+    assert options == [True]
+    assert (skill.voice is voice) is cuda_available
+    assert skill.load_error_code == (None if cuda_available else "tts_cuda_unavailable")
+    if not cuda_available:
+        assert await skill.speak("fixture") is None
+
+
+@pytest.mark.asyncio
+async def test_switching_tts_model_preserves_requested_cuda(tmp_path, monkeypatch):
+    first = tmp_path / "first.onnx"
+    second = tmp_path / "second.onnx"
+    first.touch()
+    second.touch()
+    engine = AudioEngine(tts_model_path=str(first), tts_use_cuda=True)
+    monkeypatch.setattr(VoiceSkill, "_load_model", lambda self: None)
+    await engine.set_tts_model_path(str(second))
+    assert engine.voice.use_cuda is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("invalid ONNX"),
+        MemoryError("out of memory"),
+        ValueError("bad config"),
+    ],
+)
+def test_cuda_tts_does_not_mislabel_model_failures_as_missing_cuda(
+    tmp_path, monkeypatch, error
+):
+    import sys
+    from types import SimpleNamespace
+
+    from venom_core.perception.audio_engine import VoiceSkill
+
+    model = tmp_path / "voice.onnx"
+    model.touch()
+
+    def fail(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setitem(
+        sys.modules, "piper", SimpleNamespace(PiperVoice=SimpleNamespace(load=fail))
+    )
+    skill = VoiceSkill(model_path=str(model), use_cuda=True)
+    skill._load_model()
+    assert skill.load_error_code == "tts_model_load_failed"
+    assert skill.voice is None

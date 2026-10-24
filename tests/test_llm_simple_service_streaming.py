@@ -852,3 +852,25 @@ async def test_failed_generation_reason_is_not_a_successful_sse_completion(
         name == "update_status" and args[1].name == "FAILED"
         for name, args, _ in tracer.calls
     )
+
+
+@pytest.mark.parametrize("configured,expected", [("-1", -1), ("0", 0), ("5m", "5m")])
+def test_simple_payload_normalizes_keep_alive_at_transport_boundary(
+    monkeypatch, configured, expected
+):
+    from types import SimpleNamespace
+
+    from venom_core.api.schemas.llm_simple import SimpleChatRequest
+
+    monkeypatch.setattr(llm_simple_service.SETTINGS, "LLM_KEEP_ALIVE", configured)
+    request = SimpleChatRequest(content="fixture")
+    for stream in (False, True):
+        payload = llm_simple_service._build_payload(
+            request,
+            SimpleNamespace(provider="ollama"),
+            "fixture",
+            [{"role": "user", "content": "fixture"}],
+            stream=stream,
+        )
+        assert payload["keep_alive"] == expected
+        assert type(payload["keep_alive"]) is type(expected)

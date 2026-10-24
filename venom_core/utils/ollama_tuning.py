@@ -90,3 +90,15 @@ def build_ollama_runtime_options(settings) -> Dict[str, Any]:
         "flash_attention": resolved["flash_attention"],
         "kv_cache_type": resolved["kv_cache_type"],
     }
+
+
+def normalize_ollama_keep_alive(value: str | int) -> str | int:
+    """Ollama durations use numeric seconds or unit-bearing strings (e.g. 5m).
+
+    In particular, the configured string -1 must become a JSON number; a
+    string without a duration unit is rejected before any model work starts.
+    """
+    try:
+        return int(value)
+    except ValueError:
+        return value

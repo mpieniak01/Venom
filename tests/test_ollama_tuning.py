@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from venom_core.utils.ollama_tuning import (
     PROFILE_BALANCED,
     PROFILE_LOW_VRAM,
@@ -62,3 +64,15 @@ def test_build_ollama_runtime_options_maps_to_ollama_api_format():
     assert options["num_queue"] == 256
     assert options["flash_attention"] is True
     assert options["kv_cache_type"] == "q8_0"
+
+
+@pytest.mark.parametrize(
+    "configured,expected",
+    [("-1", -1), ("0", 0), ("120", 120), (-1, -1), ("5m", "5m"), ("-10m", "-10m")],
+)
+def test_keep_alive_numeric_seconds_are_json_numbers(configured, expected):
+    from venom_core.utils.ollama_tuning import normalize_ollama_keep_alive
+
+    actual = normalize_ollama_keep_alive(configured)
+    assert actual == expected
+    assert type(actual) is type(expected)

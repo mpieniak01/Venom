@@ -929,3 +929,23 @@ async def test_maf_stream_transport_error_is_not_rejection(maf_admission):
         assert maf_admission.snapshot()["status"] == "quarantined"
     finally:
         await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_maf_serializes_negative_keep_alive_as_number_for_ollama():
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json=completion())
+
+    model = service(respond)
+    try:
+        await model.get_chat_message_content(
+            chat_history=ConversationHistory(system_message="fixture"),
+            settings=CompletionOptions(extra_body={"keep_alive": "-1"}),
+        )
+        assert requests[0]["keep_alive"] == -1
+        assert type(requests[0]["keep_alive"]) is int
+    finally:
+        await model.aclose()

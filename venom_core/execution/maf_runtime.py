@@ -21,6 +21,7 @@ from venom_core.execution.maf_transport import (
     maf_transport_scope,
 )
 from venom_core.services.runtime_admission import admitted_operation
+from venom_core.utils.ollama_tuning import normalize_ollama_keep_alive
 
 if TYPE_CHECKING:
     from agent_framework import AgentResponse, ChatContext, ChatResponse, Message
@@ -238,6 +239,10 @@ class MafChatService:
             key: options.pop(key) for key in options.copy() if key not in standard
         }
         extensions.update(settings.extra_body or {})
+        if "keep_alive" in extensions:
+            extensions["keep_alive"] = normalize_ollama_keep_alive(
+                extensions["keep_alive"]
+            )
         if set(extensions) & {
             "model",
             "messages",

@@ -93,7 +93,10 @@ from venom_core.utils.llm_runtime import (
     get_active_llm_runtime,
 )
 from venom_core.utils.logger import get_logger
-from venom_core.utils.ollama_tuning import build_ollama_runtime_options
+from venom_core.utils.ollama_tuning import (
+    build_ollama_runtime_options,
+    normalize_ollama_keep_alive,
+)
 from venom_core.utils.runtime_names import is_multi_runtime
 from venom_core.utils.text import trim_to_char_limit
 
@@ -320,7 +323,7 @@ def _build_payload(
     if stream and runtime.provider in {"ollama", "vllm", "openai", "onnx"}:
         payload["stream_options"] = {"include_usage": True}
     if runtime.provider == "ollama":
-        payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
+        payload["keep_alive"] = normalize_ollama_keep_alive(SETTINGS.LLM_KEEP_ALIVE)
         payload["options"] = build_ollama_runtime_options(SETTINGS)
 
     output_format = _resolve_output_format(

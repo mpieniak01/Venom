@@ -339,6 +339,14 @@ class LlmServerController:
             server_name: Identyfikator serwera (np. 'vllm')
             action: Nazwa akcji (start/stop/restart)
         """
+        return await self._run_action(server_name, action)
+
+    @admitted_operation("cleanup", mutation=True, cleanup=True)
+    async def stop_for_cleanup(self, server_name: str) -> LlmCommandResult:
+        """Only STOP may run inside the host's exclusive resource-release barrier."""
+        return await self._run_action(server_name, "stop")
+
+    async def _run_action(self, server_name: str, action: str) -> LlmCommandResult:
         action = action.lower()
         if server_name not in self._servers:
             raise ValueError(f"Nieznany serwer LLM: {server_name}")

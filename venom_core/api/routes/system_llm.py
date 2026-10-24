@@ -2174,6 +2174,17 @@ async def control_llm_server(server_name: str, action: str):
         ) from exc
 
 
+@router.post("/system/llm-runtime/release")
+async def release_llm_runtime():
+    """Unload local LLMs and verify resource release before clearing uncertainty."""
+    from venom_core.services.runtime_release_service import release_all_runtime_models
+
+    controller = system_deps.get_llm_controller()
+    if controller is None:
+        raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
+    return await release_all_runtime_models(controller)
+
+
 @router.get("/system/llm-servers/active")
 def get_active_llm_server():
     """Zwraca aktywny runtime LLM oraz zapamiętane modele."""

@@ -16,6 +16,10 @@ from venom_core.execution.agent_contracts import (
     ConversationHistory,
     ConversationMessage,
 )
+from venom_core.execution.maf_transport import (
+    install_maf_transport_observer,
+    maf_transport_scope,
+)
 from venom_core.services.runtime_admission import admitted_operation
 
 if TYPE_CHECKING:
@@ -169,6 +173,7 @@ class MafChatService:
         self.service_id = service_id
         self.ai_model_id = ai_model_id
         async_client = async_client or AsyncOpenAI(api_key=api_key, base_url=base_url)
+        install_maf_transport_observer(async_client)
         self.client = OpenAIChatCompletionClient(
             model=ai_model_id,
             async_client=async_client,
@@ -259,51 +264,52 @@ class MafChatService:
         settings: CompletionOptions | None = None,
         kernel: AgentRuntime | None = None,
     ):
-        messages = self._messages(chat_history)
-        options = self._options(settings)
-        response: AgentResponse[Any] | ChatResponse[Any]
-        if (
-            settings is not None
-            and settings.function_choice_behavior is not None
-            and kernel is not None
-        ):
-            from agent_framework import chat_middleware
+        with maf_transport_scope():
+            messages = self._messages(chat_history)
+            options = self._options(settings)
+            response: AgentResponse[Any] | ChatResponse[Any]
+            if (
+                settings is not None
+                and settings.function_choice_behavior is not None
+                and kernel is not None
+            ):
+                from agent_framework import chat_middleware
 
-            tools = kernel.native_tools(settings.function_choice_behavior.filters)
-            input_count = len(messages)
-            recorded_count = 0
+                tools = kernel.native_tools(settings.function_choice_behavior.filters)
+                input_count = len(messages)
+                recorded_count = 0
 
-            def record_intermediate(native_messages: Sequence[Message]) -> None:
-                nonlocal recorded_count
-                for message in native_messages[recorded_count:]:
-                    chat_history.add_message(
-                        ConversationMessage(
-                            message.role, message.text, native_message=message
+                def record_intermediate(native_messages: Sequence[Message]) -> None:
+                    nonlocal recorded_count
+                    for message in native_messages[recorded_count:]:
+                        chat_history.add_message(
+                            ConversationMessage(
+                                message.role, message.text, native_message=message
+                            )
                         )
-                    )
-                recorded_count = len(native_messages)
+                    recorded_count = len(native_messages)
 
-            @chat_middleware
-            async def preserve_tool_history(
-                context: ChatContext, call_next: Callable[[], Awaitable[None]]
-            ) -> None:
-                # Each call contains the generated prefix after the original inputs.
-                # Save completed tool results before another provider await can fail.
-                record_intermediate(context.messages[input_count:])
-                await call_next()
+                @chat_middleware
+                async def preserve_tool_history(
+                    context: ChatContext, call_next: Callable[[], Awaitable[None]]
+                ) -> None:
+                    # Each call contains the generated prefix after the original inputs.
+                    # Save completed tool results before another provider await can fail.
+                    record_intermediate(context.messages[input_count:])
+                    await call_next()
 
-            response = await self.client.as_agent(
-                tools=tools, middleware=[preserve_tool_history]
-            ).run(messages, options=options)
-            # The caller still owns persistence of the final assistant response.
-            record_intermediate(response.messages[:-1])
-        else:
-            response = await self.client.get_response(messages, options=options)
-        return ConversationMessage(
-            "assistant",
-            response.text,
-            native_message=response.messages[-1] if response.messages else None,
-        )
+                response = await self.client.as_agent(
+                    tools=tools, middleware=[preserve_tool_history]
+                ).run(messages, options=options)
+                # The caller still owns persistence of the final assistant response.
+                record_intermediate(response.messages[:-1])
+            else:
+                response = await self.client.get_response(messages, options=options)
+            return ConversationMessage(
+                "assistant",
+                response.text,
+                native_message=response.messages[-1] if response.messages else None,
+            )
 
     async def get_chat_message_contents(self, **kwargs):
         return [await self.get_chat_message_content(**kwargs)]
@@ -316,11 +322,14 @@ class MafChatService:
         settings: CompletionOptions | None = None,
         **kwargs,
     ) -> AsyncIterator[list[ConversationMessage]]:
-        async for update in self.client.get_response(
-            self._messages(chat_history), stream=True, options=self._options(settings)
-        ):
-            if update.text:
-                yield [ConversationMessage("assistant", update.text)]
+        with maf_transport_scope():
+            async for update in self.client.get_response(
+                self._messages(chat_history),
+                stream=True,
+                options=self._options(settings),
+            ):
+                if update.text:
+                    yield [ConversationMessage("assistant", update.text)]
 
     async def aclose(self) -> None:
         if self._owned_client is not None:

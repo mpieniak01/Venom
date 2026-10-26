@@ -116,3 +116,12 @@ describe("voice-session-timings", () => {
     assert.ok(screen.getByText("5.68s"));
   });
 });
+
+
+it("keeps separate decoder and LLM timings for native Ollama speech", () => {
+  const session = {voice_pipeline_mode: "native_ollama_audio", pipeline_id: "ollama_audio_llm_piper"};
+  assert.equal(inferVoiceSessionTimingMode(session), "ollama_audio_llm_piper");
+  const entries = buildVoiceTimingEntries({stt_ms: 25, llm_ms: 40}, session);
+  assert.equal(entries.find(entry => entry.key === "stt_ms")?.value, 25);
+  assert.equal(entries.find(entry => entry.key === "llm_ms")?.value, 40);
+});

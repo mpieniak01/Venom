@@ -69,15 +69,15 @@ PROFILE_DEFINITIONS: Dict[RuntimeProfile, ProfileCapabilities] = {
         env_overrides={
             "ACTIVE_LLM_SERVER": "ollama",
             "LLM_WARMUP_ON_STARTUP": "true",
-            "OLLAMA_MODEL": "gemma3:4b",
+            "OLLAMA_MODEL": "gemma2:2b",
         },
         required_api_keys=[],
         gpu_support=True,  # Optional, but supported
         uses_local_llm=True,
         requires_onnx=False,
-        description_en="Local: Ollama + Gemma 3 + Next.js - Privacy First",
-        description_pl="lokalnie: Ollama + Gemma 3 + Next.js - Privacy First",
-        description_de="lokal: Ollama + Gemma 3 + Next.js - Privacy First",
+        description_en="Local: Ollama + Gemma 2 2B + Next.js - Privacy First",
+        description_pl="lokalnie: Ollama + Gemma 2 2B + Next.js - Privacy First",
+        description_de="lokal: Ollama + Gemma 2 2B + Next.js - Privacy First",
     ),
     RuntimeProfile.LLM_OFF: ProfileCapabilities(
         profile=RuntimeProfile.LLM_OFF,

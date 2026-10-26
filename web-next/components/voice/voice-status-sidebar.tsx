@@ -81,13 +81,9 @@ export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied
           title={t("voice.controls.runtime")}
           loadingLabel={t("voice.status.channelConnecting")}
         />
-        {isDevMode ? (
-          <Gemma4RuntimeControl variant="voice" runtimeSnapshot={null} />
-        ) : (
-          <StatusCard title={t("voice.controls.runtime")}>
-            <p className="text-[11px] text-zinc-400">{t("voice.controls.devRuntimeHint")}</p>
-          </StatusCard>
-        )}
+        <StatusCard title={t("voice.controls.runtime")}>
+          <p className="text-[11px] text-zinc-400">{t("voice.status.channelConnecting")}</p>
+        </StatusCard>
         <StatusCard title={`${t("voice.controls.stt")} / ${t("voice.controls.tts")}`}>
           <p className="text-hint text-xs py-2">{t("voice.status.channelConnecting")}</p>
         </StatusCard>
@@ -541,7 +537,17 @@ function RuntimeOverviewCard({
           {endpoint && <Row label={t("voice.controls.endpoint")} value={endpoint} />}
           {profile && <Row label={t("voice.controls.profile")} value={profile} />}
           {runtime.voice_pipeline?.stt && (
-            <Row label={t("voice.controls.stt")} value={runtime.voice_pipeline.stt} />
+            <Row
+              label={t("voice.controls.stt")}
+              value={runtime.voice_pipeline.stt === "ollama_audio"
+                ? t("voice.controls.ollamaNativeAudio")
+                : runtime.voice_pipeline.stt}
+            />
+          )}
+          {runtime.voice_pipeline?.stt === "ollama_audio" && (
+            <p className="mt-1 text-[11px] text-zinc-400">
+              {t("voice.controls.ollamaNativeAudioHint")}
+            </p>
           )}
           {runtime.voice_pipeline?.reasoning && (
             <Row label={t("voice.controls.pipeline")} value={runtime.voice_pipeline.reasoning} />

@@ -1,4 +1,4 @@
-export type VoiceSessionTimingMode = "native_audio" | "whisper_llm_piper" | "unknown";
+export type VoiceSessionTimingMode = "native_audio" | "ollama_audio_llm_piper" | "whisper_llm_piper" | "unknown";
 
 export type VoiceSessionTimingInput = {
   voice_pipeline_mode?: string | null;
@@ -23,6 +23,7 @@ export function inferVoiceSessionTimingMode(
   session?: VoiceSessionTimingInput | null,
 ): VoiceSessionTimingMode {
   const pipelineMode = coerce(session?.voice_pipeline_mode);
+  if (pipelineMode === "native_ollama_audio" || session?.pipeline_id === "ollama_audio_llm_piper") return "ollama_audio_llm_piper";
   if (pipelineMode === "native_multi_runtime") return "native_audio";
   if (pipelineMode === "whisper_llm_piper") return "whisper_llm_piper";
 

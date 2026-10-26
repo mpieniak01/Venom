@@ -4171,6 +4171,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_model_resources_release.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verified global release across LLM, vision, STT/TTS and embeddings; exclusive cleanup and partial-failure recovery."
+    },
+    {
       "path": "tests/test_model_router.py",
       "domain": "models",
       "test_type": "unit",
@@ -4564,6 +4578,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_ollama_voice_input.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Native Ollama WAV request and guarded voice routing."
     },
     {
       "path": "tests/test_onnx_gpu_bridge.py",
@@ -6948,20 +6976,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
-    },
-    {
-      "path": "tests/test_model_resources_release.py",
-      "domain": "runtime",
-      "test_type": "unit",
-      "intent": "contract",
-      "primary_lane": "new-code",
-      "allowed_lanes": [
-        "new-code",
-        "ci-lite",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Verified global release across LLM, vision, STT/TTS and embeddings; exclusive cleanup and partial-failure recovery."
     }
   ]
 }

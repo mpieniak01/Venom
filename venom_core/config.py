@@ -203,6 +203,12 @@ class Settings(BaseSettings):
     OLLAMA_ENABLE_STRUCTURED_OUTPUTS: bool = True
     OLLAMA_ENABLE_TOOL_CALLING: bool = True
     OLLAMA_ENABLE_THINK: bool = False
+    # Configurable coding role; model capabilities are qualified independently.
+    FEEDBACK_LOOP_PRIMARY_MODEL: str = "qwen2.5-coder:3b"
+    FEEDBACK_LOOP_FALLBACK_MODELS: str = ""
+    FEEDBACK_LOOP_MIN_RAM_GB: float = 2.0
+    FEEDBACK_LOOP_MIN_VRAM_MB: int = 0
+    FEEDBACK_LOOP_MAX_CONTEXT: int = 32768
 
     # Konfiguracja Gemma 4 Audio Native Runtime Service
     GEMMA4_AUDIO_ENABLED: bool = False  # Włącz runtime Gemma4 Audio

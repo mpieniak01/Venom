@@ -110,14 +110,17 @@ def infer_voice_session_mode(
     native_audio_ms: float | None = None,
 ) -> VoiceSessionMode:
     pipeline_mode = _normalize_text(voice_pipeline_mode)
-    if pipeline_mode == "native_multi_runtime":
+    if pipeline_mode in {"native_multi_runtime", "native_ollama_audio"}:
         return "native_audio"
     if pipeline_mode == "whisper_llm_piper":
         return "whisper_llm_piper"
 
     pipeline = _normalize_text(pipeline_id)
     decoder = _normalize_text(decoder_source)
-    if pipeline == "multi_runtime_piper" or decoder == "multi_runtime":
+    if pipeline in {"multi_runtime_piper", "ollama_audio_llm_piper"} or decoder in {
+        "multi_runtime",
+        "ollama",
+    }:
         return "native_audio"
     if pipeline == "whisper_llm_piper" or decoder == "faster_whisper":
         return "whisper_llm_piper"

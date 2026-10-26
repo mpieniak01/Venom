@@ -21,7 +21,7 @@ class DummyManager:
         return True
 
     async def list_local_models(self):
-        return [{"name": "qwen2.5-coder:7b", "provider": "ollama"}]
+        return [{"name": "qwen2.5-coder:3b", "provider": "ollama"}]
 
 
 class DummyMissingManager(DummyManager):
@@ -57,7 +57,7 @@ def test_models_install_feedback_loop_alias_resolves_to_installed_primary(monkey
     payload = response.json()
     assert payload["already_installed"] is True
     assert payload["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
-    assert payload["resolved_model_id"] == "qwen2.5-coder:7b"
+    assert payload["resolved_model_id"] == "qwen2.5-coder:3b"
     assert payload["feedback_loop_tier"] == "primary"
 
 
@@ -81,13 +81,16 @@ def test_models_install_feedback_loop_alias_returns_background_plan(monkeypatch)
     assert response.status_code == 200
     payload = response.json()
     assert payload["success"] is True
-    assert payload["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
+    assert payload["requested_model_alias"] == "code_generation"
     assert payload["install_candidates"] == list(feedback_loop_policy().candidates)
 
 
 def test_models_install_feedback_loop_alias_uses_fallbacks_on_resource_guard(
     monkeypatch,
 ):
+    from venom_core.services.feedback_loop_policy import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "FEEDBACK_LOOP_FALLBACK_MODELS", "custom:tiny")
     monkeypatch.setattr(
         models_install, "get_model_manager", lambda: DummyMissingManager()
     )
@@ -146,7 +149,10 @@ def test_models_install_feedback_loop_alias_errors_when_no_fallbacks(monkeypatch
     assert "Brak dostępnych modeli fallback" in str(response.json().get("detail", ""))
 
 
-def test_feedback_loop_resolution_paths_and_ready_flags() -> None:
+def test_feedback_loop_resolution_paths_and_ready_flags(monkeypatch) -> None:
+    from venom_core.services.feedback_loop_policy import SETTINGS
+
+    monkeypatch.setattr(SETTINGS, "FEEDBACK_LOOP_FALLBACK_MODELS", "custom:tiny")
     exact = resolve_feedback_loop_model(
         requested_model=FEEDBACK_LOOP_REQUESTED_ALIAS,
         available_models={FEEDBACK_LOOP_PRIMARY_MODEL},
@@ -159,13 +165,13 @@ def test_feedback_loop_resolution_paths_and_ready_flags() -> None:
 
     fallback = resolve_feedback_loop_model(
         requested_model=FEEDBACK_LOOP_REQUESTED_ALIAS,
-        available_models={"qwen2.5-coder:3b"},
+        available_models={"custom:tiny"},
         prefer_feedback_loop_default=False,
         exact_only=False,
         primary_allowed=True,
     )
     assert fallback.resolution_reason == "fallback"
-    assert fallback.resolved_model_id == "qwen2.5-coder:3b"
+    assert fallback.resolved_model_id == "custom:tiny"
 
     exact_only_not_found = resolve_feedback_loop_model(
         requested_model=FEEDBACK_LOOP_REQUESTED_ALIAS,
@@ -229,8 +235,8 @@ def test_feedback_loop_guard_block_reasons_and_allow_path() -> None:
         ram_total_gb=32.0,
         vram_total_mb=24576.0,
     )
-    assert blocked_profile.allowed is False
-    assert blocked_profile.guard_reason == "resource_guard"
+    assert blocked_profile.allowed is True
+    assert blocked_profile.guard_reason is None
 
     high_context_settings = SimpleNamespace(
         VENOM_OLLAMA_PROFILE="balanced-12-24gb",
@@ -261,7 +267,7 @@ def test_feedback_loop_guard_block_reasons_and_allow_path() -> None:
             OLLAMA_FLASH_ATTENTION=True,
             LLM_KEEP_ALIVE="30m",
         ),
-        ram_total_gb=8.0,
+        ram_total_gb=1.0,
         vram_total_mb=8192.0,
     )
     assert blocked_ram.allowed is False
@@ -271,6 +277,7 @@ def test_feedback_loop_guard_block_reasons_and_allow_path() -> None:
         model_id=FEEDBACK_LOOP_PRIMARY_MODEL,
         settings=SimpleNamespace(
             VENOM_OLLAMA_PROFILE="balanced-12-24gb",
+            FEEDBACK_LOOP_MIN_VRAM_MB=4096,
             OLLAMA_CONTEXT_LENGTH=32768,
             OLLAMA_NUM_PARALLEL=0,
             OLLAMA_MAX_QUEUE=0,
@@ -285,7 +292,7 @@ def test_feedback_loop_guard_block_reasons_and_allow_path() -> None:
     assert blocked_vram.guard_reason == "resource_guard"
 
     allowed_non_primary = evaluate_feedback_loop_guard(
-        model_id="qwen2.5-coder:3b",
+        model_id="custom:model",
         settings=low_profile_settings,
         ram_total_gb=1.0,
         vram_total_mb=256.0,

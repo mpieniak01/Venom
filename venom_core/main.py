@@ -861,9 +861,10 @@ async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
         previous_snapshot = _voice_runtime_snapshot_previous(cache_key=cache_key)
         try:
             snapshot = await _probe_ollama_voice_runtime_snapshot(runtime)
-            snapshot["voice_pipeline"] = _build_whisper_fallback_voice_pipeline(
-                str(getattr(runtime, "provider", "") or "ollama")
-            )
+            if str(SETTINGS.AUDIO_DECODER_PROFILE).strip() == "faster_whisper":
+                snapshot["voice_pipeline"] = _build_whisper_fallback_voice_pipeline(
+                    str(getattr(runtime, "provider", "") or "ollama")
+                )
             runtime_capabilities = snapshot.get("runtime_capabilities")
             if isinstance(runtime_capabilities, dict):
                 fallbacks = runtime_capabilities.get("fallbacks")

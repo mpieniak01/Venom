@@ -1342,8 +1342,8 @@ async def test_set_active_llm_server_resolves_feedback_loop_alias_to_primary(
         "_model_manager",
         DummyModelManager(
             [
-                {"name": "qwen2.5-coder:7b", "provider": "ollama"},
                 {"name": "qwen2.5-coder:3b", "provider": "ollama"},
+                {"name": "qwen2.5-coder:1.5b", "provider": "ollama"},
             ]
         ),
     )
@@ -1370,9 +1370,9 @@ async def test_set_active_llm_server_resolves_feedback_loop_alias_to_primary(
             model_alias="OpenCodeInterpreter-Qwen2.5-7B",
         )
         response = await system_routes.set_active_llm_server(request)
-        assert response["active_model"] == "qwen2.5-coder:7b"
+        assert response["active_model"] == "qwen2.5-coder:3b"
         assert response["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
-        assert response["resolved_model_id"] == "qwen2.5-coder:7b"
+        assert response["resolved_model_id"] == "qwen2.5-coder:3b"
         assert response["resolution_reason"] == "exact"
     finally:
         _restore_settings(original)
@@ -1384,6 +1384,7 @@ async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_gu
 ):
     from venom_core.services.feedback_loop_policy import FeedbackLoopGuardResult
 
+    monkeypatch.setattr(SETTINGS, "FEEDBACK_LOOP_FALLBACK_MODELS", "qwen2.5-coder:1.5b")
     config = {
         "LAST_MODEL_OLLAMA": "phi3:mini",
         "PREVIOUS_MODEL_OLLAMA": "",
@@ -1412,8 +1413,8 @@ async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_gu
         "_model_manager",
         DummyModelManager(
             [
-                {"name": "qwen2.5-coder:7b", "provider": "ollama"},
                 {"name": "qwen2.5-coder:3b", "provider": "ollama"},
+                {"name": "qwen2.5-coder:1.5b", "provider": "ollama"},
             ]
         ),
     )
@@ -1424,7 +1425,7 @@ async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_gu
         return FeedbackLoopGuardResult(
             False,
             "resource_guard",
-            "fallback to qwen2.5-coder:3b",
+            "fallback to qwen2.5-coder:1.5b",
         )
 
     monkeypatch.setattr(
@@ -1444,7 +1445,7 @@ async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_gu
             model_alias="OpenCodeInterpreter-Qwen2.5-7B",
         )
         response = await system_routes.set_active_llm_server(request)
-        assert response["active_model"] == "qwen2.5-coder:3b"
+        assert response["active_model"] == "qwen2.5-coder:1.5b"
         assert response["resolution_reason"] == "resource_guard"
         assert response["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
     finally:

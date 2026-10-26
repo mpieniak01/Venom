@@ -193,9 +193,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
     assert payload["model_catalog"]["trainable_models"][0]["model_id"] == (
         "unsloth/Phi-3-mini-4k-instruct"
     )
-    assert (
-        payload["feedback_loop"]["requested_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
-    )
+    assert payload["feedback_loop"]["requested_alias"] == "code_generation"
     assert payload["active"]["mode_contracts"] == MODE_CONTRACTS
 
 
@@ -224,8 +222,8 @@ def test_runtime_options_returns_503_when_model_manager_missing() -> None:
 def test_runtime_model_payload_contains_feedback_loop_metadata() -> None:
     payload = system_llm._runtime_model_payload(  # noqa: SLF001
         runtime_id="ollama",
-        model_id="qwen2.5-coder:7b",
-        name="qwen2.5-coder:7b",
+        model_id="qwen2.5-coder:3b",
+        name="qwen2.5-coder:3b",
         provider="ollama",
         active=False,
         source_type="local-runtime",

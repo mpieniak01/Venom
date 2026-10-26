@@ -36,7 +36,10 @@ from venom_core.services.conversation_providers import (
 )
 from venom_core.services.model_resources import model_operation
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
-from venom_core.services.runtime_admission import get_runtime_admission
+from venom_core.services.runtime_admission import (
+    RuntimeAdmissionError,
+    get_runtime_admission,
+)
 from venom_core.services.runtime_switch_gate import (
     assert_runtime_request_allowed,
     get_runtime_switch_gate_status,
@@ -1301,20 +1304,22 @@ class AudioStreamHandler:
         plan = self._resolve_audio_decoder_plan()
         guarded = await has_voice_providers()
         runtime = get_active_llm_runtime()
-        # A busy LLM must never prevent the host from decoding urgent provider
-        # commands through its independent CPU STT path.
-        available = get_runtime_admission().snapshot()["status"] in {
-            "available",
-            "disabled",
-        }
+        # Admission understands nested host work; a snapshot can report our own
+        # provider preparation as busy. Foreign experiment ownership still blocks
+        # generation and leaves urgent commands on the independent STT path.
+        native_audio = False
         if (
             runtime.provider == "ollama"
             and self._audio_decoder_profile() != "faster_whisper"
-            and available
-            and await ollama_audio.supports_audio(
-                runtime.endpoint or "", runtime.model_name
-            )
         ):
+            try:
+                with get_runtime_admission().operation(kind="voice_audio_selection"):
+                    native_audio = await ollama_audio.supports_audio(
+                        runtime.endpoint or "", runtime.model_name
+                    )
+            except RuntimeAdmissionError:
+                pass
+        if native_audio:
             return {
                 **plan,
                 "effective": "ollama_audio",
@@ -1844,9 +1849,21 @@ class AudioStreamHandler:
                 model=runtime.model_name,
             ):
                 started_at = time.perf_counter()
-                transcription = await ollama_audio.transcribe_audio(
-                    runtime.endpoint or "", runtime.model_name, wav_path
-                )
+                try:
+                    transcription = await ollama_audio.transcribe_audio(
+                        runtime.endpoint or "", runtime.model_name, wav_path
+                    )
+                except Exception:
+                    self._update_voice_session_metadata(
+                        session_dir,
+                        {
+                            "pipeline_id": "ollama_audio_llm_piper",
+                            "audio_input_status": "failed",
+                            "decoder_source": "ollama",
+                            "decoder_effective": "ollama_audio",
+                        },
+                    )
+                    raise
                 timings_ms["stt_ms"] = self._elapsed_ms(started_at)
                 self._update_voice_session_metadata(
                     session_dir,
@@ -1856,7 +1873,7 @@ class AudioStreamHandler:
                         "decoder_source": "ollama",
                         "decoder_selected": "ollama_audio",
                         "decoder_effective": "ollama_audio",
-                        "audio_input_status": "verified",
+                        "audio_input_status": "verified" if transcription else "empty",
                         "audio_runtime_provider": "ollama",
                         "audio_runtime_model": runtime.model_name,
                         "transcription": transcription,
@@ -2264,6 +2281,7 @@ class AudioStreamHandler:
                 connection_id,
                 {"type": "transcription", "text": "", "confidence": 0.0},
             )
+            await self._send_json(connection_id, {"type": "complete"})
             return
 
         await self._send_json(

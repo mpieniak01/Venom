@@ -98,8 +98,10 @@ def normalize_ollama_show_payload(
         "tool_calling": "tools" in capability_set,
         "thinking": "thinking" in capability_set,
         "structured_output": False,
-        "audio_transcription": "verified" if "audio" in capability_set else "fallback",
-        "audio_reasoning": "verified" if "audio" in capability_set else "fallback",
+        "audio_transcription": "metadata_only"
+        if "audio" in capability_set
+        else "fallback",
+        "audio_reasoning": "metadata_only" if "audio" in capability_set else "fallback",
     }
 
     fallbacks = {

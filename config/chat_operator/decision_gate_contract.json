@@ -1,5 +1,5 @@
 {
-  "operator_model_local_first": "qwen2.5-coder:7b",
+  "operator_model_local_first": "qwen2.5-coder:3b",
   "operator_model_status": "provisional",
   "utility_model_strategy": "copilot-defaults",
   "utility_model": "openai/gpt-4.1-mini",

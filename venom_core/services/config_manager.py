@@ -80,6 +80,11 @@ CONFIG_WHITELIST = {
     "ONNX_LLM_MODEL_PATH",
     "LLM_CONFIG_HASH",
     "MODEL_GENERATION_OVERRIDES",
+    "FEEDBACK_LOOP_PRIMARY_MODEL",
+    "FEEDBACK_LOOP_FALLBACK_MODELS",
+    "FEEDBACK_LOOP_MIN_RAM_GB",
+    "FEEDBACK_LOOP_MIN_VRAM_MB",
+    "FEEDBACK_LOOP_MAX_CONTEXT",
     # LLM Server Commands
     "VLLM_START_COMMAND",
     "VLLM_STOP_COMMAND",
@@ -239,6 +244,11 @@ SECRET_PARAMS = {
 
 # Mapowanie parametrów na usługi wymagające restartu
 RESTART_REQUIREMENTS = {
+    "FEEDBACK_LOOP_PRIMARY_MODEL": ["backend"],
+    "FEEDBACK_LOOP_FALLBACK_MODELS": ["backend"],
+    "FEEDBACK_LOOP_MIN_RAM_GB": ["backend"],
+    "FEEDBACK_LOOP_MIN_VRAM_MB": ["backend"],
+    "FEEDBACK_LOOP_MAX_CONTEXT": ["backend"],
     "AI_MODE": ["backend"],
     "INTENT_MODE": ["backend"],
     "KERNEL": ["backend"],
@@ -274,9 +284,9 @@ RESTART_REQUIREMENTS = {
     "ACTIVE_LLM_SERVER": [],
     "GEMMA4_AUDIO_ENABLED": [],
     "GEMMA4_AUDIO_MODEL_ID": [],
-    "VOICE_ROUTE_PROFILE": [],
-    "AUDIO_DECODER_PROFILE": [],
-    "AUDIO_DECODER_CHAIN": [],
+    "VOICE_ROUTE_PROFILE": ["backend"],
+    "AUDIO_DECODER_PROFILE": ["backend"],
+    "AUDIO_DECODER_CHAIN": ["backend"],
     "ONNX_LLM_ENABLED": [],
     "ONNX_LLM_MODEL_PATH": [],
     "LLM_CONFIG_HASH": [],

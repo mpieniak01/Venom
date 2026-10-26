@@ -10,7 +10,6 @@ import wave
 from pathlib import Path
 
 import numpy as np
-from scipy.signal import resample_poly
 
 from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
@@ -31,9 +30,19 @@ def encode_audio_input(path: Path) -> str:
         raise ValueError("audio_input_empty")
     if rate != 16000:
         divisor = math.gcd(rate, 16000)
-        converted = resample_poly(
-            samples.astype(np.float32), 16000 // divisor, rate // divisor
-        )
+        try:
+            from scipy.signal import resample_poly
+
+            converted = resample_poly(
+                samples.astype(np.float32), 16000 // divisor, rate // divisor
+            )
+        except ImportError:
+            target_length = max(1, round(samples.size * 16000 / rate))
+            converted = np.interp(
+                np.linspace(0, samples.size - 1, target_length),
+                np.arange(samples.size),
+                samples.astype(np.float32),
+            )
         samples = np.clip(np.rint(converted), -32768, 32767).astype("<i2")
     output = io.BytesIO()
     with wave.open(output, "wb") as destination:

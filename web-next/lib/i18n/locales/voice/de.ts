@@ -6,6 +6,8 @@ export const voice = {
     backToChat: "Zurück zum Textchat",
   },
   controls: {
+    ollamaNativeAudio: "Audio über Ollama",
+    ollamaNativeAudioHint: "Das gewählte Modell transkribiert die Aufnahme ohne Whisper. Das Transkript nutzt den gemeinsamen Gesprächsablauf; TTS spricht die Antwort.",
     voice: "Voice",
     text: "Text",
     ttsOn: "TTS: an",

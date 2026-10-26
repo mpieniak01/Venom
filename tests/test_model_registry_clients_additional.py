@@ -674,7 +674,9 @@ async def test_voice_runtime_helpers_cover_branches(monkeypatch):
     assert (await _probe_thinking(EmptyProbeClient(), "model"))["status"] == "failed"
     assert (await _probe_tools(EmptyProbeClient(), "model"))["status"] == "failed"
     assert (await _probe_vision(EmptyProbeClient(), "model"))["status"] == "failed"
-    assert (await _probe_audio(EmptyProbeClient(), "model"))["status"] == "failed"
+    assert (await _probe_audio(EmptyProbeClient(), "model"))[
+        "status"
+    ] == "metadata_only"
 
 
 @pytest.mark.asyncio

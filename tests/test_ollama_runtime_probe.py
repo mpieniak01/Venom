@@ -75,7 +75,7 @@ def test_probe_ollama_runtime_capabilities_builds_snapshot():
     assert caps.probe_status == "metadata_only"
 
 
-def test_resolve_voice_pipeline_uses_whisper_fallback_for_audio_metadata_only():
+def test_resolve_voice_pipeline_selects_declared_native_audio():
     client = _DummyOllamaClient()
     caps = asyncio.run(
         probe_ollama_runtime_capabilities(
@@ -88,7 +88,7 @@ def test_resolve_voice_pipeline_uses_whisper_fallback_for_audio_metadata_only():
     decision = resolve_voice_pipeline(caps)
 
     assert decision.profile == "multimodal_audio"
-    assert decision.stt == "faster_whisper"
+    assert decision.stt == "ollama_audio"
     assert decision.reasoning == "think_api"
     assert decision.tools == "policy_gated_tools"
     assert decision.vision == "images_api"
@@ -123,4 +123,4 @@ def test_probe_helpers_cover_metadata_only_and_failed_paths():
     assert thinking["status"] == "failed"
     assert tools["status"] == "failed"
     assert vision["status"] == "failed"
-    assert audio["status"] == "failed"
+    assert audio == {"status": "metadata_only", "reason": "recorded_audio_required"}

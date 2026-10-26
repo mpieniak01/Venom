@@ -5,18 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from venom_core.config import SETTINGS
 from venom_core.utils.ollama_tuning import resolve_ollama_tuning_profile
 
-FEEDBACK_LOOP_REQUESTED_ALIAS = "OpenCodeInterpreter-Qwen2.5-7B"
-FEEDBACK_LOOP_PRIMARY_MODEL = "qwen2.5-coder:7b"
-FEEDBACK_LOOP_FALLBACK_MODELS: tuple[str, ...] = (
-    "qwen2.5-coder:3b",
-    "codestral:latest",
-)
-
-_RESOURCE_GUARD_MIN_RAM_GB_7B = 12.0
-_RESOURCE_GUARD_MIN_VRAM_MB_7B = 6144.0
-_RESOURCE_GUARD_MAX_CONTEXT_7B = 65536
+FEEDBACK_LOOP_REQUESTED_ALIAS = "code_generation"
+FEEDBACK_LOOP_PRIMARY_MODEL = "qwen2.5-coder:3b"
+FEEDBACK_LOOP_FALLBACK_MODELS: tuple[str, ...] = ()
+_LEGACY_REQUESTED_ALIAS = "OpenCodeInterpreter-Qwen2.5-7B"
 
 
 @dataclass(frozen=True)
@@ -26,6 +21,7 @@ class FeedbackLoopGuardResult:
     allowed: bool
     guard_reason: str | None
     recommendation: str | None
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,11 +49,29 @@ class FeedbackLoopPolicy:
         return (self.primary, *self.fallbacks)
 
 
-def feedback_loop_policy() -> FeedbackLoopPolicy:
+def feedback_loop_policy(settings: object | None = None) -> FeedbackLoopPolicy:
+    """Resolve a configurable role; the legacy alias is not a model requirement."""
+    settings = settings if settings is not None else SETTINGS
+    primary = (
+        str(
+            getattr(
+                settings, "FEEDBACK_LOOP_PRIMARY_MODEL", FEEDBACK_LOOP_PRIMARY_MODEL
+            )
+        ).strip()
+        or FEEDBACK_LOOP_PRIMARY_MODEL
+    )
+    configured = str(getattr(settings, "FEEDBACK_LOOP_FALLBACK_MODELS", ""))
+    fallbacks = tuple(
+        dict.fromkeys(
+            item.strip()
+            for item in configured.split(",")
+            if item.strip() and item.strip().lower() != primary.lower()
+        )
+    )
     return FeedbackLoopPolicy(
         requested_alias=FEEDBACK_LOOP_REQUESTED_ALIAS,
-        primary=FEEDBACK_LOOP_PRIMARY_MODEL,
-        fallbacks=FEEDBACK_LOOP_FALLBACK_MODELS,
+        primary=primary,
+        fallbacks=fallbacks,
     )
 
 
@@ -66,7 +80,10 @@ def _normalize(value: str | None) -> str:
 
 
 def is_feedback_loop_alias(value: str | None) -> bool:
-    return _normalize(value) == _normalize(FEEDBACK_LOOP_REQUESTED_ALIAS)
+    return _normalize(value) in {
+        _normalize(FEEDBACK_LOOP_REQUESTED_ALIAS),
+        _normalize(_LEGACY_REQUESTED_ALIAS),
+    }
 
 
 def classify_feedback_loop_tier(model_id: str | None) -> str:
@@ -90,7 +107,7 @@ def _resolve_feedback_loop_alias(
     prefer_feedback_loop_default: bool,
 ) -> str | None:
     if is_feedback_loop_alias(requested):
-        return policy.requested_alias
+        return requested
     if not requested and prefer_feedback_loop_default:
         return policy.requested_alias
     return None
@@ -224,57 +241,36 @@ def evaluate_feedback_loop_guard(
     ram_total_gb: float | None,
     vram_total_mb: float | None,
 ) -> FeedbackLoopGuardResult:
-    """Validate host/resource/profile readiness for 7B feedback-loop model."""
-    normalized = _normalize(model_id)
-    if normalized != _normalize(FEEDBACK_LOOP_PRIMARY_MODEL):
-        return FeedbackLoopGuardResult(
-            allowed=True, guard_reason=None, recommendation=None
+    """Apply the configured role budget rather than a model-name whitelist."""
+    if _normalize(model_id) != _normalize(feedback_loop_policy(settings).primary):
+        return FeedbackLoopGuardResult(True, None, None)
+    context = int(resolve_ollama_tuning_profile(settings).get("context_length") or 0)
+    maximum = int(getattr(settings, "FEEDBACK_LOOP_MAX_CONTEXT", 32768))
+    minimum_ram = float(getattr(settings, "FEEDBACK_LOOP_MIN_RAM_GB", 2.0))
+    minimum_vram = float(getattr(settings, "FEEDBACK_LOOP_MIN_VRAM_MB", 0))
+    reason = None
+    recommendation = None
+    if maximum > 0 and context > maximum:
+        reason = "feedback_loop_context_budget_exceeded"
+        recommendation = (
+            f"Kontekst modelu roli kodowania przekracza limit {maximum} tokenów. "
+            "Zmniejsz kontekst lub zwiększ budżet roli."
         )
-
-    resolved_profile = resolve_ollama_tuning_profile(settings)
-    profile_name = str(resolved_profile.get("profile") or "").strip().lower()
-    context_length = int(resolved_profile.get("context_length") or 0)
-
-    if profile_name == "low-vram-8-12gb":
-        return FeedbackLoopGuardResult(
-            allowed=False,
-            guard_reason="resource_guard",
-            recommendation=(
-                "Użyj fallbacku qwen2.5-coder:3b lub zmień VENOM_OLLAMA_PROFILE "
-                "na balanced-12-24gb"
-            ),
+    elif ram_total_gb is not None and ram_total_gb < minimum_ram:
+        reason = "feedback_loop_ram_budget_exceeded"
+        recommendation = (
+            f"Model roli kodowania wymaga co najmniej {minimum_ram:g} GB RAM. "
+            "Wybierz lżejszy model lub zmień budżet roli."
         )
-
-    if context_length > _RESOURCE_GUARD_MAX_CONTEXT_7B:
-        return FeedbackLoopGuardResult(
-            allowed=False,
-            guard_reason="resource_guard",
-            recommendation=(
-                "Zmniejsz OLLAMA_CONTEXT_LENGTH do <=65536 lub użyj fallbacku "
-                "qwen2.5-coder:3b"
-            ),
+    elif vram_total_mb is not None and vram_total_mb < minimum_vram:
+        reason = "feedback_loop_vram_budget_exceeded"
+        recommendation = (
+            f"Model roli kodowania wymaga co najmniej {minimum_vram:g} MB VRAM. "
+            "Wybierz lżejszy model lub zmień budżet roli."
         )
-
-    if ram_total_gb is not None and ram_total_gb < _RESOURCE_GUARD_MIN_RAM_GB_7B:
-        return FeedbackLoopGuardResult(
-            allowed=False,
-            guard_reason="resource_guard",
-            recommendation=(
-                "Niewystarczająca pamięć RAM dla 7B; użyj fallbacku qwen2.5-coder:3b"
-            ),
-        )
-
-    if (
-        vram_total_mb is not None
-        and vram_total_mb > 0
-        and vram_total_mb < _RESOURCE_GUARD_MIN_VRAM_MB_7B
-    ):
-        return FeedbackLoopGuardResult(
-            allowed=False,
-            guard_reason="resource_guard",
-            recommendation=(
-                "Niewystarczająca pamięć VRAM dla 7B; użyj fallbacku qwen2.5-coder:3b"
-            ),
-        )
-
-    return FeedbackLoopGuardResult(allowed=True, guard_reason=None, recommendation=None)
+    return FeedbackLoopGuardResult(
+        allowed=reason is None,
+        guard_reason="resource_guard" if reason else None,
+        recommendation=recommendation,
+        reason_code=reason,
+    )

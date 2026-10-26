@@ -1,254 +1,36 @@
-# Status runtime voice i capability multimodalnych
+# Głos i możliwości multimodalne silników
 
-Data statusu: 2026-05-25
-Zakres: PR 205/205B voice loop, PR 207 runtime capability
+Aktualizacja: 2026-10-26.
 
-## Podsumowanie
+## Chat głosowy
 
-Venom ma już działającą lokalną pętlę głosową, ale lokalny stos multimodalny nie jest jeszcze wystarczająco dojrzały, żeby zastąpić stabilny pipeline STT/TTS natywnym audio w modelu.
+Ekran /voice nagrywa dźwięk w przeglądarce i przesyła go przez /ws/audio.
+Wybór ścieżki wynika z aktywnego silnika i możliwości wybranego modelu:
 
-Aktualna bezpieczna ścieżka produkcyjna:
+- Automatyczna trasa z pustym łańcuchem dekoderów może wybrać ollama_audio_llm_piper dla modeli Ollama deklarujących audio.
+- Modele tekstowe korzystają z whisper_llm_piper.
+- Osobny silnik multi_runtime zachowuje własną ścieżkę audio.
 
-1. przeglądarka `/voice` nagrywa mikrofon przez push-to-talk,
-2. backend `/ws/audio` odbiera chunki audio i zapisuje ostatnie nagranie,
-3. STT wykonuje `faster-whisper`,
-4. rozumowanie LLM wykonuje aktywny lokalny runtime/model,
-5. TTS wykonuje Piper, jeśli model głosu jest dostępny,
-6. `/voice` pokazuje transkrypcję, odpowiedź, link do nagrania, czasy, metryki jakości i snapshot runtime.
+Ollama otrzymuje pełny kontener WAV zakodowany base64 w messages[].images. Tekst użytkownika jest pusty, a instrukcja transkrypcji trafia do osobnej wiadomości systemowej. Dane to mono PCM16, 16 kHz; inne częstotliwości nagrania są przeliczane. Nie zastępuj nagrania nazwą pliku, surowym PCM ani oczekiwaną transkrypcją.
 
-Dwa operacyjne tory odpowiedzi są teraz opisane wprost:
+Transkrypcja Ollama trafia do wspólnego mechanizmu rozmowy i autoryzacji dostawców, tak samo jak tekst z Whisper. Piper generuje odpowiedź głosową. Obsługa wejścia audio nie oznacza generowania audio przez model ani zgody na wykonanie polecenia. Wspólna kontrola dostępu do silnika pozostaje aktywna; zajęta generacja pozwala użyć Whisper do odczytania pilnego polecenia.
 
-1. tekstowy fallback `whisper_llm_piper` - Whisper robi transkrypcję, aktywny model tekstowy generuje odpowiedź z tekstu, a Piper odczytuje wynik,
-2. natywny tor Gemma4 `multi_runtime_piper` - Gemma4 dostaje audio bezpośrednio, zwraca transkrypcję i tekst odpowiedzi, a Piper odczytuje tę odpowiedź,
-3. oba tory kończą się w tej samej warstwie TTS, więc efekt głosowy pozostaje spójny nawet wtedy, gdy zmienia się źródło odpowiedzi,
-4. gdy tor natywny nie jest wybrany, backend używa toru tekstowego i zapisuje wybraną ścieżkę w metadanych sesji; ostrzeżenia z health check toru natywnego są diagnostyczne i nie wymuszają automatycznego fallbacku przed próbą natywną.
+Status rozróżnia deklarację z metadanych od wykonanego przetwarzania nagrania. Zapytanie tekstowe nie potwierdza obsługi audio. Metadane sesji zapisują ścieżkę, transkrypcję, odpowiedź i czasy etapów. Błąd lub cisza kończą stan oczekiwania interfejsu bez wymyślania wypowiedzi.
 
-### Kontrakt prawdy runtime po PR246
+Jakość rozpoznawania polskiego zależy od nagrania i wag. Po aktualizacji sprawdź prawdziwe próbki; samo przyjęcie żądania przez API nie potwierdza jakości transkrypcji.
 
-Aktualny kontrakt runtime dla `/api/v1/audio/status`:
+## Role modeli i pamięć
 
-1. `multi_runtime` jest jedynym natywnym torem audio (`multi_runtime_piper`),
-2. każdy inny runtime (`ollama`, `vllm`, `onnx` i providery chmurowe) jest raportowany dla voice jako `whisper_llm_piper`,
-3. payload zawiera `runtime_state` z czterema jawnymi wymiarami:
-   - `selected`: runtime/model wybrany przez operatora,
-   - `active`: runtime/model aktualnie aktywny po stronie backendu,
-   - `response`: runtime/model oraz pipeline ostatniej odpowiedzi voice,
-   - `switch`: asynchroniczny stan przełączenia (`idle`, `switching`, `ready`, `failed`),
-4. UI powinien traktować `runtime_state` jako kanoniczne źródło prawdy, a `runtime_snapshot`/`runtime_alignment` jako diagnostykę.
+Model codzienny pozostaje lekki, aby zachować VRAM na wizję. Lokalny profil zachowuje Gemma2:2b i adapter, większą Gemma4 do zadań multimodalnych oraz chińskie alternatywy eksperymentalne. Jednocześnie pracuje jeden silnik i jedna generacja LLM.
 
-Ta gałąź traktuje też orb voice jako osobny stos UI, a nie luźny widget:
+Neutralna rola code_generation domyślnie używa qwen2.5-coder:3b. FEEDBACK_LOOP_PRIMARY_MODEL i lista FEEDBACK_LOOP_FALLBACK_MODELS pozwalają zmieniać modele bez przypinania funkcji do ich rodzin. Budżety określają FEEDBACK_LOOP_MIN_RAM_GB, FEEDBACK_LOOP_MIN_VRAM_MB i FEEDBACK_LOOP_MAX_CONTEXT. Historyczny alias OpenCodeInterpreter-Qwen2.5-7B pozostaje odczytywany dla zgodności, bez wymagania instalacji modelu 7B.
 
-1. `VoiceCommandCenter` zarządza stanem ekranu `/voice` i podpina orb do reszty strony,
-2. po PR 215 `VoiceOrb` używa niskokosztowego stosu 2D CSS/HTML/SVG (baseline Calm Idle) jako domyślnej architektury renderowania,
-3. PR 248A dodaje opcjonalne efekty interaktywne (`parallaxTilt`, `interactiveGlow`, `clickShockwave`) sterowane configiem i stanem runtime,
-4. efekty interaktywne działają tylko w `ready`, `recording`, `thinking`, `tts`, `complete` i są wyłączone w `offline` oraz `error`,
-5. `reducedMotion` wyłącza efekty interakcji myszą i utrzymuje orb w stanie statycznym,
-6. pokrycie testowe voice obejmuje teraz `web-next/tests/voice-orb.spec.ts` (smoke) i `web-next/tests/voice-orb.component.test.tsx` (zachowanie interakcji).
+Lokalny katalog wycofuje Codestral, tagi Ollama Gemma3 oraz Qwen2.5-Coder 7B. Wagi innych silników i adaptery treningowe pozostają zachowane.
 
-### Aktualny baseline STT
+## Weryfikacja
 
-Domyślny model speech-to-text to `medium`.
+tests/test_ollama_voice_input.py sprawdza WAV, żądania i wybór ścieżki; testy czasów sesji w interfejsie sprawdzają raportowanie etapów. Odbiór działającego stosu wymaga dodatkowo rzeczywistego nagrania przez /ws/audio, sensownej transkrypcji i odpowiedzi oraz pliku audio Piper. Prywatne nagrania i surowe dowody sesji nie trafiają do Git.
 
-Dlaczego:
+Endpoint Ollama /v1/chat/completions steruje rozumowaniem przez reasoning_effort (none wyłącza myślenie), a natywny /api/chat przez think. Nie mieszaj tych formatów żądań. Dokumentacja: https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx.
 
-1. po dodatkowych testach po polsku na mowie potocznej daje wyraźnie lepszą jakość rozpoznawania niż `base`,
-2. nadal mieści się w akceptowalnej latencji dla obecnej lokalnej pętli voice na CPU,
-3. `large-v3` zostaje fallbackiem, gdy trzeba jeszcze podnieść jakość.
-
-Rekomendacja modeli:
-
-1. `medium` - obecny domyślny i rekomendowany baseline,
-2. `base` - szybszy fallback, gdy kluczowa jest latencja i jakość pozostaje akceptowalna,
-3. `large-v3` - jakościowy fallback, gdy warto zapłacić większą latencją za dodatkową próbę jakości,
-4. `large-v3-turbo` - dostępny w nowszych wydaniach `faster-whisper`, ale traktujemy go jako osobny benchmark przed ewentualnym ustawieniem jako default.
-
-### Dostępne polskie głosy TTS
-
-Lokalne głosy Piper są trzymane w `data/models/piper` i można je przełączać przez `TTS_MODEL_PATH`.
-
-| Głos | Plik | Uwagi |
-| --- | --- | --- |
-| `gosia` | `data/models/piper/pl_PL-gosia-medium.onnx` | domyślny medium, już używany |
-| `darkman` | `data/models/piper/pl_PL-darkman-medium.onnx` | medium quality, już używany |
-| `mc_speech` | `data/models/piper/pl_PL-mc_speech-medium.onnx` | medium quality, właśnie dodany do porównania |
-| `mls_6892` | `data/models/piper/pl_PL-mls_6892-low.onnx` | low quality, tylko jako słaby baseline |
-
-Przełączenie przykładowo:
-
-```bash
-TTS_MODEL_PATH=/home/ubuntu/venom/data/models/piper/pl_PL-mc_speech-medium.onnx
-```
-
-### Zmierzone próbki po polsku
-
-Benchmarki CPU z cold startem zebrane 2026-05-10:
-
-| Sesja | Prompt | Model | Czas | Wynik |
-| --- | --- | ---: | ---: | --- |
-| `20260510_135543_886758_125913349432592_57be75fe` | `Co to jest kwadrat?` | `base` | `2.509 s` | `Co to jest kwadrat?` |
-| `20260510_135543_886758_125913349432592_57be75fe` | `Co to jest kwadrat?` | `medium` | `7.030 s` | `Co to jest kwadrat?` |
-| `20260510_135543_886758_125913349432592_57be75fe` | `Co to jest kwadrat?` | `large-v3` | `11.318 s` | `Co to jest kwadrat?` |
-| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `base` | `2.558 s` | `Jakie jest największy dzieło ulijama szekspira?` |
-| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `medium` | `7.380 s` | `Jakie jest największe dzieło Williama Shakespeare'a?` |
-| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `large-v3` | `12.095 s` | `Jakie jest największe dzieło Williama Szekspira?` |
-| `20260510_140146_754253_125913368394688_6872f70f` | `Jakie jest największe dzieło Williama Shakespeare'a?` | `large-v3-turbo` | `34.875 s` | `Jakie jest największe dzieło Williama Szekspira?` |
-
-Kierunek docelowy:
-
-1. zostawić stabilny fallback Whisper/Piper,
-2. jawnie pokazywać capability runtime,
-3. używać natywnych funkcji multimodalnych tylko po aktywnej weryfikacji probe,
-4. utrzymać kompatybilność ze starszymi modelami text-only.
-
-## Wnioski z ostatnich PR
-
-### PR 205 / 205B - lokalna pętla voice
-
-Stan dostarczony:
-
-1. czat głosowy został wyniesiony z układu czatu pisanego do osobnego ekranu `/voice`,
-2. push-to-talk działa przez przeglądarkę i kanał WebSocket audio,
-3. backend zapisuje audio i wystawia link do ostatniego WAV,
-4. STT wykonuje `faster-whisper`,
-5. TTS wykonuje Piper,
-6. UI udostępnia tryby voice: standard, głęboka analiza, podsumowanie, kroki do wykonania,
-7. historia tekstowego cockpit nie jest już blokowana przez duży panel voice.
-
-Wniosek operacyjny:
-
-1. ta ścieżka działa i powinna pozostać domyślnym fallbackiem,
-2. problemy jakości nagrania i wyboru mikrofonu zostały rozwiązane na poziomie browser/recording pipeline,
-3. natywne audio modelu nie może zastąpić tej ścieżki bez pomiaru i bez odwracalnego fallbacku.
-
-### PR 207 - kontrakt capability runtime multimodalnego
-
-Stan dostarczony lub w trakcie:
-
-1. metadata modeli Ollama jest normalizowana do snapshotu capability runtime,
-2. `gemma4:latest` jest rozpoznawany jako model deklarujący `completion`, `vision`, `audio`, `tools`, `thinking`,
-3. `GET /api/v1/models/{model_name}/runtime-capabilities` wystawia szczegóły capability,
-4. `GET /api/v1/audio/status` zawiera `runtime_snapshot`,
-5. `/voice` pokazuje aktywny snapshot runtime bardziej widocznie,
-6. starsze modele nadal działają przez legacy flow: tekst + Whisper + Piper.
-
-Aktualna decyzja:
-
-1. `audio` w metadata Ollama nie jest dowodem używalnego raw audio input,
-2. `gemma4:latest` może poprawić rozumowanie po transkrypcji, szczególnie dla głębokiej analizy, jeśli probe thinking jest zweryfikowane,
-3. natywne audio zostaje za jawną probe i flagami eksperymentalnymi.
-
-## Trzy lokalne stosy runtime
-
-Venom ma trzy lokalne ścieżki runtime. Wykrywanie capability musi być neutralne względem runtime, a nie specyficzne tylko dla Ollama.
-
-| Runtime | Aktualna rola w Venom | Najlepsze zastosowanie | Aktualny status native audio |
-| --- | --- | --- | --- |
-| `ollama` | Lokalny daemon, UX instalacji modeli, metadata `/api/show` | domyślny lokalny runtime i baseline kompatybilności | metadata może deklarować `audio`, ale transport REST audio nie jest wystarczająco stabilny do produkcji |
-| `vllm` | Serwer OpenAI-compatible, lokalny stos benchmarkowany | pierwszy kandydat do eksperymentów native audio i wydajnego multimodal serving | lepszy kandydat, bo vLLM dokumentuje OpenAI-style `input_audio` |
-| `onnx` | In-process adapter ONNX Runtime GenAI | edge/CPU/DirectML/mobile, kontrolowany footprint, możliwa ścieżka ONNX Whisper/ASR | przydatny dla badań ASR/edge, ale nie pierwszy kandydat dla Gemma4 native audio |
-
-## Kontrakt capability runtime
-
-Docelowy kontrakt powinien być niezależny od providera:
-
-```json
-{
-  "runtime_id": "ollama|vllm|onnx",
-  "model": "aktywny model",
-  "metadata_source": "api_show|openai_models|onnx_manifest|config",
-  "probe_status": "verified|metadata_only|failed|unsupported",
-  "capabilities": {
-    "text_completion": "verified|metadata_only|fallback|unsupported",
-    "vision_input": "verified|metadata_only|fallback|unsupported",
-    "audio_input": "verified|metadata_only|fallback|unsupported",
-    "audio_transcription": "verified|metadata_only|fallback|unsupported",
-    "tool_calling": "verified|metadata_only|fallback|unsupported",
-    "thinking": "verified|metadata_only|fallback|unsupported"
-  },
-  "fallbacks": {
-    "stt": "faster_whisper|vllm_whisper|onnx_whisper",
-    "tts": "piper",
-    "tools": "policy_gate_required"
-  }
-}
-```
-
-Zasady:
-
-1. metadata jest sygnałem discovery, a nie dowodem wsparcia produkcyjnego,
-2. aktywne probe decydują, czego router może użyć,
-3. UI musi pokazywać wybraną ścieżkę i powód fallbacku,
-4. stare modele text-only nie są błędem,
-5. każda natywna funkcja musi mieć bezpieczny fallback.
-
-## Decyzja dla native audio
-
-Aktualny status produkcyjny: czekamy.
-
-Uzasadnienie:
-
-1. Ollama wystawia capability modeli przez `/api/show`, ale stabilne publiczne API nie ma dziś raw audio field równie jasnego jak `messages[].images` dla vision.
-2. vLLM dokumentuje OpenAI-compatible `input_audio` oraz offline `multi_modal_data.audio`, więc jest lepszą ścieżką kolejnego eksperymentu.
-3. ONNX Runtime GenAI jest wartościowy dla edge i eksperymentów ASR, ale Gemma4 audio-native przez ONNX nie jest najkrótszą ścieżką.
-4. Jakość STT po polsku i opóźnienia muszą zostać porównane z aktualnym `faster-whisper`, zanim cokolwiek przełączymy.
-
-Kryteria akceptacji dla native audio:
-
-1. powtarzalny smoke test na fixture WAV,
-2. stabilny kontrakt payload dla wybranego runtime,
-3. akceptowalna jakość transkrypcji po polsku,
-4. czasy nie gorsze od obecnego fallbacku dla typowych komend,
-5. pełny fallback do `faster-whisper` bez błędu UI,
-6. snapshot runtime jasno pokazuje, czy audio jest `verified`, `metadata_only`, `fallback` albo `failed`.
-
-## Rekomendowane kolejne kroki
-
-1. Utrzymać PR 207 jako neutralny kontrakt capability i adapter Ollama.
-2. Przed dodaniem kolejnych providerów uogólnić typy backendu z `OllamaRuntimeCapabilities` do `RuntimeModelCapabilities`.
-3. Dodać `VllmCapabilityProbe` jako pierwszą ścieżkę eksperymentu native audio.
-4. Dodać smoke `RUN_VLLM_AUDIO_EXPERIMENT=1` z krótkim WAV i OpenAI-compatible `input_audio`.
-5. Zostawić `RUN_OLLAMA_AUDIO_EXPERIMENT=1` tylko jako guarded experiment, dopóki Ollama nie wystawi stabilnego transportu audio.
-6. Traktować ONNX jako osobne badanie edge/ASR, nie jako pierwszy kierunek Gemma4 audio-native.
-7. Budować PR 206 voice orb dopiero na stabilnych stanach runtime emitowanych przez PR 207.
-
-## Operacyjna strategia Gemma 4
-
-Aktualny kierunek dla Gemma 4 to utrzymanie daemona opartego o Transformers i
-traktowanie oficjalnych checkpointów Google jako bazy runtime.
-
-Założenia robocze:
-
-1. model bazowy: `google/gemma-4-E2B-it`,
-2. opcjonalny drafter/asystent: `google/gemma-4-E2B-it-assistant`,
-3. główne kontrolki runtime:
-   - `enable_thinking` on/off,
-   - `max_new_tokens`,
-   - `cache_implementation="static"`,
-   - limity multimodalne,
-4. kierunki optymalizacji:
-   - speculative decoding przez MTP,
-   - kompresja KV cache, np. TurboQuant,
-5. wymaganie operacyjne:
-   - po reloadzie lub zmianie modelu VRAM ma być faktycznie zwalniany,
-   - drugi model nie może wisieć w pamięci po przełączeniu.
-
-Z tego wynika, że następny krok implementacyjny powinien dotyczyć:
-
-1. przełączania wariantów modelu z poziomu daemona / API / UX,
-2. wystawienia kontroli thinking i kontekstu,
-3. bezpiecznych reguł reloadu daemona,
-4. pokazania stanu VRAM i stanu reloadu w UI,
-5. utrzymania przyszłych wariantów kwantyzowanych jako zgodnych z tym samym
-   daemonem, a nie jako nowego osobnego stosu.
-
-## Źródła
-
-1. Ollama show model details: https://docs.ollama.com/api-reference/show-model-details
-2. Ollama thinking: https://docs.ollama.com/capabilities/thinking
-3. Ollama vision: https://docs.ollama.com/capabilities/vision
-4. Ollama tool calling: https://docs.ollama.com/capabilities/tool-calling
-5. Ollama audio input feature request: https://github.com/ollama/ollama/issues/11798
-6. vLLM multimodal inputs: https://docs.vllm.ai/en/v0.20.0/features/multimodal_inputs/
-7. vLLM tool calling: https://docs.vllm.ai/en/v0.14.0/features/tool_calling/
-8. vLLM reasoning outputs: https://docs.vllm.ai/en/v0.8.2/features/reasoning_outputs.html
-9. ONNX Runtime GenAI: https://github.com/microsoft/onnxruntime-genai
+Natywne audio Ollama wymaga automatycznej trasy (VOICE_ROUTE_PROFILE=auto), profilu dekodera auto/hybrid i pustego AUDIO_DECODER_CHAIN. Profile runtime_lokalny oraz venom-agent zachowują Whisper; profil gemma4 jest przeznaczony dla osobnego demona. Jawny łańcuch i błędny kontrakt nie są nadpisywane przez metadane modelu.

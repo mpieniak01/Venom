@@ -23,6 +23,7 @@ from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 from venom_core.config import SETTINGS
 from venom_core.perception.audio_engine import AudioEngine
+from venom_core.services import ollama_audio
 from venom_core.services.conversation_providers import (
     conversation_turn,
     create_conversation_context,
@@ -35,6 +36,10 @@ from venom_core.services.conversation_providers import (
 )
 from venom_core.services.model_resources import model_operation
 from venom_core.services.multi_runtime_models import multi_runtime_available_models
+from venom_core.services.runtime_admission import (
+    RuntimeAdmissionError,
+    get_runtime_admission,
+)
 from venom_core.services.runtime_switch_gate import (
     assert_runtime_request_allowed,
     get_runtime_switch_gate_status,
@@ -1297,7 +1302,38 @@ class AudioStreamHandler:
 
     async def _resolve_voice_input_decoder_plan(self) -> dict[str, Any]:
         plan = self._resolve_audio_decoder_plan()
-        if not await has_voice_providers():
+        guarded = await has_voice_providers()
+        runtime = get_active_llm_runtime()
+        # Admission understands nested host work; a snapshot can report our own
+        # provider preparation as busy. Foreign experiment ownership still blocks
+        # generation and leaves urgent commands on the independent STT path.
+        native_audio = False
+        if (
+            runtime.provider == "ollama"
+            and plan.get("effective") != "none"
+            and ollama_audio.allows_native_route(
+                route_profile=self._voice_route_profile(),
+                decoder_profile=self._audio_decoder_profile(),
+                decoder_chain=str(_multi_runtime_setting("AUDIO_DECODER_CHAIN", "")),
+            )
+        ):
+            try:
+                with get_runtime_admission().operation(kind="voice_audio_selection"):
+                    native_audio = await ollama_audio.supports_audio(
+                        runtime.endpoint or "", runtime.model_name
+                    )
+            except RuntimeAdmissionError:
+                pass
+        if native_audio:
+            return {
+                **plan,
+                "effective": "ollama_audio",
+                "selected": "ollama_audio",
+                "should_try_native": False,
+                "guarded_voice": guarded,
+                "fallback_reason": "",
+            }
+        if not guarded:
             return plan
         reason = "guarded conversation: host shared Whisper routes providers before generation"
         if plan.get("fallback_reason"):
@@ -1810,6 +1846,57 @@ class AudioStreamHandler:
         operator_agent,
         decoder_plan: dict[str, Any],
     ) -> bool:
+        if decoder_plan["effective"] == "ollama_audio":
+            runtime = get_active_llm_runtime()
+            async with runtime_request_guard(
+                request_kind="voice_ollama_audio",
+                provider="ollama",
+                model=runtime.model_name,
+            ):
+                started_at = time.perf_counter()
+                try:
+                    transcription = await ollama_audio.transcribe_audio(
+                        runtime.endpoint or "", runtime.model_name, wav_path
+                    )
+                except Exception:
+                    self._update_voice_session_metadata(
+                        session_dir,
+                        {
+                            "pipeline_id": "ollama_audio_llm_piper",
+                            "audio_input_status": "failed",
+                            "decoder_source": "ollama",
+                            "decoder_effective": "ollama_audio",
+                        },
+                    )
+                    raise
+                timings_ms["stt_ms"] = self._elapsed_ms(started_at)
+                self._update_voice_session_metadata(
+                    session_dir,
+                    {
+                        "pipeline_id": "ollama_audio_llm_piper",
+                        "voice_pipeline_mode": "native_ollama_audio",
+                        "decoder_source": "ollama",
+                        "decoder_selected": "ollama_audio",
+                        "decoder_effective": "ollama_audio",
+                        "audio_input_status": "verified" if transcription else "empty",
+                        "audio_runtime_provider": "ollama",
+                        "audio_runtime_model": runtime.model_name,
+                        "transcription": transcription,
+                        "transcription_length": len(transcription),
+                        "timings_ms": timings_ms,
+                    },
+                )
+                await self._run_whisper_llm_pipeline(
+                    connection_id=connection_id,
+                    session_dir=session_dir,
+                    transcription=transcription,
+                    timings_ms=timings_ms,
+                    total_started_at=total_started_at,
+                    operator_agent=operator_agent,
+                    pipeline_id="ollama_audio_llm_piper",
+                )
+            return True
+
         if decoder_plan["effective"] == "none":
             self._update_voice_session_metadata(
                 session_dir,
@@ -2191,6 +2278,7 @@ class AudioStreamHandler:
         total_started_at: float,
         operator_agent: object | None,
         empty_agent_response_log_suffix: str = "",
+        pipeline_id: str = "whisper_llm_piper",
     ) -> None:
         """Run shared whisper->agent->tts pipeline for PCM and encoded audio."""
         if not transcription:
@@ -2198,6 +2286,7 @@ class AudioStreamHandler:
                 connection_id,
                 {"type": "transcription", "text": "", "confidence": 0.0},
             )
+            await self._send_json(connection_id, {"type": "complete"})
             return
 
         await self._send_json(
@@ -2212,7 +2301,7 @@ class AudioStreamHandler:
             transcript=transcription,
             response="",
             voice_mode=self._connection_voice_mode(connection_id),
-            pipeline_id="whisper_llm_piper",
+            pipeline_id=pipeline_id,
             **_multi_runtime_voice_flags(),
             raw_thinking_available=False,
         )
@@ -2239,14 +2328,14 @@ class AudioStreamHandler:
         self._update_voice_session_metadata(
             session_dir,
             {
-                "pipeline_id": "whisper_llm_piper",
+                "pipeline_id": pipeline_id,
                 "response_text": response_text,
                 "response_length": len(response_text or ""),
                 **_build_voice_session_insights_payload(
                     transcript=transcription,
                     response=response_text,
                     voice_mode=self._connection_voice_mode(connection_id),
-                    pipeline_id="whisper_llm_piper",
+                    pipeline_id=pipeline_id,
                     **_multi_runtime_voice_flags(),
                     raw_thinking_available=False,
                 ),

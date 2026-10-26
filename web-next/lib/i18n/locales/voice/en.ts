@@ -6,6 +6,10 @@ export const voice = {
     backToChat: "Back to text chat",
   },
   controls: {
+    stt: "STT",
+    tts: "TTS",
+    ollamaNativeAudio: "Audio through Ollama",
+    ollamaNativeAudioHint: "The selected model transcribes the recording without Whisper. The transcript uses the shared conversation flow; TTS speaks the reply.",
     voice: "Voice",
     text: "Text",
     ttsOn: "TTS: on",

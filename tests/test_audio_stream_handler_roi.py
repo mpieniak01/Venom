@@ -425,6 +425,14 @@ def test_multi_runtime_transcribe_url_follows_service_origin(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def isolate_ollama_audio_capabilities(monkeypatch):
+    """Legacy handler tests use mocked Whisper, independent of installed models."""
+    monkeypatch.setattr(
+        audio_stream_mod.ollama_audio, "supports_audio", AsyncMock(return_value=False)
+    )
+
+
 @pytest.mark.asyncio
 async def test_invoke_operator_agent_passes_mode_and_voice_context():
     class DummyAgent:

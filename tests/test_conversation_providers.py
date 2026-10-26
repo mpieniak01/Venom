@@ -15,6 +15,13 @@ from venom_core.services import module_registry
 
 
 @pytest.fixture(autouse=True)
+def isolate_native_ollama_audio(monkeypatch):
+    from venom_core.services import ollama_audio
+
+    monkeypatch.setattr(ollama_audio, "supports_audio", AsyncMock(return_value=False))
+
+
+@pytest.fixture(autouse=True)
 def isolated_registry():
     previous = conversation.set_conversation_registry(None)
     yield
@@ -1528,6 +1535,10 @@ async def test_guarded_voice_routes_one_real_asr_before_any_generation(
     import numpy as np
 
     from venom_core.api import audio_stream
+
+    monkeypatch.setattr(
+        audio_stream.ollama_audio, "supports_audio", AsyncMock(return_value=False)
+    )
 
     class VoiceExtension(Provider):
         enabled = False  # Emergency routing remains available while tools are off.

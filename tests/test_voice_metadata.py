@@ -366,9 +366,26 @@ async def test_audio_status_endpoint_without_handler_reports_idle_runtime_state(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "route,decoder,chain,expected",
+    [
+        ("auto", "auto", "", "ollama_native_audio"),
+        ("runtime_lokalny", "auto", "", "whisper_llm_piper_fallback"),
+        ("venom-agent", "auto", "", "whisper_llm_piper_fallback"),
+        ("auto", "faster_whisper", "", "whisper_llm_piper_fallback"),
+        ("auto", "auto", "faster_whisper", "whisper_llm_piper_fallback"),
+    ],
+)
 async def test_build_voice_runtime_snapshot_covers_non_ollama_and_ollama_paths(
     monkeypatch,
+    route,
+    decoder,
+    chain,
+    expected,
 ):
+    monkeypatch.setattr(core_main.SETTINGS, "VOICE_ROUTE_PROFILE", route)
+    monkeypatch.setattr(core_main.SETTINGS, "AUDIO_DECODER_PROFILE", decoder)
+    monkeypatch.setattr(core_main.SETTINGS, "AUDIO_DECODER_CHAIN", chain)
     core_main._voice_runtime_snapshot_cache["entry"] = None
     monkeypatch.setattr(
         core_main,
@@ -439,9 +456,7 @@ async def test_build_voice_runtime_snapshot_covers_non_ollama_and_ollama_paths(
     )
 
     native_snapshot = await core_main._build_voice_runtime_snapshot()
-    assert native_snapshot["voice_pipeline"]["profile"] == (
-        "whisper_llm_piper_fallback"
-    )
+    assert native_snapshot["voice_pipeline"]["profile"] == expected
     assert (
         native_snapshot["runtime_capabilities"]["fallbacks"]["voice_fallback_pipeline"]
         == "whisper_llm_piper"

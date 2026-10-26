@@ -127,7 +127,9 @@ export function VoiceChatScreen({ isDevMode = false }: VoiceChatScreenProps) {
           <VoiceSystemStatusBar status={voiceStatus} />
 
           {/* Obsługa obrazu — osobny box bezpośrednio po Tryby voice */}
-          <ImageProbeCard />
+          {isMultiRuntime(voiceStatus?.runtime_snapshot?.provider ?? "") && (
+            <ImageProbeCard />
+          )}
 
           {/* STT/TTS + Runtime status — compact info boxes for tuning */}
           <VoiceStatusSidebar

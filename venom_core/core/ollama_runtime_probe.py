@@ -50,12 +50,13 @@ def resolve_voice_pipeline(
     probes = capabilities.probes
     notes: list[str] = []
 
-    if caps.get("audio_input") and probes.get("audio", {}).get("status") == "verified":
-        stt = "native_audio"
+    if caps.get("audio_input"):
+        stt = "ollama_audio"
+        notes.append(
+            "audio support declared; each voice turn validates the audio response"
+        )
     else:
         stt = "faster_whisper"
-        if caps.get("audio_input"):
-            notes.append("audio capability metadata only, using whisper fallback")
 
     reasoning = (
         "think_api"
@@ -222,29 +223,8 @@ async def _probe_vision(client: OllamaClient, model_name: str) -> dict[str, Any]
 
 
 async def _probe_audio(client: OllamaClient, model_name: str) -> dict[str, Any]:
-    # Ollama docs nie opisują jeszcze stabilnego REST request shape dla audio input.
-    # Traktujemy capability jako metadata-only dopóki nie potwierdzimy formatu aktywną próbą.
-    response = await client.chat(
-        {
-            "model": model_name,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Confirm whether audio input is available for this model.",
-                }
-            ],
-            "stream": False,
-        }
-    )
-    message = response.get("message") or {}
-    content = str(message.get("content") or "").strip()
-    if content:
-        return {
-            "status": "metadata_only",
-            "reason": "ollama_audio_api_not_verified",
-            "content": content[:200],
-        }
-    return {"status": "failed", "reason": "empty_response"}
+    # A text answer cannot establish that an audio encoder actually works.
+    return {"status": "metadata_only", "reason": "recorded_audio_required"}
 
 
 async def probe_ollama_runtime_capabilities(

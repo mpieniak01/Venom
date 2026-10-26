@@ -62,6 +62,7 @@ def test_optional_features_and_ollama_gate():
     assert payload["tools"] == [{"type": "function"}]
     assert payload["tool_choice"] == "auto"
     assert "think" not in payload
+    assert payload["reasoning_effort"] == "none"
 
 
 def test_sse_extractors_and_ns_normalization():
@@ -135,3 +136,28 @@ def test_standard_usage_takes_precedence_over_legacy_counter_alias():
     assert svc.token_usage_from_telemetry(
         {"prompt_tokens": 3, "prompt_eval_count": 4}
     ) == {"prompt_tokens": 3}
+
+
+@pytest.mark.parametrize(
+    "provider,enabled,think,expected",
+    [
+        ("ollama", False, True, {"reasoning_effort": "none"}),
+        ("ollama", False, None, {"reasoning_effort": "none"}),
+        ("ollama", True, False, {"reasoning_effort": "none"}),
+        ("ollama", True, True, {"reasoning_effort": "medium"}),
+        ("ollama", True, None, {}),
+        ("openai", False, False, {"think": False}),
+    ],
+)
+def test_thinking_uses_the_provider_protocol(provider, enabled, think, expected):
+    payload = {}
+    svc.apply_optional_features_to_payload(
+        payload=payload,
+        provider=provider,
+        tools=None,
+        tool_choice=None,
+        think=think,
+        ollama_enable_tool_calling=False,
+        ollama_enable_think=enabled,
+    )
+    assert payload == expected

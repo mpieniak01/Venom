@@ -230,7 +230,7 @@ def test_build_preview_messages_and_payload(monkeypatch):
     assert payload["temperature"] == pytest.approx(0.3, abs=1e-12)
     assert payload["format"] == {"type": "object"}
     assert payload["tool_choice"] == "auto"
-    assert payload["think"] is True
+    assert payload["reasoning_effort"] == "medium"
     assert payload["tools"][0]["function"]["name"] == "ping"
     assert payload["options"]["num_ctx"] > 0
 

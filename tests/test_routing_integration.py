@@ -235,7 +235,7 @@ def test_build_routing_decision_prefers_feedback_loop_alias_for_code_generation(
     )
 
     assert decision.provider == "ollama"
-    assert decision.model == "OpenCodeInterpreter-Qwen2.5-7B"
+    assert decision.model == "code_generation"
 
 
 def test_build_routing_decision_reuses_router_for_same_state_manager(monkeypatch):

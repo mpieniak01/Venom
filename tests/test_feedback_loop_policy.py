@@ -124,7 +124,9 @@ def test_resource_budget_is_explicit_and_small_model_allowed(
     )
     assert result.allowed is (reason is None)
     if reason:
-        assert reason in result.recommendation
+        assert reason in result.reason_code
+        assert result.recommendation and " " in result.recommendation
+        assert result.reason_code not in result.recommendation
     else:
         assert result.guard_reason is None and result.recommendation is None
     result = policy.evaluate_feedback_loop_guard(

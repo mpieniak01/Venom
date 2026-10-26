@@ -135,6 +135,7 @@ from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.services.module_registry import include_optional_api_routers
+from venom_core.services.ollama_audio import allows_native_route
 from venom_core.services.runtime_switch_gate import get_runtime_switch_gate_status
 from venom_core.services.runtime_switch_telemetry import get_last_runtime_switch_event
 from venom_core.services.session_store import SessionStore
@@ -861,7 +862,11 @@ async def _build_voice_runtime_snapshot() -> dict[str, object] | None:
         previous_snapshot = _voice_runtime_snapshot_previous(cache_key=cache_key)
         try:
             snapshot = await _probe_ollama_voice_runtime_snapshot(runtime)
-            if str(SETTINGS.AUDIO_DECODER_PROFILE).strip() == "faster_whisper":
+            if not allows_native_route(
+                route_profile=SETTINGS.VOICE_ROUTE_PROFILE,
+                decoder_profile=SETTINGS.AUDIO_DECODER_PROFILE,
+                decoder_chain=SETTINGS.AUDIO_DECODER_CHAIN,
+            ):
                 snapshot["voice_pipeline"] = _build_whisper_fallback_voice_pipeline(
                     str(getattr(runtime, "provider", "") or "ollama")
                 )

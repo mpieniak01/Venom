@@ -21,6 +21,7 @@ class FeedbackLoopGuardResult:
     allowed: bool
     guard_reason: str | None
     recommendation: str | None
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -248,14 +249,28 @@ def evaluate_feedback_loop_guard(
     minimum_ram = float(getattr(settings, "FEEDBACK_LOOP_MIN_RAM_GB", 2.0))
     minimum_vram = float(getattr(settings, "FEEDBACK_LOOP_MIN_VRAM_MB", 0))
     reason = None
+    recommendation = None
     if maximum > 0 and context > maximum:
         reason = "feedback_loop_context_budget_exceeded"
+        recommendation = (
+            f"Kontekst modelu roli kodowania przekracza limit {maximum} tokenów. "
+            "Zmniejsz kontekst lub zwiększ budżet roli."
+        )
     elif ram_total_gb is not None and ram_total_gb < minimum_ram:
         reason = "feedback_loop_ram_budget_exceeded"
+        recommendation = (
+            f"Model roli kodowania wymaga co najmniej {minimum_ram:g} GB RAM. "
+            "Wybierz lżejszy model lub zmień budżet roli."
+        )
     elif vram_total_mb is not None and vram_total_mb < minimum_vram:
         reason = "feedback_loop_vram_budget_exceeded"
+        recommendation = (
+            f"Model roli kodowania wymaga co najmniej {minimum_vram:g} MB VRAM. "
+            "Wybierz lżejszy model lub zmień budżet roli."
+        )
     return FeedbackLoopGuardResult(
         allowed=reason is None,
         guard_reason="resource_guard" if reason else None,
-        recommendation=reason,
+        recommendation=recommendation,
+        reason_code=reason,
     )

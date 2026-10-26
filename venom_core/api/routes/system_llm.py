@@ -2610,6 +2610,9 @@ async def _resolve_feedback_alias_model(
                 f"'{FEEDBACK_LOOP_REQUESTED_ALIAS}' do dostępnego modelu."
                 f"{recommendation}"
             ),
+            headers={
+                "X-Reason-Code": guard.reason_code or alias_resolution.resolution_reason
+            },
         )
     logger.info(
         "Feedback-loop alias resolved: requested=%s resolved=%s reason=%s",
@@ -2642,7 +2645,12 @@ async def _resolve_feedback_guarded_selection(
         raise HTTPException(
             status_code=409,
             detail=selected_guard.recommendation
-            or "Model 7B zablokowany przez guard zasobowy.",
+            or "Model roli kodowania zablokowany przez ograniczenia zasobów.",
+            headers={
+                "X-Reason-Code": selected_guard.reason_code
+                or selected_guard.guard_reason
+                or "resource_guard"
+            },
         )
     fallback_resolution = resolve_feedback_loop_model(
         requested_model=FEEDBACK_LOOP_REQUESTED_ALIAS,
@@ -2655,7 +2663,12 @@ async def _resolve_feedback_guarded_selection(
         raise HTTPException(
             status_code=400,
             detail=selected_guard.recommendation
-            or "Model 7B zablokowany przez guard zasobowy.",
+            or "Model roli kodowania zablokowany przez ograniczenia zasobów.",
+            headers={
+                "X-Reason-Code": selected_guard.reason_code
+                or selected_guard.guard_reason
+                or "resource_guard"
+            },
         )
     logger.warning(
         "Feedback-loop resource guard fallback: primary=%s fallback=%s",

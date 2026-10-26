@@ -81,7 +81,7 @@ def test_models_install_feedback_loop_alias_returns_background_plan(monkeypatch)
     assert response.status_code == 200
     payload = response.json()
     assert payload["success"] is True
-    assert payload["requested_model_alias"] == "code_generation"
+    assert payload["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
     assert payload["install_candidates"] == list(feedback_loop_policy().candidates)
 
 

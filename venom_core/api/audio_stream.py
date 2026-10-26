@@ -1310,7 +1310,12 @@ class AudioStreamHandler:
         native_audio = False
         if (
             runtime.provider == "ollama"
-            and self._audio_decoder_profile() != "faster_whisper"
+            and plan.get("effective") != "none"
+            and ollama_audio.allows_native_route(
+                route_profile=self._voice_route_profile(),
+                decoder_profile=self._audio_decoder_profile(),
+                decoder_chain=str(_multi_runtime_setting("AUDIO_DECODER_CHAIN", "")),
+            )
         ):
             try:
                 with get_runtime_admission().operation(kind="voice_audio_selection"):

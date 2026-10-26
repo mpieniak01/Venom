@@ -1584,3 +1584,35 @@ async def test_external_vllm_selection_needs_no_application_sdk_and_keeps_provid
         assert ("vllm", "start") in controller.actions
     finally:
         _restore_settings(original)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exact", [True, False])
+async def test_coding_guard_returns_readable_detail_and_machine_header(
+    monkeypatch, exact
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from venom_core.services.feedback_loop_policy import FeedbackLoopGuardResult
+
+    guard = FeedbackLoopGuardResult(
+        False,
+        "resource_guard",
+        "Za mało pamięci RAM.",
+        "feedback_loop_ram_budget_exceeded",
+    )
+    monkeypatch.setattr(
+        system_routes,
+        "_evaluate_feedback_loop_resource_guard",
+        AsyncMock(return_value=guard),
+    )
+    with pytest.raises(system_routes.HTTPException) as caught:
+        await system_routes._resolve_feedback_guarded_selection(
+            request=SimpleNamespace(exact_only=exact),
+            model_manager=None,
+            selected_model="qwen2.5-coder:3b",
+            available_models=set(),
+        )
+    assert caught.value.detail == "Za mało pamięci RAM."
+    assert caught.value.headers["X-Reason-Code"] == "feedback_loop_ram_budget_exceeded"

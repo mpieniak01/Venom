@@ -7,7 +7,7 @@ Aktualizacja: 2026-10-26.
 Ekran /voice nagrywa dźwięk w przeglądarce i przesyła go przez /ws/audio.
 Wybór ścieżki wynika z aktywnego silnika i możliwości wybranego modelu:
 
-- Modele Ollama deklarujące audio korzystają z ollama_audio_llm_piper, chyba że operator jawnie wybierze faster_whisper.
+- Automatyczna trasa z pustym łańcuchem dekoderów może wybrać ollama_audio_llm_piper dla modeli Ollama deklarujących audio.
 - Modele tekstowe korzystają z whisper_llm_piper.
 - Osobny silnik multi_runtime zachowuje własną ścieżkę audio.
 
@@ -32,3 +32,5 @@ Lokalny katalog wycofuje Codestral, tagi Ollama Gemma3 oraz Qwen2.5-Coder 7B. Wa
 tests/test_ollama_voice_input.py sprawdza WAV, żądania i wybór ścieżki; testy czasów sesji w interfejsie sprawdzają raportowanie etapów. Odbiór działającego stosu wymaga dodatkowo rzeczywistego nagrania przez /ws/audio, sensownej transkrypcji i odpowiedzi oraz pliku audio Piper. Prywatne nagrania i surowe dowody sesji nie trafiają do Git.
 
 Endpoint Ollama /v1/chat/completions steruje rozumowaniem przez reasoning_effort (none wyłącza myślenie), a natywny /api/chat przez think. Nie mieszaj tych formatów żądań. Dokumentacja: https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx.
+
+Natywne audio Ollama wymaga automatycznej trasy (VOICE_ROUTE_PROFILE=auto), profilu dekodera auto/hybrid i pustego AUDIO_DECODER_CHAIN. Profile runtime_lokalny oraz venom-agent zachowują Whisper; profil gemma4 jest przeznaczony dla osobnego demona. Jawny łańcuch i błędny kontrakt nie są nadpisywane przez metadane modelu.

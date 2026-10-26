@@ -13,6 +13,12 @@ from venom_core.api import audio_stream as stream
 from venom_core.services import ollama_audio as audio
 
 
+@pytest.fixture(autouse=True)
+def automatic_voice_route(monkeypatch):
+    monkeypatch.setattr(stream.SETTINGS, "VOICE_ROUTE_PROFILE", "auto")
+    monkeypatch.setattr(stream.SETTINGS, "AUDIO_DECODER_CHAIN", "")
+
+
 def wav_file(tmp_path, rate=44100, channels=1, width=2, frames=4410):
     path = tmp_path / "input.wav"
     with wave.open(str(path), "wb") as wav:
@@ -80,6 +86,10 @@ async def test_audio_support_comes_from_model_metadata_not_model_name(
         ({"done": True, "message": {"content": "  nagranie  "}}, "nagranie"),
         ({"done": True, "message": {"content": ""}}, ""),
         ({"done": False}, None),
+        (
+            {"done": True, "done_reason": "length", "message": {"content": "partial"}},
+            None,
+        ),
         ({"done": True, "error": "failure"}, None),
         ({"done": True, "message": None}, None),
         ({"done": True, "message": {"content": 12}}, None),
@@ -329,3 +339,68 @@ async def test_empty_transcript_finishes_voice_ui_without_generation(tmp_path):
         pipeline_id="ollama_audio_llm_piper",
     )
     assert handler._send_json.await_args_list[-1].args == (1, {"type": "complete"})
+
+
+@pytest.mark.parametrize("rate", [1, 7999, 192001])
+def test_unsupported_rate_rejected_before_resampling(tmp_path, rate):
+    with pytest.raises(ValueError, match="unsupported_sample_rate"):
+        audio.encode_audio_input(wav_file(tmp_path, rate=rate, frames=8))
+
+
+def test_expanded_wav_is_bounded_before_allocating_output(monkeypatch, tmp_path):
+    path = wav_file(tmp_path, rate=8000, frames=100)
+    assert path.stat().st_size < 300
+    monkeypatch.setattr(audio, "MAX_AUDIO_BYTES", 300)
+    with pytest.raises(ValueError, match="audio_output_too_large"):
+        audio.encode_audio_input(path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "route,profile,chain,valid,expected",
+    [
+        ("runtime_lokalny", "auto", "", True, "faster_whisper"),
+        ("venom-agent", "auto", "", True, "faster_whisper"),
+        ("gemma4", "auto", "", False, "none"),
+        ("auto", "auto", "faster_whisper", True, "faster_whisper"),
+        ("auto", "gemma_native", "", True, "faster_whisper"),
+        ("auto", "auto", "", False, "none"),
+    ],
+)
+async def test_native_selection_preserves_route_contract(
+    monkeypatch, route, profile, chain, valid, expected
+):
+    handler = object.__new__(stream.AudioStreamHandler)
+    plan = {"effective": "faster_whisper" if valid else "none"}
+    handler._resolve_audio_decoder_plan = lambda: plan
+    monkeypatch.setattr(stream.SETTINGS, "VOICE_ROUTE_PROFILE", route)
+    monkeypatch.setattr(stream.SETTINGS, "AUDIO_DECODER_PROFILE", profile)
+    monkeypatch.setattr(stream.SETTINGS, "AUDIO_DECODER_CHAIN", chain)
+    monkeypatch.setattr(stream, "has_voice_providers", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        stream,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            provider="ollama", endpoint="http://fixture", model_name="audio-model"
+        ),
+    )
+    support = AsyncMock(return_value=True)
+    monkeypatch.setattr(audio, "supports_audio", support)
+    result = await handler._resolve_voice_input_decoder_plan()
+    assert result["effective"] == expected
+    support.assert_not_awaited()
+
+
+def test_declared_frames_cannot_allocate_beyond_the_input_file(monkeypatch, tmp_path):
+    import struct
+    from unittest.mock import Mock
+
+    path = wav_file(tmp_path, rate=192000, frames=8)
+    data = bytearray(path.read_bytes())
+    data[40:44] = struct.pack("<I", 4_000_000)
+    path.write_bytes(data)
+    read = Mock(side_effect=AssertionError("read before validating frame count"))
+    monkeypatch.setattr(wave.Wave_read, "readframes", read)
+    with pytest.raises(ValueError, match="invalid_frame_count"):
+        audio.encode_audio_input(path)
+    read.assert_not_called()

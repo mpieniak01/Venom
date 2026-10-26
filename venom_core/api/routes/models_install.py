@@ -465,7 +465,7 @@ async def _resolve_install_plan(
             resolution_reason,
         )
         return None, InstallPlan(
-            requested_alias=FEEDBACK_LOOP_REQUESTED_ALIAS,
+            requested_alias=resolved.requested_model_alias,
             resolution_reason=resolution_reason,
             resolved_model_id=resolved_model_id,
             install_candidates=candidates,

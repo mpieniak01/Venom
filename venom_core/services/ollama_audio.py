@@ -15,18 +15,41 @@ from venom_core.core.model_registry_clients import OllamaClient
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+MIN_SAMPLE_RATE = 8000
+MAX_SAMPLE_RATE = 192000
+
+
+def allows_native_route(
+    *, route_profile: str, decoder_profile: str, decoder_chain: str
+) -> bool:
+    """Respect explicit host/daemon routes and configured decoder chains."""
+    return (
+        route_profile.strip().lower()
+        not in {"runtime_lokalny", "venom-agent", "gemma4"}
+        and decoder_profile.strip().lower() not in {"faster_whisper", "gemma_native"}
+        and not decoder_chain.strip()
+    )
 
 
 def encode_audio_input(path: Path) -> str:
     """Produce mono PCM16 16 kHz WAV bytes, never a filename or raw PCM."""
-    if path.stat().st_size > MAX_AUDIO_BYTES:
+    input_size = path.stat().st_size
+    if input_size > MAX_AUDIO_BYTES:
         raise ValueError("audio_input_too_large")
     with wave.open(str(path), "rb") as source:
         if source.getnchannels() != 1 or source.getsampwidth() != 2:
             raise ValueError("audio_input_requires_mono_pcm16")
         rate = source.getframerate()
-        samples = np.frombuffer(source.readframes(source.getnframes()), dtype="<i2")
-    if rate <= 0 or samples.size == 0:
+        if not MIN_SAMPLE_RATE <= rate <= MAX_SAMPLE_RATE:
+            raise ValueError("audio_input_unsupported_sample_rate")
+        frames = source.getnframes()
+        if frames * 2 > input_size - 44:
+            raise ValueError("audio_input_invalid_frame_count")
+        output_frames = (frames * 16000 + rate - 1) // rate
+        if output_frames * 2 + 44 > MAX_AUDIO_BYTES:
+            raise ValueError("audio_output_too_large")
+        samples = np.frombuffer(source.readframes(frames), dtype="<i2")
+    if samples.size == 0:
         raise ValueError("audio_input_empty")
     if rate != 16000:
         divisor = math.gcd(rate, 16000)
@@ -91,7 +114,11 @@ async def transcribe_audio(
             f"{client.endpoint}/api/chat", json=payload, disable_retry=True
         )
     result = response.json()
-    if result.get("error") or result.get("done") is not True:
+    if (
+        result.get("error")
+        or result.get("done") is not True
+        or result.get("done_reason") == "length"
+    ):
         raise RuntimeError("ollama_audio_incomplete_response")
     message = result.get("message")
     if not isinstance(message, dict) or not isinstance(message.get("content"), str):

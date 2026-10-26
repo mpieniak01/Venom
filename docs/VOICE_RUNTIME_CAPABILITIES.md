@@ -7,7 +7,7 @@ Updated: 2026-10-26.
 The browser /voice screen records audio and sends it through /ws/audio.
 Routing follows the active runtime and the selected model's capabilities:
 
-- Ollama models declaring audio use ollama_audio_llm_piper unless the operator explicitly selects faster_whisper.
+- The automatic route with an empty decoder chain can select ollama_audio_llm_piper for Ollama models declaring audio.
 - Text-only models use whisper_llm_piper.
 - The separate multi_runtime engine retains its native audio pipeline.
 
@@ -32,3 +32,5 @@ Codestral, Gemma3 Ollama tags and Qwen2.5-Coder 7B are retired from this local c
 Use tests/test_ollama_voice_input.py for WAV/payload/routing checks and the frontend voice-session timing tests for stage reporting. Operational acceptance additionally requires a saved speech recording through /ws/audio, a meaningful transcript and response, and a Piper audio result. Keep private recordings and raw session evidence out of Git.
 
 Ollama's OpenAI-compatible /v1/chat/completions uses reasoning_effort (none disables thinking); the native /api/chat endpoint uses think. Keep these payload contracts separate. See https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx.
+
+Native Ollama audio requires the automatic route (VOICE_ROUTE_PROFILE=auto), decoder profile auto/hybrid and an empty AUDIO_DECODER_CHAIN. The runtime_lokalny and venom-agent profiles retain Whisper; gemma4 targets the separate daemon. Declared model capabilities do not override an explicit chain or an invalid route contract.

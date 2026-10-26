@@ -5,7 +5,7 @@ name: venom-minimal
 # Services are published on host interfaces to allow testing from another machine in LAN.
 services:
   ollama:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.6@sha256:265409e1d931028a8f7d5a32bcbafddd7bffbc6cc629d77efe9560adf692a5e7}
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.11@sha256:dea72d1e22270fe095b68fdf756d2b489d615643c5a2eaebbc5f569181e322d8}
     container_name: venom-ollama-minimal
     ports:
       - "11434:11434"
@@ -44,7 +44,7 @@ services:
       ACTIVE_LLM_SERVER: ${ACTIVE_LLM_SERVER:-ollama}
       LLM_SERVICE_TYPE: local
       LLM_LOCAL_ENDPOINT: ${LLM_HTTP_SCHEME:-http}://ollama:11434/v1
-      LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma3:4b}
+      LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma2:2b}
       LLM_WARMUP_ON_STARTUP: ${LLM_WARMUP_ON_STARTUP:-true}
       VENOM_OLLAMA_PROFILE: ${VENOM_OLLAMA_PROFILE:-balanced-12-24gb}
       # Backend uses 0/empty as sentinel => resolve from VENOM_OLLAMA_PROFILE.

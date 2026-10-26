@@ -241,3 +241,91 @@ async def test_native_transcript_uses_shared_authorized_agent_pipeline(
         assert updates[-1]["audio_input_status"] == (
             "verified" if transcript else "empty"
         )
+
+
+def test_resampling_without_optional_scipy(monkeypatch, tmp_path):
+    import builtins
+
+    original = builtins.__import__
+
+    def without_scipy(name, *args, **kwargs):
+        if name == "scipy.signal":
+            raise ImportError("optional dependency absent")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_scipy)
+    with wave.open(
+        io.BytesIO(base64.b64decode(audio.encode_audio_input(wav_file(tmp_path))))
+    ) as result:
+        assert result.getframerate() == 16000
+        assert result.getnframes() == 1600
+
+
+@pytest.mark.asyncio
+async def test_actual_nested_admission_allows_native_voice(monkeypatch, tmp_path):
+    from venom_core.services.runtime_admission import RuntimeAdmission
+
+    admission = RuntimeAdmission(tmp_path / "voice.sqlite3")
+    handler = object.__new__(stream.AudioStreamHandler)
+    handler._resolve_audio_decoder_plan = lambda: {"effective": "faster_whisper"}
+    handler._audio_decoder_profile = lambda: "auto"
+    monkeypatch.setattr(stream, "get_runtime_admission", lambda: admission)
+    monkeypatch.setattr(stream, "has_voice_providers", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        stream,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            provider="ollama", endpoint="http://fixture", model_name="audio-model"
+        ),
+    )
+    monkeypatch.setattr(audio, "supports_audio", AsyncMock(return_value=True))
+    with admission.operation(kind="voice_prepare"):
+        assert admission.snapshot()["status"] == "busy"
+        plan = await handler._resolve_voice_input_decoder_plan()
+        assert plan["effective"] == "ollama_audio"
+
+
+@pytest.mark.asyncio
+async def test_actual_foreign_experiment_keeps_whisper(monkeypatch, tmp_path):
+    from venom_core.services.runtime_admission import RuntimeAdmission
+
+    admission = RuntimeAdmission(tmp_path / "voice.sqlite3")
+    lease = admission.acquire(
+        owner="experiment", run_id="fixture", engine="other", model="other"
+    )
+    handler = object.__new__(stream.AudioStreamHandler)
+    handler._resolve_audio_decoder_plan = lambda: {"effective": "faster_whisper"}
+    handler._audio_decoder_profile = lambda: "auto"
+    monkeypatch.setattr(stream, "get_runtime_admission", lambda: admission)
+    monkeypatch.setattr(stream, "has_voice_providers", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        stream,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            provider="ollama", endpoint="http://fixture", model_name="audio-model"
+        ),
+    )
+    support = AsyncMock(return_value=True)
+    monkeypatch.setattr(audio, "supports_audio", support)
+    try:
+        plan = await handler._resolve_voice_input_decoder_plan()
+        assert plan["effective"] == "faster_whisper"
+        support.assert_not_awaited()
+    finally:
+        assert lease.release()
+
+
+@pytest.mark.asyncio
+async def test_empty_transcript_finishes_voice_ui_without_generation(tmp_path):
+    handler = object.__new__(stream.AudioStreamHandler)
+    handler._send_json = AsyncMock()
+    await handler._run_whisper_llm_pipeline(
+        connection_id=1,
+        session_dir=tmp_path,
+        transcription="",
+        timings_ms={},
+        total_started_at=0,
+        operator_agent=None,
+        pipeline_id="ollama_audio_llm_piper",
+    )
+    assert handler._send_json.await_args_list[-1].args == (1, {"type": "complete"})

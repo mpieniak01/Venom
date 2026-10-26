@@ -6,6 +6,8 @@ export const voice = {
     backToChat: "Wróć do chatu pisanego",
   },
   controls: {
+    stt: "STT",
+    tts: "TTS",
     ollamaNativeAudio: "Audio przez Ollama",
     ollamaNativeAudioHint: "Wybrany model rozpoznaje nagranie bez Whispera. Treść przechodzi przez wspólną obsługę rozmowy, a głos odpowiedzi zapewnia TTS.",
     voice: "Voice",

@@ -13,7 +13,7 @@ Routing follows the active runtime and the selected model's capabilities:
 
 Ollama receives a complete base64 WAV container in messages[].images, with an empty user text and a separate system transcription instruction. Audio is mono PCM16 at 16 kHz; browser sample rates are resampled before submission. A filename, raw PCM or an expected transcript is never substituted for recorded audio.
 
-Native Ollama transcription then enters the same conversation/provider authorization flow as Whisper. Piper produces spoken output. Native audio input does not imply native audio output or permission to execute a command. Shared runtime admission remains enabled; when generation is occupied, CPU Whisper can decode urgent voice commands.
+Native Ollama transcription then enters the same conversation/provider authorization flow as Whisper. Piper produces spoken output. Native audio input does not imply native audio output or permission to execute a command. Shared runtime admission remains enabled; when generation is occupied, Whisper can decode urgent voice commands.
 
 The capability snapshot distinguishes declared metadata from a completed audio turn. A text-only health query cannot verify audio support. Session metadata records the chosen pipeline, transcription, response and timings. Failed or empty input must finish the UI state without inventing a transcript.
 

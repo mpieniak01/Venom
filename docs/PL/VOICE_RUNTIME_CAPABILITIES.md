@@ -13,7 +13,7 @@ Wybór ścieżki wynika z aktywnego silnika i możliwości wybranego modelu:
 
 Ollama otrzymuje pełny kontener WAV zakodowany base64 w messages[].images. Tekst użytkownika jest pusty, a instrukcja transkrypcji trafia do osobnej wiadomości systemowej. Dane to mono PCM16, 16 kHz; inne częstotliwości nagrania są przeliczane. Nie zastępuj nagrania nazwą pliku, surowym PCM ani oczekiwaną transkrypcją.
 
-Transkrypcja Ollama trafia do wspólnego mechanizmu rozmowy i autoryzacji dostawców, tak samo jak tekst z Whisper. Piper generuje odpowiedź głosową. Obsługa wejścia audio nie oznacza generowania audio przez model ani zgody na wykonanie polecenia. Wspólna kontrola dostępu do silnika pozostaje aktywna; zajęta generacja pozwala użyć Whisper na CPU do odczytania pilnego polecenia.
+Transkrypcja Ollama trafia do wspólnego mechanizmu rozmowy i autoryzacji dostawców, tak samo jak tekst z Whisper. Piper generuje odpowiedź głosową. Obsługa wejścia audio nie oznacza generowania audio przez model ani zgody na wykonanie polecenia. Wspólna kontrola dostępu do silnika pozostaje aktywna; zajęta generacja pozwala użyć Whisper do odczytania pilnego polecenia.
 
 Status rozróżnia deklarację z metadanych od wykonanego przetwarzania nagrania. Zapytanie tekstowe nie potwierdza obsługi audio. Metadane sesji zapisują ścieżkę, transkrypcję, odpowiedź i czasy etapów. Błąd lub cisza kończą stan oczekiwania interfejsu bez wymyślania wypowiedzi.
 

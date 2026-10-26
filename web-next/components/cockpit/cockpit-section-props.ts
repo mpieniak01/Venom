@@ -1,5 +1,6 @@
 "use client";
 
+import { chatModelLabel, preferChatModelAliases } from "@/lib/chat-model-options";
 import { createElement, useMemo, useCallback } from "react";
 import type {
   ServiceStatus,
@@ -41,7 +42,7 @@ export function formatRuntimeModelOptionLabel(
     canonicalAlias && canonicalAlias.toLowerCase() !== model.name.toLowerCase()
       ? ` <-> ${canonicalAlias}`
       : "";
-  const baseLabel = `${model.name}${aliasSuffix}${runtimeLabel}`;
+  const baseLabel = `${chatModelLabel(model.name)}${aliasSuffix}${runtimeLabel}`;
   if (model.feedback_loop_tier === "primary") {
     return `${baseLabel} · ${t("cockpit.models.feedbackLoopPrimaryBadge")}`;
   }
@@ -188,10 +189,10 @@ export function useCockpitSectionProps() {
     const target = runtimeTargets.find(
       (runtime) => normalizeRuntimeId(runtime.runtime_id) === resolvedServerId,
     );
-    return filterRuntimeBaseModels(
+    return preferChatModelAliases(filterRuntimeBaseModels(
       (target?.models ?? []).filter((model) => model.chat_compatible !== false),
-    );
-  }, [resolvedServerId, runtimeTargets]);
+    ), selectedLlmModel || activeRuntimeModel);
+  }, [resolvedServerId, runtimeTargets, selectedLlmModel, activeRuntimeModel]);
   const runtimeSelectionDisabled = isCockpitRuntimeDisabled(selectedRuntimeTarget);
   const adapterDeployCapability = selectedRuntimeTarget?.adapter_deploy_supported ?? selectedRuntimeTarget?.supports_adapter_runtime_apply;
   const runtimeStatus = String(selectedRuntimeTarget?.status || "")

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { chatModelLabel, preferChatModelAliases } from "@/lib/chat-model-options";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
 import { ApiError } from "@/lib/api-client";
@@ -123,19 +124,20 @@ export function resolveModelsForServer(input: {
     runtimeModels: LlmRuntimeModelOption[];
     installedBuckets: Record<string, ModelInfo[]>;
     installedModels: ModelInfo[];
+    selectedModel?: string | null;
 }) {
     const { selectedServer, runtimeModels, installedBuckets, installedModels } = input;
-    if (!selectedServer) return installedModels;
+    if (!selectedServer) return preferChatModelAliases(installedModels, input.selectedModel);
     if (runtimeModels.length > 0) {
-        return runtimeModels.map((model) => ({
+        return preferChatModelAliases(runtimeModels, input.selectedModel).map((model) => ({
             name: model.name,
             provider: model.provider,
             source: model.source_type,
         }));
     }
     const targetProvider = normalizeProvider(selectedServer);
-    if (!targetProvider) return installedModels;
-    return installedBuckets[targetProvider] ?? [];
+    if (!targetProvider) return preferChatModelAliases(installedModels, input.selectedModel);
+    return preferChatModelAliases(installedBuckets[targetProvider] ?? [], input.selectedModel);
 }
 
 export function useRuntime() {
@@ -202,8 +204,9 @@ export function useRuntime() {
                 runtimeModels: runtimeModelsForServer,
                 installedBuckets,
                 installedModels,
+                selectedModel: selectedModel || activeServer.data?.active_model || activeRuntime?.model,
             }),
-        [installedBuckets, installedModels, runtimeModelsForServer, selectedServer],
+        [installedBuckets, installedModels, runtimeModelsForServer, selectedServer, selectedModel, activeServer.data?.active_model, activeRuntime?.model],
     );
 
     const serverOptions = useMemo(
@@ -211,7 +214,7 @@ export function useRuntime() {
         [llmServers],
     );
     const modelOptions = useMemo(
-        () => availableModelsForServer.map((model) => ({ value: model.name, label: model.name })),
+        () => availableModelsForServer.map((model) => ({ value: model.name, label: chatModelLabel(model.name) })),
         [availableModelsForServer],
     );
 

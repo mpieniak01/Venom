@@ -68,7 +68,14 @@ def apply_optional_features_to_payload(
         provider, ollama_enable_tool_calling
     ):
         payload["tool_choice"] = tool_choice
-    if think is not None and runtime_feature_enabled(provider, ollama_enable_think):
+    if provider == "ollama":
+        # This adapter sends /v1/chat/completions, whose thinking control is
+        # reasoning_effort. The native /api/chat field "think" is ignored here.
+        if not ollama_enable_think or think is False:
+            payload["reasoning_effort"] = "none"
+        elif think is True:
+            payload["reasoning_effort"] = "medium"
+    elif think is not None:
         payload["think"] = think
 
 

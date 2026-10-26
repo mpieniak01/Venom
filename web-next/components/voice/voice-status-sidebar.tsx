@@ -56,7 +56,7 @@ function isGenericFailureResponse(text: string): boolean {
   );
 }
 
-export function VoiceStatusSidebar({ status, isDevMode = false, onRuntimeApplied }: VoiceStatusSidebarProps) {
+export function VoiceStatusSidebar({ status, onRuntimeApplied }: VoiceStatusSidebarProps) {
   const t = useTranslation();
   const runtime = status?.runtime_snapshot ?? null;
   const latestVoiceSession = status?.latest_voice_session ?? runtime?.latest_voice_session ?? null;

@@ -30,3 +30,5 @@ Lokalny katalog wycofuje Codestral, tagi Ollama Gemma3 oraz Qwen2.5-Coder 7B. Wa
 ## Weryfikacja
 
 tests/test_ollama_voice_input.py sprawdza WAV, żądania i wybór ścieżki; testy czasów sesji w interfejsie sprawdzają raportowanie etapów. Odbiór działającego stosu wymaga dodatkowo rzeczywistego nagrania przez /ws/audio, sensownej transkrypcji i odpowiedzi oraz pliku audio Piper. Prywatne nagrania i surowe dowody sesji nie trafiają do Git.
+
+Endpoint Ollama /v1/chat/completions steruje rozumowaniem przez reasoning_effort (none wyłącza myślenie), a natywny /api/chat przez think. Nie mieszaj tych formatów żądań. Dokumentacja: https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx.

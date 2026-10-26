@@ -30,3 +30,5 @@ Codestral, Gemma3 Ollama tags and Qwen2.5-Coder 7B are retired from this local c
 ## Validation
 
 Use tests/test_ollama_voice_input.py for WAV/payload/routing checks and the frontend voice-session timing tests for stage reporting. Operational acceptance additionally requires a saved speech recording through /ws/audio, a meaningful transcript and response, and a Piper audio result. Keep private recordings and raw session evidence out of Git.
+
+Ollama's OpenAI-compatible /v1/chat/completions uses reasoning_effort (none disables thinking); the native /api/chat endpoint uses think. Keep these payload contracts separate. See https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx.

@@ -5,9 +5,12 @@ import json
 import os
 import runpy
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+from scripts.ci import verify_github_e2e_namespace as namespaces
 
 ROOT = Path(__file__).resolve().parents[2]
 FAKE = ROOT / "scripts/ci/github_e2e_fake_llm.py"
@@ -31,6 +34,69 @@ class E2EContractTest(unittest.TestCase):
         )
         self.assertIn("/api/v1/system/llm-servers/active", setup)
         self.assertIn("http://127.0.0.1:13300/api/v1/llm/simple/stream", spec)
+
+    def test_namespace_check_rejects_shared_or_changed_namespace(self):
+        for kind in ("net", "mnt"):
+            current = os.readlink(f"/proc/self/ns/{kind}")
+            with (
+                self.subTest(kind=kind),
+                patch.object(
+                    namespaces, "read_proof_identities", return_value=(current, current)
+                ),
+            ):
+                with self.assertRaisesRegex(RuntimeError, f"private {kind}"):
+                    namespaces.check_private_namespace(Path("/proof"), kind)
+            with (
+                self.subTest(kind=kind),
+                patch.object(
+                    namespaces,
+                    "read_proof_identities",
+                    return_value=(current, f"{kind}:[1]"),
+                ),
+            ):
+                with self.assertRaisesRegex(RuntimeError, f"private {kind}"):
+                    namespaces.check_private_namespace(Path("/proof"), kind)
+
+    def test_namespace_check_accepts_distinct_attested_handles(self):
+        current = os.readlink("/proc/self/ns/net")
+        with patch.object(
+            namespaces, "read_proof_identities", return_value=("net:[1]", current)
+        ):
+            namespaces.check_private_namespace(Path("/proof/net"), "net")
+
+    def test_namespace_proof_fails_closed_for_invalid_or_inaccessible_files(self):
+        with self.assertRaises((OSError, RuntimeError, UnicodeError)):
+            namespaces.read_proof_identities(FAKE, "net")
+        with patch.object(
+            namespaces, "read_proof_identities", side_effect=PermissionError("denied")
+        ):
+            with self.assertRaises(PermissionError):
+                namespaces.check_private_namespace(Path("/missing"), "net")
+
+    def test_namespace_proof_directory_rejects_untrusted_paths(self):
+        if os.geteuid() == 0:
+            self.skipTest("Requires a non-root test user")
+        with tempfile.TemporaryDirectory(
+            prefix="venom-github-e2e-ns.", dir="/tmp"
+        ) as path:
+            with self.assertRaisesRegex(RuntimeError, "root-owned and non-writable"):
+                namespaces.verify_proof_directory(path)
+        with tempfile.TemporaryDirectory(dir="/tmp") as path:
+            with self.assertRaisesRegex(RuntimeError, "expected root-owned /tmp"):
+                namespaces.verify_proof_directory(path)
+
+    def test_namespace_verifier_rejects_missing_proof_before_services(self):
+        env = os.environ.copy()
+        env.pop("VENOM_E2E_NS_PROOF_DIR", None)
+        result = subprocess.run(
+            ["python3", str(ROOT / "scripts/ci/verify_github_e2e_namespace.py")],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Missing namespace proof location", result.stderr)
 
     def test_fake_tags_and_stream_without_network(self):
         module = runpy.run_path(str(FAKE))

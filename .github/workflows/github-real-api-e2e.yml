@@ -81,6 +81,24 @@ jobs:
             workspace="$1"; runner_user="$2"; runner_home="$3"; runner_path="$4"
             mount --make-rprivate /
             ip link set lo up
+            proof_dir="$(mktemp -d /tmp/venom-github-e2e-ns.XXXXXX)"
+            chmod 755 "$proof_dir"
+            cleanup_proof() {
+              for namespace in net mnt; do
+                rm -f -- "$proof_dir/$namespace"
+              done
+              rmdir -- "$proof_dir"
+            }
+            trap cleanup_proof EXIT
+            for namespace in net mnt; do
+              host_ns="$(readlink "/proc/1/ns/$namespace")"
+              isolated_ns="$(readlink "/proc/self/ns/$namespace")"
+              if [ -z "$host_ns" ] || [ -z "$isolated_ns" ] || [ "$host_ns" = "$isolated_ns" ]; then
+                echo "Private $namespace namespace not established" >&2; exit 1
+              fi
+              printf "%s %s\n" "$host_ns" "$isolated_ns" > "$proof_dir/$namespace"
+              chmod 444 "$proof_dir/$namespace"
+            done
             runner_uid="$(id -u "$runner_user")"
             for socket in /run/docker.sock /var/run/docker.sock /run/containerd/containerd.sock /run/dbus/system_bus_socket "/run/user/$runner_uid/bus"; do
               if [ -S "$socket" ]; then mount --bind /dev/null "$socket"; fi
@@ -92,7 +110,8 @@ jobs:
             runuser -u "$runner_user" -- env -i \
               HOME="$runner_home" USER="$runner_user" LOGNAME="$runner_user" \
               PATH="$runner_path" LANG=C.UTF-8 CI=true GITHUB_ACTIONS=true \
-              RUNNER_ENVIRONMENT=github-hosted \
+              RUNNER_ENVIRONMENT=github-hosted GITHUB_WORKSPACE="$workspace" \
+              VENOM_E2E_NS_PROOF_DIR="$proof_dir" \
               bash scripts/ci/run-github-api-e2e.sh
           ' bash "$workspace" "$runner_user" "$runner_home" "$runner_path"
       - name: Upload E2E diagnostics

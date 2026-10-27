@@ -4,9 +4,8 @@ set -euo pipefail
 if [[ "${CI:-}" != true || "${GITHUB_ACTIONS:-}" != true || "${RUNNER_ENVIRONMENT:-}" != github-hosted || "$(id -u)" == 0 ]]; then
   echo 'This harness requires an unprivileged GitHub-hosted runner.' >&2; exit 1
 fi
-if [[ "$(readlink /proc/self/ns/net)" == "$(readlink /proc/1/ns/net)" || "$(readlink /proc/self/ns/mnt)" == "$(readlink /proc/1/ns/mnt)" ]]; then
-  echo 'A private network and mount namespace are required.' >&2; exit 1
-fi
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+python3 "$repo/scripts/ci/verify_github_e2e_namespace.py"
 for socket in /run/docker.sock /var/run/docker.sock /run/containerd/containerd.sock /run/dbus/system_bus_socket "/run/user/$(id -u)/bus"; do
   if [[ -S "$socket" ]]; then echo "Host socket is visible: $socket" >&2; exit 1; fi
 done
@@ -22,7 +21,6 @@ finally:
     for sock in sockets:
         sock.close()
 PY
-repo=$(cd "$(dirname "$0")/../.." && pwd)
 scratch=$(mktemp -d "$repo/.github-e2e-tmp.XXXXXX")
 touch "$scratch/empty.env"
 export ENV_FILE="$scratch/empty.env" PYTHONPATH="$repo" WORKSPACE_ROOT="$scratch/workspace" MEMORY_ROOT="$scratch/memory"

@@ -186,4 +186,12 @@ class TestModelConfigAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["runtime_capabilities"]["probes"]["show"]["status"] == "verified"
-        assert data["runtime_capabilities"]["probe_status"] == "verified"
+        probes = data["runtime_capabilities"]["probes"]
+        assert probes["thinking"]["status"] == "failed"
+        assert probes["tools"]["status"] == "failed"
+        assert probes["vision"]["status"] == "failed"
+        assert probes["audio"] == {
+            "status": "metadata_only",
+            "reason": "recorded_audio_required",
+        }
+        assert data["runtime_capabilities"]["probe_status"] == "metadata_only"

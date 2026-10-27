@@ -404,3 +404,96 @@ printf '{"profile":"%s","status":"%s"}\\n' "$name" "$status" >> "$E2E_PROFILE_RE
     assert.equal(payload.records.length, 4);
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
+
+test("profil simulated na GitHub wykonuje wyłącznie zakwalifikowane profile bez modelu", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-simulated-test-"));
+  try {
+    const npm = join(work, "npm");
+    const summary = join(work, "summary.json");
+    writeFileSync(npm, `#!/bin/sh
+case "$2" in
+ test:e2e:smoke) name=smoke;;
+ test:e2e:functional) name=functional;;
+ *) exit 11;;
+esac
+printf '{"profile":"%s","status":"passed"}\\n' "$name" >> "$E2E_PROFILE_RESULT_FILE"
+cp "$FAKE_REPORT_DIR/$name.json" "$PLAYWRIGHT_JSON_OUTPUT_NAME"
+mkdir -p "$E2E_PLAYWRIGHT_OUTPUT_DIR"
+printf trace > "$E2E_PLAYWRIGHT_OUTPUT_DIR/trace.txt"
+`);
+    chmodSync(npm, 0o700);
+    const fakeReport = (count: number, flaky = 0) => ({ suites: [{ specs: [{ tests: Array.from({ length: count }, (_, index) => ({ results: index < flaky ? [{ status: "failed" }, { status: "passed" }] : [{ status: "passed" }] })) }] }] });
+    writeFileSync(join(work, "smoke.json"), JSON.stringify(fakeReport(5)));
+    writeFileSync(join(work, "functional.json"), JSON.stringify(fakeReport(8)));
+    const result = spawnSync(process.execPath, [resolve("scripts/run-e2e.mjs")], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, CI: "true", GITHUB_ACTIONS: "true", RUNNER_ENVIRONMENT: "github-hosted", E2E_SIMULATED_SERVER: "1", E2E_PROFILE: "simulated", E2E_PROFILE_SUMMARY_FILE: summary, E2E_SIMULATED_REPORT_DIR: join(work, "published"), FAKE_REPORT_DIR: work, PATH: `${work}:${process.env.PATH || ""}` },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /fizyczne E2E z modelem nie jest wykonywane/);
+    const report = JSON.parse(readFileSync(summary, "utf8"));
+    assert.equal(report.status, "passed");
+    assert.equal(report.scope, "mocked_ui_without_physical_model");
+    assert.deepEqual(report.records.map((item: { profile: string }) => item.profile), ["smoke", "functional"]);
+    for (const name of ["smoke", "functional"]) {
+      assert.equal(existsSync(join(work, "published", `results-${name}.json`)), true);
+      assert.equal(existsSync(join(work, "published", `flakiness-summary-${name}.json`)), true);
+      assert.equal(existsSync(join(work, "published", `playwright-${name}`, "trace.txt")), true);
+    }
+
+    for (const [name, count, flaky] of [["smoke", 4, 0], ["functional", 7, 0], ["smoke", 5, 1], ["functional", 8, 1]] as const) {
+      writeFileSync(join(work, "smoke.json"), JSON.stringify(fakeReport(name === "smoke" ? count : 5, name === "smoke" ? flaky : 0)));
+      writeFileSync(join(work, "functional.json"), JSON.stringify(fakeReport(name === "functional" ? count : 8, name === "functional" ? flaky : 0)));
+      const rejected = spawnSync(process.execPath, [resolve("scripts/run-e2e.mjs")], {
+        cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
+        env: { ...process.env, CI: "true", GITHUB_ACTIONS: "true", RUNNER_ENVIRONMENT: "github-hosted", E2E_SIMULATED_SERVER: "1", E2E_PROFILE: "simulated", E2E_PROFILE_SUMMARY_FILE: summary, E2E_SIMULATED_REPORT_DIR: join(work, "published"), FAKE_REPORT_DIR: work, PATH: `${work}:${process.env.PATH || ""}` },
+      });
+      assert.equal(rejected.status, 1, `${name}: ${rejected.stdout} ${rejected.stderr}`);
+      assert.equal(JSON.parse(readFileSync(summary, "utf8")).status, "failed");
+    }
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("profil simulated nie uruchamia serwera na lokalnym komputerze", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-simulated-local-test-"));
+  try {
+    const summary = join(work, "summary.json");
+    const result = spawnSync(process.execPath, [resolve("scripts/run-e2e.mjs")], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, CI: "", GITHUB_ACTIONS: "", RUNNER_ENVIRONMENT: "", E2E_SIMULATED_SERVER: "", E2E_PROFILE: "simulated", E2E_PROFILE_SUMMARY_FILE: summary },
+    });
+    assert.equal(result.status, 1, result.stderr);
+    const report = JSON.parse(readFileSync(summary, "utf8"));
+    assert.equal(report.reason, "simulated_profile_requires_github_hosted");
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("GitHub E2E nie uruchamia profilu po błędzie izolacji sieci", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-workflow-isolation-"));
+  try {
+    const workflow = readFileSync(resolve("../.github/workflows/web-next-playwright-e2e.yml"), "utf8");
+    const start = "      - name: Run E2E profile in an isolated network namespace\n        run: |\n";
+    const end = "      - name: Build flaky trend summary";
+    assert.ok(workflow.includes(start));
+    const body = workflow.split(start)[1].split(end)[0].split("\n").map((line) => line.replace(/^ {10}/, "")).join("\n");
+    const sudo = join(work, "sudo");
+    const npm = join(work, "npm");
+    writeFileSync(sudo, '#!/bin/sh\nprintf attempted > "$GITHUB_WORKSPACE/sudo-called"\nexit 77\n');
+    writeFileSync(npm, '#!/bin/sh\nprintf called > "$GITHUB_WORKSPACE/npm-called"\n');
+    chmodSync(sudo, 0o700);
+    chmodSync(npm, 0o700);
+    const result = spawnSync("bash", ["-c", body], {
+      cwd: work, encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, GITHUB_WORKSPACE: work, E2E_PROFILE: "smoke", PATH: `${work}:${process.env.PATH || ""}` },
+    });
+    assert.equal(result.status, 77, result.stderr);
+    assert.equal(existsSync(join(work, "sudo-called")), true);
+    assert.equal(existsSync(join(work, "npm-called")), false);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});

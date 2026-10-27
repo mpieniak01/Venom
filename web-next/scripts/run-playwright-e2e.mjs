@@ -103,6 +103,9 @@ if (profile === "prod") {
 }
 
 const extraArgs = process.argv.slice(3);
+if (simulatedCi && process.env.E2E_PLAYWRIGHT_OUTPUT_DIR) {
+  extraArgs.push(`--output=${process.env.E2E_PLAYWRIGHT_OUTPUT_DIR}`);
+}
 if (!simulatedCi && profile === "functional") {
   if (extraArgs.some((arg) => arg === "--workers" || arg.startsWith("--workers="))) {
     recordResult("failed", "invalid_workers");

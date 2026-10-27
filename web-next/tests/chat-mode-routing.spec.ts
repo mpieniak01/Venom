@@ -321,6 +321,24 @@ test.describe("Chat mode routing", () => {
     await registerRuntimeContractRoutes(page);
   });
 
+  test("Pusta wiadomość nie wysyła zadania ani generacji", async ({ page }) => {
+    const writes: string[] = [];
+    await page.route("**/api/v1/tasks", async (route) => {
+      if (route.request().method() === "POST") writes.push("tasks");
+      await route.fulfill({ status: 200, contentType: "application/json", body: emptyJson });
+    });
+    await page.route("**/api/v1/llm/simple/stream", async (route) => {
+      writes.push("simple-stream");
+      await route.fulfill({ status: 500, body: "Unexpected generation" });
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await waitForHydration(page);
+    await page.getByTestId("cockpit-prompt-input").fill("   ");
+    await page.getByTestId("cockpit-send-button").click();
+    await expect(page.getByText("Podaj treść zadania.")).toBeVisible();
+    expect(writes).toEqual([]);
+  });
+
   test("Normal mode routes through tasks without forced intent", async ({ page }) => {
     let taskBody: Record<string, unknown> | null = null;
 

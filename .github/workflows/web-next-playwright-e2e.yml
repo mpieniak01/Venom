@@ -11,6 +11,7 @@ on:
         options:
           - smoke
           - functional
+          - simulated
           - full
   pull_request:
     branches: [main]
@@ -72,27 +73,45 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npm --prefix web-next exec playwright install chromium
 
-      - name: Run E2E profile
+      - name: Run E2E profile in an isolated network namespace
         run: |
           set -euo pipefail
-          case "${E2E_PROFILE}" in
-            smoke)
-              npm --prefix web-next run test:e2e:smoke -- --reporter=json,line
-              ;;
-            functional)
-              npm --prefix web-next run test:e2e:functional -- --reporter=json,line
-              ;;
-            full)
-              npm --prefix web-next run test:e2e:profile:full
-              ;;
-            *)
-              echo "Unsupported E2E_PROFILE=${E2E_PROFILE}" >&2
-              exit 2
-              ;;
-          esac
-
+          runner_user="$(id -un)"
+          runner_home="$HOME"
+          runner_path="$PATH"
+          workspace="$GITHUB_WORKSPACE"
+          sudo unshare --net --mount -- bash -c '
+            set -euo pipefail
+            workspace="$1"; runner_user="$2"; runner_home="$3"; runner_path="$4"; profile="$5"
+            mount --make-rprivate /
+            ip link set lo up
+            if [ "$(readlink /proc/self/ns/net)" = "$(readlink /proc/1/ns/net)" ]; then
+              echo "Network namespace isolation failed" >&2
+              exit 1
+            fi
+            runner_uid="$(id -u "$runner_user")"
+            for socket in /run/docker.sock /var/run/docker.sock /run/containerd/containerd.sock /run/dbus/system_bus_socket "/run/user/$runner_uid/bus"; do
+              if [ -S "$socket" ]; then mount --bind /dev/null "$socket"; fi
+            done
+            cd "$workspace"
+            run_profile() {
+              runuser -u "$runner_user" -- env -i \
+                HOME="$runner_home" USER="$runner_user" LOGNAME="$runner_user" \
+                PATH="$runner_path" LANG=C.UTF-8 CI=true GITHUB_ACTIONS=true \
+                RUNNER_ENVIRONMENT=github-hosted E2E_SIMULATED_SERVER=1 \
+                NEXT_TELEMETRY_DISABLED=1 E2E_PROFILE="$profile" \
+                PLAYWRIGHT_JSON_OUTPUT_NAME="$1" \
+                npm --prefix web-next run "$2" "${@:3}"
+            }
+            case "$profile" in
+              smoke) run_profile "test-results/e2e/results-smoke.json" test:e2e:smoke -- --reporter=json,line ;;
+              functional) run_profile "test-results/e2e/results-functional.json" test:e2e:functional -- --reporter=json,line ;;
+              simulated|full) run_profile "" test:e2e ;;
+              *) echo "Unsupported E2E_PROFILE=$profile" >&2; exit 2 ;;
+            esac
+          ' bash "$workspace" "$runner_user" "$runner_home" "$runner_path" "$E2E_PROFILE"
       - name: Build flaky trend summary
-        if: always()
+        if: ${{ always() && (env.E2E_PROFILE == 'smoke' || env.E2E_PROFILE == 'functional') }}
         run: npm --prefix web-next run test:e2e:trend
 
       - name: Enforce quality thresholds (smoke/functional)

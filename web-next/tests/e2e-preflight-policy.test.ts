@@ -300,10 +300,107 @@ test("bezpośredni Playwright kończy jako SKIPPED, gdy Venom jest wyłączony",
       cwd: work, encoding: "utf8", timeout: 15_000,
       env: { ...process.env, CI: "", GITHUB_ACTIONS: "", RUNNER_ENVIRONMENT: "", E2E_SIMULATED_SERVER: "", PERF_API_BASE: "http://127.0.0.1:0", E2E_GLOBAL_PREFLIGHT_FILE: state },
     });
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 2, result.stderr);
     assert.match(result.stderr, /E2E SKIPPED \(stack_not_started\)/);
     assert.equal(JSON.parse(readFileSync(state, "utf8")).status, "skipped");
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+});
+
+
+test("lokalny profil pojedynczy zwraca kod 2 dla pominięcia", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-local-skip-"));
+  try {
+    const summary = join(work, "summary.json");
+    const result = spawnSync(process.execPath, [resolve("scripts/run-playwright-e2e.mjs"), "smoke"], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, CI: "", GITHUB_ACTIONS: "", E2E_SIMULATED_SERVER: "", PERF_API_BASE: "http://127.0.0.1:0", E2E_PREFLIGHT_STATE_FILE: join(work, "state.json"), E2E_PROFILE_SUMMARY_FILE: summary, E2E_SKIP_TELEMETRY_FILE: join(work, "telemetry.json"), E2E_PROFILE_RESULT_FILE: "", E2E_PREFLIGHT_STRICT: "0" },
+    });
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(JSON.parse(readFileSync(summary, "utf8")).status, "skipped");
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+test("wrapper zachowuje raport pominięcia globalnego preflightu", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-global-skip-"));
+  try {
+    const preload = join(work, "preload.mjs");
+    const summary = join(work, "summary.json");
+    writeFileSync(preload, `globalThis.fetch = async (url) => {
+      url = String(url);
+      if (url.endsWith('/healthz')) return Response.json({status:'ok', component:'venom-core'});
+      if (url.endsWith('/api/v1/system/llm-servers/active')) return Response.json({active_server:'ollama', active_model:'model'});
+      if (url.endsWith('/api/v1/system/models/resources')) return Response.json({runtime:{status:'available', active_operations:0}});
+      return new Response('Mock UI', {status:200});
+    };`);
+    const result = spawnSync(process.execPath, [resolve("scripts/run-playwright-e2e.mjs"), "smoke"], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 15_000,
+      env: { ...process.env, CI: "", GITHUB_ACTIONS: "", RUNNER_ENVIRONMENT: "", E2E_SIMULATED_SERVER: "", NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`, PERF_API_BASE: "http://127.0.0.1:8800", PERF_NEXT_BASE_URL: "http://127.0.0.1:3300", E2E_PREFLIGHT_STATE_FILE: join(work, "state.json"), E2E_PROFILE_SUMMARY_FILE: summary, E2E_SKIP_TELEMETRY_FILE: join(work, "telemetry.json"), E2E_PROFILE_RESULT_FILE: "", E2E_PREFLIGHT_STRICT: "0" },
+    });
+    assert.equal(result.status, 2, result.stderr);
+    const payload = JSON.parse(readFileSync(summary, "utf8"));
+    assert.equal(payload.status, "skipped");
+    assert.equal(payload.reason, "proxy_identity_unverified");
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+test("agregator lokalny zwraca kod 2 dla pominiętego preflightu", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-aggregate-skip-"));
+  try {
+    const npm = join(work, "npm");
+    const summary = join(work, "summary.json");
+    writeFileSync(npm, '#!/bin/sh\nprintf "{\\"reason_code\\":\\"stack_not_started\\"}" > "$E2E_PREFLIGHT_STATE_FILE"\nexit 2\n');
+    chmodSync(npm, 0o700);
+    const result = spawnSync(process.execPath, [resolve("scripts/run-e2e.mjs")], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, CI: "", GITHUB_ACTIONS: "", E2E_SIMULATED_SERVER: "", E2E_PROFILE: "full", E2E_PREFLIGHT_STATE_FILE: join(work, "state.json"), E2E_PROFILE_SUMMARY_FILE: summary, E2E_SKIP_TELEMETRY_FILE: join(work, "telemetry.json"), PATH: `${work}:${process.env.PATH || ""}` },
+    });
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(JSON.parse(readFileSync(summary, "utf8")).status, "skipped");
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+test("skrypt optymalny zwraca kod 2 gdy preflight pomija E2E", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-shell-skip-"));
+  try {
+    const npm = join(work, "npm");
+    writeFileSync(npm, "#!/bin/sh\nexit 2\n");
+    chmodSync(npm, 0o700);
+    const result = spawnSync("bash", [resolve("../scripts/run-e2e-optimal.sh")], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, CI: "", GITHUB_ACTIONS: "", RUNNER_ENVIRONMENT: "", E2E_SIMULATED_SERVER: "", E2E_FUNCTIONAL_WORKERS: "1", PATH: `${work}:${process.env.PATH || ""}` },
+    });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stdout, /E2E SKIPPED/);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+
+test("pełny lokalny profil z pominiętą latencją zwraca PARTIAL i kod 2", () => {
+  const work = mkdtempSync(join(tmpdir(), "venom-e2e-local-partial-"));
+  try {
+    const npm = join(work, "npm");
+    const summary = join(work, "summary.json");
+    writeFileSync(npm, `#!/bin/sh
+case "$2" in
+ test:e2e:preflight) exit 0;;
+ test:e2e:smoke) name=smoke; status=passed;;
+ test:e2e:smoke:academy) name=academy; status=passed;;
+ test:e2e:latency) name=latency; status=skipped;;
+ test:e2e:functional) name=functional; status=passed;;
+ *) exit 11;;
+esac
+printf '{"profile":"%s","status":"%s"}\\n' "$name" "$status" >> "$E2E_PROFILE_RESULT_FILE"
+`);
+    chmodSync(npm, 0o700);
+    const result = spawnSync(process.execPath, [resolve("scripts/run-e2e.mjs")], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, CI: "", GITHUB_ACTIONS: "", RUNNER_ENVIRONMENT: "", E2E_SIMULATED_SERVER: "", E2E_PROFILE: "full", E2E_PROFILE_SUMMARY_FILE: summary, PATH: `${work}:${process.env.PATH || ""}` },
+    });
+    assert.equal(result.status, 2, result.stderr);
+    const payload = JSON.parse(readFileSync(summary, "utf8"));
+    assert.equal(payload.status, "partial");
+    assert.equal(payload.records.length, 4);
+  } finally { rmSync(work, { recursive: true, force: true }); }
 });

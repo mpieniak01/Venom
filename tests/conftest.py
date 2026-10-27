@@ -356,10 +356,23 @@ def pytest_configure(config):
         config.addinivalue_line("markers", marker)
 
 
+def _configured_workers(config) -> int:
+    raw = os.environ.get("PYTEST_XDIST_WORKER_COUNT")
+    if raw is None:
+        if hasattr(config, "workerinput"):
+            return 2  # A worker without a reliable count must fail closed.
+        raw = config.getoption("numprocesses", default=0)
+    try:
+        workers = int(raw or 0)
+    except (TypeError, ValueError):
+        return 2
+    return workers if workers >= 0 else 2
+
+
 def pytest_collection_modifyitems(config, items):
     run_integration = config.getoption("--run-integration")
     run_live = config.getoption("--run-live-tests")
-    workers = config.getoption("numprocesses", default=0)
+    workers = _configured_workers(config)
     for item in items:
         # Mark dependencies before the expression filter is evaluated.
         if any(
@@ -377,7 +390,7 @@ def pytest_collection_modifyitems(config, items):
         )
         if marker:
             item.add_marker(marker)
-        elif _is_live(item) and workers not in (None, 0, 1, "1"):
+        elif _is_live(item) and workers > 1:
             item.add_marker(
                 pytest.mark.skip(reason="live tests require at most one worker")
             )

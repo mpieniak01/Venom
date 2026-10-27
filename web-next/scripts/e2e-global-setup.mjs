@@ -18,6 +18,7 @@ export default async function globalSetup(config) {
   mkdirSync(dirname(stateFile), { recursive: true });
   writeFileSync(stateFile, `${JSON.stringify({ status: "skipped", reason_code: result.reasonCode, message: result.message }, null, 2)}\n`);
   console.warn(`E2E SKIPPED (${result.reasonCode}): ${result.message}`);
-  // CI must not present an incomplete physical profile as a green qualification.
-  process.exit(process.env.CI === "true" ? 2 : 0);
+  // Raw Playwright must not return success when preflight blocks its tests.
+  // The profile wrapper reads the state file and reports a structured skip.
+  process.exit(2);
 }

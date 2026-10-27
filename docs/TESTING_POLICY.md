@@ -240,7 +240,7 @@ make pytest
 ```
 
 `make pytest` runs backend groups in order: `fast` -> `long` -> `heavy`, with
-6, 2 and 1 workers by default. These values are not yet qualified as optimal
+4, 2 and 1 workers by default. These values are not yet qualified as optimal
 for every host workload.
 
 - `fast` and `long` exclude `performance` and `manual_llm`; `heavy` includes
@@ -261,7 +261,8 @@ Live tests are skipped by default. Explicit execution requires the existing
 local Venom, readiness of the required resources, and at most one worker;
 direct-model tests without host admission remain blocked. Physical browser E2E
 is skipped until the UI-to-API binding can be verified. Report skips separately
-from passing cases.
+from passing cases. A skipped or partial E2E profile returns exit code 2; a
+complete pass returns 0.
 
 Manual/operator-only LLM checks:
 

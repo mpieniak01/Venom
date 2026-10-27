@@ -20,7 +20,7 @@ if [[ "${GITHUB_ACTIONS:-}" != "true" || "${CI:-}" != "true" || "${RUNNER_ENVIRO
   set -e
   if [[ $preflight_code -eq 2 ]]; then
     echo "⏭️ E2E SKIPPED: brak gotowego Venoma."
-    exit 0
+    exit 2
   fi
   if [[ $preflight_code -ne 0 ]]; then
     exit "$preflight_code"

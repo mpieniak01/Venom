@@ -151,6 +151,15 @@ def test_browser_reports_survive_next_playwright_cleanup(tmp_path: Path):
     end = script.index('exit "$result"', begin) + len('exit "$result"')
     binary = tmp_path / "bin"
     binary.mkdir()
+    id_tool = binary / "id"
+    id_tool.write_text('#!/bin/sh\nprintf "separate-group\\n"\n', encoding="utf-8")
+    id_tool.chmod(0o755)
+    install = binary / "install"
+    install.write_text(
+        '#!/bin/sh\n[ "$4" = -g ] && [ "$5" = separate-group ] || exit 1\nmkdir -p "$6"\n',
+        encoding="utf-8",
+    )
+    install.chmod(0o755)
     runuser = binary / "runuser"
     runuser.write_text('#!/bin/sh\nshift 3\nexec "$@"\n', encoding="utf-8")
     runuser.chmod(0o755)

@@ -122,6 +122,7 @@ class _SourceInventory(ast.NodeVisitor):
             )
         for decorator in node.decorator_list:
             self.visit(decorator)
+        self._visit_argument_defaults(node.args)
         self._scopes.append(node.name)
         self._function_depth += 1
         for statement in node.body:
@@ -132,9 +133,15 @@ class _SourceInventory(ast.NodeVisitor):
     visit_FunctionDef = _function
     visit_AsyncFunctionDef = _function
 
+    def _visit_argument_defaults(self, arguments: ast.arguments) -> None:
+        for default in (*arguments.defaults, *arguments.kw_defaults):
+            if default is not None:
+                self.visit(default)
+
     def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._visit_argument_defaults(node.args)
         self._function_depth += 1
-        self.generic_visit(node)
+        self.visit(node.body)
         self._function_depth -= 1
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -251,6 +258,8 @@ def build_inventory(root: Path) -> dict[str, Any]:
     root = root.resolve()
     catalog_path = root / "config" / "testing" / "test_catalog.json"
     payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("catalog root must be a JSON object")
     entries = payload.get("tests")
     if not isinstance(entries, list):
         raise ValueError("catalog must contain a tests array")

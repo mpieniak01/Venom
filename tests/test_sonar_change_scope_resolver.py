@@ -570,3 +570,67 @@ def test_required_candidates_survive_cross_domain_related_filter(monkeypatch):
     baseline_info = next(item for item in infos if item.path == baseline)
     assert "baseline_group" in baseline_info.selection_reason
     assert "related_module" in baseline_info.selection_reason
+
+
+def test_light_classification_ignores_marker_text_in_literals_and_comments(tmp_path):
+    module = _load_module()
+    path = tmp_path / "test_literals.py"
+    path.write_text(
+        '"""Example: @pytest.mark.live_venom"""\n'
+        "# pytest.mark.integration\n"
+        'sample = "pytest.mark.live_model"\n'
+        "def test_it():\n    assert sample\n",
+        encoding="utf-8",
+    )
+    assert module.is_light_test(str(path))
+
+
+def test_light_classification_detects_aliased_and_dynamic_real_markers(tmp_path):
+    module = _load_module()
+    examples = [
+        "import pytest as pt\npytestmark = [pt.mark.live_model]\n",
+        "from pytest import mark as m\n@m.integration\ndef test_it(): pass\n",
+        'import pytest\npytestmark = getattr(pytest.mark, "live_venom")\n',
+        "import pytest\ndef test_it():\n    return pytest.param(1, marks=pytest.mark.performance)\n",
+    ]
+    for index, source in enumerate(examples):
+        path = tmp_path / f"test_marker_{index}.py"
+        path.write_text(source, encoding="utf-8")
+        assert not module.is_light_test(str(path)), source
+
+
+def test_light_classification_rejects_invalid_source(tmp_path):
+    module = _load_module()
+    path = tmp_path / "test_invalid.py"
+    path.write_text("def broken(:\n", encoding="utf-8")
+    assert not module.is_light_test(str(path))
+
+
+def test_budget_trims_related_but_keeps_changed_direct_floor_and_baseline():
+    module = _load_module()
+
+    def item(path, rank, *reasons):
+        return module.CandidateInfo(path, rank, 10, "misc", False, reasons)
+
+    floor = item("floor", -1, "coverage_floor_anchor")
+    changed = item("changed", 0, "changed_test")
+    direct = item("direct", 0, "direct_module_test")
+    related = item("related", 1, "related_module")
+    baseline = item("baseline", 2, "baseline_group")
+    items = [floor, changed, direct, related, baseline]
+    selected = module._apply_budget(items, 1, 1)
+    assert [entry.path for entry in selected] == [
+        "floor",
+        "changed",
+        "direct",
+        "baseline",
+    ]
+    assert module._apply_budget(items, 0, 0) == items
+
+
+def test_existing_live_model_file_is_not_selected():
+    module = _load_module()
+    root = Path(__file__).resolve().parents[1]
+    assert not module.is_light_test(
+        str(root / "tests/test_generation_params_integration.py")
+    )

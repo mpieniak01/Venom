@@ -175,7 +175,7 @@ jobs:
             done
             cd "$workspace"
             report_dir="$workspace/web-next/.simulated-regression-reports"
-            install -d -o "$runner_user" -g "$runner_user" "$report_dir"
+            install -d -o "$runner_user" -g "$(id -gn "$runner_user")" "$report_dir"
             run_profile() {
               profile="$1"; script="$2"; shift 2
               runuser -u "$runner_user" -- env -i \
@@ -190,7 +190,7 @@ jobs:
             run_profile smoke test:e2e:smoke || result=1
             run_profile functional test:e2e:functional --workers=2 || result=1
             output_dir="$workspace/web-next/test-results/simulated-regression"
-            install -d -o "$runner_user" -g "$runner_user" "$output_dir"
+            install -d -o "$runner_user" -g "$(id -gn "$runner_user")" "$output_dir"
             for profile in smoke functional; do
               if [ -f "$report_dir/$profile.json" ]; then
                 runuser -u "$runner_user" -- cp "$report_dir/$profile.json" "$output_dir/$profile.json"

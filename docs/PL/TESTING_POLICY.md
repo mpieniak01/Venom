@@ -265,7 +265,7 @@ make pytest
 ```
 
 `make pytest` uruchamia grupy backendu w kolejności `fast` -> `long` -> `heavy`.
-Domyślnie używa odpowiednio 6, 2 i 1 workera. Te wartości nie są jeszcze
+Domyślnie używa odpowiednio 4, 2 i 1 workera. Te wartości nie są jeszcze
 potwierdzonym optimum dla każdego obciążenia hosta.
 
 - `fast` i `long` wykluczają `performance` oraz `manual_llm`; `heavy` dopuszcza
@@ -287,6 +287,7 @@ lokalnego Venoma, gotowości właściwych zasobów i najwyżej jednego workera;
 bezpośrednie testy modelu bez host admission pozostają zablokowane. Fizyczne
 E2E przez panel jest pomijane do czasu potwierdzenia powiązania panelu z API.
 Stan i przyczyny pominięć należy raportować oddzielnie od zaliczonych przypadków.
+Pominięty lub częściowy profil E2E zwraca kod 2, a pełne powodzenie kod 0.
 
 Manualne testy operatora dla LLM:
 

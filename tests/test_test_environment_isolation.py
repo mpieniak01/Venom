@@ -383,3 +383,65 @@ def test_worker_guard_uses_original_clock_when_test_patches_monotonic(
         stop.set()
         worker.join(timeout=2.0)
     assert not worker.is_alive()
+
+
+@pytest.mark.parametrize(
+    ("count", "expected"), [("1", 1), ("4", 4), ("auto", 2), ("-1", 2)]
+)
+def test_live_worker_count_uses_xdist_worker_environment(monkeypatch, count, expected):
+    monkeypatch.setenv("PYTEST_XDIST_WORKER_COUNT", count)
+    worker_config = SimpleNamespace(
+        workerinput={}, getoption=lambda *args, **kwargs: None
+    )
+    assert conftest._configured_workers(worker_config) == expected
+
+
+def test_xdist_worker_without_count_fails_closed(monkeypatch):
+    monkeypatch.delenv("PYTEST_XDIST_WORKER_COUNT", raising=False)
+    worker_config = SimpleNamespace(
+        workerinput={}, getoption=lambda *args, **kwargs: None
+    )
+    assert conftest._configured_workers(worker_config) == 2
+
+
+def test_live_marker_is_skipped_in_real_multiworker_collection():
+    import os
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parents[1]
+    env = dict(os.environ)
+    for key in (
+        "PYTEST_XDIST_WORKER",
+        "PYTEST_XDIST_WORKER_COUNT",
+        "PYTEST_XDIST_TESTRUNUID",
+    ):
+        env.pop(key, None)
+    env.update(
+        {
+            "PYTEST_ADDOPTS": "",
+            "VENOM_TEST_STACK_BASE": "http://127.0.0.1:1",
+            "VENOM_API_BASE": "http://127.0.0.1:1",
+        }
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-rs",
+            "-n",
+            "2",
+            "--run-live-tests",
+            "tests/perf/test_llm_simple_e2e.py",
+        ],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "live tests require at most one worker" in result.stdout
+    assert "1 skipped" in result.stdout

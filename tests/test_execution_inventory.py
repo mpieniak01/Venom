@@ -151,3 +151,41 @@ def test_review_filter_selects_candidate_rows_and_keeps_full_summary(tmp_path, c
     assert report["review_filter"] == "signals"
     assert report["summary"]["discovered_files"] == 2
     assert [row["path"] for row in report["tests"]] == ["tests/test_candidate.py"]
+
+
+def test_argument_defaults_follow_enclosing_execution_phase(tmp_path):
+    path = "tests/test_defaults.py"
+    source = """\
+import requests
+
+def test_defaults(value=requests.get('http://example.invalid'), *, second=requests.get('http://example.invalid')):
+    def nested(value=requests.get('http://example.invalid')):
+        pass
+    callback = lambda value=requests.get('http://example.invalid'): requests.get('http://example.invalid')
+
+callback = lambda value=requests.get('http://example.invalid'): requests.get('http://example.invalid')
+
+async def test_async(value=requests.get('http://example.invalid')):
+    pass
+"""
+    repo = _repo(tmp_path, [_entry(path)], {path: source})
+    signals = build_inventory(repo)["tests"][0]["signals"]
+    assert [(item["line"], item["phase"]) for item in signals] == [
+        (3, "collection"),
+        (3, "collection"),
+        (4, "execution"),
+        (6, "execution"),
+        (6, "execution"),
+        (8, "collection"),
+        (8, "execution"),
+        (10, "collection"),
+    ]
+
+
+@pytest.mark.parametrize("payload", [None, [], "catalog", 42])
+def test_non_object_catalog_root_fails_with_cli_exit_2(tmp_path, capsys, payload):
+    repo = _repo(tmp_path, [], {})
+    catalog = repo / "config/testing/test_catalog.json"
+    catalog.write_text(json.dumps(payload), encoding="utf-8")
+    assert main(["--root", str(repo)]) == 2
+    assert "catalog root must be a JSON object" in capsys.readouterr().err

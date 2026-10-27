@@ -64,7 +64,7 @@ function recordSkip(reason) {
 }
 
 function skippedExit() {
-  return process.env.CI === "true" && !aggregate ? 2 : 0;
+  return aggregate ? 0 : 2;
 }
 
 // CI may start a disposable mocked UI for UI profiles. Every physical latency

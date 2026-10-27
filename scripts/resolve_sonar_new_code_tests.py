@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import shutil
@@ -51,7 +52,6 @@ COVERAGE_FLOOR_TEST_OVERRIDES = {
 }
 
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
-MARKER_RE = re.compile(r"pytest\.mark\.(" + "|".join(LIGHT_BLOCKED_MARKERS) + r")\b")
 
 
 class CandidateInfo(NamedTuple):
@@ -293,12 +293,50 @@ def direct_tests_for_modules(
 
 def is_light_test(path: str) -> bool:
     file_path = Path(path)
-    if not file_path.exists():
+    try:
+        tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=path)
+    except (OSError, UnicodeError, SyntaxError):
+        # An unreadable or malformed test cannot be safely classified.
         return False
 
-    for raw_line in file_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.split("#", 1)[0]
-        if MARKER_RE.search(line):
+    pytest_names = {"pytest"}
+    mark_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pytest":
+                    pytest_names.add(alias.asname or "pytest")
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            for alias in node.names:
+                if alias.name == "mark":
+                    mark_names.add(alias.asname or "mark")
+
+    def is_mark_namespace(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Name)
+            and node.id in mark_names
+            or isinstance(node, ast.Attribute)
+            and node.attr == "mark"
+            and isinstance(node.value, ast.Name)
+            and node.value.id in pytest_names
+        )
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in LIGHT_BLOCKED_MARKERS
+            and is_mark_namespace(node.value)
+        ):
+            return False
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and is_mark_namespace(node.args[0])
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value in LIGHT_BLOCKED_MARKERS
+        ):
             return False
     return True
 
@@ -582,7 +620,7 @@ def _apply_budget(
     mandatory = {
         info.path
         for info in infos
-        if info.source_rank <= 1 or "baseline_group" in info.selection_reason
+        if info.source_rank <= 0 or "baseline_group" in info.selection_reason
     }
     total = sum(info.estimated_seconds for info in infos if info.path in mandatory)
     selected_paths = set(mandatory)

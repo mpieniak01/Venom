@@ -68,7 +68,7 @@ async function main() {
       try { reason = JSON.parse(readFileSync(preflightStateFile, "utf8")).reason_code || "unknown"; } catch { /* no state available */ }
       bumpSkipReasonCount(reason);
       writeSummary(profile, "skipped", [], reason);
-      process.exitCode = process.env.CI === "true" ? 2 : 0;
+      process.exitCode = 2;
       return;
     }
     if (preflightCode !== 0) {
@@ -92,7 +92,7 @@ async function main() {
     const records = readRecords(resultsFile);
     const status = stageCode === 0 ? summarizeProfiles(selected, records) : "failed";
     writeSummary(profile, status, records, stageCode ? "profile_error" : "");
-    process.exitCode = status === "passed" ? 0 : status === "failed" ? (stageCode || 1) : process.env.CI === "true" ? 2 : 0;
+    process.exitCode = status === "passed" ? 0 : status === "failed" ? (stageCode || 1) : 2;
   } finally {
     delete process.env.E2E_PROFILE_RESULT_FILE;
     rmSync(temp, { recursive: true, force: true });

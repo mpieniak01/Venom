@@ -3859,12 +3859,14 @@
       "domain": "models",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Runtime capability API contract regression coverage."
     },
     {
       "path": "tests/test_model_discovery.py",

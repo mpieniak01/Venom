@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,7 @@ export function SelectMenu({
     });
   }, [options]);
 
+  const triggerId = useId();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -134,11 +135,6 @@ export function SelectMenu({
       );
     };
     updatePosition();
-    if (focusMenuOnOpen.current) {
-      const selected = menuRef.current?.querySelector<HTMLButtonElement>('button[aria-selected="true"]:not(:disabled)');
-      (selected ?? menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)"))?.focus({ preventScroll: true });
-      focusMenuOnOpen.current = false;
-    }
     globalThis.window.addEventListener("resize", updatePosition);
     globalThis.window.addEventListener("scroll", updatePosition, true);
     return () => {
@@ -146,6 +142,15 @@ export function SelectMenu({
       globalThis.window.removeEventListener("scroll", updatePosition, true);
     };
   }, [open, menuWidth]);
+
+  // Focus only after the constrained, fixed-position menu is rendered so the
+  // browser scrolls the menu itself to the selected option.
+  useEffect(() => {
+    if (!open || menuStyle.position !== "fixed" || !focusMenuOnOpen.current) return;
+    const selected = menuRef.current?.querySelector<HTMLButtonElement>('button[aria-selected="true"]:not(:disabled)');
+    (selected ?? menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)"))?.focus();
+    focusMenuOnOpen.current = false;
+  }, [open, menuStyle]);
 
   return (
     <div className={cn("relative", className)} ref={triggerRef}>
@@ -166,6 +171,7 @@ export function SelectMenu({
           "flex min-w-0 items-center gap-2 rounded-full border border-[color:var(--ui-border)] bg-[color:var(--button-outline-bg)] px-3 py-1.5 text-xs uppercase tracking-wider text-[color:var(--button-outline-text)] transition hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--button-outline-hover)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
           buttonClassName,
         )}
+        id={triggerId}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
@@ -188,6 +194,7 @@ export function SelectMenu({
           <div
             ref={menuRef}
             role="listbox"
+            aria-labelledby={triggerId}
             tabIndex={-1}
             onKeyDown={(event) => {
               if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;

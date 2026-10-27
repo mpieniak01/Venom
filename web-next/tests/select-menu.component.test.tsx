@@ -86,6 +86,27 @@ describe("SelectMenu viewport and keyboard behavior", () => {
     assert.equal(menu.style.overflowY, "auto");
     assert.equal(document.activeElement, screen.getByTestId("test-option-first"));
   });
+  it("focuses the selected option with normal browser scrolling", () => {
+    const originalFocus = HTMLElement.prototype.focus;
+    let selectedFocusOptions: FocusOptions | undefined;
+    let menuPositionOnFocus: string | undefined;
+    HTMLElement.prototype.focus = function (options?: FocusOptions) {
+      if (this.getAttribute("data-testid") === "test-option-normal") {
+        selectedFocusOptions = options;
+        menuPositionOnFocus = this.closest<HTMLElement>('[role="listbox"]')?.style.position;
+      }
+      originalFocus.call(this, options);
+    };
+    try {
+      renderSelect();
+      fireEvent.keyDown(screen.getByTestId("test-select-button"), { key: "ArrowDown" });
+      assert.equal(document.activeElement, screen.getByTestId("test-option-normal"));
+      assert.notEqual(selectedFocusOptions?.preventScroll, true);
+      assert.equal(menuPositionOnFocus, "fixed");
+    } finally {
+      HTMLElement.prototype.focus = originalFocus;
+    }
+  });
   it("supports keyboard focus, arrow navigation, selection and Escape", () => {
     let selected = "";
     renderSelect((value) => { selected = value; });
@@ -94,6 +115,8 @@ describe("SelectMenu viewport and keyboard behavior", () => {
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     const menu = screen.getByRole("listbox");
     assert.equal(menu.tabIndex, -1);
+    assert.equal(menu.getAttribute("aria-labelledby"), trigger.id);
+    assert.ok(trigger.id);
     assert.equal(document.activeElement, screen.getByTestId("test-option-normal"));
     menu.focus();
     assert.equal(document.activeElement, menu);

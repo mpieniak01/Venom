@@ -693,3 +693,20 @@ def test_slow_floor_anchor_survives_selector_budget_and_filter(monkeypatch, tmp_
     )
     assert anchor in resolved
     assert baseline_path in resolved
+
+
+def test_priority_orders_optional_tests_without_making_them_mandatory():
+    module = _load_module()
+    baseline = module.CandidateInfo(
+        "baseline", 2, 2, "misc", False, ("baseline_group",)
+    )
+    priority = module.CandidateInfo(
+        "priority", -1, 20, "misc", False, ("new_code_group",)
+    )
+    related = module.CandidateInfo("related", 1, 3, "misc", False, ("related_module",))
+    items = [priority, related, baseline]
+    assert [item.path for item in module._apply_budget(items, 5, 0)] == [
+        "related",
+        "baseline",
+    ]
+    assert module._apply_budget(items, 0, 0) == items

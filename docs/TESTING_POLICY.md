@@ -200,7 +200,7 @@ New-code coverage run behavior:
 
 Determinism contract (why this does not flake):
 
-- `NEW_CODE_TIME_BUDGET_SEC=0` in CI: no time-based test list trimming.
+- PRs to `main` use `NEW_CODE_TIME_BUDGET_SEC=90` as a soft estimated-cost budget for optional tests; mandatory tests remain selected. Main uses the full backend Sonar report.
 - `config/coverage-file-floor.txt`: floor anchor tests are always included.
 - `ripgrep` (`rg`) in CI: stable, fast resolver with readable logs.
 - `scripts/check_test_catalog.py` also validates release groups (`fast/long/heavy`) against catalog lane eligibility.

@@ -223,7 +223,7 @@ Zachowanie runu new-code coverage:
 
 Kontrakt deterministyczności (dlaczego to nie flakuje):
 
-- `NEW_CODE_TIME_BUDGET_SEC=0` w CI: brak cięcia listy testów przez czas.
+- PR do `main` używa `NEW_CODE_TIME_BUDGET_SEC=90` jako miękkiego budżetu szacowanego kosztu testów opcjonalnych; testy obowiązkowe pozostają wybrane. Main generuje pełny raport backendowy Sonara.
 - `config/coverage-file-floor.txt`: testy-kotwice dla floor są zawsze dołączane.
 - `ripgrep` (`rg`) w CI: stabilny i szybki resolver + czytelne logi.
 - `scripts/check_test_catalog.py` dodatkowo waliduje grupy release (`fast/long/heavy`) względem uprawnień lane w katalogu.

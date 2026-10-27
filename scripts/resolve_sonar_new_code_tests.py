@@ -618,10 +618,16 @@ def _apply_budget(
 ) -> list[CandidateInfo]:
     # The budget can trim only optional tests.  A previous JUnit duration must
     # never suppress the curated baseline, a floor anchor or a changed test.
+    mandatory_reasons = {
+        "baseline_group",
+        "changed_test",
+        "direct_module_test",
+        "coverage_floor_anchor",
+    }
     mandatory = {
         info.path
         for info in infos
-        if info.source_rank <= 0 or "baseline_group" in info.selection_reason
+        if mandatory_reasons.intersection(info.selection_reason)
     }
     total = sum(info.estimated_seconds for info in infos if info.path in mandatory)
     selected_paths = set(mandatory)

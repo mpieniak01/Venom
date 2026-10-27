@@ -99,6 +99,66 @@ uruchomiono ręcznie na main 8 lutego 2026. Tymczasem [CI po obecnej poprawce](h
 wykonał 7981 testów backendu i pominął 126. Brak świeżego Full CI nie oznacza braku
 świeżej regresji backendu; te dwa workflow mają różny zakres.
 
+### Osobne zestawy GitHub Actions i raporty dla Sonara
+
+GitHub nie jest powtórzeniem lokalnego pr-fast. Quick Validate, testy CI oraz
+SonarCloud mają różne zadania i różne warunki powodzenia.
+
+| Zestaw | Dobór i wykonanie dzisiaj | Raport lub warunek powodzenia |
+|---|---|---|
+| Lokalny pr-fast, backend | ci-lite + sonar-new-code + zakres diff; domyślny budżet selekcji 90 s, exclude-slow-fastlane=1, 4 workery | pytest, changed-lines >=80% i file floors; rzeczywisty czas jest dłuższy od samego budżetu selekcji |
+| Quick Validate na GitHub | compileall, statyczny audyt zależności CI-lite i poprawności skryptów package.json | To kontrola statyczna, nie wykonanie unit ani E2E |
+| GitHub PR do main, backend-lite | check-new-code-coverage: baseline+new-code+auto-include, 4 workery; TIME_BUDGET=0, EXCLUDE_SLOW_FASTLANE=0, MAX_TESTS=0 | Testy i lokalny checker coverage/floor; następnie upload sonar-backend-reports |
+| GitHub push main, backend-lite | sonar-reports-backend: discovery pytest z filtrem not performance and not smoke, 4 workery | pytest generuje XML coverage i JUnit; ta komenda nie wywołuje samodzielnie changed-lines ani floor checkera |
+| Ręczne uruchomienie głównego CI | Obecny warunek rozróżnia tylko event push; workflow_dispatch trafia do ścieżki new-code | Ref i bazę trzeba zapisać; ręczne CI nie jest automatycznie pełnym zestawem main |
+| GitHub frontend-lite | Lint i test:unit:ci-lite = logika TS + komponenty | Sukces testów; ten job nie generuje ani nie wysyła LCOV |
+| GitHub browser E2E | Osobny workflow, smoke dla PR/push ze zmianą web; functional/full ręcznie | Wynik Playwright i własne quality thresholds; artefakty nie są w tym CI wejściem do Sonara |
+| GitHub OpenAPI | Eksport schematu i codegen typów TS | Osobny kontrakt; to nie raport pokrycia pytest |
+| SonarCloud Scan | Osobny job po architecture, backend-lite, frontend-lite i openapi-contract | Import artefaktu backendu, analiza statyczna i oczekiwanie na wynik quality gate |
+
+Aktualne listy: ci-lite zawiera 73 pliki, sonar-new-code 377. Wspólne jest
+46 plików, a unia liczy 404. Nie wolno dodawać liczebności grup jako liczby
+unikalnych testów. To zakres kandydatów przed filtrowaniem, doborem dla diff i
+przejściem do konkretnych przypadków pytest, a nie stała liczba wykonywanych testów.
+Katalog decyduje, które testy są uprawnione do zestawu; nazwa pliku sonar_* sama
+w sobie nie określa osobnego obowiązkowego przebiegu.
+
+Przepływ jest następujący:
+
+1. Wybrany job backendu wykonuje pytest i zbiera coverage dla venom_core.
+2. Zapisuje test-results/sonar/python-coverage.xml i python-junit.xml oraz logi.
+3. Upload przekazuje je pod nazwą sonar-backend-reports w ramach workflow run.
+4. Job Sonar pobiera raporty, analizuje źródła i używa qualitygate.wait=true.
+
+Sonar nie uruchamia w tym jobie osobnego pytest. Uruchomione wcześniej testy
+dostarczają mu pokrycie. Udany pytest, udany upload i udana bramka Sonara są
+trzema odrębnymi wynikami. needs wymusza również oczekiwanie na frontend i OpenAPI,
+więc czas całego CI z Sonarem nie jest sumą samych czasów pytest ani budżetem
+lokalnego PR. Sonar ma job timeout 20 min, backend-lite 25 min z krokiem coverage
+18 min, a frontend-lite 12 min; te limity nie dowodzą rzeczywistego czasu całości.
+
+Zakres Sonara z sonar-project.properties:
+
+- Źródła do analizy obejmują venom_core i wybrane katalogi runtime web-next.
+- Testy są jawnie sklasyfikowane jako tests i web-next/tests.
+- Importowane jest pokrycie Python XML i raport wykonania JUnit.
+- web-next/** jest wyłączony w sonar.coverage.exclusions; brak skonfigurowanego importu LCOV.
+- Część backendu również jest wyłączona z pokrycia. Wynik Sonara nie oznacza pokrycia całej aplikacji ani całego przebiegu E2E.
+- Local changed-lines checker korzysta z wykluczeń Sonara, a osobny floor checker ma własny plik progów. Ich zgodność wymaga audytu, nie założenia.
+- PR z forka nie wykonuje tego joba Sonara; bez SONAR_TOKEN krok analizy zostaje pominięty. Pominięcie nie jest potwierdzeniem zielonej bramki jakości.
+
+Do decyzji w T8: czy frontend ma zostać objęty pomiarem pokrycia Sonara.
+Jeżeli tak, potrzebny jest generowany w tym samym run LCOV, upload/download,
+konfiguracja importu, kontrolowana aktualizacja wykluczeń i testy adekwatne do
+zakresu. Nie usuwać wykluczeń jednorazowo ani nie przenosić frontend coverage do
+lokalnego 10-minutowego PR bez zmierzenia jego kosztu.
+
+Raport kwalifikacji musi przechowywać osobno lokalny wynik PR, GitHub PR,
+GitHub main i bramkę Sonara. Każdy wiąże się z SHA, bazą diff, konfiguracją,
+wybranymi testami, filtrem, workerami, raportami i ich zakresem. Coverage z
+ograniczonego PR nie jest globalnym coverage main. Artefakt z innej rewizji nie
+uzupełnia brakującego raportu aktualnego kandydata.
+
 ### Docelowy moment wykonania regresji
 
 To propozycja zmian do zatwierdzenia w T0, nie aktywny harmonogram ani nowe branch rules.
@@ -173,12 +233,13 @@ Raport nie może utożsamiać pominięcia wszystkich testów fizycznych z ich za
 | T4 | P0 | Izolacja stanu symulowanych testów i workerów | T1, T2 |
 | T5 | P1 | Powtarzalna bramka pokrycia | T1, T4 |
 | T6 | P1 | Spójny runner grup i limity workerów | T1, T2, T3, T4 |
-| T7 | P1 | Pomiar workerów i kwalifikacja całości | T2–T6 |
+| T8 | P1 | Zestawy GitHub i kontrakt raportów Sonara | T0, T1, T4, T5 |
+| T7 | P1 | Pomiar workerów i kwalifikacja całości | T2–T6, T8 |
 
 Wdrażać małe PR-y z własnymi testami i aktualizacją polityki.
 T0 poprzedza zmiany mechanizmu; T1 realizuje ustaloną klasyfikację. T3 może powstawać równolegle po ustaleniu kontraktu T2, bez nakładających się zmian.
 T5 i T6 muszą uzgodnić jednego właściciela zmian w make/tests.mk.
-Numery T0–T7 są identyfikatorami planu, nie numerami istniejących PR-ów GitHub.
+Numery T0–T8 są identyfikatorami planu, nie numerami istniejących PR-ów GitHub.
 
 ### T0 Macierz typów testów, gałęzi i budżetu PR
 
@@ -186,7 +247,7 @@ Warunek startu pozostałych PR-ów: najpierw ustalić, do czego używamy zestaw�
 na jakiej rewizji/gałęzi działają i kiedy wymagamy pełnej regresji.
 
 - [ ] Zweryfikować zakres backend unit/kontrakty/integration oraz web unit/components/browser i odróżnić kontrolowane atrapy od fizycznego środowiska.
-- [ ] Zapisać mapowanie wejście -> komenda -> zbiór testów -> trigger -> gałąź docelowa -> wymagany wynik; uwzględnić filtry ścieżek i osobne moduły.
+- [ ] Zapisać mapowanie wejście -> komenda -> zbiór testów -> trigger -> gałąź docelowa -> wymagany wynik; uwzględnić filtry ścieżek, osobne moduły, GitHub PR/main i raporty dla Sonara.
 - [ ] Zatwierdzić zakres lokalnego pr-fast i pomiar całej bramki w około 600 s, również dla zmian backend+frontend.
 - [ ] Ustalić pełną regresję symulowaną po merge na main, nocną po zmianie SHA/środowiska i kwalifikację dokładnego kandydata przed wydaniem. Wdrożenie harmonogramów należy do T6, nie do samego dokumentu.
 - [ ] Sprawdzić politykę wydania oraz powiązać ją z wynikami właściwego SHA; sam tag na historii main nie jest potwierdzeniem pełnej kwalifikacji.
@@ -294,6 +355,28 @@ Zakres: run-pytest-optimal.sh, make/tests.mk, pr-fast, CI i generator planu.
 Odbiór: dry-run pokazuje grupy, workery, adresy, filtry i zasoby bez startu usług.
 Nieprawidłowy worker/port daje błąd konfiguracji. Wyłączony Venom pomija wszystkie
 fizyczne operacje. Przerwanie kończy tylko własne procesy, a wynik grup nie ginie.
+
+### T8 Zestawy GitHub i kontrakt raportów Sonara
+
+Problem: lokalny PR, hosted PR, main i Sonar są różnymi kwalifikacjami;
+aktualny frontend CI nie dostarcza Sonarowi pokrycia, a testy E2E mają osobne raporty.
+Zakres: ci.yml i powiązane workflow, cele sonar-reports, konfiguracja Sonara,
+raporty testów oraz dokumentacja zakresów.
+
+- [ ] Zapisać jawne zestawy dla GitHub PR, push main i workflow_dispatch. Nie opierać zakresu ręcznego uruchomienia wyłącznie na event != push.
+- [ ] Utrzymać różnicę między szybką lokalną kwalifikacją do 600 s, szerszą kwalifikacją PR na GitHub i pełną regresją main; zapisać ich wspólne obowiązkowe kontrakty.
+- [ ] Walidować obecność, kompletność i zgodność SHA raportów coverage/JUnit oraz artefaktu pobranego przez job Sonara. Brak lub niewłaściwy artefakt daje jawny błąd.
+- [ ] Przy fallback zachować raport wykonania wszystkich faz, nie nadpisywać całego JUnit wynikiem wyłącznie ostatniej fazy; scalać coverage zgodnie z identycznym kodem.
+- [ ] Rozdzielić wyniki pytest, changed-lines, file-floor, uploadu i Sonar quality gate. Jawnie oznaczać przypadek forka/braku sekretu bez prezentowania go jako wykonanej analizy.
+- [ ] Zinwentaryzować wykluczenia coverage backendu/frontendu i ich uzasadnienia. Przed ewentualnym dodaniem LCOV zdefiniować zakres pomiaru i koszt; zmiana wykluczeń wymaga osobnego review.
+- [ ] Zachować oddzielne raporty browser E2E i testów fizycznych. Sama obecność tych testów w sonar.tests nie dostarcza ich pokrycia produkcyjnego JS/TS.
+- [ ] Sprawdzić zależności jobs i rzeczywisty czas do końca bramki Sonara; eliminować duplikaty testów w jednym run bez pomijania odrębnej kwalifikacji innego SHA/środowiska.
+
+Odbiór: dla PR, main i ręcznego run można odtworzyć wybrane testy, zakres pokrycia
+i wynik każdej bramki. Symulacje obejmują brak/wadliwy artefakt, błędny SHA,
+fallback, brak tokenu i błąd quality gate. Wynik main obejmuje jego szerszy zestaw,
+a raport PR nie jest prezentowany jako pełna regresja. Ten sam kontrakt działa
+bez lokalnego Venoma i nie uruchamia rzeczywistego modelu na runnerze CI.
 
 ### T7 Pomiar workerów i kwalifikacja całości
 

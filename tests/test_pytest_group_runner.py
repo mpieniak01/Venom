@@ -48,6 +48,14 @@ sys.exit(1 if name == os.environ.get('FAKE_FAIL_GROUP') else 0)
 
 def _run(checkout: Path, *args: str, extra_env: dict[str, str] | None = None):
     environment = os.environ.copy()
+    for key in (
+        "PYTEST_GROUP_REPORT_DIR",
+        "MANUAL_LONG_RUNNING_FILE",
+        "PYTEST_FAST_WORKERS",
+        "PYTEST_LONG_WORKERS",
+        "PYTEST_HEAVY_WORKERS",
+    ):
+        environment.pop(key, None)
     environment.update(
         {
             "FAKE_CALL_LOG": str(checkout / "calls.jsonl"),

@@ -282,6 +282,16 @@ potwierdzonym optimum dla każdego obciążenia hosta.
   `PYTEST_TEST_TIMEOUT_SECONDS` i `PYTEST_GROUP_TIMEOUT_SECONDS` przyjmują
   dodatnie liczby. Zachowany jest zewnętrzny `PYTEST_ADDOPTS`.
 
+Dla GitHub PR do `main` backend uruchamia `check-new-code-coverage` z miękkim
+budżetem selekcji 90 s na szacowane koszty plików. Baseline, zakwalifikowane
+zmienione i bezpośrednio powiązane testy oraz kotwice progów pokrycia są
+obowiązkowe, nawet gdy przekroczą ten budżet. Budżet nie jest limitem czasu
+ściennego całej bramki ani gwarancją wykonania w 10 minut. Próg 80% pokrycia
+zmienionych linii i progi poszczególnych plików pozostają bez zmian; fallback
+może dobrać dodatkowe testy. Push na `main` oraz ręczne uruchomienie CI na
+`main` generują pełny raport backendowy Sonara; osobna regresja symulowana
+obejmuje główne grupy po pushu na `main` i według harmonogramu.
+
 Testy fizyczne są domyślnie pomijane. Ich jawne uruchomienie wymaga istniejącego
 lokalnego Venoma, gotowości właściwych zasobów i najwyżej jednego workera;
 bezpośrednie testy modelu bez host admission pozostają zablokowane. Fizyczne

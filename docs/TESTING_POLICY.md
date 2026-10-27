@@ -257,6 +257,15 @@ for every host workload.
   `PYTEST_TEST_TIMEOUT_SECONDS` and `PYTEST_GROUP_TIMEOUT_SECONDS` accept
   positive integers. External `PYTEST_ADDOPTS` is preserved.
 
+For GitHub PRs targeting `main`, backend `check-new-code-coverage` uses a soft
+90-second test-selection budget based on estimated file costs. The baseline,
+eligible changed and direct tests, and coverage-floor anchors remain mandatory
+when their cost exceeds that budget. The budget is not a wall-clock limit or a
+10-minute guarantee. The 80% changed-line threshold and per-file floors are
+unchanged; fallback may select additional tests. A push to `main` or a manual CI
+run on `main` generates the full backend Sonar report. A separate simulated
+regression covers the main groups after pushes to `main` and on a schedule.
+
 Live tests are skipped by default. Explicit execution requires the existing
 local Venom, readiness of the required resources, and at most one worker;
 direct-model tests without host admission remain blocked. Physical browser E2E

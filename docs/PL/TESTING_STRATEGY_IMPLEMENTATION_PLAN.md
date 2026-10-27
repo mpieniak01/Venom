@@ -72,7 +72,10 @@ jako testu całego fizycznego systemu. Ostateczna klasyfikacja dotyczy wszystkic
 zależności scenariusza, także importów, helperów, nieprzechwyconych żądań i SSR.
 Same page.route nie dowodzą braku ruchu do prawdziwego backendu.
 
-### Co uruchamia się dzisiaj i na jakich gałęziach
+### Stan wyjściowy przed realizacją i wyzwalacze gałęzi
+
+Poniższa tabela opisuje stan odczytany 27 października 2026 przed realizacją
+zmian. Bieżące ustawienia PR i `main` opisuje `docs/PL/TESTING_POLICY.md`.
 
 | Kontekst | Faktyczny trigger i zakres | Ograniczenie |
 |---|---|---|

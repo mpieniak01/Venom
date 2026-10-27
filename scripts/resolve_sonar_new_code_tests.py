@@ -452,6 +452,9 @@ def coverage_floor_anchor_tests(
     if not targets:
         return set()
 
+    # The slow-fastlane filter applies to optional candidates, not floor anchors.
+    # Preserve this argument for existing callers; live/integration exclusions
+    # remain enforced by is_light_test and the CI lane policy.
     test_set = set(tests)
     anchors: set[str] = set()
     for module_path in targets:
@@ -472,8 +475,7 @@ def coverage_floor_anchor_tests(
                 continue
             if not is_light_test(preferred):
                 continue
-            if exclude_slow_fastlane and not is_fast_safe_test(preferred):
-                continue
+
             anchors.add(preferred)
             selected_preferred = True
             break
@@ -488,8 +490,7 @@ def coverage_floor_anchor_tests(
         for candidate in candidates:
             if not is_light_test(candidate):
                 continue
-            if exclude_slow_fastlane and not is_fast_safe_test(candidate):
-                continue
+
             filtered.append(candidate)
         if not filtered:
             continue
@@ -823,7 +824,7 @@ def main() -> int:
         "--time-budget-sec",
         type=float,
         default=0.0,
-        help="Optional time budget for selected tests. 0 disables budgeting.",
+        help="Soft budget for optional test cost estimates in seconds; 0 disables budgeting.",
     )
     parser.add_argument(
         "--timings-junit-xml",
@@ -841,7 +842,7 @@ def main() -> int:
         "--max-tests",
         type=int,
         default=0,
-        help="Optional hard cap for number of selected tests (0 = unlimited).",
+        help="Soft cap for optional selected test files; mandatory tests are retained (0 = unlimited).",
     )
     parser.add_argument(
         "--catalog",

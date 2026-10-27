@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 
 def _load_module():
     script_path = (
@@ -634,3 +636,60 @@ def test_existing_live_model_file_is_not_selected():
     assert not module.is_light_test(
         str(root / "tests/test_generation_params_integration.py")
     )
+
+
+@pytest.mark.parametrize("direct_exists", [True, False])
+def test_floor_anchor_is_not_removed_by_optional_slow_filter(
+    monkeypatch, direct_exists
+):
+    module = _load_module()
+    direct = "tests/test_floor.py"
+    related = "tests/test_floor_integration.py"
+    live = "tests/test_floor_live.py"
+    paths = [related, live] + ([direct] if direct_exists else [])
+    monkeypatch.setattr(module, "is_light_test", lambda path: path != live)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: False)
+    monkeypatch.setattr(
+        module, "related_tests_for_modules", lambda *_args: {related, live}
+    )
+    monkeypatch.setattr(module, "estimate_test_cost", lambda _path, _timings: 1.0)
+
+    anchors = module.coverage_floor_anchor_tests(
+        paths,
+        {},
+        floor_targets=["venom_core/services/floor.py"],
+        exclude_slow_fastlane=True,
+    )
+    assert anchors == ({direct} if direct_exists else {related})
+    assert live not in anchors
+
+
+def test_slow_floor_anchor_survives_selector_budget_and_filter(monkeypatch, tmp_path):
+    module = _load_module()
+    anchor = "tests/test_floor.py"
+    baseline_path = "tests/test_baseline.py"
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(f"{baseline_path}\n", encoding="utf-8")
+    new_code = tmp_path / "new-code.txt"
+    new_code.write_text("", encoding="utf-8")
+    monkeypatch.setattr(module, "git_changed_files", lambda _base: [])
+    monkeypatch.setattr(module, "all_test_files", lambda: [anchor, baseline_path])
+    monkeypatch.setattr(
+        module, "load_coverage_floor_targets", lambda: ["venom_core/services/floor.py"]
+    )
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: set())
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: False)
+    monkeypatch.setattr(module, "estimate_test_cost", lambda _path, _timings: 100.0)
+
+    resolved = module.resolve_tests(
+        baseline_group=baseline,
+        new_code_group=new_code,
+        include_baseline=True,
+        diff_base="origin/main",
+        time_budget_sec=1,
+        max_tests=1,
+        exclude_slow_fastlane=True,
+    )
+    assert anchor in resolved
+    assert baseline_path in resolved

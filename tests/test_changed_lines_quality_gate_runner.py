@@ -401,3 +401,9 @@ def test_hosted_ci_dispatch_uses_full_report_only_on_main(tmp_path):
         assert calls[1].split()[0] == expected
         if expected == "check-new-code-coverage":
             assert "NEW_CODE_DIFF_BASE=origin/main" in calls[1]
+            assert "NEW_CODE_TIME_BUDGET_SEC=90" in calls[1]
+            assert "NEW_CODE_CHANGED_LINES_MIN=80" in calls[1]
+            assert "NEW_CODE_INCLUDE_BASELINE=1" in calls[1]
+        else:
+            assert "NEW_CODE_TIME_BUDGET_SEC" not in calls[1]
+            assert "NEW_CODE_CHANGED_LINES_MIN" not in calls[1]

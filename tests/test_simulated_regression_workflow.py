@@ -107,14 +107,20 @@ def _browser_summary(tmp_path: Path, expected: int, skipped: int):
 def test_browser_report_does_not_call_all_skipped_a_pass(tmp_path: Path):
     result, summary = _browser_summary(tmp_path, expected=0, skipped=4)
     assert result.returncode == 1
-    assert summary["profiles"]["smoke"]["status"] == "failed"
+    assert summary["profiles"]["smoke"]["status"] == "skipped"
     assert summary["profiles"]["smoke"]["skipped"] == 4
     assert summary["physical_e2e"] == "not_run"
 
 
 def test_browser_report_keeps_skips_visible_with_real_passes(tmp_path: Path):
     result, summary = _browser_summary(tmp_path, expected=3, skipped=2)
-    assert result.returncode == 0
-    assert summary["profiles"]["functional"]["status"] == "passed"
+    assert result.returncode == 1
+    assert summary["profiles"]["functional"]["status"] == "partial"
     assert summary["profiles"]["functional"]["skipped"] == 2
     assert summary["physical_e2e"] == "not_run"
+
+
+def test_browser_report_all_passed_is_success(tmp_path: Path):
+    result, summary = _browser_summary(tmp_path, expected=3, skipped=0)
+    assert result.returncode == 0
+    assert summary["profiles"]["functional"]["status"] == "passed"

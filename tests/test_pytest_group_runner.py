@@ -75,7 +75,7 @@ def _run(checkout: Path, *args: str, extra_env: dict[str, str] | None = None):
 
 
 def test_plan_is_checkout_relative_and_does_not_run_pytest(fake_checkout: Path):
-    result = _run(fake_checkout, "--plan", extra_env={"PYTEST_FAST_WORKERS": "4"})
+    result = _run(fake_checkout, "--plan")
     assert result.returncode == 0, result.stderr
     assert f"Checkout: {fake_checkout}" in result.stdout
     assert "fast: files=1 workers=4" in result.stdout
@@ -149,3 +149,14 @@ def test_make_group_entry_preserves_explicit_api_without_inventing_a_port(tmp_pa
     )
     assert explicit.returncode == 0, explicit.stderr
     assert "api=http://127.0.0.1:8800" in explicit.stdout
+
+
+def test_all_skipped_group_fails_the_gate(fake_checkout: Path):
+    result = _run(fake_checkout, "--group", "heavy")
+    assert result.returncode == 1
+    report_path = next(
+        (fake_checkout / "test-results/test-groups").glob("run-*/summary.json")
+    )
+    report = json.loads(report_path.read_text())
+    assert report["groups"][0]["status"] == "ALL_SKIPPED"
+    assert report["exit_code"] == 1

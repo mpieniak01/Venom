@@ -11,7 +11,7 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-fast_workers="${PYTEST_FAST_WORKERS:-6}"
+fast_workers="${PYTEST_FAST_WORKERS:-4}"
 long_workers="${PYTEST_LONG_WORKERS:-2}"
 heavy_workers="${PYTEST_HEAVY_WORKERS:-1}"
 case_timeout="${PYTEST_TEST_TIMEOUT_SECONDS:-120}"
@@ -148,7 +148,7 @@ with Path(sys.argv[1]).open(encoding="utf-8", newline="") as stream:
             status = "ALL_SKIPPED"
         rows.append({"group": group, "seconds": int(seconds), "exit_code": int(exit_code), "status": status, "workers": int(workers), "group_files": int(files), "deselected_cases": None, **counts})
         print(f"{group}: {seconds}s, {status}, tests={counts['tests']}, skipped={counts['skipped']}, failures={counts['failures']}, errors={counts['errors']}")
-report_exit = int(sys.argv[4]) or int(any(row["status"] == "REPORT_ERROR" for row in rows))
+report_exit = int(sys.argv[4]) or int(any(row["status"] in {"REPORT_ERROR", "ALL_SKIPPED"} for row in rows))
 try:
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], text=True, stderr=subprocess.DEVNULL).strip())

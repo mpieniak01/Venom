@@ -204,7 +204,14 @@ jobs:
                       raise ValueError("missing stats")
                   outcomes = {key: int(stats.get(key, 0)) for key in ("expected", "unexpected", "flaky", "skipped")}
                   executed = outcomes["expected"] + outcomes["unexpected"] + outcomes["flaky"]
-                  status = "passed" if executed > 0 and outcomes["unexpected"] == 0 else "failed"
+                  if outcomes["unexpected"] or executed == 0 and not outcomes["skipped"]:
+                      status = "failed"
+                  elif executed == 0:
+                      status = "skipped"
+                  elif outcomes["skipped"]:
+                      status = "partial"
+                  else:
+                      status = "passed"
                   summary["profiles"][name] = {"status": status, **outcomes}
                   problem |= status != "passed"
               except (KeyError, OSError, ValueError, TypeError, json.JSONDecodeError):

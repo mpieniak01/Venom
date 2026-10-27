@@ -19,6 +19,11 @@ LIGHT_BLOCKED_MARKERS = (
     "requires_docker_compose",
     "performance",
     "smoke",
+    "manual_llm",
+    "requires_stack",
+    "live_venom",
+    "live_model",
+    "unsafe_direct_runtime",
 )
 
 PRIORITY_TEST_ORDER = (
@@ -42,12 +47,11 @@ DEFAULT_COVERAGE_FLOOR_FILE = Path("config/coverage-file-floor.txt")
 # A mere module reference can be a mock; pin the test that executes this floor target.
 COVERAGE_FLOOR_TEST_OVERRIDES = {
     "venom_core/core/orchestrator/task_pipeline/context_builder.py": "tests/test_runtime_registry_contracts.py",
+    "venom_core/skills/mcp/skill_adapter.py": "tests/test_runtime_registry_translation_contracts.py",
 }
 
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
-MARKER_RE = re.compile(
-    r"pytest\.mark\.(integration|requires_docker|requires_docker_compose|performance|smoke)\b"
-)
+MARKER_RE = re.compile(r"pytest\.mark\.(" + "|".join(LIGHT_BLOCKED_MARKERS) + r")\b")
 
 
 class CandidateInfo(NamedTuple):
@@ -451,7 +455,7 @@ def coverage_floor_anchor_tests(
             filtered.append(candidate)
         if not filtered:
             continue
-        best = min(filtered, key=lambda item: (estimate_test_cost(item, timings), item))
+        best = min(filtered, key=lambda item: (estimate_test_cost(item, {}), item))
         anchors.add(best)
     return anchors
 
@@ -499,7 +503,14 @@ def _build_candidate_infos(
     for path in selected:
         if not is_light_test(path):
             continue
-        if exclude_slow_fastlane and not is_fast_safe_test(path):
+        # Mandatory tests cannot be lost to filename or duration heuristics.
+        required = (
+            path in baseline_items
+            or path in changed_tests
+            or path in direct_module_tests
+            or path in floor_anchors
+        )
+        if exclude_slow_fastlane and not required and not is_fast_safe_test(path):
             continue
         entry = catalog.get(path) if catalog else None
 
@@ -533,7 +544,7 @@ def _build_candidate_infos(
             or "direct_module_test" in reasons
             or "related_module" in reasons
         )
-        if dynamic_only and changed_domains:
+        if dynamic_only and changed_domains and not required:
             if domain not in changed_domains and domain not in {
                 "testing_tooling",
                 "core",
@@ -566,32 +577,29 @@ def _build_candidate_infos(
 def _apply_budget(
     infos: list[CandidateInfo], time_budget_sec: float, max_tests: int
 ) -> list[CandidateInfo]:
-    if max_tests > 0:
-        infos = infos[:max_tests]
-
-    if time_budget_sec <= 0:
-        return infos
-
-    total = 0.0
-    selected: list[CandidateInfo] = []
+    # The budget can trim only optional tests.  A previous JUnit duration must
+    # never suppress the curated baseline, a floor anchor or a changed test.
+    mandatory = {
+        info.path
+        for info in infos
+        if info.source_rank <= 1 or "baseline_group" in info.selection_reason
+    }
+    total = sum(info.estimated_seconds for info in infos if info.path in mandatory)
+    selected_paths = set(mandatory)
     for info in infos:
-        # Always keep top-priority dynamic coverage anchors for changed code
-        # (floor anchors, changed tests, related module tests), even if we
-        # exceed the soft fast-lane time budget.
-        if info.source_rank <= 1:
-            selected.append(info)
-            total += info.estimated_seconds
+        if info.path in mandatory:
+            continue
+        if max_tests > 0 and len(selected_paths) >= max_tests:
             continue
         next_total = total + info.estimated_seconds
-        if selected and next_total > time_budget_sec:
+        if time_budget_sec > 0 and selected_paths and next_total > time_budget_sec:
             continue
-        selected.append(info)
+        selected_paths.add(info.path)
         total = next_total
 
-    if not selected and infos:
-        selected = [infos[0]]
-
-    return selected
+    if not selected_paths and infos:
+        selected_paths.add(infos[0].path)
+    return [info for info in infos if info.path in selected_paths]
 
 
 def resolve_tests(

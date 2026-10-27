@@ -186,7 +186,7 @@ def test_resolve_tests_excludes_slow_fastlane(monkeypatch, tmp_path):
         diff_base="origin/main",
         exclude_slow_fastlane=True,
     )
-    assert resolved == ["tests/test_ok.py"]
+    assert set(resolved) == {"tests/test_ok.py", "tests/test_core_nervous_system.py"}
 
 
 def test_load_coverage_floor_targets_parses_file(tmp_path):
@@ -295,7 +295,7 @@ def test_resolve_tests_prioritizes_floor_anchors_under_budget(monkeypatch, tmp_p
         time_budget_sec=10.0,
         timings_junit_xml="irrelevant.xml",
     )
-    assert resolved == ["tests/test_anchor.py"]
+    assert resolved == ["tests/test_anchor.py", "tests/test_baseline.py"]
 
 
 def test_resolve_candidates_from_changed_files_respects_catalog(monkeypatch, tmp_path):
@@ -452,3 +452,121 @@ def test_floor_fallback_breaks_equal_cost_ties_by_path(monkeypatch):
     assert module.coverage_floor_anchor_tests(
         [first, last], {}, floor_targets=["venom_core/example.py"]
     ) == {first}
+
+
+def test_budget_and_max_tests_never_trim_baseline_or_changed_tests():
+    module = _load_module()
+
+    def candidate(path, rank, cost, *reasons):
+        return module.CandidateInfo(path, rank, cost, "misc", False, reasons)
+
+    baseline = candidate("tests/test_base.py", 2, 120, "baseline_group")
+    changed = candidate("tests/test_changed.py", 0, 30, "changed_test")
+    optional = candidate("tests/test_optional.py", 2, 1, "new_code_group")
+    selected = module._apply_budget([changed, optional, baseline], 1, 1)
+    assert [row.path for row in selected] == [changed.path, baseline.path]
+
+
+def test_floor_anchor_is_independent_of_previous_junit_timings(monkeypatch):
+    module = _load_module()
+    first, second = "tests/test_alpha.py", "tests/test_zeta.py"
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(
+        module, "related_tests_for_modules", lambda *_args: [first, second]
+    )
+    first_run = module.coverage_floor_anchor_tests(
+        [first, second],
+        {first: 1.0, second: 100.0},
+        floor_targets=["venom_core/example.py"],
+    )
+    second_run = module.coverage_floor_anchor_tests(
+        [first, second],
+        {first: 100.0, second: 1.0},
+        floor_targets=["venom_core/example.py"],
+    )
+    assert first_run == second_run
+
+
+def test_skill_adapter_floor_uses_executing_test_not_mock(monkeypatch):
+    module = _load_module()
+    real = "tests/test_runtime_registry_translation_contracts.py"
+    mock = "tests/test_runtime_policy_regression_contracts.py"
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: True)
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: {mock})
+    assert module.coverage_floor_anchor_tests(
+        [real, mock],
+        {real: 100.0, mock: 0.1},
+        floor_targets=["venom_core/skills/mcp/skill_adapter.py"],
+        exclude_slow_fastlane=True,
+    ) == {real}
+
+
+def test_live_test_markers_are_not_in_coverage_selection(tmp_path):
+    module = _load_module()
+    for marker in (
+        "manual_llm",
+        "requires_stack",
+        "live_venom",
+        "live_model",
+        "unsafe_direct_runtime",
+    ):
+        path = tmp_path / f"test_{marker}.py"
+        path.write_text(f"import pytest\n@pytest.mark.{marker}\ndef test_x(): pass\n")
+        assert not module.is_light_test(str(path)), marker
+
+
+def test_changed_test_survives_filename_and_domain_heuristics(monkeypatch):
+    module = _load_module()
+    changed = "tests/test_simulated_integration.py"
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: False)
+    infos = module._build_candidate_infos(
+        baseline_items=[],
+        new_code_items=[],
+        changed_tests={changed},
+        direct_module_tests=set(),
+        related_tests=set(),
+        floor_anchors=set(),
+        timings={},
+        exclude_slow_fastlane=True,
+        changed_domains={"runtime"},
+        catalog={changed: {"domain": "skills", "allowed_lanes": ["new-code"]}},
+        include_baseline=True,
+    )
+    assert [item.path for item in infos] == [changed]
+
+
+def test_required_candidates_survive_cross_domain_related_filter(monkeypatch):
+    """Baseline and required anchors must never be discarded as unrelated."""
+    module = _load_module()
+    baseline = "tests/test_agents_skill_manager_paths.py"
+    changed = "tests/test_changed.py"
+    direct = "tests/test_direct.py"
+    floor = "tests/test_floor.py"
+    unrelated = "tests/test_optional_related.py"
+    paths = {baseline, changed, direct, floor, unrelated}
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: False)
+    catalog = {
+        path: {"domain": "agents", "allowed_lanes": ["new-code", "ci-lite"]}
+        for path in paths
+    }
+
+    infos = module._build_candidate_infos(
+        baseline_items=[baseline],
+        new_code_items=[],
+        changed_tests={changed},
+        direct_module_tests={direct},
+        related_tests=paths,
+        floor_anchors={floor},
+        timings={},
+        exclude_slow_fastlane=True,
+        changed_domains={"runtime"},
+        catalog=catalog,
+        include_baseline=True,
+    )
+    assert {item.path for item in infos} == {baseline, changed, direct, floor}
+    baseline_info = next(item for item in infos if item.path == baseline)
+    assert "baseline_group" in baseline_info.selection_reason
+    assert "related_module" in baseline_info.selection_reason

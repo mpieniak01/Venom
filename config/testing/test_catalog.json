@@ -1092,6 +1092,18 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_audio_stream_live.py",
+      "domain": "runtime",
+      "test_type": "perf",
+      "intent": "performance",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Physical Gemma audio scenarios isolated from simulated ROI and blocked until host admission supports direct runtime."
+    },
+    {
       "path": "tests/test_audit_lite_deps.py",
       "domain": "audit",
       "test_type": "gate",
@@ -2270,6 +2282,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_execution_inventory.py",
+      "domain": "testing_tooling",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Validate conservative static inventory and unknown test classification."
+    },
+    {
       "path": "tests/test_execution_mode_planner.py",
       "domain": "api",
       "test_type": "service_contract",
@@ -2509,6 +2535,18 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_forge_live.py",
+      "domain": "agents",
+      "test_type": "integration",
+      "intent": "integration",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Physical Forge LLM scenarios isolated from simulated hot-reload; direct runtime blocked pending host admission."
+    },
+    {
       "path": "tests/test_gemma4_audio_models.py",
       "domain": "runtime",
       "test_type": "unit",
@@ -2594,8 +2632,8 @@
     {
       "path": "tests/test_ghost_agent_hil.py",
       "domain": "agents",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "integration",
+      "intent": "integration",
       "primary_lane": "release",
       "allowed_lanes": [
         "release"
@@ -5304,6 +5342,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_pytest_group_runner.py",
+      "domain": "testing_tooling",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify isolated group execution, safety filters and duration reporting."
+    },
+    {
       "path": "tests/test_qualification_process.py",
       "domain": "misc",
       "test_type": "gate",
@@ -5922,6 +5974,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_simulated_regression_workflow.py",
+      "domain": "testing_tooling",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Validate isolation and outcome reporting of simulated regression workflow."
+    },
+    {
       "path": "tests/test_simulated_user.py",
       "domain": "agents",
       "test_type": "unit",
@@ -6374,6 +6440,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
+    },
+    {
+      "path": "tests/test_test_environment_isolation.py",
+      "domain": "testing_tooling",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Verify isolated state and safe preconditions for live test profiles."
     },
     {
       "path": "tests/test_test_intelligence_report.py",

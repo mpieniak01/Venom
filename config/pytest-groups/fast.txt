@@ -144,6 +144,7 @@ tests/test_env_contracts.py
 tests/test_env_report_diff.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py
+tests/test_execution_inventory.py
 tests/test_execution_mode_planner.py
 tests/test_executive_agent_roi.py
 tests/test_eyes.py
@@ -163,7 +164,6 @@ tests/test_gemma4_audio_runtime_main.py
 tests/test_generation_params_adapter.py
 tests/test_generation_schema.py
 tests/test_ghost_agent.py
-tests/test_ghost_agent_hil.py
 tests/test_git_routes_logic.py
 tests/test_git_skill.py
 tests/test_git_skill_roi.py
@@ -351,6 +351,7 @@ tests/test_providers_api.py
 tests/test_providers_api_edges.py
 tests/test_providers_service.py
 tests/test_proxy_generator.py
+tests/test_pytest_group_runner.py
 tests/test_queue_governance.py
 tests/test_recorder.py
 tests/test_release_manager.py
@@ -391,6 +392,7 @@ tests/test_session_workflow_memory_contracts.py
 tests/test_shadow_agent.py
 tests/test_shell_skill.py
 tests/test_shell_skill_contracts.py
+tests/test_simulated_regression_workflow.py
 tests/test_simulated_user.py
 tests/test_skill_manager.py
 tests/test_skills_browser_github_shell_contracts.py
@@ -420,6 +422,7 @@ tests/test_task_validator.py
 tests/test_tasks_stream.py
 tests/test_tasks_stream_service.py
 tests/test_test_catalog_tools.py
+tests/test_test_environment_isolation.py
 tests/test_test_skill.py
 tests/test_test_skill_local.py
 tests/test_text_utils.py

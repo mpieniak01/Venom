@@ -30,6 +30,20 @@ test-data:
 		exit $$rc; \
 	fi
 
+# Reports include elapsed wall time and per-group JUnit counts. Physical tests
+# remain a separate, explicitly qualified profile.
+test-group-plan:
+	bash scripts/run-pytest-optimal.sh --plan
+
+test-group-fast:
+	bash scripts/run-pytest-optimal.sh --group fast
+
+test-group-long:
+	bash scripts/run-pytest-optimal.sh --group long
+
+test-group-heavy:
+	bash scripts/run-pytest-optimal.sh --group heavy
+
 test-artifacts-cleanup:
 	@echo "🗑️  Czyszczenie starych artefaktów testowych..."
 	@if [ "$(CLEANUP_ALL)" = "1" ]; then \

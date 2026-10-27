@@ -264,14 +264,29 @@ Backend:
 make pytest
 ```
 
-`make pytest` uruchamia grupy backendu w kolejności: `heavy` -> `long` -> `fast`.
-Domyślna polityka selekcji:
-- `heavy`: zawiera testy performance, wyklucza tylko `manual_llm`.
-- `long` i `fast`: wykluczają `performance` oraz `manual_llm`.
-- jawna lista testów długich/manualnych jest czytana z:
-  `config/pytest-groups/manual-long-running.txt`
-Automatyczna regresja domyślnie wyklucza testy manualne LLM i wydajności:
-- `not performance and not manual_llm`
+`make pytest` uruchamia grupy backendu w kolejności `fast` -> `long` -> `heavy`.
+Domyślnie używa odpowiednio 6, 2 i 1 workera. Te wartości nie są jeszcze
+potwierdzonym optimum dla każdego obciążenia hosta.
+
+- `fast` i `long` wykluczają `performance` oraz `manual_llm`; `heavy` dopuszcza
+  symulowane przypadki performance. Wszystkie grupy wykluczają oznaczone testy
+  live, direct runtime oraz Docker i korzystają z listy `manual-long-running.txt`.
+- `make test-group-plan` pokazuje pliki, filtry i workery bez wykonania testów.
+  Pojedyncze grupy uruchamiają `make test-group-fast`, `make test-group-long`
+  oraz `make test-group-heavy`. Wynik zawiera czas ścienny każdej grupy,
+  JUnit i `summary.json` w `test-results/test-groups/run-*`.
+- Raport podaje liczbę wybranych/wykonanych przypadków i pominięć pytest;
+  nie zna liczby przypadków wykluczonych selektorem. `unknown` w inwentarzu nie
+  jest dowodem, że test nie korzysta ze sprzętu ani procesów potomnych.
+- `PYTEST_FAST_WORKERS`, `PYTEST_LONG_WORKERS`, `PYTEST_HEAVY_WORKERS`,
+  `PYTEST_TEST_TIMEOUT_SECONDS` i `PYTEST_GROUP_TIMEOUT_SECONDS` przyjmują
+  dodatnie liczby. Zachowany jest zewnętrzny `PYTEST_ADDOPTS`.
+
+Testy fizyczne są domyślnie pomijane. Ich jawne uruchomienie wymaga istniejącego
+lokalnego Venoma, gotowości właściwych zasobów i najwyżej jednego workera;
+bezpośrednie testy modelu bez host admission pozostają zablokowane. Fizyczne
+E2E przez panel jest pomijane do czasu potwierdzenia powiązania panelu z API.
+Stan i przyczyny pominięć należy raportować oddzielnie od zaliczonych przypadków.
 
 Manualne testy operatora dla LLM:
 

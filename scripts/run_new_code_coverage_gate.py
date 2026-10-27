@@ -125,6 +125,40 @@ def _compute_uncovered_summary(
     )
 
 
+def _uncovered_floor_files(
+    floor_mod, coverage_xml: Path, thresholds: Path
+) -> list[str]:
+    """Identify missing or under-covered floor targets using the gate rules."""
+    rates = floor_mod._load_coverage_percent_by_file(coverage_xml)
+    uncovered: list[str] = []
+    for filename, minimum in floor_mod._load_thresholds(thresholds):
+        current = next(
+            (rates[name] for name in floor_mod._candidates(filename) if name in rates),
+            None,
+        )
+        if current is None or current + 1e-9 < minimum:
+            uncovered.append(filename)
+    return uncovered
+
+
+def _merge_junit_reports(primary: str, fallback: str) -> None:
+    """Keep both pytest phases in the Sonar xUnit report."""
+    primary_path = Path(primary)
+    fallback_path = Path(fallback)
+    combined = ET.Element("testsuites")
+    for path in (primary_path, fallback_path):
+        root = ET.parse(path).getroot()
+        if root.tag == "testsuite":
+            combined.append(root)
+        elif root.tag == "testsuites":
+            combined.extend(root.findall("testsuite"))
+        else:
+            raise ValueError(f"Unexpected JUnit root in {path}: {root.tag}")
+    temp = primary_path.with_name(primary_path.name + ".merged.tmp")
+    ET.ElementTree(combined).write(temp, encoding="utf-8", xml_declaration=True)
+    temp.replace(primary_path)
+
+
 def _fallback_candidates(
     resolver_mod,
     *,
@@ -132,30 +166,70 @@ def _fallback_candidates(
     already_selected: set[str],
     timings: dict[str, float],
     max_count: int,
+    floor_files: list[str] | None = None,
+    catalog: dict[str, dict[str, object]] | None = None,
+    include_baseline: bool = True,
+    exclude_slow_fastlane: bool = False,
 ) -> list[str]:
-    if not uncovered_files:
+    floor_files = sorted(set(floor_files or []))
+    if not uncovered_files and not floor_files:
         return []
 
     tests = resolver_mod.all_test_files()
-    related = resolver_mod.related_tests_for_modules(uncovered_files, tests)
+    test_set = set(tests)
 
-    direct: set[str] = set()
-    for path in uncovered_files:
-        stem = Path(path).stem
-        candidate = f"tests/test_{stem}.py"
-        if candidate in tests:
-            direct.add(candidate)
+    def candidates_for(paths: list[str]) -> set[str]:
+        if not paths:
+            return set()
+        related = set(resolver_mod.related_tests_for_modules(paths, tests))
+        direct = {f"tests/test_{Path(path).stem}.py" for path in paths} & test_set
+        overrides = getattr(resolver_mod, "COVERAGE_FLOOR_TEST_OVERRIDES", {})
+        protected = direct | {overrides.get(path, "") for path in paths}
+        allowed_required = {"new-code", "ci-lite"} if include_baseline else {"new-code"}
+        selected: set[str] = set()
+        for path in (related | direct | (protected & test_set)) - already_selected:
+            if not resolver_mod.is_light_test(path):
+                continue
+            entry = (catalog or {}).get(path) or {}
+            lanes = entry.get("allowed_lanes", [])
+            allowed = (
+                {str(item).strip() for item in lanes}
+                if isinstance(lanes, list)
+                else set()
+            )
+            if allowed and not (allowed & allowed_required):
+                continue
+            if (
+                exclude_slow_fastlane
+                and path not in protected
+                and not resolver_mod.is_fast_safe_test(path)
+            ):
+                continue
+            selected.add(path)
+        return selected
 
-    candidates = sorted((related | direct) - already_selected)
-    filtered = [path for path in candidates if resolver_mod.is_light_test(path)]
+    def score(path: str) -> tuple[float, str]:
+        return resolver_mod.estimate_test_cost(path, timings), path
 
-    scored = sorted(
-        filtered,
-        key=lambda path: resolver_mod.estimate_test_cost(path, timings),
-    )
-    if max_count > 0:
-        scored = scored[:max_count]
-    return scored
+    # Each failing floor reserves a related candidate before the cap is applied.
+    # One candidate can support more than one file; a cap cannot discard the
+    # only candidate for a different failing floor.
+    reserved: set[str] = set()
+    floor_pool: set[str] = set()
+    for filename in floor_files:
+        candidates = candidates_for([filename])
+        floor_pool.update(candidates)
+        if candidates and not (reserved & candidates):
+            reserved.add(min(candidates, key=score))
+
+    result = sorted(reserved, key=score)
+    changed_pool = candidates_for(uncovered_files)
+    for pool in (floor_pool - reserved, changed_pool - floor_pool - reserved):
+        for path in sorted(pool, key=score):
+            if max_count > 0 and len(result) >= max_count:
+                return result
+            result.append(path)
+    return result
 
 
 def _to_pytest_nodeid(classname: str, test_name: str) -> str:
@@ -246,6 +320,7 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--min-coverage", type=float, default=80.0)
     parser.add_argument("--sonar-config", default="sonar-project.properties")
+    parser.add_argument("--floor-config", default="config/coverage-file-floor.txt")
     parser.add_argument("--telemetry-json", default="")
     args = parser.parse_args()
 
@@ -254,6 +329,9 @@ def main() -> int:
     )
     checker_mod = _load_module(
         "check_new_code_coverage", Path("scripts/check_new_code_coverage.py")
+    )
+    floor_mod = _load_module(
+        "check_file_coverage_floor", Path("scripts/check_file_coverage_floor.py")
     )
 
     started = time.monotonic()
@@ -318,8 +396,15 @@ def main() -> int:
     fallback_tests: list[str] = []
     pass2_duration = 0.0
 
-    if bool(args.fallback_coverage) and not bool(summary["pass"]):
-        uncovered_files = [item["path"] for item in summary.get("uncovered_files", [])]
+    floor_uncovered = _uncovered_floor_files(
+        floor_mod, Path(args.coverage_xml), Path(args.floor_config)
+    )
+    if bool(args.fallback_coverage) and (not bool(summary["pass"]) or floor_uncovered):
+        uncovered_files = (
+            sorted({item["path"] for item in summary.get("uncovered_files", [])})
+            if not bool(summary["pass"])
+            else []
+        )
         timings = resolver_mod.load_junit_timings(args.timings_junit_xml)
         fallback_tests = _fallback_candidates(
             resolver_mod,
@@ -327,6 +412,10 @@ def main() -> int:
             already_selected=set(fast_tests),
             timings=timings,
             max_count=args.max_fallback_tests,
+            floor_files=floor_uncovered,
+            catalog=resolver_mod.load_test_catalog(args.catalog),
+            include_baseline=bool(args.include_baseline),
+            exclude_slow_fastlane=bool(args.exclude_slow_fastlane),
         )
 
         if fallback_tests:
@@ -334,6 +423,11 @@ def main() -> int:
             for item in fallback_tests:
                 print(f"  {item}")
 
+            fallback_junit = (
+                str(Path(args.junit_xml).with_suffix(".fallback.xml"))
+                if args.junit_xml
+                else ""
+            )
             try:
                 pass2_duration = _run_pytest(
                     pytest_bin=args.pytest_bin,
@@ -342,7 +436,7 @@ def main() -> int:
                     cov_target=args.cov_target,
                     coverage_xml=args.coverage_xml,
                     coverage_html=args.coverage_html,
-                    junit_xml=args.junit_xml,
+                    junit_xml=fallback_junit,
                     cov_fail_under=args.cov_fail_under,
                     cov_append=True,
                     workers=args.workers,
@@ -350,12 +444,16 @@ def main() -> int:
             except RuntimeError as exc:
                 _print_pytest_failure_triage(
                     pytest_bin=args.pytest_bin,
-                    junit_xml=args.junit_xml,
+                    junit_xml=fallback_junit,
                     selected_tests=fallback_tests,
                 )
+                if fallback_junit and Path(fallback_junit).exists():
+                    _merge_junit_reports(args.junit_xml, fallback_junit)
                 print(str(exc))
                 return 1
 
+            if fallback_junit:
+                _merge_junit_reports(args.junit_xml, fallback_junit)
             summary = _compute_uncovered_summary(
                 checker_mod,
                 coverage_xml=Path(args.coverage_xml),
@@ -363,6 +461,9 @@ def main() -> int:
                 diff_base=args.diff_base,
                 scope=args.cov_target,
                 min_coverage=args.min_coverage,
+            )
+            floor_uncovered = _uncovered_floor_files(
+                floor_mod, Path(args.coverage_xml), Path(args.floor_config)
             )
 
     total_duration = time.monotonic() - started
@@ -384,7 +485,8 @@ def main() -> int:
         "total_seconds": round(total_duration, 2),
         "rate_percent": summary.get("rate_percent"),
         "required_percent": summary.get("required_percent"),
-        "pass": bool(summary.get("pass")),
+        "pass": bool(summary.get("pass")) and not floor_uncovered,
+        "uncovered_floor_files": floor_uncovered,
         "selected_domains": dict(sorted(domain_breakdown.items())),
         "selected_legacy_targeted_count": legacy_count,
     }
@@ -399,6 +501,12 @@ def main() -> int:
 
     if not bool(summary["pass"]):
         print("FAIL: changed-lines coverage is below required threshold.")
+        return 1
+
+    if floor_uncovered:
+        print("FAIL: coverage floor violations or missing files:")
+        for path in floor_uncovered:
+            print(f"  - {path}")
         return 1
 
     if int(summary.get("total_coverable", 0)) == 0:

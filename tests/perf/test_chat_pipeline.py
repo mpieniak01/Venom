@@ -15,7 +15,12 @@ from .chat_pipeline import (
     measure_task_duration,
 )
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.performance]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.performance,
+    pytest.mark.live_venom,
+    pytest.mark.live_model,
+]
 
 
 async def _skip_if_backend_unavailable():

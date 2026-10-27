@@ -16,7 +16,12 @@ from venom_core.core.orchestrator.constants import LEARNING_LOG_PATH
 
 from .chat_pipeline import API_BASE, is_backend_available, stream_task, submit_task
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.performance]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.performance,
+    pytest.mark.live_venom,
+    pytest.mark.live_model,
+]
 MAX_RETRIES = int(os.getenv("VENOM_E2E_RETRIES", "4"))
 
 

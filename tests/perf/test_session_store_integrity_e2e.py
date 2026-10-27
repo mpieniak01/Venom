@@ -14,7 +14,13 @@ from venom_core.config import SETTINGS
 
 from .chat_pipeline import is_backend_available, stream_task, submit_task
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.performance]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.performance,
+    pytest.mark.live_venom,
+    pytest.mark.live_model,
+    pytest.mark.live_state_file,
+]
 
 SESSION_STORE_PATH = Path(SETTINGS.MEMORY_ROOT) / "session_store.json"
 

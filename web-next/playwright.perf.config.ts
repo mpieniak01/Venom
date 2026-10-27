@@ -1,12 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const nextBase = process.env.PERF_NEXT_BASE_URL ?? "http://localhost:3000";
+const nextBase = process.env.PERF_NEXT_BASE_URL ?? "http://127.0.0.1:3300";
 const apiBase =
   process.env.PERF_API_BASE ??
   process.env.VENOM_API_BASE ??
-  "http://127.0.0.1:8000";
+  "http://127.0.0.1:8800";
 
 export default defineConfig({
+  globalSetup: "./scripts/e2e-global-setup.mjs",
   testDir: "./tests/perf",
   timeout: 30_000,
   expect: {
@@ -29,6 +30,7 @@ export default defineConfig({
     },
   },
   metadata: {
+    venomPhysical: true,
     nextBase,
     apiBase,
   },

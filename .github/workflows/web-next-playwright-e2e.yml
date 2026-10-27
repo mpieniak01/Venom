@@ -41,6 +41,7 @@ jobs:
     env:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
+      E2E_SIMULATED_SERVER: "1"
       E2E_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/e2e/results-${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}.json
 

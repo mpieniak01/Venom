@@ -1,0 +1,226 @@
+name: Simulated regression
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "modules/**"
+  schedule:
+    # The hosted runner may change even if the commit is unchanged.
+    - cron: "25 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulated-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  backend:
+    name: Backend simulated regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout requested revision
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14.8"
+          cache: pip
+          cache-dependency-path: |
+            requirements/locks/full-ci-linux-py314.txt
+            requirements/locks/build-linux-py314.txt
+      - name: Install full CI profile
+        run: |
+          python scripts/bootstrap_dependency_profile.py --profile full-ci --venv "$PWD/.venv" --update
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Prepare non-secret test configuration
+        run: cp .env.dev.example .env.dev
+      - name: Record revision and inventory
+        run: |
+          mkdir -p test-results/simulated-regression
+          git rev-parse HEAD > test-results/simulated-regression/revision.txt
+          python scripts/test_execution_inventory.py \
+            --output test-results/simulated-regression/inventory.json \
+            --fail-on-unregistered
+          cat > test-results/simulated-regression/scope.txt <<'SCOPE'
+          Broader simulated backend groups fast, long and heavy.
+          Declared live, direct model and Docker tests are excluded by marker.
+          Marked integration tests remain skipped; manual exclusions are separate.
+          Unknown classifications remain subject to manual audit. This report
+          does not constitute physical, GPU, model or production acceptance.
+          Execution uses a private network and mount namespace; process/filesystem
+          access within the ephemeral GitHub runner is otherwise unchanged.
+          SCOPE
+      - name: Run simulated groups in isolated network namespace
+        timeout-minutes: 50
+        run: |
+          set -euo pipefail
+          runner_user="$(id -un)"
+          runner_home="$HOME"
+          runner_path="$PATH"
+          workspace="$GITHUB_WORKSPACE"
+          sudo unshare --net --mount -- bash -c '
+            set -euo pipefail
+            workspace="$1"; runner_user="$2"; runner_home="$3"; runner_path="$4"
+            mount --make-rprivate /
+            ip link set lo up
+            if [ "$(readlink /proc/self/ns/net)" = "$(readlink /proc/1/ns/net)" ]; then
+              echo "Network namespace isolation failed" >&2
+              exit 1
+            fi
+            # Hide known host service sockets only in this mount namespace.
+            runner_uid="$(id -u "$runner_user")"
+            for socket in /run/docker.sock /var/run/docker.sock /run/containerd/containerd.sock /run/dbus/system_bus_socket "/run/user/$runner_uid/bus"; do
+              if [ -S "$socket" ]; then
+                mount --bind /dev/null "$socket"
+              fi
+            done
+            cd "$workspace"
+            exec runuser -u "$runner_user" -- env -i \
+              HOME="$runner_home" USER="$runner_user" LOGNAME="$runner_user" \
+              PATH="$runner_path" LANG=C.UTF-8 CI=true PYTHONUNBUFFERED=1 \
+              PYTEST_FAST_WORKERS=4 \
+              PYTEST_LONG_WORKERS=2 PYTEST_HEAVY_WORKERS=1 \
+              bash scripts/run-pytest-optimal.sh
+          ' bash "$workspace" "$runner_user" "$runner_home" "$runner_path"
+      - name: Upload backend results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: simulated-regression-backend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/simulated-regression/**
+            test-results/test-groups/**
+          if-no-files-found: warn
+
+  frontend:
+    name: Frontend unit, build and mocked browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout requested revision
+        uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: "web-next/.nvmrc"
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+      - name: Install dependencies
+        run: npm --prefix web-next ci
+      - name: Record revision and scope
+        run: |
+          mkdir -p web-next/test-results/simulated-regression
+          git rev-parse HEAD > web-next/test-results/simulated-regression/revision.txt
+          cat > web-next/test-results/simulated-regression/scope.txt <<'SCOPE'
+          Frontend lint, unit, components, build and selected browser profiles.
+          Browser profiles use a disposable UI and mocked API on a GitHub-hosted
+          runner. Physical/model E2E is not run or qualified by this job.
+          The network namespace does not isolate all process/filesystem access.
+          SCOPE
+      - name: Frontend lint
+        run: npm --prefix web-next run lint
+      - name: Frontend unit and component tests
+        run: npm --prefix web-next run test:unit:ci-lite
+      - name: Frontend build
+        run: npm --prefix web-next run build
+      - name: Install Playwright Chromium
+        run: npm --prefix web-next exec playwright install chromium
+      - name: Run mocked browser profiles in isolated network namespace
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          runner_user="$(id -un)"
+          runner_home="$HOME"
+          runner_path="$PATH"
+          workspace="$GITHUB_WORKSPACE"
+          sudo unshare --net --mount -- bash -c '
+            set -euo pipefail
+            workspace="$1"; runner_user="$2"; runner_home="$3"; runner_path="$4"
+            mount --make-rprivate /
+            ip link set lo up
+            if [ "$(readlink /proc/self/ns/net)" = "$(readlink /proc/1/ns/net)" ]; then
+              echo "Network namespace isolation failed" >&2
+              exit 1
+            fi
+            runner_uid="$(id -u "$runner_user")"
+            for socket in /run/docker.sock /var/run/docker.sock /run/containerd/containerd.sock /run/dbus/system_bus_socket "/run/user/$runner_uid/bus"; do
+              if [ -S "$socket" ]; then
+                mount --bind /dev/null "$socket"
+              fi
+            done
+            cd "$workspace"
+            run_profile() {
+              profile="$1"; script="$2"; shift 2
+              runuser -u "$runner_user" -- env -i \
+                HOME="$runner_home" USER="$runner_user" LOGNAME="$runner_user" \
+                PATH="$runner_path" LANG=C.UTF-8 CI=true GITHUB_ACTIONS=true \
+                RUNNER_ENVIRONMENT=github-hosted E2E_SIMULATED_SERVER=1 \
+                NEXT_TELEMETRY_DISABLED=1 \
+                PLAYWRIGHT_JSON_OUTPUT_NAME="test-results/simulated-regression/$profile.json" \
+                npm --prefix web-next run "$script" -- --reporter=json,line "$@"
+            }
+            run_profile smoke test:e2e:smoke
+            run_profile functional test:e2e:functional --workers=2
+          ' bash "$workspace" "$runner_user" "$runner_home" "$runner_path"
+      - name: Summarize browser results including skipped tests
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          directory = Path("web-next/test-results/simulated-regression")
+          summary = {"physical_e2e": "not_run", "profiles": {}}
+          problem = False
+          for name in ("smoke", "functional"):
+              path = directory / f"{name}.json"
+              if not path.exists():
+                  summary["profiles"][name] = {"status": "not_run", "reason": "missing_report"}
+                  problem = True
+                  continue
+              try:
+                  report = json.loads(path.read_text(encoding="utf-8"))
+                  stats = report["stats"]
+                  if not isinstance(stats, dict):
+                      raise ValueError("missing stats")
+                  outcomes = {key: int(stats.get(key, 0)) for key in ("expected", "unexpected", "flaky", "skipped")}
+                  executed = outcomes["expected"] + outcomes["unexpected"] + outcomes["flaky"]
+                  status = "passed" if executed > 0 and outcomes["unexpected"] == 0 else "failed"
+                  summary["profiles"][name] = {"status": status, **outcomes}
+                  problem |= status != "passed"
+              except (KeyError, OSError, ValueError, TypeError, json.JSONDecodeError):
+                  summary["profiles"][name] = {"status": "invalid_report"}
+                  problem = True
+          directory.mkdir(parents=True, exist_ok=True)
+          (directory / "browser-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(summary, indent=2))
+          sys.exit(1 if problem else 0)
+          PY
+      - name: Upload frontend results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: simulated-regression-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            web-next/test-results/**
+            web-next/playwright-report/**
+          if-no-files-found: warn

@@ -1,71 +1,62 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { summarizeProfiles } from "./e2e-profile-status.mjs";
 
-const preflightStateFile = resolve(
-  process.cwd(),
-  // 197B policy: preflight owns environment diagnosis and reason_code classification.
-  process.env.E2E_PREFLIGHT_STATE_FILE ?? "test-results/e2e/preflight-state.json",
-);
-const skipTelemetryFile = resolve(
-  process.cwd(),
-  process.env.E2E_SKIP_TELEMETRY_FILE ?? "test-results/e2e/skip-reason-counts.json",
-);
+const preflightStateFile = resolve(process.cwd(), process.env.E2E_PREFLIGHT_STATE_FILE || "test-results/e2e/preflight-state.json");
+const skipTelemetryFile = resolve(process.cwd(), process.env.E2E_SKIP_TELEMETRY_FILE || "test-results/e2e/skip-reason-counts.json");
+const summaryFile = resolve(process.cwd(), process.env.E2E_PROFILE_SUMMARY_FILE || "test-results/e2e/profile-summary.json");
 
 function bumpSkipReasonCount(reasonCode) {
   mkdirSync(dirname(skipTelemetryFile), { recursive: true });
   let payload = { total_skips: 0, by_reason_code: {} };
   if (existsSync(skipTelemetryFile)) {
-    try {
-      payload = JSON.parse(readFileSync(skipTelemetryFile, "utf8"));
-    } catch {
-      payload = { total_skips: 0, by_reason_code: {} };
-    }
+    try { payload = JSON.parse(readFileSync(skipTelemetryFile, "utf8")); } catch { /* start a fresh counter */ }
   }
   const code = String(reasonCode || "unknown");
   payload.total_skips = Number(payload.total_skips || 0) + 1;
-  payload.by_reason_code = payload.by_reason_code || {};
+  payload.by_reason_code ||= {};
   payload.by_reason_code[code] = Number(payload.by_reason_code[code] || 0) + 1;
   payload.updated_at = new Date().toISOString();
-  writeFileSync(`${skipTelemetryFile}`, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  writeFileSync(skipTelemetryFile, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+function writeSummary(profile, status, records, reason = "") {
+  mkdirSync(dirname(summaryFile), { recursive: true });
+  writeFileSync(summaryFile, `${JSON.stringify({ profile, status, reason, records }, null, 2)}\n`);
+  console.log(`E2E ${profile}: ${status.toUpperCase()}${reason ? ` (${reason})` : ""}.`);
+  if (status === "partial") console.log("Pełna kwalifikacja E2E nie została wykonana: co najmniej jeden profil pominięto.");
 }
 
 function run(command) {
-  return new Promise((resolve) => {
-    const child = spawn(command, {
-      stdio: "inherit",
-      shell: true,
-      env: process.env,
-    });
-    child.on("exit", (code) => resolve(code ?? 1));
-    child.on("error", () => resolve(1));
+  return new Promise((resolveRun) => {
+    const child = spawn(command, { stdio: "inherit", shell: true, env: process.env });
+    child.on("exit", (code) => resolveRun(code ?? 1));
+    child.on("error", () => resolveRun(1));
   });
 }
 
 function resolveProfile() {
-  const rawProfile = String(process.env.E2E_PROFILE || "full").trim().toLowerCase();
-  const supportedProfiles = new Set(["smoke", "functional", "full"]);
-  if (!supportedProfiles.has(rawProfile)) {
-    console.error(
-      `Nieobsługiwany profil E2E: "${rawProfile}". ` +
-      "Użyj jednego z: smoke, functional, full.",
-    );
-    process.exit(2);
+  const profile = String(process.env.E2E_PROFILE || "full").trim().toLowerCase();
+  if (!["smoke", "functional", "full"].includes(profile)) {
+    throw new Error(`Nieobsługiwany profil E2E: ${profile}`);
   }
-  return rawProfile;
+  return profile;
 }
 
 function shouldRunPreflight(profile) {
-  if (process.env.E2E_SKIP_PREFLIGHT === "1") {
-    return false;
-  }
-  if (process.env.E2E_FORCE_PREFLIGHT === "1") {
-    return true;
-  }
-  // Profile smoke/functional bazują na mockach i mogą działać bez backend stacku.
-  return profile === "full";
+  const simulatedCi = process.env.GITHUB_ACTIONS === "true" && process.env.CI === "true" &&
+    process.env.RUNNER_ENVIRONMENT === "github-hosted" && process.env.E2E_SIMULATED_SERVER === "1";
+  if (!simulatedCi) return true;
+  return process.env.E2E_FORCE_PREFLIGHT === "1" && profile === "full";
+}
+
+function readRecords(file) {
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
 }
 
 async function main() {
@@ -73,54 +64,43 @@ async function main() {
   if (shouldRunPreflight(profile)) {
     const preflightCode = await run("npm run test:e2e:preflight");
     if (preflightCode === 2) {
-      // exit=2 means "skip due to environment preconditions", not test failure.
-      let reasonCode = "unknown";
-      if (existsSync(preflightStateFile)) {
-        try {
-          const payload = JSON.parse(readFileSync(preflightStateFile, "utf8"));
-          reasonCode = payload?.reason_code || "unknown";
-          const message = payload?.message || "brak dodatkowych informacji";
-          console.log(
-            `⏭️  Testy E2E pominięte (reason_code=${reasonCode}, state=${payload?.state || "n/a"}).`,
-          );
-          console.log(`   ${message}`);
-        } catch {
-          console.log("⏭️  Testy E2E pominięte (brak gotowego środowiska).");
-        }
-      } else {
-        console.log("⏭️  Testy E2E pominięte (brak gotowego środowiska).");
-      }
-      bumpSkipReasonCount(reasonCode);
-      process.exit(0);
+      let reason = "unknown";
+      try { reason = JSON.parse(readFileSync(preflightStateFile, "utf8")).reason_code || "unknown"; } catch { /* no state available */ }
+      bumpSkipReasonCount(reason);
+      writeSummary(profile, "skipped", [], reason);
+      process.exitCode = process.env.CI === "true" ? 2 : 0;
+      return;
     }
     if (preflightCode !== 0) {
-      process.exit(preflightCode);
+      writeSummary(profile, "failed", [], "preflight_error");
+      process.exitCode = preflightCode;
+      return;
     }
   }
 
-  if (profile === "smoke") {
-    process.exit(await run("npm run test:e2e:smoke"));
+  const selected = profile === "full" ? ["smoke", "academy", "latency", "functional"] : [profile];
+  const commands = { smoke: "test:e2e:smoke", academy: "test:e2e:smoke:academy", latency: "test:e2e:latency", functional: "test:e2e:functional" };
+  const temp = mkdtempSync(join(tmpdir(), "venom-e2e-run-"));
+  const resultsFile = join(temp, "results.jsonl");
+  process.env.E2E_PROFILE_RESULT_FILE = resultsFile;
+  try {
+    let stageCode = 0;
+    for (const name of selected) {
+      stageCode = await run(`npm run ${commands[name]}`);
+      if (stageCode !== 0) break;
+    }
+    const records = readRecords(resultsFile);
+    const status = stageCode === 0 ? summarizeProfiles(selected, records) : "failed";
+    writeSummary(profile, status, records, stageCode ? "profile_error" : "");
+    process.exitCode = status === "passed" ? 0 : status === "failed" ? (stageCode || 1) : process.env.CI === "true" ? 2 : 0;
+  } finally {
+    delete process.env.E2E_PROFILE_RESULT_FILE;
+    rmSync(temp, { recursive: true, force: true });
   }
-
-  if (profile === "functional") {
-    process.exit(await run("npm run test:e2e:functional"));
-  }
-
-  const smokeCode = await run("npm run test:e2e:smoke");
-  if (smokeCode !== 0) {
-    process.exit(smokeCode);
-  }
-
-  const academySmokeCode = await run("npm run test:e2e:smoke:academy");
-  if (academySmokeCode !== 0) {
-    process.exit(academySmokeCode);
-  }
-
-  const latencyCode = await run("npm run test:e2e:latency");
-  if (latencyCode !== 0) {
-    process.exit(latencyCode);
-  }
-  process.exit(await run("npm run test:e2e:functional"));
 }
 
-main().catch(() => process.exit(1));
+main().catch((error) => {
+  console.error("E2E profile error:", error);
+  writeSummary("unknown", "failed", [], "runner_error");
+  process.exitCode = 1;
+});

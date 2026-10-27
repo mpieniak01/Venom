@@ -250,15 +250,17 @@ jobs:
           make audit-ci-lite
 
           mkdir -p test-results/sonar
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "Push on main: generating full backend Sonar report."
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || {
+            [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" = "refs/heads/main" ];
+          }; then
+            echo "Main branch: generating full backend Sonar report."
             make sonar-reports-backend \
               SONAR_BACKEND_PYTEST_WORKERS="${BACKEND_LITE_PYTEST_WORKERS}" \
             | tee test-results/sonar/backend-lite.log
           else
             DIFF_BASE="origin/main"
-            if [ -n "${{ github.base_ref }}" ]; then
-              DIFF_BASE="origin/${{ github.base_ref }}"
+            if [ -n "${GITHUB_BASE_REF:-}" ]; then
+              DIFF_BASE="origin/${GITHUB_BASE_REF}"
             fi
             echo "Pull request: running changed-lines gate with NEW_CODE_DIFF_BASE=${DIFF_BASE}"
             make check-new-code-coverage \
@@ -276,6 +278,11 @@ jobs:
               NEW_CODE_DIFF_BASE="${DIFF_BASE}" \
             | tee test-results/sonar/backend-lite.log
           fi
+
+      - name: Validate backend Sonar reports and bind to checkout
+        run: |
+          python scripts/sonar_report_manifest.py write \
+            --directory test-results/sonar --revision "$(git rev-parse HEAD)"
 
       - name: Upload backend Sonar artifacts
         uses: actions/upload-artifact@v6
@@ -403,15 +410,19 @@ jobs:
           name: sonar-backend-reports
           path: test-results/sonar
 
+      - name: Verify Sonar reports match checkout
+        run: |
+          python scripts/sonar_report_manifest.py verify \
+            --directory test-results/sonar --revision "$(git rev-parse HEAD)"
+
       - name: Evaluate Sonar eligibility
         id: sonar_guard
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           if [ -z "${SONAR_TOKEN:-}" ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping SonarCloud Scan: SONAR_TOKEN is not configured (likely fork/missing secret)."
-            exit 0
+            echo "::error::SonarCloud Scan was not run: SONAR_TOKEN is not configured."
+            exit 1
           fi
 
           echo "enabled=true" >> "$GITHUB_OUTPUT"

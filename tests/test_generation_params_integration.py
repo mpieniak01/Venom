@@ -8,31 +8,18 @@ Jeśli środowisko nie jest dostępne, testy będą pominięte (skip).
 import asyncio
 import re
 
-import httpx
 import pytest
 
 from venom_core.config import SETTINGS
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 
-pytestmark = [pytest.mark.manual_llm]
+pytestmark = [
+    pytest.mark.manual_llm,
+    pytest.mark.live_model,
+    pytest.mark.unsafe_direct_runtime,
+]
 
 
-def _local_llm_available() -> bool:
-    if SETTINGS.AI_MODE != "LOCAL" or not SETTINGS.LLM_LOCAL_ENDPOINT:
-        return False
-    endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
-    probe_paths = ("/v1/models", "/models", "/api/tags")
-    try:
-        for path in probe_paths:
-            response = httpx.get(f"{endpoint}{path}", timeout=1.0)
-            if response.status_code == 200:
-                return True
-        return False
-    except httpx.HTTPError:
-        return False
-
-
-LOCAL_LLM_AVAILABLE = _local_llm_available()
 GENERATION_CALL_TIMEOUT_S = 45
 
 
@@ -62,10 +49,6 @@ async def _call_with_timeout(chat_service, chat_history, settings):
 class TestGenerationParamsIntegration:
     """Testy integracyjne sprawdzające wpływ parametrów na odpowiedzi modelu."""
 
-    @pytest.mark.skipif(
-        not LOCAL_LLM_AVAILABLE,
-        reason="Wymaga lokalnego środowiska LLM",
-    )
     @pytest.mark.asyncio
     async def test_temperature_affects_response_determinism(self):
         """
@@ -156,10 +139,6 @@ class TestGenerationParamsIntegration:
                 "Runtime nie gwarantuje stabilnej formy odpowiedzi przy temp=0.0."
             )
 
-    @pytest.mark.skipif(
-        not LOCAL_LLM_AVAILABLE,
-        reason="Wymaga lokalnego środowiska LLM",
-    )
     @pytest.mark.asyncio
     async def test_max_tokens_limits_response_length(self):
         """
@@ -240,10 +219,6 @@ class TestGenerationParamsIntegration:
                 "Runtime nie gwarantuje monotonicznej długości odpowiedzi dla max_tokens."
             )
 
-    @pytest.mark.skipif(
-        not LOCAL_LLM_AVAILABLE,
-        reason="Wymaga lokalnego środowiska LLM",
-    )
     def test_adapter_maps_params_correctly_for_provider(self):
         """
         Test sprawdzający czy adapter poprawnie mapuje parametry dla aktywnego providera.

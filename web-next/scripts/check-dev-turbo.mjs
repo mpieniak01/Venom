@@ -10,6 +10,12 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+// This check starts Next and can delete its build directory. The local host
+// runs a single Venom instance, so execute it only on an isolated CI runner.
+if (process.env.GITHUB_ACTIONS !== "true" || process.env.CI !== "true" || process.env.RUNNER_ENVIRONMENT !== "github-hosted") {
+  console.log("Turbopack server smoke: SKIPPED (requires an isolated GitHub Actions runner).");
+  process.exit(0);
+}
 
 const HOST = process.env.TURBO_SMOKE_HOST ?? "127.0.0.1";
 const PORT = process.env.TURBO_SMOKE_PORT ?? "3010";

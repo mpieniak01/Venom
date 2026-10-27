@@ -124,3 +124,18 @@ def test_browser_report_all_passed_is_success(tmp_path: Path):
     result, summary = _browser_summary(tmp_path, expected=3, skipped=0)
     assert result.returncode == 0
     assert summary["profiles"]["functional"]["status"] == "passed"
+
+
+def test_browser_profiles_continue_after_smoke_failure():
+    script = _step(
+        "frontend", "Run mocked browser profiles in isolated network namespace"
+    )
+    begin = script.index("result=0")
+    end = script.index('exit "$result"', begin) + len('exit "$result"')
+    calls = script[begin:end]
+    stub = 'run_profile() { echo "$1"; [ "$1" != smoke ]; }\n'
+    result = subprocess.run(
+        ["bash", "-e", "-c", stub + calls], capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == ["smoke", "functional"]

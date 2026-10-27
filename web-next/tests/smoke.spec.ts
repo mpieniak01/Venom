@@ -229,6 +229,13 @@ test.describe("Venom Next Cockpit Smoke", () => {
   });
 
   test("Chat preset wstawia prompt i Ctrl+Enter wysyła zadanie", async ({ page }) => {
+    await page.route("**/api/v1/system/llm-servers/active", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "success", active_server: "ollama", active_model: "gemma2:2b" }),
+      });
+    });
     await page.route("**/api/v1/tasks", async (route) => {
       if (route.request().method() === "POST") {
         await route.fulfill({
@@ -246,7 +253,9 @@ test.describe("Venom Next Cockpit Smoke", () => {
     });
 
     await page.goto("/");
-    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
+    const modelSelector = page.getByTestId("llm-model-select");
+    await expect(modelSelector).toBeEnabled();
+    await expect(modelSelector).toContainText("gemma2:2b");
     const presetButton = page.getByTestId("cockpit-preset-preset-creative");
     await expect(presetButton).toBeVisible();
     await presetButton.click();
@@ -396,6 +405,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
   });
 
   test("LLM Model and Activate button are present and enabled", async ({ page }) => {
+    await registerRuntimeContractRoutes(page, { runtimeId: "vllm", modelName: "phi3" });
     await page.route("**/api/v1/system/llm-servers/active", async (route) => {
       await route.fulfill({
         status: 200,
@@ -434,9 +444,10 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await page.goto("/chat");
     const modelSelector = page.getByLabel("Wybierz model LLM").first();
     await expect(modelSelector).toBeVisible();
-    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
+    await expect(modelSelector).toBeEnabled();
     const activateButton = page.getByRole("button", { name: /Aktywuj/i });
     await expect(activateButton).toBeVisible();
+    await expect(activateButton).toBeEnabled();
   });
 
   test("Feedback controls are accessible via UI", async ({ page }) => {

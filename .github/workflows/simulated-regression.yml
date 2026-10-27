@@ -47,6 +47,13 @@ jobs:
         run: |
           python scripts/bootstrap_dependency_profile.py --profile full-ci --venv "$PWD/.venv" --update
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Ensure ripgrep is available
+        run: |
+          if ! command -v rg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep
+          fi
+          rg --version
       - name: Prepare non-secret test configuration
         run: cp .env.dev.example .env.dev
       - name: Record revision and inventory
@@ -177,8 +184,10 @@ jobs:
                 PLAYWRIGHT_JSON_OUTPUT_NAME="test-results/simulated-regression/$profile.json" \
                 npm --prefix web-next run "$script" -- --reporter=json,line "$@"
             }
-            run_profile smoke test:e2e:smoke
-            run_profile functional test:e2e:functional --workers=2
+            result=0
+            run_profile smoke test:e2e:smoke || result=1
+            run_profile functional test:e2e:functional --workers=2 || result=1
+            exit "$result"
           ' bash "$workspace" "$runner_user" "$runner_home" "$runner_path"
       - name: Summarize browser results including skipped tests
         if: always()

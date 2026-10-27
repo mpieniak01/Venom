@@ -177,7 +177,8 @@ def _load_manifest():
         Path(__file__).resolve().parents[1] / "scripts" / "sonar_report_manifest.py"
     )
     spec = importlib.util.spec_from_file_location("sonar_report_manifest", script_path)
-    assert spec and spec.loader
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

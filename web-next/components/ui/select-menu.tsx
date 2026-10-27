@@ -188,16 +188,28 @@ export function SelectMenu({
           <div
             ref={menuRef}
             role="listbox"
+            tabIndex={-1}
             onKeyDown={(event) => {
               if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
               const choices = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
               if (!choices.length) return;
               event.preventDefault();
               const index = choices.indexOf(document.activeElement as HTMLButtonElement);
-              const next = event.key === "Home" ? 0
-                : event.key === "End" ? choices.length - 1
-                  : event.key === "ArrowDown" ? (index + 1) % choices.length
-                    : (index - 1 + choices.length) % choices.length;
+              let next = index;
+              switch (event.key) {
+                case "Home":
+                  next = 0;
+                  break;
+                case "End":
+                  next = choices.length - 1;
+                  break;
+                case "ArrowDown":
+                  next = (index + 1) % choices.length;
+                  break;
+                case "ArrowUp":
+                  next = index <= 0 ? choices.length - 1 : index - 1;
+                  break;
+              }
               choices[next].focus();
             }}
             style={menuStyle}

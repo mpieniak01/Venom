@@ -93,6 +93,17 @@ describe("SelectMenu viewport and keyboard behavior", () => {
     trigger.focus();
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     const menu = screen.getByRole("listbox");
+    assert.equal(menu.tabIndex, -1);
+    assert.equal(document.activeElement, screen.getByTestId("test-option-normal"));
+    menu.focus();
+    assert.equal(document.activeElement, menu);
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    assert.equal(document.activeElement, screen.getByTestId("test-option-complex"));
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    assert.equal(document.activeElement, screen.getByTestId("test-option-direct"));
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    assert.equal(document.activeElement, screen.getByTestId("test-option-complex"));
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
     assert.equal(document.activeElement, screen.getByTestId("test-option-normal"));
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     assert.equal(document.activeElement, screen.getByTestId("test-option-complex"));

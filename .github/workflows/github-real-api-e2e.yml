@@ -53,7 +53,7 @@ jobs:
             requirements/locks/build-linux-py314.txt
       - uses: actions/setup-node@v5
         with:
-          node-version-file: web-next/.nvmrc
+          node-version-file: "web-next/.nvmrc"
           cache: npm
           cache-dependency-path: web-next/package-lock.json
       - name: Check isolated E2E contract without starting services

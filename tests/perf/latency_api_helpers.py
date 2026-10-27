@@ -74,7 +74,7 @@ async def resolve_timeout_result(
             first_token_time = total_time
         return first_token_time, total_time
     if status in {"FAILED", "LOST"}:
-        pytest.skip(f"Task zakończony statusem {status} po timeout SSE.")
+        raise AssertionError(f"Task zakończony statusem {status} po timeout SSE.")
     raise TimeoutError(
         f"SSE przekroczyło timeout {stream_timeout}s (ostatnie zdarzenie: {event})",
     )

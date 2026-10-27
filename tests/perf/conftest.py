@@ -1,33 +1,6 @@
 import os
 
-import httpx
 import pytest
-
-from .chat_pipeline import _resolve_api_base
-
-
-def _backend_available() -> bool:
-    base = _resolve_api_base()
-    healthz = f"{base}/healthz"
-    try:
-        with httpx.Client(timeout=2.0) as client:
-            response = client.get(healthz)
-            return response.status_code == 200
-    except httpx.HTTPError:
-        return False
-
-
-def pytest_collection_modifyitems(config, items):
-    if _backend_available():
-        return
-    skip_perf = pytest.mark.skip(
-        reason="Backend API niedostępny – pomijam testy perf.",
-    )
-    for item in items:
-        # Ten conftest jest ładowany jako plugin podczas pełnej kolekcji testów,
-        # więc ograniczamy skip wyłącznie do testów wydajnościowych.
-        if item.nodeid.startswith("tests/perf/") or "performance" in item.keywords:
-            item.add_marker(skip_perf)
 
 
 @pytest.fixture(scope="session", autouse=True)

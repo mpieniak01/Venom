@@ -15,7 +15,7 @@ import pytest
 from venom_core.agents.ghost_agent import GhostAgent
 from venom_core.core.permission_guard import permission_guard
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.manual_llm]
+pytestmark = [pytest.mark.asyncio, pytest.mark.manual_llm, pytest.mark.live_venom]
 
 
 def _require_hil_env() -> None:

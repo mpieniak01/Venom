@@ -10,21 +10,20 @@ from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 import httpx
 
+from tests.conftest import _configured_live_base
+
 
 def _resolve_api_base() -> str:
-    env_base = (
-        os.getenv("VENOM_API_BASE")
-        or os.getenv("API_PROXY_TARGET")
-        or os.getenv("NEXT_PUBLIC_API_BASE")
-        or os.getenv("API_BASE_URL")
-    )
-    if env_base:
-        return env_base
-    api_port = os.getenv("VENOM_API_PORT") or os.getenv("APP_PORT") or "8000"
-    return f"http://localhost:{api_port}"
+    # Match the read-only preflight exactly. Other application environment
+    # variables can refer to different (including remote) services.
+    return _configured_live_base()
 
 
-API_BASE = _resolve_api_base()
+try:
+    API_BASE = _resolve_api_base()
+except ValueError:
+    # Keep collection safe when settings conflict; live preflight will skip.
+    API_BASE = ""
 TASKS_ENDPOINT = f"{API_BASE}/api/v1/tasks"
 STREAM_TIMEOUT = float(os.getenv("VENOM_STREAM_TIMEOUT", "25"))
 PIPELINE_CONCURRENCY = int(os.getenv("VENOM_PIPELINE_CONCURRENCY", "3"))

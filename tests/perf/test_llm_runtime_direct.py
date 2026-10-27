@@ -11,7 +11,11 @@ from typing import List
 import httpx
 import pytest
 
-pytestmark = [pytest.mark.performance]
+pytestmark = [
+    pytest.mark.performance,
+    pytest.mark.live_venom,
+    pytest.mark.unsafe_direct_runtime,
+]
 
 OLLAMA_ENDPOINT = os.getenv("VENOM_OLLAMA_ENDPOINT", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("VENOM_OLLAMA_MODEL", "gemma3")

@@ -4,6 +4,8 @@ Ten dokument jest nadrzędnym źródłem zasad testowania: od codziennej pracy l
 
 Bazowe wymagania bezpieczeństwa i kontroli są opisane w `docs/PL/SECURITY_POLICY.md`.
 
+Plan rozwoju strategii na jednym komputerze: [analiza i zadania PR](TESTING_STRATEGY_IMPLEMENTATION_PLAN.md).
+
 ## Drabina testów (od najszybszych do najbardziej restrykcyjnych)
 
 ### Poziom 1: Codzienna praca lokalna (codziennie)
@@ -221,7 +223,7 @@ Zachowanie runu new-code coverage:
 
 Kontrakt deterministyczności (dlaczego to nie flakuje):
 
-- `NEW_CODE_TIME_BUDGET_SEC=0` w CI: brak cięcia listy testów przez czas.
+- PR do `main` używa `NEW_CODE_TIME_BUDGET_SEC=90` jako miękkiego budżetu szacowanego kosztu testów opcjonalnych; testy obowiązkowe pozostają wybrane. Main generuje pełny raport backendowy Sonara.
 - `config/coverage-file-floor.txt`: testy-kotwice dla floor są zawsze dołączane.
 - `ripgrep` (`rg`) w CI: stabilny i szybki resolver + czytelne logi.
 - `scripts/check_test_catalog.py` dodatkowo waliduje grupy release (`fast/long/heavy`) względem uprawnień lane w katalogu.
@@ -262,14 +264,40 @@ Backend:
 make pytest
 ```
 
-`make pytest` uruchamia grupy backendu w kolejności: `heavy` -> `long` -> `fast`.
-Domyślna polityka selekcji:
-- `heavy`: zawiera testy performance, wyklucza tylko `manual_llm`.
-- `long` i `fast`: wykluczają `performance` oraz `manual_llm`.
-- jawna lista testów długich/manualnych jest czytana z:
-  `config/pytest-groups/manual-long-running.txt`
-Automatyczna regresja domyślnie wyklucza testy manualne LLM i wydajności:
-- `not performance and not manual_llm`
+`make pytest` uruchamia grupy backendu w kolejności `fast` -> `long` -> `heavy`.
+Domyślnie używa odpowiednio 4, 2 i 1 workera. Te wartości nie są jeszcze
+potwierdzonym optimum dla każdego obciążenia hosta.
+
+- `fast` i `long` wykluczają `performance` oraz `manual_llm`; `heavy` dopuszcza
+  symulowane przypadki performance. Wszystkie grupy wykluczają oznaczone testy
+  live, direct runtime oraz Docker i korzystają z listy `manual-long-running.txt`.
+- `make test-group-plan` pokazuje pliki, filtry i workery bez wykonania testów.
+  Pojedyncze grupy uruchamiają `make test-group-fast`, `make test-group-long`
+  oraz `make test-group-heavy`. Wynik zawiera czas ścienny każdej grupy,
+  JUnit i `summary.json` w `test-results/test-groups/run-*`.
+- Raport podaje liczbę wybranych/wykonanych przypadków i pominięć pytest;
+  nie zna liczby przypadków wykluczonych selektorem. `unknown` w inwentarzu nie
+  jest dowodem, że test nie korzysta ze sprzętu ani procesów potomnych.
+- `PYTEST_FAST_WORKERS`, `PYTEST_LONG_WORKERS`, `PYTEST_HEAVY_WORKERS`,
+  `PYTEST_TEST_TIMEOUT_SECONDS` i `PYTEST_GROUP_TIMEOUT_SECONDS` przyjmują
+  dodatnie liczby. Zachowany jest zewnętrzny `PYTEST_ADDOPTS`.
+
+Dla GitHub PR do `main` backend uruchamia `check-new-code-coverage` z miękkim
+budżetem selekcji 90 s na szacowane koszty plików. Baseline, zakwalifikowane
+zmienione i bezpośrednio powiązane testy oraz kotwice progów pokrycia są
+obowiązkowe, nawet gdy przekroczą ten budżet. Budżet nie jest limitem czasu
+ściennego całej bramki ani gwarancją wykonania w 10 minut. Próg 80% pokrycia
+zmienionych linii i progi poszczególnych plików pozostają bez zmian; fallback
+może dobrać dodatkowe testy. Push na `main` oraz ręczne uruchomienie CI na
+`main` generują pełny raport backendowy Sonara; osobna regresja symulowana
+obejmuje główne grupy po pushu na `main` i według harmonogramu.
+
+Testy fizyczne są domyślnie pomijane. Ich jawne uruchomienie wymaga istniejącego
+lokalnego Venoma, gotowości właściwych zasobów i najwyżej jednego workera;
+bezpośrednie testy modelu bez host admission pozostają zablokowane. Fizyczne
+E2E przez panel jest pomijane do czasu potwierdzenia powiązania panelu z API.
+Stan i przyczyny pominięć należy raportować oddzielnie od zaliczonych przypadków.
+Pominięty lub częściowy profil E2E zwraca kod 2, a pełne powodzenie kod 0.
 
 Manualne testy operatora dla LLM:
 

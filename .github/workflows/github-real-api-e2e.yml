@@ -1,0 +1,125 @@
+name: "GitHub real API E2E (fake LLM)"
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "venom_core/**"
+      - "web-next/**"
+      - "scripts/**"
+      - "tests/**"
+      - "requirements/**"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "pytest.ini"
+      - ".github/workflows/github-real-api-e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "venom_core/**"
+      - "web-next/**"
+      - "scripts/**"
+      - "tests/**"
+      - "requirements/**"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "pytest.ini"
+      - ".github/workflows/github-real-api-e2e.yml"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: github-real-api-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-api-fake-llm:
+    name: Browser → proxy → real API → fake LLM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14.8"
+          cache: pip
+          cache-dependency-path: |
+            requirements/locks/light-linux-py314.txt
+            requirements/locks/build-linux-py314.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: "web-next/.nvmrc"
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+      - name: Check isolated E2E contract without starting services
+        run: python -m unittest scripts.ci.test_github_e2e_contract -v
+      - name: Install hash-locked light API profile
+        run: python scripts/bootstrap_dependency_profile.py --profile light --venv "$GITHUB_WORKSPACE/.venv" --update
+      - name: Install frontend dependencies
+        run: npm --prefix web-next ci
+      - name: Install Chromium and required libraries
+        working-directory: web-next
+        run: npx playwright install --with-deps chromium
+      - name: Exercise real API with controlled fake LLM in private namespaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${CI:-}" != true || "${GITHUB_ACTIONS:-}" != true || "${RUNNER_ENVIRONMENT:-}" != github-hosted ]]; then
+            echo 'A GitHub-hosted runner is required.' >&2; exit 1
+          fi
+          runner_user="$(id -un)"
+          runner_home="$HOME"
+          runner_path="$GITHUB_WORKSPACE/.venv/bin:$PATH"
+          workspace="$GITHUB_WORKSPACE"
+          sudo unshare --net --mount -- bash -c '
+            set -euo pipefail
+            workspace="$1"; runner_user="$2"; runner_home="$3"; runner_path="$4"
+            mount --make-rprivate /
+            ip link set lo up
+            proof_dir="$(mktemp -d /tmp/venom-github-e2e-ns.XXXXXX)"
+            chmod 755 "$proof_dir"
+            cleanup_proof() {
+              for namespace in net mnt; do
+                rm -f -- "$proof_dir/$namespace"
+              done
+              rmdir -- "$proof_dir"
+            }
+            trap cleanup_proof EXIT
+            for namespace in net mnt; do
+              host_ns="$(readlink "/proc/1/ns/$namespace")"
+              isolated_ns="$(readlink "/proc/self/ns/$namespace")"
+              if [ -z "$host_ns" ] || [ -z "$isolated_ns" ] || [ "$host_ns" = "$isolated_ns" ]; then
+                echo "Private $namespace namespace not established" >&2; exit 1
+              fi
+              printf "%s %s\n" "$host_ns" "$isolated_ns" > "$proof_dir/$namespace"
+              chmod 444 "$proof_dir/$namespace"
+            done
+            runner_uid="$(id -u "$runner_user")"
+            for socket in /run/docker.sock /var/run/docker.sock /run/containerd/containerd.sock /run/dbus/system_bus_socket "/run/user/$runner_uid/bus"; do
+              if [ -S "$socket" ]; then mount --bind /dev/null "$socket"; fi
+            done
+            for device in /dev/dxg /dev/nvidia*; do
+              if [ -c "$device" ]; then mount --bind /dev/null "$device"; fi
+            done
+            cd "$workspace"
+            runuser -u "$runner_user" -- env -i \
+              HOME="$runner_home" USER="$runner_user" LOGNAME="$runner_user" \
+              PATH="$runner_path" LANG=C.UTF-8 CI=true GITHUB_ACTIONS=true \
+              RUNNER_ENVIRONMENT=github-hosted GITHUB_WORKSPACE="$workspace" \
+              VENOM_E2E_NS_PROOF_DIR="$proof_dir" \
+              bash scripts/ci/run-github-api-e2e.sh
+          ' bash "$workspace" "$runner_user" "$runner_home" "$runner_path"
+      - name: Upload E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: github-real-api-e2e-diagnostics
+          path: web-next/test-results/**
+          if-no-files-found: ignore

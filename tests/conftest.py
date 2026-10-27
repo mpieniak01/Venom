@@ -1,18 +1,91 @@
+import atexit
 import importlib
 import importlib.util
 import json
 import os
 import shutil
+import socket
 import subprocess
+import tempfile
+import threading
+import time
 import urllib.error
 import urllib.request
+import uuid
 import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlsplit
 
 import pytest
+
+# A pytest process must never own the running host's admission ledger. Create
+# the private root before test modules import Settings; xdist workers each load
+# conftest in a separate process and therefore receive distinct roots.
+_TEST_MEMORY_ROOT = Path(tempfile.mkdtemp(prefix="venom-pytest-memory-"))
+os.environ["MEMORY_ROOT"] = str(_TEST_MEMORY_ROOT)
+atexit.register(shutil.rmtree, _TEST_MEMORY_ROOT, ignore_errors=True)
+
+# Prevent unmarked in-process test code from reaching the operator's local
+# services during collection or simulated test execution. This does not cover
+# subprocesses; those still need an explicit audit or network isolation.
+_TEST_MONOTONIC = time.monotonic
+_LIVE_API_ALLOWED = False
+_LIVE_API_TARGET: tuple[str, int] | None = None
+_DIRECT_RUNTIME_PORTS = {11434}
+_PROTECTED_SERVICE_PORTS = {3300, 8800, *_DIRECT_RUNTIME_PORTS}
+for _name in ("VENOM_TEST_STACK_BASE", "VENOM_API_BASE", "API_PROXY_TARGET"):
+    try:
+        _port = urlsplit(os.environ.get(_name, "")).port
+    except ValueError:
+        _port = None
+    if _port is not None:
+        _PROTECTED_SERVICE_PORTS.add(_port)
+_original_socket_connect = socket.socket.connect
+_original_socket_connect_ex = socket.socket.connect_ex
+
+
+def _check_test_connection(address: Any) -> None:
+    if not isinstance(address, tuple) or len(address) < 2:
+        return  # Unix-domain sockets do not reach a TCP endpoint.
+    host, port = address[0], address[1]
+    if port in _DIRECT_RUNTIME_PORTS:
+        raise PermissionError(
+            f"test connection to protected service port {port} blocked"
+        )
+    if _LIVE_API_ALLOWED:
+        # A live test is allowed to reach precisely the candidate host/port
+        # captured before preflight, not another local or remote service.
+        if _LIVE_API_TARGET is None:
+            raise PermissionError("live target has not been captured")
+        expected_host, expected_port = _LIVE_API_TARGET
+        permitted_hosts = (
+            {"127.0.0.1", "::1", "localhost"}
+            if expected_host == "localhost"
+            else {expected_host}
+        )
+        if str(host).lower() not in permitted_hosts or port != expected_port:
+            raise PermissionError("connection differs from verified live target")
+    elif port in _PROTECTED_SERVICE_PORTS:
+        raise PermissionError(
+            f"test connection to protected service port {port} blocked"
+        )
+
+
+def _guarded_socket_connect(sock: socket.socket, address: Any):
+    _check_test_connection(address)
+    return _original_socket_connect(sock, address)
+
+
+def _guarded_socket_connect_ex(sock: socket.socket, address: Any):
+    _check_test_connection(address)
+    return _original_socket_connect_ex(sock, address)
+
+
+socket.socket.connect = _guarded_socket_connect
+socket.socket.connect_ex = _guarded_socket_connect_ex
 
 # --- Test Artifact Strategy: CLEAN vs PRESERVE ---
 # Polityka w docs/TEST_ARTIFACTS_POLICY.md i docs/PL/TEST_ARTIFACTS_POLICY.md
@@ -125,61 +198,132 @@ def _has_docker_compose() -> bool:
         return False
 
 
-DOCKER_AVAILABLE = _has_docker()
-DOCKER_COMPOSE_AVAILABLE = _has_docker_compose()
+def _read_live_json(url: str) -> dict[str, Any]:
+    """Read a bounded response; never start, repair, or mutate the host."""
+    with urllib.request.urlopen(url, timeout=1.5) as response:
+        if response.status != 200:
+            raise ValueError("unexpected HTTP status")
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("expected JSON object")
+    return payload
 
 
-def _stack_state() -> tuple[str, str]:
-    """
-    Zwraca (state, reason_code):
-    - ready
-    - stack_not_started
-    - stack_degraded
-    """
-    # 197B policy: tests oznaczone `requires_stack` muszą rozróżniać
-    # brak stacka od degradacji runtime i mapować oba przypadki na skip.
-
-    base_url = os.environ.get("VENOM_TEST_STACK_BASE", "http://127.0.0.1:8000").rstrip(
-        "/"
-    )
-    health_url = f"{base_url}/healthz"
-    active_url = f"{base_url}/api/v1/system/llm-servers/active"
-
+def _configured_live_base() -> str:
+    """Resolve one local API target; conflicting settings are never guessed."""
+    values = [
+        os.environ.get(key, "").strip().rstrip("/")
+        for key in ("VENOM_TEST_STACK_BASE", "VENOM_API_BASE")
+        if os.environ.get(key, "").strip()
+    ]
+    if len(set(values)) > 1:
+        raise ValueError("conflicting live target settings")
+    base_url = values[0] if values else "http://127.0.0.1:8800"
     try:
-        with urllib.request.urlopen(health_url, timeout=1.5) as response:
-            if response.status >= 500:
-                return ("stack_not_started", "stack_not_started")
-    except (urllib.error.URLError, TimeoutError, OSError):
+        parsed = urlsplit(base_url)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid local target") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or port == 0
+    ):
+        raise ValueError("invalid local target")
+    return base_url
+
+
+def _stack_state(
+    *, requires_model: bool = True, expected_base: str | None = None
+) -> tuple[str, str]:
+    """Check the same existing local Venom instance used by the live test."""
+    try:
+        base_url = _configured_live_base()
+    except ValueError:
+        return ("stack_degraded", "invalid_local_target")
+    if expected_base is not None and base_url != expected_base:
+        return ("stack_degraded", "live_target_changed")
+    try:
+        health = _read_live_json(f"{base_url}/healthz")
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
         return ("stack_not_started", "stack_not_started")
-
+    if health.get("status") != "ok" or health.get("component") != "venom-core":
+        return ("stack_degraded", "invalid_venom_health")
     try:
-        with urllib.request.urlopen(active_url, timeout=1.5) as response:
-            if response.status >= 500:
-                return ("stack_degraded", "stack_degraded")
-            payload = json.loads(response.read().decode("utf-8") or "{}")
-            active_model = str(payload.get("active_model") or "").strip()
-            if not active_model:
-                return ("stack_degraded", "runtime_model_unavailable")
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        active = _read_live_json(f"{base_url}/api/v1/system/llm-servers/active")
+        # The model is optional for read-only/API tests, but the response shape
+        # identifies a Venom API rather than an arbitrary service on the port.
+        if "active_server" not in active or "active_model" not in active:
+            return ("stack_degraded", "invalid_venom_identity")
+        if not requires_model:
+            try:
+                if _configured_live_base() != base_url:
+                    return ("stack_degraded", "live_target_changed")
+            except ValueError:
+                return ("stack_degraded", "live_target_changed")
+            return ("ready", "ready")
+        if (
+            not str(active.get("active_model") or "").strip()
+            or not str(active.get("active_server") or "").strip()
+        ):
+            return ("stack_degraded", "runtime_model_unavailable")
+        resources = _read_live_json(f"{base_url}/api/v1/system/models/resources")
+        runtime = resources.get("runtime")
+        if not isinstance(runtime, dict) or runtime.get("status") != "available":
+            return ("stack_degraded", "runtime_busy")
+        if runtime.get("active_operations", 0) or "owner" in runtime:
+            return ("stack_degraded", "runtime_busy")
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
         return ("stack_degraded", "stack_degraded")
-
+    try:
+        if _configured_live_base() != base_url:
+            return ("stack_degraded", "live_target_changed")
+    except ValueError:
+        return ("stack_degraded", "live_target_changed")
     return ("ready", "ready")
 
 
-def _resolve_skip_marker(item, *, run_integration: bool):
-    if "requires_docker_compose" in item.keywords and not DOCKER_COMPOSE_AVAILABLE:
-        return pytest.mark.skip(reason="pomijam - Docker Compose nie jest dostępny")
-    if "requires_docker" in item.keywords and not DOCKER_AVAILABLE:
-        return pytest.mark.skip(reason="pomijam - Docker daemon nie jest dostępny")
+def _is_live(item: pytest.Item) -> bool:
+    return any(
+        name in item.keywords
+        for name in (
+            "live_venom",
+            "live_model",
+            "requires_stack",
+            "manual_llm",
+            "requires_docker",
+            "requires_docker_compose",
+            "unsafe_direct_runtime",
+        )
+    )
+
+
+def _resolve_skip_marker(item: pytest.Item, *, run_integration: bool, run_live: bool):
+    if "unsafe_direct_runtime" in item.keywords:
+        return pytest.mark.skip(reason="direct runtime bypasses host admission")
+    if _is_live(item) and not run_live:
+        return pytest.mark.skip(reason="live test disabled; use --run-live-tests")
     if "integration" in item.keywords and not run_integration:
         return pytest.mark.skip(
             reason="pomijam testy integracyjne (użyj --run-integration aby uruchomić)"
         )
-    if "requires_stack" in item.keywords:
-        # Kontrakt: dla testów zależnych od stacka brak precondition => skip (nie fail).
-        stack_state, reason_code = _stack_state()
-        if stack_state != "ready":
-            return pytest.mark.skip(reason=f"pomijam - stack niegotowy ({reason_code})")
     return None
 
 
@@ -190,33 +334,155 @@ def pytest_addoption(parser):
         default=False,
         help="Uruchom testy oznaczone markerem integration",
     )
+    parser.addoption(
+        "--run-live-tests",
+        action="store_true",
+        default=False,
+        help="Uruchom zakwalifikowane testy na już działającym lokalnym Venomie",
+    )
 
 
 def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "requires_docker: test wymaga dostępnego Docker daemon"
-    )
-    config.addinivalue_line(
-        "markers",
-        "requires_docker_compose: test wymaga działającego `docker compose` (Docker CLI plugin)",
-    )
-    config.addinivalue_line(
-        "markers",
-        "integration: test integracyjny wymagający dodatkowych zależności (uruchamiany tylko z --run-integration)",
-    )
-    config.addinivalue_line(
-        "markers",
-        "requires_stack: test wymaga uruchomionego stacka i gotowego modelu czatu (w przeciwnym razie skip)",
-    )
+    for marker in (
+        "requires_docker: test wymaga istniejącego Venoma oraz Docker daemon",
+        "requires_docker_compose: test wymaga istniejącego Venoma oraz Docker Compose",
+        "integration: test integracyjny uruchamiany tylko z --run-integration",
+        "requires_stack: test wymaga istniejącego Venoma oraz gotowego modelu",
+        "live_venom: test wymaga istniejącego lokalnego API Venoma",
+        "live_model: test wymaga istniejącego API Venoma, modelu i wolnego runtime",
+        "unsafe_direct_runtime: direct generation bypasses host admission and is disabled",
+        "live_state_file: test cannot yet inspect live state through the supported API",
+    ):
+        config.addinivalue_line("markers", marker)
+
+
+def _configured_workers(config) -> int:
+    raw = os.environ.get("PYTEST_XDIST_WORKER_COUNT")
+    if raw is None:
+        if hasattr(config, "workerinput"):
+            return 2  # A worker without a reliable count must fail closed.
+        raw = config.getoption("numprocesses", default=0)
+    try:
+        workers = int(raw or 0)
+    except (TypeError, ValueError):
+        return 2
+    return workers if workers >= 0 else 2
 
 
 def pytest_collection_modifyitems(config, items):
     run_integration = config.getoption("--run-integration")
-
+    run_live = config.getoption("--run-live-tests")
+    workers = _configured_workers(config)
     for item in items:
-        marker = _resolve_skip_marker(item, run_integration=run_integration)
+        # Mark dependencies before the expression filter is evaluated.
+        if any(
+            name in item.keywords
+            for name in (
+                "manual_llm",
+                "requires_docker",
+                "requires_docker_compose",
+                "requires_stack",
+            )
+        ):
+            item.add_marker(pytest.mark.live_venom)
+        marker = _resolve_skip_marker(
+            item, run_integration=run_integration, run_live=run_live
+        )
         if marker:
             item.add_marker(marker)
+        elif _is_live(item) and workers > 1:
+            item.add_marker(
+                pytest.mark.skip(reason="live tests require at most one worker")
+            )
+        if "live_state_file" in item.keywords:
+            item.add_marker(
+                pytest.mark.skip(reason="live state file lacks supported API access")
+            )
+
+
+@pytest.fixture(autouse=True)
+def _live_preflight(request: pytest.FixtureRequest):
+    global _LIVE_API_ALLOWED, _LIVE_API_TARGET
+    item = request.node
+    if not _is_live(item):
+        yield
+        return
+    try:
+        target = _configured_live_base()
+    except ValueError:
+        pytest.skip("live precondition: invalid_local_target")
+    if item.nodeid.startswith("tests/perf/"):
+        # Performance helpers capture API_BASE at import; it must still match
+        # the environment used for this test's actual preflight.
+        from tests.perf import chat_pipeline
+
+        if chat_pipeline.API_BASE != target:
+            pytest.skip("live precondition: live_target_changed")
+    parsed = urlsplit(target)
+    _LIVE_API_TARGET = (
+        parsed.hostname or "",
+        parsed.port or (443 if parsed.scheme == "https" else 80),
+    )
+    _LIVE_API_ALLOWED = True
+    try:
+        requires_model = any(
+            name in item.keywords for name in ("live_model", "requires_stack")
+        )
+        state, reason = _stack_state(
+            requires_model=requires_model, expected_base=target
+        )
+        if state != "ready":
+            pytest.skip(f"live precondition: {reason}")
+        if "requires_docker_compose" in item.keywords and not _has_docker_compose():
+            pytest.skip("Docker Compose unavailable")
+        if "requires_docker" in item.keywords and not _has_docker():
+            pytest.skip("Docker daemon unavailable")
+        yield
+    finally:
+        _LIVE_API_ALLOWED = False
+        _LIVE_API_TARGET = None
+
+
+def _join_test_admission_threads(
+    previous: set[threading.Thread], timeout: float = 3.0
+) -> None:
+    """Wait only for background admission workers created by this test."""
+    workers = [
+        thread
+        for thread in threading.enumerate()
+        if thread not in previous
+        and getattr(getattr(thread, "_target", None), "__qualname__", "")
+        == "RuntimeAdmission.reserve_background.<locals>.execute"
+    ]
+    if not workers:
+        return
+    deadline = _TEST_MONOTONIC() + timeout
+    for worker in workers:
+        worker.join(max(0.0, deadline - _TEST_MONOTONIC()))
+    if any(worker.is_alive() for worker in workers):
+        raise RuntimeError("test admission background worker did not finish")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_test_runtime(monkeypatch: pytest.MonkeyPatch):
+    """Give each test its own ledger, including when xdist reuses a worker."""
+    from venom_core.config import SETTINGS
+    from venom_core.services import runtime_admission
+
+    previous_threads = set(threading.enumerate())
+    memory = _TEST_MEMORY_ROOT / uuid.uuid4().hex
+    monkeypatch.setenv("MEMORY_ROOT", str(memory))
+    monkeypatch.setattr(SETTINGS, "MEMORY_ROOT", str(memory))
+    monkeypatch.setattr(runtime_admission, "_ADMISSION", None)
+    yield
+    # Do not rotate the test singleton while a reserved background worker can
+    # still use it. An unresolved worker aborts the worker process fail-closed.
+    try:
+        _join_test_admission_threads(previous_threads)
+    except RuntimeError as exc:
+        pytest.exit(str(exc), returncode=1)
+    # Private ledgers remain until process exit, avoiding deletion while an
+    # unknown/untracked worker may still be finishing.
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { buildHttpUrl } from "../utils/url";
+import { evaluateE2ePreflight } from "../../scripts/check-e2e-env.mjs";
 
 type TargetConfig = {
   name: string;
@@ -9,14 +10,13 @@ type TargetConfig = {
   responseSelector: string;
   responseTimeoutMs?: number;
   latencyBudgetMs?: number;
-  optional?: boolean;
 };
 
 const defaultBaseUrl = (() => {
   if (process.env.BASE_URL) return process.env.BASE_URL;
   const host = process.env.PLAYWRIGHT_HOST ?? "127.0.0.1";
-  // Domyślnie celujemy w port Cockpitu (3000).
-  const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+  // Lokalnie korzystamy z istniejącego panelu Venoma.
+  const port = process.env.PLAYWRIGHT_PORT ?? "3300";
   const parsedPort = Number.parseInt(port, 10);
   return Number.isNaN(parsedPort) ? buildHttpUrl(host) : buildHttpUrl(host, parsedPort);
 })();
@@ -30,29 +30,13 @@ const targets: TargetConfig[] = [
     responseSelector: '[data-testid="conversation-bubble-assistant"]',
     responseTimeoutMs: Number(process.env.PERF_NEXT_RESPONSE_TIMEOUT ?? "60000"),
     latencyBudgetMs: Number(process.env.PERF_NEXT_LATENCY_BUDGET ?? "45000"),
-    optional: process.env.PERF_NEXT_REQUIRED !== "true",
   },
 ];
 
 const defaultApiBase =
   process.env.PERF_API_BASE ??
   process.env.VENOM_API_BASE ??
-  buildHttpUrl("127.0.0.1", 8000);
-
-async function isBackendHealthy() {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`${defaultApiBase}/healthz`, {
-      method: "GET",
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+  buildHttpUrl("127.0.0.1", 8800);
 
 async function diagnosePromptFillError(page: Page, error: unknown): Promise<never> {
   const errorBoundary = page.locator('[data-testid="app-error"]');
@@ -72,10 +56,6 @@ async function fillPromptForTarget(page: Page, target: TargetConfig, prompt: str
     await page.fill(target.promptSelector, prompt, { timeout: 5_000 });
     return true;
   } catch (error) {
-    if (target.optional) {
-      test.skip(true, `${target.name} pominięty: brak pola promptu (${target.promptSelector})`);
-      return false;
-    }
     await diagnosePromptFillError(page, error);
     return false;
   }
@@ -83,16 +63,14 @@ async function fillPromptForTarget(page: Page, target: TargetConfig, prompt: str
 
 async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise<boolean> {
   const modelButton = page.getByTestId("llm-model-select");
-  const serverButton = page.getByTestId("llm-server-select");
   if ((await modelButton.count()) === 0) {
-    return true;
+    throw new Error("Brak kontrolki aktywnego modelu w gotowym panelu.");
   }
   const button = modelButton.first();
   const waitDeadline = Date.now() + 20_000;
   let label = "";
   let isDisabled = true;
   let isUnavailable = true;
-  let serverRepaired = false;
 
   while (Date.now() < waitDeadline) {
     label = ((await button.textContent()) ?? "").trim();
@@ -100,24 +78,6 @@ async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise
     isUnavailable = /Brak modeli|No models|Wybierz model|Choose model/i.test(label);
     if (!isDisabled && !isUnavailable) {
       return true;
-    }
-    if (!serverRepaired && (await serverButton.count()) > 0) {
-      const serverLabel = ((await serverButton.first().textContent()) ?? "").trim();
-      const serverUnselected = /Wybierz serwer|Choose server/i.test(serverLabel);
-      if (serverUnselected || isUnavailable) {
-        await serverButton.first().click();
-        const firstServerOption = page.locator('[data-testid^="llm-server-option-"]').first();
-        if ((await firstServerOption.count()) > 0) {
-          await firstServerOption.click();
-          serverRepaired = true;
-        } else {
-          // Fallback for environments where SelectMenu options are not test-id tagged.
-          await page.keyboard.press("ArrowDown").catch(() => {});
-          await page.keyboard.press("Enter").catch(() => {});
-          await page.keyboard.press("Escape").catch(() => {});
-          serverRepaired = true;
-        }
-      }
     }
     try {
       await page.waitForFunction(
@@ -137,13 +97,6 @@ async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise
   }
 
   if (isDisabled || isUnavailable) {
-    if (target.optional) {
-      test.skip(
-        true,
-        `${target.name} pominięty: brak aktywnego modelu czatu (label="${label || "n/a"}", disabled=${String(isDisabled)})`,
-      );
-      return false;
-    }
     throw new Error(
       `${target.name}: brak aktywnego modelu czatu (label="${label || "n/a"}", disabled=${String(isDisabled)})`,
     );
@@ -178,28 +131,18 @@ async function waitForResponseLatency(
 }
 
 async function measureLatency(page: Page, target: TargetConfig) {
-  const backendOk = await isBackendHealthy();
-  if (!backendOk) {
-    if (target.optional) {
-      test.skip(
-        true,
-        `Backend niedostępny pod ${defaultApiBase} (healthz). Pomijam test UI.`,
-      );
-      return;
-    }
-    throw new Error(`Backend niedostępny pod ${defaultApiBase} (healthz).`);
+  const readiness = await evaluateE2ePreflight({
+    nextBase: target.url,
+    apiBase: defaultApiBase.replace(/\/$/, ""),
+    requireModel: true,
+  });
+  if (!readiness.ok) {
+    test.skip(true, `${readiness.reasonCode}: ${readiness.message}`);
+    return;
   }
   await page.goto(target.url);
   const promptLocator = page.locator(target.promptSelector);
-  try {
-    await promptLocator.first().waitFor({ state: "visible", timeout: 3_000 });
-  } catch (error) {
-    if (target.optional) {
-      test.skip(true, `${target.name} pominięty: brak selektora ${target.promptSelector}`);
-      return;
-    }
-    throw error;
-  }
+  await promptLocator.first().waitFor({ state: "visible", timeout: 3_000 });
   const prompt = `Benchmark latency ${Date.now()}`;
   const responseLocator = page.locator(target.responseSelector);
   const initialResponses = await responseLocator.count();
@@ -213,19 +156,7 @@ async function measureLatency(page: Page, target: TargetConfig) {
   await expect(sendButton).toBeEnabled({ timeout: 15000 });
   await sendButton.click();
   const timeoutMs = target.responseTimeoutMs ?? 30_000;
-  let latency: number;
-  try {
-    latency = await waitForResponseLatency(responseLocator, initialResponses, timeoutMs, target.name);
-  } catch (error) {
-    if (target.optional) {
-      test.skip(
-        true,
-        `${target.name} pominięty: brak odpowiedzi w ${timeoutMs}ms`,
-      );
-      return;
-    }
-    throw error;
-  }
+  const latency = await waitForResponseLatency(responseLocator, initialResponses, timeoutMs, target.name);
 
   test.info().annotations.push({
     type: "latency",
@@ -233,13 +164,6 @@ async function measureLatency(page: Page, target: TargetConfig) {
   });
 
   const latencyBudgetMs = target.latencyBudgetMs ?? 5_000;
-  if (target.optional && latency > latencyBudgetMs) {
-    test.skip(
-      true,
-      `${target.name} przekroczyl budzet ${latencyBudgetMs}ms (wynik: ${latency.toFixed(0)}ms)`,
-    );
-    return;
-  }
   expect(latency, `${target.name}: przekroczono budżet ${latencyBudgetMs}ms`).toBeLessThanOrEqual(
     latencyBudgetMs,
   );

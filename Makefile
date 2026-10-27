@@ -61,7 +61,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		test-web-unit test-web-e2e test-web-turbo-smoke test-web-turbo-smoke-clean \
 		test-202b-gate test-202b-web-gate test-202b-web-perf test-202b-global-p95 \
 		test-202d-lora-onnx-deploy test-202d-lora-onnx-smoke test-202d-all \
-		test-duration-audit test-light-coverage test-llm-manual \
+		test-duration-audit test-light-coverage test-llm-manual test-group-plan test-group-fast test-group-long test-group-heavy \
 		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart multi-runtime-start multi-runtime-stop multi-runtime-restart multi-runtime-hygiene voice-route-profile-show voice-route-profile-set \
 		local-first-start local-first-status local-first-codex local-first-stop local-first-unload local-first-unload-all \

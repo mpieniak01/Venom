@@ -7,7 +7,7 @@ TEST_ARTIFACT_CLEANUP_DAYS ?= 7
 test:
 	@echo "🧪 Uruchamiam testy w trybie CLEAN (artefakty usuwane po sesji)..."
 	@set +e; \
-	VENOM_TEST_ARTIFACT_MODE=clean VENOM_API_BASE="$${VENOM_API_BASE:-http://$${HOST_DISPLAY:-127.0.0.1}:$${PORT:-8000}}" bash scripts/run-pytest-optimal.sh; \
+	VENOM_TEST_ARTIFACT_MODE=clean bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
 	$(call handle_pytest_no_tests,test) \
 	if [ $$rc -ne 0 ]; then \
@@ -20,7 +20,7 @@ test:
 test-data:
 	@echo "🧪 Uruchamiam testy w trybie PRESERVE (artefakty zachowane)..."
 	@set +e; \
-	VENOM_TEST_ARTIFACT_MODE=preserve VENOM_API_BASE="$${VENOM_API_BASE:-http://$${HOST_DISPLAY:-127.0.0.1}:$${PORT:-8000}}" bash scripts/run-pytest-optimal.sh; \
+	VENOM_TEST_ARTIFACT_MODE=preserve bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
 	$(call handle_pytest_no_tests,test-data) \
 	if [ $$rc -ne 0 ]; then \
@@ -29,6 +29,20 @@ test-data:
 		echo "   Sprawdź sekcję 'short test summary info' powyżej."; \
 		exit $$rc; \
 	fi
+
+# Reports include elapsed wall time and per-group JUnit counts. Physical tests
+# remain a separate, explicitly qualified profile.
+test-group-plan:
+	bash scripts/run-pytest-optimal.sh --plan
+
+test-group-fast:
+	bash scripts/run-pytest-optimal.sh --group fast
+
+test-group-long:
+	bash scripts/run-pytest-optimal.sh --group long
+
+test-group-heavy:
+	bash scripts/run-pytest-optimal.sh --group heavy
 
 test-artifacts-cleanup:
 	@echo "🗑️  Czyszczenie starych artefaktów testowych..."
@@ -472,7 +486,7 @@ openapi-codegen-types: openapi-export
 
 pytest:
 	@set +e; \
-	VENOM_API_BASE="$${VENOM_API_BASE:-http://$${HOST_DISPLAY:-127.0.0.1}:$${PORT:-8000}}" bash scripts/run-pytest-optimal.sh; \
+	bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
 	$(call handle_pytest_no_tests,pytest) \
 	if [ $$rc -ne 0 ]; then \

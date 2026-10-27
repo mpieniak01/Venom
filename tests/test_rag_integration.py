@@ -1,16 +1,25 @@
 """Testy integracyjne RAG - pełny workflow zapisywania i przywoływania informacji."""
 
+from __future__ import annotations
+
 import tempfile
 
 import pytest
 
-# Testy będą działać tylko jeśli dependencies są zainstalowane
-pytest.importorskip("lancedb")
-pytest.importorskip("sentence_transformers", exc_type=ImportError)
+# Direct model loading is blocked until it has an admission-safe host contract.
+# Heavy optional dependencies are loaded only in fixture setup, after pytest
+# applies the marker, never during collection.
+pytestmark = pytest.mark.unsafe_direct_runtime
 
-from venom_core.memory.embedding_service import EmbeddingService
-from venom_core.memory.memory_skill import MemorySkill
-from venom_core.memory.vector_store import VectorStore
+
+@pytest.fixture(scope="module", autouse=True)
+def _rag_runtime_dependencies():
+    global EmbeddingService, MemorySkill, VectorStore
+    pytest.importorskip("lancedb")
+    pytest.importorskip("sentence_transformers", exc_type=ImportError)
+    from venom_core.memory.embedding_service import EmbeddingService
+    from venom_core.memory.memory_skill import MemorySkill
+    from venom_core.memory.vector_store import VectorStore
 
 
 def _skip_if_embedding_fallback(memory_skill: MemorySkill) -> None:

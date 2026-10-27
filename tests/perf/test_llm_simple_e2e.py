@@ -12,7 +12,13 @@ import pytest
 
 from .chat_pipeline import API_BASE, is_backend_available
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.performance, pytest.mark.manual_llm]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.performance,
+    pytest.mark.manual_llm,
+    pytest.mark.live_venom,
+    pytest.mark.live_model,
+]
 
 MODEL_NAME = os.getenv("VENOM_LLM_MODEL", "gemma3")
 REPEATS = int(os.getenv("VENOM_LLM_REPEATS", "3"))

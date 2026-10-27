@@ -200,7 +200,7 @@ New-code coverage run behavior:
 
 Determinism contract (why this does not flake):
 
-- `NEW_CODE_TIME_BUDGET_SEC=0` in CI: no time-based test list trimming.
+- PRs to `main` use `NEW_CODE_TIME_BUDGET_SEC=90` as a soft estimated-cost budget for optional tests; mandatory tests remain selected. Main uses the full backend Sonar report.
 - `config/coverage-file-floor.txt`: floor anchor tests are always included.
 - `ripgrep` (`rg`) in CI: stable, fast resolver with readable logs.
 - `scripts/check_test_catalog.py` also validates release groups (`fast/long/heavy`) against catalog lane eligibility.
@@ -239,14 +239,39 @@ Backend:
 make pytest
 ```
 
-`make pytest` runs backend groups in order: `heavy` -> `long` -> `fast`.
-Default selection policy:
-- `heavy`: includes performance tests, excludes only `manual_llm`.
-- `long` and `fast`: exclude `performance` and `manual_llm`.
-- explicit long-running manual exclusions are read from:
-  `config/pytest-groups/manual-long-running.txt`
-Automatic regression execution excludes manual LLM and performance tests by default using:
-- `not performance and not manual_llm`
+`make pytest` runs backend groups in order: `fast` -> `long` -> `heavy`, with
+4, 2 and 1 workers by default. These values are not yet qualified as optimal
+for every host workload.
+
+- `fast` and `long` exclude `performance` and `manual_llm`; `heavy` includes
+  simulated performance cases. All groups exclude marked live, direct runtime
+  and Docker tests and honor `manual-long-running.txt`.
+- `make test-group-plan` shows files, filters and workers without executing tests.
+  Run one group with `make test-group-fast`, `make test-group-long` or
+  `make test-group-heavy`. Wall time, JUnit and `summary.json` are stored under
+  `test-results/test-groups/run-*`.
+- Reports count selected/executed cases and pytest skips; xdist JUnit does not
+  count selector-deselected cases. An `unknown` inventory result is not proof
+  that a test avoids hardware or child processes.
+- `PYTEST_FAST_WORKERS`, `PYTEST_LONG_WORKERS`, `PYTEST_HEAVY_WORKERS`,
+  `PYTEST_TEST_TIMEOUT_SECONDS` and `PYTEST_GROUP_TIMEOUT_SECONDS` accept
+  positive integers. External `PYTEST_ADDOPTS` is preserved.
+
+For GitHub PRs targeting `main`, backend `check-new-code-coverage` uses a soft
+90-second test-selection budget based on estimated file costs. The baseline,
+eligible changed and direct tests, and coverage-floor anchors remain mandatory
+when their cost exceeds that budget. The budget is not a wall-clock limit or a
+10-minute guarantee. The 80% changed-line threshold and per-file floors are
+unchanged; fallback may select additional tests. A push to `main` or a manual CI
+run on `main` generates the full backend Sonar report. A separate simulated
+regression covers the main groups after pushes to `main` and on a schedule.
+
+Live tests are skipped by default. Explicit execution requires the existing
+local Venom, readiness of the required resources, and at most one worker;
+direct-model tests without host admission remain blocked. Physical browser E2E
+is skipped until the UI-to-API binding can be verified. Report skips separately
+from passing cases. A skipped or partial E2E profile returns exit code 2; a
+complete pass returns 0.
 
 Manual/operator-only LLM checks:
 

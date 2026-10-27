@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import shutil
@@ -19,6 +20,11 @@ LIGHT_BLOCKED_MARKERS = (
     "requires_docker_compose",
     "performance",
     "smoke",
+    "manual_llm",
+    "requires_stack",
+    "live_venom",
+    "live_model",
+    "unsafe_direct_runtime",
 )
 
 PRIORITY_TEST_ORDER = (
@@ -42,12 +48,10 @@ DEFAULT_COVERAGE_FLOOR_FILE = Path("config/coverage-file-floor.txt")
 # A mere module reference can be a mock; pin the test that executes this floor target.
 COVERAGE_FLOOR_TEST_OVERRIDES = {
     "venom_core/core/orchestrator/task_pipeline/context_builder.py": "tests/test_runtime_registry_contracts.py",
+    "venom_core/skills/mcp/skill_adapter.py": "tests/test_runtime_registry_translation_contracts.py",
 }
 
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
-MARKER_RE = re.compile(
-    r"pytest\.mark\.(integration|requires_docker|requires_docker_compose|performance|smoke)\b"
-)
 
 
 class CandidateInfo(NamedTuple):
@@ -289,12 +293,50 @@ def direct_tests_for_modules(
 
 def is_light_test(path: str) -> bool:
     file_path = Path(path)
-    if not file_path.exists():
+    try:
+        tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=path)
+    except (OSError, UnicodeError, SyntaxError):
+        # An unreadable or malformed test cannot be safely classified.
         return False
 
-    for raw_line in file_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.split("#", 1)[0]
-        if MARKER_RE.search(line):
+    pytest_names = {"pytest"}
+    mark_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pytest":
+                    pytest_names.add(alias.asname or "pytest")
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            for alias in node.names:
+                if alias.name == "mark":
+                    mark_names.add(alias.asname or "mark")
+
+    def is_mark_namespace(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Name)
+            and node.id in mark_names
+            or isinstance(node, ast.Attribute)
+            and node.attr == "mark"
+            and isinstance(node.value, ast.Name)
+            and node.value.id in pytest_names
+        )
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in LIGHT_BLOCKED_MARKERS
+            and is_mark_namespace(node.value)
+        ):
+            return False
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and is_mark_namespace(node.args[0])
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value in LIGHT_BLOCKED_MARKERS
+        ):
             return False
     return True
 
@@ -410,6 +452,9 @@ def coverage_floor_anchor_tests(
     if not targets:
         return set()
 
+    # The slow-fastlane filter applies to optional candidates, not floor anchors.
+    # Preserve this argument for existing callers; live/integration exclusions
+    # remain enforced by is_light_test and the CI lane policy.
     test_set = set(tests)
     anchors: set[str] = set()
     for module_path in targets:
@@ -430,8 +475,7 @@ def coverage_floor_anchor_tests(
                 continue
             if not is_light_test(preferred):
                 continue
-            if exclude_slow_fastlane and not is_fast_safe_test(preferred):
-                continue
+
             anchors.add(preferred)
             selected_preferred = True
             break
@@ -446,12 +490,11 @@ def coverage_floor_anchor_tests(
         for candidate in candidates:
             if not is_light_test(candidate):
                 continue
-            if exclude_slow_fastlane and not is_fast_safe_test(candidate):
-                continue
+
             filtered.append(candidate)
         if not filtered:
             continue
-        best = min(filtered, key=lambda item: (estimate_test_cost(item, timings), item))
+        best = min(filtered, key=lambda item: (estimate_test_cost(item, {}), item))
         anchors.add(best)
     return anchors
 
@@ -499,7 +542,14 @@ def _build_candidate_infos(
     for path in selected:
         if not is_light_test(path):
             continue
-        if exclude_slow_fastlane and not is_fast_safe_test(path):
+        # Mandatory tests cannot be lost to filename or duration heuristics.
+        required = (
+            path in baseline_items
+            or path in changed_tests
+            or path in direct_module_tests
+            or path in floor_anchors
+        )
+        if exclude_slow_fastlane and not required and not is_fast_safe_test(path):
             continue
         entry = catalog.get(path) if catalog else None
 
@@ -533,7 +583,7 @@ def _build_candidate_infos(
             or "direct_module_test" in reasons
             or "related_module" in reasons
         )
-        if dynamic_only and changed_domains:
+        if dynamic_only and changed_domains and not required:
             if domain not in changed_domains and domain not in {
                 "testing_tooling",
                 "core",
@@ -566,32 +616,35 @@ def _build_candidate_infos(
 def _apply_budget(
     infos: list[CandidateInfo], time_budget_sec: float, max_tests: int
 ) -> list[CandidateInfo]:
-    if max_tests > 0:
-        infos = infos[:max_tests]
-
-    if time_budget_sec <= 0:
-        return infos
-
-    total = 0.0
-    selected: list[CandidateInfo] = []
+    # The budget can trim only optional tests.  A previous JUnit duration must
+    # never suppress the curated baseline, a floor anchor or a changed test.
+    mandatory_reasons = {
+        "baseline_group",
+        "changed_test",
+        "direct_module_test",
+        "coverage_floor_anchor",
+    }
+    mandatory = {
+        info.path
+        for info in infos
+        if mandatory_reasons.intersection(info.selection_reason)
+    }
+    total = sum(info.estimated_seconds for info in infos if info.path in mandatory)
+    selected_paths = set(mandatory)
     for info in infos:
-        # Always keep top-priority dynamic coverage anchors for changed code
-        # (floor anchors, changed tests, related module tests), even if we
-        # exceed the soft fast-lane time budget.
-        if info.source_rank <= 1:
-            selected.append(info)
-            total += info.estimated_seconds
+        if info.path in mandatory:
+            continue
+        if max_tests > 0 and len(selected_paths) >= max_tests:
             continue
         next_total = total + info.estimated_seconds
-        if selected and next_total > time_budget_sec:
+        if time_budget_sec > 0 and selected_paths and next_total > time_budget_sec:
             continue
-        selected.append(info)
+        selected_paths.add(info.path)
         total = next_total
 
-    if not selected and infos:
-        selected = [infos[0]]
-
-    return selected
+    if not selected_paths and infos:
+        selected_paths.add(infos[0].path)
+    return [info for info in infos if info.path in selected_paths]
 
 
 def resolve_tests(
@@ -777,7 +830,7 @@ def main() -> int:
         "--time-budget-sec",
         type=float,
         default=0.0,
-        help="Optional time budget for selected tests. 0 disables budgeting.",
+        help="Soft budget for optional test cost estimates in seconds; 0 disables budgeting.",
     )
     parser.add_argument(
         "--timings-junit-xml",
@@ -795,7 +848,7 @@ def main() -> int:
         "--max-tests",
         type=int,
         default=0,
-        help="Optional hard cap for number of selected tests (0 = unlimited).",
+        help="Soft cap for optional selected test files; mandatory tests are retained (0 = unlimited).",
     )
     parser.add_argument(
         "--catalog",

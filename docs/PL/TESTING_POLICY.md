@@ -4,6 +4,8 @@ Ten dokument jest nadrzędnym źródłem zasad testowania: od codziennej pracy l
 
 Bazowe wymagania bezpieczeństwa i kontroli są opisane w `docs/PL/SECURITY_POLICY.md`.
 
+Plan rozwoju strategii na jednym komputerze: [analiza i zadania PR](TESTING_STRATEGY_IMPLEMENTATION_PLAN.md).
+
 ## Drabina testów (od najszybszych do najbardziej restrykcyjnych)
 
 ### Poziom 1: Codzienna praca lokalna (codziennie)

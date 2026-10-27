@@ -131,11 +131,57 @@ def test_browser_profiles_continue_after_smoke_failure():
         "frontend", "Run mocked browser profiles in isolated network namespace"
     )
     begin = script.index("result=0")
-    end = script.index('exit "$result"', begin) + len('exit "$result"')
-    calls = script[begin:end]
+    end = script.index("output_dir=", begin)
+    calls = script[begin:end] + 'exit "$result"'
     stub = 'run_profile() { echo "$1"; [ "$1" != smoke ]; }\n'
     result = subprocess.run(
         ["bash", "-e", "-c", stub + calls], capture_output=True, text=True, timeout=10
     )
     assert result.returncode == 1
     assert result.stdout.splitlines() == ["smoke", "functional"]
+
+
+def test_browser_reports_survive_next_playwright_cleanup(tmp_path: Path):
+    import getpass
+
+    script = _step(
+        "frontend", "Run mocked browser profiles in isolated network namespace"
+    )
+    begin = script.index("run_profile() {")
+    end = script.index('exit "$result"', begin) + len('exit "$result"')
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    runuser = binary / "runuser"
+    runuser.write_text('#!/bin/sh\nshift 3\nexec "$@"\n', encoding="utf-8")
+    runuser.chmod(0o755)
+    npm = binary / "npm"
+    npm.write_text(
+        "#!/bin/sh\nrm -rf web-next/test-results\n"
+        'printf "{}" > "$PLAYWRIGHT_JSON_OUTPUT_NAME"\n',
+        encoding="utf-8",
+    )
+    npm.chmod(0o755)
+    report_dir = tmp_path / "web-next/.simulated-regression-reports"
+    report_dir.mkdir(parents=True)
+    path = f"{binary}:{os.environ['PATH']}"
+    env = {
+        **os.environ,
+        "PATH": path,
+        "runner_path": path,
+        "runner_home": str(tmp_path),
+        "runner_user": getpass.getuser(),
+        "workspace": str(tmp_path),
+        "report_dir": str(report_dir),
+    }
+    result = subprocess.run(
+        ["bash", "-e", "-c", script[begin:end]],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    output = tmp_path / "web-next/test-results/simulated-regression"
+    assert (output / "smoke.json").read_text() == "{}"
+    assert (output / "functional.json").read_text() == "{}"

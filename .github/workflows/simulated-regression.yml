@@ -174,6 +174,8 @@ jobs:
               fi
             done
             cd "$workspace"
+            report_dir="$workspace/web-next/.simulated-regression-reports"
+            install -d -o "$runner_user" -g "$runner_user" "$report_dir"
             run_profile() {
               profile="$1"; script="$2"; shift 2
               runuser -u "$runner_user" -- env -i \
@@ -181,12 +183,19 @@ jobs:
                 PATH="$runner_path" LANG=C.UTF-8 CI=true GITHUB_ACTIONS=true \
                 RUNNER_ENVIRONMENT=github-hosted E2E_SIMULATED_SERVER=1 \
                 NEXT_TELEMETRY_DISABLED=1 \
-                PLAYWRIGHT_JSON_OUTPUT_NAME="test-results/simulated-regression/$profile.json" \
+                PLAYWRIGHT_JSON_OUTPUT_NAME="$report_dir/$profile.json" \
                 npm --prefix web-next run "$script" -- --reporter=json,line "$@"
             }
             result=0
             run_profile smoke test:e2e:smoke || result=1
             run_profile functional test:e2e:functional --workers=2 || result=1
+            output_dir="$workspace/web-next/test-results/simulated-regression"
+            install -d -o "$runner_user" -g "$runner_user" "$output_dir"
+            for profile in smoke functional; do
+              if [ -f "$report_dir/$profile.json" ]; then
+                runuser -u "$runner_user" -- cp "$report_dir/$profile.json" "$output_dir/$profile.json"
+              fi
+            done
             exit "$result"
           ' bash "$workspace" "$runner_user" "$runner_home" "$runner_path"
       - name: Summarize browser results including skipped tests

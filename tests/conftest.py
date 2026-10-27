@@ -31,6 +31,7 @@ atexit.register(shutil.rmtree, _TEST_MEMORY_ROOT, ignore_errors=True)
 # Prevent unmarked in-process test code from reaching the operator's local
 # services during collection or simulated test execution. This does not cover
 # subprocesses; those still need an explicit audit or network isolation.
+_TEST_MONOTONIC = time.monotonic
 _LIVE_API_ALLOWED = False
 _LIVE_API_TARGET: tuple[str, int] | None = None
 _DIRECT_RUNTIME_PORTS = {11434}
@@ -440,9 +441,11 @@ def _join_test_admission_threads(
         and getattr(getattr(thread, "_target", None), "__qualname__", "")
         == "RuntimeAdmission.reserve_background.<locals>.execute"
     ]
-    deadline = time.monotonic() + timeout
+    if not workers:
+        return
+    deadline = _TEST_MONOTONIC() + timeout
     for worker in workers:
-        worker.join(max(0.0, deadline - time.monotonic()))
+        worker.join(max(0.0, deadline - _TEST_MONOTONIC()))
     if any(worker.is_alive() for worker in workers):
         raise RuntimeError("test admission background worker did not finish")
 

@@ -107,3 +107,37 @@ def test_rejects_invalid_worker_count_without_running_tests(fake_checkout: Path)
     assert result.returncode == 2
     assert "positive integers" in result.stderr
     assert not (fake_checkout / "calls.jsonl").exists()
+
+
+def test_make_group_entry_preserves_explicit_api_without_inventing_a_port(tmp_path):
+    source = Path(__file__).resolve().parents[1] / "make/tests.mk"
+    (tmp_path / "make").mkdir()
+    shutil.copy(source, tmp_path / "make/tests.mk")
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "run-pytest-optimal.sh").write_text(
+        'printf "api=%s\\n" "${VENOM_API_BASE-unset}"\n', encoding="utf-8"
+    )
+    environment = os.environ.copy()
+    environment.pop("VENOM_API_BASE", None)
+    default = subprocess.run(
+        ["make", "-f", "make/tests.mk", "test"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert default.returncode == 0, default.stderr
+    assert "api=unset" in default.stdout
+    environment["VENOM_API_BASE"] = "http://127.0.0.1:8800"
+    explicit = subprocess.run(
+        ["make", "-f", "make/tests.mk", "test"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert explicit.returncode == 0, explicit.stderr
+    assert "api=http://127.0.0.1:8800" in explicit.stdout

@@ -11,7 +11,15 @@ from venom_core.config import SETTINGS
 from venom_core.services import runtime_admission
 
 
-def test_each_test_uses_private_runtime_ledger():
+@pytest.fixture(autouse=True)
+def _isolate_live_target_environment(monkeypatch):
+    """Tests explicitly choose both settings rather than inheriting an operator profile."""
+    monkeypatch.delenv("VENOM_TEST_STACK_BASE", raising=False)
+    monkeypatch.delenv("VENOM_API_BASE", raising=False)
+
+
+def test_each_test_uses_private_runtime_ledger(monkeypatch):
+    monkeypatch.setattr(SETTINGS, "RUNTIME_ADMISSION_ENABLED", True)
     memory = Path(SETTINGS.MEMORY_ROOT)
     assert memory.is_relative_to(conftest._TEST_MEMORY_ROOT)
     admission = runtime_admission.get_runtime_admission()
@@ -19,6 +27,15 @@ def test_each_test_uses_private_runtime_ledger():
     with admission.operation(kind="test_isolation"):
         assert admission.snapshot()["status"] == "busy"
     assert admission.snapshot()["status"] == "available"
+
+
+def test_disabled_admission_still_uses_private_runtime_ledger(monkeypatch):
+    monkeypatch.setattr(SETTINGS, "RUNTIME_ADMISSION_ENABLED", False)
+    memory = Path(SETTINGS.MEMORY_ROOT)
+    assert memory.is_relative_to(conftest._TEST_MEMORY_ROOT)
+    admission = runtime_admission.get_runtime_admission()
+    assert admission.database == memory / "runtime-admission.sqlite3"
+    assert admission.snapshot()["status"] == "disabled"
 
 
 @pytest.mark.parametrize("port", [3300, 8800, 11434])
@@ -327,3 +344,42 @@ def test_direct_model_suites_are_blocked_before_dependency_setup(path):
             )
             for node in calls
         )
+
+
+def test_worker_guard_does_not_read_clock_when_no_new_workers(monkeypatch):
+    import threading
+
+    previous = set(threading.enumerate())
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            conftest.time, "monotonic", lambda: pytest.fail("patched clock used")
+        )
+        conftest._join_test_admission_threads(previous)
+
+
+def test_worker_guard_uses_original_clock_when_test_patches_monotonic(
+    monkeypatch, tmp_path
+):
+    import threading
+
+    previous = set(threading.enumerate())
+    admission = runtime_admission.RuntimeAdmission(
+        tmp_path / "admission.sqlite3", enabled=True
+    )
+    reserved = admission.reserve_background(kind="test_worker_clock")
+    stop = threading.Event()
+    worker = threading.Thread(
+        target=reserved, args=(lambda: stop.wait(2.0),), daemon=True
+    )
+    worker.start()
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                conftest.time, "monotonic", lambda: pytest.fail("patched clock used")
+            )
+            with pytest.raises(RuntimeError, match="did not finish"):
+                conftest._join_test_admission_threads(previous, timeout=0.01)
+    finally:
+        stop.set()
+        worker.join(timeout=2.0)
+    assert not worker.is_alive()

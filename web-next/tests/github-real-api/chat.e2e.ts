@@ -9,7 +9,9 @@ test("browser streams through the actual proxy and API to the controlled LLM", a
   await expect(mode).toBeEnabled();
   await mode.scrollIntoViewIfNeeded();
   await mode.click();
-  await page.getByTestId("chat-mode-option-direct").click();
+  const directOption = page.getByTestId("chat-mode-option-direct");
+  await expect(directOption).toBeInViewport({ ratio: 1 });
+  await directOption.click({ timeout: 10_000 });
   await page.getByTestId("cockpit-prompt-input").fill(prompt);
   const responsePromise = page.waitForResponse((response) =>
     response.url() === "http://127.0.0.1:13300/api/v1/llm/simple/stream" &&

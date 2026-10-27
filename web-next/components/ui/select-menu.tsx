@@ -64,6 +64,7 @@ export function SelectMenu({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const focusMenuOnOpen = useRef(false);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const currentOption = useMemo(
     () => options.find((option) => option.value === value) ?? null,
@@ -79,7 +80,12 @@ export function SelectMenu({
       setOpen(false);
     };
     const handleEsc = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        if (menuRef.current?.contains(document.activeElement)) {
+          triggerRef.current?.querySelector("button")?.focus();
+        }
+        setOpen(false);
+      }
     };
     globalThis.window.addEventListener("mousedown", handleOutside);
     globalThis.window.addEventListener("keydown", handleEsc);
@@ -94,27 +100,45 @@ export function SelectMenu({
     const updatePosition = () => {
       if (!triggerRef.current) return;
       const rect = triggerRef.current.getBoundingClientRect();
+      const margin = 8;
+      const menuHeight = Math.min(
+        menuRef.current?.getBoundingClientRect().height ?? 0,
+        Math.max(0, globalThis.window.innerHeight - margin * 2),
+      );
+      const below = rect.bottom + margin;
+      const top = below + menuHeight <= globalThis.window.innerHeight - margin
+        ? below
+        : Math.max(margin, rect.top - margin - menuHeight);
       setMenuStyle(
         menuWidth === "content"
           ? {
             position: "fixed",
-            top: rect.bottom + 8,
+            top,
             left: rect.left,
             minWidth: rect.width,
             maxWidth: "90vw",
             width: "max-content",
+            maxHeight: "calc(100vh - 16px)",
+            overflowY: "auto",
             zIndex: 80,
           }
           : {
             position: "fixed",
-            top: rect.bottom + 8,
+            top,
             left: rect.left,
             width: rect.width,
+            maxHeight: "calc(100vh - 16px)",
+            overflowY: "auto",
             zIndex: 80,
           },
       );
     };
     updatePosition();
+    if (focusMenuOnOpen.current) {
+      const selected = menuRef.current?.querySelector<HTMLButtonElement>('button[aria-selected="true"]:not(:disabled)');
+      (selected ?? menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)"))?.focus({ preventScroll: true });
+      focusMenuOnOpen.current = false;
+    }
     globalThis.window.addEventListener("resize", updatePosition);
     globalThis.window.addEventListener("scroll", updatePosition, true);
     return () => {
@@ -127,7 +151,17 @@ export function SelectMenu({
     <div className={cn("relative", className)} ref={triggerRef}>
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={(event) => {
+          focusMenuOnOpen.current = event.detail === 0;
+          setOpen((prev) => !prev);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            focusMenuOnOpen.current = true;
+            setOpen(true);
+          }
+        }}
         className={cn(
           "flex min-w-0 items-center gap-2 rounded-full border border-[color:var(--ui-border)] bg-[color:var(--button-outline-bg)] px-3 py-1.5 text-xs uppercase tracking-wider text-[color:var(--button-outline-text)] transition hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--button-outline-hover)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
           buttonClassName,
@@ -153,9 +187,22 @@ export function SelectMenu({
         createPortal(
           <div
             ref={menuRef}
+            role="listbox"
+            onKeyDown={(event) => {
+              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+              const choices = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+              if (!choices.length) return;
+              event.preventDefault();
+              const index = choices.indexOf(document.activeElement as HTMLButtonElement);
+              const next = event.key === "Home" ? 0
+                : event.key === "End" ? choices.length - 1
+                  : event.key === "ArrowDown" ? (index + 1) % choices.length
+                    : (index - 1 + choices.length) % choices.length;
+              choices[next].focus();
+            }}
             style={menuStyle}
             className={cn(
-              "mt-2 rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-menu-bg)] p-1 text-left text-[color:var(--text-primary)] shadow-xl",
+              "rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-menu-bg)] p-1 text-left text-[color:var(--text-primary)] shadow-xl",
               menuClassName,
             )}
             data-testid={menuTestId}
@@ -169,6 +216,8 @@ export function SelectMenu({
                   <button
                     key={option.value}
                     type="button"
+                    role="option"
+                    aria-selected={active}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--ui-surface-hover)] disabled:cursor-not-allowed disabled:opacity-60",
                       active ? "bg-[color:var(--ui-menu-item-active)]" : "",
@@ -182,6 +231,7 @@ export function SelectMenu({
                       if (option.disabled) return;
                       onChange(option.value);
                       setOpen(false);
+                      triggerRef.current?.querySelector("button")?.focus();
                     }}
                     disabled={option.disabled}
                   >

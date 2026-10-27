@@ -119,7 +119,7 @@ for group in "${groups[@]}"; do
 done
 elapsed_total=$(( $(date +%s) - overall_start ))
 set +e
-python - "$summary" "$report_dir/summary.json" "$elapsed_total" "$overall_rc" <<'PY'
+python3 - "$summary" "$report_dir/summary.json" "$elapsed_total" "$overall_rc" <<'PY'
 import csv
 import json
 import sys

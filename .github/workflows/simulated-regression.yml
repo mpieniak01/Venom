@@ -183,7 +183,7 @@ jobs:
       - name: Summarize browser results including skipped tests
         if: always()
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           import json
           from pathlib import Path
           import sys
